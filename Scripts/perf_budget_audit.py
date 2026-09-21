@@ -698,8 +698,8 @@ INJECTIONS = (
     ),
     (
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        bufferCache.hold()\n        defer { bufferCache.clear() }\n        guard let container, !Task.isCancelled else { return [] }",
-        "        guard let container, !Task.isCancelled else { return [] }", "cache",
+        "        bufferCache.hold()\n        defer { bufferCache.clear() }\n        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.",
+        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.", "cache",
     ),
     (
         "Sources/Uttrflow/Dock/DockView.swift",

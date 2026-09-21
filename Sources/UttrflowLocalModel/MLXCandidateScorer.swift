@@ -391,10 +391,10 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
         bufferCache.hold()
         defer { bufferCache.clear() }
-        guard let container, !Task.isCancelled else { return [] }
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
+            guard let container else { return [] }
             let bytes = vocabulary?.bytes ?? []
             return await container.perform { loaded in
                 Self.judgedFromCache(
@@ -402,6 +402,10 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
             }
         }
         judgementCacheMisses += 1
+        guard let container, !Task.isCancelled else {
+            judgementCache.remember(JudgedLine(tokens: [], rows: [], texts: []), for: candidate)
+            return []
+        }
         beginPass()
         defer { endPass() }
         let bytes = vocabulary?.bytes ?? []
