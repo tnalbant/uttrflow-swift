@@ -229,12 +229,6 @@ public actor DictationPipeline {
         }
     }
 
-    /// Opens the existential clock, which is what lets an instant be held on to.
-    private static func stopwatch(from clock: some Clock<Duration>) -> () -> Duration {
-        let start = clock.now
-        return { start.duration(to: clock.now) }
-    }
-
     // MARK: The sequence
 
     /// Whether a new dictation can begin, counting one that holds the turn before its state has moved.
@@ -247,6 +241,8 @@ public actor DictationPipeline {
         guard !isLoading else { return transition(to: .failed(.stillLoading)) }
         hasTurn = true
         defer { hasTurn = false }
+        // At key-down, so a recogniser let go while idle loads while the person speaks.
+        await speech.warm()
 
         generation += 1
         let mine = generation
@@ -260,7 +256,7 @@ public actor DictationPipeline {
                 await capture.cancel()
                 return
             }
-            stopwatch = Self.stopwatch(from: clock)
+            stopwatch = UttrflowCore.stopwatch(from: clock)
             takeSettings()
             spokenFor = nil
             insertedInto = nil
@@ -409,11 +405,14 @@ public actor DictationPipeline {
             guard state == .recording, generation == mine, !wasCancelled(mine), !Task.isCancelled
             else { return }
 
-            let audio = await capture.capturedSoFar()
+            // One sample before the cut is kept, so a later piece is never taken for the whole recording.
+            let lead = earlyCut > 0 ? 1 : 0
+            let audio = await capture.capturedSoFar(from: earlyCut - lead)
             guard
-                let end = windowing.nextCut(
-                    in: audio.samples, sampleRate: audio.sampleRate, from: earlyCut)
+                let cut = windowing.nextCut(
+                    in: audio.samples, sampleRate: audio.sampleRate, from: lead)
             else { continue }
+            let end = earlyCut - lead + cut
 
             // A leftover tidy is folded in only once there is a next piece to recognise.
             if let earlyTidyTask {
@@ -430,7 +429,7 @@ public actor DictationPipeline {
             let heard: Transcription?
             do {
                 heard = try await transcribe(
-                    audio, earlyCut..<end, biasedTowards: await vocabulary(seeing: seeing),
+                    audio, lead..<cut, biasedTowards: await vocabulary(seeing: seeing),
                     recording: NoOpMetricsRecorder())
             } catch {
                 guard generation == mine, !wasCancelled(mine) else { return }
@@ -480,7 +479,7 @@ public actor DictationPipeline {
         generation == mine && !wasCancelled(mine)
     }
 
-    /// Asks what is on screen, within a budget, answering nothing rather than waiting.
+    /// Asks what is on screen within the quick limit, since an injected engine need not keep a budget of its own.
     private func readContext() async -> AppContext {
         ((try? await withStageTimeout(StageTimeout.quick, clock: clock) { [context] in
             await context.currentContext()
@@ -640,7 +639,7 @@ public actor DictationPipeline {
         guard
             let arrival = await insert(
                 expanded.text, cleanedBy: whole.cleaned.producedBy, changes: changes,
-                delivery: delivery)
+                delivery: delivery, generation: mine)
         else { return }
 
         // An unconfirmed paste is not proof the words reached the user, so nothing is learnt from it yet.
@@ -820,7 +819,8 @@ public actor DictationPipeline {
 
     /// Puts the finished text where the user was typing, answering how it arrived, or nil on failure.
     private func insert(
-        _ text: String, cleanedBy: TransformerKind, changes: AppliedChanges, delivery: Delivery
+        _ text: String, cleanedBy: TransformerKind, changes: AppliedChanges, delivery: Delivery,
+        generation mine: Int
     ) async -> InsertionArrival? {
         let inserter = delivery == .copy ? clipboard : self.inserter
         // Said before the words are handed over, because the app takes its own time to show them.
@@ -831,6 +831,8 @@ public actor DictationPipeline {
                     try await inserter.insert(text)
                 }
             }
+            // A cancel during the write already ended the dictation, so nothing more is shown or learnt.
+            guard !wasCancelled(mine) else { return nil }
             // Either way the dictation has to end, so the next one can begin.
             guard let attempt = inserted else {
                 throw TextInsertionError.insertionTimedOut
@@ -851,6 +853,7 @@ public actor DictationPipeline {
                         intoSecureField: destinationIsSecure)))
             return attempt.arrival
         } catch {
+            guard !wasCancelled(mine) else { return nil }
             // The words survive the failure: the interface can still offer them.
             await fail(DictationFailure(error, transcript: text))
             return nil

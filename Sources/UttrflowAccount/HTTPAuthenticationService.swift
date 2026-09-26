@@ -320,7 +320,10 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 case .token(let renewed):
                     let retried = try await send(profileRequest(renewed, ifNoneMatch: cached?.validator))
                     if retried.status == 304 { return .unchanged }
-                    if retried.status == 401 { return .signedOut }
+                    if retried.status == 401 {
+                        endSession(ifStillHolding: renewed)
+                        return .signedOut
+                    }
                     return .updated(try believe(retried))
                 }
             }
@@ -412,6 +415,12 @@ public final class HTTPAuthenticationService: AuthenticationService {
             return .token(current.value)
         }
         return try await renew()
+    }
+
+    /// A usable access token for a request outside this service, or `nil` when signed out or unreachable.
+    public func accessTokenIfSignedIn() async -> String? {
+        guard case .token(let token)? = try? await authorised() else { return nil }
+        return token
     }
 
     /// How many callers have waited on a renewal somebody else started; read by tests.
@@ -533,6 +542,14 @@ public final class HTTPAuthenticationService: AuthenticationService {
     /// Drops both halves of the session, which is what signing out means on this Mac.
     private func forgetSession() {
         session.withLock { endSession(&$0) }
+    }
+
+    /// Ends the session only if `token` is still the live access token, so a newer sign-in survives.
+    private func endSession(ifStillHolding token: String) {
+        session.withLock { state in
+            guard access.withLock({ $0?.value }) == token else { return }
+            endSession(&state)
+        }
     }
 
     /// Clears the tokens and moves the generation on, under the session lock `state` is borrowed from.
