@@ -380,9 +380,7 @@ private let keyInterceptorCallback: CGEventTapCallBack = { _, type, event, userI
     case .tapDisabledByTimeout, .tapDisabledByUserInput:
         // Not the keystroke path: by the time this runs the system has already stopped delivering.
         guard state.armed.load(ordering: .relaxed) != 0 else { return Unmanaged.passUnretained(event) }
-        if state.shouldReEnable(), let port = state.port() {
-            CGEvent.tapEnable(tap: port, enable: true)
-        }
+        if state.shouldReEnable(), let port = state.port() { CGEvent.tapEnable(tap: port, enable: true) }
         return Unmanaged.passUnretained(event)
     default:
         return Unmanaged.passUnretained(event)
