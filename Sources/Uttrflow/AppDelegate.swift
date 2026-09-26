@@ -268,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func sweepExpired(now: Date = Date()) {
         let retention = Retention(days: settings.transcriptRetentionDays, now: now)
         let previous = sweeping
-        sweeping = Task { [recordings, history] in
+        sweeping = Task(priority: .utility) { [recordings, history] in
             await previous?.value
             _ = await recordings.waiting(now: now)
             _ = await history.records(keeping: retention)
@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Writes the words this build ships knowing, which happens once and never blocks the launch.
     private func seedTheDictionary() {
-        Task { [dictionary] in
+        Task(priority: .utility) { [dictionary] in
             do {
                 try await dictionary.seedShippedWords(at: Date())
             } catch {
@@ -414,7 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Asks each clean-up engine whether it could run, so Diagnostics has an answer to show; the task ends once it has.
     @discardableResult
     func probeTransformers() -> Task<Void, Never> {
-        Task { [weak self] in
+        Task(priority: .utility) { [weak self] in
             guard let self else { return }
             let ready = await SettingsCapabilities.refreshed(for: settings.profile)
                 .readyTransformers
@@ -428,7 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @discardableResult
     func probeSpeechModel() -> Task<Void, Never> {
         let store = modelStore
-        return Task { [weak self] in
+        return Task(priority: .utility) { [weak self] in
             let presence = await Task.detached(priority: .utility) {
                 let model = SpeechModel.default
                 let installed = store.isInstalled(model)
@@ -452,7 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Re-reads the account in the background at launch, which nothing waits for. See `Docs/entitlements.md`.
     private func refreshAccount() {
-        Task { [account] in
+        Task(priority: .utility) { [account] in
             let outcome = await account.refresh.run()
             // Only a change is worth a redraw; `unchanged` is the common answer.
             guard outcome == .updated || outcome == .signedOut else { return }
