@@ -14,9 +14,10 @@ copy="$test_root/repo"
 mkdir -p "$copy"
 tar -C "$repo_root" --exclude='.git' --exclude='.build' --exclude='.claude' -cf - . | tar -C "$copy" -xf -
 
+# The copy is never built, so the audit runs source-only even in CI, where it would otherwise demand a binary.
 # Sanity check: the unmodified copy must pass, so a later failure is known to come from
 # the removed pin and not from something else already broken in the tree.
-if ! (cd "$copy" && ./Scripts/offline_audit.sh --no-build >/dev/null 2>"$test_root/baseline.log"); then
+if ! (cd "$copy" && env -u CI ./Scripts/offline_audit.sh --no-build >/dev/null 2>"$test_root/baseline.log"); then
     echo "error: the offline audit does not pass on an unmodified copy of the tree" >&2
     cat "$test_root/baseline.log" >&2
     exit 1
@@ -31,7 +32,7 @@ fi
 sed -i '' '/tokenizerFolder: modelFolder,/d' "$backend"
 
 log="$test_root/removed.log"
-if (cd "$copy" && ./Scripts/offline_audit.sh --no-build >"$log" 2>&1); then
+if (cd "$copy" && env -u CI ./Scripts/offline_audit.sh --no-build >"$log" 2>&1); then
     echo "error: the offline audit passed with no tokenizerFolder pinned" >&2
     cat "$log" >&2
     exit 1
