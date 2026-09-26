@@ -675,8 +675,11 @@ public actor DictationPipeline {
         _ audio: AudioSamples, _ window: Range<Int>, isWhole: Bool, biasedTowards words: [String],
         recording metrics: any MetricsRecording
     ) async throws -> Transcription? {
+        // The audio itself when the window is all of it, so a one-piece dictation is never copied.
         let slice =
-            AudioSamples(samples: Array(audio.samples[window]), sampleRate: audio.sampleRate) ?? .empty
+            window == audio.samples.indices
+            ? audio
+            : AudioSamples(samples: Array(audio.samples[window]), sampleRate: audio.sampleRate) ?? .empty
         // A profile that speaks Hindi switches language between pieces, so only it detects every piece. See `Docs/speech-engines.md`.
         let language = ListeningLanguages(profile: runningProfile).hint(afterFirstPiece: dictationLanguage)
         let heard = try await metrics.measuringInTime(.transcription, clock: clock) {
