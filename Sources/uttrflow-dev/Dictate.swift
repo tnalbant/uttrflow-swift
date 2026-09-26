@@ -150,6 +150,11 @@ actor PlaybackCaptureEngine: AudioCaptureEngine {
         guard sharesEarly, currentState == .recording else { return .empty }
         return .canonical(accumulator.snapshot)
     }
+
+    func capturedSoFar(from offset: Int) async -> AudioSamples {
+        guard sharesEarly, currentState == .recording else { return .empty }
+        return .canonical(accumulator.snapshot(from: offset))
+    }
 }
 
 /// Nothing on screen, which is what the command line has.

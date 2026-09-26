@@ -112,6 +112,12 @@ public actor AVAudioCaptureEngine: AudioCaptureEngine {
         return .canonical(accumulator.snapshot)
     }
 
+    /// What the microphone has delivered from `offset` on, copying none of the blocks before it.
+    public func capturedSoFar(from offset: Int) async -> AudioSamples {
+        guard currentState == .recording else { return .empty }
+        return .canonical(accumulator.snapshot(from: offset))
+    }
+
     public func cancel() async {
         guard currentState == .recording else { return }
         // Not drained: the audio is being thrown away, so waiting for more of it buys nothing.

@@ -411,11 +411,12 @@ public actor DictationPipeline {
             guard state == .recording, generation == mine, !wasCancelled(mine), !Task.isCancelled
             else { return }
 
-            let audio = await capture.capturedSoFar()
+            // Only what follows the last cut: a window never looks behind where it starts.
+            let tail = await capture.capturedSoFar(from: earlyCut)
             guard
-                let end = windowing.nextCut(
-                    in: audio.samples, sampleRate: audio.sampleRate, from: earlyCut)
+                let length = windowing.nextCut(in: tail.samples, sampleRate: tail.sampleRate, from: 0)
             else { continue }
+            let end = earlyCut + length
 
             // A leftover tidy is folded in only once there is a next piece to recognise.
             if let earlyTidyTask {
@@ -432,8 +433,8 @@ public actor DictationPipeline {
             let heard: Transcription?
             do {
                 heard = try await transcribe(
-                    audio, earlyCut..<end, biasedTowards: await vocabulary(seeing: seeing),
-                    recording: NoOpMetricsRecorder())
+                    tail, 0..<length, isWhole: earlyCut == 0 && length == tail.samples.count,
+                    biasedTowards: await vocabulary(seeing: seeing), recording: NoOpMetricsRecorder())
             } catch {
                 guard generation == mine, !wasCancelled(mine) else { return }
                 // A failed piece is left for the end, where it is reported; the rest still work ahead.
@@ -570,7 +571,7 @@ public actor DictationPipeline {
                 let heard: Transcription?
                 do {
                     heard = try await transcribe(
-                        audio, window,
+                        audio, window, isWhole: window == audio.samples.indices,
                         biasedTowards: await vocabulary(seeing: earlyContext ?? AppContext()),
                         recording: tally)
                 } catch {
@@ -671,7 +672,7 @@ public actor DictationPipeline {
 
     /// Recognises one window of the audio, answering `nil` when nothing was said in it.
     private func transcribe(
-        _ audio: AudioSamples, _ window: Range<Int>, biasedTowards words: [String],
+        _ audio: AudioSamples, _ window: Range<Int>, isWhole: Bool, biasedTowards words: [String],
         recording metrics: any MetricsRecording
     ) async throws -> Transcription? {
         let slice =
@@ -688,13 +689,13 @@ public actor DictationPipeline {
                             options: TranscriptionOptions(languageHint: language, vocabulary: words)))
                 } catch SpeechEngineError.audioTooShort {
                     // Alone, a hold too brief to transcribe says so, since the fix is to hold longer.
-                    guard window != audio.samples.indices else { throw SpeechEngineError.audioTooShort }
+                    guard !isWhole else { throw SpeechEngineError.audioTooShort }
                     if let failure = Self.untranscribedSpeech(in: slice) { throw failure }
                     return Heard.nothing
                 } catch SpeechEngineError.nothingHeard {
                     if let failure = Self.untranscribedSpeech(in: slice) { throw failure }
                     // Only when there is nothing else: alone, silence is refused below.
-                    guard window != audio.samples.indices else { throw SpeechEngineError.nothingHeard }
+                    guard !isWhole else { throw SpeechEngineError.nothingHeard }
                     return Heard.nothing
                 }
             }

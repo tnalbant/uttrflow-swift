@@ -22,10 +22,21 @@ public protocol AudioCaptureEngine: Sendable {
 
     /// Everything captured so far, at the canonical rate, while a recording is under way.
     func capturedSoFar() async -> AudioSamples
+
+    /// What was captured from sample `offset` on, so a reader that has handled the start copies only the rest.
+    func capturedSoFar(from offset: Int) async -> AudioSamples
 }
 
 /// The default for engines that only hand audio over at `stop`.
 extension AudioCaptureEngine {
     /// Answers nothing, for an engine that can only hand its audio over at `stop`.
     public func capturedSoFar() async -> AudioSamples { .empty }
+
+    /// The whole capture cut at `offset`, for an engine with no cheaper way to skip the start.
+    public func capturedSoFar(from offset: Int) async -> AudioSamples {
+        let all = await capturedSoFar()
+        guard offset > 0 else { return all }
+        let start = Swift.min(offset, all.samples.count)
+        return AudioSamples(samples: Array(all.samples[start...]), sampleRate: all.sampleRate) ?? .empty
+    }
 }
