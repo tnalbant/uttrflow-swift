@@ -245,7 +245,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         applyLaunchAtLogin()
         buildPipeline()
         seedTheDictionary()
-        sweepExpired()
         wireInterface()
         CGEventKeystrokeSender.startObservingLayout()
         startWatchingForTheShortcut()
@@ -253,12 +252,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         startCompletingWhatIsTyped()
         pressureSource.start { [weak self] in self?.memoryPressureChanged(to: $0) }
         loadSpeechModel()
-        probeTransformers()
-        probeSpeechModel()
-        refreshAccount()
         presentOnboardingIfNeeded()
         // Shown at launch, since a menu-bar icon alone is an interface most people never find.
         if onboarding == nil { show(.main(.home)) }
+        // After the first window, since nothing on it waits for these.
+        sweepExpired()
+        probeTransformers()
+        probeSpeechModel()
+        refreshAccount()
         // Configured last, from the setting; the automatic check itself waits for `modelLoadingSettled()`.
         updates.onProgressChanged = { [weak self] in self?.refreshMenuBar() }
         updates.begin(automatically: settings.installsUpdatesAutomatically)
