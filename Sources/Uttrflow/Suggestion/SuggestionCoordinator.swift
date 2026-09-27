@@ -100,6 +100,10 @@ final class SuggestionCoordinator {
     private var isStopped = false
     /// Set while a dictation is under way, when no turn may start.
     private var isDictating = DictationInProgress.shared.isDictating
+    /// Whether the last field read reported marked text, so a Return next confirms a conversion rather than ending the line.
+    private var composingAtLastRead = false
+    /// The accepted lines still being written to the corpus, which a held key never waits on.
+    private let acceptances = AcceptanceQueue()
     /// Set when a paste or a dictation put text in the field that capture has not yet been told was never typed.
     private var insertionPending = false
     private var again: SuggestionReason?
@@ -188,6 +192,11 @@ final class SuggestionCoordinator {
         interceptor.arm([])
         // Before the first keystroke, because the reader's queue may not call AppKit or HIToolbox.
         FocusedFieldReader.prepare()
+        // A ghost the panel takes off screen on its own, when it grows past its room, gives up its keys too.
+        panel.onWithdrawnUnasked = { [weak self] in
+            self?.interceptor.arm([])
+            self?.armedOffer = nil
+        }
         watchSwallowedKeys()
         watchForActivity()
     }
@@ -267,9 +276,18 @@ final class SuggestionCoordinator {
         return key == .tab || key == .escape || modifiers.contains(.command)
     }
 
-    /// Whether a key-down is ⌘V under any layout, which pastes text rather than typing it.
+    /// Whether a key-down is ⌘V under the selected layout, matched by the key its ⌘ table puts V on.
     nonisolated static func isPaste(_ event: NSEvent) -> Bool {
-        event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers?.lowercased() == "v"
+        isPaste(
+            keyCode: event.keyCode, modifiers: event.modifierFlags,
+            pasteKeyCode: CGEventKeystrokeSender.pasteKeyCode)
+    }
+
+    /// Whether a key with `modifiers` held is the layout's ⌘V, whatever letter the key types without ⌘.
+    nonisolated static func isPaste(
+        keyCode: UInt16, modifiers: NSEvent.ModifierFlags, pasteKeyCode: UInt16
+    ) -> Bool {
+        modifiers.contains(.command) && keyCode == pasteKeyCode
     }
 
     /// Withdraws the ghost and holds every turn while a dictation is under way, so its models have the GPU.
@@ -353,9 +371,16 @@ final class SuggestionCoordinator {
         if let text, typedThrough(text) { return }
         // Counted in the session, so a Tab pressed before the next read cannot take an offer for the old line.
         session.keystrokeArrived()
+        let endsLine = Self.endsLine(key, composing: composingAtLastRead)
+        if endsLine { session.lineEnded() }
         // The line just changed, so the ghost at the old caret, a pass about the old prefix and a booked wake are all stale.
         withdraw()
-        wake(key == .return ? .returnPressed : .keystroke)
+        wake(endsLine ? .returnPressed : .keystroke)
+    }
+
+    /// Whether a key ends the line: a Return does, unless an input method was composing, when it confirms a conversion.
+    nonisolated static func endsLine(_ key: Key, composing: Bool) -> Bool {
+        key == .return && !composing
     }
 
     /// Keeps the ghost up when the key typed its next letters, answering false for any other key, which withdraws it.
@@ -452,6 +477,7 @@ final class SuggestionCoordinator {
             front: front, own: ownBundleIdentifier, preferences: preferences, at: Date())
         let read = shouldRead ? await FocusedFieldReader.read() : nil
         guard turns.isCurrent(number) else { return }
+        composingAtLastRead = read?.markedText == .present
         Self.log.debug(
             "TURN front=\(front, privacy: .public) read=\(read != nil) lineChars=\(read?.currentLine.count ?? -1) value=\(read?.value != nil) units=\(read?.value?.utf16.count ?? -1) sel=\(read?.selection?.location ?? -1) caret=\(read?.caret != nil) role=\(read?.role ?? "-", privacy: .public) labelChars=\(read?.accessibilityDescription?.count ?? -1) identified=\(read?.identifier != nil) secure=\(read?.isSecure ?? false) placement=\(String(describing: read?.placement), privacy: .public)"
         )
@@ -801,6 +827,8 @@ final class SuggestionCoordinator {
         _ snapshot: FocusedFieldSnapshot, as reading: FieldReading, because reason: SuggestionReason,
         at moment: Date
     ) async {
+        // The acceptance is recorded off the key path, and capture still hears of it before this event.
+        await acceptances.drained()
         if case .applicationChanged = reason, let leaving = lastReading, leaving != reading {
             _ = try? await capture.handle(.applicationDeactivated(at: moment), in: leaving)
         }
@@ -848,10 +876,10 @@ final class SuggestionCoordinator {
         }
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
-        // Nothing is drawn off the caret's line, so a field that reports no inline placement is left alone.
-        guard update.suggestion != .silent, let snapshot, snapshot.placement == .inlineGhost,
-            let caret = snapshot.caret
-        else {
+        // Nothing is drawn off the caret's line, and what is not drawn claims no key.
+        guard let snapshot, let caret = Self.caret(for: update.suggestion, in: snapshot) else {
+            interceptor.arm([])
+            armedOffer = nil
             panel.hide()
             return
         }
@@ -868,6 +896,12 @@ final class SuggestionCoordinator {
             return
         }
         watchScrolls()
+    }
+
+    /// The caret a ghost for `suggestion` is drawn at, or nil when the field offers no inline place for one.
+    nonisolated static func caret(for suggestion: Suggestion, in snapshot: FocusedFieldSnapshot) -> CGRect? {
+        guard suggestion != .silent, snapshot.placement == .inlineGhost else { return nil }
+        return snapshot.caret
     }
 
     /// Draws what a move or a dismissal left where the ghost already stands, since no field was read for it and typing may have moved it.
@@ -967,7 +1001,7 @@ final class SuggestionCoordinator {
         }
     }
 
-    /// Puts the tail into the field and hands the taken line to capture, answering false when the field refused it unwritten.
+    /// Puts the tail into the field and queues the taken line for capture, answering false when the field refused it unwritten.
     private func take(_ text: String, after typed: String, in reading: FieldReading?) async -> Bool {
         // What the gates left is a whole line, so taking it may replace characters as well as add.
         var via = "nothing"
@@ -990,11 +1024,15 @@ final class SuggestionCoordinator {
             "\(SuggestionLog.accept(text: text, typed: typed, via: via), privacy: .public)"
         )
         guard let reading else { return true }
-        do {
-            _ = try await capture.accepted(text, in: reading, at: Date())
-        } catch {
-            // The session holds the acceptance and retries it before the next event.
-            Self.log.error("An accepted suggestion's corpus write failed and is held for a retry")
+        let moment = Date()
+        let log = Self.log
+        acceptances.enqueue { [capture] in
+            do {
+                _ = try await capture.accepted(text, over: typed, in: reading, at: moment)
+            } catch {
+                // The session holds the acceptance and retries it before the next event.
+                log.error("An accepted suggestion's corpus write failed and is held for a retry")
+            }
         }
         return true
     }
