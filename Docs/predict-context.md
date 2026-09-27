@@ -41,7 +41,8 @@ milliseconds, not hundreds.
    newest messages that survive, not the oldest. An element is read only where its frame meets
    the window's: no frame is trusted, zero size is hidden, off-window is pruned with its whole
    subtree; a label a container already carries is not read again from its children. A field
-   that declares itself secure — the secure role or subrole, or a name `SecureField` recognises —
+   that declares itself secure — the secure role or subrole anywhere, or a name `SecureField`
+   recognises on an element that takes text, never on a message that only mentions a password —
    is passed over whole before its text is asked for, one whose text is mask characters alone is
    dropped, and nothing at all is read around a focused secure field. Every
    element costs one Accessibility message — role, subrole, identifier, placeholder, frame,
