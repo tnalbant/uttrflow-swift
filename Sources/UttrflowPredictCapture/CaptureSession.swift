@@ -86,7 +86,8 @@ public actor CaptureSession {
         // Claimed before the await, so a write admitted while this one is suspended follows it.
         let previous = claimLast(text, in: surface)
         do {
-            try await write(UnwrittenAcceptance(text: text, surface: surface, previous: previous, moment: moment))
+            try await write(
+                UnwrittenAcceptance(text: text, surface: surface, previous: previous, moment: moment))
         } catch let failure as AcceptanceWriteFailure {
             hold(failure.remaining)
             throw failure.underlying
