@@ -83,39 +83,41 @@ struct HomeHeroCard: View {
         }
     }
 
+    /// The pill, drawn plain under a clear button and dimmed per colour rather than as a layer, so nothing clips its glow.
     private var startButton: some View {
-        Button {
-            onIntent(hero.start.intent)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: hero.start.symbolName ?? "mic")
-                    .font(.system(size: 16, weight: .medium))
-                Text(hero.start.title)
-                    .font(.system(size: 15, weight: .medium))
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.leading, 6)
-            }
-            .foregroundStyle(PagePalette.text)
-            .padding(.horizontal, 26)
-            .padding(.vertical, 12)
-            .background {
-                Capsule()
-                    .fill(PagePalette.dictation.opacity(0.08))
-                    .shadow(color: PagePalette.dictation.opacity(isDark ? 0.55 : 0.3), radius: 12)
-            }
-            // A soft lilac glow just inside the rim, then the teal rim itself.
-            .overlay {
-                Capsule()
-                    .inset(by: 1.5)
-                    .strokeBorder(PagePalette.suggestion.opacity(isDark ? 0.3 : 0.18), lineWidth: 4)
-            }
-            .overlay { Capsule().strokeBorder(PagePalette.dictation, lineWidth: 1.5) }
-            .contentShape(.capsule)
+        let dim = hero.canStart ? 1.0 : 0.45
+        return HStack(spacing: 12) {
+            Image(systemName: hero.start.symbolName ?? "mic")
+                .font(.system(size: 16, weight: .medium))
+            Text(hero.start.title)
+                .font(.system(size: 15, weight: .medium))
+            Image(systemName: "arrow.right")
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.leading, 6)
         }
-        .buttonStyle(.plain)
-        .disabled(!hero.canStart)
-        .opacity(hero.canStart ? 1 : 0.45)
+        .foregroundStyle(PagePalette.text.opacity(dim))
+        .padding(.horizontal, 26)
+        .padding(.vertical, 12)
+        .background(PagePalette.dictation.opacity(0.08 * dim), in: Capsule(style: .circular))
+        .overlay {
+            PillGlow(
+                inner: PagePalette.suggestion, outer: PagePalette.dictation,
+                strength: isDark ? dim : dim * 0.55)
+        }
+        .overlay {
+            Capsule(style: .circular).strokeBorder(PagePalette.dictation.opacity(dim), lineWidth: 1.5)
+        }
+        .accessibilityHidden(true)
+        .overlay {
+            Button {
+                onIntent(hero.start.intent)
+            } label: {
+                Capsule(style: .circular).fill(.clear).contentShape(Capsule(style: .circular))
+            }
+            .buttonStyle(.plain)
+            .disabled(!hero.canStart)
+            .accessibilityLabel(hero.start.title)
+        }
         .help(hero.canStart ? "Start or stop a dictation" : "Uttrflow cannot listen yet")
     }
 
@@ -133,6 +135,33 @@ struct HomeHeroCard: View {
                     center: UnitPoint(x: 0.1, y: 1), startRadiusFraction: 0, endRadiusFraction: 0.55)
             }
             .accessibilityHidden(true)
+    }
+}
+
+/// The start pill's glow as fading circular rings, drawn without blur or shadow so it never shows a hard edge.
+struct PillGlow: View {
+    let inner: Color
+    let outer: Color
+    /// How strong the glow is, from 0 to 1.
+    let strength: Double
+
+    var body: some View {
+        ZStack {
+            // Lilac softening inward from the rim.
+            ForEach(1..<5) { step in
+                Capsule(style: .circular)
+                    .inset(by: CGFloat(step) * 2)
+                    .stroke(inner.opacity(0.16 * strength / Double(step)), lineWidth: 2)
+            }
+            // Teal fading outward past the rim, eased so no ring stands out.
+            ForEach(1..<11) { step in
+                Capsule(style: .circular)
+                    .stroke(outer.opacity(0.2 * strength * pow(1 - Double(step) / 11, 2)), lineWidth: 1.5)
+                    .padding(-CGFloat(step) * 1.2)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
