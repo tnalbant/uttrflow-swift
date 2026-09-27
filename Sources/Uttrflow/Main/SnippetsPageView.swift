@@ -87,7 +87,7 @@ struct SnippetRowView: View {
         .background(isHovered ? PagePalette.text.opacity(0.03) : .clear)
         .contentShape(.rect)
         .onHover { isHovered = $0 }
-        .rowActions(row.actions, onIntent: onIntent)
+        .tableRowActions(row.actions, onIntent: onIntent)
     }
 
     /// Hidden rather than removed, so VoiceOver can reach Delete and the row keeps its width.

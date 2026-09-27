@@ -20,4 +20,12 @@ struct RowRevealTests {
     func hiddenAtRest() {
         #expect(!RowReveal.isDrawn(isHovered: false, focusedControl: nil))
     }
+
+    @Test("nearly transparent at rest, so keyboard focus and VoiceOver still reach it")
+    func restingOpacityIsNotZero() {
+        let resting = RowReveal.opacity(isHovered: false, focusedControl: nil)
+        #expect(resting > 0 && resting < 0.01)
+        #expect(RowReveal.opacity(isHovered: true, focusedControl: nil) == 1)
+        #expect(RowReveal.opacity(isHovered: false, focusedControl: "Delete") == 1)
+    }
 }

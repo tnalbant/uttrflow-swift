@@ -598,6 +598,14 @@ enum RowReveal {
     static func isDrawn(isHovered: Bool, focusedControl: String?) -> Bool {
         isHovered || focusedControl != nil
     }
+
+    /// Near zero at rest, not zero, because SwiftUI drops a fully transparent view from keyboard focus and VoiceOver.
+    static let restingOpacity = 0.001
+
+    /// How opaque a hover-revealed control is drawn.
+    static func opacity(isHovered: Bool, focusedControl: String?) -> Double {
+        isDrawn(isHovered: isHovered, focusedControl: focusedControl) ? 1 : restingOpacity
+    }
 }
 
 extension View {
@@ -606,8 +614,7 @@ extension View {
         _ id: String, isHovered: Bool, focusedControl: FocusState<String?>.Binding
     ) -> some View {
         focused(focusedControl, equals: id)
-            .opacity(
-                RowReveal.isDrawn(isHovered: isHovered, focusedControl: focusedControl.wrappedValue) ? 1 : 0)
+            .opacity(RowReveal.opacity(isHovered: isHovered, focusedControl: focusedControl.wrappedValue))
     }
 
     /// Offers a row's hover-revealed controls to VoiceOver through the actions rotor, once per row.
@@ -621,5 +628,20 @@ extension View {
                 Button(action.title) { onIntent(action.intent) }
             }
         }
+    }
+
+    /// Makes a table row one VoiceOver element whose actions and context menu hold every control, Delete included.
+    func tableRowActions(
+        _ actions: [MainAction], onIntent: @escaping (MainIntent) -> Void
+    ) -> some View {
+        contextMenu {
+            ForEach(actions) { action in
+                Button(action.title, role: action.isDestructive ? .destructive : nil) {
+                    onIntent(action.intent)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .rowActions(actions, onIntent: onIntent)
     }
 }

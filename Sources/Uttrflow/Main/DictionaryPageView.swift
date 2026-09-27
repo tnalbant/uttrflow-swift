@@ -107,8 +107,7 @@ struct DictionaryRowView: View {
         .background(isHovered ? PagePalette.text.opacity(0.03) : .clear)
         .contentShape(.rect)
         .onHover { isHovered = $0 }
-        .rowActions(row.actions, onIntent: onIntent)
-        .accessibilityElement(children: .contain)
+        .tableRowActions(row.actions, onIntent: onIntent)
     }
 
     /// Amber once undone, red when the undos are what is retiring it, quiet otherwise.
