@@ -63,6 +63,20 @@ struct Context: AsyncParsableCommand {
         let app = FrontmostApp(
             processIdentifier: running.processIdentifier, bundleIdentifier: bundle,
             name: running.localizedName ?? bundle)
+        var snaps: [Double] = [], arounds: [Double] = []
+        for _ in 0..<30 {
+            let a = DispatchTime.now().uptimeNanoseconds; _ = FocusedFieldReader.snapshot(app: app)
+            let b = DispatchTime.now().uptimeNanoseconds; _ = FocusedFieldReader.surroundings(of: app)
+            let c = DispatchTime.now().uptimeNanoseconds
+            snaps.append(Double(b - a) / 1e6); arounds.append(Double(c - b) / 1e6)
+        }
+        snaps.sort(); arounds.sort()
+        print("PROBE timing ms snapshot p50=\(snaps[15]) max=\(snaps[29])  surroundings p50=\(arounds[15]) max=\(arounds[29])")
+        if let s = FocusedFieldReader.snapshot(app: app) {
+            print("PROBE role=\(s.role) subrole=\(s.subrole ?? "-") desc=\(s.accessibilityDescription ?? "-") secure=\(s.isSecure)")
+            print("PROBE value=\(s.value.map { "\($0.count) chars" } ?? "nil") selection=\(s.selection.map { "\($0)" } ?? "nil") caret=\(s.caret.map { "\($0)" } ?? "nil") field=\(s.field.map { "\($0)" } ?? "nil")")
+            print("PROBE line=\(s.currentLine) atEnd=\(s.caretAtLineEnd) placement=\(s.placement.map { "\($0)" } ?? "nil") prose=\(s.isProse)")
+        } else { print("PROBE no snapshot") }
         guard let around = FocusedFieldReader.surroundings(of: app) else {
             print("nothing around a focused field in \(app.name): no field focused, or no window")
             throw ExitCode.failure
