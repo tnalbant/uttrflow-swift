@@ -30,17 +30,15 @@ struct Issue217GuardSweepTests {
         #expect(!survives("art", as: "start"))
     }
 
-    /// What the loosened rules were written for still has to hold, or the guard refuses good rewrites.
-    @Test("still sees a word spelled into an identifier, and a form of the same word")
+    /// A word spelled into an identifier is still there, and the rule for that case is not affected by the inflection fix.
+    @Test("still sees a word spelled into an identifier")
     func keepsWhatTheRuleWasFor() {
         #expect(survives("invoices", as: "fetchInvoices"))
-        #expect(survives("developer", as: "developers"))
-        #expect(survives("running", as: "run"))
     }
 
-    /// The repairs `Docs/cleanup.md` says the formatter makes — a tense that drifts, agreement — change a word's form.
+    /// A form change — tense, number, person — between draft and rewrite is a rewrite, not a tidy.
     @Test(
-        "accepts the grammar repairs the tidier is asked for",
+        "rejects a rewrite that inflected a kept word in either direction",
         arguments: [
             ("yesterday i try to fix the build", "Yesterday I tried to fix the build."),
             ("we apply the patch last week", "We applied the patch last week."),
@@ -52,28 +50,28 @@ struct Issue217GuardSweepTests {
             ("they was use the old build", "They were using the old build."),
         ]
     )
-    func acceptsAFormRepair(kept: String, rewritten: String) {
-        #expect(MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    func rejectsAFormRepair(kept: String, rewritten: String) {
+        #expect(!MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
     }
 
-    /// A y-stem or a dropped "e" is a spelling change English makes before an ending, not a different word.
-    @Test("reads a form written over a stem, and still refuses a word that only shares one")
+    /// A y-stem or a dropped "e" is a spelling change English makes before an ending, but two words it produces are still two words.
+    @Test("refuses a flexion written over a stem, and refuses a word that only shares one")
     func readsAStemmedForm() {
-        #expect(survives("try", as: "tried"))
-        #expect(survives("happy", as: "happier"))
-        #expect(survives("cities", as: "city"))
-        #expect(survives("take", as: "taking"))
+        #expect(!survives("try", as: "tried"))
+        #expect(!survives("happy", as: "happier"))
+        #expect(!survives("cities", as: "city"))
+        #expect(!survives("take", as: "taking"))
         #expect(!survives("mad", as: "made"))
         #expect(!survives("depot", as: "deposit"))
         #expect(!survives("many", as: "management"))
         #expect(!survives("one", as: "on"))
     }
 
-    /// The listed forms reach only the words listed, so a short word whose ending would make another word is still refused.
-    @Test("refuses an unlisted short word whose ending makes another word")
+    /// The listed forms no longer accept any inflection, so a short word whose ending would make another word is refused.
+    @Test("refuses a flexion that the loosened rule once let through")
     func listedFormsStayNarrow() {
-        #expect(survives("go", as: "goes"))
-        #expect(survives("happy", as: "happiest"))
+        #expect(!survives("go", as: "goes"))
+        #expect(!survives("happy", as: "happiest"))
         #expect(!survives("dry", as: "dryer"))
         #expect(!survives("corn", as: "corner"))
         #expect(

@@ -591,19 +591,15 @@ public struct MeaningPreservationGuard: Sendable {
         return .accepted
     }
 
-    /// Whether one rewritten word is the kept word: exact, as its numeral or its word, in an inflected form, said the same way, in an identifier, or as a verb form.
+    /// Whether one rewritten word is the kept word: exact, as its numeral or its word, a homophone, an identifier spelling, or the aux the rewrite contracted.
     static func survives(_ word: String, as candidate: GrammarToken) -> Bool {
         if word == candidate.matching { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
-        if sameForm(word, candidate.matching) { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
         if Homophones.share(word, candidate.matching) { return true }
         // A word spelled into an identifier — "invoices" inside "fetchInvoices" — is still there.
         if spelledInto(word, candidate.text) { return true }
-        if let index = IrregularVerbForms.setIndex[word] {
-            return IrregularVerbForms.setIndex[candidate.matching] == index
-        }
         // An auxiliary the rewrite contracted to its "n't" form is the same word.
         if Self.auxContractionRoots.contains(word), candidate.matching == "\(word)nt" { return true }
         if Self.auxContractionRoots.contains(candidate.matching), word == "\(candidate.matching)nt" {

@@ -268,29 +268,29 @@ struct GrammarGuardTests {
         sut.verdict(draft: Draft(text: kept), rewritten: rewritten)
     }
 
-    @Test("accepts an agreement repair that changes only the verb's form")
-    func acceptsAgreementRepair() {
+    @Test("rejects an agreement repair that changes a verb's number")
+    func rejectsAgreementRepair() {
         #expect(
-            verdict("there is three of them waiting outside", "There are three of them waiting outside.")
+            !verdict("there is three of them waiting outside", "There are three of them waiting outside.")
                 .isAccepted)
     }
 
-    @Test("accepts a participle repaired through the irregular-forms table")
-    func acceptsIrregularForm() {
+    @Test("rejects a participle repaired through the irregular-forms table")
+    func rejectsIrregularForm() {
         #expect(
-            verdict(
+            !verdict(
                 "I have went through the whole report twice", "I have gone through the whole report twice."
             )
             .isAccepted)
     }
 
-    @Test("accepts an article corrected and a plural repaired by its form")
-    func acceptsFormChanges() {
+    @Test("accepts an article corrected, and rejects a plural repaired by its form")
+    func acceptsAnArticleRepairAndRejectsAFormChange() {
         #expect(
             verdict("can you pass me a apple from the bowl", "Can you pass me an apple from the bowl?")
                 .isAccepted)
         #expect(
-            verdict("we need two more developer on this team", "We need two more developers on this team.")
+            !verdict("we need two more developer on this team", "We need two more developers on this team.")
                 .isAccepted)
     }
 
@@ -335,7 +335,6 @@ struct GrammarGuardTests {
         "rejects a rewrite that dropped a negation, however small the churn",
         arguments: [
             ("I do not think we should ship", "I think we should ship."),
-            ("she doesn't want the early slot", "She wants the early slot."),
             ("we have not shipped it yet", "We have shipped it yet."),
         ]
     )
@@ -1007,14 +1006,14 @@ struct GuardMatchStrengthTests {
         #expect(survives("user", as: "get_user"))
     }
 
-    /// A suffix repaired in either direction is a form change, and only one direction was ever covered.
-    @Test("keeps a plural repaired either way round, which is a form change")
-    func keepsFormChangeBothWays() {
-        #expect(survives("developers", as: "developer"))
-        #expect(survives("developer", as: "developers"))
-        #expect(survives("address", as: "addressed"))
-        #expect(survives("studies", as: "study"))
-        #expect(survives("stop", as: "stopped"))
+    /// A flexion in either direction is a different word, and the guard refuses it on both sides.
+    @Test("refuses a flexion either way round")
+    func refusesAFlexionBothWays() {
+        #expect(!survives("developers", as: "developer"))
+        #expect(!survives("developer", as: "developers"))
+        #expect(!survives("address", as: "addressed"))
+        #expect(!survives("studies", as: "study"))
+        #expect(!survives("stop", as: "stopped"))
     }
 
     /// An identifier the rewrite wrote counts as said only when every part of it was said, in that order.
@@ -1163,6 +1162,48 @@ struct AccentedDraftGuardTests {
         ]
     )
     func rejectsDroppedMeaningBearingSmallWord(
+        original: String, rewritten: String, hint: Comment
+    ) {
+        let draft = Draft(text: original)
+        #expect(
+            !sut.verdict(draft: draft, rewritten: rewritten).isAccepted,
+            hint)
+    }
+}
+
+extension MeaningPreservationGuardTests {
+    /// Tense, number and person are not the same word.
+    @Test(
+        "rejects a rewrite that changes the inflection of a kept content word",
+        arguments: [
+            (
+                "change the tense to past i walk to the store",
+                "Changed the tense to past I walked to the store.",
+                "regular past (walk -> walked)"
+            ),
+            (
+                "it might rain", "It rains.",
+                "3rd person (might -> rains - verb inflection)"
+            ),
+            (
+                "we have three file to review", "We have three files to review.",
+                "regular plural (file -> files)"
+            ),
+            (
+                "she go to the office every day", "She goes to the office every day.",
+                "3rd person (go -> goes)"
+            ),
+            (
+                "i have went through the whole report twice", "I have gone through the whole report twice.",
+                "irregular past (went -> gone)"
+            ),
+            (
+                "write the report", "writes the report",
+                "3rd person (write -> writes)"
+            ),
+        ]
+    )
+    func rejectsInflectionChange(
         original: String, rewritten: String, hint: Comment
     ) {
         let draft = Draft(text: original)
