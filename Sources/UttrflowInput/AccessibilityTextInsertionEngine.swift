@@ -11,7 +11,9 @@ public struct AccessibilityTextInsertionEngine: TextInsertionEngine {
     }
 
     public func canInsert() async -> Bool {
-        focus.focusedTextField() != nil
+        guard let field = focus.focusedTextField() else { return false }
+        // Never insert into Uttrflow's own fields when the app is frontmost
+        return !focus.isSelfFrontmost()
     }
 
     /// Answers `.notReported`: the field verifies the write and does not say whether it could.
