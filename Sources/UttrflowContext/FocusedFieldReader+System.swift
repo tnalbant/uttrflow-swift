@@ -153,7 +153,7 @@ public enum FocusedFieldReader {
     }
 
     /// The same reading, synchronously, for the queue above and for the capability probe; the identity is read on main.
-    static func snapshot(
+    public static func snapshot(
         app: FrontmostApp, while isWanted: @Sendable () -> Bool = { true }
     ) -> FocusedFieldSnapshot? {
         let started = DispatchTime.now().uptimeNanoseconds
