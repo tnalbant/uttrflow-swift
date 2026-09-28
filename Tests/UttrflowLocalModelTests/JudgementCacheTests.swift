@@ -45,6 +45,22 @@ struct JudgementCacheTests {
         #expect(cache.recall(candidate: "candidate-3") != nil)
     }
 
+    @Test("A hit moves a candidate to the most-recent position so capacity drops the next-oldest one.")
+    func recallMovesToMostRecent() {
+        var cache = JudgementCache()
+        for index in 0..<JudgementCache.capacity {
+            let line = JudgedLine(
+                tokens: [index], rows: [[Float(index)]], texts: ["\(index)"])
+            cache.remember(line, for: "candidate-\(index)")
+        }
+        _ = cache.recall(candidate: "candidate-0")
+        let overflow = JudgedLine(
+            tokens: [99], rows: [[99.0]], texts: ["99"])
+        cache.remember(overflow, for: "candidate-new")
+        #expect(cache.recall(candidate: "candidate-0") != nil)
+        #expect(cache.recall(candidate: "candidate-1") == nil)
+    }
+
     @Test("Forget everything empties the cache, so the next recall misses.")
     func forgetEverythingClears() {
         var cache = JudgementCache()
@@ -92,5 +108,19 @@ struct JudgedLineTests {
     func emptyLineReturnsNothing() {
         let line = JudgedLine(tokens: [], rows: [], texts: [])
         #expect(JudgedLine.judged(from: line, typedTokens: [], bytes: []) == [])
+    }
+
+    @Test("A typed prefix whose tokens diverge inside the cached start reads the same scored span.")
+    func retokenisedJoinReadsSameSpan() {
+        // Cached line: bos, "pl", "ple", "lease", " ", "send", " the".
+        let tokens = [0, 2, 3, 4, 5, 6, 7]
+        let vocab = scorerBytes.count
+        let row = [Float](repeating: -10, count: vocab)
+        let rows = Array(repeating: row, count: tokens.count)
+        let texts = tokens.map { _ in "x" }
+        let line = JudgedLine(tokens: tokens, rows: rows, texts: texts)
+        let onBoundary = JudgedLine.judged(from: line, typedTokens: [0, 2], bytes: scorerBytes)
+        let retokenised = JudgedLine.judged(from: line, typedTokens: [0, 3], bytes: scorerBytes)
+        #expect(retokenised.count == onBoundary.count)
     }
 }

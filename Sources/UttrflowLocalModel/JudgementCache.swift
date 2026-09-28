@@ -51,18 +51,28 @@ struct JudgementCache: Sendable {
 
     /// Each entry against the candidate the model was asked to score.
     private var held: [String: JudgedLine] = [:]
-    /// The candidates in the order they were first remembered, which is what capacity drops from.
+    /// The candidates in the order they were last remembered or hit, which is what capacity drops from.
     private var order: [String] = []
 
     /// A cache holding nothing.
     init() {}
 
-    /// The line for this candidate, nil when none is remembered.
-    func recall(candidate: String) -> JudgedLine? { held[candidate] }
+    /// The line for this candidate, nil when none is remembered, and a hit moves the candidate to the most-recent position.
+    mutating func recall(candidate: String) -> JudgedLine? {
+        guard let line = held[candidate] else { return nil }
+        if let position = order.firstIndex(of: candidate) {
+            order.remove(at: position)
+            order.append(candidate)
+        }
+        return line
+    }
 
-    /// Remembers a freshly-scored line, dropping the oldest to stay within capacity.
+    /// Remembers a freshly-scored line at the most-recent position, dropping the oldest to stay within capacity.
     mutating func remember(_ line: JudgedLine, for candidate: String) {
-        if held[candidate] == nil { order.append(candidate) }
+        if let position = order.firstIndex(of: candidate) {
+            order.remove(at: position)
+        }
+        order.append(candidate)
         held[candidate] = line
         while order.count > Self.capacity {
             let dropped = order.removeFirst()

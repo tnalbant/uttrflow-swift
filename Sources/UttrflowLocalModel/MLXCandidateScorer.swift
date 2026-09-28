@@ -99,6 +99,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         container = nil
         forgetReadings()
         await passesEnded()
+        // A suspended miss resumed after `passesEnded` may have stored a line from the released weights, so drop whatever landed late.
+        forgetReadings()
         await weights.unload()
         bufferCache.clear()
     }
