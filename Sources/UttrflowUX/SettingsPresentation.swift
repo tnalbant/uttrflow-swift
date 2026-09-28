@@ -159,6 +159,15 @@ public struct SettingsRow: Sendable, Equatable, Identifiable {
             .compactMap(\.self).filter { !$0.isEmpty }.joined(separator: ". ")
     }
 
+    /// What VoiceOver calls the row's control: an action button says what pressing it does now.
+    public var controlAccessibilityLabel: String {
+        guard case .action(let title, let change) = control else { return label }
+        if case .suggestionsHere(_, let isOn) = change {
+            return "\(isOn ? "Turn on" : "Turn off") in \(label)"
+        }
+        return title
+    }
+
     /// Builds a row; operable, plain and without an icon unless told otherwise.
     public init(
         id: String,

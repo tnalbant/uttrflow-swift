@@ -242,7 +242,8 @@ struct SettingsRowView: View {
 
     private var control: some View {
         SettingsControlView(
-            control: row.control, isEnabled: row.isEnabled, label: row.label, model: model)
+            control: row.control, isEnabled: row.isEnabled, label: row.controlAccessibilityLabel,
+            model: model)
     }
 
     /// Whether this row's shortcut is the one listening, which its second line then says.
