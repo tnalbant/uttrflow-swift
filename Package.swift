@@ -435,3 +435,5 @@ let package = Package(
         ),
     ]
 )
+package.targets.append(.executableTarget(name: "b110harness", dependencies: ["UttrflowAudio", "UttrflowCore"], path: "Sources/b110harness"))
+package.products.append(.executable(name: "b110harness", targets: ["b110harness"]))
