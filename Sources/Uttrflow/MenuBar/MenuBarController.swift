@@ -41,7 +41,7 @@ final class MenuBarController: NSObject {
     ) {
         statusItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
         presentation = initial
-        hostingView = MenuBarHostingView(rootView: MenuBarPopoverView(presentation: initial) { _ in })
+        hostingView = MenuBarHostingView(rootView: MenuBarPopoverView(presentation: initial, isShown: false) { _ in })
         panel = MenuBarPanel(
             contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true
         )
@@ -85,7 +85,7 @@ final class MenuBarController: NSObject {
             button.title = button.image == nil ? "Uttrflow" : ""
         }
         fillMenu()
-        // A closed popover keeps its old content, so a hidden panel never starts an animation.
+        // A closed popover draws nothing, so a hidden panel never starts an animation.
         guard panel.isVisible else { return }
         hostPresentation()
         placePanel()
@@ -177,6 +177,8 @@ final class MenuBarController: NSObject {
     private func closePopover() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
+        // Emptied once hidden, since an ordered-out panel still runs a repeating animation.
+        hostingView.rootView = MenuBarPopoverView(presentation: presentation, isShown: false) { _ in }
         statusItem.button?.highlight(false)
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors.removeAll()

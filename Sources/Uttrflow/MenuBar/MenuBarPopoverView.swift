@@ -7,6 +7,8 @@ import UttrflowUX
 /// Draws a ``MenuBarPresentation`` and reports every click as an intent; it decides nothing.
 struct MenuBarPopoverView: View {
     let presentation: MenuBarPresentation
+    /// Whether the panel is on screen; a hidden panel draws nothing, so no animation outlives it.
+    var isShown = true
     /// Carries a chosen command back to the controller.
     let onCommand: (MenuBarIntent) -> Void
 
@@ -16,6 +18,10 @@ struct MenuBarPopoverView: View {
     static let shadowMargin: CGFloat = 28
 
     var body: some View {
+        if isShown { popover }
+    }
+
+    private var popover: some View {
         VStack(alignment: .leading, spacing: 0) {
             MenuBarHeaderView(header: presentation.header, onCommand: onCommand)
             buttonRow.padding(.top, 14)
