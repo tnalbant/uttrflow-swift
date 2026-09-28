@@ -1,4 +1,5 @@
 public import CoreGraphics
+import CoreText
 public import UttrflowPredict
 
 /// What the user's accessibility settings ask the suggestion surface to do differently.
@@ -126,7 +127,14 @@ public struct SuggestionPresentation: Sendable, Equatable {
         self.acceptKey = acceptKey
         self.fontFamily = fontFamily
         ink = fieldTextColor.map(Ink.field) ?? .backed
-        let offered = Self.rows(of: suggestion, after: typed, selected: selection.index)
+        let pointSize = Self.pointSize(fieldPointSize)
+        // A field that reports neither size nor face is most often a terminal, where a monospaced default lines up.
+        let prefersMonospaced = fieldPointSize == nil && fontFamily == nil
+        let maximumWidth = maximumWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let offered = Self.rows(
+            of: suggestion, after: typed, selected: selection.index,
+            pointSize: pointSize, fontFamily: fontFamily,
+            prefersMonospaced: prefersMonospaced, maximumWidth: maximumWidth)
         style =
             switch suggestion {
             case .minimised: .dot
@@ -136,10 +144,9 @@ public struct SuggestionPresentation: Sendable, Equatable {
         rows = offered
         // A list is only ever opened by the user; until Down is pressed the choice is one ghost line.
         isExpanded = offered.count > 1 && selection.hasMoved
-        pointSize = Self.pointSize(fieldPointSize)
-        // A field that reports neither size nor face is most often a terminal, where a monospaced default lines up.
-        prefersMonospaced = fieldPointSize == nil && fontFamily == nil
-        self.maximumWidth = maximumWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        self.pointSize = pointSize
+        self.prefersMonospaced = prefersMonospaced
+        self.maximumWidth = maximumWidth
         // Faint grey is the intent; a contrast setting keeps the text but drops the transparency.
         opacity = appearance.demandsOpaqueGhost ? Self.opaqueGhostOpacity : Self.ghostOpacity
         underlinesGhost = appearance.demandsOpaqueGhost
@@ -178,7 +185,15 @@ public struct SuggestionPresentation: Sendable, Equatable {
     }
 
     /// Every usable candidate in offered order, with the highlighted one selected.
-    private static func rows(of suggestion: Suggestion, after typed: String, selected: Int) -> [Row] {
+    private static func rows(
+        of suggestion: Suggestion,
+        after typed: String,
+        selected: Int,
+        pointSize: CGFloat,
+        fontFamily: String?,
+        prefersMonospaced: Bool,
+        maximumWidth: CGFloat?
+    ) -> [Row] {
         let offered: [String] =
             switch suggestion {
             case .silent, .minimised: []
@@ -193,11 +208,46 @@ public struct SuggestionPresentation: Sendable, Equatable {
             return ($0, edit)
         }
         guard !usable.isEmpty else { return [] }
+        // A candidate whose full ghost would not fit is dropped so Tab never inserts unseen text.
+        let fitting: [(candidate: String, edit: Acceptance.Edit)]
+        if let maximumWidth {
+            fitting = usable.filter {
+                Self.measuredWidth(
+                    of: $0.edit.inserted,
+                    pointSize: pointSize,
+                    family: fontFamily,
+                    monospaced: prefersMonospaced
+                ) <= maximumWidth
+            }
+        } else {
+            fitting = usable
+        }
+        guard !fitting.isEmpty else { return [] }
         // The highlight can be moved with the arrow keys, so it follows the chosen row, not always the leader.
-        let chosen = min(max(selected, 0), usable.count - 1)
-        return usable.enumerated().map {
+        let chosen = min(max(selected, 0), fitting.count - 1)
+        return fitting.enumerated().map {
             Row(candidate: $1.candidate, edit: $1.edit, isSelected: $0 == chosen)
         }
+    }
+
+    /// The drawn width of `text` set in the field's own face, used to drop a candidate whose ghost does not fit.
+    static func measuredWidth(
+        of text: String,
+        pointSize: CGFloat,
+        family: String?,
+        monospaced: Bool
+    ) -> CGFloat {
+        let name: CFString =
+            if let family, !family.isEmpty { family as CFString }
+            else if monospaced { "Menlo" as CFString }
+            else { "Helvetica" as CFString }
+        let font = CTFontCreateWithName(name, pointSize, nil)
+        let attrs = [kCTFontAttributeName: font] as CFDictionary
+        guard let attr = CFAttributedStringCreate(nil, text as CFString, attrs)
+        else { return .infinity }
+        let line = CTLineCreateWithAttributedString(attr)
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        return CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
     }
 
     /// Follows the field's own type, and refuses a size no text is ever set in.

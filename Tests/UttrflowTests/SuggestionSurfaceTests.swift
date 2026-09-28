@@ -11,6 +11,9 @@ import UttrflowUX
 /// A suggestion far longer than any field it could sit in.
 private let longLine = String(repeating: "meet at the north gate at noon ", count: 40)
 
+/// A suggestion that fits inside the room the room-clamp tests use (180pt).
+private let fittingLine = "see you at the cafe at five"
+
 /// Every suggestion panel on screen in this process.
 @MainActor
 private var visiblePanels: [NSWindow] {
@@ -31,12 +34,26 @@ struct SuggestionSurfaceTests {
     func aLongGhostIsCut() {
         let capped = NSHostingView(
             rootView: SuggestionView(
-                presentation: SuggestionPresentation(.certain(longLine), maximumWidth: 180)))
+                presentation: SuggestionPresentation(.certain(fittingLine), maximumWidth: 180)))
         let free = NSHostingView(
-            rootView: SuggestionView(presentation: SuggestionPresentation(.certain(longLine))))
+            rootView: SuggestionView(presentation: SuggestionPresentation(.certain(fittingLine))))
         #expect(capped.fittingSize.width <= 180)
         #expect(capped.fittingSize.width > 100)
-        #expect(free.fittingSize.width > 1_000)
+        #expect(free.fittingSize.width > 180)
+    }
+
+    @Test("A candidate whose ghost would not fit is filtered out at the model, so the panel never shows a truncated continuation")
+    func aGhostThatDoesNotFitIsNotOffered() throws {
+        let screen = try #require(NSScreen.screens.first).visibleFrame
+        let caret = CGRect(x: screen.maxX - 100, y: screen.midY, width: 0, height: 17)
+        let field = CGRect(x: screen.maxX - 300, y: screen.midY - 5, width: 200, height: 28)
+        let panel = SuggestionPanelController.shared
+        panel.show(.certain(longLine), placement: .inlineGhost, caret: caret, field: field)
+        defer { panel.hide() }
+        #expect(panel.drawn.style == .hidden)
+        #expect(panel.drawn.rows.isEmpty)
+        #expect(panel.drawn.inline == nil)
+        #expect(!panel.isShowing)
     }
 
     @Test("Two quick suggestions leave one panel on screen, drawing only the latest text")
@@ -69,10 +86,10 @@ struct SuggestionSurfaceTests {
     @Test("A long suggestion at a caret near the edge stays inside the field and the screen")
     func aLongSuggestionStaysOnScreen() throws {
         let screen = try #require(NSScreen.screens.first).visibleFrame
-        let caret = CGRect(x: screen.maxX - 300, y: screen.midY, width: 0, height: 17)
-        let field = CGRect(x: screen.maxX - 500, y: screen.midY - 5, width: 400, height: 28)
+        let caret = CGRect(x: screen.maxX - 100, y: screen.midY, width: 0, height: 17)
+        let field = CGRect(x: screen.maxX - 300, y: screen.midY - 5, width: 200, height: 28)
         let panel = SuggestionPanelController.shared
-        panel.show(.certain(longLine), placement: .inlineGhost, caret: caret, field: field)
+        panel.show(.certain(fittingLine), placement: .inlineGhost, caret: caret, field: field)
         defer { panel.hide() }
         #expect(panel.window.isVisible)
         #expect(panel.window.frame.minX == caret.maxX)

@@ -1,4 +1,6 @@
 import CoreGraphics
+import CoreText
+import Foundation
 import Testing
 import UttrflowPredict
 
@@ -319,6 +321,95 @@ struct SuggestionPresentationTests {
         for nonsense: CGFloat in [0, -4, .nan, .infinity] {
             #expect(SuggestionPresentation(.certain("Sydney"), maximumWidth: nonsense).maximumWidth == nil)
         }
+    }
+
+    @Test("A candidate whose ghost would not fit in the maximum width is not offered")
+    func tooLongGhostIsNotOffered() {
+        let longCandidate = String(repeating: "meet at the north gate at noon ", count: 40)
+        let presentation = SuggestionPresentation(.certain(longCandidate), maximumWidth: 180)
+        #expect(presentation.rows.isEmpty)
+        #expect(presentation.inline == nil)
+        #expect(presentation.style == .hidden)
+    }
+
+    @Test("A choice whose leader fits keeps the leader and drops the rest that do not fit")
+    func aChoiceDropsAlternativesThatDoNotFit() {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "see you", others: ["see you at 5pm tomorrow at the cafe"]),
+            maximumWidth: 100)
+        #expect(presentation.rows.map(\.candidate) == ["see you"])
+    }
+
+    @Test("A replacement whose ghost would not fit is dropped, so Tab never inserts unseen text")
+    func tooLongReplacementIsDropped() {
+        let longCandidate = String(repeating: "commit -m ", count: 30)
+        let presentation = SuggestionPresentation(
+            .certain(longCandidate), typed: "git ", maximumWidth: 180)
+        #expect(presentation.rows.isEmpty)
+        #expect(presentation.inline == nil)
+    }
+
+    /// The width of a string in the same font the panel uses, so the test asserts against the same view.
+    private func measuredGhostWidth(
+        _ ghost: String, pointSize: CGFloat, fontFamily: String?
+    ) -> CGFloat {
+        let font: CTFont
+        if let family = fontFamily {
+            font = CTFontCreateWithName(family as CFString, pointSize, nil)
+        } else if pointSize == SuggestionPresentation.defaultPointSize
+            && fontFamily == nil
+        {
+            // Matches `prefersMonospaced` when the field names nothing.
+            font = CTFontCreateWithName("Menlo" as CFString, pointSize, nil)
+        } else {
+            font = CTFontCreateUIFontForLanguage(.system, pointSize, nil)
+        }
+        let attributed = NSAttributedString(
+            string: ghost, attributes: [.font: font])
+        let line = CTLineCreateWithAttributedString(attributed)
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        return CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+    }
+
+    @Test(
+        "A ghost that would be tail-truncated to fit the room is not offered, so Tab inserts what was drawn"
+    )
+    func anOverwideGhostIsNotOffered() {
+        let ghost = "see you at the office tomorrow morning at nine"
+        let pointSize: CGFloat = 13
+        let width = measuredGhostWidth(ghost, pointSize: pointSize, fontFamily: nil)
+        #expect(width > 100, "the fixture must be wider than the room we hand the panel")
+        let tight = SuggestionPresentation(
+            .certain("see you at the office tomorrow morning at nine"),
+            typed: "", fieldPointSize: pointSize, maximumWidth: width - 20)
+        #expect(tight.style == .hidden, "an overwide ghost must not become an ellipsis on screen")
+        #expect(tight.rows.isEmpty, "no row may be drawn when its ghost would not fit whole")
+    }
+
+    @Test("A ghost that fits the room whole is still offered, even with a maximumWidth set")
+    func aFittingGhostIsStillOffered() {
+        let pointSize: CGFloat = 13
+        let width = measuredGhostWidth("Sydney", pointSize: pointSize, fontFamily: nil)
+        let presentation = SuggestionPresentation(
+            .certain("Sydney"), fieldPointSize: pointSize, maximumWidth: width + 40)
+        #expect(presentation.style == .ghost)
+        #expect(presentation.rows.first?.ghost == "Sydney")
+    }
+
+    @Test("A choice whose leader's ghost is overwide falls back to the next fitting alternative")
+    func anOverwideLeaderFallsBackToAFittingAlternative() {
+        let pointSize: CGFloat = 13
+        let longGhost = "see you at the office tomorrow morning at nine"
+        let width = measuredGhostWidth(longGhost, pointSize: pointSize, fontFamily: nil)
+        let presentation = SuggestionPresentation(
+            .choice(
+                leader: longGhost,
+                others: ["Sydney", "Soho"]),
+            fieldPointSize: pointSize, maximumWidth: width - 20)
+        #expect(presentation.rows.map(\.candidate) == ["Sydney", "Soho"])
+        #expect(presentation.rows.first?.ghost == "Sydney")
     }
 
     @Test("Reduce Motion does not change what is drawn")
