@@ -970,6 +970,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             self?.panelAnswered(key, behind: behind)
         }
         quickPanel.onIntent = { [weak self] intent, behind in self?.carryOut(intent, behind: behind) }
+        quickPanel.canUndoDelete = { [weak self] in self?.panel?.canUndoDelete == true }
 
         followTheClipboardSwitch()
         startWatchingForClaimedShortcuts()

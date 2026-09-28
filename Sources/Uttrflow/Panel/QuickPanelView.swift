@@ -931,10 +931,6 @@ struct QuickPanelView: View {
     /// Every ⌘-chord, in the order the panel claims them.
     private func commandKey(_ press: KeyPress) -> KeyPress.Result {
         guard press.modifiers.contains(.command) else { return .ignored }
-        if press.characters == "z" {
-            onIntent(.undoDelete)
-            return .handled
-        }
         // ⌘⏎ pastes the words without the formatting: a modifier, not a mode.
         if press.key == .return {
             return send(.returnPlain)

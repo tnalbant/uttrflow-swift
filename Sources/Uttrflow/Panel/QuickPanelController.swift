@@ -13,14 +13,44 @@ final class QuickPanel: NSPanel {
     /// Set while a row chord is sent through the window, so the send cannot come back here.
     private var isSendingChord = false
 
+    /// Whether a deleted clip can be put back, asked only when ⌘Z has no typing to undo.
+    var canUndoDelete: () -> Bool = { false }
+
+    /// Puts back the last deleted clip.
+    var onUndoDelete: () -> Void = {}
+
     /// Sends a row chord to the panel's own key handler before the main menu can swallow it, as Minimise does ⌘M.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if Self.isUndo(event), let undone = undo() {
+            return undone
+        }
         guard !isSendingChord, Self.isRowChord(event) else {
             return super.performKeyEquivalent(with: event)
         }
         isSendingChord = true
         defer { isSendingChord = false }
         sendEvent(event)
+        return true
+    }
+
+    /// Whether `event` is ⌘Z alone, which the panel answers before Edit ▸ Undo can.
+    static func isUndo(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return modifiers.intersection([.command, .shift, .option, .control]) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "z"
+    }
+
+    /// Undoes the focused field's typing, else puts back the last deleted clip, else nothing; `nil` leaves it to an input method.
+    private func undo() -> Bool? {
+        let editor = firstResponder as? NSTextView
+        if editor?.hasMarkedText() == true { return nil }
+        let typing = editor?.undoManager
+        switch PanelUndo.choose(fieldCanUndo: typing?.canUndo == true, canUndoDelete: canUndoDelete()) {
+        case .typing: typing?.undo()
+        case .delete: onUndoDelete()
+        case .nothing: break
+        }
         return true
     }
 
@@ -126,6 +156,9 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     /// A row action the panel cannot answer itself, with the application that owned the caret when the panel opened.
     var onIntent: ((PanelIntent, NSRunningApplication?) -> Void)?
 
+    /// Whether a deleted clip can be put back, which decides what ⌘Z does when there is no typing to undo.
+    var canUndoDelete: () -> Bool = { false }
+
     /// Posts a visible notice for VoiceOver after the panel opens.
     var announce: (String) -> Void = { line in
         var spoken = AttributedString(line)
@@ -189,6 +222,8 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
         panel.setFrame(frame, display: false)
         panel.orderFrontRegardless()
         panel.makeKey()
+        // Typing from an earlier opening is not this opening's to undo.
+        (panel.firstResponder as? NSTextView)?.undoManager?.removeAllActions()
         lastAnnouncements = []
         postNewAnnouncements(presentation.announcements)
         watchForLeaving()
@@ -327,6 +362,8 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     /// Applied whole, because every line follows from the one rule: never activate.
     private func configurePanel() {
         panel.delegate = self
+        panel.canUndoDelete = { [weak self] in self?.canUndoDelete() == true }
+        panel.onUndoDelete = { [weak self] in self?.onIntent?(.undoDelete, self?.caretOwner) }
         panel.isFloatingPanel = true
         // False, where the dock leaves it true: the search field must be typeable at once.
         panel.becomesKeyOnlyIfNeeded = false

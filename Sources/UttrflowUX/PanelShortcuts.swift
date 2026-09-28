@@ -51,6 +51,19 @@ extension PanelRowAction {
     }
 }
 
+/// What ⌘Z undoes in the panel: the field's typing first, then the last delete, else nothing.
+public enum PanelUndo: Sendable, Equatable {
+    case typing
+    case delete
+    case nothing
+
+    /// Picks what ⌘Z undoes, with the typing in a focused field ahead of a deleted clip.
+    public static func choose(fieldCanUndo: Bool, canUndoDelete: Bool) -> PanelUndo {
+        if fieldCanUndo { return .typing }
+        return canUndoDelete ? .delete : .nothing
+    }
+}
+
 extension PanelPresentation {
     /// What a ⌘ chord does to the highlighted row, read off that row's own actions so the two agree.
     public func intent(for chord: PanelChord) -> PanelIntent? {

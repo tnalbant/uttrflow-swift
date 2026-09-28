@@ -220,7 +220,7 @@ this list all read, so none of the three can drift from the others.
 | ⌘⏎ | Paste it without its formatting |
 | esc | Close the sheet, or the panel |
 | ⌘1–⌘9 | Browse a collection, by the number printed beside it |
-| ⌘Z | Put back the clip the last delete removed |
+| ⌘Z | Undo typing in the field; with none to undo, put back the clip the last delete removed |
 | ⌘R | Reveal a masked clip |
 | ⌘⇧C | Copy it to the clipboard |
 | ⌘P | Pin it, or unpin it |
@@ -243,3 +243,8 @@ empty would be a trap, so none of them does.
 The panel takes its row chords before the main menu sees them (`QuickPanel.performKeyEquivalent`).
 Window ▸ Minimise is also ⌘M, and the menu swallows a key equivalent even when its item is
 disabled, so without that ⌘M would never reach Move.
+
+⌘Z is taken the same way, ahead of Edit ▸ Undo, and does one of three things
+(`PanelUndo.choose`). If the focused field has typing to undo, ⌘Z undoes it, as in any text
+field. If not, and a deleted clip can still be put back, ⌘Z restores the clip. Otherwise it
+does nothing. The field's undo history starts fresh each time the panel opens.
