@@ -4,6 +4,7 @@ import Foundation
 import Network
 import Synchronization
 import Testing
+import UttrflowCore
 
 @testable import UttrflowAccount
 
@@ -244,5 +245,78 @@ struct LoopbackListenerTests {
         #expect(
             !SystemLoopbackListener.answers(
                 callback, expecting: "s", received: LoopbackCallback(code: "other", state: "s")))
+    }
+
+    /// Cancelling a task parked in `awaitCallback()` must resume it rather than leave it suspended forever.
+    @Test("resumes a pending awaitCallback() when its task is cancelled")
+    func cancellationResumesAPendingWait() async throws {
+        let (listener, _) = try await bound()
+
+        let started = Mutex(false)
+        let waiter = Task {
+            started.withLock { $0 = true }
+            return try await listener.awaitCallback()
+        }
+        while !started.withLock({ $0 }) { await Task.yield() }
+        // Give the continuation a chance to actually park before cancelling it.
+        try await Task.sleep(for: .milliseconds(50))
+
+        waiter.cancel()
+
+        let outcome = await withTimeout(.milliseconds(250)) {
+            await waiter.result
+        }
+        let result = try #require(outcome, "awaitCallback() did not resume within the timeout")
+        #expect(throws: AccountError.self) { try result.get() }
+    }
+
+    /// The same race, but the task is already cancelled before `awaitCallback()` is ever called.
+    @Test("refuses at once when the task is already cancelled before awaiting")
+    func alreadyCancelledDoesNotPark() async throws {
+        let (listener, _) = try await bound()
+
+        let waiter = Task {
+            try? await Task.sleep(for: .seconds(60))
+            return try await listener.awaitCallback()
+        }
+        waiter.cancel()
+
+        let outcome = await withTimeout(.milliseconds(250)) {
+            await waiter.result
+        }
+        let result = try #require(outcome, "awaitCallback() did not resume within the timeout")
+        #expect(throws: AccountError.self) { try result.get() }
+    }
+
+    /// Cancelling the wait must also let the listener's own port close, not merely resume the waiter.
+    @Test("closes the listener's port once its cancelled wait resumes")
+    func cancellationLetsTheListenerClose() async throws {
+        let (listener, port) = try await bound()
+
+        let waiter = Task { try? await listener.awaitCallback() }
+        try await Task.sleep(for: .milliseconds(50))
+        waiter.cancel()
+        _ = await waiter.value
+
+        await listener.close()
+
+        let refused = await get("/callback?code=the-code&state=\(Self.state)", port: port)
+        #expect(refused.isEmpty, "a closed port should refuse a new connection, not answer one")
+    }
+
+    /// A bounded wait for `operation`, so a bug that hangs forever fails the test instead of the suite.
+    private func withTimeout<T: Sendable>(
+        _ duration: Duration, operation: @Sendable @escaping () async -> T
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(for: duration)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 }

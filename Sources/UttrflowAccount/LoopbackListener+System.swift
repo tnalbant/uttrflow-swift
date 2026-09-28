@@ -27,6 +27,8 @@ public actor SystemLoopbackListener: LoopbackListening {
     private var waiting: CheckedContinuation<LoopbackCallback, any Error>?
     /// The callback that arrived, kept in case the wait begins after it.
     private var received: LoopbackCallback?
+    /// Whether cancellation arrived before a continuation could be parked, so the next one resumes at once.
+    private var cancelledBeforeRegistering = false
 
     /// Binds nothing until asked.
     public init() {}
@@ -76,14 +78,39 @@ public actor SystemLoopbackListener: LoopbackListening {
     /// Waits for the callback carrying the expected state; cancellation throws the no-answer refusal.
     public func awaitCallback() async throws(AccountError) -> LoopbackCallback {
         if let received { return received }
+        if Task.isCancelled { throw Self.noAnswer }
 
         do {
-            return try await withCheckedThrowingContinuation { continuation in
-                waiting = continuation
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    register(continuation)
+                }
+            } onCancel: {
+                Task { await self.cancelWaiting() }
             }
         } catch {
             throw Self.noAnswer
         }
+    }
+
+    /// Parks `continuation`, or resumes it at once when cancellation already arrived first.
+    private func register(_ continuation: CheckedContinuation<LoopbackCallback, any Error>) {
+        guard !cancelledBeforeRegistering else {
+            cancelledBeforeRegistering = false
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        waiting = continuation
+    }
+
+    /// Resumes a parked waiter with a cancellation, or notes it for a continuation not parked yet.
+    private func cancelWaiting() {
+        guard let waiting else {
+            cancelledBeforeRegistering = true
+            return
+        }
+        self.waiting = nil
+        waiting.resume(throwing: CancellationError())
     }
 
     /// Cancels the listener and every connection, and resumes any waiter with a cancellation.
