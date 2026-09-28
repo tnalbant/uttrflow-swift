@@ -109,13 +109,13 @@ struct CorrectionsPageTests {
         #expect(page.caption == "Today · 2 corrections across 3 dictations")
     }
 
-    @Test("yesterday's corrections belong to yesterday")
-    func todayOnly() {
+    @Test("corrections within retention window are shown")
+    func withinRetentionWindow() {
         let page = HistoryFixture.corrections([
             HistoryFixture.correction(wrote: "Today"),
             HistoryFixture.correction(wrote: "Yesterday", daysAgo: 1),
         ])
-        #expect(page.rows.map(\.wrote) == ["Today"])
+        #expect(page.rows.map(\.wrote) == ["Today", "Yesterday"])
     }
 
     /// The rule in ``DictionaryEntry`` is a ratio, not a count, and the footnote follows the code.
@@ -123,6 +123,15 @@ struct CorrectionsPageTests {
     func footnote() {
         let page = HistoryFixture.corrections([HistoryFixture.correction()])
         #expect(page.footnote?.contains("more often than you keep it") == true)
+    }
+
+    @Test("corrections older than retention window are not shown")
+    func olderThanRetention() {
+        let page = HistoryFixture.corrections([
+            HistoryFixture.correction(wrote: "Recent", daysAgo: 6),
+            HistoryFixture.correction(wrote: "Old", daysAgo: 8),
+        ])
+        #expect(page.rows.map(\.wrote) == ["Recent"])
     }
 }
 

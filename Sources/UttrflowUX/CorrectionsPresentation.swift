@@ -1,5 +1,6 @@
 // The Corrections page: dictionary-backed substitutions, why, and the way to put them back.
 public import Foundation
+private import UttrflowCore
 public import UttrflowHistory
 public import UttrflowSettings
 
@@ -194,9 +195,10 @@ public enum CorrectionsPresenter {
 
     // MARK: - Choosing rows
 
-    /// Today only; everything older belongs to the dictation it happened in, which is on History.
+    /// Corrections within the retention window; everything older belongs to the dictation it happened in.
     static func madeToday(_ snapshot: CorrectionsSnapshot, calendar: Calendar) -> [Correction] {
-        snapshot.corrections.filter { calendar.isDate($0.when, inSameDayAs: snapshot.now) }
+        let retention = RetentionWindow(days: snapshot.settings.transcriptRetentionDays, now: snapshot.now)
+        return snapshot.corrections.filter { retention.keeps($0.when) }
     }
 
     /// Matches what was heard, what was written and the reason, since the pill is where the reason lives.
