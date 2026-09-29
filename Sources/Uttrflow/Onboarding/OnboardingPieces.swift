@@ -31,6 +31,7 @@ struct OnboardingRoundButton<Mark: View>: View {
         }
         .buttonStyle(OnboardingPressStyle())
         .disabled(!isEnabled)
+        .keyboardShortcut(isProminent && isEnabled ? .defaultAction : nil)
         .opacity(isEnabled ? 1 : 0.35)
         .overlay(alignment: .topLeading) {
             if isPointedAt { OnboardingPointer().offset(x: 78, y: -4) }

@@ -21,7 +21,7 @@ public enum DictationPresenter {
     /// Only figures with something real behind them; no "time saved" tile, since nothing measures typing.
     static func figures(
         today: [HistoryEntry], earlier: [HistoryEntry], dropped: [HistoryEntry], calendar: Calendar,
-        locale: Locale
+        now: Date, locale: Locale
     ) -> [MainStatistic] {
         var figures: [MainStatistic] = []
         let kept = today + earlier
@@ -39,7 +39,7 @@ public enum DictationPresenter {
                         : "none yet today"))
         }
 
-        if let run = streak(in: kept, dropped: dropped, calendar: calendar) {
+        if let run = currentStreak(in: kept, dropped: dropped, now: now, calendar: calendar) {
             figures.append(
                 MainStatistic(
                     value: "\(run.days)",
@@ -97,12 +97,19 @@ public enum DictationPresenter {
         return Double(spoken - changed) / Double(spoken)
     }
 
-    /// Days in a row back from the most recent day, not today; `nil` when nothing is kept.
-    static func streak(
-        in entries: [HistoryEntry], dropped: [HistoryEntry], calendar: Calendar
+    /// The current run ending today or yesterday; `nil` when no current run exists.
+    static func currentStreak(
+        in entries: [HistoryEntry], dropped: [HistoryEntry], now: Date, calendar: Calendar
     ) -> (days: Int, reachesTheEdge: Bool)? {
         let days = Set(entries.map { calendar.startOfDay(for: $0.when) }).sorted(by: >)
         guard let newest = days.first else { return nil }
+
+        let today = calendar.startOfDay(for: now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        guard
+            calendar.isDate(newest, inSameDayAs: today)
+                || calendar.isDate(newest, inSameDayAs: yesterday)
+        else { return nil }
 
         var run = 1
         var expected = newest

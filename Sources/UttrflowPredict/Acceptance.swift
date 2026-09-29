@@ -26,41 +26,35 @@ public enum Acceptance {
 
     /// The edit that turns what is typed into the suggestion, or `nil` when it already is it.
     public static func edit(accepting suggestion: String, after typed: String) -> Edit? {
-        let scalarShared = CommonPrefix.of([typed, suggestion]).unicodeScalars.count
-        let typedBoundaries = characterBoundaries(in: typed)
-        let suggestionBoundaries = characterBoundaries(in: suggestion)
-        let shared =
-            (0...scalarShared).reversed().first {
-                typedBoundaries.contains($0) && suggestionBoundaries.contains($0)
-            } ?? 0
+        let shared = CommonPrefix.of([typed, suggestion]).unicodeScalars.count
+        let replaceFrom = lastCharacterBoundary(in: typed, noLaterThan: shared)
         let edit = Edit(
-            replaced: String(String.UnicodeScalarView(typed.unicodeScalars.dropFirst(shared))),
-            inserted: String(String.UnicodeScalarView(suggestion.unicodeScalars.dropFirst(shared))))
+            replaced: String(String.UnicodeScalarView(typed.unicodeScalars.dropFirst(replaceFrom))),
+            inserted: String(String.UnicodeScalarView(suggestion.unicodeScalars.dropFirst(replaceFrom))))
         return edit.replaced.isEmpty && edit.inserted.isEmpty ? nil : edit
     }
 
-    private static func characterBoundaries(in text: String) -> Set<Int> {
-        var boundaries: Set<Int> = [0]
-        var scalarCount = 0
+    /// Backs a scalar prefix up to a boundary the target can delete as one character.
+    private static func lastCharacterBoundary(in text: String, noLaterThan scalarCount: Int) -> Int {
+        var boundary = 0
         for character in text {
-            scalarCount += character.unicodeScalars.count
-            boundaries.insert(scalarCount)
+            let next = boundary + String(character).unicodeScalars.count
+            guard next <= scalarCount else { break }
+            boundary = next
         }
-        return boundaries
+        return boundary
     }
 
     /// The edit re-aimed at what the field holds before the caret now, or `nil` when the field no longer fits it.
     public static func rebase(_ edit: Edit, after typed: String, onto before: String) -> Edit? {
-        guard before.hasSuffix(typed) else {
-            // Characters typed since the read can only be matched against an insert, so a replacement must see the line it read.
-            return edit.isReplacement ? nil : rebaseAhead(edit, after: typed, onto: before)
-        }
-        return edit
+        guard !edit.isReplacement else { return before.hasSuffix(typed) ? edit : nil }
+        return rebaseAhead(edit, after: typed, onto: before) ?? (before.hasSuffix(typed) ? edit : nil)
     }
 
     /// Finds the longest start of the inserted text the field already holds past `typed`, and inserts only the rest.
     private static func rebaseAhead(_ edit: Edit, after typed: String, onto before: String) -> Edit? {
         let inserted = Array(edit.inserted)
+        guard !inserted.isEmpty else { return nil }
         for echoed in stride(from: inserted.count - 1, through: 1, by: -1) {
             let ahead = typed + String(inserted[..<echoed])
             if before.hasSuffix(ahead) {

@@ -85,18 +85,47 @@ struct DictationAnnouncementTests {
         #expect(!said.isUrgent)
     }
 
-    @Test("says every failure urgently, in the failure's own words")
+    @Test("says every recovery urgently and tells where to reach it")
     func failures() throws {
-        let failures = [
-            DictationFailure(
-                message: PermissionError.microphoneDenied.userMessage,
-                recovery: .openSystemSettings(.microphone), severity: .blocking),
-            DictationFailure.stillLoading,
+        let failures: [(DictationFailure, String?)] = [
+            (
+                DictationFailure(
+                    message: PermissionError.microphoneDenied.userMessage,
+                    recovery: .openSystemSettings(.microphone), severity: .blocking),
+                "Open Settings from the Uttrflow menu."
+            ),
+            (
+                DictationFailure(message: "Again.", recovery: .retry, severity: .recoverable),
+                "Choose Try Again from the Uttrflow menu."
+            ),
+            (
+                DictationFailure(
+                    message: "Model unavailable.", recovery: .downloadSpeechModel,
+                    severity: .blocking), "Choose Download from the Uttrflow menu."
+            ),
+            (
+                DictationFailure(
+                    message: "Copied.", recovery: .pasteManually, severity: .degraded),
+                "The text is on your clipboard. Press Command V to paste it."
+            ),
+            (
+                DictationFailure(
+                    message: "Not delivered.", recovery: .showRecentDictations,
+                    severity: .degraded), "Open Recent from the Uttrflow menu to find your words."
+            ),
+            (
+                DictationFailure(
+                    message: "Transcription failed.", recovery: .retryFromRecording,
+                    severity: .recoverable),
+                "Open History from the Uttrflow menu, then choose Retry on the recording."
+            ),
+            (DictationFailure.stillLoading, nil),
         ]
-        for failure in failures {
+        for (failure, instruction) in failures {
             let said = try #require(DictationPresenter.announcement(for: .failed(failure)))
             #expect(said.isUrgent)
-            #expect(said.text == failure.message.filter { $0 != "…" })
+            let message = failure.message.filter { $0 != "…" }
+            #expect(said.text == instruction.map { "\(message) \($0)" } ?? message)
             #expect(!said.text.isEmpty)
         }
     }

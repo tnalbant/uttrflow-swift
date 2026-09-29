@@ -157,14 +157,18 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The keys that work the open list, drawn under it in the dimmed style.
     public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
 
-    /// What VoiceOver is told the surface is offering, and what taking it costs.
-    public var accessibilityLabel: String {
+    /// What VoiceOver hears automatically when the offer changes, without exposing unselected candidates.
+    var announcementLabel: String {
         guard let leader = inline else { return style == .dot ? Self.dotLabel : "" }
-        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
         let take = "\(acceptKey.spokenName) to accept\(Self.cost(of: leader))."
-        guard !alternatives.isEmpty else { return "AI suggestion: \(leader.candidate). \(take)" }
-        return "AI suggestion: \(leader.candidate). \(take) Alternatives: "
-            + alternatives.joined(separator: ", ") + "."
+        return "AI suggestion: \(leader.candidate). \(take)"
+    }
+
+    /// What VoiceOver can read while navigating the surface, including alternatives in an open list.
+    public var accessibilityLabel: String {
+        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
+        guard !alternatives.isEmpty else { return announcementLabel }
+        return "\(announcementLabel) Alternatives: \(alternatives.joined(separator: ", "))."
     }
 
     /// What VoiceOver is told the dot left by Escape is, and what a second Escape does.
@@ -186,15 +190,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
             case .choice(let leader, let others): [leader] + others
             }
         // The edit is the one acceptance applies, so drawing and doing cannot disagree.
-        let usable: [(candidate: String, edit: Acceptance.Edit)] = offered.compactMap {
-            guard !$0.allSatisfy(\.isWhitespace),
-                let edit = Acceptance.edit(accepting: $0, after: typed)
+        let usable: [(index: Int, candidate: String, edit: Acceptance.Edit)] = offered.enumerated().compactMap
+        {
+            guard !$1.allSatisfy(\.isWhitespace),
+                let edit = Acceptance.edit(accepting: $1, after: typed)
             else { return nil }
-            return ($0, edit)
+            return ($0, $1, edit)
         }
         guard !usable.isEmpty else { return [] }
-        // The highlight can be moved with the arrow keys, so it follows the chosen row, not always the leader.
-        let chosen = min(max(selected, 0), usable.count - 1)
+        // Arrow-key selection counts original candidates, including ones this field cannot accept.
+        let chosen = usable.firstIndex { $0.index >= selected } ?? usable.count - 1
         return usable.enumerated().map {
             Row(candidate: $1.candidate, edit: $1.edit, isSelected: $0 == chosen)
         }

@@ -44,7 +44,7 @@ struct FullTreeSwitchTests {
     func chromeTakesTheEnhancedSwitch() {
         let tree = FullTreeSwitch()
         let chrome = FakeApplication(supported: [FullTreeSwitch.enhancedAttribute])
-        tree.switchOn(processIdentifier: 9, bundleIdentifier: "com.google.Chrome", host: chrome.host)
+        tree.switchOn(processIdentifier: 9, bundleIdentifier: "COM.GOOGLE.CHROME", host: chrome.host)
         #expect(chrome.values[FullTreeSwitch.enhancedAttribute] == true)
         #expect(tree.switchedOn == [9: FullTreeSwitch.enhancedAttribute])
     }
@@ -111,6 +111,7 @@ struct FullTreeSwitchTests {
                 caret: caret, isSecure: secure)
         }
         #expect(FullTreeSwitch.isNeeded(in: "com.google.Chrome", after: nil))
+        #expect(FullTreeSwitch.isNeeded(in: "COM.GOOGLE.CHROME", after: nil))
         #expect(FullTreeSwitch.isNeeded(in: "com.example.chat", after: reading("AXTextArea", nil, false)))
         #expect(!FullTreeSwitch.isNeeded(in: "com.example.chat", after: nil))
         #expect(!FullTreeSwitch.isNeeded(in: "com.example.chat", after: reading("AXTextArea", .zero, false)))

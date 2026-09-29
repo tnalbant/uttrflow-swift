@@ -194,6 +194,14 @@ struct SpeechModelLoadingSurfacesTests {
         #expect(diagnostics.summary.action?.intent == .recover(fix))
     }
 
+    @Test("a completed load reports readiness from the result and whether its model remains installed")
+    func loadResultAndInstallationDetermineReadiness() {
+        #expect(SpeechModelReadiness.afterLoad(isReady: true, isInstalled: true) == .ready)
+        #expect(SpeechModelReadiness.afterLoad(isReady: true, isInstalled: false) == .ready)
+        #expect(SpeechModelReadiness.afterLoad(isReady: false, isInstalled: true) == .loadFailed)
+        #expect(SpeechModelReadiness.afterLoad(isReady: false, isInstalled: false) == .notInstalled)
+    }
+
     @Test("a first failed load offers a reload; a failed reload offers a download instead")
     func secondFailureOffersADownload() {
         let first = SpeechModelReadiness.settled(

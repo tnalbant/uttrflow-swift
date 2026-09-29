@@ -77,11 +77,53 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("capitalises unambiguous weekday and month names without changing May or March")
+    func capitalisesCalendarWords() {
+        #expect(cleaned("we meet on tuesday in august", by: sut) == "We meet on Tuesday in August")
+        #expect(cleaned("it may happen in march", by: sut) == "It may happen in march")
+        #expect(cleaned("sat and sun are short", by: sut) == "Sat and sun are short")
+    }
+
+    @Test("calendar casing follows prose destinations and leaves terminal and code case spoken")
+    func calendarWordsRespectDestination() {
+        let situation = Situation.unknown
+        for destination: Destination in [.plain, .document, .email, .messaging, .sqlEditor] {
+            let pipeline = CleaningPipeline.standard(
+                for: .standard(for: destination), situation: situation)
+            #expect(
+                pipeline.run(Draft(text: "we meet on tuesday in august")).text
+                    == "We meet on Tuesday in August.")
+        }
+        for destination: Destination in [.terminal, .codeEditor, .spreadsheet] {
+            let pipeline = CleaningPipeline.standard(
+                for: .standard(for: destination), situation: situation)
+            #expect(
+                pipeline.run(Draft(text: "we meet on tuesday in august")).text
+                    == "We meet on tuesday in august")
+        }
+    }
+
     @Test("starts a sentence after a paragraph or a bullet, but not after a plain line break")
+    @Test("starts a sentence after every line break, paragraph, or bullet")
     func layout() {
         let paragraph = Draft(
             words: ["hello", "\n\n", "there", "\n- ", "milk", "\n", "eggs"].map { Draft.Word($0) })
-        #expect(sut.apply(paragraph).text == "Hello\n\nThere\n- Milk\neggs")
+        #expect(sut.apply(paragraph).text == "Hello\n\nThere\n- Milk\nEggs")
+    }
+
+    @Test("a line starts a sentence even when no punctuation precedes it")
+    func lineStartsSentenceWithoutPunctuation() {
+        let line = Draft(words: ["first", "line", "\n", "second", "line"].map { Draft.Word($0) })
+        let paragraph = Draft(words: ["first", "line", "\n\n", "second", "line"].map { Draft.Word($0) })
+        #expect(sut.apply(line).text == "First line\nSecond line")
+        #expect(sut.apply(paragraph).text == "First line\n\nSecond line")
+    }
+
+    @Test("the same known abbreviations do not end a sentence inside a dictation")
+    func sharedAbbreviationsStayInsideSentence() {
+        for abbreviation in InsertionPoint.sentenceAbbreviations {
+            #expect(!FirstWordPass.endsSentence(abbreviation + "."))
+        }
     }
 
     @Test(

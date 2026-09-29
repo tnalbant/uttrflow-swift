@@ -52,6 +52,8 @@ private actor RecordingModel: ReleasableModel {
     func logLikelihood(of candidate: String, following context: String) async -> Double? { -1 }
 
     func confidence(ofGenerated line: String) async -> Double? { -0.5 }
+
+    func forgetEverything() async { steps.append("forget") }
 }
 
 /// Every reload event in the order it was told, collected from whichever thread tells it.
@@ -83,6 +85,15 @@ private actor Told {
 @Suite("Letting an idle model go")
 struct IdleReleaseTests {
     private let situation = GenerationSituation(application: "Mail", surroundings: "the draft")
+
+    @Test("forgetting reaches the loaded model without releasing it")
+    func forgettingForwardsWithoutRelease() async {
+        let inner = RecordingModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        try? await model.prepare(onProgress: { _ in })
+        await model.forgetEverything()
+        #expect(await inner.steps == ["load", "forget"])
+    }
 
     @Test("a Mac under 16 GB gets the short window")
     func windowByMemory() {

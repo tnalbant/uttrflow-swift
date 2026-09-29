@@ -1,13 +1,21 @@
 import CoreGraphics
+import Foundation
 
 /// Finds the caret's screen rectangle from whichever of a field's answers holds it. See `Docs/predict-reliability.md`.
 enum CaretLocator {
     /// The caret at the selection, or at the text marker alone when the field refuses to say where its selection is; `frame` is the field's own.
     static func caret(
         at selection: (location: Int, length: Int)?, frame: CGRect?, pointSize: CGFloat? = nil,
+        value: String? = nil, textSelectionLocation: Int? = nil,
         bounds: (_ location: Int, _ length: Int) -> CGRect?, markerBounds: () -> CGRect?
     ) -> CGRect? {
-        if let selection, let rect = caret(inRange: selection, bounds: bounds) { return rect }
+        if let selection,
+            let rect = caret(
+                inRange: selection, value: value,
+                textSelectionLocation: textSelectionLocation ?? selection.location, bounds: bounds)
+        {
+            return rect
+        }
         // A web field answers glyph bounds with a zero-size rectangle, but its selection's text-marker range still has a place on screen.
         if let rect = markerBounds(), isLine(rect, in: frame, pointSize: pointSize) {
             return CGRect(x: rect.minX, y: rect.minY, width: 0, height: rect.height)
@@ -41,23 +49,50 @@ enum CaretLocator {
 
     /// The caret read off the glyph beside it, because a zero-length range's own bounds lies.
     private static func caret(
-        inRange selection: (location: Int, length: Int), bounds: (_ location: Int, _ length: Int) -> CGRect?
+        inRange selection: (location: Int, length: Int), value: String?,
+        textSelectionLocation: Int, bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> CGRect? {
         // A real selection, unlike a caret, reports its own bounds honestly.
         if selection.length > 0, let rect = bounds(selection.location, selection.length), rect.height > 0 {
             return rect
         }
         let location = selection.location
-        // The caret sits at the trailing edge of the glyph before it, which is what typing just moved past.
-        if location > 0, let before = bounds(location - 1, 1), before.height > 0 {
+        // A line break's bounds belong to the line it ends, so use the first glyph on the next line.
+        let followsLineBreak = hasLineBreak(beforeUTF16Offset: textSelectionLocation, in: value)
+        // The caret sits at the trailing edge of the complete character before it, including emoji graphemes.
+        let precedingLength = precedingCharacterLength(in: value, beforeUTF16Offset: textSelectionLocation) ?? 1
+        if location > 0, !followsLineBreak,
+            let before = bounds(location - precedingLength, precedingLength), before.height > 0
+        {
             return CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height)
         }
-        // At the very start there is no glyph before, so the caret takes the leading edge of the one after.
+        // At the very start, or just after a line break, take the leading edge of the following glyph.
         if let at = bounds(location, 1), at.height > 0 {
             return CGRect(x: at.minX, y: at.minY, width: 0, height: at.height)
         }
         // An empty line has no glyph beside the caret, so its own bounds is all there is.
         if let rect = bounds(selection.location, selection.length), rect.height > 0 { return rect }
         return nil
+    }
+
+    /// The UTF-16 length of the complete character immediately before the caret.
+    private static func precedingCharacterLength(in text: String?, beforeUTF16Offset offset: Int) -> Int? {
+        guard let text, offset > 0 else { return nil }
+        let utf16 = text.utf16
+        guard offset <= utf16.count,
+            let end = String.Index(utf16.index(utf16.startIndex, offsetBy: offset), within: text)
+        else { return nil }
+        let start = text.index(before: end)
+        return text[start..<end].utf16.count
+    }
+
+    /// Whether the UTF-16 unit before the caret ends a line, matching Accessibility's selection offsets.
+    private static func hasLineBreak(beforeUTF16Offset offset: Int, in value: String?) -> Bool {
+        guard let value, offset > 0, offset <= value.utf16.count else { return false }
+        let index = value.utf16.index(value.utf16.startIndex, offsetBy: offset - 1)
+        return switch value.utf16[index] {
+        case 0x0A, 0x0B, 0x0C, 0x0D, 0x85, 0x2028, 0x2029: true
+        default: false
+        }
     }
 }
