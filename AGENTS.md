@@ -450,14 +450,14 @@ than no merge at all.
 
 ## Building and releasing
 
-`Docs/releasing.md` is the only correct description. In short:
+`Docs/releasing.md` covers a release by hand; `RELEASING.md` covers the tag workflow. In short:
 
 ```bash
 make verify        # lint, build, 6,000+ tests, coverage floor — what the gate runs
 make hooks         # once per clone; hooks are not cloned
 make app-hardened  # a build fit to test on another Mac
 make dmg           # the disk image
-make publish       # to the public downloads repository, using this Mac's gh login
+make publish       # to the public downloads repository: this Mac's gh login by hand, RELEASES_TOKEN in the workflow
 ```
 
 Versioning is **`YY.MMDD.REVISION`** (`26.0926.0`; tag `v26.0926.0`), hand-edited in
@@ -467,7 +467,8 @@ it, semver up to 0.5.0 are retired. See `Docs/releasing.md`. `CFBundleVersion` i
 release. The five-part `YEAR.MONTH.DAY.HOUR.PATCH` scheme stays rejected, as `Docs/releasing.md` says.
 
 Downloads go to the public **uttrflow/releases** repository, separate from this source
-repository. The published asset is `Uttrflow.dmg` with **no version in the name** — that is
+repository, holding disk images and `latest.json` but no source code. The published asset
+is `Uttrflow.dmg` with **no version in the name** — that is
 what makes the `/releases/latest/download/` URL permanent.
 
 **The tag names the release, and notarisation has nothing to do with it.** A run
