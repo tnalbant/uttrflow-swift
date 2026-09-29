@@ -37,6 +37,8 @@ actor ScriptedScoring: CandidateScoring {
     private let overrunning: ManualClock?
     /// How many scores it has been asked for.
     private(set) var asked = 0
+    /// How often its owner asked it to drop retained state.
+    private(set) var forgets = 0
 
     /// A model that answers this, is up or is not, and runs past the budget on `overrunning` when given one.
     init(_ score: Double?, loaded: Bool = true, overrunning: ManualClock? = nil) {
@@ -61,6 +63,8 @@ actor ScriptedScoring: CandidateScoring {
 
     /// The same score for a line it wrote, which is what the generation gate reads.
     func confidence(ofGenerated line: String) async -> Double? { score }
+
+    func forgetEverything() async { forgets += 1 }
 }
 
 /// Holds the task under test, filled in only after the task exists, so a double running inside it can cancel it.

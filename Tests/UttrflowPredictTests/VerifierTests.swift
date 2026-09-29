@@ -227,6 +227,7 @@ struct VerifierTests {
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         await verifier.forgetEverything()
         #expect(await verifier.rememberedCount == 0)
+        #expect(await scoring.forgets == 1)
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         #expect(await scoring.asked == 2)
     }
