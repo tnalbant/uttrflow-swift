@@ -25,6 +25,11 @@ struct RawTranscriptMappingTests {
             ("[BLANK_AUDIO] hello there", "hello there"),
             ("hello [inaudible] there", "hello there"),
             ("(upbeat music) let's begin", "let's begin"),
+            ("*pain*", ""),
+            ("*thud*", ""),
+            ("*painful sound*", ""),
+            ("review the ******* Kubernetes", "review the Kubernetes"),
+            ("I really mean *really* this time", "I really mean *really* this time"),
         ]
     )
     func stripsNonSpeechMarkers(input: String, expected: String) {
@@ -124,12 +129,76 @@ struct RawTranscriptMappingTests {
     @Test("reports a transcript of nothing but markers as blank")
     func markersOnlyIsBlank() {
         #expect(RawTranscript(text: "[BLANK_AUDIO]").transcription(audioDuration: .zero).isBlank)
+        #expect(RawTranscript(text: "*pain*").transcription(audioDuration: .zero).isBlank)
     }
 }
 
 /// #179: a marker removed from the text but not from the words costs the piece its confidences.
 @Suite("A marker and the word list")
 struct MarkerWordListTests {
+    @Test("a non-speech-only transcript is blank in its text and word list")
+    func nonSpeechOnlyIsBlank() {
+        let raw = RawTranscript(
+            text: "*thud*",
+            segments: [
+                RawSegment(
+                    text: "*thud*", start: 0, end: 1,
+                    words: [RawWord(text: " *thud*", start: 0, end: 0.5, probability: 0.1)])
+            ])
+
+        let transcription = raw.transcription(audioDuration: .seconds(1))
+
+        #expect(transcription.isBlank)
+        #expect(transcription.segments.first?.text == "")
+        #expect(transcription.segments.first?.words.isEmpty == true)
+    }
+
+    @Test("removes a cough marker from the words without losing the spoken words' confidences")
+    func removesAsteriskMarkerFromWordList() {
+        let raw = RawTranscript(
+            text: "review the ******* Kubernetes",
+            segments: [
+                RawSegment(
+                    text: "review the ******* Kubernetes", start: 0, end: 2,
+                    words: [
+                        RawWord(text: " review", start: 0, end: 0.2, probability: 0.99),
+                        RawWord(text: " the", start: 0.2, end: 0.4, probability: 0.99),
+                        RawWord(text: " *******", start: 0.4, end: 0.6, probability: 0.1),
+                        RawWord(text: " Kubernetes", start: 0.6, end: 1, probability: 0.99),
+                    ])
+            ])
+
+        let transcription = raw.transcription(audioDuration: .seconds(2))
+        let draft = Draft(transcription: transcription)
+
+        #expect(transcription.segments.first?.text == "review the Kubernetes")
+        #expect(transcription.segments.first?.words.map(\.text) == ["review", "the", "Kubernetes"])
+        #expect(draft.confidencesAreReal)
+    }
+
+    @Test("keeps dictated asterisk emphasis in both text and words")
+    func keepsAsteriskEmphasis() {
+        let raw = RawTranscript(
+            text: "I really mean *really* this time",
+            segments: [
+                RawSegment(
+                    text: "I really mean *really* this time", start: 0, end: 2,
+                    words: [
+                        RawWord(text: " I", start: 0, end: 0.2, probability: 0.99),
+                        RawWord(text: " really", start: 0.2, end: 0.4, probability: 0.99),
+                        RawWord(text: " mean", start: 0.4, end: 0.6, probability: 0.99),
+                        RawWord(text: " *really*", start: 0.6, end: 0.8, probability: 0.99),
+                        RawWord(text: " this", start: 0.8, end: 1, probability: 0.99),
+                        RawWord(text: " time", start: 1, end: 1.2, probability: 0.99),
+                    ])
+            ])
+
+        let segment = raw.transcription(audioDuration: .seconds(2)).segments.first
+
+        #expect(segment?.text == "I really mean *really* this time")
+        #expect(segment?.words.map(\.text) == ["I", "really", "mean", "*really*", "this", "time"])
+    }
+
     @Test("leaves the recogniser's confidences usable when a marker was removed")
     func confidencesSurviveAMarker() {
         let raw = RawTranscript(
