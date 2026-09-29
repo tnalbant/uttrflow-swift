@@ -1594,19 +1594,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// K4 — pastes a picture, on its own path because the Accessibility route writes only strings.
     private func insertImage(_ clip: Clip) {
         markUsed(clip.id)
-        Task { [weak self, clipboard, pasteboard = announcingPasteboard] in
+        Task { [weak self, clipboard, pasteboard = announcingPasteboard, focus] in
             guard let image = clip.image, let data = await clipboard.imageData(for: image) else {
                 // B8 from the other side: the file went between the draw and the keypress.
                 Self.log.error("picture missing at paste: \(clip.id, privacy: .public)")
                 self?.reportPanelPaste(.pictureMissing)
                 return
             }
-            // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
-            pasteboard.setImage(data)
             do {
-                try CGEventKeystrokeSender().sendPaste()
+                // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
+                try PasteboardImageInsertionEngine(
+                    focus: focus, pasteboard: pasteboard, keystrokes: CGEventKeystrokeSender()
+                ).insert(data)
             } catch let failure as TextInsertionError {
-                // On the clipboard either way, which is the floor the text path lands on too.
+                // The image may already be on the clipboard if focus changes during the write.
                 Self.log.error(
                     "picture paste refused: \(failure.userMessage, privacy: .public)")
                 self?.reportPanelPaste(.pictureRefused)

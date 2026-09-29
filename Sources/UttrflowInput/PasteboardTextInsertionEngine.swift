@@ -40,9 +40,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
             throw .insertionRejected(description: TextInsertion.dictationEnded)
         }
         // Re-checked here rather than trusted from `canInsert()`, whose answer can go stale by now.
-        guard !focus.isSelfFrontmost() else {
-            throw .noFocusedTextField
-        }
+        try PasteboardPasteAction.requireExternal(focus: focus)
         // Concealed for a field that hides what is typed, so no clipboard history keeps the words.
         let focus = focus
         if await AccessibilityThread.run(orElse: true, { focus.focusedFieldIsSecure() }) {
@@ -57,13 +55,29 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
             focus.tail(upTo: PasteConfirmation.readLength)
         }
         // Thrown onwards with the words left on the clipboard: the floor below would only put them back.
-        try keystrokes.sendPaste()
+        try PasteboardPasteAction.postIfExternal(focus: focus, keystrokes: keystrokes)
         // Posting a paste proves nothing, so this waits for the words the way the write above is read back.
         let outcome = await confirmation.waitFor(text, before: before)
         // Waited for before the reporter is consulted, so attaching a logger cannot be what switches this on.
         report?(outcome)
         // The borrowed clipboard is deliberately never restored. See `Docs/insertion.md`.
         return InsertionArrival(outcome)
+    }
+}
+
+/// Re-checks the frontmost application immediately before posting a paste keystroke.
+enum PasteboardPasteAction {
+    /// Posts ⌘V only while an application other than Uttrflow is frontmost.
+    static func postIfExternal(
+        focus: any AccessibilityFocus, keystrokes: any KeystrokeSender
+    ) throws(TextInsertionError) {
+        try requireExternal(focus: focus)
+        try keystrokes.sendPaste()
+    }
+
+    /// Rejects a paste while Uttrflow is frontmost, before clipboard contents can be changed.
+    static func requireExternal(focus: any AccessibilityFocus) throws(TextInsertionError) {
+        guard !focus.isSelfFrontmost() else { throw .noFocusedTextField }
     }
 }
 
