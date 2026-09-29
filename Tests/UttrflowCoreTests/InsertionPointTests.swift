@@ -142,6 +142,22 @@ struct InsertionPointTests {
         #expect(point.paddedBoundary(for: "world") == "world ")
     }
 
+    @Test(
+        "a straight quote opens only at the start of text or after a boundary",
+        arguments: ["\"", "'", "say \"", "say '", "say (\"", "say ('"])
+    func leadingSpaceAfterOpeningStraightQuote(preceding: String) {
+        let point = InsertionPoint(precedingText: preceding, followingText: "")
+        #expect(point.paddedBoundary(for: "world") == "world")
+    }
+
+    @Test(
+        "a straight quote after a word closes the quote and separates the next word",
+        arguments: ["said \"hi\"", "said 'hi'", "it'"])
+    func leadingSpaceAfterClosingStraightQuote(preceding: String) {
+        let point = InsertionPoint(precedingText: preceding, followingText: "")
+        #expect(point.paddedBoundary(for: "world") == " world")
+    }
+
     @Test("a word before another word is padded with one trailing space")
     func trailingSpaceBeforeAWord() {
         let point = InsertionPoint(precedingText: "", followingText: "world")
