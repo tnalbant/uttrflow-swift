@@ -35,21 +35,34 @@ public enum DestructiveCommand {
 
     /// The source operands of `cp`, after options and their values are removed.
     private static func cpSources(_ arguments: [String]) -> [String] {
-        let operands = positionals(arguments, valued: ["-S", "--suffix", "-t", "--target-directory"])
+        var operands: [String] = []
         var rest = arguments[...]
         var targetDirectory = false
-        while let flag = rest.popFirst() {
-            if flag == "--" { break }
-            if flag == "-S" || flag == "--suffix" {
+        while let argument = rest.popFirst() {
+            if argument == "--" {
+                operands += rest
+                break
+            }
+            if argument == "-S" || argument == "--suffix" {
                 if !rest.isEmpty { rest.removeFirst() }
                 continue
             }
-            if flag == "-t" || (flag.hasPrefix("-t") && flag.count > 2) || flag == "--target-directory"
-                || flag.hasPrefix("--target-directory=")
-            {
-                targetDirectory = true
-                break
+            if argument.hasPrefix("-S") && argument.count > 2 || argument.hasPrefix("--suffix=") {
+                continue
             }
+            if argument == "-t" || argument == "--target-directory" {
+                targetDirectory = true
+                if !rest.isEmpty { rest.removeFirst() }
+                continue
+            }
+            if argument.hasPrefix("-t") && argument.count > 2 || argument.hasPrefix("--target-directory=") {
+                targetDirectory = true
+                continue
+            }
+            if argument.count > 1 && argument.hasPrefix("-") {
+                continue
+            }
+            operands.append(argument)
         }
         return targetDirectory ? operands : Array(operands.dropLast())
     }

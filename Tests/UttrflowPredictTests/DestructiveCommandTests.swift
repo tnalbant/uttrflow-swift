@@ -148,7 +148,7 @@ struct DestructiveCommandTests {
         arguments: [
             "cp a.txt b.txt", "cp -p a.txt b.txt", "cp -- a.txt b.txt", "cp -S /dev/null a.txt b.txt",
             "cp -t output a.txt", "cp -S -t a.txt b.txt", "cp -- -tname a.txt", "cp a.txt /dev/null",
-            "cp a.txt /dev/zero",
+            "cp a.txt /dev/zero", "cp --suffix=/dev/null a.txt b.txt", "cp -S/dev/null a.txt b.txt",
         ])
     func copyingOrdinaryFilesIsOrdinary(_ line: String) {
         #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
