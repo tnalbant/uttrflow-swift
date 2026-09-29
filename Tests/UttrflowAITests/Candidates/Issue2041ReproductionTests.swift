@@ -67,11 +67,7 @@ struct Issue2041ReproductionTests {
 
     @Test("a homophone word already below threshold is not duplicated")
     func homophoneBelowThresholdIsNotDuplicated() {
-        let draft = Draft(
-            words: "the ?principal is here".split(whereSeparator: \.isWhitespace).map {
-                Draft.Word(String($0), confidence: $0 == "?principal" ? 0.2 : 0.95)
-            },
-            confidencesAreReal: true)
+        let draft = Draft.heard("the ?principal is here", unsure: 0.2)
         let runs = UncertainSpan.spans(in: draft, below: WordCorrectionEngine.certaintyThreshold)
         let principalRuns = runs.filter { $0.text == "principal" }
         #expect(
