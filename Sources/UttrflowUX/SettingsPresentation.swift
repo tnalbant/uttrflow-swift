@@ -385,13 +385,17 @@ public enum SettingsChange: Sendable, Equatable {
     /// Asks the user to pick an application to turn suggestions off in, which stores nothing until one is picked.
     case chooseApplicationToTurnOffSuggestions
 
+    /// Fetches the suggestion model again after a failed attempt.
+    case retrySuggestionModel
+
     /// Opens a page of the main window that has no row in its sidebar.
     case openPage(MainTab)
 
     /// Whether this asks for something to happen now rather than for something to be stored.
     public var isRequestToAct: Bool {
         switch self {
-        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .openPage: true
+        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel, .openPage:
+            true
         default: false
         }
     }

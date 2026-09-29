@@ -31,8 +31,13 @@ device that arrives can have a different sample rate and channel count from the 
 left, and reusing the old resampler would convert from a format nothing is producing.
 
 The accumulated audio survives, because it is held by `AVAudioCaptureEngine` rather than
-by the source. A dictation interrupted by a device change loses the fraction of a second
-the changeover takes, and keeps the rest.
+by the source. When samples precede a device change, the changeover loses the fraction of
+a second it takes, and the recording keeps the rest.
+
+If the device changes before the first sample, there is no earlier audio to join to the
+samples after a successful reopen, so the recording is allowed to continue. Once any
+sample has arrived, a device change still leaves a gap that the audio format cannot
+represent, and the recording is refused.
 
 If the device has gone and nothing replaced it, the reopen is retried across the few
 seconds a device takes to re-enumerate — a Bluetooth headset or a sample-rate change is
@@ -44,7 +49,7 @@ single `try?` left the microphone dead for the rest of the recording.
 The hole is announced the moment the device goes, not when the reopen resolves. That ordering is
 load-bearing: a stop landing while the retry is still in flight cancels it, so a report that waited
 for the outcome would never be made at all and the truncated recording would be handed back as
-whole. Whatever happens next, the recording is refused rather than handed over. It sounds wrong to refuse a recording the microphone recovered from, but `AudioSamples`
+whole. When any sample preceded the change, the recording is refused rather than handed over. It sounds wrong to refuse a recording the microphone recovered from, but `AudioSamples`
 is a run of samples and a sample rate: it cannot say that time passed. The audio from before the
 change and the audio from after it sit next to each other with the missing seconds simply gone, so
 the words either side are joined into one sentence that nobody spoke. Refusing it offers the user a

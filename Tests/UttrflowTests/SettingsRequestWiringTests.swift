@@ -24,6 +24,17 @@ private final class RecordingStore: SettingsStore, @unchecked Sendable {
     }
 }
 
+/// Settings seeded for a model download test and readable after an app action.
+final class ModelDownloadSettingsStore: SettingsStore, @unchecked Sendable {
+    private var settings: Settings
+
+    init(_ settings: Settings) { self.settings = settings }
+
+    func load() -> Settings { settings }
+
+    func save(_ settings: Settings) { self.settings = settings }
+}
+
 /// Personalisation that has nothing to count and nothing to remove.
 private struct EmptyPersonalisation: SettingsPersonalisationStore {
     func personalisation(keeping retention: Retention) async -> SettingsPersonalisation {
@@ -243,12 +254,13 @@ private func name(of change: SettingsChange) -> String {
     case .pauseSuggestions: "pauseSuggestions"
     case .checkForUpdatesNow: "checkForUpdatesNow"
     case .chooseApplicationToTurnOffSuggestions: "chooseApplicationToTurnOffSuggestions"
+    case .retrySuggestionModel: "retrySuggestionModel"
     case .openPage: "openPage"
     }
 }
 
 /// How many cases ``SettingsChange`` has, bumped deliberately when one is added.
-private let settingsChangeCaseCount = 18
+private let settingsChangeCaseCount = 19
 
 /// Applies a change, or answers the settings unchanged when the editor refused it.
 private func applying(_ change: SettingsChange, to settings: Settings) -> Settings {
@@ -318,6 +330,7 @@ private let samples: [Sample] = [
     Sample(.pauseSuggestions(isOn: true), from: suggesting),
     Sample(.checkForUpdatesNow),
     Sample(.chooseApplicationToTurnOffSuggestions, from: suggesting),
+    Sample(.retrySuggestionModel),
     Sample(.openPage(.corrections)),
 ]
 

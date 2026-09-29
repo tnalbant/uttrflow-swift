@@ -215,6 +215,7 @@ struct OnboardingActionButton: View {
                 .contentShape(.rect)
             }
             .buttonStyle(OnboardingPressStyle())
+            .keyboardShortcut(action.isProminent ? .defaultAction : nil)
             if let countdown = action.countdown {
                 Capsule()
                     .fill(.white.opacity(0.14))

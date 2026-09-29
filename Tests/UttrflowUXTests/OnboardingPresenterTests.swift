@@ -121,7 +121,12 @@ struct OnboardingPresenterTests {
     func atMostOneProminentButton() {
         for state in everyState {
             let page = page(state)
-            #expect(page.buttons.filter(\.isProminent).count <= 1, "\(state) steers towards many answers")
+            let prominentProviders = page.providers.first.map { _ in 1 } ?? 0
+            let prominentButtons = page.buttons.filter(\.isProminent).count
+            let prominentAction = page.action?.isProminent == true ? 1 : 0
+            #expect(
+                prominentProviders + prominentButtons + prominentAction <= 1,
+                "\(state) steers towards many answers")
             #expect(page.buttons.filter { $0.isPointedAt && !$0.isProminent }.isEmpty, "\(state)")
         }
     }

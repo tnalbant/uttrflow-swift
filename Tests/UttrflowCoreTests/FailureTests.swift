@@ -98,6 +98,13 @@ struct FailurePresentationTests {
         #expect(HotkeyError.shortcutUnavailable.recovery == .retry)
     }
 
+    @Test("model load failure names its available recovery")
+    func modelLoadFailureCopy() {
+        let failure = SpeechEngineError.modelLoadFailed(description: "fixture")
+        #expect(failure.recovery == .retry)
+        #expect(failure.userMessage == "Speech recognition couldn't start. Try again.")
+    }
+
     /// A message saying the text could not be copied must not come with a button meaning "paste it".
     @Test("never sends the user to the clipboard when the clipboard is what failed")
     func clipboardFailureDoesNotOfferAPaste() {

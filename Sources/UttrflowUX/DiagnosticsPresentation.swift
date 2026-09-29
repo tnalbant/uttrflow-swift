@@ -115,6 +115,20 @@ public struct DiagnosticsModelPresence: Sendable, Equatable {
     }
 }
 
+/// What macOS says about the built-in recogniser's locale assets.
+public enum DiagnosticsAppleSpeechStatus: Sendable, Equatable {
+    /// No asset check has completed.
+    case unchecked
+    /// The locale is available after downloading its assets.
+    case needsDownload
+    /// The locale cannot run on this Mac.
+    case unsupported
+    /// macOS is installing the locale assets.
+    case downloading
+    /// The locale assets are installed.
+    case installed
+}
+
 /// One model Uttrflow runs, as a card: what it is for, what it is, and whether it is ready.
 public struct DiagnosticsModelCard: Sendable, Equatable, Identifiable {
     /// What the model is for, which is unique on the page.
@@ -162,12 +176,18 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let speechModel: DiagnosticsModelPresence?
     /// Whether the speech model can dictate, from the same state Home, the menu bar and the floating button read.
     public let speechReadiness: SpeechModelReadiness?
+    /// The system recogniser's locale asset status; absent means not checked.
+    public let appleSpeechStatus: DiagnosticsAppleSpeechStatus?
+    /// The built-in recogniser's last typed load failure, when one occurred.
+    public let appleSpeechLoadFailure: SpeechEngineError?
     /// What macOS has granted, for every permission asked about.
     public let permissions: [PermissionKind: PermissionStatus]
     /// Every stage timing recorded since the app started.
     public let measurements: [StageMeasurement]
     /// What the clean-up steps did to the last dictation, absent until one has been tidied.
     public let cleaning: CleaningRecord?
+    /// Which engine tidied the last inserted dictation, including `.untidied` when none did.
+    public let lastCleanedBy: TransformerKind?
     /// How far along the model AI suggestions need is.
     public let suggestionModel: SuggestionModelReadiness
     /// Which build is running.
@@ -182,9 +202,12 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         transformerAvailability: [TransformerKind: Bool] = [:],
         speechModel: DiagnosticsModelPresence? = nil,
         speechReadiness: SpeechModelReadiness? = nil,
+        appleSpeechStatus: DiagnosticsAppleSpeechStatus? = nil,
+        appleSpeechLoadFailure: SpeechEngineError? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
         measurements: [StageMeasurement] = [],
         cleaning: CleaningRecord? = nil,
+        lastCleanedBy: TransformerKind? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         version: AppVersion = .unknown,
         machine: String? = nil
@@ -194,9 +217,12 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.transformerAvailability = transformerAvailability
         self.speechModel = speechModel
         self.speechReadiness = speechReadiness
+        self.appleSpeechStatus = appleSpeechStatus
+        self.appleSpeechLoadFailure = appleSpeechLoadFailure
         self.permissions = permissions
         self.measurements = measurements
         self.cleaning = cleaning
+        self.lastCleanedBy = lastCleanedBy
         self.suggestionModel = suggestionModel
         self.version = version
         self.machine = machine
@@ -319,13 +345,34 @@ public enum DiagnosticsPresenter {
         let speech = snapshot.speechInUse ?? snapshot.engines.speech
         return [
             downloadedSpeechCard(snapshot, inUse: speech == .whisperKit, locale: locale),
-            DiagnosticsModelCard(
-                title: "Speech (Faster)", symbolName: "mic", tint: .info,
-                name: name(for: SpeechEngineKind.appleSpeech), chips: ["Built in", onDevice],
-                status: speech == .appleSpeech ? "In use" : "Ready", state: .good),
+            appleSpeechCard(snapshot, inUse: speech == .appleSpeech),
             cleanUpCard(snapshot),
             suggestionsCard(snapshot.suggestionModel),
         ]
+    }
+
+    /// The built-in recogniser's real locale readiness and any active load failure.
+    static func appleSpeechCard(_ snapshot: DiagnosticsSnapshot, inUse: Bool) -> DiagnosticsModelCard {
+        let status: String
+        let state: DiagnosticsState
+        if case .modelLoadFailed? = snapshot.appleSpeechLoadFailure,
+            snapshot.appleSpeechStatus != .unsupported,
+            snapshot.appleSpeechStatus != .needsDownload
+        {
+            (status, state) = ("Failed to load", .attention)
+        } else {
+            switch snapshot.appleSpeechStatus {
+            case .unchecked, nil: (status, state) = ("Not checked yet", .unknown)
+            case .needsDownload: (status, state) = ("Needs download", .attention)
+            case .unsupported: (status, state) = ("Unsupported", .attention)
+            case .downloading: (status, state) = ("Downloading", .unknown)
+            case .installed: (status, state) = (inUse ? "In use" : "Ready", .good)
+            }
+        }
+        return DiagnosticsModelCard(
+            title: "Speech (Faster)", symbolName: "mic", tint: .info,
+            name: name(for: SpeechEngineKind.appleSpeech), chips: ["Built in", onDevice],
+            status: status, state: state)
     }
 
     /// Where every model on the page runs.
@@ -409,11 +456,23 @@ public enum DiagnosticsPresenter {
                 title: "Clean-up", symbolName: "wand.and.stars", tint: .suggestion, name: name,
                 chips: chips, status: status, state: state)
         }
+        if let lastCleanedBy = snapshot.lastCleanedBy {
+            guard lastCleanedBy != .untidied else {
+                return card(name(for: lastCleanedBy), [], "Last dictation", .attention)
+            }
+            let origin =
+                lastCleanedBy == .cloud
+                ? "Hosted" : (lastCleanedBy == .localModel ? "Downloaded" : "Built in")
+            let chips = lastCleanedBy == .cloud ? [origin] : [origin, onDevice]
+            let state: DiagnosticsState =
+                snapshot.transformerAvailability[lastCleanedBy] == false ? .attention : .good
+            return card(name(for: lastCleanedBy), chips, "Last dictation", state)
+        }
         guard let inUse = ordered.first(where: { snapshot.transformerAvailability[$0] == true }) else {
             return card("Not checked yet", [], "Checking", .unknown)
         }
         let origin = inUse == .localModel ? "Downloaded" : "Built in"
-        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "In use", .good)
+        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "Ready", .good)
     }
 
     /// The model AI suggestions need, and how far along it is.
@@ -508,7 +567,7 @@ public enum DiagnosticsPresenter {
         let overDictations = MainFormatting.count(dictations, "dictation", "dictations")
 
         // "at least" needs a number it can qualify, and "under 0.01s" is an upper bound, not a floor.
-        let floor = total.inSeconds < 0.01 ? "0.00s" : measured
+        let floor = total.inSeconds < 0.01 ? MainFormatting.secondsValue(.zero) : measured
 
         return DiagnosticsLatency(
             // A sum of the timed stages is a floor, and the word saying so has to be on the number itself.
@@ -574,10 +633,16 @@ public enum DiagnosticsPresenter {
         let condition = speechModelCondition(snapshot, inUse: recogniser == .whisperKit)
         let lacksModel =
             recogniser == .whisperKit && (condition == .notInstalled || condition == .incomplete)
-        let speech = DiagnosticsRow(
-            title: "Speech",
-            detail: lacksModel ? notYetDownloaded : name(for: recogniser),
-            state: lacksModel ? .attention : .good)
+        let speech: DiagnosticsRow
+        if recogniser == .appleSpeech {
+            let card = appleSpeechCard(snapshot, inUse: true)
+            speech = DiagnosticsRow(title: "Speech", detail: card.status, state: card.state)
+        } else {
+            speech = DiagnosticsRow(
+                title: "Speech",
+                detail: lacksModel ? notYetDownloaded : name(for: recogniser),
+                state: lacksModel ? .attention : .good)
+        }
 
         return [speech]
             + ordered.map { kind in

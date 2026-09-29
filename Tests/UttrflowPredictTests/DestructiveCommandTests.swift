@@ -32,6 +32,38 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Package removal commands are destructive, including when wrapped or preceded by options.",
+        arguments: [
+            "npm unpublish package@1.0.0 --force", "pnpm unpublish package", "yarn unpublish package",
+            "cargo yank package --vers 1.0.0", "pip uninstall -y requests", "pip3 uninstall --yes requests",
+            "brew uninstall --cask --zap app", "brew remove --zap app", "sudo npm unpublish package",
+            "sudo pnpm unpublish package", "sudo yarn unpublish package",
+            "sudo cargo yank package --vers 1.0.0",
+            "sudo pip uninstall -y requests", "sudo pip3 uninstall --yes requests",
+            "sudo brew uninstall --zap app",
+            "sudo brew remove --zap app", "python -m pip uninstall -y requests",
+            "python3 -m pip uninstall --yes requests", "python3.12 -m pip uninstall -y requests",
+            "sudo python -m pip uninstall -y requests",
+            "npm --registry https://registry.example unpublish package",
+            "cargo --config config.toml yank package", "brew --repository /opt/homebrew uninstall --zap app",
+        ])
+    func recognisesIrreversiblePackageRemoval(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Package-manager builds and installs remain ordinary, as do removals without irreversible options.",
+        arguments: [
+            "npm publish package", "cargo build", "pip install requests", "pip uninstall requests",
+            "brew uninstall app", "brew remove app", "npm --registry unpublish publish",
+            "cargo --config yank build", "pip uninstall -- -y", "brew uninstall -- --zap",
+            "brew --repository uninstall install --zap app",
+        ])
+    func packageBuildsAndSafeOperationsRemainOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "Ordinary commands are left alone.",
         arguments: [
             "git commit -m 'work'",
@@ -69,6 +101,38 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Mercurial history removal and destructive updates are recognised.",
+        arguments: [
+            "hg strip -r 3", "hg prune --rev 3", "hg purge", "hg purge --all", "hg update -C",
+            "hg update --clean", "hg -R repo strip -r 3", "hg --config ui.merge=internal:fail update -C",
+            "sudo hg strip -r 3", "env HGPLAIN=1 hg purge",
+        ])
+    func recognisesDestructiveMercurial(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Subversion deletion aliases and revert are recognised.",
+        arguments: [
+            "svn delete https://svn.example.com/repo/trunk -m x", "svn del file", "svn remove file",
+            "svn rm file", "svn revert -R .", "svn --username alice delete URL",
+            "sudo svn revert -R .",
+        ])
+    func recognisesDestructiveSubversion(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Non-destructive Mercurial and Subversion commands remain ordinary.",
+        arguments: [
+            "hg log", "hg --config ui.verbose=true log", "hg update", "hg update -- -C", "svn status",
+            "svn --username alice status",
+        ])
+    func keepsOrdinaryMercurialAndSubversionCommands(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "Quoting or escaping the executable does not hide a destructive command.",
         arguments: [
             #""rm" -rf build"#, "'rm' -rf build", #"r\m -rf build"#,
@@ -76,6 +140,26 @@ struct DestructiveCommandTests {
         ])
     func quotedDestroyers(_ line: String) {
         #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Recursive permission and ownership changes are destructive, including clustered flags.",
+        arguments: [
+            "chmod -R 000 ~", "chmod --recursive 000 /", "chmod -vfR 000 tree", "chown -R nobody /",
+            "chown -vR nobody /", "chgrp --recursive staff /", "sudo chgrp -hR staff tree",
+        ])
+    func recursivePermissionAndOwnershipChanges(_ line: String) {
+        #expect(DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line)")
+    }
+
+    @Test(
+        "Non-recursive permission and ownership changes remain ordinary.",
+        arguments: [
+            "chmod +x script.sh", "chmod 600 ~/.ssh/config", "chown nobody file", "chgrp staff file",
+            "chmod -- -R",
+        ])
+    func nonRecursivePermissionAndOwnershipChanges(_ line: String) {
+        #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line)")
     }
 
     @Test(
@@ -109,6 +193,29 @@ struct DestructiveCommandTests {
         ])
     func leavesLookalikesAlone(_ line: String) {
         #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "Copying a device stream over a file is destructive.",
+        arguments: [
+            "cp /dev/null notes.txt", "cp -f /dev/null notes.txt", "cp -- /dev/null notes.txt",
+            "cp /dev/zero notes.txt", "cp -p /dev/zero notes.txt", "cp -t output /dev/null",
+            "cp --target-directory=output /dev/zero",
+        ])
+    func copyingDeviceStreamsIsDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Copying ordinary files is not destructive.",
+        arguments: [
+            "cp a.txt b.txt", "cp -p a.txt b.txt", "cp -- a.txt b.txt", "cp -S /dev/null a.txt b.txt",
+            "cp -t output a.txt", "cp -S -t a.txt b.txt", "cp -- -tname a.txt", "cp a.txt /dev/null",
+            "cp a.txt /dev/zero", "cp --suffix=/dev/null a.txt b.txt", "cp -S/dev/null a.txt b.txt",
+        ])
+    func copyingOrdinaryFilesIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
     }
 
     /// The destroying command is not the one the line begins with, and it is still the one that runs.
