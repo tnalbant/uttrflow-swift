@@ -131,6 +131,29 @@ struct DestructiveCommandTests {
         #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
     }
 
+    @Test(
+        "Copying a device stream over a file is destructive.",
+        arguments: [
+            "cp /dev/null notes.txt", "cp -f /dev/null notes.txt", "cp -- /dev/null notes.txt",
+            "cp /dev/zero notes.txt", "cp -p /dev/zero notes.txt", "cp -t output /dev/null",
+            "cp --target-directory=output /dev/zero",
+        ])
+    func copyingDeviceStreamsIsDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Copying ordinary files is not destructive.",
+        arguments: [
+            "cp a.txt b.txt", "cp -p a.txt b.txt", "cp -- a.txt b.txt", "cp -S /dev/null a.txt b.txt",
+            "cp -t output a.txt", "cp -S -t a.txt b.txt", "cp -- -tname a.txt", "cp a.txt /dev/null",
+            "cp a.txt /dev/zero",
+        ])
+    func copyingOrdinaryFilesIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
     /// The destroying command is not the one the line begins with, and it is still the one that runs.
     @Test(
         "A destroying command behind a harmless one is still recognised.",

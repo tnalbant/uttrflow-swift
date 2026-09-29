@@ -33,6 +33,27 @@ public enum DestructiveCommand {
             || flag == "--remove-sent-files"
     }
 
+    /// The source operands of `cp`, after options and their values are removed.
+    private static func cpSources(_ arguments: [String]) -> [String] {
+        let operands = positionals(arguments, valued: ["-S", "--suffix", "-t", "--target-directory"])
+        var rest = arguments[...]
+        var targetDirectory = false
+        while let flag = rest.popFirst() {
+            if flag == "--" { break }
+            if flag == "-S" || flag == "--suffix" {
+                if !rest.isEmpty { rest.removeFirst() }
+                continue
+            }
+            if flag == "-t" || (flag.hasPrefix("-t") && flag.count > 2) || flag == "--target-directory"
+                || flag.hasPrefix("--target-directory=")
+            {
+                targetDirectory = true
+                break
+            }
+        }
+        return targetDirectory ? operands : Array(operands.dropLast())
+    }
+
     /// A word that runs the command after it: its flags that take a value, and how many plain words of its own precede the command.
     private struct Wrapper {
         let valued: Set<String>
@@ -296,8 +317,14 @@ public enum DestructiveCommand {
             {
                 return true
             }
-        case "mv", "cp":
+        case "mv":
             if lowered.last == "/dev/null" { return true }
+        case "cp":
+            if cpSources(arguments).contains(where: {
+                $0.lowercased() == "/dev/null" || $0.lowercased() == "/dev/zero"
+            }) {
+                return true
+            }
         case "rsync":
             if lowered.contains(where: rsyncDeletes) { return true }
         case "tee":
