@@ -2,6 +2,8 @@ public import UttrflowCore
 
 /// Puts text into the focused app by pasting it, which works almost everywhere. See `Docs/insertion.md`.
 public actor PasteboardTextInsertionEngine: TextInsertionEngine {
+    private static let insertionGate = PasteboardInsertionGate()
+
     public nonisolated let method: TextInsertionMethod = .pasteboard
 
     private let focus: any AccessibilityFocus
@@ -35,6 +37,21 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
     public func insert(
         _ text: String, richText: String?
     ) async throws(TextInsertionError) -> InsertionArrival {
+        let gate = Self.insertionGate
+        await gate.acquire()
+        do {
+            let result = try await insertWhileSerialized(text, richText: richText)
+            await gate.release()
+            return result
+        } catch {
+            await gate.release()
+            throw error
+        }
+    }
+
+    private func insertWhileSerialized(
+        _ text: String, richText: String?
+    ) async throws(TextInsertionError) -> InsertionArrival {
         // The clipboard is the user's, so a stage that has given up must not take it. See `Docs/insertion.md`.
         guard !Task.isCancelled else {
             throw .insertionRejected(description: TextInsertion.dictationEnded)
@@ -64,6 +81,27 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         report?(outcome)
         // The borrowed clipboard is deliberately never restored. See `Docs/insertion.md`.
         return InsertionArrival(outcome)
+    }
+}
+
+private actor PasteboardInsertionGate {
+    private var isHeld = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard isHeld else {
+            isHeld = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        guard !waiters.isEmpty else {
+            isHeld = false
+            return
+        }
+        waiters.removeFirst().resume()
     }
 }
 
