@@ -1437,6 +1437,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             _ = try await clipboard.setAlias(alias, of: id, keeping: retention)
         case .setCategory(let id, let category):
             _ = try await clipboard.setCategory(category, of: id, keeping: retention)
+        case .setPinned(let id, let isPinned):
+            _ = try await clipboard.setPinned(isPinned, of: id, keeping: retention)
         case .delete(let id):
             // F7, F9 — kept in hand, because the store forgets it the moment this returns.
             let held = panel?.clips.first { $0.id == id }
@@ -1503,10 +1505,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             panelAnswered(key, behind: behind)
             return
         }
+        if let change = intent.immediateChange {
+            apply(change)
+            return
+        }
 
         switch intent {
-        case .pin(let id): setPinned(true, of: id)
-        case .unpin(let id): setPinned(false, of: id)
+        case .pin, .unpin:
+            // These are routed through `immediateChange` above.
+            break
         case .copy(let id):
             // Through the panel, so a picture is copied as a picture and a missing one is said.
             guard let response = panel?.copying(id) else { return }
@@ -1536,13 +1543,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             .reindent, .makeNote, .scope:
             // Answered above, by `intent.key`.
             break
-        }
-    }
-
-    private func setPinned(_ isPinned: Bool, of id: UUID) {
-        Task { [clipboard] in
-            _ = try? await clipboard.setPinned(isPinned, of: id, keeping: retention)
-            await refreshPanelIfOpen()
         }
     }
 

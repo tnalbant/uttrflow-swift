@@ -59,6 +59,15 @@ public enum PanelIntent: Sendable, Equatable {
             nil
         }
     }
+
+    /// A row action that writes directly to the store without first asking a question.
+    public var immediateChange: PanelChange? {
+        switch self {
+        case .pin(let id): .setPinned(id, true)
+        case .unpin(let id): .setPinned(id, false)
+        default: nil
+        }
+    }
 }
 
 /// What a bottom-bar button is drawn with, as cases rather than a name a `Shape` cannot answer.
