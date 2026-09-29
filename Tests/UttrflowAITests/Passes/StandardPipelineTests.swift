@@ -21,6 +21,22 @@ struct StandardPipelineTests {
                 == Array(CleaningPipeline.standard.ids.dropLast(2)))
     }
 
+    @Test("uses the formatter's list policy for piece clean-up")
+    func pieceRespectsDestinationLists() {
+        let spreadsheet = DestinationFormatter.standard(for: .spreadsheet)
+        let spreadsheetPipeline = CleaningPipeline.beforeModel(
+            for: spreadsheet, situation: .unknown)
+        #expect(
+            spreadsheetPipeline.run(Draft(text: "number one buy milk number two walk the dog")).text
+                == "number 1 buy milk number 2 walk the dog")
+
+        let document = DestinationFormatter.standard(for: .document)
+        let documentPipeline = CleaningPipeline.beforeModel(for: document, situation: .unknown)
+        #expect(
+            documentPipeline.run(Draft(text: "we need number one milk number two eggs")).text
+                == "we need\n1. milk\n2. eggs")
+    }
+
     @Test("is the plain formatter at a caret that says nothing")
     func plainByDefault() {
         let first = CleaningPipeline.standard.passes.compactMap { $0 as? FirstWordPass }.first

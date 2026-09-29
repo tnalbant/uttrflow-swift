@@ -8,7 +8,7 @@ extension CleaningPipeline {
     public static func beforeModel(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps)
+        piece(numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout, steps: steps)
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -22,11 +22,12 @@ extension CleaningPipeline {
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
     public static func piece(
-        numbers: NumberPolicy, digits: DigitGrouping, steps: CleaningSteps = .default
+        numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
+        steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         let cleanings: [any CleaningPass] = [
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
-            SpokenPunctuationPass(), LayoutWordsPass(),
+            SpokenPunctuationPass(), LayoutWordsPass(layout: layout),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
         ]

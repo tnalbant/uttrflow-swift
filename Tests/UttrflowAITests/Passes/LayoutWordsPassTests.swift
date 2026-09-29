@@ -191,6 +191,20 @@ struct LayoutWordsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "does not turn spoken layout phrases into marks when the destination has no list layout",
+        arguments: [
+            LayoutPolicy.singleLine, LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
+        ]
+    )
+    func respectsLayoutPolicy(layout: LayoutPolicy) {
+        let pass = LayoutWordsPass(layout: layout)
+        let input = "number one buy milk number two walk the dog"
+        #expect(cleaned(input, by: pass) == input)
+        #expect(cleaned("we need bullet point milk", by: pass) == "we need bullet point milk")
+        #expect(cleaned("first line new line second line", by: pass) == "first line\nsecond line")
+    }
+
     @Test("records the layout mark as a replacement and the second word as removed")
     func provenance() {
         let draft = sut.apply(Draft(text: "one new line two"))

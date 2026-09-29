@@ -4,16 +4,21 @@ public import UttrflowCore
 public struct LayoutWordsPass: CleaningPass {
     public static let id: PassID = .layoutWords
 
+    private let layout: LayoutPolicy
+
     /// What each spoken phrase becomes; a bullet marker carries its own dash and space.
-    static let marks: [(words: [String], mark: String)] = [
-        (["new", "line"], "\n"), (["new", "paragraph"], "\n\n"), (["blank", "line"], "\n\n"),
-        (["bullet", "point"], "\n- "), (["next", "point"], "\n- "),
+    static let marks: [(words: [String], mark: String, requiresLists: Bool)] = [
+        (["new", "line"], "\n", false), (["new", "paragraph"], "\n\n", false),
+        (["blank", "line"], "\n\n", false), (["bullet", "point"], "\n- ", true),
+        (["next", "point"], "\n- ", true),
     ]
 
     /// The word that opens a numbered item. It is not in `marks` because the number after it picks the mark.
     static let numbering = "number"
 
-    public init() {}
+    public init(layout: LayoutPolicy = [.paragraphs, .lists]) {
+        self.layout = layout
+    }
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
@@ -87,10 +92,14 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// The layout the words at `position` become: one of the fixed phrases, or a numbered item.
     private func mark(at position: Int, in live: [Int], of draft: Draft) -> (length: Int, mark: String)? {
-        if let found = Self.marks.first(where: { matches($0.words, at: position, in: live, of: draft) }) {
+        if let found = Self.marks.first(where: {
+            matches($0.words, at: position, in: live, of: draft)
+                && (layout.contains(.lists) || !$0.requiresLists)
+        }) {
             return (found.words.count, found.mark)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
+            layout.contains(.lists),
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
         return (item.count + 1, "\n\(item.value). ")
