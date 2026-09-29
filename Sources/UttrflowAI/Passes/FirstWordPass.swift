@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
-public struct FirstWordPass: CleaningPass {
+public struct FirstWordPass: WholeTextCleaningPass {
     public static let id: PassID = .firstWord
 
     public let policy: FirstWordPolicy

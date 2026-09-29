@@ -22,8 +22,16 @@ struct CleaningScopeTests {
         #expect(!ids.contains(FirstWordPass.id))
         #expect(!ids.contains(TerminalStopPass.id))
         #expect(
-            CleaningPipeline.message(for: .standard(for: .messaging), situation: .unknown).ids
+            CleaningPipeline.wholeText(for: .standard(for: .messaging), situation: .unknown).ids
                 == [FirstWordPass.id, TerminalStopPass.id])
+        #expect(
+            CleaningPipeline.piece(numbers: .fromTen, digits: .thousands).passes
+                .allSatisfy { !($0 is any WholeTextCleaningPass) })
+        #expect(
+            CleaningPipeline.wholeText(
+                for: .standard(for: .messaging), situation: .unknown
+            ).passes
+                .allSatisfy { $0 is any WholeTextCleaningPass })
     }
 
     @Test("the rules leave a piece's stop and case as the recogniser gave them")

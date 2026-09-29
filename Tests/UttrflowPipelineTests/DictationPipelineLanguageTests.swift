@@ -6,7 +6,7 @@ import Testing
 @testable import UttrflowPipeline
 @testable import UttrflowTestSupport
 
-/// A recogniser that keeps the hint each piece was given and answers a different language every call.
+/// A recogniser that keeps each hint and reports the detected language of its first piece.
 private actor DriftingSpeechEngine: SpeechEngine {
     let kind = SpeechEngineKind.whisperKit
     private let detected: [LanguageCode]
@@ -85,8 +85,8 @@ struct DictationPipelineLanguageTests {
         )
     }
 
-    /// A default English preference cannot force the detected language onto the next piece.
-    @Test("detects every piece for the default English profile")
+    /// Later pieces share the first piece's language for one dictation.
+    @Test("uses the first piece language for the remaining pieces")
     func detectsEveryPieceForDefaultProfile() async {
         let (pipeline, speech) = await pipeline(detecting: [.english, .hindi, .hindi])
 
@@ -95,11 +95,12 @@ struct DictationPipelineLanguageTests {
         let hints = await speech.hints
 
         #expect(hints.count > 1)
-        #expect(hints.allSatisfy { $0 == nil })
+        #expect(hints.first == nil)
+        #expect(hints.dropFirst().allSatisfy { $0 == .english })
     }
 
-    /// Each dictation detects independently under the default profile.
-    @Test("detects every piece of the next dictation independently")
+    /// Each dictation resolves a new language from its own first piece.
+    @Test("resolves the first piece language again for the next dictation")
     func forgetsBetweenDictations() async {
         let (pipeline, speech) = await pipeline(
             detecting: [.english, .english, .english, .hindi, .hindi, .hindi])
@@ -113,7 +114,8 @@ struct DictationPipelineLanguageTests {
 
         #expect(hints.count > first)
         #expect(hints[first] == nil)
-        #expect(hints[(first + 1)...].allSatisfy { $0 == nil })
+        #expect(hints[first] == nil)
+        #expect(hints.dropFirst(first + 1).allSatisfy { $0 == .hindi })
     }
 
     /// A retry is its own attempt, so it detects its own language rather than the last dictation's.
@@ -134,10 +136,8 @@ struct DictationPipelineLanguageTests {
         #expect(hints[first] == nil)
     }
 
-    /// Issue 698: a Hinglish speaker's Hindi sentence after an English one was decoded as English and translated.
-    @Test(
-        "detects every piece for a speaker of English and Hindi, rather than holding the first piece's English"
-    )
+    /// Issue 230's dictation-wide context keeps one detected language across every piece.
+    @Test("uses one first-piece language for a speaker of English and Hindi")
     func detectsEachPieceForBothLanguages() async {
         let (pipeline, speech) = await pipeline(
             detecting: [.english, .hindi, .hindi],
@@ -148,7 +148,8 @@ struct DictationPipelineLanguageTests {
         let hints = await speech.hints
 
         #expect(hints.count > 1)
-        #expect(hints.allSatisfy { $0 == nil })
+        #expect(hints.first == nil)
+        #expect(hints.dropFirst().allSatisfy { $0 == .english })
     }
 
     /// Issue 699: a short Hindi reply was detected as English words.
@@ -194,7 +195,7 @@ struct DictationPipelineLanguageTests {
         #expect(first.count > 1, "a recording of several pieces")
         #expect(first.first == .some(nil), "the English profile detects the first piece")
         #expect(
-            first.dropFirst().allSatisfy { $0 == nil }, "the default English preference detects every piece")
+            first.dropFirst().allSatisfy { $0 == .english }, "the first piece fixes the dictation language")
 
         await pipeline.startRecording()
         await pipeline.finishRecording()
