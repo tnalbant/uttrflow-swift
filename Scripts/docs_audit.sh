@@ -24,7 +24,7 @@
 # whether the prose around them is accurate, which no script can answer. It needs no build.
 #
 # Usage:  ./Scripts/docs_audit.sh            (belongs in `make verify`, ahead of the build)
-#         ./Scripts/docs_audit.sh --self-test   also runs the CLAUDE.md delegation fixture
+#         ./Scripts/docs_audit.sh --self-test   also runs the contract and delegation fixtures
 set -euo pipefail
 
 PACKAGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -301,6 +301,74 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     printf '\n'
 fi
 
+# `make verify` intentionally stops before constructing the app bundle. CI's packaging
+# gate is a separate contract, and the contributor guide must name the same shared target.
+read -r -d '' PACKAGING_CONTRACT_PROGRAM <<'PYTHON' || true
+import re
+import sys
+
+guide_path, workflow_path = sys.argv[1:]
+guide = open(guide_path, errors="ignore").read()
+workflow = open(workflow_path, errors="ignore").read()
+findings = []
+stale = re.compile(
+    r"no class of failure that only CI can find|"
+    r"make verify.{0,100}(?:same command CI runs|covers? every CI|all CI failures)",
+    re.IGNORECASE | re.DOTALL,
+)
+for path, text in ((guide_path, guide), (workflow_path, workflow)):
+    match = stale.search(text)
+    if match:
+        line = text.count("\n", 0, match.start()) + 1
+        findings.append(f"{path}:{line}\tclaims make verify covers failures outside its gate")
+if "make app-preflight" not in guide:
+    findings.append(f"{guide_path}:1\tdoes not give the shared packaging preflight command")
+if "run: make app-preflight" not in workflow:
+    findings.append(f"{workflow_path}:1\tCI does not use the documented packaging preflight")
+if guide.find("make verify") > guide.find("make app-preflight"):
+    findings.append(f"{guide_path}:1\tdoes not put make verify before the packaging preflight")
+verify_step = workflow.find("run: make verify")
+packaging_step = workflow.find("run: make app-preflight")
+if verify_step < 0 or packaging_step < 0 or verify_step > packaging_step:
+    findings.append(f"{workflow_path}:1\tCI does not run verify before the packaging preflight")
+print("\n".join(findings))
+PYTHON
+
+packaging_contract_findings() {
+    python3 -c "$PACKAGING_CONTRACT_PROGRAM" "$1" "$2"
+}
+
+run_packaging_contract_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-packaging.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    printf '%s\n' 'Run `make verify`; there is no class of failure that only CI can find.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/stale.md"
+    printf '%s\n' 'Run `make verify` for lint, audits, tests, and coverage.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/corrected.md"
+    printf '%s\n' 'run: make verify' 'run: make app-preflight' > "$work/ci.yml"
+
+    printf 'packaging gate wording fixture\n'
+    local stale_report corrected_report
+    stale_report="$(packaging_contract_findings "$work/stale.md" "$work/ci.yml")"
+    if [[ "$stale_report" == *"covers failures outside its gate"* ]]; then
+        pass "the stale make verify claim fails"
+    else
+        fail "the stale make verify claim passed" "$stale_report"
+    fi
+    corrected_report="$(packaging_contract_findings "$work/corrected.md" "$work/ci.yml")"
+    if [[ -z "${corrected_report//[[:space:]]/}" ]]; then
+        pass "the corrected gate wording and shared command pass"
+    else
+        fail "the corrected packaging guidance was flagged" "$corrected_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_packaging_contract_self_test
+    printf '\n'
+fi
+
 # `--self-test` runs the CLAUDE.md delegation fixture before the normal scan, so the
 # audit's checks themselves fail noisily when they stop biting. Same pattern as
 # log_privacy_audit.py and perf_budget_audit.py.
@@ -354,6 +422,17 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     fi
     printf '\ndocs audit self-test: every fixture case behaved as expected.\n\n'
     failures=0
+fi
+
+printf '\nPackaging gate guidance\n'
+packaging_contract_report="$(packaging_contract_findings CONTRIBUTING.md .github/workflows/ci.yml)"
+if [[ -n "${packaging_contract_report//[[:space:]]/}" ]]; then
+    fail "the contributor guide and CI disagree about the packaging gate" \
+        '`make verify` does not create or verify the app bundle. Keep the documented' \
+        'sequence and CI aligned through `make app-preflight`.' \
+        "" $'\n'"$packaging_contract_report"
+else
+    pass "the guide distinguishes make verify and CI uses its shared app-preflight command"
 fi
 
 cd "$PACKAGE_ROOT"

@@ -228,6 +228,10 @@ app: ## Build and sign Uttrflow.app into dist/ for this Mac.
 	./Scripts/fetch-provider-marks.sh || echo "Continuing without the Google mark; the sign-in button shows its wording alone."
 	./Scripts/bundle.sh
 
+.PHONY: app-preflight
+app-preflight: app ## Build the app bundle and run CI's strict signature verification.
+	codesign --verify --deep --strict dist/Uttrflow.app
+
 # Its own identifier, so it runs beside the installed app and keeps its own settings,
 # stores and permission grants. Docs/development-build.md says what that costs.
 .PHONY: app-dev
