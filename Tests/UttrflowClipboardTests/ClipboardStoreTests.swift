@@ -394,6 +394,39 @@ struct ClipboardStoreTests {
         #expect(try await store.setAlias(nil, of: subject.id, keeping: week())[0].alias == nil)
     }
 
+    @Test("restoring a deleted clip does not reclaim an alias assigned to another clip")
+    func restoringDeletedClipDoesNotDuplicateAlias() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let deleted = clip("first", alias: "x")
+        let renamed = clip("second")
+        try await store.record(deleted, keeping: week())
+        try await store.delete(deleted.id, keeping: week())
+        try await store.record(renamed, keeping: week())
+        try await store.setAlias("x", of: renamed.id, keeping: week())
+
+        let restored = try await store.record(deleted, keeping: week())
+
+        #expect(restored.first { $0.id == renamed.id }?.alias == "x")
+        #expect(restored.first { $0.id == deleted.id }?.alias == nil)
+        #expect(restored.compactMap(\.alias) == ["x"])
+    }
+
+    @Test("refuses to assign an alias already held by another clip")
+    func duplicateAliasIsRefused() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let first = clip("first", alias: "x")
+        let second = clip("second")
+        try await store.record(first, keeping: week())
+        try await store.record(second, keeping: week())
+
+        await #expect(throws: ClipboardStoreError.aliasAlreadyInUse) {
+            try await store.setAlias("x", of: second.id, keeping: week())
+        }
+        #expect(await store.clips(keeping: week()).compactMap(\.alias) == ["x"])
+    }
+
     @Test("files a clip and takes it out of the collection again")
     func categorising() async throws {
         let file = TemporaryFile()

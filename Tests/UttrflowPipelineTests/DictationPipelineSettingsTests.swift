@@ -30,7 +30,8 @@ private actor ScriptedSpeechEngine: SpeechEngine {
 
 /// A tidier that records every request and hands the words back unchanged.
 private final class WatchingCleaner: TranscriptCleaning, Sendable {
-    private let state = Mutex((requests: [TransformationRequest](), warmed: [Destination?]()))
+    private let state = Mutex(
+        (requests: [TransformationRequest](), warmed: [Destination?](), finalReservations: Int()))
 
     func clean(
         _ request: TransformationRequest
@@ -43,8 +44,13 @@ private final class WatchingCleaner: TranscriptCleaning, Sendable {
         state.withLock { $0.warmed.append(situation?.destination) }
     }
 
+    func reserveFinalPiece(_ situation: Situation?) async {
+        state.withLock { $0.finalReservations += 1 }
+    }
+
     var requests: [TransformationRequest] { state.withLock(\.requests) }
     var destinations: [Destination] { requests.map(\.situation.destination) }
+    var finalReservations: Int { state.withLock(\.finalReservations) }
 }
 
 /// A screen that will not answer the first time until the test says so, and answers with somewhere else after that.
@@ -161,6 +167,7 @@ struct DictationPipelineSettingsTests {
         await pipeline.finishRecording()
 
         #expect(cleaner.destinations == [.document, .document], "every piece is tidied for the override")
+        #expect(cleaner.finalReservations == 1, "the last piece reserves the warmed session")
         #expect(
             await pipeline.currentState.outcome?.text == "- Check the logs\n- Restart the box",
             "the pieces are joined under the override's formatter, which lays out a list")

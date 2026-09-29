@@ -58,7 +58,7 @@ public struct SystemEnvironmentReader: EnvironmentReading {
             files: SystemFileSystem())
     }
 
-    /// A reader that launches through `launcher`, finds programs only in `programDirectories`, and reads files through `files`.
+    /// A reader that launches through `launcher`, finds programs only in `programDirectories`, and lists and stats through `files`.
     init(
         launcher: any ProgramLaunching, programDirectories: [String],
         files: any FileSystemProbing = SystemFileSystem()
@@ -69,13 +69,17 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         self.refFiles = CachedFileSystem(files)
     }
 
-    /// Every value of one kind here, each kind read the way that kind is read.
-    public func values(of kind: EnvironmentKind, in directory: String) async -> [String]? {
+    /// Every value of one kind here, each kind read the way that kind is read; `prefix` narrows a name listing to what has been typed so far.
+    public func values(
+        of kind: EnvironmentKind, in directory: String, matching prefix: String
+    ) async -> [String]? {
         let path = (directory as NSString).expandingTildeInPath
         switch kind {
         case .branch: return branches(in: path)
-        case .entries(let under): return entries(under: under, from: path, directoriesOnly: false)
-        case .directories(let under): return entries(under: under, from: path, directoriesOnly: true)
+        case .entries(let under):
+            return entries(under: under, from: path, directoriesOnly: false, matching: prefix)
+        case .directories(let under):
+            return entries(under: under, from: path, directoriesOnly: true, matching: prefix)
         case .executable: return executables()
         case .alias: return aliases()
         case .subcommand(let program): return await verbs(of: program, in: path)
@@ -88,8 +92,12 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         GitRepository.holding(directory, files: refFiles)?.refNames(limit: Self.verbLimit)
     }
 
-    /// What one directory holds, hidden entries included since a dotfile is named on purpose; nothing where the directory does not exist, and no answer where it cannot be read.
-    private func entries(under: String, from directory: String, directoriesOnly: Bool) -> [String]? {
+    /// What one directory holds, narrowed to `prefix` before anything is stat'ed, so a name that could never complete the typed word never costs a stat; hidden entries included since a dotfile is named on purpose, nothing where the directory does not exist, and no answer where it cannot be read.
+    private func entries(
+        under: String, from directory: String, directoriesOnly: Bool, matching prefix: String
+    )
+        -> [String]?
+    {
         let path = Self.resolve(under, from: directory)
         switch files.kind(atPath: path) {
         case .directory: break
@@ -97,8 +105,10 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         case .file, .missing: return []
         }
         guard let names = files.names(inDirectory: path, limit: .max) else { return nil }
+        let candidates = EnvironmentSource.matching(names, prefix: prefix)
         let kept =
-            directoriesOnly ? names.filter { files.kind(atPath: "\(path)/\($0)") == .directory } : names
+            directoriesOnly
+            ? candidates.filter { files.kind(atPath: "\(path)/\($0)") == .directory } : candidates
         return Array(kept.sorted().prefix(Self.valueLimit))
     }
 

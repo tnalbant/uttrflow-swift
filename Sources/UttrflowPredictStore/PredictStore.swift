@@ -377,7 +377,11 @@ public actor PredictStore: PredictionStore {
               count = count + 1,
               self_sourced = self_sourced + excluded.self_sourced,
               last_used = excluded.last_used,
-              text_lower = excluded.text_lower
+              text_lower = excluded.text_lower,
+              superseded_by = CASE
+                WHEN excluded.self_sourced = 0 THEN NULL
+                ELSE entry.superseded_by
+              END
             """,
             {
                 $0.bind(1, id)
