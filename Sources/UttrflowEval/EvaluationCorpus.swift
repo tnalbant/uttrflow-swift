@@ -451,6 +451,12 @@ public enum EvaluationCorpus {
             mustKeep: ["trial period", "last week"]
         ),
         .init(
+            id: "right-homophones-kept", category: .everyday,
+            spoken: "I can hear you from here and I knew the new build would ship next week",
+            expected: "I can hear you from here, and I knew the new build would ship next week.",
+            mustKeep: ["hear you from here", "knew the new build", "next week"]
+        ),
+        .init(
             id: "spoken-period", category: .everyday,
             spoken: "ship it period",
             expected: "Ship it.",
@@ -470,6 +476,12 @@ public enum EvaluationCorpus {
             expected: "The build is green.\n\nThanks everyone.",
             mustKeep: ["build is green", "thanks everyone"],
             mustNotAdd: ["paragraph", "full stop"]
+        ),
+        .init(
+            id: "new-line-after-a-modifier-kept", category: .everyday,
+            spoken: "our best new line got a laugh",
+            expected: "Our best new line got a laugh.",
+            mustKeep: ["best new line", "got a laugh"]
         ),
         .init(
             id: "question-mark-new-line", category: .everyday,
@@ -565,14 +577,14 @@ public enum EvaluationCorpus {
         .init(
             id: "door-code-repeated-digits", category: .technical,
             spoken: "the door code is four seven four seven",
-            expected: "The door code is four seven four seven.",
-            mustKeep: ["four seven four seven"]
+            expected: "The door code is 4747.",
+            mustKeep: ["4747"]
         ),
         .init(
             id: "card-group-repeated-digits", category: .technical,
             spoken: "the test card number starts four two four two four two four two",
-            expected: "The test card number starts four two four two four two four two.",
-            mustKeep: ["four two four two four two four two"]
+            expected: "The test card number starts 42424242.",
+            mustKeep: ["42424242"]
         ),
         .init(
             id: "spoken-email-address", category: .technical,
@@ -1504,6 +1516,48 @@ public enum EvaluationCorpus {
             destination: .codeEditor,
             mustBeginWith: "the",
             mustEndWith: "failure."
+        ),
+        .init(
+            id: "terminal-command-keeps-case", category: .contextual,
+            spoken: "um npm run build",
+            expected: "npm run build",
+            mustKeep: ["run", "build"],
+            context: AppContext(
+                applicationName: "Terminal",
+                bundleIdentifier: "com.apple.Terminal"
+            ),
+            mustNotAdd: ["um"],
+            destination: .terminal,
+            mustBeginWith: "npm",
+            mustEndWith: "build"
+        ),
+        .init(
+            id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
+            spoken: "uh ls dash la",
+            expected: "ls dash la",
+            mustKeep: ["dash", "la"],
+            context: AppContext(
+                applicationName: "iTerm",
+                bundleIdentifier: "com.googlecode.iterm2"
+            ),
+            mustNotAdd: ["uh"],
+            destination: .terminal,
+            mustBeginWith: "ls",
+            mustEndWith: "la"
+        ),
+        .init(
+            id: "terminal-command-keeps-no-stop", category: .contextual,
+            spoken: "um git status",
+            expected: "git status",
+            mustKeep: ["git", "status"],
+            context: AppContext(
+                applicationName: "Warp",
+                bundleIdentifier: "dev.warp.Warp-Stable"
+            ),
+            mustNotAdd: ["um", "."],
+            destination: .terminal,
+            mustBeginWith: "git",
+            mustEndWith: "status"
         ),
         // A question mark from the shape of a sentence needs the model; the rules are not asked to pass this one.
         .init(

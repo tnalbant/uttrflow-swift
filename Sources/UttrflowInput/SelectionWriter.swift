@@ -1,5 +1,6 @@
 // Replaces a field's selection through its Accessibility attributes, checking each step.
 import ApplicationServices
+import Foundation
 import UttrflowCore
 import UttrflowPredict
 
@@ -35,12 +36,10 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
             throw .insertionRejected(description: "the field refused the text (\(result.rawValue))")
         }
 
-        // The selection collapsing to where this text ends is a write, even where the text it replaced reads the same.
-        if let selectionBefore, let after = field.selectedRange(), after.length == 0,
+        guard !text.isEmpty else { return }
+        guard let selectionBefore, let after = field.selectedRange(), after.length == 0,
             after.location == selectionBefore.location + text.utf16.count
-        {
-            return
-        }
+        else { throw .insertionUnconfirmed }
 
         // A success that changed nothing is the failure this catches. See `Docs/insertion.md`.
         if let before, let after = snapshot(window), before == after, !text.isEmpty {
@@ -58,6 +57,7 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         do {
             try replaceSelection(with: text)
         } catch {
+            if error == .insertionUnconfirmed { throw error }
             // A field that takes the selection and refuses the text keeps its caret, not a selection.
             _ = try? select(caret)
             throw error

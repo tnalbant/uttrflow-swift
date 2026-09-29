@@ -14,9 +14,11 @@ field, accept a write to its selected text, answer `.success`, and do nothing at
 
 Believing the return value meant the coordinator stopped there, so the words never
 reached the paste below and never reached the clipboard either — the user saw the
-dictation happen and had nothing to paste. The write is therefore **read back and
-verified**; a field that does not answer the read is trusted, since that is a
-verification rather than a precondition.
+dictation happen and had nothing to paste. A successful write is therefore checked by
+the collapsed caret at the expected UTF-16 endpoint. A missing or unexpected selection
+leaves its placement uncertain, so the result stops the fallback chain and asks the user
+to check the field before retrying; another strategy could duplicate a write that already
+landed.
 
 ## Which application the record names
 
@@ -136,9 +138,10 @@ fallback costs one extra round trip in a case that was already failing.
 ## Reading a field by range, not whole
 
 Every question insertion and the screen read ask about the focused field — what is before the
-caret, whether it is masked, whether a write changed anything — is answered from a bounded
-stretch read with `kAXStringForRangeParameterizedAttribute`, never from `kAXValueAttribute`,
-whose reply is the whole document and is built on the target app's main thread. `CaretWindow`
+caret, whether it is masked, whether a write changed anything — prefers a bounded stretch read
+with `kAXStringForRangeParameterizedAttribute`. `kAXValueAttribute` returns the whole document
+and is built on the target app's main thread, so it is used only when a field cannot answer by
+range or the range cannot safely cover enough whole characters. `CaretWindow`
 chooses the range: four UTF-16 units per character wanted plus sixteen, with the first
 character of a window that does not start at the field's start thrown away because the range
 may have cut it in half. The mask check reads the first 64 units. A field that will not read by
@@ -148,6 +151,14 @@ Measured on a 1,008,000-unit document with the caret at the end, one paste-confi
 copied 1,008,000 units and spent 1.28 ms walking them locally; by range it copies 400 units and
 spends 0.004 ms. The poll runs up to 41 times per dictation, and the cross-process copy, not
 measured here, scales with the units.
+
+Answering is not the same as answering the right field. While a browser's own editor is
+typed into, the system-wide element can name the word under the caret rather than the
+editor — a text-entry role check decides which answer to keep: the system-wide element's
+if its role is one text is entered into, else the application's if that is, else whichever
+answered at all. `FocusedElementPreference.choose` is the one place this is decided, and
+every reader of the focused element — the field reader, the suggestion reader, the context
+engine and dictation insertion — calls through it rather than keeping its own copy.
 
 ## Accessibility calls must be bounded
 
@@ -161,6 +172,16 @@ The 2 s is set on the focused element itself, never on the system-wide element. 
 on the system-wide element is process-wide and read when each message is sent, so an AI
 suggestion read on another queue setting its own 100 ms would cut the insertion's write short
 mid-dictation (#887). The system-wide focus query itself runs under the system default.
+
+Every one of those calls blocks the thread that sends it for as long as the target takes to
+answer. Swift's cooperative pool has about one thread per core, so a call made from `async`
+code would hold a pool thread for up to 2 s per message while every other actor in the
+process waited for one. Insertion, paste confirmation, suggestion acceptance and the typed route's check therefore
+send them through `AccessibilityThread`, a concurrent dispatch queue of their own, and the
+awaiting task resumes when the answer comes back. A task cancelled before its message leaves
+the queue sends nothing and takes a safe fallback — "secure" for the concealment question,
+"unreadable" for a caret read. A message already sent cannot be recalled; the 2 s cap is
+what bounds it.
 
 ## Announcing Uttrflow's own writes
 
@@ -187,7 +208,9 @@ A password or PIN field gets the words like any other field, and nothing else do
 reads the value only when none of those says so, to catch a field that shows mask
 characters without declaring itself. The question is asked twice: by the context read
 when the dictation's screen is read, which then carries none of the field's text, and by
-`TextInsertionCoordinator` just before the write.
+`TextInsertionCoordinator` before the fallback chain starts and again once the winning
+strategy has written, so a switch into a secure field while an earlier strategy fails still
+counts.
 
 Either answer marks the outcome `intoSecureField`. The words then reach no store: no
 history row (not even a length), no Uttrflow clip, no last transcript, no dictionary
@@ -208,3 +231,24 @@ gained `setImage`. `Scripts/pasteboard_audit.sh`, in `make verify`, holds it the
 writer (`SystemInput.swift`) and the reader (`ClipboardSource+System.swift`) may name
 `NSPasteboard`, which is the same argument `Docs/offline.md` makes for one module owning the
 network.
+
+## What "Insert Again" does on the Dictation page
+
+The row on the Dictation page used to offer an "Insert Again" button that handed the text to
+`TextInsertion.coordinator()`. From the main window, Uttrflow itself is in front, so the route
+never reached another application: the Accessibility engine aimed at whatever was focused
+(including Uttrflow's own search field), the paste engine refused, and the clipboard floor
+took over silently. Nothing told the user the words were on the clipboard, or that the
+button had not done what its label promised.
+
+The product call was the rename: the row now offers **Copy** and **Copy to Paste Elsewhere**
+in that order, both `.copy(text)` intents, and the page shows the panel's
+`uttrflowInFront` notice — "Copied — click where you want it, then press ⌘V" — through
+`MainNotice` and VoiceOver. Re-launching the original destination application and waiting for
+it to come to front was rejected because the timing belongs to the user, not the page.
+
+The Accessibility engine now also refuses when Uttrflow is in front
+(`AccessibilityTextInsertionEngine.canInsert()` checks `!focus.isSelfFrontmost()`), so a
+focused Uttrflow field is never the destination through any code path — the rename is the
+honest label, the engine change is the structural guarantee that no caller can fall back into
+Uttrflow's own text fields.

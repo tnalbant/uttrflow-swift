@@ -23,7 +23,7 @@ struct TapStateRingTests {
 
     /// Distinct keys to fill the ring with, so the order they come out in can be read.
     private static let keys: [ArmedKeys] = [
-        .tab, .optionTab, .rightArrow, .return, .escape, .downArrow, .upArrow,
+        .tab, .optionTab, .rightArrow, .return, .escape, .optionDownArrow, .optionUpArrow,
     ]
 
     /// The event the drain reports for a key.
@@ -84,17 +84,17 @@ struct TapStateRingTests {
     @Test("a rejected arrow does not arm Return, so a full ring never blocks it")
     func rejectedArrowDoesNotArmReturn() {
         let state = Self.makeState()
-        state.armed.store(ArmedKeys.downArrow.rawValue | ArmedKeys.tab.rawValue, ordering: .relaxed)
+        state.armed.store(ArmedKeys.optionDownArrow.rawValue | ArmedKeys.tab.rawValue, ordering: .relaxed)
         for _ in 0..<TapState.capacity { #expect(state.takeIfArmed(.tab)) }
-        #expect(!state.takeIfArmed(.downArrow))
+        #expect(!state.takeIfArmed(.optionDownArrow))
         #expect(state.armed.load(ordering: .relaxed) & ArmedKeys.return.rawValue == 0)
     }
 
     @Test("a captured arrow arms Return")
     func capturedArrowArmsReturn() {
         let state = Self.makeState()
-        state.armed.store(ArmedKeys.downArrow.rawValue, ordering: .relaxed)
-        #expect(state.takeIfArmed(.downArrow))
+        state.armed.store(ArmedKeys.optionDownArrow.rawValue, ordering: .relaxed)
+        #expect(state.takeIfArmed(.optionDownArrow))
         #expect(state.armed.load(ordering: .relaxed) & ArmedKeys.return.rawValue != 0)
     }
 
@@ -104,6 +104,24 @@ struct TapStateRingTests {
         state.armed.store(ArmedKeys.tab.rawValue, ordering: .relaxed)
         #expect(!state.takeIfArmed(.escape))
         #expect(state.take().isEmpty)
+    }
+
+    @Test("a key the application sees disarms the tap, so an accept right behind it passes through untaken")
+    func passedKeyDisarmsBeforeAccept() {
+        let state = Self.makeState()
+        state.armed.store(ArmedKeys.rightArrow.rawValue | ArmedKeys.tab.rawValue, ordering: .relaxed)
+        #expect(!state.route(ArmedKeys.slot(of: KeyStroke(keyCode: 1))))
+        #expect(!state.route(.rightArrow))
+        #expect(state.armed.load(ordering: .relaxed) == 0)
+        #expect(state.take().isEmpty)
+    }
+
+    @Test("an armed key is still taken by the route")
+    func routeTakesArmedKey() {
+        let state = Self.makeState()
+        state.armed.store(ArmedKeys.rightArrow.rawValue, ordering: .relaxed)
+        #expect(state.route(.rightArrow))
+        #expect(state.take() == [Self.event(.rightArrow)].compactMap { $0 })
     }
 
     @Test("one thread writing while another drains delivers every keystroke once, in order")

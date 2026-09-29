@@ -94,6 +94,7 @@ struct PanelFormatTests {
         #expect(sheet?.note?.contains("lines would change") == true)
         #expect(sheet?.diff.contains { $0.kind == .added } == true)
         #expect(sheet?.diff.contains { $0.kind == .removed } == true)
+        #expect(sheet?.conflict == "This change cannot be undone")
         #expect(sheet?.confirmTitle == "Keep it")
     }
 
@@ -110,6 +111,7 @@ struct PanelFormatTests {
 
         #expect(sheet.diff.isEmpty)
         #expect(sheet.note == "Too large to compare line by line: 30000 lines before, 30001 after")
+        #expect(sheet.conflict == "This change cannot be undone")
         #expect(sheet.isConfirmEnabled)
         #expect(
             PanelPresenter.formattingSheet(.tooLarge(before: 1, after: 1), changes: false).isConfirmEnabled
@@ -137,6 +139,23 @@ struct PanelFormatTests {
         }
         #expect(later == 0)
         #expect(again.allSatisfy { $0 == first })
+    }
+
+    @Test("D6 · a sheet prepared off the main actor is presented without comparing the texts")
+    func preparedSheetIsNotComparedAgain() {
+        let formatted = "func a() {\n    let x = 1\n}"
+        var prepared: PreparedFormattingSheet?
+        let preparing = Self.diffSteps {
+            prepared = PreparedFormattingSheet(from: Self.swiftCode.text, to: formatted)
+        }
+        var snapshot = Self.panel()
+        if let prepared { snapshot.remember(prepared) }
+        snapshot.sheet = .formatting(Self.swiftCode.id, formatted: formatted)
+        var shown: PanelSheetPresentation?
+
+        #expect(preparing > 0)
+        #expect(Self.diffSteps { shown = PanelPresenter.present(snapshot).sheet } == 0)
+        #expect(shown == Self.sheet(formatted))
     }
 
     @Test("a different formatted text is compared afresh")

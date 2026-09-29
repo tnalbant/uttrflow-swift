@@ -2,7 +2,10 @@ import AppKit
 import ApplicationServices
 public import Foundation
 public import UttrflowCore
-import UttrflowPredict
+public import UttrflowPredict
+
+private import Carbon
+private import Synchronization
 
 /// The real clipboard, untestable by construction and so excluded from the coverage gate.
 public struct SystemPasteboard: Pasteboard {
@@ -90,19 +93,91 @@ private func postTaggedKeyPair(
     keyUp.post(tap: .cghidEventTap)
 }
 
+/// The key code posted when no keyboard layout can be read, `v`'s position on a US QWERTY board.
+private let fallbackVKeyCode: CGKeyCode = 9
+
+/// The key code for ⌘V, resolved from the layout the target interprets shortcuts with. See `Docs/input-synthetic-keystrokes.md`.
+enum PasteKeyLayout {
+    /// `v`, the character ⌘V is a shortcut for regardless of the key that types it.
+    private static let vCharacter = UniChar(UnicodeScalar("v").value)
+
+    /// The last resolved key code, readable from any thread without a Text Input Sources call.
+    private static let cachedKeyCode = Mutex<CGKeyCode>(fallbackVKeyCode)
+
+    /// Whether the change notification is already being watched, so starting twice still observes once.
+    @MainActor private static var observing = false
+
+    /// The cached key code for ⌘V, filled by `startObserving()` and kept current after that.
+    static func vKeyCode() -> CGKeyCode {
+        cachedKeyCode.withLock { $0 }
+    }
+
+    /// Fills the cache and keeps it filled, which every off-main reader depends on having been called.
+    @MainActor
+    static func startObserving() {
+        guard !observing else { return }
+        observing = true
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+            object: nil, queue: nil
+        ) { _ in
+            // Back to the main queue explicitly, because HIToolbox asserts it and the poster is not it.
+            DispatchQueue.main.async { MainActor.assumeIsolated { _ = refresh() } }
+        }
+        refresh()
+    }
+
+    /// Asks Text Input Sources what is selected and caches its ⌘V key code, the one place that calls TIS.
+    @MainActor
+    @discardableResult
+    static func refresh() -> CGKeyCode {
+        let code = readVKeyCode()
+        cachedKeyCode.withLock { $0 = code }
+        return code
+    }
+
+    /// The current layout's key code for ⌘V, read from its ⌘ table, or the ASCII-capable layout's when the current one has none.
+    @MainActor
+    private static func readVKeyCode() -> CGKeyCode {
+        if let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+            let data = unicodeLayoutData(of: source),
+            let code = LayoutKeyCode.code(for: vCharacter, in: data, modifiers: LayoutKeyCode.commandHeld)
+        {
+            return code
+        }
+        if let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+            let data = unicodeLayoutData(of: source),
+            let code = LayoutKeyCode.code(for: vCharacter, in: data, modifiers: LayoutKeyCode.commandHeld)
+        {
+            return code
+        }
+        return fallbackVKeyCode
+    }
+
+    /// The raw layout table Text Input Sources holds for `source`, absent for input methods and the like.
+    private static func unicodeLayoutData(of source: TISInputSource) -> Data? {
+        guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        return Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue() as Data
+    }
+}
+
 /// Presses ⌘V by posting keyboard events, which no test can assert anything about.
 public struct CGEventKeystrokeSender: KeystrokeSender {
-    /// Virtual key code for V, positional and so correct on any keyboard layout.
-    private static let vKeyCode: CGKeyCode = 9
-
     public init() {}
+
+    /// Starts tracking layout changes, so `sendPaste()` posts the key that types V under the current one.
+    @MainActor
+    public static func startObservingLayout() {
+        PasteKeyLayout.startObserving()
+    }
 
     public func sendPaste() throws(TextInsertionError) {
         guard AXIsProcessTrusted() else { throw .accessibilityDenied }
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        try postTaggedKeyPair(from: source, keyCode: Self.vKeyCode) { $0.flags = .maskCommand }
+        try postTaggedKeyPair(from: source, keyCode: PasteKeyLayout.vKeyCode()) { $0.flags = .maskCommand }
     }
 }
 
@@ -144,7 +219,7 @@ public struct CGEventTypist: KeystrokeTyping {
     }
 }
 
-/// The focused text field, found through the Accessibility API against a real window.
+/// The focused text field, found through the Accessibility API; its methods block, so async code calls them via `AccessibilityThread`.
 public struct AXAccessibilityFocus: AccessibilityFocus {
     public init() {}
 
@@ -183,18 +258,22 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             })
     }
 
-    /// The focused element, asked system-wide then per-application. See `Docs/insertion.md`.
+    /// The focused element, asked system-wide then per-application, preferring whichever names a text-entry role. See `Docs/insertion.md`.
     private func focusedElement() -> AXUIElement? {
         guard AXIsProcessTrusted() else { return nil }
 
         // The timeout goes on the element itself: set on the system-wide element it is process-wide, and a suggestion read could lower it mid-insertion (#887).
         let system = AXUIElementCreateSystemWide()
-        if let element = focusedElement(of: system) { return element }
-
-        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
-        let application = AXUIElementCreateApplication(frontmost.processIdentifier)
-        _ = AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
-        return focusedElement(of: application)
+        let systemWide = focusedElement(of: system)
+        return FocusedElementPreference.choose(
+            systemWide: systemWide, systemWideRole: { stringAttribute(kAXRoleAttribute, of: $0) },
+            application: {
+                guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
+                let application = AXUIElementCreateApplication(frontmost.processIdentifier)
+                _ = AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
+                return focusedElement(of: application)
+            },
+            applicationRole: { stringAttribute(kAXRoleAttribute, of: $0) })
     }
 
     private func focusedElement(of parent: AXUIElement) -> AXUIElement? {
@@ -213,23 +292,26 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// The `count` characters before the caret, when the field will report both its value and its caret.
     public func precedingText(_ count: Int) -> String? {
-        guard count > 0, let (value, caret) = textBeforeCaret(count) else { return nil }
+        guard count > 0, let element = focusedElement(),
+            let (value, caret) = textBeforeCaret(count, of: element)
+        else { return nil }
         return BackwardSelection.text(in: value, endingAt: caret, exactly: count)
     }
 
     /// As much as the field holds before the caret, so a field shorter than the request is still read.
     public func tail(upTo count: Int) -> FieldTail {
         guard
-            count > 0, let (value, caret) = textBeforeCaret(count),
+            count > 0, let element = focusedElement(),
+            let (value, caret) = textBeforeCaret(count, of: element),
             let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
         else { return .unreadable }
         return .text(tail)
     }
 
     /// Text ending at the caret, read by range where the field allows it, with the caret's offset into it.
-    private func textBeforeCaret(_ count: Int) -> (String, Int)? {
+    private func textBeforeCaret(_ count: Int, of element: AXUIElement) -> (String, Int)? {
         guard
-            let element = focusedElement(),
+            count > 0, !isSecure(element),
             let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
         else { return nil }
         if let window = CaretWindow.before(
@@ -240,17 +322,63 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         return stringAttribute(kAXValueAttribute, of: element).map { ($0, range.location) }
     }
 
+    /// Reads a field's security metadata and only checks masked text when the metadata is inconclusive.
+    private func isSecure(_ element: AXUIElement) -> Bool { isSecureField(element) }
+
+    /// Reads the window and its text from one AX element, so matching text in another window cannot authorize a write.
+    public func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard count > 0, let element = focusedElement() else { return (nil, .unreadable) }
+        let number = Self.windowNumber(of: element)
+        guard let (value, caret) = textBeforeCaret(count, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
+        else { return (number, .unreadable) }
+        return (number, .text(tail))
+    }
+
+    /// The window containing this focused field, or nothing when the system cannot identify it.
+    private static func windowNumber(of element: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(element, &number) == .success else { return nil }
+        return number
+    }
+
+    /// The window containing the field currently focused for insertion.
+    public func focusedWindowNumber() -> UInt32? {
+        focusedElement().flatMap(Self.windowNumber(of:))
+    }
+
     public func focusedTextField() -> (any FocusedTextField)? {
         guard let candidate = focusedElement() else { return nil }
 
-        // A field that will not report its selection will not accept one either.
-        var selection: AnyObject?
         guard
-            AXUIElementCopyAttributeValue(
-                candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+            FocusedTextFieldEligibility.accepts(
+                role: stringAttribute(kAXRoleAttribute, of: candidate),
+                selectedTextIsReadable: {
+                    var selection: AnyObject?
+                    return AXUIElementCopyAttributeValue(
+                        candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+                },
+                selectedTextIsSettable: {
+                    var settable = DarwinBoolean(false)
+                    return AXUIElementIsAttributeSettable(
+                        candidate, kAXSelectedTextAttribute as CFString, &settable) == .success
+                        && settable.boolValue
+                })
         else { return nil }
 
         return SelectionWriter(field: AXSelectionAttributes(element: candidate))
+    }
+}
+
+/// Confirms the focused element is a writable text control before exposing it to insertion.
+enum FocusedTextFieldEligibility {
+    /// A readable selection alone does not establish that the element accepts text writes.
+    static func accepts(
+        role: String?, selectedTextIsReadable: () -> Bool, selectedTextIsSettable: () -> Bool
+    ) -> Bool {
+        FocusedElementPreference.isTextEntry(role)
+            && selectedTextIsReadable()
+            && selectedTextIsSettable()
     }
 }
 
@@ -260,7 +388,7 @@ private struct AXSelectionAttributes: SelectionAttributes, @unchecked Sendable {
     let element: AXUIElement
 
     func value() -> String? {
-        stringAttribute(kAXValueAttribute, of: element)
+        readableValue(of: element)
     }
 
     func selectedRange() -> CFRange? {
@@ -272,19 +400,60 @@ private struct AXSelectionAttributes: SelectionAttributes, @unchecked Sendable {
     }
 
     func text(in range: Range<Int>) -> String? {
-        stringForRange(range, of: element)
+        guard !isSecureField(element) else { return nil }
+        return stringForRange(range, of: element)
     }
 
     func setSelectedText(_ text: String) -> AXError {
-        AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString)
+        guard attributeIsSettable(kAXSelectedTextAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
+        return AXUIElementSetAttributeValue(
+            element, kAXSelectedTextAttribute as CFString, text as CFString)
     }
 
     /// A range that cannot be described is reported as an illegal argument, which the writer refuses.
     func setSelectedRange(_ range: CFRange) -> AXError {
+        guard attributeIsSettable(kAXSelectedTextRangeAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
         var range = range
         guard let value = AXValueCreate(.cfRange, &range) else { return .illegalArgument }
         return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
     }
+}
+
+/// Returns whether the Accessibility server confirms an attribute accepts writes.
+private func attributeIsSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
+    var settable = DarwinBoolean(false)
+    return AXUIElementIsAttributeSettable(element, attribute, &settable) == .success
+        && settable.boolValue
+}
+
+/// The element's value, or `nil` for a secure field, whose value is never asked for.
+private func readableValue(of element: AXUIElement) -> String? {
+    SecureField.readableValue(
+        role: stringAttribute(kAXRoleAttribute, of: element),
+        subrole: stringAttribute(kAXSubroleAttribute, of: element),
+        identifier: stringAttribute(kAXIdentifierAttribute, of: element),
+        placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
+        description: stringAttribute(kAXDescriptionAttribute, of: element),
+        value: { stringAttribute(kAXValueAttribute, of: element) })
+}
+
+/// Checks security metadata first; only checks masked text when metadata is inconclusive.
+private func isSecureField(_ element: AXUIElement) -> Bool {
+    SecureField.isSecure(
+        role: stringAttribute(kAXRoleAttribute, of: element),
+        subrole: stringAttribute(kAXSubroleAttribute, of: element),
+        identifier: stringAttribute(kAXIdentifierAttribute, of: element),
+        placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
+        description: stringAttribute(kAXDescriptionAttribute, of: element),
+        value: {
+            CaretWindow.prefix(
+                length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
+                ?? stringAttribute(kAXValueAttribute, of: element)
+        })
 }
 
 /// The string an Accessibility attribute holds, or `nil` when the element will not say.
@@ -333,4 +502,20 @@ private func rangeAttribute(_ name: String, of element: AXUIElement) -> CFRange?
         return nil
     }
     return range
+}
+
+/// Posts a keystroke the tap took and the session refused, tagged so neither the tap nor the monitor takes it again.
+public enum KeyStrokeReturn {
+    /// Presses the stroke's key with its modifiers in the focused application.
+    public static func post(_ stroke: UttrflowPredict.KeyStroke) {
+        guard let keyCode = stroke.key.keyCode,
+            let source = CGEventSource(stateID: .hidSystemState)
+        else { return }
+        var flags = CGEventFlags()
+        if stroke.modifiers.contains(.command) { flags.insert(.maskCommand) }
+        if stroke.modifiers.contains(.option) { flags.insert(.maskAlternate) }
+        if stroke.modifiers.contains(.control) { flags.insert(.maskControl) }
+        if stroke.modifiers.contains(.shift) { flags.insert(.maskShift) }
+        try? postTaggedKeyPair(from: source, keyCode: CGKeyCode(keyCode)) { $0.flags = flags }
+    }
 }

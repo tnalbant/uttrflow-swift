@@ -65,7 +65,7 @@ struct Bakeoff: AsyncParsableCommand {
             try store.save(await measureShipping())
         }
         if !baselinesOnly {
-            for model in selectedModels() {
+            for model in try selectedModels() {
                 try store.save(await measureLocal(model))
             }
         }
@@ -75,7 +75,7 @@ struct Bakeoff: AsyncParsableCommand {
 
     /// Prints raw model output for a handful of cases, because a score never says why.
     private func showSamples() async throws {
-        for model in selectedModels() {
+        for model in try selectedModels() {
             print("=== \(model.shortName) ===")
             let cleanup = MLXCleanupModel(model: model)
             try await cleanup.prepare()
@@ -100,10 +100,21 @@ struct Bakeoff: AsyncParsableCommand {
 
     // MARK: Candidates
 
-    private func selectedModels() -> [LocalModel] {
+    private func selectedModels() throws -> [LocalModel] {
         guard let models else { return LocalModel.candidates }
-        return models.split(separator: ",")
-            .compactMap { LocalModel.named(String($0).trimmed) }
+        let names = models.split(separator: ",").map { String($0).trimmed }
+        guard !names.isEmpty else {
+            throw CleanExit.message("No models selected. Pass one or more model names to --models.")
+        }
+        return try names.map { name in
+            guard let model = LocalModel.named(name) else {
+                let validNames = ["gemma3Small", "llama32", "qwen3", "ministral3", "gemma3"]
+                throw CleanExit.message(
+                    "Unknown model '\(name)'. Choose a catalogue name (\(validNames.joined(separator: ", "))), a repository identifier, or a repository short name."
+                )
+            }
+            return model
+        }
     }
 
     private func measureBaseline(
