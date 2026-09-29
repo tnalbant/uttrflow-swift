@@ -1,5 +1,5 @@
 // What VoiceOver says when a dictation starts, lands or fails.
-import UttrflowCore
+public import UttrflowCore
 
 /// One sentence for VoiceOver to speak unasked, since the floating button never takes focus.
 public struct DictationAnnouncement: Sendable, Equatable {
@@ -15,6 +15,12 @@ public struct DictationAnnouncement: Sendable, Equatable {
 }
 
 extension DictationPresenter {
+    /// What to announce once when a recording first reaches its warning point.
+    public static func warningAnnouncement(for advice: DictationAdvice) -> DictationAnnouncement? {
+        guard let remaining = RemainingTime.phrase(for: advice) else { return nil }
+        return DictationAnnouncement(text: "Dictation ends soon. \(remaining).", isUrgent: false)
+    }
+
     /// What to announce on arriving at `state`, or `nil` when the state is not news.
     public static func announcement(for state: DictationState) -> DictationAnnouncement? {
         switch state {

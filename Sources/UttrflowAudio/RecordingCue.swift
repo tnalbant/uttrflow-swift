@@ -27,11 +27,12 @@ extension SoundPlayer {
     public func prewarm(_ sounds: [CueSound]) {}
 }
 
-/// Plays a pair of sounds around a recording, respecting the setting and never answering an unplayed start.
+/// Plays recording sounds, respecting the setting and never answering an unplayed start.
 public final class SoundPlayingRecordingCue: RecordingCueing {
     private let player: any SoundPlayer
     private let startSound: CueSound
     private let stopSound: CueSound
+    private let warningSound: CueSound
     private let soundsEnabled: @Sendable () -> Bool
 
     /// Whether a start cue was heard and a stop cue is owed; locked because the calls arrive on any thread.
@@ -42,15 +43,17 @@ public final class SoundPlayingRecordingCue: RecordingCueing {
         player: any SoundPlayer,
         startSound: CueSound = .start,
         stopSound: CueSound = .stop,
+        warningSound: CueSound = .warning,
         soundsEnabled: @escaping @Sendable () -> Bool = { true }
     ) {
         self.player = player
         self.startSound = startSound
         self.stopSound = stopSound
+        self.warningSound = warningSound
         self.soundsEnabled = soundsEnabled
 
         // Loading, shaping and the first output graph are paid now, not on the keystroke.
-        player.prewarm([startSound, stopSound])
+        player.prewarm([startSound, stopSound, warningSound])
     }
 
     public func playStart() {
@@ -70,5 +73,10 @@ public final class SoundPlayingRecordingCue: RecordingCueing {
 
         guard owed, soundsEnabled() else { return }
         player.play(stopSound)
+    }
+
+    public func playWarning() {
+        guard soundsEnabled() else { return }
+        player.play(warningSound)
     }
 }

@@ -107,6 +107,7 @@ private final class ChordCue: RecordingCueing {
     private let starts = Mutex(0)
     func playStart() { starts.withLock { $0 += 1 } }
     func playStop() {}
+    func playWarning() {}
     var startsPlayed: Int { starts.withLock { $0 } }
 }
 

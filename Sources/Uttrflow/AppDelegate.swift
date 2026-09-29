@@ -1032,6 +1032,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
             },
+            onWarning: { [weak self] advice in
+                Task { @MainActor in
+                    self?.announce(DictationPresenter.warningAnnouncement(for: advice))
+                }
+            },
             onStopGestureChange: { [weak self] gesture in
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }

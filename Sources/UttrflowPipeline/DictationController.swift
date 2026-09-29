@@ -20,6 +20,8 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private let limit: DictationLimit
     /// Told how a long recording is going, so the interface can say so and then stop it.
     private let onAdvice: @Sendable (DictationAdvice) -> Void
+    /// Told once when a dictation first reaches its warning point.
+    private let onWarning: @Sendable (DictationAdvice) -> Void
     /// Told when the gesture that ends a recording changes, so the dock can say so even mid-recording.
     private let onStopGestureChange: @Sendable (StopGesture) -> Void
     private var limitTask: Task<Void, Never>?
@@ -75,6 +77,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         clock: ClockType,
         limit: DictationLimit = .default,
         onAdvice: @escaping @Sendable (DictationAdvice) -> Void = { _ in },
+        onWarning: @escaping @Sendable (DictationAdvice) -> Void = { _ in },
         onStopGestureChange: @escaping @Sendable (StopGesture) -> Void = { _ in }
     ) {
         self.pipeline = pipeline
@@ -85,6 +88,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         self.clock = clock
         self.limit = limit
         self.onAdvice = onAdvice
+        self.onWarning = onWarning
         self.onStopGestureChange = onStopGestureChange
         (gestures, gestureSink) = AsyncStream<Gesture>.makeStream()
         // Weak, like the forwarder below: a strong `self` here would never let the controller die.
@@ -431,12 +435,16 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         limitTask?.cancel()
         limitGeneration += 1
         let generation = limitGeneration
-        limitTask = Task { [clock, limit, onAdvice, gestureSink] in
+        limitTask = Task { [clock, limit, cue, onAdvice, onWarning, gestureSink] in
             let start = clock.now
             do {
                 // Deadlines from the start, so a late wake-up cannot push the cap back.
                 for elapsed in limit.countdown {
                     try await clock.sleep(until: start.advanced(by: elapsed), tolerance: nil)
+                    if elapsed == limit.warnAfter {
+                        cue.playWarning()
+                        onWarning(limit.advice(at: elapsed))
+                    }
                     onAdvice(limit.advice(at: elapsed))
                 }
                 try await clock.sleep(until: start.advanced(by: limit.stopAfter), tolerance: nil)

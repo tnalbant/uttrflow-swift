@@ -24,10 +24,20 @@ struct CueSoundTests {
         #expect(CueSound.stop.volume == 0.7)
     }
 
-    @Test("the two cues are told apart")
+    @Test("the warning cue is Glass and differs from the start and stop cues")
+    func warningSpec() {
+        #expect(CueSound.warning.sound == SystemSound("Glass"))
+        #expect(CueSound.warning.semitones == -3)
+        #expect(CueSound.warning.lowPassHz == 3000)
+        #expect(CueSound.warning.volume == 0.7)
+        #expect(CueSound.warning != CueSound.start)
+        #expect(CueSound.warning != CueSound.stop)
+    }
+
+    @Test("the three cues are told apart")
     func cuesDiffer() {
         #expect(CueSound.start != CueSound.stop)
-        #expect(Set([CueSound.start, CueSound.stop, CueSound.start]).count == 2)
+        #expect(Set([CueSound.start, CueSound.stop, CueSound.warning]).count == 3)
     }
 
     @Test(
@@ -157,7 +167,7 @@ struct SystemSoundFileTests {
 
     @Test("decodes both cues' sounds into one channel of audio")
     func decodesCues() throws {
-        for cue in [CueSound.start, CueSound.stop] {
+        for cue in [CueSound.start, CueSound.stop, CueSound.warning] {
             let file = try #require(SystemSoundFile.load(cue.sound))
             #expect(file.sampleRate > 0)
             #expect(file.samples.contains { $0 != 0 })
