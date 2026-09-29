@@ -223,8 +223,8 @@ older build is repaired rather than trusted.
 **What they saw.** The dev tool reported
 `modelLoadFailed(description: "Download failed: …")`. In the app the same error became
 `SpeechEngineError.modelLoadFailed`, so the user got *"Speech recognition couldn't
-start. Try again, or reinstall it from Settings."* — a complete sentence, but it named
-the wrong cause and offered `.retry`, which failed identically every time.
+start. Try again."* The available recovery is `.retry`; the message no longer points to
+a Settings control that does not exist.
 
 **The fix landed in the store rather than the backend**, which is where the gap was.
 `SpeechModelStore.missingComponents(of:)` treats the tokenizer as a component of its own,
@@ -313,7 +313,7 @@ connection even with every file already present. Offline the request failed and 
 back to the cache, which is why nothing looked broken (#380).
 
 `LocalModel.weightsDirectory(cache:downloader:onProgress:)` now decides first. When
-`CachedSnapshot.complete` finds the snapshot `refs/main` names with `config.json`,
+`CachedSnapshot.complete` finds `snapshots/<LocalModel.revision>/` with `config.json`,
 `tokenizer.json` and `tokenizer_config.json` present, every `*.safetensors` file exactly as long
 as its own header says, every numbered shard present, and the weights at least nine tenths of
 the model's recorded download, the model loads from that directory and the hub is never

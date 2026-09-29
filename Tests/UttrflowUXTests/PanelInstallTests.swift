@@ -14,7 +14,8 @@ struct PanelInstallTests {
     func arrivingCodeIsFormattable() {
         var snapshot = PanelFixture.panel([PanelFixture.clip("words", minutesAgo: 1)])
         snapshot.install(
-            [Self.python] + snapshot.clips, missingImages: [], formattableLanguages: [.python])
+            [Self.python] + snapshot.clips, missingImages: [], formattableLanguages: [.python],
+            now: PanelFixture.now)
         let row = PanelPresenter.present(snapshot).rows[0]
         #expect(row.actions.map(\.title).contains("Format"))
     }
@@ -25,7 +26,8 @@ struct PanelInstallTests {
             text: "", kind: .image, copiedAt: PanelFixture.now,
             image: ClipImage(file: "gone.png", width: 1, height: 1, bytes: 1, sha: "00"))
         var snapshot = PanelFixture.panel([picture])
-        snapshot.install([picture], missingImages: [picture.id], formattableLanguages: [])
+        snapshot.install(
+            [picture], missingImages: [picture.id], formattableLanguages: [], now: PanelFixture.now)
         guard case .say = snapshot.applying(.return).outcome.effect else {
             Issue.record("Return on a missing picture should say so, not insert")
             return

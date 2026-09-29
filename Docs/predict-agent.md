@@ -19,10 +19,9 @@ suggestion lands well under a second after a pause.
   values as candidates when the corpus has none. All of it is tested against a substitute machine.
 - **An attestation gate.** `Verifier` passes every *remembered* line through it: the last word of the
   line is looked up among the machine's values for the kinds that position may hold, and a line
-  the machine vouches for skips the model's plausibility score. `Verification.attestingKinds(for:)`
-  decides those kinds by position alone — the first word is a program or an alias, any later word
-  a branch or a file — and `Verification.isClosedVocabulary` says which kinds are complete enough
-  that an unknown word is wrong rather than new.
+  the machine vouches for skips the model's plausibility score. `Verification.attestation(for:)`
+  describes what may vouch for a generated word, while `Verification.isClosedVocabulary(for:)`
+  says whether the listed kinds are complete enough that an unknown word is wrong rather than new.
 - **A generation path** that runs when the corpus and the machine offer nothing, with the line
   written into the model's turn and `TokenHealing` holding its first tokens to the typed word.
   Its output is drawn as the model's own and is judged by nothing.
@@ -66,7 +65,8 @@ in one place, of the kind `zsh`'s completion system keeps: `cd`, `pushd`, `rmdir
 `vim`, `cat`, `source`, `open`, `less` take files; `git checkout`, `git switch`, `git merge`,
 `git rebase` take branches; `git`, `docker`, `kubectl`, `npm`, `make`, `brew` take a subcommand
 first. An unknown command's arguments are files or free. Prose registers are free everywhere.
-`Verification.attestingKinds(for:)` reads the kind from the shape instead of the position.
+`Verification.attestation(for:)` uses the token's shape to describe what may vouch for the
+generated word.
 
 **A2 — Two more tools.** Directories under a path prefix, resolved against the working directory,
 so `projects/beacon/` from `backend` yields an empty set — which is the answer — and `..` and

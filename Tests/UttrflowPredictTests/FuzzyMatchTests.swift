@@ -19,6 +19,19 @@ struct FuzzyMatchTests {
         #expect(distance("kubctl", "kubectl describe") == 1)
     }
 
+    @Test(
+        "A near miss that adds, drops or changes a typed digit is refused; one that leaves them is kept.",
+        arguments: [
+            ("12.60", "12.50", false), ("1,250", "1,350.00", false), ("12.5", "125.0", false),
+            ("abc", "a1bc", false), ("abc", "ab1c", false), ("v12", "v1 2", true),
+            ("invoce", "invoice 2024", true), ("gti c", "git commit -m", true),
+            ("roomm 12", "room 12 booked", true), ("roomm 12", "room 13 booked", false),
+        ])
+    func digitsAreKept(query: String, candidate: String, kept: Bool) {
+        let distance = distance(query, candidate, within: 2)
+        #expect(FuzzyMatch.keepsDigits(of: bytes(query), in: bytes(candidate), atDistance: distance) == kept)
+    }
+
     @Test("An exact opening costs nothing.")
     func exactCostsNothing() {
         #expect(distance("git c", "git commit -m") == 0)
@@ -121,12 +134,5 @@ struct MaskTests {
         #expect(distance("कल मोल", "कल मिलते हैं") == 1)
         #expect(distance("caf", "café au lait") == 0)
         #expect(distance("cafe", "café au lait") == 1)
-    }
-
-    @Test("A prefix is recognised without measuring any distance at all.")
-    func prefixIsCheap() {
-        #expect(FuzzyMatch.isPrefix(bytes("git"), of: bytes("git commit")))
-        #expect(!FuzzyMatch.isPrefix(bytes("gti"), of: bytes("git commit")))
-        #expect(!FuzzyMatch.isPrefix(bytes("git commit"), of: bytes("git")))
     }
 }

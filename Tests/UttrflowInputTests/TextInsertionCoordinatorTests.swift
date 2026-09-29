@@ -145,6 +145,46 @@ struct AccessibilityTextInsertionEngineTests {
         #expect(canInsert == isFocused)
     }
 
+    /// #678: Uttrflow itself has focused fields — its own search field is one — and none of them is the destination.
+    @Test("refuses to write into Uttrflow's own field even when something is focused")
+    func refusesWhenUttrflowIsInFront() async {
+        let engine = AccessibilityTextInsertionEngine(
+            focus: FakeFocus(field: FakeTextField(), isSelf: true)
+        )
+
+        #expect(await engine.canInsert() == false)
+    }
+
+    @Test("refuses the write itself when Uttrflow is in front, whatever canInsert said earlier")
+    func insertRefusesWhenUttrflowIsInFront() async {
+        let field = FakeTextField()
+        let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: field, isSelf: true))
+
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.insert("hello")
+        }
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.write("hello", replacing: "")
+        }
+        #expect(field.replacements.isEmpty)
+    }
+
+    @Test("leaves a dictation made over Uttrflow's own field to the clipboard, not to that field")
+    func coordinatorFallsPastUttrflowsOwnField() async throws {
+        let field = FakeTextField()
+        let keystrokes = FakeKeystrokeSender()
+        let pasteboard = FakePasteboard()
+        let coordinator = TextInsertion.coordinator(
+            focus: FakeFocus(field: field, isSelf: true), pasteboard: pasteboard,
+            keystrokes: keystrokes)
+
+        let attempt = try await coordinator.insert("hello there")
+
+        #expect(attempt.method != .accessibility)
+        #expect(field.replacements.isEmpty)
+        #expect(keystrokes.pasteCount == 0)
+    }
+
     @Test("reports that there is no text field rather than dropping the words")
     func insertWithoutAFocusedField() async {
         let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: nil))
@@ -369,6 +409,25 @@ struct IdenticalSelectionInsertionTests {
 
         #expect(attempt.method == .accessibility, "the Accessibility write succeeded and must not be doubted")
         #expect(keystrokes.pasteCount == 0, "a successful same-text replacement must not also be pasted")
+    }
+
+    @Test("stops fallback when an accepted Accessibility write has no resulting selection")
+    func doesNotDuplicateAnUnconfirmedWrite() async throws {
+        let field = SelectionWriter(
+            field: FakeSelectionField("hello") {
+                $0.reportsSelection = false
+            })
+        let keystrokes = FakeKeystrokeSender()
+        let coordinator = TextInsertion.coordinator(
+            focus: FakeFocus(field: field, somethingFocused: true),
+            pasteboard: FakePasteboard(), keystrokes: keystrokes)
+
+        await #expect(throws: TextInsertionError.insertionUnconfirmed) {
+            try await coordinator.insert(" world")
+        }
+
+        #expect(field.field.text == "hello world")
+        #expect(keystrokes.pasteCount == 0)
     }
 }
 
