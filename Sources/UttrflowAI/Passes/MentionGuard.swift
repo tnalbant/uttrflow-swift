@@ -58,13 +58,19 @@ enum MentionGuard {
         return false
     }
 
-    /// Recognizes adjectives in the local noun phrase and ordinal numbers without an adjective list.
+    /// Recognizes modifiers in the local noun phrase and ordinal numbers without a word list.
     private static func isModifier(_ word: String, before head: String) -> Bool {
         if NumberFormsPass.ordinalUnits[word] != nil { return true }
         let phrase = "the \(word) \(head)"
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
         tagger.string = phrase
         guard let wordRange = phrase.range(of: word) else { return false }
-        return tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0 == .adjective
+        let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
+        // Adverbs can modify an adjective in the same phrase ("the very last new line").
+        if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+
+        // Participles such as "opening" can be adjectives in this attributive position even when
+        // NaturalLanguage labels the ambiguous surface form as a noun.
+        return lexicalClass == .noun && word.hasSuffix("ing")
     }
 }
