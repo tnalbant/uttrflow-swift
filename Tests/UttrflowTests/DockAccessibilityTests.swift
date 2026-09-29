@@ -51,6 +51,23 @@ struct DockAccessibilityTests {
         #expect(hint.hasPrefix("Starts a dictation."), "\(action) hides the button's own action")
     }
 
+    @Test("recovery buttons use the specific shared action titles")
+    func recoveryTitlesNameTheirDestination() {
+        #expect(DockView.title(for: .openSystemSettings(.microphone)) == "Open System Settings")
+        #expect(DockView.title(for: .downloadSpeechModel) == "Finish Setup")
+    }
+
+    @Test("names a setup form's button in the words the form draws")
+    func hintNamesTheSetupButton() {
+        let failed = DictationPresenter.dock(for: .idle, speechModel: .failed)
+        let missing = DictationPresenter.dock(for: .idle, speechModel: .missing)
+
+        #expect(DockView.spokenHint(for: failed) == "Starts a dictation. Retry is available as an action.")
+        #expect(
+            DockView.spokenHint(for: missing) == "Starts a dictation. Download is available as an action.")
+        #expect(DockView.title(for: .retry, in: DictationPresenter.dock(for: .idle)) == "Try Again")
+    }
+
     @Test("has something to say in every state it can be drawn in", arguments: everyState)
     func everyStateIsSpoken(_ state: DictationState) {
         let presentation = DictationPresenter.dock(for: state)

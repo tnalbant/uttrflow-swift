@@ -12,7 +12,21 @@ cd "$PACKAGE_ROOT"
 
 # Exclusions and their reasons live in coverage_report.py, which prints them.
 
-swift test --enable-code-coverage "$@"
+# CI has been losing this run's output entirely on an intermittent crash: the log just
+# stops, with no error and no exit code, well before the timeout. Tee-ing to a file means
+# the run's own output survives on disk even if the terminal stream that produced it dies
+# mid-write, so a later step can still show what the crash interrupted.
+TEST_LOG="$PACKAGE_ROOT/.build/swift-test-output.log"
+mkdir -p "$(dirname "$TEST_LOG")"
+set +e
+swift test --enable-code-coverage "$@" 2>&1 | tee "$TEST_LOG"
+TEST_STATUS="${PIPESTATUS[0]}"
+set -e
+if [[ "$TEST_STATUS" -ne 0 ]]; then
+    echo "error: swift test exited $TEST_STATUS — last 300 lines of $TEST_LOG:" >&2
+    tail -n 300 "$TEST_LOG" >&2
+    exit "$TEST_STATUS"
+fi
 
 BIN_PATH="$(swift build --show-bin-path)"
 PROFDATA="$BIN_PATH/codecov/default.profdata"

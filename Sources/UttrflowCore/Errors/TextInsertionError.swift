@@ -10,6 +10,8 @@ public enum TextInsertionError: UttrflowFailure {
     case insertionTimedOut
     /// The focused app refused the text, which is on the clipboard instead.
     case insertionRejected(description: String)
+    /// Accessibility accepted a write but its delayed result could not be distinguished from refusal.
+    case insertionUnconfirmed
 
     /// A plain sentence per case, saying where the words are.
     public var userMessage: String {
@@ -24,6 +26,8 @@ public enum TextInsertionError: UttrflowFailure {
             "The application did not respond. Your dictation is saved under Recent in the menu bar."
         case .insertionRejected:
             "The text couldn't be inserted here. It's been copied, so press ⌘V to paste it."
+        case .insertionUnconfirmed:
+            "The app hasn't confirmed whether the text was inserted. Check the field before trying again."
         }
     }
 
@@ -36,6 +40,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .clipboardUnavailable: .showRecentDictations
         case .insertionTimedOut: .showRecentDictations
         case .insertionRejected: .pasteManually
+        case .insertionUnconfirmed: .showRecentDictations
         }
     }
 
@@ -45,8 +50,14 @@ public enum TextInsertionError: UttrflowFailure {
         // Nothing on screen took the text this once; the next attempt, with something focused, does.
         case .noFocusedTextField: .recoverable
         // The words exist and the user can reach them; they only missed where they were aimed.
-        case .accessibilityDenied, .clipboardUnavailable, .insertionTimedOut, .insertionRejected:
+        case .accessibilityDenied, .clipboardUnavailable, .insertionTimedOut, .insertionRejected,
+            .insertionUnconfirmed:
             .degraded
         }
+    }
+
+    /// Whether retrying through another strategy could duplicate a write whose result is still pending.
+    public var stopsFallback: Bool {
+        if case .insertionUnconfirmed = self { true } else { false }
     }
 }

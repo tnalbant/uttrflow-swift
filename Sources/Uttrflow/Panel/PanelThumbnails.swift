@@ -2,7 +2,7 @@
 
 import AppKit
 import Foundation
-import Observation
+import SwiftUI
 import UttrflowClipboard
 
 /// Where a picture clip's thumbnail comes from; injected so the cache is testable without photographs.
@@ -27,8 +27,6 @@ final class PanelThumbnails {
     private let budget: Int
     /// The decoded (or absent) thumbnail for a file that has been asked for; absent entries means a decode is in flight.
     private(set) var known: [URL: NSImage?] = [:]
-    /// One observable entry per file, so a decode redraws only the row showing that file.
-    private var slots: [URL: PanelThumbnailSlot] = [:]
     /// What each answer is costing, so the total is kept without measuring the whole cache.
     private var cost: [URL: Int] = [:]
     private var held = 0
@@ -37,10 +35,18 @@ final class PanelThumbnails {
     private var clock = 0
     /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
     private var inflight: [URL: Task<Void, Never>] = [:]
+    /// When each failed decode was recorded, so a file restored later is decoded again.
+    private var missedAt: [URL: ContinuousClock.Instant] = [:]
+    /// How long a failed decode is trusted before the file is read again.
+    private let retryAfter: Duration
 
-    init(source: PanelThumbnailSource = .system, budget: Int = PanelThumbnails.defaultBudget) {
+    init(
+        source: PanelThumbnailSource = .system, budget: Int = PanelThumbnails.defaultBudget,
+        retryAfter: Duration = .seconds(2)
+    ) {
         self.source = source
         self.budget = max(budget, 0)
+        self.retryAfter = retryAfter
     }
 
     /// What a decoded thumbnail costs, measured from the bitmap rather than the point size.
@@ -59,25 +65,18 @@ final class PanelThumbnails {
 
     /// The cached thumbnail for `file`, or `nil` while a miss is being decoded off the main actor.
     func thumbnail(for file: URL) -> NSImage? {
-        let slot = slot(for: file)
-        if known[file] != nil {
+        forgetStaleMiss(file)
+        if let remembered = known[file] {
             touch(file)
-        } else {
-            prepare(file)
+            return remembered
         }
-        return slot.image
-    }
-
-    /// The observable entry for `file`, made on first ask.
-    private func slot(for file: URL) -> PanelThumbnailSlot {
-        if let slot = slots[file] { return slot }
-        let slot = PanelThumbnailSlot()
-        slots[file] = slot
-        return slot
+        prepare(file)
+        return nil
     }
 
     /// Starts an off-main decode for `file`; a no-op if one is already in flight, or the answer is already cached.
     func prepare(_ file: URL) {
+        forgetStaleMiss(file)
         if known[file] != nil { return }
         if inflight[file] != nil { return }
         let source = self.source
@@ -88,7 +87,19 @@ final class PanelThumbnails {
         }
     }
 
-    /// Awaits the decode that `prepare(_:)` started for `file`; used by tests, not by the panel.
+    /// What is already decoded for `file`, touching nothing, so a view can start from it without a flash.
+    func cached(_ file: URL) -> NSImage? {
+        known[file] ?? nil
+    }
+
+    /// The thumbnail for `file`, awaiting an off-main decode when it is not yet known.
+    func picture(for file: URL) async -> NSImage? {
+        if let remembered = thumbnail(for: file) { return remembered }
+        await waitForIdle(file: file)
+        return cached(file)
+    }
+
+    /// Awaits the decode that `prepare(_:)` started for `file`.
     func waitForIdle(file: URL) async {
         await inflight[file]?.value
     }
@@ -100,11 +111,20 @@ final class PanelThumbnails {
         let result = bytes.image
         let cost = Self.bytes(of: result)
         known[file] = result
-        slot(for: file).image = result
+        missedAt[file] = result == nil ? .now : nil
         self.cost[file] = cost
         held += cost
         touch(file)
         forgetTheLeastRecent()
+    }
+
+    /// Drops a remembered failure once it is older than `retryAfter`, so the next ask decodes again.
+    private func forgetStaleMiss(_ file: URL) {
+        guard let missed = missedAt[file], missed.duration(to: .now) >= retryAfter else { return }
+        missedAt[file] = nil
+        known.removeValue(forKey: file)
+        cost.removeValue(forKey: file)
+        lastUse.removeValue(forKey: file)
     }
 
     /// Moves a file to the end of the queue, so it is the last thing forgotten.
@@ -121,7 +141,7 @@ final class PanelThumbnails {
             lastUse.removeValue(forKey: oldest)
             held -= cost.removeValue(forKey: oldest) ?? 0
             known.removeValue(forKey: oldest)
-            slots.removeValue(forKey: oldest)?.image = nil
+            missedAt.removeValue(forKey: oldest)
         }
     }
 
@@ -129,14 +149,36 @@ final class PanelThumbnails {
     var bytesHeld: Int { held }
 }
 
-/// One file's thumbnail, observed by the row that draws it and by nothing else.
-@MainActor
-@Observable
-final class PanelThumbnailSlot {
-    var image: NSImage?
-}
-
 /// A wrapper that carries an `NSImage` between actors without `Sendable` conformance.
 struct Loaded: @unchecked Sendable {
     let image: NSImage?
+}
+
+/// One picture clip's thumbnail, which alone redraws when its decode lands.
+struct PanelThumbnailView: View {
+    let file: URL
+    @State private var picture: NSImage?
+
+    /// Starts from what the cache already holds, so a row scrolled back into view draws at once.
+    init(file: URL) {
+        self.file = file
+        _picture = State(initialValue: PanelThumbnails.shared.cached(file))
+    }
+
+    var body: some View {
+        Group {
+            if let picture {
+                Image(nsImage: picture)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.panelCard
+            }
+        }
+        // Decoded off the main actor; a row reused for a different file starts over.
+        .task(id: file) {
+            picture = PanelThumbnails.shared.cached(file)
+            picture = await PanelThumbnails.shared.picture(for: file)
+        }
+    }
 }
