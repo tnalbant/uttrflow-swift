@@ -1,5 +1,5 @@
 # How graphflow runs in this repository. The engine knows nothing about Uttrflow; this file is
-# where everything Uttrflow-specific lives. See Docs/graphflow.md.
+# where everything Uttrflow-specific lives. See `Docs/graphflow.md`.
 
 gate:
   command: "make verify"

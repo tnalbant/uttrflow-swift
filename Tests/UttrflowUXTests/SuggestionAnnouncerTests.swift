@@ -23,13 +23,13 @@ struct SuggestionAnnouncerTests {
                 == "AI suggestion: git commit -m. Tab to accept, replacing 4 characters.")
     }
 
-    @Test("A list is announced with its alternatives")
-    func aListIsAnnounced() {
+    @Test("A list announcement includes the leader and accept key, but not alternatives")
+    func aListIsAnnouncedWithoutAlternatives() {
         var announcer = SuggestionAnnouncer()
         #expect(
             announcer.announcement(
                 for: SuggestionPresentation(.choice(leader: "Sydney", others: ["Sydenham", "Soho"])))
-                == "AI suggestion: Sydney. Tab to accept. Alternatives: Sydenham, Soho.")
+                == "AI suggestion: Sydney. Tab to accept.")
     }
 
     @Test("The field's own accept key is the one announced")
@@ -93,7 +93,7 @@ struct SuggestionAnnouncerTests {
         #expect(
             announcer.announcement(
                 for: SuggestionPresentation(choice, selection: SuggestionSelection(index: 2, hasMoved: true)))
-                == "AI suggestion: Soho. Tab to accept. Alternatives: Sydney, Sydenham.")
+                == "AI suggestion: Soho. Tab to accept.")
     }
 
     @Test("Nothing is never announced, and neither it nor the dot stops the next offer being heard")

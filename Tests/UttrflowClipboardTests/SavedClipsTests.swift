@@ -153,9 +153,9 @@ struct SavedClipsTests {
         #expect(clips.map(\.text) == ["newest", "saved", "oldest"])
     }
 
-    /// A clip the user kept and then chose to keep again must not be aged out by the move.
-    @Test("deleting a collection while keeping its clips preserves the kept status")
-    func keepOnDeletePreservesKeptStatus() async throws {
+    /// A clip un-filed with its collection gets a fresh age window without becoming pinned.
+    @Test("deleting a collection refreshes age without pinning un-filed clips")
+    func moveOutRefreshesAgeWithoutPinning() async throws {
         let file = TemporaryFile()
         let store = ClipboardStore(file: file.url)
         let old = clip("a month old", at: -30 * 86_400)
@@ -163,11 +163,14 @@ struct SavedClipsTests {
         try await store.record(old, keeping: week(from: old.copiedAt))
         try await store.setCategory("Work", of: old.id, keeping: week(from: old.copiedAt))
 
-        _ = try await store.moveCategory("Work", to: nil, keeping: week())
+        let moved = try await store.moveCategory("Work", to: nil, keeping: week())
 
         let reopened = await ClipboardStore(file: file.url).clips(keeping: week())
         #expect(reopened.map(\.id) == [old.id], "the clip is not deleted by the move")
-        #expect(reopened.first?.isKept == true, "the clip is still kept, so it cannot age out")
+        #expect(moved.first?.isPinned == false, "the move does not create a pin")
+        #expect(reopened.first?.isPinned == false, "the persisted clip is not pinned")
+        #expect(reopened.first?.isKept == false, "the clip returns to ordinary history")
+        #expect(reopened.first?.copiedAt == noon, "the clip gets a fresh retention window")
     }
 
     /// Unpinning a clip older than the window keeps it for one write, instead of deleting it with the unpin.
@@ -295,7 +298,11 @@ struct ClipboardWriteCountTests {
 
         #expect(written <= 2)
         let reopened = await ClipboardStore(file: file.url).clips(keeping: week())
-        #expect(reopened.contains { $0.id == old.id && $0.text == "door code" })
+        let unfiled = try #require(reopened.first { $0.id == old.id })
+        #expect(unfiled.text == "door code")
+        #expect(unfiled.isPinned == false)
+        #expect(unfiled.isKept == false)
+        #expect(unfiled.copiedAt == noon)
     }
 
     @Test("deleting a collection with its clips writes each file once")

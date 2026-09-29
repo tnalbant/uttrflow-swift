@@ -39,6 +39,9 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: reason, kind: kind)
         }
+        if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
+            return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
+        }
         let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
         if case .rejected(let reason, let kind) = Self.removalVerdict(
             restored, kept: draft.text, rewritten: rewritten, echoed: echoed)
@@ -348,13 +351,13 @@ public struct MeaningPreservationGuard: Sendable {
         if added > 0 {
             return .rejected(reason: "the rewrite added a negation", kind: .negationAdded)
         }
-        let churn = functionWordChurn(keptTokens, rewrittenTokens)
+        let churn = alignedFunctionWordChurn(alignment)
         if churn > 3 * sentenceCount(alignment.rewrittenText) {
             return .rejected(reason: "the rewrite changed \(churn) small words", kind: .smallWordChurn)
         }
         // A word put back where a pass took it without the grant to is the speaker's, not the model's.
         return inventionVerdict(
-            kept: keptTokens, rewritten: rewrittenTokens, echo: echoTokens + restored, allowing: doubtful)
+            alignment, echo: echoTokens + restored, allowing: doubtful)
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
@@ -377,25 +380,55 @@ public struct MeaningPreservationGuard: Sendable {
         kept: [GrammarToken], rewritten: [GrammarToken], echo: [GrammarToken],
         allowing doubtful: [DoubtfulSpan]
     ) -> GuardVerdict {
+        inventionVerdict(
+            RewriteAlignment(
+                kept: kept.map(\.text).joined(separator: " "),
+                rewritten: rewritten.map(\.text).joined(separator: " ")),
+            echo: echo, allowing: doubtful)
+    }
+
+    /// Refuses a content word that has no origin in the same aligned run or an offered reading for it.
+    static func inventionVerdict(
+        _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan]
+    ) -> GuardVerdict {
         // A draft the checks cannot read romanises into words with no counterpart here, so the base checks keep it.
-        guard kept.allSatisfy(\.isPlain) else { return .accepted }
-        let origins = (kept + echo).filter(\.isPlain)
+        guard alignment.kept.allSatisfy(\.isPlain) else { return .accepted }
+        let origins = (alignment.kept + echo).filter(\.isPlain)
         let originIndex = WordOccurrenceIndex(origins)
-        // A reading offered for a doubtful word is by definition not what was said, and `candidateVerdict` judges it.
-        let readings = Set(
-            doubtful
-                .flatMap { $0.candidates }
-                .flatMap { $0.spelling.split(whereSeparator: \.isWhitespace) }
-                .map { DoubtfulSpan.closedUp(String($0)) })
-        for token in rewritten
-        where token.isPlain && isContent(token) && !readings.contains(DoubtfulSpan.closedUp(token.text)) {
-            if !originIndex.contains(token.matching)
-                && !originIndex.spells(token.text)
-            {
+        for index in alignment.rewritten.indices
+        where alignment.rewritten[index].isPlain
+            && isContent(alignment.rewritten[index])
+        {
+            let token = alignment.rewritten[index]
+            if originIndex.contains(token.matching) || originIndex.spells(token.text) { continue }
+            let offeredHere = doubtful.contains { span in
+                alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
+                    alignment.changes.contains { change in
+                        change.kept.overlaps(source) && change.rewritten.contains(index)
+                            && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
+                    }
+                }
+            }
+            if !offeredHere {
                 return .rejected(reason: "the rewrite invented '\(token.text)'", kind: .inventedWord)
             }
         }
         return .accepted
+    }
+
+    /// Matches one offered spelling without treating a substring or unrelated occurrence as provenance.
+    private static func survivesCandidate(_ token: GrammarToken, candidate: String) -> Bool {
+        let parts = grammarTokens(candidate)
+        return parts.count == 1 && survives(parts[0].matching, as: token)
+    }
+
+    /// Counts changed function words inside aligned runs, so a swap cannot cancel against another sentence.
+    static func alignedFunctionWordChurn(_ alignment: RewriteAlignment) -> Int {
+        alignment.changes.reduce(0) { total, change in
+            let before = alignment.kept[change.kept].filter { $0.isPlain && !isContent($0) }
+            let after = alignment.rewritten[change.rewritten].filter { $0.isPlain && !isContent($0) }
+            return total + functionWordChurn(before, after)
+        }
     }
 
     /// Refuses a negator that moved to a different content-word neighbourhood, while allowing contractions and punctuation changes.
@@ -802,7 +835,7 @@ public struct MeaningPreservationGuard: Sendable {
         "nahi", "nahin", "nahee", "na", "mat",
     ]
 
-    /// Function words added plus removed, counted as multisets over the whole text.
+    /// Function words added plus removed, counted as multisets over the supplied runs.
     static func functionWordChurn(_ kept: [GrammarToken], _ rewritten: [GrammarToken]) -> Int {
         func counts(_ tokens: [GrammarToken]) -> [String: Int] {
             var result: [String: Int] = [:]
@@ -841,16 +874,15 @@ public struct MeaningPreservationGuard: Sendable {
     static func changedQuantity(original: String, rewritten: String) -> String? {
         let spoken = Quantities.read(in: original)
         let written = Quantities.read(in: rewritten)
-        // Matched by digits, so a number the rewrite left alone is compared with the one it came from.
-        var remaining = written
-        for quantity in spoken {
-            guard let place = remaining.firstIndex(where: { $0.digits == quantity.digits }) else {
-                continue
+        guard !spoken.isEmpty, !written.isEmpty else { return nil }
+        for (quantity, found) in zip(spoken, written) {
+            if quantity.digits != found.digits || quantity.sign != found.sign
+                || quantity.symbol != found.symbol
+            {
+                return quantity.written
             }
-            let found = remaining.remove(at: place)
-            if found.sign != quantity.sign || found.symbol != quantity.symbol { return quantity.written }
         }
-        return nil
+        return written.count < spoken.count ? spoken[written.count].written : nil
     }
 
     /// The numbers a text states, in order and with repeats kept, each number word read through `table` and every run of them composed after it.

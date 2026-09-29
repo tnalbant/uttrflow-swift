@@ -131,4 +131,14 @@ struct ShortcutSetTests {
         #expect(set.bindings(for: .dictate) == [.functionHold])
         #expect(ShortcutAction.allCases.allSatisfy { $0 == .dictate || !set.isBound($0) })
     }
+
+    @Test("drops unreadable bindings without losing valid shortcuts")
+    func unreadableBindingsAreDroppedIndividually() throws {
+        let json =
+            #"{"dictate": [{"keyCode": 58, "modifiers": ["banana"]}, {"keyCode": 49, "modifiers": ["option"]}], "clipboard": [{"keyCode": 9, "modifiers": ["control"]}, {"keyCode": 10, "modifiers": ["banana"]}]}"#
+        let set = try JSONDecoder().decode(ShortcutSet.self, from: Data(json.utf8))
+
+        #expect(set.bindings(for: .dictate) == [.optionSpace])
+        #expect(set.bindings(for: .clipboard) == [HotkeyBinding(keyCode: 9, modifiers: [.control])])
+    }
 }

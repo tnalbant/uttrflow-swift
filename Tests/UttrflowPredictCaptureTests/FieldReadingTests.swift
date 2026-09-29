@@ -11,6 +11,17 @@ struct FieldReadingTests {
         #expect(reading.surface == Surface(bundleIdentifier: "com.example.terminal", role: "AXTextArea"))
     }
 
+    @Test("Window identity distinguishes same-app fields with otherwise identical surfaces.")
+    func windowsAreDistinctSurfaces() throws {
+        let first = try #require(
+            FieldReading(bundleIdentifier: "com.example.editor", role: "AXTextArea", windowNumber: 41)
+                .surface)
+        let second = try #require(
+            FieldReading(bundleIdentifier: "com.example.editor", role: "AXTextArea", windowNumber: 42)
+                .surface)
+        #expect(first != second)
+    }
+
     @Test("A field whose application does not name itself is no surface at all.")
     func namelessApplicationIsNoSurface() {
         #expect(FieldReading(bundleIdentifier: "  ", role: "AXTextArea").surface == nil)
@@ -166,6 +177,15 @@ struct FieldReadingTests {
         #expect(scope("file:///Users/someone/with%20space/notes.txt") == "/Users/someone/with space")
         #expect(scope("~/work/notes.md") == "~/work")
         #expect(scope("/notes.txt") == "/")
+    }
+
+    @Test(
+        "An extensionless document is scoped to its containing directory.",
+        arguments: ["/Users/someone/work/Makefile", "/Users/someone/work/Dockerfile"])
+    func extensionlessDocumentScopeIsTheContainingDirectory(document: String) {
+        let reading = FieldReading(
+            bundleIdentifier: "com.example.editor", role: "AXTextArea", document: document)
+        #expect(reading.scope == "/Users/someone/work")
     }
 
     @Test("A document that is neither an address nor a path scopes nothing, rather than guessing.")

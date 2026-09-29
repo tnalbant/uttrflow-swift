@@ -66,9 +66,31 @@ struct ShellPromptTests {
         #expect(ShellPrompt.input(in: "uttrflow=> select") == "select")
     }
 
-    @Test("A starship chevron ends a prompt too.")
-    func chevronPrompt() {
-        #expect(ShellPrompt.input(in: "~/dir on main ❯ ls") == "ls")
+    @Test("Starship prompt glyphs end a prompt after themed path segments.")
+    func starshipPromptGlyphs() {
+        #expect(
+            ShellPrompt.input(in: "~/code/uttrflow-swift on \u{e0a0} main [!] via \u{f0e7} v20 ❯ git status")
+                == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift on main ➜ git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift on main ➤ git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift \u{e0b0} git status") == "git status")
+    }
+
+    @Test("Nushell and PowerShell path prompts end at their directory chevron.")
+    func nushellAndPowerShellPathPrompts() {
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift> git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift\n> git status") == "git status")
+        #expect(ShellPrompt.input(in: "PS /Users/dev/project> git status") == "git status")
+        #expect(
+            ShellPrompt.input(in: #"PS /Users/dev/project> Write-Output `"hello ❯ world`""#)
+                == #"Write-Output `"hello ❯ world`""#)
+        #expect(ShellPrompt.input(in: "PS /Users/dev/one`>two> Get-Location") == "Get-Location")
+    }
+
+    @Test("A directory-looking command still keeps its spaced redirection.")
+    func directoryRedirectionIsNotANushellPrompt() {
+        #expect(ShellPrompt.input(in: "echo / > file") == "echo / > file")
+        #expect(ShellPrompt.input(in: "/usr/bin/echo > file") == "/usr/bin/echo > file")
     }
 
     @Test("A terminator with nothing in front of it is a prompt in its own right.")

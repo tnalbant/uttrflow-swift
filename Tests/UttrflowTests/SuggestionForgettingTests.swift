@@ -16,6 +16,21 @@ private let terminal = Surface(bundleIdentifier: "com.example.terminal", role: "
 private let notes = Surface(bundleIdentifier: "com.example.notes", role: "AXTextArea")
 private let moment = Date(timeIntervalSince1970: 1_800_000_000)
 
+/// A scorer with retained generated confidences, so Settings resets can be checked without loading MLX.
+private actor ResettableScoring: CandidateScoring {
+    private var confidences: [String: Double] = [:]
+    private(set) var forgetCount = 0
+
+    var isReady: Bool { true }
+    func logLikelihood(of candidate: String, following context: String) async -> Double? { -1 }
+    func confidence(ofGenerated line: String) async -> Double? { confidences[line] }
+    func remember(_ line: String, confidence: Double) { confidences[line] = confidence }
+    func forgetEverything() async {
+        forgetCount += 1
+        confidences.removeAll()
+    }
+}
+
 /// A container of its own per test, removed when the test ends.
 private struct Container: ~Copyable {
     let url = FileManager.default.temporaryDirectory
@@ -117,5 +132,26 @@ struct SuggestionForgettingTests {
         #expect(try await store.successors(for: surface, after: "forgotten line").isEmpty)
         try await corpus.forgetEverySuggestion()
         #expect(await coordinator.capture.decisions() == CapturePreferences())
+    }
+
+    @Test("Both Settings forget actions clear the running model scorer without a release")
+    @MainActor
+    func forgetActionsClearScorerMemory() async throws {
+        let container = Container()
+        try FileManager.default.createDirectory(at: container.url, withIntermediateDirectories: true)
+        let scorer = ResettableScoring()
+        let coordinator = try SuggestionCoordinator(
+            container: container.url, preferences: SuggestionPreferences(isEnabled: true), scoring: scorer)
+
+        await scorer.remember("forgotten app line", confidence: -0.25)
+        #expect(await scorer.confidence(ofGenerated: "forgotten app line") == -0.25)
+        try await coordinator.forgetSuggestions(from: terminal.bundleIdentifier)
+        #expect(await scorer.confidence(ofGenerated: "forgotten app line") == nil)
+
+        await scorer.remember("forgotten history line", confidence: -0.5)
+        #expect(await scorer.confidence(ofGenerated: "forgotten history line") == -0.5)
+        try await coordinator.forgetEverySuggestion()
+        #expect(await scorer.confidence(ofGenerated: "forgotten history line") == nil)
+        #expect(await scorer.forgetCount == 2)
     }
 }

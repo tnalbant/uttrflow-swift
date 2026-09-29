@@ -6,7 +6,7 @@ public enum CodeCommentContext {
     public static func isComment(precedingText: String?, documentName: String?) -> Bool {
         guard let precedingText, let markers = markers(for: documentName) else { return false }
         return isOnCommentLine(precedingText, linePrefixes: markers.line)
-            || isInsideOpenBlockComment(precedingText, block: markers.block)
+            || isInsideOpenBlockComment(precedingText, linePrefixes: markers.line, block: markers.block)
     }
 
     private struct Markers {
@@ -22,15 +22,61 @@ public enum CodeCommentContext {
         return linePrefixes.contains { trimmed.hasPrefix($0) }
     }
 
-    /// The last block-comment opener before the caret has no closer after it, so the caret still sits inside it.
+    /// Block-comment markers count only in code, outside strings and line comments.
     private static func isInsideOpenBlockComment(
-        _ precedingText: String, block: (open: String, close: String)?
+        _ precedingText: String, linePrefixes: [String], block: (open: String, close: String)?
     ) -> Bool {
-        guard let block, let openRange = precedingText.range(of: block.open, options: .backwards) else {
-            return false
+        guard let block else { return false }
+        var depth = 0
+        var quote: String?
+        var escaped = false
+        var index = precedingText.startIndex
+        while index < precedingText.endIndex {
+            if let currentQuote = quote {
+                if escaped {
+                    escaped = false
+                    index = precedingText.index(after: index)
+                } else if precedingText[index] == "\\" {
+                    escaped = true
+                    index = precedingText.index(after: index)
+                } else if precedingText[index...].hasPrefix(currentQuote) {
+                    index = precedingText.index(index, offsetBy: currentQuote.count)
+                    quote = nil
+                } else {
+                    index = precedingText.index(after: index)
+                }
+                continue
+            }
+            if precedingText[index].isNewline {
+                index = precedingText.index(after: index)
+                continue
+            }
+            if linePrefixes.contains(where: { precedingText[index...].hasPrefix($0) }) {
+                guard let newline = precedingText[index...].firstIndex(where: \.isNewline) else { break }
+                index = precedingText.index(newline, offsetBy: 1)
+                continue
+            }
+            if precedingText[index...].hasPrefix("\"\"\"") {
+                quote = "\"\"\""
+                index = precedingText.index(index, offsetBy: 3)
+                continue
+            }
+            if precedingText[index] == "\"" || precedingText[index] == "'" || precedingText[index] == "`" {
+                quote = String(precedingText[index])
+                index = precedingText.index(after: index)
+                continue
+            }
+            if precedingText[index...].hasPrefix(block.open) {
+                depth += 1
+                index = precedingText.index(index, offsetBy: block.open.count)
+            } else if depth > 0, precedingText[index...].hasPrefix(block.close) {
+                depth -= 1
+                index = precedingText.index(index, offsetBy: block.close.count)
+            } else {
+                index = precedingText.index(after: index)
+            }
         }
-        return precedingText.range(of: block.close, range: openRange.upperBound..<precedingText.endIndex)
-            == nil
+        return depth > 0
     }
 
     /// The comment markers for a document's language, or `nil` for an unrecognised or untitled document.

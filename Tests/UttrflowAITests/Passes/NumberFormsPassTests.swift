@@ -164,11 +164,28 @@ struct NumberFormsPassTests {
             ("the pin is five zero one two", "the pin is 5012"),
             ("my extension is three zero two", "my extension is 302"),
             ("the code is six zero five nine", "the code is 6059"),
-            ("dial one eight hundred five five five zero one nine nine", "dial one 805 550199"),
+            ("dial one eight hundred five five five zero one nine nine", "dial one 800 5550199"),
+            ("two hundred five five", "200 five five"),
+            ("two thousand three four five", "2000 345"),
+            ("we have two hundred five users", "we have 205 users"),
+            ("twenty five five five", "25 five five"),
+            ("one hundred twenty three four five six", "123 456"),
         ]
     )
     func digitRuns(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("preserves every toll-free spoken digit in order")
+    func tollFreeDigitOrder() {
+        let output = cleaned("dial one eight hundred five five five zero one nine nine", by: sut)
+        #expect(output == "dial one 800 5550199")
+        #expect(output.filter(\.isNumber) == "8005550199")
+    }
+
+    @Test("keeps the unit in a cardinal before a currency")
+    func scaleCardinalBeforeCurrency() {
+        #expect(cleaned("eight hundred five dollars", by: sut) == "805 dollars")
     }
 
     /// A digit run still becomes a clock time when a cue ("at", am/pm, o'clock) sits before or after the run.
@@ -224,6 +241,29 @@ struct NumberFormsPassTests {
     )
     func datesAlwaysPolicy(input: String, expected: String) {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
+        "writes dates with the month before the ordinal",
+        arguments: [
+            ("March third", "March 3"),
+            ("the third of March", "the 3 March"),
+            ("let's meet May fifth", "let's meet May 5"),
+            ("March third twenty twenty five", "March 3 2025"),
+        ]
+    )
+    func datesWithMonthBeforeOrdinal(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test("month-first dates keep the number policy and reject ambiguous or impossible dates")
+    func monthFirstDatesRespectPolicyAndValidity() {
+        #expect(cleaned("March third", by: sut) == "March third")
+        #expect(cleaned("third of March", by: sut) == "third of March")
+        #expect(cleaned("March twenty fifth", by: sut) == "March 25")
+        #expect(cleaned("march third", by: NumberFormsPass(policy: .always)) == "march third")
+        #expect(cleaned("we may first", by: NumberFormsPass(policy: .always)) == "we may first")
+        #expect(cleaned("March thirty second", by: NumberFormsPass(policy: .always)) == "March thirty second")
     }
 
     @Test(

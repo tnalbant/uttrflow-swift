@@ -19,8 +19,8 @@ actor StubEnvironment: EnvironmentReading {
         self.delay = delay
     }
 
-    /// What it was told to answer for this kind, after whatever delay it was given.
-    func values(of kind: EnvironmentKind, in directory: String) async -> [String]? {
+    /// What it was told to answer for this kind, after whatever delay it was given; a substitute machine knows everything already, so narrowing it is left to the caller.
+    func values(of kind: EnvironmentKind, in directory: String, matching prefix: String) async -> [String]? {
         reads += 1
         if let delay { try? await Task.sleep(for: delay) }
         return answers[kind]
@@ -37,6 +37,8 @@ actor ScriptedScoring: CandidateScoring {
     private let overrunning: ManualClock?
     /// How many scores it has been asked for.
     private(set) var asked = 0
+    /// How often its owner asked it to drop retained state.
+    private(set) var forgotten = 0
 
     /// A model that answers this, is up or is not, and runs past the budget on `overrunning` when given one.
     init(_ score: Double?, loaded: Bool = true, overrunning: ManualClock? = nil) {
@@ -61,6 +63,8 @@ actor ScriptedScoring: CandidateScoring {
 
     /// The same score for a line it wrote, which is what the generation gate reads.
     func confidence(ofGenerated line: String) async -> Double? { score }
+
+    func forgetEverything() async { forgotten += 1 }
 }
 
 /// Holds the task under test, filled in only after the task exists, so a double running inside it can cancel it.
