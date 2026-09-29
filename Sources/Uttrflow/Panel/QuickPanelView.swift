@@ -286,6 +286,14 @@ struct QuickPanelView: View {
                     proxy.scrollTo(selection, anchor: nil)
                 }
             }
+            // Restore the highlighted row when reopening, even when selection predates this view.
+            .task(id: openCount) {
+                await Task.yield()
+                guard let selection = selectedKey else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
+                    proxy.scrollTo(selection, anchor: nil)
+                }
+            }
         }
     }
 
