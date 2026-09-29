@@ -224,12 +224,11 @@ struct PanelThumbnailsTests {
 @MainActor
 @Suite("What the picture cache lets go of")
 struct PanelThumbnailsCapacityTests {
-    private final class Counter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var storedFiles: [URL] = []
-        var files: [URL] { lock.withLock { storedFiles } }
-        /// Records one decode under the lock, since several decodes can run at once.
-        func record(_ file: URL) { lock.withLock { storedFiles.append(file) } }
+    private final class Counter: Sendable {
+        private let filesStorage = Mutex<[URL]>([])
+        var files: [URL] { filesStorage.withLock { $0 } }
+        /// Records one decode under the mutex, since detached tasks run concurrently.
+        func record(_ file: URL) { filesStorage.withLock { $0.append(file) } }
     }
 
     private func thumbnails(room pictures: Int) -> (PanelThumbnails, Counter) {
