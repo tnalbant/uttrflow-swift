@@ -14,6 +14,8 @@ struct SpokenPunctuationPassTests {
             ("is it ready question mark", "is it ready?"),
             ("ship it full stop", "ship it."),
             ("ship it period", "ship it."),
+            ("that is it period", "that is it."),
+            ("this is final period", "this is final."),
             ("wow exclamation mark", "wow!"),
             ("wow exclamation point", "wow!"),
             ("two things colon the milk", "two things: the milk"),
@@ -150,7 +152,8 @@ struct SpokenPunctuationPassTests {
     @Test(
         "leaves the noun a determiner opens even when a modifier stands between them",
         arguments: [
-            "during the trial period", "I love the Victorian period",
+            "during the trial period", "that trial period", "this period of time",
+            "I love the Victorian period",
             "the 100 metre dash was close", "a short grace period follows",
         ]
     )

@@ -3,6 +3,9 @@ import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
 enum MentionGuard {
+    /// The tagger calls "trial" a noun before "period", so bridge only for this head.
+    private static let attributiveNounsByHead: [String: Set<String>] = ["period": ["trial"]]
+
     static let determiners: Set<String> = [
         "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
         "every",
@@ -60,7 +63,9 @@ enum MentionGuard {
 
     /// Recognizes modifiers in the local noun phrase and ordinal numbers without a word list.
     private static func isModifier(_ word: String, before head: String) -> Bool {
-        if NumberFormsPass.ordinalUnits[word] != nil { return true }
+        if NumberFormsPass.ordinalUnits[word] != nil || attributiveNounsByHead[head]?.contains(word) == true {
+            return true
+        }
         let phrase = "the \(word) \(head)"
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
         tagger.string = phrase
