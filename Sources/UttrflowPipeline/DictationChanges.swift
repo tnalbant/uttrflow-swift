@@ -1,5 +1,6 @@
 // Every change the pipeline makes to what the user said, in a form it can show and undo.
 public import struct Foundation.UUID
+import UttrflowCore
 
 /// One word Uttrflow replaced, with everything an undo needs on the value. See Docs/pipeline-changes.md.
 public struct DictationCorrection: Sendable, Equatable {
@@ -15,10 +16,12 @@ public struct DictationCorrection: Sendable, Equatable {
     public let reason: String
     /// What the recogniser scored the replaced words, so a sceptic can see the engine only moved on a guess.
     public let heardConfidence: Double
+    /// Where the written words begin among the inserted text's words, or `nil` when tidying changed them.
+    public let writtenWordIndex: Int?
 
     public init(
         heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: String,
-        heardConfidence: Double
+        heardConfidence: Double, writtenWordIndex: Int? = nil
     ) {
         self.heard = heard
         self.wrote = wrote
@@ -26,6 +29,7 @@ public struct DictationCorrection: Sendable, Equatable {
         self.entryID = entryID
         self.reason = reason
         self.heardConfidence = heardConfidence
+        self.writtenWordIndex = writtenWordIndex
     }
 }
 
@@ -66,6 +70,61 @@ extension DictationCorrection {
         Self(
             heard: heard, wrote: text, wordRange: wordRange, entryID: entryID, reason: reason,
             heardConfidence: heardConfidence)
+    }
+
+    /// Each correction with where its words landed in `finished`, aligned from `corrected`. See `Docs/core-history-undo.md`.
+    public static func locating(
+        _ corrections: [DictationCorrection], from corrected: String, in finished: String
+    ) -> [DictationCorrection] {
+        let alignment = WordErrorRate.measure(
+            reference: corrected.spokenWords.map(Self.alignmentKey),
+            hypothesis: finished.spokenWords.map(Self.alignmentKey)
+        ).alignment
+        // Where each corrected word landed in the finished text, or `nil` when tidying changed it.
+        var landed: [Int?] = []
+        var column = 0
+        for operation in alignment {
+            switch operation {
+            case .match:
+                landed.append(column)
+                column += 1
+            case .substitution:
+                landed.append(nil)
+                column += 1
+            case .deletion: landed.append(nil)
+            case .insertion: column += 1
+            }
+        }
+
+        var shift = 0
+        var located: [DictationCorrection] = []
+        for correction in corrections.sorted(by: { $0.wordRange.lowerBound < $1.wordRange.lowerBound }) {
+            let count = correction.wrote.spokenWords.count
+            let start = correction.wordRange.lowerBound + shift
+            shift += count - correction.wordRange.count
+            located.append(correction.landing(at: Self.run(of: count, from: start, in: landed)))
+        }
+        return located
+    }
+
+    /// Where `count` corrected words from `start` landed side by side, or `nil` when any of them moved apart.
+    private static func run(of count: Int, from start: Int, in landed: [Int?]) -> Int? {
+        guard count > 0, start >= 0, start + count <= landed.count, let first = landed[start]
+        else { return nil }
+        for offset in 1..<count where landed[start + offset] != first + offset { return nil }
+        return first
+    }
+
+    /// A word as the alignment compares it: tidying capitalises and punctuates without changing the word.
+    private static func alignmentKey(_ word: Substring) -> String {
+        SpokenToken(word).scoreKey
+    }
+
+    /// A copy that knows where its words sit in the inserted text.
+    private func landing(at index: Int?) -> Self {
+        Self(
+            heard: heard, wrote: wrote, wordRange: wordRange, entryID: entryID, reason: reason,
+            heardConfidence: heardConfidence, writtenWordIndex: index)
     }
 }
 
@@ -152,6 +211,28 @@ public struct ExpandedTranscript: Sendable, Equatable {
 
     /// A transcript nothing was done to.
     public static func unchanged(_ text: String) -> Self { Self(text: text) }
+
+    /// The same transcript with every line break a space, as a single-line field wants, firings included.
+    public var onOneLine: Self {
+        Self(
+            text: Self.joiningLines(text),
+            snippets: snippets.map {
+                SnippetUse(
+                    snippetID: $0.snippetID, matched: $0.matched,
+                    expansion: Self.joiningLines($0.expansion))
+            })
+    }
+
+    /// The lines of `text` joined by one space, each trimmed, a blank line dropped.
+    static func joiningLines(_ text: String) -> String {
+        guard text.contains(where: \.isNewline) else { return text }
+        return text.split(whereSeparator: \.isNewline)
+            .map { line in
+                String(line.drop(while: \.isWhitespace).reversed().drop(while: \.isWhitespace).reversed())
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
 }
 
 /// The dictionary corrections and snippet firings shown, offered for undo, and learnt from together.

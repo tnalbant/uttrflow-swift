@@ -3,17 +3,16 @@
 <!-- release-policy:v4 -->
 ## Branching & Release Policy — NON-NEGOTIABLE
 
-**Effective 2026-09-23. Supersedes release-policy:v3, which said agents may merge their
-own green pull requests. The live `main` ruleset requires independent review, so agents
-stop at a green pull request and leave the branch for a reviewer. Everything else stands,
-including that this repository is the only home for the project and that the `beta` branch
-in any agent's memory belonged to the private one and does not exist here.**
+`AGENTS.md` is the one rulebook for every agent — Claude, Codex, Cursor, Copilot or any
+other. `CLAUDE.md`, `.cursor/rules/` and `.github/copilot-instructions.md` only point here;
+put new rules in this file, never in theirs. There is no `beta` branch, and agents do not
+merge their own pull requests.
 
 **One long-lived branch, `main`, always releasable. A release is a tag, not a branch.**
 
 ```
-branch / fork  ──PR──>  main  ──tag v2026.9.14-rc.1──>  prerelease  (soak)
-   (CI runs)          (CI runs)  ──tag v2026.9.14────>  release
+branch / fork  ──PR──>  main  ──tag v26.0926.0-rc.1──>  prerelease  (soak)
+   (CI runs)          (CI runs)  ──tag v26.0926.0────>  release
 ```
 
 1. **Cut every branch from `origin/main`.** Short-lived. A branch that lives for weeks is a
@@ -37,12 +36,12 @@ branch / fork  ──PR──>  main  ──tag v2026.9.14-rc.1──>  prerelea
    you merge past a failing or unfinished check, you are doing it because the operator
    said to, and you say so plainly when you report it — never silently with `--admin`.
 7. **Your implementation task is done when the pull request is open, green, and documented
-   for review.** Keep the worktree and branch while the PR is open; clean them only after
-   GitHub shows the pull request was merged. Do not tag, and do not release.
+   for review — and the session has ended clean** (next section). Do not tag, and do not
+   release.
 
 **Releases stay batched and infrequent.** That has not changed; only the mechanism has.
 `main` accumulates merged work, and the operator decides when a commit on it becomes
-`v2026.9.14`. See `RELEASING.md`.
+`v26.0926.0`. See `RELEASING.md`.
 
 **Why there is no staging branch, since an agent reasoning from first principles will
 propose reinstating one.** The gate belongs on the pull request, not after it. A staging
@@ -58,6 +57,77 @@ propose things that have already been rejected here for reasons the code does no
 
 `PLAN.md` is the live phase tracker. Read it rather than reconstructing the state of the
 project from `git log`.
+
+## Every session ends clean — NON-NEGOTIABLE
+
+**A session that starts work finishes it: it leaves no worktree, no local branch, no build
+output and no running process behind.** Dozens of agents work here; each worktree carries
+its own `.build` (0.5–5 GB), and 185 abandoned ones once held 89 GB of disk. An abandoned
+worktree is indistinguishable from work in progress, so the next session cannot safely
+remove it — only the session that made it can.
+
+1. **Worktrees live in `.claude/worktrees/<name>` and nowhere else** — not beside the repo,
+   not in a scratchpad or `/tmp`. One place is what makes leftovers findable.
+2. **Never end with work only on this disk.** Commit and push it to `origin/<name>` — a
+   draft pull request is fine — or, if it is abandoned, say so and discard it. Uncommitted
+   work in a worktree is lost work that nobody else may delete.
+3. **Once the branch is pushed, remove the worktree and the local branch** — as soon as the
+   pull request is open, not when it merges. `origin/<name>` is what keeps it reachable.
+4. **Stop what you started** — dev servers, `make` runs in the background, simulators,
+   monitors, scheduled loops — and delete scratch output outside the worktree.
+5. **Close the thread.** In the Claude desktop app, archive the session; in any other tool,
+   end the conversation. An open idle thread holds its worktree and its slot.
+6. **Check before you say done.** `git worktree list` shows nothing of yours, and
+   `git branch --list <name>` prints nothing.
+
+**Never remove a worktree you did not create** unless it is clean, every commit on it is on
+`origin`, and no process is working in it (`lsof -a -d cwd | grep <path>`). If any of the
+three fails, it is somebody's work: leave it and report it.
+
+**Every feature is built in a worktree cut from `origin/main`, then merged into `main` by
+PR.** The feature branch exists only for the length of the work, and nothing reaches `main`
+except through a reviewed pull request — see the release policy at the top of this file.
+
+```bash
+git fetch origin
+git worktree add .claude/worktrees/<name> -b <name> origin/main   # from main, not from HEAD
+cd .claude/worktrees/<name>                                       # and stay there
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+… work, commit by name, `make verify` before every push …
+# the pre-push hook runs `make verify` for main; CI runs it once more on the PR
+git push -u origin <name>
+gh pr create --base main --head <name>
+cd "$(git rev-parse --git-common-dir)/.."                        # back to the main checkout
+git worktree remove .claude/worktrees/<name>                      # refuses if anything is unsaved
+git branch -d <name> 2>/dev/null || git branch -D <name>          # safe: the commits are on origin
+# no `git push origin --delete` — the remote branch stays, always
+```
+
+**Remote branches are never deleted, merged or not.** `origin/<name>` is the pull request's
+source ref, and it is what makes the local copies disposable. When CI or review asks for a
+change after cleanup, re-fetch it rather than opening a new branch or pull request:
+
+```bash
+git fetch origin
+git worktree add .claude/worktrees/<name> origin/<name>
+```
+
+The isolation is the point, and it is not bureaucracy: more than one agent works in this
+repository at once and a shared `.build` corrupts under two concurrent builds, which is
+why `swift build` in the main checkout while anyone else is working is separately
+forbidden next. A worktree gives the work its own `.build`, its own index, and a `git
+status` that shows only what this task changed — which is what makes staging paths by
+name possible at all.
+
+**Never run `swift build` or `swift test` in the main checkout while subagents are
+working.** They share `.build` and corrupt each other. Give parallel agents
+`isolation: "worktree"` — or, when the session's working directory is not itself a git
+repository and that fails, cut the worktrees by hand with the recipe above and point each
+agent at one by absolute path.
+
+**`export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`** before any swift
+command, in every shell and in every agent prompt. A hook or a subagent does not inherit
+it from an interactive profile.
 
 ## Comments: one line, present tense — NON-NEGOTIABLE
 
@@ -237,9 +307,12 @@ local, full stop: the product's whole claim is that dictation happens on this Ma
 here. If that ever changes it is a product decision with a privacy page attached, not a
 refactor.
 
-**This app talks to the backend's API and to nothing else on the network** — see
-`UttrflowAccount`, which is deliberately the only module that can reach a server. That is
-what makes "the offline promise" checkable rather than asserted: there is one place to look.
+Network access is not limited to the account backend: sign-in/session calls live in
+`UttrflowAccount`, speech-model/tokenizer assets can be downloaded, and Sparkle checks for
+and downloads app updates. The networking audit and its limits are recorded in
+[`Docs/offline.md`](Docs/offline.md). Opt-in crash diagnostics also send scrubbed crash and
+hang reports to Sentry from `UttrflowDiagnostics`; see [`Docs/crash-reporting.md`](Docs/crash-reporting.md)
+for what is sent and why.
 
 ## What dictation is for — NON-NEGOTIABLE
 
@@ -343,8 +416,12 @@ not pay for standard runners.** The constraint was cost, the cost is gone, and t
 gate — `.githooks/pre-push`, installed with `make hooks` — is still worth having because it
 is still the fastest answer.
 
-There are five workflows and each earns its keep: CI, release, CodeQL, dependency review,
-Scorecard. Do not add a sixth without asking.
+The tracked workflows are CI (build and test), CodeQL (weekly static analysis), dependency
+review (new dependency vulnerabilities and licences), Oracle sweep (exhaustive randomized
+clipboard-reader tests, nightly and on related pull requests), Quality (disclosure, workflow,
+spelling and link checks), Release (build and publish releases), Scorecard (supply-chain
+posture), and Security (secret, workflow and dependency scans). Adding a workflow requires
+explicit approval.
 
 **Never run `git add -A`, `git add .`, or `git commit -a`.** More than one agent works in
 this repository at once, and a blanket add sweeps another session's half-finished work
@@ -353,46 +430,6 @@ touched, by name.
 
 **Never rewrite pushed history, and never rebase while another session is committing.**
 Check first: `ps aux | grep -c '[c]laude.*--add-dir'`.
-
-**Every feature is built in a worktree cut from `origin/main`, then merged into `main` by
-PR.** The feature branch exists only for the length of the work, and nothing reaches `main`
-except through a reviewed pull request — see the release policy at the top of this file.
-
-```bash
-git fetch origin
-git worktree add .claude/worktrees/<name> -b <name> origin/main   # from main, not from HEAD
-cd .claude/worktrees/<name>                                       # and stay there
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-… work, commit by name, `make verify` before every push …
-# the pre-push hook runs `make verify` for main; CI runs it once more on the PR
-git push -u origin <name>
-gh pr create --base main --head <name>
-# Keep this worktree and both feature-branch refs while the pull request is open.
-```
-
-Do not clean up from a successful push, from `gh pr create`, or from `git branch -d`
-returning zero. A local branch can be "merged" to its upstream and still not be in `main`,
-which means deleting the worktree and branch would leave an open pull request with no head
-branch to update when CI or review asks for a repair.
-
-Only after GitHub says the pull request is merged:
-
-```bash
-pr=<number>
-gh pr view "$pr" --json mergedAt --jq 'select(.mergedAt != null) | .mergedAt'
-# Continue only if the command printed a merge timestamp.
-cd -                                                              # back to the main checkout
-git worktree remove .claude/worktrees/<name>
-git branch -d <name> 2>/dev/null || git branch -D <name>
-git push origin --delete <name>
-```
-
-The isolation is the point, and it is not bureaucracy: more than one agent works in this
-repository at once and a shared `.build` corrupts under two concurrent builds, which is
-why `swift build` in the main checkout while anyone else is working is separately
-forbidden below. A worktree gives the work its own `.build`, its own index, and a `git
-status` that shows only what this task changed — which is what makes staging paths by
-name possible at all.
 
 **Rebase onto `origin/main` before opening the pull request.** `main` moves under you while
 you work — it is where everything lands — so a branch cut this morning is behind by
@@ -414,44 +451,27 @@ you write down what you would have wanted a reviewer to know: what was measured,
 was assumed, and what you are least sure of. A merge that ends the conversation is worse
 than no merge at all.
 
-**Clear the worktree the moment the work is merged, never while the pull request is still
-open.** First prove the merge with `gh pr view <pr> --json mergedAt --jq 'select(.mergedAt
-!= null) | .mergedAt'`; only then `git worktree remove` and delete the branch. Four stale
-worktrees once sat holding pre-rename copies of the whole tree, and an abandoned one is
-indistinguishable from work in progress to the next session that finds it.
-`.claude/worktrees/` is gitignored, so nothing warns you.
-
-`sasta-trader` is a different project and does not follow any of this.
-
-**Never run `swift build` or `swift test` in the main checkout while subagents are
-working.** They share `.build` and corrupt each other. Give parallel agents
-`isolation: "worktree"` — or, when the session's working directory is not itself a git
-repository and that fails, cut the worktrees by hand with the recipe above and point each
-agent at one by absolute path.
-
-**`export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`** before any swift
-command, in every shell and in every agent prompt. A hook or a subagent does not inherit
-it from an interactive profile.
-
 ## Building and releasing
 
-`Docs/releasing.md` is the only correct description. In short:
+`Docs/releasing.md` covers a release by hand; `RELEASING.md` covers the tag workflow. In short:
 
 ```bash
-make verify        # lint, build, 5,000+ tests, coverage floor — what the gate runs
+make verify        # lint, build, 6,000+ tests, coverage floor — what the gate runs
 make hooks         # once per clone; hooks are not cloned
 make app-hardened  # a build fit to test on another Mac
 make dmg           # the disk image
-make publish       # to the public downloads repository, using this Mac's gh login
+make publish       # to the public downloads repository: this Mac's gh login by hand, RELEASES_TOKEN in the workflow
 ```
 
-Versioning is **calendar**, `YEAR.MONTH.DAY` with no leading zeros (`2026.9.14`), hand-edited
-in `Resources/Uttrflow-Info.plist`; a second release that day is `2026.9.14.1`. Releases up to
-0.5.0 were semver. `CFBundleVersion` is what the updater compares, so it goes up by one every
+Versioning is **`YY.MMDD.REVISION`** (`26.0926.0`; tag `v26.0926.0`), hand-edited in
+`Resources/Uttrflow-Info.plist`; a second release that day is `26.0926.1`. Month before day,
+leading zero kept, so versions sort in date order. `2026.9.14` (`YEAR.MONTH.DAY`) and, before
+it, semver up to 0.5.0 are retired. See `Docs/releasing.md`. `CFBundleVersion` is what the updater compares, so it goes up by one every
 release. The five-part `YEAR.MONTH.DAY.HOUR.PATCH` scheme stays rejected, as `Docs/releasing.md` says.
 
-Downloads go to the public **uttrflow/releases** repository. Source repositories stay
-private. The published asset is `Uttrflow.dmg` with **no version in the name** — that is
+Downloads go to the public **uttrflow/releases** repository, separate from this source
+repository, holding disk images and `latest.json` but no source code. The published asset
+is `Uttrflow.dmg` with **no version in the name** — that is
 what makes the `/releases/latest/download/` URL permanent.
 
 **The tag names the release, and notarisation has nothing to do with it.** A run
@@ -460,9 +480,9 @@ checked it against the plist — and a hand-run publish uses `v<version>` from t
 Signed or not, the release is a full release, so `/releases/latest/download/` resolves to
 the newest build and the download button never has to change.
 
-**A tag with anything after the version is a prerelease**: `v2026.9.14-rc.1` publishes as one,
+**A tag with anything after the version is a prerelease**: `v26.0926.0-rc.1` publishes as one,
 GitHub keeps it out of `/latest/`, and `publish.sh` leaves `latest.json` and `appcast.xml`
-untouched so neither the site nor the updater offers it. That is the soak. `v2026.9.14`
+untouched so neither the site nor the updater offers it. That is the soak. `v26.0926.0`
 releases it.
 
 `latest.json` records `gatekeeper`, and the site shows or hides the `xattr` instruction

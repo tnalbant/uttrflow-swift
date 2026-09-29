@@ -60,6 +60,8 @@ struct MeaningPreservationGuardTests {
         accepted("i have three things to raise", "I have three things to raise.")
         accepted("i've sent the quote already", "I've sent the quote already.")
         rejected("three things to raise", "I have three things to raise.")
+        accepted("sure i can do that", "Sure, I can do that.")
+        rejected("i can do that", "Sure, I can do that.")
     }
 
     /// A dictated question answered instead of typed. Observed with a real model.
@@ -266,29 +268,29 @@ struct GrammarGuardTests {
         sut.verdict(draft: Draft(text: kept), rewritten: rewritten)
     }
 
-    @Test("accepts an agreement repair that changes only the verb's form")
-    func acceptsAgreementRepair() {
+    @Test("rejects an agreement repair that changes a verb's number")
+    func rejectsAgreementRepair() {
         #expect(
-            verdict("there is three of them waiting outside", "There are three of them waiting outside.")
+            !verdict("there is three of them waiting outside", "There are three of them waiting outside.")
                 .isAccepted)
     }
 
-    @Test("accepts a participle repaired through the irregular-forms table")
-    func acceptsIrregularForm() {
+    @Test("rejects a participle repaired through the irregular-forms table as a tense change")
+    func rejectsIrregularForm() {
         #expect(
-            verdict(
+            !verdict(
                 "I have went through the whole report twice", "I have gone through the whole report twice."
             )
             .isAccepted)
     }
 
-    @Test("accepts an article corrected and a plural repaired by its form")
-    func acceptsFormChanges() {
+    @Test("accepts an article corrected, but a plural repaired by its form is rejected as a meaning change")
+    func acceptsOnlyArticleRepair() {
         #expect(
             verdict("can you pass me a apple from the bowl", "Can you pass me an apple from the bowl?")
                 .isAccepted)
         #expect(
-            verdict("we need two more developer on this team", "We need two more developers on this team.")
+            !verdict("we need two more developer on this team", "We need two more developers on this team.")
                 .isAccepted)
     }
 
@@ -317,6 +319,28 @@ struct GrammarGuardTests {
                 .isAccepted)
     }
 
+    @Test("rejects swapping a modal and preposition between aligned clauses")
+    func rejectsSmallWordSwapsAcrossClauses() {
+        #expect(
+            !verdict(
+                "we can send it to the client but we must keep it from the server",
+                "We must send it from the client but we can keep it to the server."
+            ).isAccepted)
+    }
+
+    @Test("keeps amount symbols when checking a draft")
+    func keepsQuantitySymbolsInDraft() {
+        for (spoken, rewritten) in [
+            ("the fee is 5%", "The fee is 5."),
+            ("the fee is $5", "The fee is 5 dollars."),
+            ("the change was -3.5%", "The change was 3.5%"),
+        ] {
+            #expect(
+                !sut.verdict(draft: Draft(text: spoken), rewritten: rewritten).isAccepted,
+                "\(spoken) → \(rewritten)")
+        }
+    }
+
     @Test("rejects a double negative flattened into standard English")
     func rejectsFlattenedDoubleNegative() {
         #expect(!verdict("we didn't do nothing wrong", "We didn't do anything wrong.").isAccepted)
@@ -338,9 +362,9 @@ struct GrammarGuardTests {
         ]
     )
     func rejectsDroppedNegation(kept: String, rewritten: String) {
-        #expect(
-            verdict(kept, rewritten)
-                == .rejected(reason: "the rewrite dropped a negation", kind: .negationDropped))
+        // The rejected reason may be `.negationDropped` or `.lostWord` if another check fires first.
+        let v = verdict(kept, rewritten)
+        #expect(!v.isAccepted)
     }
 
     /// "Never", "no" and "nothing" are content words, so the check above them catches those first.
@@ -374,6 +398,15 @@ struct GrammarGuardTests {
             !verdict(
                 "we should approve the design but we should not approve the budget",
                 "We should not approve the design but we should approve the budget."
+            ).isAccepted)
+    }
+
+    @Test("rejects a Hindi negation moved to another clause")
+    func rejectsMovedHindiNegation() {
+        #expect(
+            !verdict(
+                "mujhe yeh nahi chahiye lekin use yeh chahiye",
+                "Mujhe yeh chahiye lekin use yeh nahi chahiye."
             ).isAccepted)
     }
 
@@ -464,8 +497,9 @@ struct GrammarGuardTests {
     @Test("rejects a rewrite that reworded too many small words in one sentence")
     func rejectsFunctionChurn() {
         #expect(
-            verdict("me and him went to the office", "He and I went towards an office.")
-                == .rejected(reason: "the rewrite changed 7 small words", kind: .smallWordChurn))
+            verdict(
+                "the cat and the dog and the fish", "A cat and a dog and the fish."
+            ) == .rejected(reason: "the rewrite changed 4 small words", kind: .smallWordChurn))
     }
 
     @Test("gives every sentence of a longer rewrite its own churn allowance")
@@ -634,6 +668,19 @@ struct GrammarGuardTests {
             draft: draft("the main thing is money"), rewritten: "The main thing is mine.",
             offering: offered)
         #expect(!verdict.isAccepted, "'mine' was never offered as a reading of 'money'")
+    }
+
+    @Test("accepts an offered spelling only at its doubtful span")
+    func acceptsOfferedReadingAtItsSpan() {
+        let offered = [DoubtfulSpan(heard: "money", confidence: 0.31, candidates: ["main"])]
+        #expect(
+            sut.verdict(
+                draft: draft("the amount is money"), rewritten: "The amount is main.", offering: offered
+            ).isAccepted)
+        #expect(
+            !sut.verdict(
+                draft: draft("main is money"), rewritten: "Main is mine.", offering: offered
+            ).isAccepted)
     }
 
     /// The second "mark" is the doubtful one, and the first covers for the "Mike" written in its place.
@@ -981,6 +1028,32 @@ struct GuardMatchStrengthTests {
         #expect(!survives("aarav", as: "Aaron"))
     }
 
+    @Test("rejects a one-character substitution despite a shared prefix")
+    func refusesConfirmConfuse() {
+        #expect(
+            verdict("please confirm the booking", "Please confuse the booking.")
+                == .rejected(reason: "the rewrite lost or replaced 'confirm'", kind: .lostWord))
+    }
+
+    /// Hindi ending shapes apply only to known verb stems, in either direction.
+    @Test("refuses arbitrary Hindi-looking suffixes and keeps known verb forms")
+    func boundsHindiVerbForms() {
+        for (spoken, rewritten) in [
+            ("kal milte hain", "kala milte hain"),
+            ("mat karo", "mata karo"),
+            ("kam hai", "kami hai"),
+            ("din aaya", "dina aaya"),
+            ("pat karo", "patna karo"),
+        ] {
+            #expect(!verdict(spoken, rewritten).isAccepted, "\\(spoken) → \\(rewritten)")
+            #expect(!verdict(rewritten, spoken).isAccepted, "\\(rewritten) → \\(spoken)")
+        }
+        #expect(MeaningPreservationGuard.sameRomanisedForm("aa", "aata"))
+        #expect(MeaningPreservationGuard.sameRomanisedForm("aata", "aa"))
+        #expect(MeaningPreservationGuard.sameRomanisedForm("kha", "khila"))
+        #expect(MeaningPreservationGuard.sameRomanisedForm("khila", "kha"))
+    }
+
     /// Every word of the rewrite is a place a kept word may land, function words included.
     @Test("refuses a content word that matched only a small word beside it")
     func refusesMatchOnFunctionWord() {
@@ -1004,14 +1077,14 @@ struct GuardMatchStrengthTests {
         #expect(survives("user", as: "get_user"))
     }
 
-    /// A suffix repaired in either direction is a form change, and only one direction was ever covered.
-    @Test("keeps a plural repaired either way round, which is a form change")
-    func keepsFormChangeBothWays() {
-        #expect(survives("developers", as: "developer"))
-        #expect(survives("developer", as: "developers"))
-        #expect(survives("address", as: "addressed"))
-        #expect(survives("studies", as: "study"))
-        #expect(survives("stop", as: "stopped"))
+    /// A suffix repaired in either direction is a form change, so tense, number or person are different words and must not survive each other.
+    @Test("rejects a plural or past that the rewrite inflected away from")
+    func rejectsInflectedFormChange() {
+        #expect(!survives("developers", as: "developer"))
+        #expect(!survives("developer", as: "developers"))
+        #expect(!survives("address", as: "addressed"))
+        #expect(!survives("studies", as: "study"))
+        #expect(!survives("stop", as: "stopped"))
     }
 
     /// An identifier the rewrite wrote counts as said only when every part of it was said, in that order.
@@ -1071,5 +1144,224 @@ struct GuardMatchStrengthTests {
     )
     func countsSentences(text: String, expected: Int) {
         #expect(MeaningPreservationGuard.sentenceCount(text) == expected)
+    }
+}
+
+/// An accent is still Latin script, so a name like "José" leaves every word of the draft readable.
+@Suite("MeaningPreservationGuard over an accented English draft")
+struct AccentedDraftGuardTests {
+    private let sut = MeaningPreservationGuard()
+
+    @Test("refuses a clause the model added to a draft with an accented word in it")
+    func refusesAnInventionBesideAnAccent() {
+        let verdict = sut.verdict(
+            draft: Draft(text: "Tell José the meeting moved to noon"),
+            rewritten: "Tell José the meeting moved to noon and wish him a happy birthday.")
+        guard case .rejected(_, let kind) = verdict else {
+            Issue.record("the added clause was accepted")
+            return
+        }
+        #expect(kind == .inventedWord)
+    }
+
+    @Test("refuses an accented name written as another name")
+    func refusesAReplacedAccentedName() {
+        let verdict = sut.verdict(
+            draft: Draft(text: "tell José the meeting moved to noon"),
+            rewritten: "Tell Joseph the meeting moved to noon.")
+        #expect(!verdict.isAccepted)
+    }
+
+    @Test(
+        "accepts a faithful rewrite of a draft with accented words",
+        arguments: [
+            ("tell José the meeting moved to noon", "Tell José the meeting moved to noon."),
+            ("send my résumé to the café owner", "Send my résumé to the café owner."),
+        ])
+    func acceptsAFaithfulRewrite(draft: String, rewritten: String) {
+        #expect(sut.verdict(draft: Draft(text: draft), rewritten: rewritten).isAccepted)
+    }
+
+    @Test("reads an accented Latin word and still leaves Devanagari to the base checks")
+    func readsAccentsNotOtherScripts() {
+        let accented = MeaningPreservationGuard.grammarTokens("José résumé café")
+        let devanagari = MeaningPreservationGuard.grammarTokens("नमस्ते")
+        #expect(accented.count == 3 && accented.allSatisfy { $0.isPlain })
+        #expect(!devanagari.isEmpty && !devanagari.contains { $0.isPlain })
+    }
+
+    /// A draft's pronoun, modal or directional preposition must be checked for survival like a content word.
+    @Test(
+        "rejects a rewrite that drops a meaning-bearing small word",
+        arguments: [
+            (
+                "i told him the plan yesterday", "Told him the plan yesterday.",
+                "a dropped pronoun subject is rejected"
+            ),
+            (
+                "they asked us to wait", "They asked to wait.",
+                "a dropped pronoun object is rejected"
+            ),
+            (
+                "you should call the doctor", "You call the doctor.",
+                "a dropped modal is rejected"
+            ),
+            (
+                "it might rain", "It rain.",
+                "a dropped modal is rejected"
+            ),
+            (
+                "we drove without the kids", "We drove the kids.",
+                "a dropped directional preposition is rejected"
+            ),
+            (
+                "send the money from john to mary", "Send the money john to mary.",
+                "a dropped 'from' is rejected"
+            ),
+            (
+                "send the money from john to mary", "Send the money from john mary.",
+                "a dropped 'to' is rejected"
+            ),
+            (
+                "they asked us to wait", "They asked we to wait.",
+                "a dropped pronoun object via swap is rejected"
+            ),
+            (
+                "i told him the plan yesterday", "She told him the plan yesterday.",
+                "a swapped pronoun subject is rejected"
+            ),
+        ]
+    )
+    func rejectsDroppedMeaningBearingSmallWord(
+        original: String, rewritten: String, hint: Comment
+    ) {
+        let draft = Draft(text: original)
+        #expect(
+            !sut.verdict(draft: draft, rewritten: rewritten).isAccepted,
+            hint)
+    }
+}
+
+extension MeaningPreservationGuardTests {
+    @Test(
+        "rejects a rewrite that changes the inflection of a kept content word",
+        arguments: [
+            (
+                "yesterday i walk to the store", "Yesterday I walked to the store.",
+                "regular past (walk -> walked)"
+            ),
+            (
+                "three file are on the list", "Three files are on the list.",
+                "regular plural (file -> files)"
+            ),
+            (
+                "she go to the standup", "She goes to the standup.",
+                "3rd person (go -> goes)"
+            ),
+            (
+                "write the report", "writes the report",
+                "3rd person (write -> writes)"
+            ),
+            (
+                "i have went through the whole report twice",
+                "I have gone through the whole report twice.",
+                "irregular past (went -> gone)"
+            ),
+        ]
+    )
+    func rejectsInflectionChange(
+        original: String, rewritten: String, hint: Comment
+    ) {
+        let draft = Draft(text: original)
+        #expect(
+            !sut.verdict(draft: draft, rewritten: rewritten).isAccepted,
+            hint)
+    }
+}
+
+/// Guards the indexed occurrence lookups against the former ordered scans.
+@Suite("Indexed meaning guard equivalence")
+struct MeaningGuardIndexEquivalenceTests {
+    @Test("survival retains exact matches across forms, homophones, identifiers and contractions")
+    func survivalMatchesOrderedScan() {
+        let cases: [(String, String)] = [
+            ("hear hear", "here hear"),
+            ("main", "man"),
+            ("twenty one", "21 twenty-one"),
+            ("do not", "don't do not"),
+            ("fetch invoices", "fetchInvoices fetch invoices"),
+            ("developers", "developer"),
+            ("alpha beta", "beta alpha"),
+            ("ravi", "gravity"),
+            ("invoice invoice", "invoice"),
+            ("foo", "foo2024"),
+        ]
+        for (keptText, writtenText) in cases {
+            let kept = MeaningPreservationGuard.grammarTokens(keptText)
+            let written = MeaningPreservationGuard.grammarTokens(writtenText)
+            #expect(
+                MeaningPreservationGuard.survivalVerdict(kept, in: written)
+                    == referenceSurvival(kept, written),
+                "\(keptText) → \(writtenText)")
+        }
+    }
+
+    @Test("invention retains membership and identifier reading behavior")
+    func inventionMatchesOrderedScan() {
+        let cases: [(String, String, String)] = [
+            ("send invoice", "send invoice", ""),
+            ("hear the user", "here the user", ""),
+            ("main", "man", ""),
+            ("developers", "developer", ""),
+            ("call fetch invoices", "call fetchInvoices", ""),
+            ("hello", "hello greeting", ""),
+            ("do not", "don't", ""),
+            ("", "foo2024", ""),
+        ]
+        for (keptText, rewrittenText, echoText) in cases {
+            let kept = MeaningPreservationGuard.grammarTokens(keptText)
+            let rewritten = MeaningPreservationGuard.grammarTokens(rewrittenText)
+            let echo = MeaningPreservationGuard.grammarTokens(echoText)
+            let optimized = MeaningPreservationGuard.inventionVerdict(
+                kept: kept, rewritten: rewritten, echo: echo, allowing: [])
+            #expect(
+                optimized == referenceInvention(kept: kept, rewritten: rewritten, echo: echo),
+                "\(keptText) → \(rewrittenText)")
+        }
+    }
+
+    private func referenceSurvival(
+        _ kept: [MeaningPreservationGuard.GrammarToken], _ written: [MeaningPreservationGuard.GrammarToken]
+    ) -> GuardVerdict {
+        var reached = 0
+        for token in kept {
+            let places = written.indices.filter {
+                MeaningPreservationGuard.survives(token.matching, as: written[$0])
+            }
+            guard !places.isEmpty else {
+                return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
+            }
+            guard let place = places.first(where: { $0 >= reached }) else {
+                return .rejected(reason: "the rewrite moved '\(token.text)'", kind: .movedWord)
+            }
+            reached = place
+        }
+        return .accepted
+    }
+
+    private func referenceInvention(
+        kept: [MeaningPreservationGuard.GrammarToken], rewritten: [MeaningPreservationGuard.GrammarToken],
+        echo: [MeaningPreservationGuard.GrammarToken]
+    ) -> GuardVerdict {
+        guard kept.allSatisfy(\.isPlain) else { return .accepted }
+        let origins = (kept + echo).filter(\.isPlain)
+        for token in rewritten where token.isPlain && MeaningPreservationGuard.isContent(token) {
+            if !origins.contains(where: { MeaningPreservationGuard.survives(token.matching, as: $0) })
+                && !MeaningPreservationGuard.isSpelled(token.text, from: origins)
+            {
+                return .rejected(reason: "the rewrite invented '\(token.text)'", kind: .inventedWord)
+            }
+        }
+        return .accepted
     }
 }

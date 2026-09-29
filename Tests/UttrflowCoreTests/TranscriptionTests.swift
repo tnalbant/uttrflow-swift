@@ -17,16 +17,17 @@ struct TranscriptionTests {
     }
 
     @Test(
-        "treats whitespace-only recognition as blank so silence is not inserted",
-        arguments: ["", " ", "\n", "\t  \n"]
+        "treats recognition without letters or digits as blank so noise is not inserted",
+        arguments: ["", " ", "\n", "\t  \n", ".", "…"]
     )
     func blankDetection(text: String) {
         #expect(Transcription(text: text).isBlank)
     }
 
-    @Test("treats any real word as not blank")
+    @Test("treats letters and digits as usable recognition")
     func nonBlankDetection() {
         #expect(!Transcription(text: " hello ").isBlank)
+        #expect(!Transcription(text: "123").isBlank)
     }
 
     @Test("carries timed segments when the engine supplies them")
