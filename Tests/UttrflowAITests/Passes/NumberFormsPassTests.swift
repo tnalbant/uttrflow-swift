@@ -219,6 +219,29 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes dates with the month before the ordinal",
+        arguments: [
+            ("March third", "March 3"),
+            ("the third of March", "the 3 March"),
+            ("let's meet May fifth", "let's meet May 5"),
+            ("March third twenty twenty five", "March 3 2025"),
+        ]
+    )
+    func datesWithMonthBeforeOrdinal(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test("month-first dates keep the number policy and reject ambiguous or impossible dates")
+    func monthFirstDatesRespectPolicyAndValidity() {
+        #expect(cleaned("March third", by: sut) == "March third")
+        #expect(cleaned("third of March", by: sut) == "third of March")
+        #expect(cleaned("March twenty fifth", by: sut) == "March 25")
+        #expect(cleaned("march third", by: NumberFormsPass(policy: .always)) == "march third")
+        #expect(cleaned("we may first", by: NumberFormsPass(policy: .always)) == "we may first")
+        #expect(cleaned("March thirty second", by: NumberFormsPass(policy: .always)) == "March thirty second")
+    }
+
+    @Test(
         "recognises hyphenated dates and preserves their surrounding punctuation",
         arguments: [
             ("twenty-fifth of March", "25 March"),

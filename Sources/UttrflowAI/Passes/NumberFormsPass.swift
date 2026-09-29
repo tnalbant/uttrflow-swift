@@ -76,6 +76,13 @@ public struct NumberFormsPass: CleaningPass {
         let keys = shapes.map(\.key)
 
         guard !finishesAScale(at: position, keys: keys, shapes: shapes) else { return nil }
+        if let limit = monthDays[keys[position]], joined(position + 1, shapes),
+            let ordinal = parseOrdinal(at: position + 1, keys: keys, shapes: shapes),
+            ordinal.value <= limit, policy == .always || ordinal.value >= 10,
+            bareMonthIsValid(at: position, keys: keys, shapes: shapes)
+        {
+            return Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+        }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
             var end = position + ordinal.count
             guard joined(end, shapes) else { return nil }
@@ -84,8 +91,8 @@ public struct NumberFormsPass: CleaningPass {
             guard joined(end, shapes), let limit = monthDays[keys[end]], ordinal.value <= limit else {
                 return nil
             }
-            if !hasOf, keys[end] == "may" || keys[end] == "march" {
-                guard shapes[end].core == WordShape.capitalised(keys[end]) else { return nil }
+            if !hasOf, !bareMonthIsValid(at: end, keys: keys, shapes: shapes) {
+                return nil
             }
             guard policy == .always || ordinal.value >= 10 else { return nil }
             return Phrase(text: String(ordinal.value), count: end - position)
@@ -207,6 +214,12 @@ public struct NumberFormsPass: CleaningPass {
     /// Whether the word at `index` follows its predecessor with no punctuation between them.
     private static func joined(_ index: Int, _ shapes: [WordShape]) -> Bool {
         index < shapes.count && shapes[index - 1].suffix.isEmpty && shapes[index].prefix.isEmpty
+    }
+
+    /// Whether a bare month is capitalized when its name could also be an ordinary word.
+    private static func bareMonthIsValid(at index: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard keys[index] == "may" || keys[index] == "march" else { return true }
+        return shapes[index].core == WordShape.capitalised(keys[index])
     }
 
     /// The keys from `start` up to the first word that carries punctuation.
