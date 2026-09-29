@@ -373,6 +373,22 @@ struct VerifierCaseTests {
         #expect(verdict == .corrected("git switch main"))
     }
 
+    @Test("An exact branch spelling is attested even when a case-folded variant also exists.")
+    func exactBranchSpellingWinsOverVariants() async {
+        let verdict = await decided(
+            "git switch Main", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .attested)
+    }
+
+    @Test("An ambiguous case-only branch mismatch is rejected instead of choosing arbitrarily.")
+    func ambiguousBranchCaseMismatchIsRejected() async {
+        let verdict = await decided(
+            "git switch MAIN", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .rejected)
+    }
+
     @Test("A filename that differs from disk only in case is attested, not corrected.")
     func caseOnlyIsAttested() async {
         let verdict = await decided(
