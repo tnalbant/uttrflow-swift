@@ -184,5 +184,3 @@ right answer as a hit, which is why they counted before.
 - A glob or a variable in a checked position refuses the line, even where it would match.
 - A remote session whose window title names no remote program is read as local, and a local
   directory named `ssh` or `mosh` is read as a remote session and offered nothing.
-- `FieldReading.directory(of:)` drops the last component of a document path with an extension, so
-  a terminal in a folder such as `site.example.io` is scoped to its parent (#766).
