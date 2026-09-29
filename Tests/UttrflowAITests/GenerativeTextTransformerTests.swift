@@ -180,14 +180,26 @@ struct GenerativeTextTransformerTests {
                 situation: situation(preceding: preceding))
         }
 
-        let comment = GenerativeTextTransformer(
-            kind: .foundationModels, model: FakeCleanupModel { _ in "this invalidates the cache" })
-        #expect(try await comment.transform(request(preceding: "// ")).text == "this invalidates the cache.")
-
-        let code = GenerativeTextTransformer(
-            kind: .foundationModels, model: FakeCleanupModel { _ in "this invalidates the cache" })
+        let commentRouter = TransformerRouter(
+            engines: [
+                GenerativeTextTransformer(
+                    kind: .foundationModels,
+                    model: FakeCleanupModel { _ in "this invalidates the cache" }),
+                RuleBasedTransformer(),
+            ], preference: [.foundationModels, .rules])
         #expect(
-            try await code.transform(request(preceding: "func read() -> Value {")).text
+            try await commentRouter.transform(request(preceding: "// ")).text == "this invalidates the cache."
+        )
+
+        let codeRouter = TransformerRouter(
+            engines: [
+                GenerativeTextTransformer(
+                    kind: .foundationModels,
+                    model: FakeCleanupModel { _ in "this invalidates the cache" }),
+                RuleBasedTransformer(),
+            ], preference: [.foundationModels, .rules])
+        #expect(
+            try await codeRouter.transform(request(preceding: "func read() -> Value {")).text
                 == "this invalidates the cache")
     }
 

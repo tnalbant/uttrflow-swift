@@ -15,11 +15,13 @@ enum AppQuitCoordinator {
         clock: any Clock<Duration>,
         pipeline: Pipeline?,
         flushClipboard: @escaping @Sendable () async -> Void,
+        finishCompletions: @escaping @Sendable () async -> Void,
         stopController: @escaping @Sendable () async -> Void,
         reply: @escaping @Sendable () async -> Void
     ) async {
         _ = try? await withStageTimeout(budget, clock: clock) {
             await flushClipboard()
+            await finishCompletions()
             if let pipeline, await pipeline.currentState().isListening {
                 await pipeline.finishRecording()
             }

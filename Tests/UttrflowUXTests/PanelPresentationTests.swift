@@ -45,6 +45,20 @@ struct PanelRowTests {
         #expect(!row.isMasked)
     }
 
+    @Test("a copy arriving after the panel opens is not dated in the future")
+    func arrivingCopyUsesTheRefreshClock() {
+        let openedAt = Date(timeIntervalSince1970: 1_000_000)
+        let copiedAt = openedAt.addingTimeInterval(90)
+        let refreshedAt = copiedAt.addingTimeInterval(1)
+        let clip = Clip(text: "just copied", kind: .text, copiedAt: copiedAt)
+        var snapshot = PanelSnapshot(clips: [], now: openedAt, locale: PanelFixture.locale)
+
+        snapshot.install([clip], missingImages: [], formattableLanguages: [], now: refreshedAt)
+
+        let row = PanelPresenter.present(snapshot).rows[0]
+        #expect(!row.when.hasPrefix("in "))
+    }
+
     @Test("the selected row is the one Return would insert, and only it")
     func selection() {
         let page = PanelPresenter.present(PanelFixture.panel().applying([.down]).state)

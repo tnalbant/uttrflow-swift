@@ -47,8 +47,18 @@ A masked row also loses its excerpt, its language chip and its tooltip:
   the pointer is entitled to. A panel of bullets appearing under the cursor reads as the
   mask being lifted.
 
-The checklist count is withheld too: how much of a hidden thing is done is still something
-about it, and the masking rule is to say as little as possible until it is revealed.
+## Checklists in notes
+
+The panel neither counts a note's checkboxes nor ticks them. A row is built on every
+keystroke, and parsing each note's HTML for a count nothing drew cost time and bought
+nothing, while a tick action with no key, button or menu item could never run. A checklist
+keeps its boxes in the plain form (see `Docs/clipboard-plain-form.md`); counting or ticking
+from the panel returns only as a whole feature that draws the count, speaks it and offers a
+tick, with consecutive ticks applied to the latest note.
+
+Search does not read a masked secret's text either. A row that appeared under "Contents"
+for a typed fragment would confirm the fragment is inside the hidden value, so until it is
+revealed a secret is found only by its alias or its collection.
 
 ## Empty states, and being specific and wrong
 
@@ -90,6 +100,10 @@ Outside a sheet, the undo wins while it is live because it expires in seconds. P
 available** — F7 trades the confirmation dialog away *for* that undo, so an undo nobody is
 told about turns the trade into a loss: the clip is gone with neither a question beforehand
 nor a way back.
+
+The panel window takes ⌘Z ahead of Edit › Undo, which would otherwise swallow it, in this
+order: while the offer shows, ⌘Z restores the clip; otherwise, if the search field has
+typing to take back, ⌘Z undoes that typing; otherwise it goes to the panel. ⇧⌘Z stays Redo.
 
 While a sheet is up, `esc` backs out of it and Return commits it. Saying so is the
 difference between one press of esc and two by reflex, the second of which loses the list.

@@ -145,6 +145,46 @@ struct AccessibilityTextInsertionEngineTests {
         #expect(canInsert == isFocused)
     }
 
+    /// #678: Uttrflow itself has focused fields — its own search field is one — and none of them is the destination.
+    @Test("refuses to write into Uttrflow's own field even when something is focused")
+    func refusesWhenUttrflowIsInFront() async {
+        let engine = AccessibilityTextInsertionEngine(
+            focus: FakeFocus(field: FakeTextField(), isSelf: true)
+        )
+
+        #expect(await engine.canInsert() == false)
+    }
+
+    @Test("refuses the write itself when Uttrflow is in front, whatever canInsert said earlier")
+    func insertRefusesWhenUttrflowIsInFront() async {
+        let field = FakeTextField()
+        let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: field, isSelf: true))
+
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.insert("hello")
+        }
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.write("hello", replacing: "")
+        }
+        #expect(field.replacements.isEmpty)
+    }
+
+    @Test("leaves a dictation made over Uttrflow's own field to the clipboard, not to that field")
+    func coordinatorFallsPastUttrflowsOwnField() async throws {
+        let field = FakeTextField()
+        let keystrokes = FakeKeystrokeSender()
+        let pasteboard = FakePasteboard()
+        let coordinator = TextInsertion.coordinator(
+            focus: FakeFocus(field: field, isSelf: true), pasteboard: pasteboard,
+            keystrokes: keystrokes)
+
+        let attempt = try await coordinator.insert("hello there")
+
+        #expect(attempt.method != .accessibility)
+        #expect(field.replacements.isEmpty)
+        #expect(keystrokes.pasteCount == 0)
+    }
+
     @Test("reports that there is no text field rather than dropping the words")
     func insertWithoutAFocusedField() async {
         let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: nil))
@@ -370,6 +410,25 @@ struct IdenticalSelectionInsertionTests {
         #expect(attempt.method == .accessibility, "the Accessibility write succeeded and must not be doubted")
         #expect(keystrokes.pasteCount == 0, "a successful same-text replacement must not also be pasted")
     }
+
+    @Test("stops fallback when an accepted Accessibility write has no resulting selection")
+    func doesNotDuplicateAnUnconfirmedWrite() async throws {
+        let field = SelectionWriter(
+            field: FakeSelectionField("hello") {
+                $0.reportsSelection = false
+            })
+        let keystrokes = FakeKeystrokeSender()
+        let coordinator = TextInsertion.coordinator(
+            focus: FakeFocus(field: field, somethingFocused: true),
+            pasteboard: FakePasteboard(), keystrokes: keystrokes)
+
+        await #expect(throws: TextInsertionError.insertionUnconfirmed) {
+            try await coordinator.insert(" world")
+        }
+
+        #expect(field.field.text == "hello world")
+        #expect(keystrokes.pasteCount == 0)
+    }
 }
 
 @Suite("The assembled strategies")
@@ -433,5 +492,45 @@ struct TextInsertionAssemblyTests {
     @Test("says nothing about the destination when the reader will not")
     func saysNothingWhenTheReaderWillNot() async throws {
         #expect(try await coordinator().insert("hello").destination == nil)
+    }
+
+    /// #1550: the words land when the paste is posted, so a switch during the confirmation wait is not credited.
+    @Test("names the application in front when the paste was posted, not after the confirmation wait")
+    func namesWhereThePasteWasPosted() async throws {
+        let focus = SwitchingDuringWaitFocus()
+        let engine = PasteboardTextInsertionEngine(
+            focus: focus, pasteboard: FakePasteboard(), keystrokes: FakeKeystrokeSender())
+        let coordinator = TextInsertionCoordinator(strategies: [engine], focus: focus)
+
+        let attempt = try await coordinator.insert("hello there")
+
+        #expect(attempt.arrival == .confirmed)
+        #expect(attempt.destination == SwitchingDuringWaitFocus.target)
+    }
+}
+
+/// Focus whose frontmost application changes on the first read-back after the paste, as a user switching mid-wait.
+final class SwitchingDuringWaitFocus: AccessibilityFocus, @unchecked Sendable {
+    static let target = InsertionDestination(
+        applicationName: "Editor", bundleIdentifier: "com.example.editor")
+    static let other = InsertionDestination(
+        applicationName: "Browser", bundleIdentifier: "com.example.browser")
+    private let reads = Mutex(0)
+
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func focusedFieldIsSecure() -> Bool { false }
+
+    func tail(upTo count: Int) -> FieldTail {
+        let read = reads.withLock { reads -> Int in
+            reads += 1
+            return reads
+        }
+        return .text(read > 1 ? "hello there" : "")
+    }
+
+    func frontmostApplication() -> InsertionDestination? {
+        reads.withLock { $0 } > 1 ? Self.other : Self.target
     }
 }
