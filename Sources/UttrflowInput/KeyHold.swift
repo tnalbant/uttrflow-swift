@@ -9,6 +9,8 @@ final class KeyHold: Sendable {
 
     /// When the hold began, in uptime nanoseconds, or zero when nothing is held back.
     private let since = Atomic<UInt64>(0)
+    /// Whether a bare Tab accept must not be replayed into a disarmed gap.
+    private let suppressUnarmedTab = Atomic<Bool>(false)
     /// The key-downs kept back, oldest first.
     private let kept = Mutex<[Kept]>([])
 
@@ -18,12 +20,16 @@ final class KeyHold: Sendable {
     }
 
     /// Starts holding keys back, from the moment a keystroke is swallowed on the tap's thread.
-    func begin(now: UInt64 = DispatchTime.now().uptimeNanoseconds) {
+    func begin(now: UInt64 = DispatchTime.now().uptimeNanoseconds, suppressingUnarmedTab: Bool = false) {
+        suppressUnarmedTab.store(suppressingUnarmedTab, ordering: .relaxed)
         since.store(max(now, 1), ordering: .releasing)
     }
 
     /// Whether keys are being held back, which keeps the tap on while nothing is armed.
     var isHolding: Bool { since.load(ordering: .acquiring) != 0 }
+
+    /// Whether the swallowed key was bare Tab, which can leak as literal input during accept.
+    var isHoldingBareTabAccept: Bool { suppressUnarmedTab.load(ordering: .acquiring) }
 
     /// Keeps a copy of a key-down back and returns true while a hold is in force; false lets it through.
     func keep(_ event: CGEvent, now: UInt64 = DispatchTime.now().uptimeNanoseconds) -> Bool {
@@ -38,13 +44,17 @@ final class KeyHold: Sendable {
         return true
     }
 
-    /// Ends the hold and hands every kept key-down to `post`, oldest first.
-    func release(post: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }) {
+    /// Ends the hold and hands each allowed key-down to `post`, oldest first.
+    func release(
+        post: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) },
+        where shouldPost: (CGEvent) -> Bool = { _ in true }
+    ) {
         since.store(0, ordering: .releasing)
         let events = kept.withLock { kept in
             defer { kept.removeAll() }
             return kept
         }
-        for kept in events { post(kept.event) }
+        suppressUnarmedTab.store(false, ordering: .releasing)
+        for kept in events where shouldPost(kept.event) { post(kept.event) }
     }
 }
