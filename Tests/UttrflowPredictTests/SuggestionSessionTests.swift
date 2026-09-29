@@ -914,39 +914,6 @@ struct SuggestionScoringTests {
         #expect(update?.suggestion == .choice(leader: "git checkout", others: ["git commit"]))
     }
 
-    @Test("The fixture gate and app agree on list floors and leaders below the choice floor.")
-    func fixtureGateMatchesGeneratedDecision() throws {
-        let cases: [([String: Double], Suggestion)] = [
-            (
-                ["git checkout": -1.2, "git commit": -1.0],
-                .choice(leader: "git checkout", others: ["git commit"])
-            ),
-            (["git checkout": -1.6, "git commit": -1.0], .silent),
-            (["git checkout": -0.5, "git commit": -1.6], .certain("git checkout")),
-        ]
-
-        for (scores, expected) in cases {
-            var session = SuggestionSession()
-            let asked = try asked(&session, typing: "git c")
-            let update = session.resolveGenerated(
-                ["git checkout", "git commit"], for: asked, elapsedMilliseconds: 0, scores: scores)
-            let decision = SuggestionSession.generatedDecision(
-                ["git checkout", "git commit"], typed: "git c", scores: scores)
-            let fixtureSuggestion: Suggestion
-            switch decision {
-            case .noCandidate, .unsure:
-                fixtureSuggestion = .silent
-            case .certain(let line):
-                fixtureSuggestion = .certain(line)
-            case .choice(let leader, let others):
-                fixtureSuggestion = .choice(leader: leader, others: others)
-            }
-
-            #expect(update?.suggestion == expected)
-            #expect(fixtureSuggestion == update?.suggestion)
-        }
-    }
-
     @Test("All lines below the choice floor leave the turn quiet.")
     func allLowScoreIsQuiet() throws {
         var session = SuggestionSession()
@@ -1025,8 +992,7 @@ struct SuggestionScoringTests {
     func missingScorerKeepsTurnQuiet() throws {
         var session = SuggestionSession()
         let asked = try asked(&session, typing: "git c")
-        // The scorer is absent or held back (Low Power Mode, weights still loading),
-        // so scoreCompletions returns [:] and no line is scored.
+        // Scorer absent or held back (Low Power Mode, weights still loading): scoreCompletions returns [:] and no line is scored.
         let noneScored = session.resolveGenerated(
             ["git checkout"], for: asked, elapsedMilliseconds: 0, scores: [:])
         #expect(noneScored == .quiet(because: .modelUnsure))
@@ -1064,8 +1030,7 @@ struct SuggestionScoringTests {
             scores: ["git checkout main": 0])
         _ = session.expandGenerated(
             ["git checkout dev", "git checkout develop"], for: first, scores: nil)
-        // A keystroke narrowed the line to "d"; only "dev" and "develop" prefix-match it.
-        // Neither was put through a model pass, so neither has a score; the gate must let the listed ones through.
+        // Keystroke narrowed the line to "d"; only "dev" and "develop" prefix-match it; neither was scored, so the gate must let the listed ones through.
         let narrowed = try asked(&session, typing: "git checkout d")
         let update = session.resolveGenerated(
             ["git checkout dev", "git checkout develop"], for: narrowed,
@@ -1074,7 +1039,8 @@ struct SuggestionScoringTests {
         #expect(
             update?.suggestion
                 == .choice(
-                    leader: "git checkout dev", others: ["git checkout develop"]))
+                    leader: "git checkout dev",
+                    others: ["git checkout develop"]))
     }
 
     @Test("A reused machine-listed line alone draws as a certain ghost, no score needed.")

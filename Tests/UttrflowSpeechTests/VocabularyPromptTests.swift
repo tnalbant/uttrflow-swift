@@ -143,6 +143,22 @@ struct VocabularyPromptTests {
         #expect(!tokenizer.read(tokens).contains("supercalifragilistic400"))
     }
 
+    @Test("a word that does not fit keeps lower-ranked short words out")
+    func overflowStopsLowerRankedWords() throws {
+        let first = String(repeating: "a", count: 60)
+        let second = String(repeating: "b", count: 25)
+        let third = "cc"
+        let fourth = "d"
+        let tokens = try #require(
+            VocabularyPrompt.tokens(for: [first, second, third, fourth], using: tokenizer))
+        let prompt = tokenizer.read(tokens)
+
+        #expect(prompt.contains(first))
+        #expect(!prompt.contains(second))
+        #expect(!prompt.contains(third))
+        #expect(!prompt.contains(fourth))
+    }
+
     @Test("one enormous word does not cost the ordinary words ranked behind it")
     func oneLongWordDoesNotEmptyThePrompt() {
         let monster = String(repeating: "z", count: 400)

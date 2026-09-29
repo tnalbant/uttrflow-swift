@@ -49,7 +49,9 @@ final class SuggestionCoordinator {
     let capture: CaptureSession
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
+    private let secureInput = SecureInputWatch()
     private let acceptor: SuggestionAcceptor
+    private let focusedFieldValueObserver: any FocusedFieldValueObserving
     /// What the user has decided on the Suggestions screen, which the app hands over as it changes.
     private var preferences: SuggestionPreferences
     /// What exists on this machine right now, which the corpus cannot know. See `Docs/predict.md`.
@@ -58,6 +60,8 @@ final class SuggestionCoordinator {
     private let verifier: Verifier
     /// The model that invents a suggestion when the corpus has none, absent until the app hands one over.
     private let generator: (any CandidateGenerating)?
+    /// Reads only focus identity and selection while a completion is armed.
+    private let focusedSelectionReader: @Sendable () async -> FocusedFieldSelection?
     /// What the model last answered or had nothing for, which decides whether it is asked again.
     private var modelPass = ModelPass()
     /// The model pass in flight, cancelled by the next keystroke so a burst never queues one pass per key.
@@ -79,6 +83,13 @@ final class SuggestionCoordinator {
     private var monitors: [Any] = []
     /// The scroll monitor, present only while a ghost is drawn, since a scroll matters only then.
     private var scrollMonitor: Any?
+    private var secureInputObserver: (any NSObjectProtocol)?
+    private var activityIsWatched = false
+    /// Polls only the focused selection while a ghost can still be accepted.
+    private var selectionTimer: Timer?
+    private var selectionGuard: ArmedSelectionGuard?
+    private var selectionPollInFlight = false
+    private var selectionPollGeneration = 0
     private var activations: (any NSObjectProtocol)?
     /// The Space and sleep observers, each of which leaves a ghost with no field under it.
     private var spaceObservers: [any NSObjectProtocol] = []
@@ -90,7 +101,7 @@ final class SuggestionCoordinator {
     /// The line capture was last handed as a keystroke, and the field it was in, so a Return can catch up what it displaced.
     private var handed: (line: String, reading: FieldReading)?
     /// The line the accept key takes as last armed by a draw, so a later answer never inherits that claim.
-    private var armedOffer: String?
+    private(set) var armedOffer: String?
     private var lastKeystroke = Date.distantPast
     /// One turn at a time, with a turn that never returns left behind so the loop cannot die with it.
     private var turns = TurnGate()
@@ -114,14 +125,22 @@ final class SuggestionCoordinator {
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
     var onTurnedOffEverywhere: (() -> Void)?
+    /// Tells the menu bar why suggestion input is paused.
+    var onSecureInputBlockingChanged: ((Bool) -> Void)?
 
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
         container: URL, preferences: SuggestionPreferences,
-        scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil
+        scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
+        focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
+        focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
+            await FocusedFieldReader.focusedSelection()
+        }
     ) throws(PredictStoreError) {
         self.preferences = preferences
         self.generator = generating
+        self.focusedSelectionReader = focusedSelectionReader
+        self.focusedFieldValueObserver = focusedFieldValueObserver ?? FocusedFieldValueObserver()
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
@@ -206,6 +225,25 @@ final class SuggestionCoordinator {
     func start() {
         isStopped = false
         tapRest.cancel()
+        secureInputObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.checkSecureInput()
+                if !self.secureInput.isBlocking {
+                    self.focusedFieldValueObserver.refresh()
+                    self.applicationChanged()
+                }
+            }
+        }
+        checkSecureInput()
+        guard !secureInput.isBlocking else { return }
+        startInterceptor()
+    }
+
+    /// Starts the key tap and activity monitors after secure keyboard entry ends.
+    private func startInterceptor() {
         do {
             try interceptor.start()
         } catch {
@@ -217,16 +255,40 @@ final class SuggestionCoordinator {
         FocusedFieldReader.prepare()
         // A ghost the panel takes off screen on its own, when it grows past its room, gives up its keys too.
         panel.onWithdrawnUnasked = { [weak self] in
+            self?.stopWatchingSelection()
             self?.interceptor.arm([])
             self?.armedOffer = nil
         }
         watchSwallowedKeys()
-        watchForActivity()
+        if !activityIsWatched {
+            watchForActivity()
+            activityIsWatched = true
+        } else {
+            watchFocusedFieldValues()
+        }
+    }
+
+    /// Withdraws suggestions while secure keyboard entry prevents reliable key capture.
+    private func checkSecureInput() {
+        guard secureInput.check() else { return }
+        let now = secureInput.isBlocking ? "on" : "off"
+        Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
+        if secureInput.isBlocking {
+            withdraw()
+            focusedFieldValueObserver.stop()
+            interceptor.stop()
+            onSecureInputBlockingChanged?(true)
+            panel.announce(SecureInputWatch.suggestionNotice)
+        } else {
+            onSecureInputBlockingChanged?(false)
+            startInterceptor()
+        }
     }
 
     /// Takes the surface away, disarms the tap and stops watching.
     func stop() {
         isStopped = true
+        onSecureInputBlockingChanged?(false)
         tapRest.cancel()
         session.invalidate()
         interceptor.arm([])
@@ -243,10 +305,17 @@ final class SuggestionCoordinator {
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors = []
         stopWatchingScrolls()
+        if let secureInputObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(secureInputObserver)
+        }
+        secureInputObserver = nil
+        activityIsWatched = false
+        stopWatchingSelection()
         if let activations { NSWorkspace.shared.notificationCenter.removeObserver(activations) }
         activations = nil
         for observer in spaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         spaceObservers = []
+        focusedFieldValueObserver.stop()
         // A browser's full Accessibility tree stays on only while suggestions do.
         FocusedFieldReader.releaseFullTrees()
     }
@@ -258,6 +327,7 @@ final class SuggestionCoordinator {
 
     /// Keystrokes elsewhere, the application in front changing, and a clock for the pauses.
     private func watchForActivity() {
+        watchFocusedFieldValues()
         let keys = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             let pastes = Self.isPaste(event)
             // A paste, the person's or this app's own, puts words in the line that were never typed.
@@ -267,6 +337,7 @@ final class SuggestionCoordinator {
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
+                MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
             }
             MainActor.assumeIsolated { self?.keyPressed(Key(keyCode: event.keyCode), typing: text) }
         }
@@ -275,17 +346,13 @@ final class SuggestionCoordinator {
         let clicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
             FocusedFieldReader.focusMayHaveMoved()
             MainActor.assumeIsolated {
+                self?.focusedFieldValueObserver.refresh()
                 self?.noteActivity()
                 self?.withdraw()
                 self?.wake(.tick)
             }
         }
         if let clicks { monitors.append(clicks) }
-        activations = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applicationChanged() }
-        }
         for name in [
             NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.screensDidSleepNotification,
         ] {
@@ -294,6 +361,20 @@ final class SuggestionCoordinator {
                     [weak self] _ in MainActor.assumeIsolated { self?.withdraw() }
                 })
         }
+    }
+
+    func watchFocusedFieldValues() {
+        focusedFieldValueObserver.start { [weak self] in self?.accessibilityValueChanged() }
+    }
+
+    /// Withdraws an offer when the focused field changes without a corresponding key event.
+    private func accessibilityValueChanged() {
+        guard !isStopped, !isInserting, armedOffer != nil,
+            Date().timeIntervalSince(lastKeystroke) * 1000 >= Double(Self.fieldReadDebounceInMilliseconds)
+        else { return }
+        noteActivity()
+        withdraw()
+        wake(.tick)
     }
 
     /// Whether a key-down may move keyboard focus to another field: Tab, Escape, or any ⌘ shortcut.
@@ -329,6 +410,8 @@ final class SuggestionCoordinator {
 
     /// Takes the ghost and the keys it claims away, and voids every answer in flight, because the caret may have moved under it.
     private func withdraw() {
+        stopWatchingSelection()
+        armedOffer = nil
         session.invalidate()
         generating?.cancel()
         cancelPendingWake()
@@ -350,6 +433,50 @@ final class SuggestionCoordinator {
     private func stopWatchingScrolls() {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         scrollMonitor = nil
+    }
+
+    /// Checks the caret every 200 ms only while a drawn offer can be accepted.
+    func armSelectionMonitor(for suggestion: Suggestion, at range: NSRange?) {
+        armedOffer = suggestion.accepting
+        guard armedOffer != nil else { return stopWatchingSelection() }
+        stopWatchingSelection()
+        selectionGuard = ArmedSelectionGuard(expectedRange: range)
+        let generation = selectionPollGeneration
+        selectionTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollSelection(generation: generation) }
+        }
+        selectionTimer?.tolerance = 0.05
+    }
+
+    /// Withdraws the offer when Accessibility reports a different selection or focused element.
+    private func pollSelection(generation: Int) {
+        guard generation == selectionPollGeneration else { return }
+        Task { [weak self] in await self?.pollFocusedSelection(generation: generation) }
+    }
+
+    /// Reads the focused selection and withdraws an armed offer when it no longer matches.
+    func pollFocusedSelection(generation: Int? = nil) async {
+        let generation = generation ?? selectionPollGeneration
+        guard generation == selectionPollGeneration, !selectionPollInFlight,
+            armedOffer != nil, selectionGuard != nil, !isInserting
+        else { return }
+        selectionPollInFlight = true
+        let selection = await focusedSelectionReader()
+        guard generation == selectionPollGeneration else { return }
+        selectionPollInFlight = false
+        guard var selectionGuard else { return }
+        guard !selectionGuard.observe(selection) else { return withdraw() }
+        self.selectionGuard = selectionGuard
+    }
+
+    /// Stops the selection poll and invalidates any result still waiting on Accessibility.
+    private func stopWatchingSelection() {
+        selectionPollGeneration += 1
+        selectionTimer?.invalidate()
+        selectionTimer = nil
+        selectionGuard = nil
+        selectionPollInFlight = false
+        FocusedFieldReader.cancelFocusedSelectionRead()
     }
 
     /// Withdraws a ghost the scroll has left behind, once, and lets the clock redraw it where the caret now is.
@@ -391,7 +518,7 @@ final class SuggestionCoordinator {
         return characters
     }
 
-    /// One key pressed in another application, which is the only thing that moves the caret for us.
+    /// One key pressed in another application, which may update the focused field.
     private func keyPressed(_ key: Key, typing text: String? = nil) {
         noteActivity()
         lastKeystroke = Date()
@@ -420,6 +547,7 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         guard panel.advance(to: session.typed, showing: update.suggestion) else { return false }
+        selectionGuard?.typedThrough(text)
         wake(.keystroke)
         return true
     }
@@ -644,6 +772,7 @@ final class SuggestionCoordinator {
         let keystrokesSeen = session.keystrokes
         // The session already holds this answer, so the key armed for the drawn one is let go until this one is drawn.
         if !Self.keepsClaimWhileReading(armed: armedOffer, next: update.suggestion) {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             armedOffer = nil
@@ -923,6 +1052,7 @@ final class SuggestionCoordinator {
     /// Draws whatever a turn with no field behind it settled on, which is always nothing.
     private func draw(_ step: SuggestionStep) {
         guard !isStopped, case .settled(let update) = step else { return }
+        stopWatchingSelection()
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         panel.hide()
@@ -930,9 +1060,10 @@ final class SuggestionCoordinator {
     }
 
     /// Arms the tap first and draws second, so no key is claimed that nothing is offering.
-    private func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
+    func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
         // A stopped loop, or an answer from a read that a key, click or switch has since overtaken, draws nothing and claims no key.
         guard !isStopped, session.isCurrent else {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             return
@@ -940,7 +1071,10 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         // Nothing is drawn off the caret's line, and what is not drawn claims no key.
-        guard let snapshot, let caret = Self.caret(for: update.suggestion, in: snapshot) else {
+        guard let snapshot, snapshot.placement == .inlineGhost,
+            let caret = Self.caret(for: update.suggestion, in: snapshot)
+        else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             panel.hide()
@@ -954,10 +1088,12 @@ final class SuggestionCoordinator {
             fontFamily: snapshot.fontFamily, textColor: snapshot.textColor)
         // An offer the panel could not show whole claims no key, so Tab never inserts what was not drawn.
         guard shown else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             return
         }
+        armSelectionMonitor(for: update.suggestion, at: snapshot.selection)
         watchScrolls()
     }
 
@@ -970,6 +1106,7 @@ final class SuggestionCoordinator {
     /// Draws what a move or a dismissal left where the ghost already stands, since no field was read for it and typing may have moved it.
     private func redraw(_ update: SuggestionUpdate) {
         guard !isStopped, session.isCurrent else {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             return
@@ -977,6 +1114,7 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         guard panel.redraw(update.suggestion, typed: session.typed, selection: session.selection) else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             return
@@ -987,6 +1125,7 @@ final class SuggestionCoordinator {
 
     /// Every key the tap took, decided in the session and carried out here.
     private func watchSwallowedKeys() {
+        swallowed?.cancel()
         swallowed = Task { [weak self, interceptor] in
             for await event in interceptor.events {
                 guard let self else { return }
@@ -1010,15 +1149,18 @@ final class SuggestionCoordinator {
             )
             switch action {
             case .accept(let text):
+                stopWatchingSelection()
                 panel.hide()
                 interceptor.arm([])
                 generating?.cancel()
                 // Held across the insert so the keys it posts are ignored on both the tap and the monitor.
                 isInserting = true
-                let taken = await take(text, after: typed, in: reading)
+                let returnedKey = await Self.acceptKeyToReturnIfTakeFails(stroke) {
+                    await take(text, after: typed, in: reading)
+                }
                 isInserting = false
                 // A field that is no longer the drawn line gets its key back, so Tab still does what Tab does there.
-                if !taken { KeyStrokeReturn.post(stroke) }
+                if let returnedKey { KeyStrokeReturn.post(returnedKey) }
                 noteActivity()
                 // The field is re-read a moment later, since an application applies the insertion after the keys land.
                 wake(.tick, afterMilliseconds: 80)
@@ -1064,11 +1206,24 @@ final class SuggestionCoordinator {
         }
     }
 
+    /// Returns the swallowed accept stroke only when taking the suggestion fails.
+    static func acceptKeyToReturnIfTakeFails(
+        _ stroke: UttrflowPredict.KeyStroke, taking: () async -> Bool
+    ) async -> UttrflowPredict.KeyStroke? {
+        await taking() ? nil : stroke
+    }
+
     /// Puts the tail into the field and queues the taken line for capture, answering false when the field refused it unwritten.
     private func take(_ text: String, after typed: String, in reading: FieldReading?) async -> Bool {
         // What the gates left is a whole line, so taking it may replace characters as well as add.
+        guard let windowNumber = reading?.surface?.windowNumber else {
+            Self.log.error("the drawn field has no identifiable window; giving the key back")
+            return false
+        }
         var via = "nothing"
-        switch await acceptor.aim(.certain(text), after: typed) {
+        switch await acceptor.aim(
+            .certain(text), after: typed, expectedWindowNumber: windowNumber)
+        {
         case .refused(let reason):
             Self.log.error("\(SuggestionLog.refusedUnwritten(reason, typed: typed), privacy: .public)")
             return false
@@ -1076,11 +1231,11 @@ final class SuggestionCoordinator {
             break
         case .write(let edit):
             do throws(TextInsertionError) {
-                via = try await acceptor.write(edit)?.rawValue ?? via
+                via = try await acceptor.write(edit, expectedWindowNumber: windowNumber)?.rawValue ?? via
             } catch {
                 // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
                 Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
-                return true
+                return false
             }
         }
         Self.log.debug(

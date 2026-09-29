@@ -4,6 +4,22 @@ public import UttrflowPredict
 
 public import struct Foundation.NSRange
 
+/// The focused Accessibility element and its selected text range, without reading its contents.
+public struct FocusedFieldSelection: Sendable, Equatable {
+    /// The process that owns the focused element.
+    public let processIdentifier: Int32
+    /// The focused element's Accessibility identity within its process.
+    public let elementHash: UInt
+    /// The selection in UTF-16 units.
+    public let range: NSRange
+
+    public init(processIdentifier: Int32, elementHash: UInt, range: NSRange) {
+        self.processIdentifier = processIdentifier
+        self.elementHash = elementHash
+        self.range = range
+    }
+}
+
 /// One reading of the focused field: what identifies it, what it holds, and where its caret is.
 public struct FocusedFieldSnapshot: Sendable, Equatable {
     /// The application the field belongs to.
@@ -40,6 +56,10 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let textColor: TextColor?
     /// Whether the field hides what is typed into it.
     public let isSecure: Bool
+    /// Whether the field reports that it accepts input, or nothing when Accessibility does not answer.
+    public let isEnabled: Bool?
+    /// Whether the field reports that its text is editable, or nothing when Accessibility does not answer.
+    public let isEditable: Bool?
     /// Whether an input method is mid-composition, which owns both the screen and the Tab key.
     public let isComposing: Bool
     /// What the field itself says about an input method's marked text, before any guess from the input source.
@@ -50,6 +70,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let readMicroseconds: Int
     /// The title of the window holding the field, which names the conversation, the note or the thread the field belongs to.
     public let windowTitle: String?
+    /// The window number holding the field, when Accessibility publishes one.
+    public let windowNumber: UInt32?
     /// The line the caret is on up to the caret, from a sentence start in prose too long to complete whole, less a terminal's shell prompt.
     public let currentLine: String
     /// Whether the caret's line ran past `lineReadLimit`, so `currentLine` is only its last stretch and too long to complete.
@@ -73,11 +95,14 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         fontFamily: String? = nil,
         textColor: TextColor? = nil,
         isSecure: Bool = false,
+        isEnabled: Bool? = nil,
+        isEditable: Bool? = nil,
         isComposing: Bool = false,
         markedText: MarkedText = .unanswered,
         showsOwnList: Bool = false,
         readMicroseconds: Int = 0,
-        windowTitle: String? = nil
+        windowTitle: String? = nil,
+        windowNumber: UInt32? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName
@@ -96,11 +121,14 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.fontFamily = fontFamily
         self.textColor = textColor
         self.isSecure = isSecure
+        self.isEnabled = isEnabled
+        self.isEditable = isEditable
         self.isComposing = isComposing
         self.markedText = markedText
         self.showsOwnList = showsOwnList
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
+        self.windowNumber = windowNumber
         let prose = role == Self.proseRole && !TerminalApplications.contains(bundleIdentifier)
         let line = Self.caretLine(
             of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
@@ -127,7 +155,10 @@ extension FocusedFieldSnapshot {
     var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || textColor != nil }
 
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
-    public var placement: SuggestionPlacement? { isHeldByFullScreenProgram ? nil : capability.placement }
+    public var placement: SuggestionPlacement? {
+        isEnabled == false || isEditable == false || isHeldByFullScreenProgram
+            ? nil : capability.placement
+    }
 
     /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.
     public var isHeldByFullScreenProgram: Bool {
@@ -157,6 +188,7 @@ extension FocusedFieldSnapshot {
         // A full-screen program's line is not typed at the shell, so nothing of it is completed or learned.
         if isTerminal, FullScreenProgram.isNamed(inWindowTitle: windowTitle) { return ("", false) }
         let caret = index(in: value, atUTF16Offset: selection?.location ?? value.utf16.count)
+        if isTerminal, ShellPrompt.isHereDocumentBody(in: value, before: caret) { return ("", false) }
         let start = lineStart(in: value, before: caret, prose: prose)
         let line = String(value[start.index..<caret])
         // A cut line is kept whole, so its length alone refuses it.
@@ -254,13 +286,13 @@ extension FocusedFieldSnapshot {
     /// Whether the caret sits at the end of the line it is on, which completing presumes.
     public var caretAtLineEnd: Bool {
         guard let ahead = rowAhead else { return false }
-        return ahead.allSatisfy { $0 == " " || $0 == "\t" } || rightPromptGap != nil
+        return ahead.allSatisfy { $0 == " " || $0 == "\t" }
     }
 
-    /// The fewest padding spaces that set a terminal's right-hand prompt apart from text after the caret.
+    /// The fewest padding spaces that separate the caret from a terminal's right-side display text.
     static let rightPromptPadding = 4
 
-    /// How many padding spaces separate the caret from a terminal's right-hand prompt, or nothing when the row has none.
+    /// How many padding spaces separate the caret from a terminal's right-side display text, or nothing when the row has none.
     public var rightPromptGap: Int? {
         guard TerminalApplications.contains(bundleIdentifier), let ahead = rowAhead else { return nil }
         let gap = ahead.prefix { $0 == " " }.count
@@ -269,7 +301,7 @@ extension FocusedFieldSnapshot {
         return gap
     }
 
-    /// The field's rectangle, ended before a terminal's right-hand prompt so the ghost is not drawn over it.
+    /// The field's rectangle, ended before a padded terminal tail so the ghost does not draw over it.
     public var ghostField: CGRect? {
         guard let gap = rightPromptGap, let caret, let pointSize, let field else { return field }
         let edge = caret.maxX + CGFloat(gap - 1) * pointSize * Self.monospacedAdvance

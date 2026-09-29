@@ -33,7 +33,9 @@ public enum ShellHistory {
     /// Reads a history file off the disk, tolerating bytes that are not text rather than refusing.
     public static func read(atPath path: String) -> [String] {
         guard let data = FileManager.default.contents(atPath: path) else { return [] }
-        return commands(in: String(decoding: data, as: UTF8.self))
+        let contents =
+            URL(fileURLWithPath: path).lastPathComponent == ".zsh_history" ? unmetafied(data) : data
+        return commands(in: String(decoding: contents, as: UTF8.self))
     }
 
     /// Removes the timestamp zsh writes before a command, which only ever opens a first line.
@@ -42,10 +44,30 @@ public enum ShellHistory {
         return String(line[match.range.upperBound...])
     }
 
+    /// Restores bytes escaped with zsh's Meta prefix before UTF-8 decoding.
+    private static func unmetafied(_ data: Data) -> Data {
+        var iterator = data.makeIterator()
+        var decoded: [UInt8] = []
+        decoded.reserveCapacity(data.count)
+        while let byte = iterator.next() {
+            guard byte == 0x83 else {
+                decoded.append(byte)
+                continue
+            }
+            guard let escapedByte = iterator.next() else {
+                decoded.append(byte)
+                break
+            }
+            decoded.append(escapedByte ^ 0x20)
+        }
+        return Data(decoded)
+    }
+
     /// Whether a line is a command worth keeping, once it has been trimmed.
     private static func command(in line: String) -> String? {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard command.count >= CaptureGate.minimumLength, !CaptureGate.looksLikeSecret(command)
+        guard command.count >= CaptureGate.minimumLength,
+            !command.contains("\u{FFFD}"), !CaptureGate.looksLikeSecret(command)
         else { return nil }
         return command
     }
