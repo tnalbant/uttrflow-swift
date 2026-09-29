@@ -14,7 +14,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
-    labels: ["dependencies", "github-actions"]
+    # Omit labels so Dependabot can create and apply its defaults automatically.
     groups:
       # **The codeql-action entry points are one action and must move together.** `init`
       # writes a configuration that `autobuild` and `analyze` read, and mixing majors fails
@@ -52,7 +52,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
-    labels: ["dependencies", "swift"]
+    # Omit labels so Dependabot can create and apply its defaults automatically.
     groups:
       # Grouped because a toolchain bump moves several of these at once, and five pull
       # requests that must land together are five chances to land four.
