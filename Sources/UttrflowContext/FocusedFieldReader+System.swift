@@ -281,7 +281,8 @@ public enum FocusedFieldReader {
         let ownList = SurfaceProbe.integer(field, "AXExpanded") == 1
         guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
-        let caretRect = caret(field, at: range, frame: fieldRect, pointSize: style?.size, while: goOn)
+        let caretRect = caret(
+            field, at: range, value: value, frame: fieldRect, pointSize: style?.size, while: goOn)
         guard goOn() else { return nil }
         let windowRect = stable.windowFrame
         let appPickerOpen =
@@ -403,10 +404,12 @@ public enum FocusedFieldReader {
 
     /// The caret's screen rectangle, from the selection where the field answers it and from the text marker where it does not; `frame` is the field's own, already read.
     private static func caret(
-        _ field: AXUIElement, at range: CFRange?, frame: CGRect?, pointSize: CGFloat?, while goOn: () -> Bool
+        _ field: AXUIElement, at range: CFRange?, value: String?, frame: CGRect?, pointSize: CGFloat?,
+        while goOn: () -> Bool
     ) -> CGRect? {
         CaretLocator.caret(
             at: range.map { (location: $0.location, length: $0.length) }, frame: frame, pointSize: pointSize,
+            value: value,
             bounds: { goOn() ? SurfaceProbe.bounds(field, at: CFRange(location: $0, length: $1)) : nil },
             markerBounds: { goOn() ? markerBounds(field) : nil })
     }

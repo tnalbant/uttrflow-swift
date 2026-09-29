@@ -10,18 +10,21 @@ private struct Field {
     var marker: CGRect? = nil
     var frame: CGRect? = nil
     var pointSize: CGFloat? = nil
+    var value: String? = nil
 
     func caret(at selection: (location: Int, length: Int)?) -> CGRect? {
         CaretLocator.caret(
-            at: selection, frame: frame, pointSize: pointSize, bounds: bounds, markerBounds: { marker })
+            at: selection, frame: frame, pointSize: pointSize, value: value, bounds: bounds,
+            markerBounds: { marker })
     }
 }
 
 /// The field a test describes.
 private func locator(
-    bounds: @escaping (Int, Int) -> CGRect? = { _, _ in nil }, marker: CGRect? = nil, frame: CGRect? = nil
+    bounds: @escaping (Int, Int) -> CGRect? = { _, _ in nil }, marker: CGRect? = nil, frame: CGRect? = nil,
+    value: String? = nil
 ) -> Field {
-    Field(bounds: bounds, marker: marker, frame: frame)
+    Field(bounds: bounds, marker: marker, frame: frame, value: value)
 }
 
 @Suite("Where the caret is found from a field's answers")
@@ -51,6 +54,19 @@ struct CaretLocatorTests {
             },
             marker: CGRect(x: 999, y: 999, width: 0, height: 16))
         #expect(field.caret(at: (location: 5, length: 0)) == CGRect(x: 48, y: 10, width: 0, height: 16))
+    }
+
+    @Test("A caret after Return uses the first glyph on the new line, not the line break's bounds.")
+    func caretAfterReturnUsesTheFollowingGlyph() {
+        let field = locator(
+            bounds: { location, length in
+                switch (location, length) {
+                case (5, 1): CGRect(x: 80, y: 10, width: 0, height: 16)
+                case (6, 1): CGRect(x: 12, y: 30, width: 7, height: 18)
+                default: nil
+                }
+            }, value: "Hello\nGoodbye")
+        #expect(field.caret(at: (location: 6, length: 0)) == CGRect(x: 12, y: 30, width: 0, height: 18))
     }
 
     @Test("Zero-size glyph bounds fall through to the marker, as a Chromium field answers them.")
