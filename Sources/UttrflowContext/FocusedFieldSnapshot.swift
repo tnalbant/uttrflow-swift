@@ -157,6 +157,7 @@ extension FocusedFieldSnapshot {
         // A full-screen program's line is not typed at the shell, so nothing of it is completed or learned.
         if isTerminal, FullScreenProgram.isNamed(inWindowTitle: windowTitle) { return ("", false) }
         let caret = index(in: value, atUTF16Offset: selection?.location ?? value.utf16.count)
+        if isTerminal, ShellPrompt.isHereDocumentBody(in: value, before: caret) { return ("", false) }
         let start = lineStart(in: value, before: caret, prose: prose)
         let line = String(value[start.index..<caret])
         // A cut line is kept whole, so its length alone refuses it.
