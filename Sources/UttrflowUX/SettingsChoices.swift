@@ -24,8 +24,8 @@ public enum SettingsTidyingLevel: String, Sendable, Equatable, CaseIterable {
     public static let rowLabel = "How much Uttrflow tidies"
     /// What the row says underneath on both screens that draw it.
     public static let rowExplanation = """
-        Light fixes punctuation, capitalisation and spacing. Standard also removes filler \
-        words and repairs grammar.
+        Both levels remove filler words and stammers. Standard also rewrites grammar and \
+        word choice when an on-device model is available.
         """
 }
 

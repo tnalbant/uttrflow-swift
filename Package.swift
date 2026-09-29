@@ -388,7 +388,9 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowUXTests",
-            dependencies: ["UttrflowPredict", "UttrflowUX", "UttrflowTestSupport"],
+            dependencies: [
+                "UttrflowAI", "UttrflowPredict", "UttrflowUX", "UttrflowTestSupport",
+            ],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(

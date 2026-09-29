@@ -221,7 +221,7 @@ public enum SettingsEditor {
         given capabilities: SettingsCapabilities
     ) -> String? {
         guard level == .standard, !capabilities.canTidyBeyondTheFloor else { return nil }
-        return "Full tidying is not available on this Mac yet, so Uttrflow will punctuate only."
+        return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
     }
 
     /// Throws when the engine behind this quality is not downloaded, then selects it.
