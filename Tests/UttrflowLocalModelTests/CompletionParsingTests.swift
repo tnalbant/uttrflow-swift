@@ -82,6 +82,17 @@ struct CompletionParsingTests {
             ).isEmpty)
     }
 
+    @Test("Unsafe control, format, and replacement scalars reject the whole continuation.")
+    func unsafeScalarsAreRejected() {
+        for scalar in ["\t", "\u{1B}", "\u{200B}", "\u{202E}", "\u{2066}", "\u{FFFD}"] {
+            #expect(CompletionText.parse("Thanks for the \(scalar)update", typed: "Thanks for the").isEmpty)
+        }
+        #expect(
+            CompletionText.parse("Thanks for the update", typed: "Thanks for the") == [
+                "Thanks for the update"
+            ])
+    }
+
     @Test("A continuation that loops on itself is dropped rather than drawn across the screen.")
     func repetitionIsDropped() {
         let looping = "sr" + String(repeating: " -  sr", count: 40)

@@ -229,6 +229,7 @@ enum CompletionText {
             guard
                 let continuation = Self.continuation(of: text, past: unindented)
                     ?? Self.continuation(of: Self.unmarked(text), past: unindented),
+                SuggestionTextSafety.allows(continuation),
                 Self.comparable(continuation).contains(where: { $0 != " " }),
                 !promptMarkers.contains(where: text.lowercased().contains),
                 !isDegenerate(continuation)
