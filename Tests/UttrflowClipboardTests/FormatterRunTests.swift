@@ -1,5 +1,6 @@
 // Tests that a formatter run is bounded by its deadline and cannot deadlock on its pipes.
 import Foundation
+import Darwin
 import Testing
 
 @testable import UttrflowClipboard
@@ -24,8 +25,32 @@ struct FormatterRunTests {
 
     @Test("a tool that is still running at the deadline is given up on, even if it would answer later")
     func deadlineCoversTheWholeRun() async throws {
-        let slow = try Self.tool("cat >/dev/null\nsleep 30\necho formatted")
+        let slow = try Self.tool("trap '' TERM\nwhile :; do :; done")
         #expect(await Self.run(slow, "let x = 1", timeout: 0.2) == nil)
+    }
+
+    @Test("a formatter that ignores TERM is killed and its bounded pipe pump returns")
+    func termIgnoringToolIsKilled() async throws {
+        let pidFile = FileManager.default.temporaryDirectory.appending(path: "formatter-pid-\(UUID())")
+        let tool = try Self.tool("echo $$ > '\(pidFile.path)'\ntrap '' TERM\nwhile :; do :; done")
+        defer { try? FileManager.default.removeItem(at: tool.deletingLastPathComponent()) }
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+
+        #expect(await Self.run(tool, "let x = 1", timeout: 1) == nil)
+
+        let elapsed = DispatchTime.now().uptimeNanoseconds - startedAt
+        let processID = try #require(
+            Int(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        #expect(elapsed < 4_000_000_000, "termination escalation must remain bounded")
+        #expect(kill(pid_t(processID), 0) == -1 && errno == ESRCH, "the ignored-TERM process must be gone")
+    }
+
+    @Test("stdout beyond the fixed output cap is refused")
+    func unboundedStdoutIsRefused() async throws {
+        let flood = try Self.tool("exec /usr/bin/yes formatted")
+        defer { try? FileManager.default.removeItem(at: flood.deletingLastPathComponent()) }
+
+        #expect(await Self.run(flood, "let x = 1", timeout: 5) == nil)
     }
 
     @Test("a megabyte round-trips through a tool that writes as it reads")

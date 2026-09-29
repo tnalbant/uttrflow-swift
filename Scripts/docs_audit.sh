@@ -24,7 +24,7 @@
 # whether the prose around them is accurate, which no script can answer. It needs no build.
 #
 # Usage:  ./Scripts/docs_audit.sh            (belongs in `make verify`, ahead of the build)
-#         ./Scripts/docs_audit.sh --self-test   also runs the CLAUDE.md delegation fixture
+#         ./Scripts/docs_audit.sh --self-test   also runs the contract and delegation fixtures
 set -euo pipefail
 
 PACKAGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -101,6 +101,65 @@ run_graphflow_guide_self_test() {
         pass "missing Graphflow guide reference fails"
     fi
 }
+
+# The PR template is contributor-facing guidance and must agree with AGENTS.md's
+# present-tense comment rule without repeating the full policy. Keep this check narrow.
+comment_checklist_findings() {
+    local template="$1"
+    python3 - "$template" <<'PYTHON'
+import sys
+
+path = sys.argv[1]
+text = open(path, errors="ignore").read()
+required = (
+    "Comments are one line, present tense, and describe what the code does now",
+    "A reason only when it changes what a reader should do",
+    "durable measurements or",
+    "development history",
+)
+stale = "Comments explain *why*, not what"
+missing = [phrase for phrase in required if phrase not in text]
+if stale in text:
+    print(f"{path}: retains the obsolete 'why, not what' checklist instruction")
+for phrase in missing:
+    print(f"{path}: missing comment guidance: {phrase}")
+PYTHON
+}
+
+run_comment_checklist_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-comments.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    cat >"$work/current.md" <<'EOF'
+- [ ] Comments are one line, present tense, and describe what the code does now
+
+A reason only when it changes what a reader should do. Put durable measurements or
+architectural rationale in `Docs/`; put development history in this description or the commit.
+EOF
+    cat >"$work/stale.md" <<'EOF'
+- [ ] Comments explain *why*, not what
+EOF
+
+    printf 'PR comment checklist fixture\n'
+    local current_report stale_report
+    current_report="$(comment_checklist_findings "$work/current.md")"
+    if [[ -z "${current_report//[[:space:]]/}" ]]; then
+        pass "current comment checklist guidance passes"
+    else
+        fail "current comment checklist guidance was flagged" "$current_report"
+    fi
+    stale_report="$(comment_checklist_findings "$work/stale.md")"
+    if [[ "$stale_report" == *"obsolete 'why, not what'"* && "$stale_report" == *"missing comment guidance"* ]]; then
+        pass "the obsolete checklist wording fails"
+    else
+        fail "the obsolete comment checklist wording passed" "$stale_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_comment_checklist_self_test
+    printf '\n'
+fi
 
 changelog_release_bullet_findings() {
     read -r -d '' CHANGELOG_PROGRAM <<'PYTHON' || true
@@ -356,6 +415,74 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     printf '\n'
 fi
 
+# `make verify` intentionally stops before constructing the app bundle. CI's packaging
+# gate is a separate contract, and the contributor guide must name the same shared target.
+read -r -d '' PACKAGING_CONTRACT_PROGRAM <<'PYTHON' || true
+import re
+import sys
+
+guide_path, workflow_path = sys.argv[1:]
+guide = open(guide_path, errors="ignore").read()
+workflow = open(workflow_path, errors="ignore").read()
+findings = []
+stale = re.compile(
+    r"no class of failure that only CI can find|"
+    r"make verify.{0,100}(?:same command CI runs|covers? every CI|all CI failures)",
+    re.IGNORECASE | re.DOTALL,
+)
+for path, text in ((guide_path, guide), (workflow_path, workflow)):
+    match = stale.search(text)
+    if match:
+        line = text.count("\n", 0, match.start()) + 1
+        findings.append(f"{path}:{line}\tclaims make verify covers failures outside its gate")
+if "make app-preflight" not in guide:
+    findings.append(f"{guide_path}:1\tdoes not give the shared packaging preflight command")
+if "run: make app-preflight" not in workflow:
+    findings.append(f"{workflow_path}:1\tCI does not use the documented packaging preflight")
+if guide.find("make verify") > guide.find("make app-preflight"):
+    findings.append(f"{guide_path}:1\tdoes not put make verify before the packaging preflight")
+verify_step = workflow.find("run: make verify")
+packaging_step = workflow.find("run: make app-preflight")
+if verify_step < 0 or packaging_step < 0 or verify_step > packaging_step:
+    findings.append(f"{workflow_path}:1\tCI does not run verify before the packaging preflight")
+print("\n".join(findings))
+PYTHON
+
+packaging_contract_findings() {
+    python3 -c "$PACKAGING_CONTRACT_PROGRAM" "$1" "$2"
+}
+
+run_packaging_contract_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-packaging.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    printf '%s\n' 'Run `make verify`; there is no class of failure that only CI can find.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/stale.md"
+    printf '%s\n' 'Run `make verify` for lint, audits, tests, and coverage.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/corrected.md"
+    printf '%s\n' 'run: make verify' 'run: make app-preflight' > "$work/ci.yml"
+
+    printf 'packaging gate wording fixture\n'
+    local stale_report corrected_report
+    stale_report="$(packaging_contract_findings "$work/stale.md" "$work/ci.yml")"
+    if [[ "$stale_report" == *"covers failures outside its gate"* ]]; then
+        pass "the stale make verify claim fails"
+    else
+        fail "the stale make verify claim passed" "$stale_report"
+    fi
+    corrected_report="$(packaging_contract_findings "$work/corrected.md" "$work/ci.yml")"
+    if [[ -z "${corrected_report//[[:space:]]/}" ]]; then
+        pass "the corrected gate wording and shared command pass"
+    else
+        fail "the corrected packaging guidance was flagged" "$corrected_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_packaging_contract_self_test
+    printf '\n'
+fi
+
 # `--self-test` runs the CLAUDE.md delegation fixture before the normal scan, so the
 # audit's checks themselves fail noisily when they stop biting. Same pattern as
 # log_privacy_audit.py and perf_budget_audit.py.
@@ -409,6 +536,17 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     fi
     printf '\ndocs audit self-test: every fixture case behaved as expected.\n\n'
     failures=0
+fi
+
+printf '\nPackaging gate guidance\n'
+packaging_contract_report="$(packaging_contract_findings CONTRIBUTING.md .github/workflows/ci.yml)"
+if [[ -n "${packaging_contract_report//[[:space:]]/}" ]]; then
+    fail "the contributor guide and CI disagree about the packaging gate" \
+        '`make verify` does not create or verify the app bundle. Keep the documented' \
+        'sequence and CI aligned through `make app-preflight`.' \
+        "" $'\n'"$packaging_contract_report"
+else
+    pass "the guide distinguishes make verify and CI uses its shared app-preflight command"
 fi
 
 cd "$PACKAGE_ROOT"
@@ -928,7 +1066,74 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7c. The Dictation artboards match DictationPresenter's own figures.
+
+# 7c. The design shell's sidebar matches SidebarPresenter.order.
+# ---------------------------------------------------------------------------
+#
+# `Design/_gen_shell.py` draws the persistent sidebar every `Main-*.dc.html` artboard sits
+# in. Nothing tied its row order to `SidebarPresenter.order`, the shipped sidebar's single
+# source of truth, so #1133 found the shell still drawing an old ten-row list starting with Dictation,
+# no Home row, a "Most recent" transcript card and a "Hold anywhere" shortcut footer —
+# neither of which `SidebarView` draws.
+printf '\nSidebar artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" ]]; then
+    fail "Scripts/design_sidebar_contract_audit.py is missing or not executable" \
+        "The audit pins the design shell's sidebar rows to SidebarPresenter.order, and" \
+        "refuses a restored recent-transcript card or shortcut footer; without it either" \
+        "side can drift and nothing notices."
+else
+    if "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/design_sidebar_contract_audit.py" >&2; then
+            pass "the design shell's sidebar matches SidebarPresenter.order, with no recent-transcript card or shortcut footer"
+        else
+            fail "the design shell's sidebar disagrees with SidebarPresenter.order" \
+                "The audit prints which order mismatch or retired element broke. Update" \
+                "Design/_gen_shell.py's NAV to match, then regenerate every Main-*.dc.html" \
+                "artboard."
+        fi
+    else
+        fail "Scripts/design_sidebar_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not resolve a known-good fixture or catch a" \
+            "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7c. The shared shell draws MainWindowStrip and OrbitPageHeader, with each page's caption.
+# ---------------------------------------------------------------------------
+#
+# #1138 found `Design/_gen_shell.py`'s shared main-window shell still drawing the retired
+# 44px `<div class="toolbar"><h2>` band instead of `MainWindowStrip` (the sidebar toggle
+# and account chip) and `OrbitPageHeader` (kicker, title, purpose caption, and ordered
+# scope/search/add controls). All 28 `Main-*.dc.html` artboards inherited that toolbar.
+printf '\nChrome artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" ]]; then
+    fail "Scripts/design_chrome_contract_audit.py is missing or not executable" \
+        "The audit pins the shell's MainWindowStrip/OrbitPageHeader structure and every" \
+        "page's caption to MainWindowView.swift and each page's own presenter; without it" \
+        "either side can drift and nothing notices."
+else
+    if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" >&2; then
+            pass "the shell's MainWindowStrip and OrbitPageHeader match production, with every page's caption"
+        else
+            fail "the shell's chrome disagrees with production" \
+                "The audit prints which structure or caption broke. Update" \
+                "Design/_gen_shell.py's MainWindowStrip/OrbitPageHeader (or the caption in" \
+                "Design/_gen_main.py / Design/_gen_app.py), then regenerate every" \
+                "Main-*.dc.html artboard."
+        fi
+    else
+        fail "Scripts/design_chrome_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not resolve a known-good fixture or catch a" \
+            "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+
+
+# 7d. The Dictation artboards match DictationPresenter's own figures.
 # ---------------------------------------------------------------------------
 #
 # #153 renamed the populated rail's cleanup-ratio tile from "Accuracy" to
@@ -957,6 +1162,37 @@ else
         fail "Scripts/design_dictation_contract_audit.py --self-test failed" \
             "The audit's own self-test could not resolve a known-good fixture or catch a" \
             "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+# ---------------------------------------------------------------------------
+# 7e. The Insights artboards match InsightsPresentation, not an invented contract.
+# ---------------------------------------------------------------------------
+#
+# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
+# with a restored Baseline meter, and an entire "Languages you spoke" card with no
+# measured source, while the average line and each place's word count were missing. A
+# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
+# tying the generator to `InsightsPresentation.swift` or its tests.
+printf '\nInsights artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
+    fail "Scripts/insights_contract_audit.py is missing or not executable" \
+        "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
+        "generator can drift back to an invented scope, meter or language card unnoticed."
+else
+    if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
+            pass "the Insights artboards match InsightsPresentation and its tests"
+        else
+            fail "the Insights artboard generator disagrees with InsightsPresentation" \
+                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
+                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "then regenerate every Insights artboard."
+        fi
+    else
+        fail "Scripts/insights_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not find its section markers in" \
+            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
     fi
 fi
 
@@ -1093,6 +1329,52 @@ PYTHON
 fi
 
 # ---------------------------------------------------------------------------
+# README clipboard privacy claims must keep the current protections visible.
+# ---------------------------------------------------------------------------
+# #2109: the README names concealed-copy handling, secret storage, file permissions and the Clipboard pause switch.
+printf '\nREADME clipboard privacy claims\n'
+
+read -r -d '' README_PRIVACY_PROGRAM <<'PYTHON' || true
+from pathlib import Path
+
+readme = Path("README.md").read_text(errors="ignore")
+obsolete = (
+    "Uttrflow does not honour the concealed-pasteboard convention",
+    "Uttrflow does not read that mark yet",
+    "The text is stored in the clear like every other clip",
+    "ordinary file permissions",
+)
+missing = [claim for claim in obsolete if claim in readme]
+if missing:
+    print("obsolete README privacy claims remain:")
+    for claim in missing:
+        print(f"  {claim}")
+
+required = (
+    "Password managers' concealed mark is honoured",
+    "not written to clipboard history or saved clips",
+    "The Clipboard switch in Settings pauses capture",
+    "owner-only",
+    "[`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md)",
+)
+missing = [claim for claim in required if claim not in readme]
+if missing:
+    print("README clipboard privacy claims or their supporting link are missing:")
+    for claim in missing:
+        print(f"  {claim}")
+PYTHON
+
+privacy_problems="$(python3 -c "$README_PRIVACY_PROGRAM")"
+if [[ -z "$privacy_problems" ]]; then
+    pass "README clipboard privacy claims describe concealed copies, storage, permissions and the pause switch"
+else
+    fail "README clipboard privacy claims have drifted" \
+        "Keep the README aligned with the clipboard protections described in" \
+        "Docs/clipboard-secrets.md and the Clipboard switch in Settings." \
+        "" $'\n'"$privacy_problems"
+fi
+
+# ---------------------------------------------------------------------------
 # 10. Docs/bakeoff.md's corpus inventory must match EvaluationCorpus.
 # ---------------------------------------------------------------------------
 #
@@ -1160,6 +1442,40 @@ PYTHON
 fi
 
 # ---------------------------------------------------------------------------
+
+# 11. The Diagnostics artboards match DiagnosticsPresentation's own contract.
+# ---------------------------------------------------------------------------
+#
+# #1137 found `Design/_gen_main.py`'s Diagnostics section describing a different product:
+# a plain total from three stages, a five-second target, invented reliability and memory
+# figures, and a seven-day measurement window nothing on this Mac ever keeps. Nothing tied
+# the design generator to `DiagnosticsPresentation`'s own eight-stage, in-memory contract, so
+# it could — and did — drift back.
+printf '\nDiagnostics artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" ]]; then
+    fail "Scripts/design_diagnostics_contract_audit.py is missing or not executable" \
+        "The audit pins the Diagnostics section to DiagnosticsPresentation's stage titles," \
+        "footnote and empty-state copy, and refuses a restored duration target, memory" \
+        "figure or seven-day window; without it either side can drift and nothing notices."
+else
+    if "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/design_diagnostics_contract_audit.py" >&2; then
+            pass "the Diagnostics section matches DiagnosticsPresentation, with no retired memory, target or window claims"
+        else
+            fail "the Diagnostics section disagrees with DiagnosticsPresentation" \
+                "The audit prints which stage title, footnote, empty state or retired claim" \
+                "broke. Update Design/_gen_main.py's Diagnostics section to match, then" \
+                "regenerate both Main-Diagnostics and Main-Diagnostics-Empty artboards."
+        fi
+    else
+        fail "Scripts/design_diagnostics_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not resolve a known-good fixture or catch a" \
+            "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+
+
 # The identity sheet's teal ramp must match BrandPalette's production roles.
 # ---------------------------------------------------------------------------
 #

@@ -1,5 +1,6 @@
 // The onboarding window's ground: the aurora for the page's mood, the logo, and the waveform.
 
+import AppKit
 import SwiftUI
 import UttrflowUX
 
@@ -60,6 +61,7 @@ struct OnboardingCardGlass: View {
 private struct OnboardingAurora: View {
     let mood: OnboardingMood
     let saturation: Double
+    @Environment(\.displayScale) private var displayScale
     /// Whether its window is the one being used; starts still so a window opened behind others never moves.
     @State private var attended = false
 
@@ -71,18 +73,21 @@ private struct OnboardingAurora: View {
                 paused: !attended || !motion.demonstrationMoves)
         ) { timeline in
             GeometryReader { proxy in
-                AngularGradient(
-                    colors: stops, center: center,
-                    startAngle: .degrees(startAngle), endAngle: .degrees(startAngle + 360)
-                )
-                .frame(width: proxy.size.width * 1.5, height: proxy.size.height * 1.5)
-                .rotationEffect(.degrees(turn(at: timeline.date, moving: motion.demonstrationMoves)))
-                .blur(radius: 70)
-                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                let size = proxy.size
+                let canvas = OnboardingAuroraPicture.canvasSize(for: size)
+                if let picture = OnboardingAuroraPicture.image(
+                    mood: mood, saturation: saturation, size: size, scale: displayScale)
+                {
+                    Image(nsImage: picture)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: canvas.width, height: canvas.height)
+                        .rotationEffect(.degrees(turn(at: timeline.date, moving: motion.demonstrationMoves)))
+                        .position(x: size.width / 2, y: size.height / 2)
+                }
             }
         }
         .opacity(opacity)
-        .drawingGroup()
         .onWindowAttentionChange(includingMotionBudget: false) { attended = $0 }
     }
 
@@ -92,8 +97,76 @@ private struct OnboardingAurora: View {
         return date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 40) / 40 * 360
     }
 
+    /// A stop saturated as a CSS `saturate()` filter does, so blurring it after gives the same colours.
+    fileprivate static func saturated(_ rgb: UInt32, by amount: Double) -> Color {
+        let channels = [16, 8, 0].map { Double((rgb >> UInt32($0)) & 0xFF) / 255 }
+        let luma = 0.213 * channels[0] + 0.715 * channels[1] + 0.072 * channels[2]
+        let pushed = channels.map { min(1, max(0, luma + amount * ($0 - luma))) }
+        return Color(.sRGB, red: pushed[0], green: pushed[1], blue: pushed[2])
+    }
+
+    /// The problem moods are dimmer, so bad news is never the brightest thing on the screen.
+    private var opacity: Double {
+        switch mood {
+        case .brand, .live, .waiting, .done: 1
+        case .warning: 0.7
+        case .failure: 0.6
+        case .offline: 0.9
+        }
+    }
+}
+
+/// Each mood's aurora, blurred into a bounded picture once and rotated as an image thereafter.
+@MainActor
+enum OnboardingAuroraPicture {
+    private struct Key: Hashable {
+        let mood: String
+        let saturation: Double
+        let width: Int
+        let height: Int
+        let scale: CGFloat
+    }
+
+    private static var pictures: [Key: NSImage] = [:]
+    private static let blurRadius: CGFloat = 70
+
+    /// The image's square canvas holds the uncut aurora at every angle.
+    static func canvasSize(for size: CGSize) -> CGSize {
+        let width = size.width * 1.5
+        let height = size.height * 1.5
+        let diagonal = hypot(width, height) + blurRadius * 6
+        return CGSize(width: diagonal, height: diagonal)
+    }
+
+    /// Renders a mood and saturation combination once for the onboarding window's size.
+    static func image(mood: OnboardingMood, saturation: Double, size: CGSize, scale: CGFloat) -> NSImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        let key = Key(
+            mood: String(describing: mood), saturation: saturation,
+            width: Int(size.width.rounded()), height: Int(size.height.rounded()), scale: scale)
+        if let known = pictures[key] { return known }
+        let canvas = canvasSize(for: size)
+        let stops = stops(for: mood, saturation: saturation)
+        let renderer = ImageRenderer(
+            content: ZStack {
+                AngularGradient(
+                    colors: stops, center: center(for: mood),
+                    startAngle: .degrees(startAngle(for: mood)),
+                    endAngle: .degrees(startAngle(for: mood) + 360)
+                )
+                .frame(width: size.width * 1.5, height: size.height * 1.5)
+                .blur(radius: blurRadius)
+            }
+            .frame(width: canvas.width, height: canvas.height))
+        renderer.scale = scale
+        guard let image = renderer.nsImage else { return nil }
+        if pictures.count >= 4, let oldest = pictures.keys.first { pictures[oldest] = nil }
+        pictures[key] = image
+        return image
+    }
+
     /// The mood's stops, closed on the first so the turn shows no seam.
-    private var stops: [Color] {
+    private static func stops(for mood: OnboardingMood, saturation: Double) -> [Color] {
         let values: [UInt32] =
             switch mood {
             case .brand: BrandPalette.Onboarding.brandAurora
@@ -104,19 +177,11 @@ private struct OnboardingAurora: View {
             case .offline: BrandPalette.Onboarding.offlineAurora
             case .done: BrandPalette.Onboarding.doneAurora
             }
-        return (values + values.prefix(1)).map { Self.saturated($0, by: saturation) }
+        return (values + values.prefix(1)).map { OnboardingAurora.saturated($0, by: saturation) }
     }
 
-    /// A stop saturated as a CSS `saturate()` filter does, so blurring it after gives the same colours.
-    static func saturated(_ rgb: UInt32, by amount: Double) -> Color {
-        let channels = [16, 8, 0].map { Double((rgb >> UInt32($0)) & 0xFF) / 255 }
-        let luma = 0.213 * channels[0] + 0.715 * channels[1] + 0.072 * channels[2]
-        let pushed = channels.map { min(1, max(0, luma + amount * ($0 - luma))) }
-        return Color(.sRGB, red: pushed[0], green: pushed[1], blue: pushed[2])
-    }
-
-    /// Where the gradient turns about; the moods that ask sit a little up and left of centre.
-    private var center: UnitPoint {
+    /// Where the gradient turns about, matching the live onboarding artwork.
+    private static func center(for mood: OnboardingMood) -> UnitPoint {
         switch mood {
         case .brand: UnitPoint(x: 0.35, y: 0.55)
         case .warning, .failure, .offline: UnitPoint(x: 0.4, y: 0.5)
@@ -124,23 +189,13 @@ private struct OnboardingAurora: View {
         }
     }
 
-    /// Where the first stop sits, in SwiftUI's angles, which start a quarter-turn after the design's.
-    private var startAngle: Double {
+    /// Where the first stop sits, in SwiftUI's angles.
+    private static func startAngle(for mood: OnboardingMood) -> Double {
         switch mood {
         case .brand, .done: 120
         case .live: 90
         case .waiting: 0
         case .warning, .failure, .offline: 110
-        }
-    }
-
-    /// The problem moods are dimmer, so bad news is never the brightest thing on the screen.
-    private var opacity: Double {
-        switch mood {
-        case .brand, .live, .waiting, .done: 1
-        case .warning: 0.7
-        case .failure: 0.6
-        case .offline: 0.9
         }
     }
 }

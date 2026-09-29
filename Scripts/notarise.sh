@@ -17,7 +17,7 @@
 #   make app-dist                      Developer ID, hardened
 #   ./Scripts/notarise.sh              the app: ticket stapled into the bundle
 #   ./Scripts/dmg.sh                   the image, built out of the stapled app
-#   ./Scripts/notarise.sh dist/*.dmg   the image: ticket stapled into the image
+#   ./Scripts/notarise.sh dist/Uttrflow-0.1.0.dmg   the image: ticket stapled into the image
 #
 # The order is what makes the app work offline after it has been dragged out of the
 # image — it carries its own ticket rather than relying on the one stapled to a disk
@@ -64,15 +64,23 @@ step() {
 
 CHECK_ONLY=no
 TARGET="dist/Uttrflow.app"
+TARGET_SET=no
 for arg in "$@"; do
     case "$arg" in
-        --check) CHECK_ONLY=yes ;;
+        --check)
+            [[ "$CHECK_ONLY" == no ]] || fail "--check was specified more than once"
+            CHECK_ONLY=yes
+            ;;
         -h | --help)
             sed -n '3,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         -*) fail "unknown option '$arg'" ;;
-        *) TARGET="$arg" ;;
+        *)
+            [[ "$TARGET_SET" == no ]] || fail "expected one target, got '$TARGET' and '$arg'"
+            TARGET="$arg"
+            TARGET_SET=yes
+            ;;
     esac
 done
 
@@ -400,7 +408,7 @@ Notarised, stapled and verified.
 The bundle now carries its own ticket, so it opens offline wherever it ends up. Build
 the disk image people will actually download out of *this* bundle, and notarise that too:
 
-  ./Scripts/dmg.sh && ./Scripts/notarise.sh dist/Uttrflow-*.dmg
+  ./Scripts/dmg.sh && ./Scripts/notarise.sh dist/Uttrflow-0.1.0.dmg
 
 If you send the zip instead, send the zip and not the bundle: copying an .app through
 anything that does not preserve extended attributes breaks the signature.

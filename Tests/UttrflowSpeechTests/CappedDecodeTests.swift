@@ -226,6 +226,74 @@ struct CappedDecodeRetryTests {
         #expect(raw.text.contains("first batch"))
         #expect(raw.text.contains("second"))
     }
+
+    @Test("a backwards-timed final word does not move the retry before the last valid word")
+    func backwardsTimedWordDoesNotMoveCutoffBackwards() async throws {
+        let totalSamples = 10 * 16_000
+        for (start, end) in [(1.1, 0.2), (0.2, 0.2)] {
+            let backend = BackwardsTimedWordBackend(invalidWordStart: start, end: end)
+            let samples = Array(repeating: Float(0.1), count: totalSamples)
+
+            _ = try await CappedDecodeRetry.transcribe(
+                samples: samples, languageHint: .english, vocabulary: [], using: backend)
+
+            let calls = await backend.sampleCounts
+            #expect(calls.count == 2)
+            #expect(calls[1] == totalSamples - Int((0.8 * 16_000).rounded(.down)))
+        }
+    }
+}
+
+/// A recogniser that gives the capped result a final word whose timestamps run backwards.
+private actor BackwardsTimedWordBackend: TranscriptionBackend {
+    let minimumDuration: Duration = .zero
+    private let invalidWordStart: Double
+    private let invalidWordEnd: Double
+    private var calls: [Int] = []
+
+    init(invalidWordStart: Double, end invalidWordEnd: Double) {
+        self.invalidWordStart = invalidWordStart
+        self.invalidWordEnd = invalidWordEnd
+    }
+
+    func load() async throws(SpeechEngineError) {}
+
+    func transcribe(
+        _ samples: [Float], languageHint: LanguageCode?
+    ) async throws(SpeechEngineError) -> RawTranscript {
+        try await transcribe(samples, languageHint: languageHint, biasedTowards: [])
+    }
+
+    func transcribe(
+        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
+    ) async throws(SpeechEngineError) -> RawTranscript {
+        calls.append(samples.count)
+        if calls.count == 1 {
+            return RawTranscript(
+                text: "first backwards",
+                segments: [
+                    RawSegment(
+                        text: "first backwards", start: 0, end: 2,
+                        words: [
+                            RawWord(text: " first", start: 0, end: 0.4, probability: 0.9),
+                            RawWord(text: " valid", start: 0.4, end: 0.8, probability: 0.9),
+                            RawWord(
+                                text: " backwards", start: invalidWordStart, end: invalidWordEnd,
+                                probability: 0.9),
+                        ])
+                ], tokensUsed: CappedDecodeRetry.tokenCapThreshold)
+        }
+        let end = Double(samples.count) / 16_000.0 - 0.3
+        return RawTranscript(
+            text: "tail",
+            segments: [
+                RawSegment(
+                    text: "tail", start: 0, end: end,
+                    words: [RawWord(text: " tail", start: 0, end: end, probability: 0.9)])
+            ], tokensUsed: 28)
+    }
+
+    var sampleCounts: [Int] { calls }
 }
 
 /// A recogniser that returns a capped result on every call, so the retry has nothing to do but stop.

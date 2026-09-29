@@ -157,9 +157,16 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
     /// Bytes this model occupies, or `nil` when it is not installed.
     public func bytesOnDisk(_ model: SpeechModel) -> Int64? {
         guard isInstalled(model) else { return nil }
-        return files(in: location(of: model)).reduce(Int64(0)) { total, url in
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            return total + Int64(size)
+        let sizes = files(in: location(of: model)).map { url in
+            (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        }
+        return Self.total(of: sizes)
+    }
+
+    static func total(of sizes: [Int]) -> Int64 {
+        sizes.reduce(Int64(0)) { total, size in
+            let (sum, overflow) = total.addingReportingOverflow(Int64(max(size, 0)))
+            return overflow ? .max : sum
         }
     }
 

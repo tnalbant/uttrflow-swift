@@ -13,6 +13,11 @@ enum QuantizedLoad {
     ) async throws -> ModelContainer {
         let configuration = try Data(contentsOf: directory.appending(component: "config.json"))
         let base = try JSONDecoder.json5().decode(BaseConfiguration.self, from: configuration)
+        if let quantization = base.perLayerQuantization,
+            !QuantizedLayerPlan.hasValidGroupSizes(quantization)
+        {
+            throw QuantizedLoadError.invalidGroupSize
+        }
         let model = try await LLMTypeRegistry.shared.createModel(
             configuration: configuration, modelType: base.modelType)
         if let plan = QuantizedLayerPlan.read(in: directory), let quantization = base.perLayerQuantization {
@@ -51,6 +56,14 @@ enum QuantizedLoad {
                 ))
         }
         model.update(modules: ModuleChildren.unflattened(layers))
+    }
+}
+
+private enum QuantizedLoadError: LocalizedError {
+    case invalidGroupSize
+
+    var errorDescription: String? {
+        "The model configuration contains a quantization group size that is not positive."
     }
 }
 

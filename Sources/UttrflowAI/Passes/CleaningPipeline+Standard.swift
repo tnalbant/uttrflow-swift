@@ -58,9 +58,20 @@ extension CleaningPipeline {
         CleaningPipeline(passes: [
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
-                onScreen: situation.app.textOnScreen, heard: heard),
-            TerminalStopPass(policy: terminalStop(formatter, in: situation), layout: formatter.layout),
+                onScreen: situation.app.textOnScreen, heard: heard,
+                capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                    && formatter.destination != .codeEditor),
+            TerminalStopPass(
+                policy: terminalStop(formatter, in: situation), layout: formatter.layout,
+                insertionPoint: situation.insertion),
         ])
+    }
+
+    /// The typed whole-text rules that apply once the pieces have been laid out.
+    public static func wholeText(
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+    ) -> CleaningPipeline {
+        message(for: formatter, situation: situation, heard: heard)
     }
 
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.
