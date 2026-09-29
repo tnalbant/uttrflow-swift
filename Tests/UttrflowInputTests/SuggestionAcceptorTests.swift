@@ -404,6 +404,17 @@ struct SuggestionAcceptorTests {
         #expect(field.replaced == [1])
     }
 
+    @Test("A normalization split inside a grapheme still accepts the complete edit.")
+    func acceptsADecomposedGraphemeWithoutSplittingIt() async throws {
+        let field = RecordingField()
+        let typed = "e\u{301}"
+
+        try await acceptor(field: field).accept(.certain("e"), after: typed)
+
+        #expect(field.text == ["e"])
+        #expect(field.replaced == [1])
+    }
+
     @Test("A suggestion the user has already finished typing inserts nothing at all.")
     func insertsNothingWhenThereIsNothingToAdd() async throws {
         let field = RecordingField()
