@@ -101,11 +101,27 @@ struct AVAudioCaptureEngineTests {
         await #expect(throws: AudioCaptureError.self) { _ = try await engine.stop() }
     }
 
+    @Test("returns audio when the device changes before the first sample")
+    func deviceChangeBeforeFirstSampleDoesNotRefuseTheRecording() async throws {
+        let source = FakeMicrophoneSource()
+        let engine = AVAudioCaptureEngine(source: source)
+        try await engine.start()
+        source.skip()
+        try await settle(engine)
+        let samples: [Float] = [0.25, 0.5, 0.75]
+        source.emit(samples)
+
+        let audio = try await engine.stop()
+
+        #expect(audio.samples == samples)
+    }
+
     @Test("a hole in one recording cannot fail the next one")
     func theGapDoesNotOutliveItsRecording() async throws {
         let source = FakeMicrophoneSource()
         let engine = AVAudioCaptureEngine(source: source)
         try await engine.start()
+        source.emit(Array(repeating: 0.5, count: 64))
         source.skip()
         try await settle(engine)
         // Asserted, not discarded: a gap that stopped being refused would pass this test silently.

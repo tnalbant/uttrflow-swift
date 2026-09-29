@@ -79,7 +79,11 @@ public actor AVAudioCaptureEngine: AudioCaptureEngine {
                     writer?.append(samples)
                 }
             } onInterruption: { [weak self] interruption in
-                Task { await self?.microphoneInterrupted(interruption, in: mine) }
+                let hadCapturedSamples = accumulator.count > 0
+                Task {
+                    await self?.microphoneInterrupted(
+                        interruption, in: mine, hadCapturedSamples: hadCapturedSamples)
+                }
             }
         } catch {
             await abandonWriter()
@@ -117,11 +121,13 @@ public actor AVAudioCaptureEngine: AudioCaptureEngine {
     }
 
     /// Remembers what a device change did, since only `stop()` has somewhere to report it.
-    private func microphoneInterrupted(_ interruption: CaptureInterruption, in recording: Int) {
+    private func microphoneInterrupted(
+        _ interruption: CaptureInterruption, in recording: Int, hadCapturedSamples: Bool
+    ) {
         interruptionsHandled += 1
         guard currentState == .recording, recording == generation else { return }
         switch interruption {
-        case .began: isGapped = true
+        case .began: isGapped = isGapped || hadCapturedSamples
         case .ended(let error): failure = error
         }
     }
