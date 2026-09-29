@@ -416,9 +416,12 @@ not pay for standard runners.** The constraint was cost, the cost is gone, and t
 gate — `.githooks/pre-push`, installed with `make hooks` — is still worth having because it
 is still the fastest answer.
 
-There are eight workflows and each earns its keep: CI, quality (text and disclosure
-checks), security, dependency review, release, CodeQL (weekly), Scorecard, and the oracle
-sweep (nightly). Do not add another without asking.
+The tracked workflows are CI (build and test), CodeQL (weekly static analysis), dependency
+review (new dependency vulnerabilities and licences), Oracle sweep (exhaustive randomized
+clipboard-reader tests, nightly and on related pull requests), Quality (disclosure, workflow,
+spelling and link checks), Release (build and publish releases), Scorecard (supply-chain
+posture), and Security (secret, workflow and dependency scans). Adding a workflow requires
+explicit approval.
 
 **Never run `git add -A`, `git add .`, or `git commit -a`.** More than one agent works in
 this repository at once, and a blanket add sweeps another session's half-finished work
