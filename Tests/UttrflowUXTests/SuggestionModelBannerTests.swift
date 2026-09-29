@@ -71,6 +71,13 @@ struct SuggestionModelBannerTests {
     func failureIsShown() throws {
         let shown = try #require(bannerFor(.failed))
         #expect(shown.title.contains("could not"))
-        #expect(shown.message.contains("off and on"))
+        #expect(shown.message.contains("try again"))
+        let pane = SettingsPresenter.window(
+            showing: .suggestions, settings: settings(suggesting: true),
+            capabilities: capabilities(.failed)
+        ).pane
+        let retry = pane.groups.flatMap(\.rows).first { $0.id == "retrySuggestionModel" }
+        #expect(retry?.control == .action(title: "Retry", change: .retrySuggestionModel))
+        #expect(SettingsChange.retrySuggestionModel.isRequestToAct)
     }
 }

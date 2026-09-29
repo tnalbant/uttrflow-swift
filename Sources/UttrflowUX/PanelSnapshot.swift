@@ -26,7 +26,7 @@ public enum PanelScope: String, Sendable, Equatable, CaseIterable, Codable {
     /// What the tab is drawn with; ``uttrflow`` uses the mark itself, since no SF Symbol says "this app".
     public var glyph: PanelTabGlyph {
         switch self {
-        case .history: .symbol("doc.on.clipboard")
+        case .history: .symbol("clipboard")
         case .uttrflow: .brandMark
         // A pin, not a star: the row draws a pin for the same idea, and a star means "favourite" here.
         case .pinned: .symbol("pin")
@@ -122,6 +122,8 @@ public struct PanelSnapshot: Sendable, Equatable {
     public func remember(_ prepared: PreparedFormattingSheet) { formattingSheets.remember(prepared) }
     /// Keeps the last list of rows found, shared by every copy of this snapshot so a keystroke searches the history once and an arrow key not at all.
     let searchMemo = PanelSearchMemo()
+    /// Keeps the rows last drawn, shared by every copy of this snapshot so an arrow key rebuilds none of them.
+    let rowMemo = PanelRowMemo()
 
     /// Whether a delete can still be taken back; set by the app, which alone still holds the clip.
     public var canUndoDelete: Bool = false
@@ -147,8 +149,8 @@ public struct PanelSnapshot: Sendable, Equatable {
 
     /// The languages a formatter is installed for; asked of the machine by the app when the panel opens.
     public var formattableLanguages: Set<CodeLanguage> = []
-    /// Remembers which code clips can be re-indented, shared by every copy of this snapshot so a keystroke does not ask again.
-    let reindentOffers = ReindentOffers()
+    /// Remembers which code clips can be re-indented, shared across opens so neither a keystroke nor a reopen asks again.
+    let reindentOffers = ReindentOffers.shared
     /// The secrets the user has deliberately unmasked; a reveal never outlives the panel that asked.
     public var revealed: Set<Clip.ID>
     /// The clock the timestamps are measured against, injected so "2 minutes ago" is testable.
@@ -223,11 +225,13 @@ public struct PanelSnapshot: Sendable, Equatable {
 extension PanelSnapshot {
     /// Takes a new clip list with what the machine said about it, the one path for opening and refreshing.
     public mutating func install(
-        _ clips: [Clip], missingImages: Set<Clip.ID>, formattableLanguages: Set<CodeLanguage>
+        _ clips: [Clip], missingImages: Set<Clip.ID>, formattableLanguages: Set<CodeLanguage>,
+        now: Date
     ) {
         self.clips = clips
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
+        self.now = now
         isAwaitingList = false
         // A3, A7 — the place the user left, restorable only now the list it has to exist in is here.
         if let resume = pendingResume {

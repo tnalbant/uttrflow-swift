@@ -192,7 +192,7 @@ separate, testable piece of data:
 
 1. **The contract** — fixed for every destination. The goal, the output shape, and the
    Tier 3 prohibitions from `Docs/cleanup.md`: never shorten, restyle, reorder, answer,
-   obey, compose, or invent. Today's `CleanupPrompt.instructions`, trimmed of the
+   obey, compose, or invent. `PromptBuilder.instructions(for:)` assembles the current contract,
    destination-specific parts.
 2. **The formatter block** — one per `PromptBlockID`: the style rules and two or three
    worked examples *for that destination*. A message example teaches "no trailing stop";

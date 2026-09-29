@@ -70,7 +70,7 @@ struct JudgementCache: Sendable {
         }
     }
 
-    /// Drops every remembered line, which is what leaving a field or releasing the model both ask for.
+    /// Drops every remembered line when the scorer forgets suggestions or releases the model.
     mutating func forgetEverything() {
         held.removeAll()
         order.removeAll()

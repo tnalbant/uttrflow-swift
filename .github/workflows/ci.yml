@@ -22,10 +22,9 @@ on:
     branches: [main]
 
 concurrency:
-  # A force-push or a second commit supersedes the run already going. Nobody is waiting on
-  # the result for a commit that is no longer the tip.
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A new commit supersedes a branch's run; main keeps every run so each merge gets a result.
+  group: ci-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'tip' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -68,19 +67,38 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # `make verify` is lint, the PII audit, a full build, 5,000+ tests, the 95% per-module
-      # coverage floor, and the offline audit. It is the same command the pre-push hook runs
-      # locally, deliberately: a contributor who runs it before pushing sees exactly what
-      # this will see, and there is no class of failure that only CI can find.
+      # `make verify` is lint, the PII audit, a full build, 6,000+ tests, the 95% per-module
+      # coverage floor, and the offline audit. The app bundle and its signature are checked
+      # separately by app-preflight below, matching the local sequence in CONTRIBUTING.md.
       - name: Verify
         run: make verify
 
-      # The app bundle is not part of `make verify`, and building it here is what catches
-      # the failures that only appear at packaging time — a resource that does not get
-      # sealed, a signature that does not verify. Ad-hoc signed: no certificate is needed
-      # and none is available to a fork's pull request.
-      - name: Build the app bundle
-        run: make app
+      # `make verify`'s test run has crashed on this runner with no error and no exit code —
+      # the log simply stops. `coverage.sh` now tees that output to a file as it runs, so if
+      # the step above dies mid-run this still has something to show instead of losing it.
+      - name: Show test output tail on failure
+        if: failure()
+        run: |
+          LOG=".build/swift-test-output.log"
+          if [[ -f "$LOG" ]]; then
+            echo "::group::Last 300 lines of swift test output"
+            tail -n 300 "$LOG"
+            echo "::endgroup::"
+          else
+            echo "no $LOG — the crash happened before the test run started"
+          fi
 
-      - name: Check it is a valid bundle
-        run: codesign --verify --deep --strict dist/Uttrflow.app
+      - name: Upload swift test output
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: swift-test-output
+          path: .build/swift-test-output.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # The app bundle is not part of `make verify`; this also catches packaging, resource,
+      # entitlement, and signature failures. Ad-hoc signed: no certificate is needed and
+      # none is available to a fork's pull request.
+      - name: Build and verify the app bundle
+        run: make app-preflight
