@@ -43,8 +43,9 @@ public final class SampleAccumulator: Sendable {
             for sample in block {
                 let magnitude = Swift.abs(sample)
                 guard magnitude.isFinite else { continue }
-                if magnitude > state.peak { state.peak = magnitude }
-                sumOfSquares += sample * sample
+                let level = Swift.min(magnitude, 1)
+                if level > state.peak { state.peak = level }
+                sumOfSquares += level * level
             }
             // Root mean square, not the peak, so clicks and lip smacks do not make the meter twitch.
             let rms = (sumOfSquares / Float(block.count)).squareRoot()

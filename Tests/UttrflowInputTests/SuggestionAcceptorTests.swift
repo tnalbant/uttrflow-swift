@@ -404,6 +404,17 @@ struct SuggestionAcceptorTests {
         #expect(field.replaced == [1])
     }
 
+    @Test("A normalization split inside a grapheme still accepts the complete edit.")
+    func acceptsADecomposedGraphemeWithoutSplittingIt() async throws {
+        let field = RecordingField()
+        let typed = "e\u{301}"
+
+        try await acceptor(field: field).accept(.certain("e"), after: typed)
+
+        #expect(field.text == ["e"])
+        #expect(field.replaced == [1])
+    }
+
     @Test("A suggestion the user has already finished typing inserts nothing at all.")
     func insertsNothingWhenThereIsNothingToAdd() async throws {
         let field = RecordingField()
@@ -604,12 +615,16 @@ private struct ChangedFocus: AccessibilityFocus {
     let field: any FocusedTextField
     let isSecure: Bool
     let tail: FieldTail
+    var windowNumber: UInt32? = nil
     func focusedTextField() -> (any FocusedTextField)? { field }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
     func frontmostApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { isSecure }
     func tail(upTo count: Int) -> FieldTail { tail }
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (windowNumber, tail)
+    }
 }
 
 @Suite("Accepting into a field that changed under the ghost")
@@ -670,5 +685,33 @@ struct ChangedFieldAcceptTests {
         let accepting = acceptor(field, typist: RecordingTypist(), tail: .text("git com"))
         let aim = await accepting.aim(.certain("git commit"), after: "git com")
         #expect(aim == .write(Acceptance.Edit(replaced: "", inserted: "mit")))
+    }
+
+    @Test("Matching text in a different window is refused before any insertion is attempted.")
+    func refusesMatchingTextInAnotherWindow() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"), windowNumber: 42)
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+
+        let aim = await accepting.aim(
+            .certain("git commit"), after: "git com", expectedWindowNumber: 41)
+
+        #expect(aim == .refused("the focused field is in a different or unidentified window"))
+        #expect(field.text.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("An unidentified focused window cannot authorize an acceptance for a known window.")
+    func refusesUnidentifiedWindow() async {
+        let field = RecordingField()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"))
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: RecordingTypist()), focus: focus)
+
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com", expectedWindowNumber: 41)
+                == .refused("the focused field is in a different or unidentified window"))
     }
 }

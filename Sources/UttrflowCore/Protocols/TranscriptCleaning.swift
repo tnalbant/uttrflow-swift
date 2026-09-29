@@ -12,6 +12,9 @@ public protocol TranscriptCleaning: Sendable {
 
     /// Finishes a message joined from pieces cleaned at `.piece` scope: its casing and its final stop, asked once.
     func finishMessage(_ text: String, for request: TransformationRequest) async -> String
+
+    /// Reserves the next prepared model session for the final piece of this dictation.
+    func reserveFinalPiece(_ situation: Situation?) async
 }
 
 extension TranscriptCleaning {
@@ -22,6 +25,9 @@ extension TranscriptCleaning {
     public func finishMessage(_ text: String, for request: TransformationRequest) async -> String {
         text
     }
+
+    /// Does nothing for cleaners without a prepared model session.
+    public func reserveFinalPiece(_ situation: Situation?) async {}
 }
 
 /// Puts finished text wherever the user is typing and says how; the pipeline never sees the strategies.
@@ -29,6 +35,18 @@ public protocol TextInserting: Sendable {
     /// Inserts plain words and reports the method that carried them and whether they arrived.
     @discardableResult
     func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt
+
+    /// Inserts only when the application still matches the destination captured for this insertion.
+    @discardableResult
+    func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt
+
+    /// Inserts formatted text only when the application still matches the captured destination.
+    @discardableResult
+    func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt
 
     /// Inserts text carrying formatting where the clip has any; separate so a dictation stays plain words.
     @discardableResult
@@ -40,6 +58,22 @@ public protocol TextInserting: Sendable {
 
 /// The default for inserters that cannot carry formatting: insert the words.
 extension TextInserting {
+    /// Inserters without destination checks keep their existing behavior.
+    @discardableResult
+    public func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt {
+        try await insert(text)
+    }
+
+    /// Inserters without destination checks keep their existing behavior.
+    @discardableResult
+    public func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt {
+        try await insert(text, richText: richText)
+    }
+
     /// Inserts the plain words and drops the rich form.
     @discardableResult
     public func insert(

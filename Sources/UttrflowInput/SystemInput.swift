@@ -246,7 +246,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             bundleIdentifier: application.bundleIdentifier)
     }
 
-    /// Asks the focused element's role and names first, reading its value only when none of them says secure.
+    /// Asks the focused element's role and names first, reading the start of its value only when none of them says secure.
     public func focusedFieldIsSecure() -> Bool {
         guard let element = focusedElement() else { return false }
         return SecureField.isSecure(
@@ -255,7 +255,11 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             identifier: stringAttribute(kAXIdentifierAttribute, of: element),
             placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
             description: stringAttribute(kAXDescriptionAttribute, of: element),
-            value: { stringAttribute(kAXValueAttribute, of: element) })
+            value: {
+                CaretWindow.prefix(
+                    length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
+                    ?? stringAttribute(kAXValueAttribute, of: element)
+            })
     }
 
     /// The focused element, asked system-wide then per-application, preferring whichever names a text-entry role. See `Docs/insertion.md`.
@@ -292,36 +296,102 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// The `count` characters before the caret, when the field will report both its value and its caret.
     public func precedingText(_ count: Int) -> String? {
-        guard
-            count > 0, let element = focusedElement(),
-            let value = readableValue(of: element),
-            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
+        guard count > 0, let element = focusedElement(),
+            let (value, caret) = textBeforeCaret(count, of: element)
         else { return nil }
-        return BackwardSelection.text(in: value, endingAt: range.location, exactly: count)
+        return BackwardSelection.text(in: value, endingAt: caret, exactly: count)
     }
 
     /// As much as the field holds before the caret, so a field shorter than the request is still read.
     public func tail(upTo count: Int) -> FieldTail {
-        guard
-            count > 0, let element = focusedElement(),
-            let value = readableValue(of: element),
-            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element),
-            let tail = BackwardSelection.tail(in: value, endingAt: range.location, upTo: count)
+        guard count > 0, let element = focusedElement(),
+            let (value, caret) = textBeforeCaret(count, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
         else { return .unreadable }
         return .text(tail)
     }
 
+    /// Reads a bounded window where possible, refusing an ambiguous multi-range selection.
+    private func textBeforeCaret(_ count: Int, of element: AXUIElement) -> (String, Int)? {
+        guard count > 0, !isSecure(element), let range = selectionRange(of: element) else { return nil }
+        if let window = CaretWindow.before(
+            range.location, characters: count, ranged: { stringForRange($0, of: element) })
+        {
+            return (window, window.utf16.count)
+        }
+        return readableValue(of: element).map { ($0, range.location) }
+    }
+
+    /// Reads the window and its text from one AX element, so matching text in another window cannot authorize a write.
+    public func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard count > 0, let element = focusedElement() else { return (nil, .unreadable) }
+        let number = Self.windowNumber(of: element)
+        guard let (value, caret) = textBeforeCaret(count, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
+        else { return (number, .unreadable) }
+        return (number, .text(tail))
+    }
+
+    /// The window containing this focused field, or nothing when the system cannot identify it.
+    private static func windowNumber(of element: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(element, &number) == .success else { return nil }
+        return number
+    }
+
+    /// The window containing the field currently focused for insertion.
+    public func focusedWindowNumber() -> UInt32? {
+        focusedElement().flatMap(Self.windowNumber(of:))
+    }
+
     public func focusedTextField() -> (any FocusedTextField)? {
-        guard let candidate = focusedElement() else { return nil }
-
-        // A field that will not report its selection will not accept one either.
-        var selection: AnyObject?
-        guard
-            AXUIElementCopyAttributeValue(
-                candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
-        else { return nil }
-
+        guard let candidate = focusedElement(), acceptsSingleSelection(candidate) else { return nil }
         return SelectionWriter(field: AXSelectionAttributes(element: candidate))
+    }
+
+    public func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)? {
+        guard let bundleIdentifier = destination.bundleIdentifier,
+            frontmostApplication()?.bundleIdentifier == bundleIdentifier,
+            let candidate = focusedElement()
+        else { return nil }
+        var processIdentifier: pid_t = 0
+        guard AXUIElementGetPid(candidate, &processIdentifier) == .success,
+            NSRunningApplication(processIdentifier: processIdentifier)?.bundleIdentifier == bundleIdentifier,
+            acceptsSingleSelection(candidate)
+        else { return nil }
+        return SelectionWriter(field: AXSelectionAttributes(element: candidate))
+    }
+
+    /// Rejects ambiguous multi-caret selections and fields that cannot accept text writes.
+    private func acceptsSingleSelection(_ candidate: AXUIElement) -> Bool {
+        guard case .discontinuous = selection(of: candidate) else {
+            return FocusedTextFieldEligibility.accepts(
+                role: stringAttribute(kAXRoleAttribute, of: candidate),
+                selectedTextIsReadable: {
+                    var selection: AnyObject?
+                    return AXUIElementCopyAttributeValue(
+                        candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+                },
+                selectedTextIsSettable: {
+                    var settable = DarwinBoolean(false)
+                    return AXUIElementIsAttributeSettable(
+                        candidate, kAXSelectedTextAttribute as CFString, &settable) == .success
+                        && settable.boolValue
+                })
+        }
+        return false
+    }
+}
+
+/// Confirms the focused element is a writable text control before exposing it to insertion.
+enum FocusedTextFieldEligibility {
+    /// A readable selection alone does not establish that the element accepts text writes.
+    static func accepts(
+        role: String?, selectedTextIsReadable: () -> Bool, selectedTextIsSettable: () -> Bool
+    ) -> Bool {
+        FocusedElementPreference.isTextEntry(role)
+            && selectedTextIsReadable()
+            && selectedTextIsSettable()
     }
 }
 
@@ -335,19 +405,42 @@ private struct AXSelectionAttributes: SelectionAttributes, @unchecked Sendable {
     }
 
     func selectedRange() -> CFRange? {
-        rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
+        selectionRange(of: element)
+    }
+
+    func length() -> Int? {
+        characterCount(of: element)
+    }
+
+    func text(in range: Range<Int>) -> String? {
+        guard !isSecureField(element) else { return nil }
+        return stringForRange(range, of: element)
     }
 
     func setSelectedText(_ text: String) -> AXError {
-        AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString)
+        guard attributeIsSettable(kAXSelectedTextAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
+        return AXUIElementSetAttributeValue(
+            element, kAXSelectedTextAttribute as CFString, text as CFString)
     }
 
     /// A range that cannot be described is reported as an illegal argument, which the writer refuses.
     func setSelectedRange(_ range: CFRange) -> AXError {
+        guard attributeIsSettable(kAXSelectedTextRangeAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
         var range = range
         guard let value = AXValueCreate(.cfRange, &range) else { return .illegalArgument }
         return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
     }
+}
+
+/// Returns whether the Accessibility server confirms an attribute accepts writes.
+private func attributeIsSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
+    var settable = DarwinBoolean(false)
+    return AXUIElementIsAttributeSettable(element, attribute, &settable) == .success
+        && settable.boolValue
 }
 
 /// The element's value, or `nil` for a secure field, whose value is never asked for.
@@ -361,6 +454,21 @@ private func readableValue(of element: AXUIElement) -> String? {
         value: { stringAttribute(kAXValueAttribute, of: element) })
 }
 
+/// Checks security metadata first; only checks masked text when metadata is inconclusive.
+private func isSecureField(_ element: AXUIElement) -> Bool {
+    SecureField.isSecure(
+        role: stringAttribute(kAXRoleAttribute, of: element),
+        subrole: stringAttribute(kAXSubroleAttribute, of: element),
+        identifier: stringAttribute(kAXIdentifierAttribute, of: element),
+        placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
+        description: stringAttribute(kAXDescriptionAttribute, of: element),
+        value: {
+            CaretWindow.prefix(
+                length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
+                ?? stringAttribute(kAXValueAttribute, of: element)
+        })
+}
+
 /// The string an Accessibility attribute holds, or `nil` when the element will not say.
 private func stringAttribute(_ name: String, of element: AXUIElement) -> String? {
     var current: AnyObject?
@@ -368,6 +476,29 @@ private func stringAttribute(_ name: String, of element: AXUIElement) -> String?
         AXUIElementCopyAttributeValue(element, name as CFString, &current) == .success
     else { return nil }
     return current as? String
+}
+
+/// The text a UTF-16 range of the element covers, or `nil` when it will not read by range.
+private func stringForRange(_ range: Range<Int>, of element: AXUIElement) -> String? {
+    var cfRange = CFRange(location: range.lowerBound, length: range.count)
+    guard let parameter = AXValueCreate(.cfRange, &cfRange) else { return nil }
+    var current: AnyObject?
+    guard
+        AXUIElementCopyParameterizedAttributeValue(
+            element, kAXStringForRangeParameterizedAttribute as CFString, parameter, &current)
+            == .success
+    else { return nil }
+    return current as? String
+}
+
+/// The element's length in UTF-16 units, or `nil` when it will not say.
+private func characterCount(of element: AXUIElement) -> Int? {
+    var current: AnyObject?
+    guard
+        AXUIElementCopyAttributeValue(
+            element, kAXNumberOfCharactersAttribute as CFString, &current) == .success
+    else { return nil }
+    return (current as? NSNumber)?.intValue
 }
 
 /// The range an Accessibility attribute holds, or `nil` when the element will not say.
@@ -379,6 +510,35 @@ private func rangeAttribute(_ name: String, of element: AXUIElement) -> CFRange?
     else { return nil }
 
     // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
+    var range = CFRange()
+    guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) else {
+        return nil
+    }
+    return range
+}
+
+/// The focused field's single usable selection, or nothing when it reports multiple ranges.
+private func selectionRange(of element: AXUIElement) -> CFRange? {
+    if case .range(let range) = selection(of: element) { return range }
+    return nil
+}
+
+/// Reads plural selections before the singular attribute, which can be stale for multi-cursor fields.
+private func selection(of element: AXUIElement) -> AccessibilitySelection {
+    var plural: AnyObject?
+    let pluralResult = AXUIElementCopyAttributeValue(
+        element, kAXSelectedTextRangesAttribute as CFString, &plural)
+    if pluralResult == .success, let values = plural as? [AnyObject], values.count > 1 {
+        return .discontinuous
+    }
+    let pluralRanges = (plural as? [AnyObject])?.compactMap { rangeValue($0) }
+    return AccessibilitySelection.resolve(
+        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges)
+}
+
+/// Unwraps one Accessibility value as a character range.
+private func rangeValue(_ value: AnyObject) -> CFRange? {
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
     var range = CFRange()
     guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) else {
         return nil

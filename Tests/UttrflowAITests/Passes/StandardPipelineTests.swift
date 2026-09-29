@@ -21,6 +21,22 @@ struct StandardPipelineTests {
                 == Array(CleaningPipeline.standard.ids.dropLast(2)))
     }
 
+    @Test("uses the formatter's list policy for piece clean-up")
+    func pieceRespectsDestinationLists() {
+        let spreadsheet = DestinationFormatter.standard(for: .spreadsheet)
+        let spreadsheetPipeline = CleaningPipeline.beforeModel(
+            for: spreadsheet, situation: .unknown)
+        #expect(
+            spreadsheetPipeline.run(Draft(text: "number one buy milk number two walk the dog")).text
+                == "number 1 buy milk number 2 walk the dog")
+
+        let document = DestinationFormatter.standard(for: .document)
+        let documentPipeline = CleaningPipeline.beforeModel(for: document, situation: .unknown)
+        #expect(
+            documentPipeline.run(Draft(text: "we need number one milk number two eggs")).text
+                == "we need\n1. milk\n2. eggs")
+    }
+
     @Test("is the plain formatter at a caret that says nothing")
     func plainByDefault() {
         let first = CleaningPipeline.standard.passes.compactMap { $0 as? FirstWordPass }.first
@@ -46,6 +62,18 @@ struct StandardPipelineTests {
         #expect(stop?.policy == .never)
         #expect(stop?.layout == .singleLine)
         #expect(pipeline.passes.contains { $0 is CaretEchoPass } == false)
+    }
+
+    @Test(
+        "leaves a dictated list item open when the caret sits after its marker",
+        arguments: ["- ", "* ", "\u{2022} ", "2. "])
+    func listItemAtCaret(marker: String) {
+        let app = AppContext(precedingText: "notes\n" + marker)
+        let situation = Situation(app: app, insertion: app.insertionPoint, destination: .document)
+        let pipeline = CleaningPipeline.standard(for: .standard(for: .document), situation: situation)
+
+        #expect(pipeline.run(Draft(text: "buy milk")).text == "Buy milk")
+        #expect(pipeline.run(Draft(text: "is it ready?")).text == "Is it ready?")
     }
 
     @Test("hands the caret's text to the echo pass after the model")
@@ -105,7 +133,9 @@ struct StandardPipelineTests {
             ("let's meet at four no sorry at five on tuesday", "Let's meet at five on tuesday."),
             ("we still need milk comma eggs comma and bread", "We still need milk, eggs, and bread."),
             ("we're on postgres sixteen point two right now", "We're on postgres 16.2 right now."),
-            ("first line new line second line", "First line\nsecond line."),
+            ("first line new line second line", "First line\nSecond line."),
+            ("what do you think question mark new line thanks", "What do you think?\nThanks."),
+            ("agenda new line one intro new line two demo", "Agenda\nOne intro\nTwo demo."),
             ("thanks new paragraph the second issue", "Thanks\n\nThe second issue."),
             ("is it ready question mark", "Is it ready?"),
             ("i think i'll take the earlier train", "I think I'll take the earlier train."),
@@ -126,6 +156,22 @@ struct StandardPipelineTests {
         #expect(draft.words[1].state == .removed(by: SelfCorrectionPass.id))
         #expect(draft.words[5].state == .replaced(by: FirstWordPass.id, from: "at"))
         #expect(draft.words[6].state == .replaced(by: TerminalStopPass.id, from: "five"))
+    }
+
+    @Test(
+        "keeps the comma the sentence needs when a filler between commas goes",
+        arguments: [
+            ("The deadline is, um, Friday.", "The deadline is Friday."),
+            ("Well, um, I think so.", "Well, I think so."),
+            ("I think, uh, that's right, uh, yeah.", "I think that's right, yeah."),
+            ("Um, so, I think we should go.", "So, I think we should go."),
+            ("Yes, um, I agree.", "Yes, I agree."),
+            ("Okay, uh, let's start.", "Okay, let's start."),
+            ("We should, uh, ship it.", "We should ship it."),
+        ]
+    )
+    func fillerBetweenCommas(spoken: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: spoken)).text == expected)
     }
 
     @Test(

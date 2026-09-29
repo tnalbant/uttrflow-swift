@@ -100,6 +100,14 @@ struct InterpreterScriptTests {
     func presentAndInlineStand(_ line: String) {
         #expect(scripts.allows(line, in: "/Users/someone/tools"), "\(line) needs nothing missing")
     }
+
+    @Test(
+        "Scripts resolved outside the current directory do not have to exist here.",
+        arguments: ["ruby -S rake", "perl -S prove", "node --run build"])
+    func externalScriptsStand(_ line: String) {
+        #expect(
+            scripts.allows(line, in: "/Users/someone/tools"), "\(line) is resolved outside this directory")
+    }
 }
 
 @Suite("Checking a git line in a repository with two remotes")
@@ -187,6 +195,15 @@ struct TerminalLineCheckTests {
         ])
     func refusesWhatIsMissing(_ line: String) {
         #expect(!check.allows(line, in: api), "\(line) names something that is not here")
+    }
+
+    @Test("A leading symbolic chmod mode is not mistaken for an option.")
+    func chmodSymbolicModesCheckEveryPath() {
+        #expect(!check.allows("chmod -x missing.sh", in: api))
+        #expect(check.allows("chmod -x Package.swift", in: api))
+        #expect(check.allows("chmod -x,g+w Package.swift", in: api))
+        #expect(check.allows("chmod -R 755 docs", in: api))
+        #expect(!check.allows("chmod -R 755 missing-dir", in: api))
     }
 
     @Test(
@@ -290,13 +307,19 @@ struct TerminalLineCheckTests {
         #expect(!check.allows("git checkout main", in: "/"))
     }
 
-    @Test("A commit named by a loose object's id is allowed only when exactly one object on disk matches.")
-    func objectIDs() {
+    @Test("A loose object's filename does not prove that it is a commit.")
+    func unreferencedObjectIDsAreRefused() {
         let object = "/repo/.git/objects/a1/b2c3d4e5f60718293a4b5c6d7e8f9012345678"
         let twin = "/repo/.git/objects/ff/00aa11bb22cc33dd44ee55ff6677889900aabb"
         let disk = FakeDisk(
-            directories: ["/repo/.git/refs/heads", "/repo/.git/objects/a1", "/repo/.git/objects/ff"],
-            files: [object, twin, twin.replacingOccurrences(of: "00aa", with: "00ab")],
+            directories: [
+                "/repo/.git/refs/heads", "/repo/.git/objects/a1", "/repo/.git/objects/ff",
+                "/repo/.git/objects/pack",
+            ],
+            files: [
+                object, twin, twin.replacingOccurrences(of: "00aa", with: "00ab"),
+                "/repo/.git/objects/pack/pack-example.idx",
+            ],
             executables: ["/usr/bin/git"])
         let check = TerminalLineCheck(files: disk)
         for line in [
@@ -304,7 +327,7 @@ struct TerminalLineCheckTests {
             "git checkout a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", "git switch -d a1b2c3d",
             "git switch -c topic a1b2c3d", "git checkout -b topic a1b2",
         ] {
-            #expect(check.allows(line, in: "/repo"), "\(line)")
+            #expect(!check.allows(line, in: "/repo"), "\(line)")
         }
         for line in [
             "git checkout a1b2c3e", "git checkout a1b", "git checkout ff00", "git checkout 0123abc",
