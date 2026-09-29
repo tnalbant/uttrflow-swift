@@ -349,10 +349,20 @@ public enum MainPresenter {
 /// Numbers as every page writes them; the locale is a parameter so tests do not depend on the region.
 public enum MainFormatting {
     /// A duration in seconds to the hundredth; anything faster is "under 0.01s" rather than `0.00s`.
-    public static func seconds(_ duration: Duration) -> String {
+    public static func seconds(
+        _ duration: Duration, locale: Locale = .autoupdatingCurrent
+    ) -> String {
         let value = duration.inSeconds
-        guard value >= 0.01 else { return "under 0.01s" }
-        return String(format: "%.2fs", value)
+        guard value >= 0.01 else { return "under \(secondsValue(.milliseconds(10), locale: locale))" }
+        return secondsValue(duration, locale: locale)
+    }
+
+    /// A duration in seconds to the hundredth, including values below the display floor.
+    static func secondsValue(
+        _ duration: Duration, locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        duration.inSeconds.formatted(
+            .number.locale(locale).grouping(.never).precision(.fractionLength(2))) + "s"
     }
 
     /// How long somebody talked, in whole seconds: "11s".

@@ -551,7 +551,7 @@ public enum DiagnosticsPresenter {
         let overDictations = MainFormatting.count(dictations, "dictation", "dictations")
 
         // "at least" needs a number it can qualify, and "under 0.01s" is an upper bound, not a floor.
-        let floor = total.inSeconds < 0.01 ? "0.00s" : measured
+        let floor = total.inSeconds < 0.01 ? MainFormatting.secondsValue(.zero) : measured
 
         return DiagnosticsLatency(
             // A sum of the timed stages is a floor, and the word saying so has to be on the number itself.

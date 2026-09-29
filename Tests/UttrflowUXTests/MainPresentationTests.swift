@@ -179,7 +179,14 @@ struct MainObstructionTests {
 struct MainFormattingTests {
     @Test("a machine timing is written to the hundredth")
     func seconds() {
-        #expect(MainFormatting.seconds(.milliseconds(1_250)) == "1.25s")
+        #expect(MainFormatting.seconds(.milliseconds(1_250), locale: Locale(identifier: "en_US")) == "1.25s")
+    }
+
+    @Test("a machine timing uses the locale's decimal separator")
+    func secondsUsesLocaleDecimalSeparator() {
+        let commaDecimalLocale = Locale(identifier: "de_DE")
+        #expect(MainFormatting.seconds(.milliseconds(1_250), locale: commaDecimalLocale) == "1,25s")
+        #expect(MainFormatting.seconds(.milliseconds(2), locale: commaDecimalLocale) == "under 0,01s")
     }
 
     /// "0.00s" reads as "not measured" when it means "too quick to matter".
