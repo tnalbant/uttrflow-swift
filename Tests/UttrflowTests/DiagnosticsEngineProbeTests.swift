@@ -3,8 +3,23 @@
 import Foundation
 import Testing
 import UttrflowCore
+import UttrflowPipeline
 
 @testable import Uttrflow
+
+private actor MutableTransformerReadiness {
+    private var ready: Set<TransformerKind>
+
+    init(_ ready: Set<TransformerKind>) {
+        self.ready = ready
+    }
+
+    func probe() -> Set<TransformerKind> { ready }
+
+    func set(_ ready: Set<TransformerKind>) {
+        self.ready = ready
+    }
+}
 
 @MainActor
 @Suite("The clean-up engines Diagnostics reports on", .timeLimit(.minutes(1)))
@@ -13,6 +28,13 @@ struct DiagnosticsEngineProbeTests {
     private func probed(_ app: AppDelegate) async -> [TransformerKind: Bool] {
         await app.probeTransformers().value
         return app.transformerAvailability
+    }
+
+    private func waitFor(_ app: AppDelegate, foundationModels available: Bool) async {
+        for _ in 0..<100 {
+            if app.transformerAvailability[.foundationModels] == available { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     /// #152: the snapshot's availability was never populated, so every row read `nil`.
@@ -39,6 +61,63 @@ struct DiagnosticsEngineProbeTests {
         }
     }
 
+    @Test("availability changes are read when the app becomes active")
+    func availabilityRefreshesOnActivation() async {
+        let sandbox = Sandbox()
+        let readiness = MutableTransformerReadiness([.foundationModels, .rules])
+        let app = AppDelegate(
+            container: sandbox.root,
+            transformerReadiness: { _ in await readiness.probe() })
+        _ = await probed(app)
+        #expect(app.transformerAvailability[.foundationModels] == true)
+
+        await readiness.set([.rules])
+        app.applicationDidBecomeActive(Notification(name: Notification.Name("app-active")))
+        await waitFor(app, foundationModels: false)
+
+        #expect(app.transformerAvailability[.foundationModels] == false)
+        #expect(app.transformerAvailability[.rules] == true)
+    }
+
+    @Test("showing Diagnostics asks again after availability changes")
+    func availabilityRefreshesWhenDiagnosticsOpens() async {
+        let sandbox = Sandbox()
+        let readiness = MutableTransformerReadiness([.foundationModels, .rules])
+        let session = HeldSession(signedIn: true)
+        let app = AppDelegate(
+            container: sandbox.root, account: session.layer,
+            transformerReadiness: { _ in await readiness.probe() })
+        app.drawsWindows = false
+        _ = await probed(app)
+        await readiness.set([.rules])
+
+        app.showDiagnosticsFromMenu(nil)
+        await waitFor(app, foundationModels: false)
+
+        #expect(app.lastOpened == .settings(.diagnostics))
+        #expect(app.transformerAvailability[.foundationModels] == false)
+    }
+
+    @Test("a dictation that falls back records its engine and refreshes availability")
+    func fallbackDictationRefreshesAvailability() async {
+        let sandbox = Sandbox()
+        let readiness = MutableTransformerReadiness([.foundationModels, .rules])
+        let app = AppDelegate(
+            container: sandbox.root,
+            transformerReadiness: { _ in await readiness.probe() })
+        _ = await probed(app)
+        await readiness.set([.rules])
+
+        app.render(
+            .inserted(
+                DictationOutcome(
+                    text: "hello", method: .clipboard, cleanedBy: .rules)))
+        await waitFor(app, foundationModels: false)
+
+        #expect(app.lastCleanedBy == .rules)
+        #expect(app.transformerAvailability[.foundationModels] == false)
+    }
+
     /// #1668: the speech model row was never given an answer, so it read Not checked yet forever.
     @Test("the speech model is looked for on disk too")
     func speechModelIsLookedFor() async {
@@ -48,5 +127,31 @@ struct DiagnosticsEngineProbeTests {
 
         await app.probeSpeechModel().value
         #expect(app.speechModelPresence != nil, "the page would still say Not checked yet")
+    }
+
+    @Test("only a typed Apple Speech load failure marks its diagnostics card failed")
+    func appleSpeechLoadFailureIsEngineScoped() {
+        let apple = AppDelegate(container: Sandbox().root)
+        let appleError = SpeechEngineError.modelLoadFailed(description: "unsupported locale")
+        let appleFailure = DictationFailure(appleError, speechEngineKind: .appleSpeech)
+        apple.render(.failed(appleFailure))
+
+        #expect(appleFailure.speechEngineError == appleError)
+        #expect(apple.appleSpeechLoadFailure == appleError)
+
+        let whisper = AppDelegate(container: Sandbox().root)
+        whisper.render(
+            .failed(
+                DictationFailure(
+                    SpeechEngineError.modelLoadFailed(description: "fixture"),
+                    speechEngineKind: .whisperKit)))
+        #expect(whisper.appleSpeechLoadFailure == nil)
+
+        let untyped = AppDelegate(container: Sandbox().root)
+        untyped.render(
+            .failed(
+                DictationFailure(
+                    message: appleError.userMessage, recovery: .retry, severity: .recoverable)))
+        #expect(untyped.appleSpeechLoadFailure == nil)
     }
 }

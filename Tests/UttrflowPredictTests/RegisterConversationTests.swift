@@ -142,6 +142,8 @@ struct RegisterConversationTests {
         #expect(Register.speaker(of: "Priya: on my way") == "Priya")
         #expect(Register.speaker(of: "Neha (PM): confirmed") == "Neha (PM)")
         #expect(Register.speaker(of: "Support bot:") == "Support bot")
+        #expect(Register.speaker(of: "Studio 54: lights on") == "Studio 54")
+        #expect(Register.speaker(of: "Jan 15: Fixed login bug") == nil)
         #expect(Register.speaker(of: "Standup moved to 10:30 tomorrow") == nil)
         #expect(Register.speaker(of: "Steps to reproduce the crash: open it") == nil)
         #expect(Register.speaker(of: "12: twelve") == nil)
@@ -152,6 +154,11 @@ struct RegisterConversationTests {
         #expect(!Register.hasSpeakerTurns(["A: one", "B: two", "C: three"]))
         #expect(!Register.hasSpeakerTurns(["A: one", "A: two", "A: three"]))
         #expect(Register.hasSpeakerTurns(["A: one", "B: two", "A: three"]))
+        #expect(
+            !Register.hasSpeakerTurns([
+                "Jan 15: Fixed login bug", "Jan 16: Added dark mode support",
+                "Jan 15: Patched security issue",
+            ]))
     }
 
     @Test("A field label is never a speaker.", arguments: Register.fieldLabels.sorted())

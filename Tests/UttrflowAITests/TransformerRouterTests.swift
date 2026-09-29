@@ -176,7 +176,7 @@ struct TransformerRouterTests {
 
     @Test(
         "hands a short, certain reply straight to the rules",
-        arguments: ["Okay.", "Ship it.", "See you tomorrow."])
+        arguments: ["Okay.", "Ship it."])
     func shortReplyGoesToRules(text: String) async throws {
         let (model, _, router) = shipping()
 

@@ -1,5 +1,6 @@
 import Foundation
 import MLX
+import MLXLMCommon
 import Testing
 
 @testable import UttrflowLocalModel
@@ -84,6 +85,36 @@ struct QuantizedLayerPlanTests {
         #expect(QuantizedLayerPlan.scalesDType(named: "BF16") == .bfloat16)
         #expect(QuantizedLayerPlan.scalesDType(named: "F32") == .float32)
         #expect(QuantizedLayerPlan.scalesDType(named: "U32") == nil)
+    }
+
+    @Test("A zero quantization group size is rejected before placeholder shapes are built")
+    func rejectsNonpositiveGroupSizes() throws {
+        let global = try JSONDecoder().decode(
+            BaseConfiguration.self,
+            from: Data(
+                #"""
+                {"model_type":"test","quantization":{"group_size":0,"bits":4}}
+                """#.utf8))
+        #expect(global.perLayerQuantization.map(QuantizedLayerPlan.hasValidGroupSizes) == false)
+
+        let layer = try JSONDecoder().decode(
+            BaseConfiguration.self,
+            from: Data(
+                #"""
+                {"model_type":"test","quantization":{"group_size":64,"bits":4,"model.layers.0.proj":{"group_size":0,"bits":4}}}
+                """#.utf8))
+        #expect(layer.perLayerQuantization.map(QuantizedLayerPlan.hasValidGroupSizes) == false)
+    }
+
+    @Test("Positive default and layer group sizes remain valid")
+    func acceptsPositiveGroupSizes() throws {
+        let configuration = try JSONDecoder().decode(
+            BaseConfiguration.self,
+            from: Data(
+                #"""
+                {"model_type":"test","quantization":{"group_size":64,"bits":4,"model.layers.0.proj":{"group_size":32,"bits":4},"model.layers.1.proj":false}}
+                """#.utf8))
+        #expect(configuration.perLayerQuantization.map(QuantizedLayerPlan.hasValidGroupSizes) == true)
     }
 
     @Test("A placeholder is as wide as the packed weight and as many groups as the scales")

@@ -38,6 +38,26 @@ struct CodeCommentContextTests {
                 precedingText: "/* done */ let x = ", documentName: "Cache.swift"))
     }
 
+    @Test("ignores block markers inside strings and line comments")
+    func blockMarkersInsideStringsAndLineCommentsAreIgnored() {
+        #expect(
+            !CodeCommentContext.isComment(
+                precedingText: "let s = \"/*\"\nlet y = ", documentName: "Cache.swift"))
+        #expect(
+            !CodeCommentContext.isComment(
+                precedingText: "let glob = \"src/**/*.ts\"\nlet y = ", documentName: "Cache.swift"))
+        #expect(
+            !CodeCommentContext.isComment(
+                precedingText: "// /*\nlet y = ", documentName: "Cache.swift"))
+    }
+
+    @Test("recognizes a block opener after a string that contains comment markers")
+    func blockOpenerAfterStringIsAComment() {
+        #expect(
+            CodeCommentContext.isComment(
+                precedingText: "let s = \"*/\"\n/* still writing this ", documentName: "Cache.swift"))
+    }
+
     @Test("reads the extension off a window title that carries more than the filename")
     func readsExtensionFromAWindowTitle() {
         #expect(

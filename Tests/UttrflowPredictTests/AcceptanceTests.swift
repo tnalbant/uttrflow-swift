@@ -120,6 +120,24 @@ struct AcceptanceTests {
         #expect(deleting.applied(to: "git commit") == "git")
     }
 
+    @Test("A repeated typed suffix keeps the longest echoed start of the suggestion.")
+    func rebasesWhenTheEchoRepeatsTheTypedSuffix() throws {
+        let edit = Acceptance.Edit(replaced: "", inserted: "ha that's funny")
+        let rebased = try #require(Acceptance.rebase(edit, after: "ha", onto: "haha"))
+
+        #expect(rebased.inserted == " that's funny")
+        #expect(rebased.applied(to: "haha") == "haha that's funny")
+    }
+
+    @Test("A continuation already present after the typed text needs no further insertion.")
+    func rebasesWhenTheWholeSuggestionIsAlreadyPresent() throws {
+        let edit = Acceptance.Edit(replaced: "", inserted: "ha that's funny")
+        let rebased = try #require(Acceptance.rebase(edit, after: "ha", onto: "haha that's funny"))
+
+        #expect(rebased.inserted.isEmpty)
+        #expect(rebased.applied(to: "haha that's funny") == "haha that's funny")
+    }
+
     @Test(
         "A suggestion stored with a decomposed accent still only adds past the bare base letter typed so far."
     )
@@ -129,6 +147,38 @@ struct AcceptanceTests {
         #expect(edit.replaced.isEmpty)
         #expect(edit.replacedCount == 0)
         #expect(edit.inserted == "\u{301}")
+    }
+
+    @Test("A combining mark mismatch replaces its whole typed grapheme.")
+    func aCombiningMarkMismatchReplacesOneWholeGrapheme() throws {
+        let typed = "cafe\u{301}"
+        let edit = try #require(Acceptance.edit(accepting: "cafes", after: typed))
+
+        #expect(edit.replaced == "e\u{301}")
+        #expect(edit.replacedCount == 1)
+        #expect(edit.inserted == "es")
+        #expect(edit.applied(to: typed) == "cafes")
+    }
+
+    @Test("A partial Devanagari syllable is replaced as a whole grapheme.")
+    func aDevanagariSyllableMismatchReplacesOneWholeGrapheme() throws {
+        let typed = "नहि"
+        let edit = try #require(Acceptance.edit(accepting: "नहीं जाना", after: typed))
+
+        #expect(edit.replaced == "हि")
+        #expect(edit.replacedCount == 1)
+        #expect(edit.inserted == "हीं जाना")
+        #expect(edit.applied(to: typed) == "नहीं जाना")
+    }
+
+    @Test("A Devanagari scalar prefix remains untouched while the syllable is still being typed.")
+    func aPartialDevanagariScalarPrefixIsNotReplaced() throws {
+        let typed = "नह"
+        let edit = try #require(Acceptance.edit(accepting: "नहीं जाना", after: typed))
+
+        #expect(edit.replaced.isEmpty)
+        #expect(edit.inserted == "ीं जाना")
+        #expect(edit.applied(to: typed) == "नहीं जाना")
     }
 
     @Test("A suggestion carries its own edit, so what is drawn and what is done are one answer.")

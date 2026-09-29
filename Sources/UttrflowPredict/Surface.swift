@@ -11,15 +11,19 @@ public struct Surface: Hashable, Sendable {
     public let locator: String?
     /// The page host for a web field, or the working directory for a terminal.
     public let scope: String?
+    /// The window containing the field, when the system can identify it.
+    public let windowNumber: UInt32?
 
     /// One field, named by as much of it as Accessibility publishes.
     public init(
-        bundleIdentifier: String, role: String, locator: String? = nil, scope: String? = nil
+        bundleIdentifier: String, role: String, locator: String? = nil, scope: String? = nil,
+        windowNumber: UInt32? = nil
     ) {
         self.bundleIdentifier = ApplicationKey.of(bundleIdentifier)
         self.role = role
         self.locator = locator
         self.scope = scope
+        self.windowNumber = windowNumber
     }
 }
 

@@ -3,6 +3,7 @@
 import AppKit
 import UttrflowCore
 import UttrflowPipeline
+import UttrflowUX
 import SwiftUI
 
 /// The notice's text and surface strengths follow Increase Contrast together.
@@ -460,14 +461,7 @@ struct DockView: View {
 
     /// One verb per recovery, matching the sentence the failure already offered.
     static func title(for action: RecoveryAction) -> String {
-        switch action {
-        case .openSystemSettings: "Open Settings"
-        case .retry: "Try Again"
-        case .downloadSpeechModel: "Download"
-        case .pasteManually: "Dismiss"
-        case .showRecentDictations: "Show Recent"
-        case .retryFromRecording: "Retry"
-        }
+        RecoveryActionTitle.title(for: action)
     }
 }
 
