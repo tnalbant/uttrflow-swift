@@ -228,6 +228,7 @@ extension PanelSnapshot {
         self.clips = clips
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
+        reindentOffers.prune(to: Set(clips.map(\.id)))
         self.now = now
         isAwaitingList = false
         // A3, A7 — the place the user left, restorable only now the list it has to exist in is here.
