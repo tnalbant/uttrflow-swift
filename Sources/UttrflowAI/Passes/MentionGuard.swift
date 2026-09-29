@@ -18,12 +18,6 @@ enum MentionGuard {
     /// How far back the word that opens a noun phrase may stand: "the hundred metre dash".
     static let phraseReach = 3
 
-    /// Words that stand between an opener and the noun they modify without heading a phrase themselves: "her first new line".
-    static let modifiers: Set<String> = Set(NumberFormsPass.ordinalUnits.keys).union([
-        "best", "worst", "last", "only", "own", "other", "whole", "latest", "newest",
-        "oldest", "biggest", "longest", "shortest", "favourite", "favorite", "very", "entire",
-    ])
-
     /// The spoken names of marks and layout, which close the phrase an opener began rather than heading it.
     static let markNames: Set<String> = Set(
         SpokenPunctuationPass.marks.flatMap(\.words) + LayoutWordsPass.marks.flatMap(\.words))
@@ -56,7 +50,23 @@ enum MentionGuard {
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
             if markNames.contains(shape.key) { return false }
             if let bridging, !bridging.contains(shape.key) { return false }
+            if bridging == nil, !isModifier(shape.key) { return false }
         }
         return false
+    }
+
+    /// Recognizes open-class adjective forms locally while leaving command verbs and nouns unbridged.
+    private static func isModifier(_ word: String) -> Bool {
+        if NumberFormsPass.ordinalUnits[word] != nil { return true }
+        if [
+            "best", "worst", "last", "only", "own", "other", "whole", "favourite", "favorite", "very",
+            "entire",
+        ].contains(word) {
+            return true
+        }
+        return ["est", "er", "ing", "ed", "ous", "ful", "less", "ive", "able", "ible", "al", "ic", "y"]
+            .contains { suffix in
+                word.count > suffix.count + 2 && word.hasSuffix(suffix)
+            }
     }
 }
