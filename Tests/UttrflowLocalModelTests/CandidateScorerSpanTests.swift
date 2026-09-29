@@ -93,6 +93,29 @@ struct MLXCandidateScorerJudgementCacheTests {
         #expect(await scorer.judgementCacheHits == 0)
     }
 
+    @Test("Forgetting clears judged candidates and generated confidence without releasing the model")
+    func forgetEmptiesBothCaches() async {
+        var confidence = ConfidenceMemory()
+        confidence.remember(["please send the report": -0.25])
+        let scorer = MLXCandidateScorer(
+            model: .gemma3, maximumTokens: 16, bufferCache: Self.noOpCache,
+            initialConfidenceMemory: confidence)
+
+        #expect(await scorer.confidence(ofGenerated: "please send the report") == -0.25)
+        _ = await scorer.judgedTokens(of: "please send the report", following: "p")
+        _ = await scorer.judgedTokens(of: "please send the report", following: "pl")
+        #expect(await scorer.judgementCacheHits == 1)
+        #expect(!(await scorer.isReady))
+
+        await scorer.forgetEverything()
+
+        #expect(await scorer.confidence(ofGenerated: "please send the report") == nil)
+        _ = await scorer.judgedTokens(of: "please send the report", following: "ple")
+        #expect(await scorer.judgementCacheMisses == 2)
+        #expect(await scorer.judgementCacheHits == 1)
+        #expect(!(await scorer.isReady))
+    }
+
     @Test("A cancelled scoring attempt leaves nothing cached, so the next attempt runs afresh")
     func cancelledAttemptIsNotCached() async {
         let scorer = MLXCandidateScorer(

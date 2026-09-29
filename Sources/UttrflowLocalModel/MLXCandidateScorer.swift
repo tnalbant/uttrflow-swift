@@ -38,13 +38,15 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     init(
         model: LocalModel, maximumTokens: Int, bufferCache: BufferCacheControl,
-        cache: URL = HubCache.default.cacheDirectory, loading: WeightLoading<ModelContainer> = .mlx
+        cache: URL = HubCache.default.cacheDirectory, loading: WeightLoading<ModelContainer> = .mlx,
+        initialConfidenceMemory: ConfidenceMemory = ConfidenceMemory()
     ) {
         self.model = model
         self.maximumTokens = maximumTokens
         self.bufferCache = bufferCache
         self.cache = cache
         self.weights = ReloadableWeights(loading: loading)
+        self.confidenceMemory = initialConfidenceMemory
     }
 
     /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance.md`.
@@ -145,8 +147,18 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// How sure each recent pass was of the lines it wrote.
     private var confidenceMemory = ConfidenceMemory()
 
+    /// Invalidates work already suspended in the model so it cannot restore forgotten answers.
+    private var forgetGeneration: UInt64 = 0
+
     public func confidence(ofGenerated line: String) -> Double? {
         confidenceMemory.confidence(of: line)
+    }
+
+    /// Forgets every judged candidate and generated confidence without releasing the model.
+    public func forgetEverything() async {
+        forgetGeneration &+= 1
+        judgementCache.forgetEverything()
+        confidenceMemory.forgetEverything()
     }
 
     /// Per-candidate log-softmax rows the model has already produced, so a keystroke only re-averages from the new `start`.
@@ -271,9 +283,11 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// The one-line pass for `typed`: every token after the line's own start that opened its turn, why it ended, and what the parser made of it.
     public func pass(for typed: String, in situation: GenerationSituation) async throws -> GenerationPass? {
+        let generation = forgetGeneration
         guard let run = try await run(typed: typed, in: situation, asking: .one, tokenShare: 1) else {
             return nil
         }
+        guard generation == forgetGeneration else { return nil }
         let completions = Self.completions(from: run, typed: typed, asking: .one, in: situation)
         confidenceMemory.remember(Self.confidences(of: completions, from: run, typed: typed))
         return GenerationPass(
@@ -293,9 +307,11 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     private func generate(
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> [String] {
+        let generation = forgetGeneration
         guard let run = try await run(typed: typed, in: situation, asking: ask, tokenShare: tokenShare) else {
             return []
         }
+        guard generation == forgetGeneration else { return [] }
         let lines = Self.completions(from: run, typed: typed, asking: ask, in: situation)
         // Measured from the pass that wrote them, so the gate never runs the model a second time.
         confidenceMemory.remember(Self.confidences(of: lines, from: run, typed: typed))
@@ -487,6 +503,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
+        let generation = forgetGeneration
         bufferCache.hold()
         defer { bufferCache.clear() }
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
@@ -494,10 +511,11 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
             judgementCacheHits += 1
             guard let container else { return [] }
             let bytes = vocabulary?.bytes ?? []
-            return await container.perform { loaded in
+            let judged = await container.perform { loaded in
                 Self.judgedFromCache(
                     line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
             }
+            return generation == forgetGeneration ? judged : []
         }
         judgementCacheMisses += 1
         // A cancelled pass says nothing about the candidate, so it leaves the cache as it found it.
@@ -515,6 +533,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                 line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
             return (line, judged)
         }
+        guard generation == forgetGeneration else { return [] }
         judgementCache.remember(result.0, for: candidate)
         return result.1
     }

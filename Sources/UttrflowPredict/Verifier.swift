@@ -15,6 +15,8 @@ public actor Verifier {
     private let clock: any Clock<Duration>
     /// The verdicts already reached, so most keystrokes cost nothing at all.
     private var cache = VerdictCache()
+    /// Invalidates verdicts still being computed when a forget action arrives.
+    private var forgetGeneration: UInt64 = 0
     /// What a terminal line has to name on disk before it is shown, asked by stat and never by running a program.
     private let lines: TerminalLineCheck
 
@@ -69,6 +71,7 @@ public actor Verifier {
         for candidate: Candidate, in surface: Surface, typed: String, now: Date,
         before deadline: Budget
     ) async -> Verdict {
+        let generation = forgetGeneration
         let key = VerdictCache.Key(
             candidate: candidate.text, context: Self.context(of: surface, typed: typed))
         if let remembered = cache.verdict(for: key, now: now) { return remembered }
@@ -79,7 +82,7 @@ public actor Verifier {
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
             guard let known = await known(of: lookup.kinds, in: surface, now: now) else { continue }
             guard !Verification.attests(lookup.word, known) else {
-                cache.remember(.attested, for: key, now: now)
+                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
                 return .attested
             }
             if judged == nil { judged = (lookup.word, lookup.prefix, known) }
@@ -96,7 +99,7 @@ public actor Verifier {
                 modelObjects: Verification.objects(to: plausibility)),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
             forGood: judged != nil && Verification.isClosedVocabulary(for: token))
-        cache.remember(verdict, for: key, now: now)
+        if generation == forgetGeneration { cache.remember(verdict, for: key, now: now) }
         return verdict
     }
 
@@ -119,8 +122,10 @@ public actor Verifier {
     }
 
     /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
-    public func forgetEverything() {
+    public func forgetEverything() async {
+        forgetGeneration &+= 1
         cache.forgetEverything()
+        await scoring?.forgetEverything()
     }
 
     /// How many verdicts are remembered, which is what says a keystroke skipped the gates.
