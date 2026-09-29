@@ -18,6 +18,9 @@ public protocol CleaningPass: Sendable {
     func apply(_ draft: Draft) -> Draft
 }
 
+/// A pass that may run only after every piece of one message has been joined.
+public protocol WholeTextCleaningPass: CleaningPass {}
+
 extension CleaningPass {
     public static var removes: RemovalGrant { .conversion }
 

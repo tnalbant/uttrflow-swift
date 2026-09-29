@@ -23,11 +23,17 @@ enum HistoryFixture {
     /// Mid-afternoon on 15 June 2025, so subtracting hours stays inside the same day.
     static let now = Date(timeIntervalSince1970: 1_750_000_800)
 
+    /// A date at noon in the fixture's fixed calendar.
+    static func date(year: Int, month: Int, day: Int) throws -> Date {
+        try #require(calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12)))
+    }
+
     /// One kept dictation; `changes` defaults to measured-and-unchanged, and `nil` means never measured.
     static func entry(
         _ text: String = "Hello there",
         minutesAgo: Int = 0,
         daysAgo: Int = 0,
+        when: Date? = nil,
         application: String? = "Slack",
         applicationIdentifier: String? = nil,
         changes: RecordedChanges? = RecordedChanges(),
@@ -36,8 +42,9 @@ enum HistoryFixture {
         HistoryEntry(
             id: UUID(),
             text: text,
-            when: now.addingTimeInterval(
-                Double(-minutesAgo) * 60 + Double(-daysAgo) * 86_400),
+            when: when
+                ?? now.addingTimeInterval(
+                    Double(-minutesAgo) * 60 + Double(-daysAgo) * 86_400),
             applicationName: application,
             applicationIdentifier: applicationIdentifier,
             changes: changes,
@@ -49,7 +56,8 @@ enum HistoryFixture {
         entries: [HistoryEntry],
         query: String = "",
         settings: Settings = .default,
-        keepsRecordings: Bool = false
+        keepsRecordings: Bool = false,
+        now: Date = HistoryFixture.now
     ) -> HistorySnapshot {
         HistorySnapshot(
             entries: entries, query: query, settings: settings,
@@ -98,6 +106,50 @@ struct HistoryPresentationTests {
         let page = HistoryFixture.page(entries: [HistoryFixture.entry(daysAgo: 3)])
         let title = page.days.first?.title
         #expect(title?.contains("June") == true)
+    }
+
+    @Test("same month and day in different years have distinct headings")
+    func distinguishesYearsForSameMonthAndDay() throws {
+        let snapshot = HistoryFixture.snapshot(
+            entries: [
+                HistoryFixture.entry(
+                    "Last year", when: try HistoryFixture.date(year: 2025, month: 9, day: 28)),
+                HistoryFixture.entry(
+                    "This year", when: try HistoryFixture.date(year: 2026, month: 9, day: 28)),
+            ], now: try HistoryFixture.date(year: 2026, month: 9, day: 30))
+
+        let page = HistoryPresenter.page(
+            for: snapshot, calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+
+        #expect(page.days.map(\.title) == ["28 September 2025", "28 September"])
+    }
+
+    @Test("a date from this year keeps its existing heading")
+    func currentYearHeadingStaysUnchanged() throws {
+        let snapshot = HistoryFixture.snapshot(
+            entries: [
+                HistoryFixture.entry(
+                    "This year", when: try HistoryFixture.date(year: 2026, month: 9, day: 28))
+            ], now: try HistoryFixture.date(year: 2026, month: 9, day: 30))
+
+        let page = HistoryPresenter.page(
+            for: snapshot, calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+
+        #expect(page.days.map(\.title) == ["28 September"])
+    }
+
+    @Test("an older heading formats its year in the selected locale")
+    func olderHeadingUsesLocaleFormatting() throws {
+        let snapshot = HistoryFixture.snapshot(
+            entries: [
+                HistoryFixture.entry(
+                    "Last year", when: try HistoryFixture.date(year: 2025, month: 9, day: 28))
+            ], now: try HistoryFixture.date(year: 2026, month: 9, day: 30))
+        let locale = Locale(identifier: "en_US")
+
+        let page = HistoryPresenter.page(for: snapshot, calendar: HistoryFixture.calendar, locale: locale)
+
+        #expect(page.days.map(\.title) == ["September 28, 2025"])
     }
 
     /// The store orders by arrival, and merging days as met stops a moved clock making two "Today"s.
@@ -152,17 +204,17 @@ struct HistoryPresentationTests {
     }
 }
 
-@Suite("A history row's actions, the same as Dictation's")
+@Suite("History row actions")
 struct HistoryRowActionsTests {
-    @Test("offers copy, insert again and flag, in that order")
+    @Test("offers copy, copy to paste elsewhere, and flag, in that order")
     func offersTheSameThreeActions() {
         let entry = HistoryFixture.entry("Hello there")
         let row = HistoryPresenter.row(
             for: entry, relativeTo: HistoryFixture.now, locale: HistoryFixture.locale)
 
-        #expect(row.actions.map(\.title) == ["Copy", "Insert Again", "Flag"])
+        #expect(row.actions.map(\.title) == ["Copy", "Copy to Paste Elsewhere", "Flag"])
         #expect(row.actions[0].intent == .copy("Hello there"))
-        #expect(row.actions[1].intent == .insert("Hello there"))
+        #expect(row.actions[1].intent == .copy("Hello there"))
         #expect(row.actions[2].intent == .flagDictation(entry.id))
     }
 
@@ -186,19 +238,7 @@ struct HistoryRowActionsTests {
         #expect(row.more.first?.isDestructive == true)
     }
 
-    @Test("History and Dictation draw a row's actions from the same function, so they cannot drift")
-    func actionsAgreeWithDictation() {
-        let entry = HistoryFixture.entry("Same text", isFlagged: true)
-        let snapshot = DictationSnapshot(entries: [entry], shortcut: "⌥Space", now: HistoryFixture.now)
-        let dictationRow = DictationPresenter.page(
-            for: snapshot, calendar: HistoryFixture.calendar, locale: HistoryFixture.locale
-        ).rows.first
-        let historyRow = HistoryPresenter.row(
-            for: entry, relativeTo: HistoryFixture.now, locale: HistoryFixture.locale)
 
-        #expect(dictationRow?.actions == historyRow.actions)
-        #expect(dictationRow?.more == historyRow.more)
-    }
 }
 
 @Suite("History keeps the promise about retention")
@@ -206,10 +246,12 @@ struct HistoryRetentionTests {
     /// A page that would draw a dictation older than the window can break the promise for the store.
     @Test("anything older than the window is not shown")
     func dropsExpiredEntries() {
-        let page = HistoryFixture.page(entries: [
-            HistoryFixture.entry("Kept", daysAgo: 6),
-            HistoryFixture.entry("Gone", daysAgo: 9),
-        ])
+        let page = HistoryFixture.page(
+            entries: [
+                HistoryFixture.entry("Kept", daysAgo: 6),
+                HistoryFixture.entry("Gone", daysAgo: 9),
+            ],
+            settings: Settings(transcriptRetentionDays: 7))
 
         #expect(page.days.flatMap(\.rows).map(\.text) == ["Kept"])
     }
@@ -227,17 +269,26 @@ struct HistoryRetentionTests {
 
     @Test("the notice says how long the text lasts, and that no audio is kept")
     func noticeWhenNothingIsRecorded() {
-        let page = HistoryFixture.page(entries: [])
+        let page = HistoryFixture.page(entries: [], settings: Settings(transcriptRetentionDays: 7))
         #expect(
             page.retentionNotice.sentence
                 == "Kept on this Mac for 7 days, then deleted. Recordings are never saved.")
         #expect(page.retentionNotice.link.intent == .go(.settings(.privacy)))
     }
 
+    @Test("the notice says text kept always stays until it is deleted")
+    func noticeWhenKeptAlways() {
+        let page = HistoryFixture.page(entries: [])
+        #expect(
+            page.retentionNotice.sentence
+                == "Kept on this Mac until you delete it. Recordings are never saved.")
+    }
+
     /// The app keeps a recording only until its words land, and the notice says exactly that.
     @Test("the notice says a recording stays only until its words land")
     func noticeWhenAudioIsKept() {
-        let page = HistoryFixture.page(entries: [], keepsRecordings: true)
+        let page = HistoryFixture.page(
+            entries: [], settings: Settings(transcriptRetentionDays: 7), keepsRecordings: true)
         #expect(
             page.retentionNotice.sentence
                 == "Kept on this Mac for 7 days, then deleted. A recording stays only until its words land.")
@@ -348,12 +399,24 @@ struct HistoryEmptyTests {
     @Test("never dictated is not the same as everything expired")
     func distinguishesTheEmptinesses() {
         let never = HistoryFixture.page(entries: [])
-        #expect(never.emptyState?.title == "Nothing yet")
-        #expect(never.emptyState?.message.contains("never leaves this Mac") == true)
+        #expect(never.emptyState?.title == "Nothing dictated yet")
+        #expect(never.emptyState?.message == "Every dictation lands here, kept on this Mac.")
+        #expect(never.emptyState?.action?.intent == .dictate)
 
-        let expired = HistoryFixture.page(entries: [HistoryFixture.entry(daysAgo: 30)])
+        let expired = HistoryFixture.page(
+            entries: [HistoryFixture.entry(daysAgo: 30)], settings: Settings(transcriptRetentionDays: 7))
         #expect(expired.emptyState?.title == "Nothing left to show")
         #expect(expired.emptyState?.message.contains("7 days") == true)
+    }
+
+    @Test("before the history is read, the page claims nothing about it")
+    func beforeTheFirstReading() {
+        let page = HistoryPresenter.page(
+            for: HistorySnapshot(entries: [], now: HistoryFixture.now, hasReadHistory: false))
+        #expect(page.isReading)
+        #expect(page.emptyState == nil)
+        #expect(page.days.isEmpty && page.tiles.isEmpty && !page.showsSearch)
+        #expect(!HistoryFixture.page(entries: []).isReading)
     }
 
     @Test("an empty page still has no false day sections")
@@ -398,5 +461,31 @@ struct HistoryApplicationTests {
     func withoutAName() {
         #expect(HistoryPresenter.application(for: HistoryFixture.entry(application: nil)) == nil)
         #expect(HistoryPresenter.application(for: HistoryFixture.entry(application: " ")) == nil)
+    }
+}
+
+@Suite("Counting a dictation's words")
+struct HistoryWordCountTests {
+    @Test("counts the same runs a whitespace split does, across every kind of space")
+    func matchesSplit() {
+        let texts = [
+            "", " ", "one", " one  two ", "one\r\ntwo", "tab\tand\u{00A0}nbsp", "ideographic\u{3000}space",
+            "e\u{0301}clair and café", "emoji 👩‍👩‍👧 family", "line\u{2028}separator", "trailing\n",
+        ]
+        for text in texts {
+            #expect(
+                MainFormatting.words(in: text) == text.split(whereSeparator: \.isWhitespace).count, "\(text)")
+        }
+    }
+
+    @Test("a day's summary and each row's length agree on the words")
+    func summaryAgreesWithRows() {
+        let entries = [
+            HistoryFixture.entry("one two three", minutesAgo: 1),
+            HistoryFixture.entry("four  five", minutesAgo: 2),
+        ]
+        let day = HistoryFixture.page(entries: entries).days.first
+        #expect(day?.summary == "2 dictations · 5 words")
+        #expect(day?.rows.map(\.length) == ["3 words", "2 words"])
     }
 }

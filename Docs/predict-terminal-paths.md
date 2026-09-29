@@ -109,6 +109,26 @@ other way means treating every terminal as possibly remote, which withdraws the 
 local one. So this narrows the bug to the case where no signal exists rather than closing it; a
 session that announces itself is handled, and one that does not is where it stood before.
 
+## tmux and screen panes
+
+A tmux or GNU screen client presents its panes inside one terminal window and one Accessibility
+text area. The document directory exposed there belongs to the outer terminal process; it does not
+identify the pane currently under the caret. Pane switches therefore cannot safely reuse that
+directory for path checks, branch lookups, machine candidates, or corpus identity.
+
+When the terminal window title identifies `tmux` or `screen` as the foreground program, the field is scoped
+as `RemoteSession.scope`. The verifier consequently refuses terminal lines, no local directory
+index is queried, and observations are kept under an opaque session scope rather than the outer
+directory. This is deliberately fail-closed because a wrong pane's filesystem can make an unsafe
+command appear valid.
+
+The title is the only pane-related signal this process can obtain without entering the shell or
+requesting broader access. Detection is best-effort: if a terminal configuration hides the
+multiplexer name from its window title, Accessibility still cannot reveal the active pane's cwd,
+and the outer document may be treated as local. The same limitation applies to multiplexers whose
+title format omits their name. Users who need reliable per-pane suggestions should configure their
+terminal title to include `tmux` or `screen`, or use a non-multiplexed terminal window.
+
 ## What it never does
 
 It never runs a program. Everything it knows comes through `FileSystemProbing`: a `stat`, an

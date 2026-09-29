@@ -17,8 +17,13 @@ public enum RemoteSession {
         scope == Self.scope
     }
 
+    /// Whether a terminal title positively identifies a multiplexer whose visible pane has no AX scope of its own.
+    public static func isMultiplexed(inWindowTitle title: String?) -> Bool {
+        FullScreenProgram.isMultiplexer(inWindowTitle: title)
+    }
+
     /// The title's words, keeping what a path is made of together, so a directory called `~/.ssh` is not the program `ssh`.
-    private static func words(of title: String) -> [String] {
+    static func words(of title: String) -> [String] {
         title.split { !($0.isLetter || $0.isNumber || "-_./~@+".contains($0)) }.map(String.init)
     }
 }
