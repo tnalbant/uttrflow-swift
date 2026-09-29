@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private nonisolated static let log = Logger(
         subsystem: "com.uttrflow.Uttrflow", category: "insertion")
 
-    private let settingsStore = UserDefaultsSettingsStore()
+    private let settingsStore: UserDefaultsSettingsStore
     private var settings = Settings()
     /// The pipeline's recording cue, told when the sound setting changes.
     private var recordingSounds: RecordingSounds?
@@ -145,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Builds the app around one folder, which a test points at a temporary one.
     init(
         container: URL = .applicationSupportDirectory, loginItem: LaunchAtLogin = LaunchAtLogin(),
+        settingsStore: UserDefaultsSettingsStore = UserDefaultsSettingsStore(),
         account: OnboardingAccountLayer = .forThisBuild(),
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
@@ -152,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     ) {
         self.container = container
         self.loginItem = loginItem
+        self.settingsStore = settingsStore
         self.account = account
         self.scoring = scoring
         self.generating = generating
@@ -880,6 +882,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Arms the shortcut again when it could not be armed before. See `Docs/shortcuts.md`.
     func applicationDidBecomeActive(_ notification: Notification) {
+        synchronizeLaunchAtLoginWithSystem()
         // Whatever held the combination may have quit while the user was away.
         if !unarmedShortcuts.isEmpty { startWatchingForClaimedShortcuts() }
         guard shortcutArming.failure != nil else { return }
@@ -2625,6 +2628,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 "macOS refused the login item: asked for \(self.settings.opensAtLogin, privacy: .public), got \(String(describing: became), privacy: .public)"
             )
         }
+    }
+
+    /// Adopts macOS's current login-item state after the user may have changed it in System Settings.
+    private func synchronizeLaunchAtLoginWithSystem() {
+        let isEnabled = loginItem.isEnabled
+        guard settings.opensAtLogin != isEnabled else { return }
+        settings.opensAtLogin = isEnabled
+        settingsStore.save(settings)
+        settingsPage.synchronize(settings: settings)
     }
 
     /// How long a finished state stays up, or `nil` for a state that is not finished.
