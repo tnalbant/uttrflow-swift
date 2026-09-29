@@ -115,6 +115,18 @@ struct SuggestionTickingTests {
         #expect(answer8 == .wake)
     }
 
+    @Test("restores fast field reads after activity during ghost polling")
+    func activityRestartsFastPolling() {
+        var ticking = SuggestionTicking()
+        _ = ticking.noteActivity(at: noon)
+        let later = noon.addingTimeInterval(SuggestionTicking.window + 0.5)
+        #expect(ticking.tick(at: later, ghostIsVisible: true) == .wakeAndSlow)
+
+        let activity = later.addingTimeInterval(1)
+        #expect(ticking.noteActivity(at: activity))
+        #expect(ticking.tick(at: activity.addingTimeInterval(1), ghostIsVisible: true) == .wake)
+    }
+
     @Test("a tick after the clock stopped wakes nothing")
     func aStrayTickIsIgnored() {
         var copy = SuggestionTicking()
