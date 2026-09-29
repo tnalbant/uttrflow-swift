@@ -102,6 +102,22 @@ struct QuickPanelSpeechTests {
         #expect(spoken == "Text, /second, the second thing, 2 minutes ago")
     }
 
+    @Test("an arriving copy's refreshed age is spoken to VoiceOver")
+    func refreshedAgeIsSpoken() {
+        let openedAt = Date(timeIntervalSince1970: 1_000_000)
+        let copiedAt = openedAt.addingTimeInterval(90)
+        let refreshedAt = copiedAt.addingTimeInterval(1)
+        let clip = Clip(text: "just copied", kind: .text, copiedAt: copiedAt)
+        var snapshot = PanelSnapshot(clips: [], now: openedAt, locale: Locale(identifier: "en_US"))
+        snapshot.install([clip], missingImages: [], formattableLanguages: [], now: refreshedAt)
+
+        let row = PanelPresenter.present(snapshot).rows[0]
+        let spoken = QuickPanelSpeech.label(for: row)
+
+        #expect(spoken.contains(row.when))
+        #expect(!spoken.contains("in "))
+    }
+
     @Test("every kind has a word, so no row is announced as nothing")
     func everyKindSpeaks() {
         for kind in ClipKind.allCases {

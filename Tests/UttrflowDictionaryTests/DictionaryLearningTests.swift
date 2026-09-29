@@ -111,18 +111,56 @@ struct DictionaryLearningTests {
         #expect(await store.allEntries().map(\.word) == ["pgvector"])
     }
 
-    /// A word the user typed in and then deleted is theirs to change their mind about.
-    @Test("deleting a word you added yourself does not refuse it")
-    func deletingAnAddedWordDoesNotRefuseIt() async throws {
+    /// A word the user typed in and then deleted stays deleted until they type it in again.
+    @Test("deleting a word you added yourself refuses it, and typing it in again still works")
+    func deletingAnAddedWordRefusesIt() async throws {
         let sandbox = Sandbox()
         let store = PersonalDictionaryStore(file: sandbox.file)
         try await store.add(word: "pgvector", pronunciation: "", at: epoch)
         try await store.remove(#require(await store.allEntries().first).id)
 
-        for _ in 1...LearnableWords.sightingsBeforeLearning {
+        for _ in 1...(LearnableWords.sightingsBeforeLearning * 2) {
             try await dictate(into: store, saying: "the pgvector migration", titled: "pgvector — notes")
         }
-        #expect(await store.allEntries().map(\.word) == ["pgvector"])
+        #expect(await store.allEntries().isEmpty)
+
+        try await store.add(word: "pgvector", pronunciation: "", at: epoch)
+        #expect(await store.allEntries().map(\.origin) == [.added])
+    }
+
+    /// A relaunch is a new store on the same file, and a deleted word must still be refused there.
+    @Test("a word deleted before a relaunch is not learnt again after it")
+    func refusalOutlivesARelaunch() async throws {
+        let sandbox = Sandbox()
+        let before = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: before, saying: "the Zorvane rollout", titled: "Zorvane")
+        }
+        try await before.remove(#require(await before.allEntries().first).id)
+
+        let after = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: after, saying: "the Zorvane rollout", titled: "Zorvane")
+        }
+        #expect(await after.allEntries().isEmpty)
+    }
+
+    /// The reset forgets the refusals on disk too, or it would only last until the next relaunch.
+    @Test("a reset before a relaunch lets the deleted word be learnt after it")
+    func resetOutlivesARelaunch() async throws {
+        let sandbox = Sandbox()
+        let before = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: before, saying: "the Zorvane rollout", titled: "Zorvane")
+        }
+        try await before.remove(#require(await before.allEntries().first).id)
+        try await before.removeLearned()
+
+        let after = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: after, saying: "the Zorvane rollout", titled: "Zorvane")
+        }
+        #expect(await after.allEntries().map(\.word) == ["Zorvane"])
     }
 
     /// The one path where the user is telling us; one dictation is enough because it is deliberate.
