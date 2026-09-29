@@ -27,6 +27,8 @@ struct Bench: AsyncParsableCommand {
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
 
+    @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
     @Option(name: .long, help: "Seconds between looks at the recording for a piece to work ahead on.")
     var earlyPoll: Double = 1
 
@@ -46,7 +48,7 @@ struct Bench: AsyncParsableCommand {
 
     func run() async throws {
         let model = try resolve(modelVariant)
-        let store = FileSystemSpeechModelStore.whisperKit()
+        let store = try modelsDirectory.store()
         guard store.isInstalled(model) else {
             throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
         }

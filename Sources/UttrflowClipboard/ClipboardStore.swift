@@ -117,14 +117,19 @@ public actor ClipboardStore {
             return retained(loaded(), keeping: retention)
         }
         // Refused rather than truncated: one copied log file would be rewritten on every later ⌘C.
-        guard budget.largestClip <= 0 || Self.weight(of: clip) <= budget.largestClip else {
+        guard fitsLargestClipBound(clip) else {
             return retained(loaded(), keeping: retention)
         }
 
         let existing = loaded()
         let previous = Self.previous(for: clip, in: existing)
-        let arrival = (previous.map { inheriting($0, from: clip) } ?? clip)
-            .orderedForEviction(nextUseOrder())
+        var arrival = previous.map { inheriting($0, from: clip) } ?? clip
+        if let alias = arrival.alias,
+            existing.contains(where: { $0.id != arrival.id && $0.alias == alias })
+        {
+            arrival.alias = nil
+        }
+        arrival = arrival.orderedForEviction(nextUseOrder())
 
         // Prepended, not sorted in: a machine whose clock moved must not shuffle what the user sees.
         let displaced = previous.map { [$0.id] } ?? []
@@ -247,7 +252,10 @@ public actor ClipboardStore {
     public func setAlias(
         _ alias: String?, of id: UUID, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try change(id, keeping: retention) { $0.alias = alias }
+        if let alias, loaded().contains(where: { $0.id != id && $0.alias == alias }) {
+            throw .aliasAlreadyInUse
+        }
+        return try change(id, keeping: retention) { $0.alias = alias }
     }
 
     /// Replaces a clip's plain text, keeping its identity and leaving its formatted note alone.
@@ -500,6 +508,7 @@ public actor ClipboardStore {
         if let index = clips.firstIndex(where: { $0.id == id }) {
             let wasKept = clips[index].isKept
             edit(&clips[index])
+            guard fitsLargestClipBound(clips[index]) else { throw .couldNotWrite }
             // An un-kept clip is freshly copied and moved to the front, so the same write cannot also evict it under the item cap or byte quotas.
             if wasKept && !clips[index].isKept {
                 let fresh = clips[index].recopied(at: retention.now, order: nextUseOrder())
@@ -514,8 +523,23 @@ public actor ClipboardStore {
     private func settled(
         _ clips: [Clip], keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try save(keptOnDisk(clips, keeping: retention))
-        return retained(clips, keeping: retention)
+        let unique = Self.uniqueAliases(in: clips)
+        try save(keptOnDisk(unique, keeping: retention))
+        return retained(unique, keeping: retention)
+    }
+
+    /// Keeps the first clip holding an alias and removes that alias from later clips.
+    private static func uniqueAliases(in clips: [Clip]) -> [Clip] {
+        var aliases: Set<String> = []
+        return clips.map { clip in
+            guard let alias = clip.alias else { return clip }
+            guard aliases.insert(alias).inserted else {
+                var unnamed = clip
+                unnamed.alias = nil
+                return unnamed
+            }
+            return clip
+        }
     }
 
     /// Spares every kept clip, then applies the window and the per-pool caps to the history.
@@ -558,6 +582,11 @@ public actor ClipboardStore {
     /// What a clip costs this process to hold: its words, and deliberately not its picture's file.
     static func weight(of clip: Clip) -> Int {
         clip.text.utf8.count + (clip.richText?.utf8.count ?? 0)
+    }
+
+    /// Applies the same text-and-rich-text bound to copied clips and every stored edit.
+    private func fitsLargestClipBound(_ clip: Clip) -> Bool {
+        budget.largestClip <= 0 || Self.weight(of: clip) <= budget.largestClip
     }
 
     /// What a list of clips costs this process to hold.
@@ -642,8 +671,9 @@ public actor ClipboardStore {
         // An unreplaceable file is unknown rather than empty, so every save still meets its refusal.
         historyOnDisk = unreplaceable.contains(file) ? nil : fromHistoryFile
         let stored = fromSavedFile + fromHistoryFile.filter { !savedIDs.contains($0.id) }
-        let list = Self.interleaving(
-            saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept })
+        let list = Self.uniqueAliases(
+            in: Self.interleaving(
+                saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept }))
         let ordered = list.enumerated().sorted { left, right in
             switch (left.element.lastUsedOrder, right.element.lastUsedOrder) {
             case (let leftOrder?, let rightOrder?):

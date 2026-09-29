@@ -3,7 +3,17 @@
 import AppKit
 import UttrflowCore
 import UttrflowPipeline
+import UttrflowUX
 import SwiftUI
+
+/// The notice's text and surface strengths follow Increase Contrast together.
+struct DockNoticeAppearance: Equatable {
+    let increasedContrast: Bool
+
+    var usesOpaqueGlass: Bool { increasedContrast }
+
+    func textOpacity(normal: Double) -> Double { increasedContrast ? 1 : normal }
+}
 
 /// What the dock is showing; hover and press live here because AppKit, not SwiftUI, notices them.
 @MainActor
@@ -18,6 +28,7 @@ final class DockViewModel {
     var anchor: DockAnchor
     var isHovering = false
     var isPressed = false
+    var increasesContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     /// Microphone loudness in `0...1` as RMS, written at 20 Hz while recording; not part of the presentation.
     var level: Float = 0
     /// The row of capsules, one per arrival, newest first.
@@ -75,6 +86,10 @@ struct DockView: View {
     var onRecovery: (RecoveryAction) -> Void = { _ in }
     /// The size the current form wants; the panel is resized to match, so a grip claims no more screen.
     var onDesiredSize: (CGSize) -> Void = { _ in }
+
+    private var noticeAppearance: DockNoticeAppearance {
+        DockNoticeAppearance(increasedContrast: model.increasesContrast)
+    }
 
     var body: some View {
         form
@@ -276,7 +291,7 @@ struct DockView: View {
             StruckLevel()
             Text(words)
                 .font(.system(size: DockMetrics.footnoteSize + 1))
-                .opacity(0.72)
+                .opacity(noticeAppearance.textOpacity(normal: 0.72))
                 .lineLimit(2)
                 .frame(maxWidth: DockMetrics.quietTextMaxWidth, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -284,7 +299,10 @@ struct DockView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .frame(minHeight: DockMetrics.clipboardHeight)
-        .glass(cornerRadius: DockMetrics.clipboardHeight / 2)
+        .glass(
+            cornerRadius: DockMetrics.clipboardHeight / 2,
+            opaque: noticeAppearance.usesOpaqueGlass
+        )
         .padding(DockMetrics.gripHitPadding)
     }
 
@@ -310,13 +328,16 @@ struct DockView: View {
                 if let words = Self.restingWords(for: presentation) {
                     Text(words)
                         .font(.system(size: DockMetrics.footnoteSize + 1))
-                        .opacity(0.72)
+                        .opacity(noticeAppearance.textOpacity(normal: 0.72))
                         .fixedSize()
                 }
             }
             .padding(.horizontal, 9)
             .frame(height: DockMetrics.clipboardHeight)
-            .glass(cornerRadius: DockMetrics.clipboardHeight / 2)
+            .glass(
+                cornerRadius: DockMetrics.clipboardHeight / 2,
+                opaque: noticeAppearance.usesOpaqueGlass
+            )
             .padding(DockMetrics.gripHitPadding)
         }
     }
@@ -336,7 +357,7 @@ struct DockView: View {
                 if let secondary = presentation.secondaryLine {
                     Text(secondary)
                         .font(.system(size: DockMetrics.footnoteSize))
-                        .opacity(0.58)
+                        .opacity(noticeAppearance.textOpacity(normal: 0.58))
                         .lineLimit(1)
                 }
                 // Under the words, so the button never takes width the message needs.
@@ -354,7 +375,10 @@ struct DockView: View {
         .padding(.vertical, DockMetrics.noticeVerticalPadding)
         .frame(width: DockMetrics.noticeMaxWidth)
         .frame(minHeight: DockMetrics.noticeHeight)
-        .glass(cornerRadius: DockMetrics.noticeHeight / 2)
+        .glass(
+            cornerRadius: DockMetrics.noticeHeight / 2,
+            opaque: noticeAppearance.usesOpaqueGlass
+        )
         .help(Self.hoverText(for: presentation, primaryLine: primaryLine))
         .padding(DockMetrics.gripHitPadding)
     }
@@ -392,7 +416,10 @@ struct DockView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(width: width)
-        .glass(cornerRadius: DockSetupMetrics.warningRadius)
+        .glass(
+            cornerRadius: DockSetupMetrics.warningRadius,
+            opaque: noticeAppearance.usesOpaqueGlass
+        )
         .help(Self.hoverText(for: presentation, primaryLine: primaryLine))
         .padding(DockMetrics.gripHitPadding)
     }
@@ -434,14 +461,7 @@ struct DockView: View {
 
     /// One verb per recovery, matching the sentence the failure already offered.
     static func title(for action: RecoveryAction) -> String {
-        switch action {
-        case .openSystemSettings: "Open Settings"
-        case .retry: "Try Again"
-        case .downloadSpeechModel: "Download"
-        case .pasteManually: "Dismiss"
-        case .showRecentDictations: "Show Recent"
-        case .retryFromRecording: "Retry"
-        }
+        RecoveryActionTitle.title(for: action)
     }
 }
 
@@ -709,9 +729,9 @@ extension DockMetrics {
 
 extension View {
     /// The tinted glass every form but the resting one is drawn on: violet-black when dark, frosted white when light.
-    func glass(cornerRadius: CGFloat) -> some View {
+    func glass(cornerRadius: CGFloat, opaque: Bool = false) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        return background(Color.dockGlass, in: shape)
+        return background(opaque ? Color.dockOpaqueGlass : Color.dockGlass, in: shape)
             .background(.ultraThinMaterial, in: shape)
             .overlay(shape.strokeBorder(Color.dockGlassEdge, lineWidth: 1))
             // Clipped and flattened before the shadow, or the material's rectangular backing leaks a square halo.
@@ -738,6 +758,8 @@ extension Color {
     static let dockInk = Color(nsColor: .orbit(BrandPalette.Redesign.textStrong))
     /// The dock's glass tint over the system material.
     static let dockGlass = Color(nsColor: .orbit(BrandPalette.Redesign.dockGlass))
+    /// The solid tint behind notice text when Increase Contrast is on.
+    static let dockOpaqueGlass = Color(nsColor: .orbit(BrandPalette.Redesign.dockGlass.tone))
     /// The hairline round the dock's glass.
     static let dockGlassEdge = Color(nsColor: .orbit(BrandPalette.Redesign.dockGlassEdge))
     static let dockShadow = Color(nsColor: .orbit(BrandPalette.Redesign.dockShadow))

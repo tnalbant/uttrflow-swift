@@ -6,7 +6,7 @@ import Testing
 @testable import UttrflowClipboard
 
 /// The `FailureCatalogue` rule applied here, because this error lives in a module Core cannot see.
-@Suite("What the clipboard says when the disk refuses")
+@Suite("What the clipboard says when a change is refused")
 struct ClipboardStoreErrorTests {
     @Test("has a sentence for the user with no implementation detail in it")
     func everyCaseCanExplainItself() {
@@ -21,6 +21,6 @@ struct ClipboardStoreErrorTests {
     /// The chain must reach every case, which is why it is a `switch` the compiler checks.
     @Test("chains every case exactly once")
     func chainIsComplete() {
-        #expect(ClipboardStoreError.everyCase == [.couldNotWrite])
+        #expect(ClipboardStoreError.everyCase == [.couldNotWrite, .aliasAlreadyInUse])
     }
 }

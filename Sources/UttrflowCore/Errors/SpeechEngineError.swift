@@ -25,7 +25,7 @@ public enum SpeechEngineError: UttrflowFailure {
         case .notEnoughSpace(let neededBytes):
             "Speech recognition needs \(Self.readable(neededBytes)) of free space to set up. Free some up and try again."
         case .modelLoadFailed:
-            "Speech recognition couldn't start. Try again, or reinstall it from Settings."
+            "Speech recognition couldn't start. Try again."
         case .audioTooShort:
             "Too short. Hold the shortcut a moment longer."
         case .nothingHeard:
