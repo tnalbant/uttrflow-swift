@@ -92,7 +92,8 @@ struct DictationPipelineSeamTests {
 
     /// One whole dictation, a piece per line, cleaned by `cleaner` against the screen `context` shows.
     private func dictate(
-        _ lines: [String], seeing context: AppContext, cleaner: any TranscriptCleaning = rules
+        _ lines: [String], seeing context: AppContext, cleaner: any TranscriptCleaning = rules,
+        snippets: any SnippetExpanding = NoTextChanges()
     ) async -> String? {
         let take = SeamTake.pieces(lines.count)
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
@@ -100,6 +101,7 @@ struct DictationPipelineSeamTests {
         let pipeline = DictationPipeline(
             capture: capture, speech: SeamSpeechEngine(lines), cleaner: cleaner,
             context: FakeContextEngine(context: context), inserter: SeamInserter(),
+            snippets: snippets,
             windowing: seamWindows, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()
@@ -187,5 +189,47 @@ struct DictationPipelineSeamTests {
             precedingText: "We stopped because ")
         let text = await dictate(["the build failed.", "The tests are red."], seeing: context)
         #expect(text == "the build failed. The tests are red.")
+    }
+
+    @Test("each reported snippet trigger expands when its words cross a piece seam")
+    func snippetsExpandAcrossPieceSeams() async {
+        let examples: [([String], String, String)] = [
+            (["please send it to my home", "address"], "my home address", "12 Invented Lane"),
+            (["please send it to my", "home address"], "my home address", "12 Invented Lane"),
+            (["here is the meeting", "link"], "meeting link", "https://example.test/meeting"),
+            (["thanks for your help sign", "off"], "sign off", "Regards, Asha"),
+            (["my email", "address is below"], "my email address", "asha@example.test"),
+        ]
+        for (pieces, trigger, replacement) in examples {
+            let expander = SeamSnippetExpander(trigger: trigger, expansion: replacement)
+            let text = await dictate(pieces, seeing: Self.document, snippets: expander)
+            #expect(text?.contains(replacement) == true)
+            #expect(text?.contains(trigger) == false)
+        }
+    }
+
+    @Test("a speaker's full stop inside one piece still separates a snippet trigger")
+    func spokenStopStillSeparatesSnippetTrigger() async {
+        let expander = SeamSnippetExpander(
+            trigger: "meeting link", expansion: "https://example.test/meeting")
+        let text = await dictate(["here is the meeting. Link"], seeing: Self.document, snippets: expander)
+        #expect(text?.contains("meeting. Link") == true)
+        #expect(text?.contains("https://example.test/meeting") == false)
+    }
+}
+
+private struct SeamSnippetExpander: SnippetExpanding {
+    let trigger: String
+    let expansion: String
+
+    func expand(_ text: String) async -> ExpandedTranscript {
+        let result = SnippetExpander(snippets: [
+            Snippet(trigger: trigger, expansion: expansion, created: Date(timeIntervalSince1970: 0))
+        ]).expand(text)
+        return ExpandedTranscript(
+            text: result.text,
+            snippets: result.applied.map {
+                SnippetUse(snippetID: $0.snippetID, matched: $0.matched, expansion: $0.expansion)
+            })
     }
 }

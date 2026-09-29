@@ -11,6 +11,8 @@ public struct HotkeyRecogniser: Sendable, Equatable {
     private var edge = HeldModifierEdge()
     /// Whether the held modifiers were used by another shortcut, which lasts until every modifier is up.
     private var isSpoiled = false
+    /// Whether Fn began another shortcut, which lasts until Fn is up.
+    private var functionHoldIsSpoiled = false
 
     public init(binding: HotkeyBinding) {
         self.binding = binding
@@ -25,8 +27,13 @@ public struct HotkeyRecogniser: Sendable, Equatable {
 
     /// Fn held, read only from a flags change: an arrow key carries the same flag without being Fn.
     private mutating func receiveFunctionHold(_ stroke: KeyStroke) -> HotkeyEvent? {
-        guard stroke.phase == .modifiersChanged else { return nil }
-        return settle(stroke.isFunctionDown)
+        guard stroke.phase == .modifiersChanged else {
+            if stroke.phase == .down, stroke.isFunctionDown { functionHoldIsSpoiled = true }
+            return functionHoldIsSpoiled && edge.stopped() != nil ? .cancelled : nil
+        }
+        if !stroke.isFunctionDown { defer { functionHoldIsSpoiled = false } }
+        guard !functionHoldIsSpoiled else { return edge.stopped() == nil ? nil : .cancelled }
+        return settle(false)
     }
 
     /// Modifiers held alone, withdrawn when a key or another modifier shows they begin a different shortcut.

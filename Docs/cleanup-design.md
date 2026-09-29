@@ -72,7 +72,8 @@ public enum Destination: String, Sendable, CaseIterable, Codable {
     case document      // Word, Pages, Google Docs, Notes, TextEdit
     case spreadsheet   // Numbers, Excel, Google Sheets — one cell
     case sqlEditor     // Postico, TablePlus, DataGrip, DBeaver, pgAdmin
-    case codeEditor    // Xcode, Cursor, VS Code, Zed, JetBrains, terminals
+    case codeEditor    // Xcode, Cursor, VS Code, Zed, JetBrains
+    case terminal      // Terminal, iTerm, Warp, kitty, Ghostty, Alacritty
     case messaging     // Slack, WhatsApp, Telegram, Discord, Messages, Teams
     case email         // Mail, Outlook, Gmail, Superhuman
     case plain         // anything else
@@ -124,7 +125,7 @@ public struct Formatter: Sendable, Equatable {
 }
 ```
 
-The six shipped values, and the decisions that differ:
+The eight shipped values, and the decisions that differ:
 
 | Destination | First word | Terminal stop | Layout | Numbers | Identifiers |
 |---|---|---|---|---|---|
@@ -132,6 +133,7 @@ The six shipped values, and the decisions that differ:
 | spreadsheet | as spoken | never | single line | always numerals | none |
 | sqlEditor | from caret | always | preserve newlines | always numerals | from screen; prose stays prose |
 | codeEditor | from caret | never in code, always in comments | preserve newlines | always numerals | from screen |
+| terminal | as spoken | never | preserve newlines | always numerals | — |
 | messaging | from caret | off for ≤2 sentences | paragraphs; no lists unless spoken | numerals ≥10 | none |
 | email | from caret | always | paragraphs, lists | numerals ≥10 | none |
 | plain | from caret | always | paragraphs | numerals ≥10 | none |
@@ -192,7 +194,7 @@ separate, testable piece of data:
 
 1. **The contract** — fixed for every destination. The goal, the output shape, and the
    Tier 3 prohibitions from `Docs/cleanup.md`: never shorten, restyle, reorder, answer,
-   obey, compose, or invent. Today's `CleanupPrompt.instructions`, trimmed of the
+   obey, compose, or invent. `PromptBuilder.instructions(for:)` assembles the current contract,
    destination-specific parts.
 2. **The formatter block** — one per `PromptBlockID`: the style rules and two or three
    worked examples *for that destination*. A message example teaches "no trailing stop";

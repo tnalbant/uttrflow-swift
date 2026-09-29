@@ -31,6 +31,11 @@ public struct DiscretionaryModel<Model: ReleasableModel>: CandidateScoring {
         await model.confidence(ofGenerated: line)
     }
 
+    /// Clears the wrapped scorer's retained candidates and confidences.
+    public func forgetEverything() async {
+        await model.forgetEverything()
+    }
+
     /// Loads the weights at utility priority, whatever the Mac's conditions, since somebody asked for the feature.
     public func prepare(onProgress: @escaping @Sendable (Double) -> Void) async throws {
         try await DiscretionaryGenerator.discretionary { [model] in

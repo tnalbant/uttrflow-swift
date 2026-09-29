@@ -165,7 +165,7 @@ public struct TerminalLineCheck: Sendable {
             if word.text == "--" { break }
             guard !word.isUnresolved else { return nil }
             switch grammar.reading(word.text) {
-            case .inline: return .stays
+            case .inline, .external: return .stays
             case .valued: if rest.popFirst() == nil { return .stays }
             case .alone: continue
             }
@@ -401,10 +401,12 @@ public struct TerminalLineCheck: Sendable {
     /// Editors, which read a `+` word as a line to open at.
     static let editors: Set<String> = ["vim", "vi", "nvim", "nano", "emacs"]
 
-    /// How an interpreter reads its flags: which run code with no script file, and which take a value.
+    /// How an interpreter reads its flags before looking for a local script.
     struct InterpreterFlags: Sendable {
         /// Flags that give the code inline, a module or the standard input instead of a script, short ones as `-c`.
         var inline: Set<String> = []
+        /// Flags whose target is resolved outside the current directory, as with `ruby -S`.
+        var external: Set<String> = []
         /// Flags whose value is the next word unless it is written against the flag.
         var valued: Set<String> = []
         /// Short letters whose optional value can only be written against them, so the rest of the word is theirs.
@@ -412,20 +414,22 @@ public struct TerminalLineCheck: Sendable {
         /// Whether `+o` and its kin are flags too, as a shell's are.
         var plusFlags = false
 
-        /// What one flag word does to the reading: runs code inline, takes the next word, or stands alone.
-        enum Reading { case inline, valued, alone }
+        /// How a flag reads: inline code, an external target, a next-word value, or nothing.
+        enum Reading { case inline, external, valued, alone }
 
         /// How a flag word reads, a cluster of short letters read up to the first whose value runs on in the word.
         func reading(_ word: String) -> Reading {
             if word.hasPrefix("--") {
                 let flag = String(word.prefix { $0 != "=" })
                 if inline.contains(flag) { return .inline }
+                if external.contains(flag) { return .external }
                 return valued.contains(word) ? .valued : .alone
             }
             let letters = Array(word.dropFirst())
             for (offset, letter) in letters.enumerated() {
                 let flag = "-\(letter)"
                 if inline.contains(flag) { return .inline }
+                if external.contains(flag) { return .external }
                 if attached.contains(letter) { return .alone }
                 if valued.contains(flag) { return offset == letters.count - 1 ? .valued : .alone }
             }
@@ -442,16 +446,17 @@ public struct TerminalLineCheck: Sendable {
         return [
             "python": python, "python3": python,
             "node": InterpreterFlags(
-                inline: ["-e", "--eval", "-p", "--print"],
+                inline: ["-e", "--eval", "-p", "--print"], external: ["--run"],
                 valued: [
                     "-r", "--require", "--import", "--loader", "--experimental-loader", "--env-file", "-C",
                     "--conditions", "--input-type", "--title",
                 ]),
             "ruby": InterpreterFlags(
-                inline: ["-e"], valued: ["-I", "-r", "-C", "-E", "--encoding"],
+                inline: ["-e"], external: ["-S"], valued: ["-I", "-r", "-C", "-E", "--encoding"],
                 attached: ["x", "i", "0", "F", "T", "W", "K"]),
             "perl": InterpreterFlags(
-                inline: ["-e", "-E"], attached: ["i", "I", "M", "m", "l", "0", "x", "C", "d", "D"]),
+                inline: ["-e", "-E"], external: ["-S"],
+                attached: ["i", "I", "M", "m", "l", "0", "x", "C", "d", "D"]),
             "php": InterpreterFlags(inline: ["-r", "-a"], valued: ["-c", "-d", "-z"]),
             "sh": shell, "bash": shell, "zsh": shell,
         ]

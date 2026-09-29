@@ -1,9 +1,15 @@
 // Runs an installed formatter over a clip.
 
 import Foundation
+private import Darwin
 
 /// Runs a real formatter from a fixed list of directories, on stdin, with no shell and a timeout.
 public struct SystemCodeFormatter: CodeFormatting {
+    /// Bounds formatter output to four times the largest accepted clip.
+    static let maximumOutputBytes = ClipboardBudget.standard.largestClip * 4
+    /// Gives a formatter a brief chance to exit after the deadline before killing it.
+    static let terminationGrace: TimeInterval = 0.2
+
     /// Where a formatter is looked for; never `PATH`, which anything can prepend to.
     static let directories = [
         "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/opt/homebrew/opt/go/libexec/bin",
@@ -39,11 +45,26 @@ public struct SystemCodeFormatter: CodeFormatting {
             environment: ["PATH": Self.directories.joined(separator: ":")], timeout: KnownFormatter.timeout)
     }
 
-    /// Runs `tool` over `input`, feeding and draining its pipes at once, and gives up `timeout` after it starts.
+    /// Runs `tool` with nonblocking pipes, bounded output, and a kill escalation after `timeout`.
     static func run(
         _ tool: URL, arguments: [String], input: String, environment: [String: String],
         timeout: TimeInterval
     ) async -> String? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(
+                    returning: runProcess(
+                        tool, arguments: arguments, input: input,
+                        environment: environment, timeout: timeout))
+            }
+        }
+    }
+
+    /// Pumps one subprocess without blocking on a pipe read or write.
+    private static func runProcess(
+        _ tool: URL, arguments: [String], input: String, environment: [String: String],
+        timeout: TimeInterval
+    ) -> String? {
         let process = Process()
         process.executableURL = tool
         process.arguments = arguments
@@ -56,63 +77,233 @@ public struct SystemCodeFormatter: CodeFormatting {
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
-        // A tool that stops reading makes the write fail rather than raise SIGPIPE in this process.
-        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        let inputHandle = stdin.fileHandleForWriting
+        let outputHandle = stdout.fileHandleForReading
+        let errorHandle = stderr.fileHandleForReading
+        let inputDescriptor = inputHandle.fileDescriptor
+        let outputDescriptor = outputHandle.fileDescriptor
+        let errorDescriptor = errorHandle.fileDescriptor
+        let closeAllHandles = {
+            for handle in [
+                stdin.fileHandleForReading, inputHandle, stdout.fileHandleForWriting,
+                outputHandle, stderr.fileHandleForWriting, errorHandle,
+            ] {
+                try? handle.close()
+            }
+        }
 
-        let finished = DispatchGroup()
-        finished.enter()
-        process.terminationHandler = { _ in finished.leave() }
+        guard
+            setNonblocking(inputDescriptor), setNonblocking(outputDescriptor),
+            setNonblocking(errorDescriptor)
+        else {
+            closeAllHandles()
+            return nil
+        }
+        // A tool that stops reading makes the nonblocking write fail rather than raise SIGPIPE here.
+        _ = fcntl(inputDescriptor, F_SETNOSIGPIPE, 1)
         do {
             try process.run()
         } catch {
+            closeAllHandles()
             return nil
         }
 
-        return await withCheckedContinuation { continuation in
-            let answer = FirstAnswer(continuation)
-            let produced = ProducedOutput()
-            let queue = DispatchQueue.global(qos: .userInitiated)
-            queue.async(group: finished) {
-                try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
-                try? stdin.fileHandleForWriting.close()
-            }
-            queue.async(group: finished) { produced.data = try? stdout.fileHandleForReading.readToEnd() }
-            queue.async(group: finished) { _ = try? stderr.fileHandleForReading.readToEnd() }
-            finished.notify(queue: queue) {
-                guard process.terminationStatus == 0, let data = produced.data, !data.isEmpty else {
-                    answer.give(nil)
-                    return
+        // Close the child's pipe ends in the parent so only the formatter controls EOF.
+        try? stdin.fileHandleForReading.close()
+        try? stdout.fileHandleForWriting.close()
+        try? stderr.fileHandleForWriting.close()
+
+        var inputOpen = true
+        var outputOpen = true
+        var errorOpen = true
+        defer {
+            if inputOpen { try? inputHandle.close() }
+            if outputOpen { try? outputHandle.close() }
+            if errorOpen { try? errorHandle.close() }
+        }
+
+        let inputData = Data(input.utf8)
+        var inputOffset = 0
+        var outputData = Data()
+        var outputExceededLimit = false
+        var pipeFailed = false
+        var deadlineExpired = false
+        var terminationStarted: UInt64?
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let boundedTimeout = timeout.isFinite ? min(max(0, timeout), 60) : KnownFormatter.timeout
+        let timeoutNanoseconds = UInt64(boundedTimeout * 1_000_000_000)
+        let deadline = startedAt &+ timeoutNanoseconds
+        let graceNanoseconds = UInt64(Self.terminationGrace * 1_000_000_000)
+
+        func closeInput() {
+            guard inputOpen else { return }
+            try? inputHandle.close()
+            inputOpen = false
+        }
+
+        func closeOutput() {
+            guard outputOpen else { return }
+            try? outputHandle.close()
+            outputOpen = false
+        }
+
+        func closeError() {
+            guard errorOpen else { return }
+            try? errorHandle.close()
+            errorOpen = false
+        }
+
+        func drain(
+            _ descriptor: Int32, capturing: Bool, output: inout Data, budget: Int
+        ) -> PipeDrainResult {
+            var drained = 0
+            while drained < budget {
+                var buffer = [UInt8](repeating: 0, count: min(64 * 1_024, budget - drained))
+                let amount = buffer.withUnsafeMutableBytes { bytes -> Int in
+                    guard let address = bytes.baseAddress else { return 0 }
+                    return Darwin.read(descriptor, address, bytes.count)
                 }
-                answer.give(String(data: data, encoding: .utf8))
+                if amount > 0 {
+                    if capturing {
+                        guard output.count + amount <= Self.maximumOutputBytes else { return .overflow }
+                        output.append(contentsOf: buffer.prefix(amount))
+                    }
+                    drained += amount
+                    continue
+                }
+                if amount == 0 { return .closed }
+                if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { return .drained }
+                return .failed
             }
-            queue.asyncAfter(deadline: .now() + timeout) {
-                // A hung program must not take the panel, whatever its pipes are doing.
-                if answer.give(nil) { process.terminate() }
+            return .drained
+        }
+
+        if inputData.isEmpty { closeInput() }
+        while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            if terminationStarted == nil,
+                (now >= deadline || outputExceededLimit || pipeFailed)
+            {
+                deadlineExpired = now >= deadline
+                terminationStarted = now
+                process.terminate()
+            }
+            if let terminationStarted,
+                process.isRunning, now &- terminationStarted >= graceNanoseconds
+            {
+                _ = kill(process.processIdentifier, SIGKILL)
+                process.waitUntilExit()
+                break
+            }
+            if !process.isRunning {
+                process.waitUntilExit()
+                if outputOpen {
+                    let result = drain(
+                        outputDescriptor, capturing: true, output: &outputData, budget: 256 * 1_024)
+                    if case .drained = result { pipeFailed = true }
+                    apply(result, close: closeOutput, overflow: &outputExceededLimit, failed: &pipeFailed)
+                    closeOutput()
+                }
+                if errorOpen {
+                    let result = drain(
+                        errorDescriptor, capturing: false, output: &outputData, budget: 256 * 1_024)
+                    if case .drained = result { pipeFailed = true }
+                    apply(result, close: closeError, overflow: &outputExceededLimit, failed: &pipeFailed)
+                    closeError()
+                }
+                closeInput()
+                break
+            }
+
+            let waitUntil = terminationStarted.map { $0 &+ graceNanoseconds } ?? deadline
+            let remaining = waitUntil > now ? waitUntil &- now : 0
+            let waitMilliseconds = Int32(min(50, max(1, (remaining + 999_999) / 1_000_000)))
+            var descriptors: [pollfd] = []
+            if inputOpen {
+                descriptors.append(pollfd(fd: inputDescriptor, events: Int16(POLLOUT), revents: 0))
+            }
+            if outputOpen {
+                descriptors.append(pollfd(fd: outputDescriptor, events: Int16(POLLIN), revents: 0))
+            }
+            if errorOpen {
+                descriptors.append(pollfd(fd: errorDescriptor, events: Int16(POLLIN), revents: 0))
+            }
+            let result = descriptors.withUnsafeMutableBufferPointer { buffer in
+                Darwin.poll(buffer.baseAddress, nfds_t(buffer.count), waitMilliseconds)
+            }
+            if result < 0 {
+                if errno != EINTR { pipeFailed = true }
+                continue
+            }
+
+            for descriptor in descriptors where descriptor.revents != 0 {
+                let events = descriptor.revents
+                if descriptor.fd == inputDescriptor, inputOpen,
+                    events & Int16(POLLOUT | POLLERR | POLLHUP | POLLNVAL) != 0
+                {
+                    let written = inputData.withUnsafeBytes { bytes -> Int in
+                        guard let address = bytes.baseAddress else { return 0 }
+                        return Darwin.write(
+                            inputDescriptor, address.advanced(by: inputOffset),
+                            min(bytes.count - inputOffset, 64 * 1_024))
+                    }
+                    if written > 0 {
+                        inputOffset += written
+                        if inputOffset == inputData.count { closeInput() }
+                    } else if written < 0, errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK {
+                        continue
+                    } else {
+                        closeInput()
+                    }
+                } else if descriptor.fd == outputDescriptor, outputOpen,
+                    events & Int16(POLLIN | POLLERR | POLLHUP | POLLNVAL) != 0
+                {
+                    apply(
+                        drain(outputDescriptor, capturing: true, output: &outputData, budget: 256 * 1_024),
+                        close: closeOutput, overflow: &outputExceededLimit, failed: &pipeFailed)
+                } else if descriptor.fd == errorDescriptor, errorOpen,
+                    events & Int16(POLLIN | POLLERR | POLLHUP | POLLNVAL) != 0
+                {
+                    apply(
+                        drain(errorDescriptor, capturing: false, output: &outputData, budget: 256 * 1_024),
+                        close: closeError, overflow: &outputExceededLimit, failed: &pipeFailed)
+                }
             }
         }
+
+        closeInput()
+        closeOutput()
+        closeError()
+        guard
+            !deadlineExpired, !outputExceededLimit, !pipeFailed,
+            process.terminationStatus == 0, !outputData.isEmpty
+        else { return nil }
+        return String(data: outputData, encoding: .utf8)
     }
 }
 
-/// Resumes a run's continuation once, with whichever of the finished run and the deadline answers first.
-private final class FirstAnswer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<String?, Never>?
-
-    init(_ continuation: CheckedContinuation<String?, Never>) { self.continuation = continuation }
-
-    /// Answers the run, returning whether this was the first answer.
-    @discardableResult
-    func give(_ value: String?) -> Bool {
-        lock.lock()
-        let waiting = continuation
-        continuation = nil
-        lock.unlock()
-        waiting?.resume(returning: value)
-        return waiting != nil
-    }
+private enum PipeDrainResult {
+    case drained
+    case closed
+    case overflow
+    case failed
 }
 
-/// The tool's standard output, written by its reader before the run's group is notified.
-private final class ProducedOutput: @unchecked Sendable {
-    var data: Data?
+private func setNonblocking(_ descriptor: Int32) -> Bool {
+    let flags = fcntl(descriptor, F_GETFL)
+    return flags >= 0 && fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0
+}
+
+private func apply(
+    _ result: PipeDrainResult, close: () -> Void, overflow: inout Bool, failed: inout Bool
+) {
+    switch result {
+    case .drained: break
+    case .closed: close()
+    case .overflow: overflow = true
+    case .failed:
+        failed = true
+        close()
+    }
 }

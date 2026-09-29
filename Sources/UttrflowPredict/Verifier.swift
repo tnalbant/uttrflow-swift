@@ -15,6 +15,8 @@ public actor Verifier {
     private let clock: any Clock<Duration>
     /// The verdicts already reached, so most keystrokes cost nothing at all.
     private var cache = VerdictCache()
+    /// Invalidates verdicts still being computed when a forget action arrives.
+    private var forgetGeneration: UInt64 = 0
     /// What a terminal line has to name on disk before it is shown, asked by stat and never by running a program.
     private let lines: TerminalLineCheck
 
@@ -47,14 +49,32 @@ public actor Verifier {
                 let allowed = await allowed(
                     candidate, in: surface, typed: typed, now: now, before: deadline)
             else { continue }
-            // A corrected typo and the genuine line can land on the same text; the one typed as-is is the real one.
             if let same = kept.firstIndex(where: { $0.text == allowed.text }) {
-                if allowed.editDistance < kept[same].editDistance { kept[same] = allowed }
+                kept[same] = Self.combine(kept[same], allowed)
             } else {
                 kept.append(allowed)
             }
         }
         return kept
+    }
+
+    /// A converged text sums its evidence and keeps the nearest source, favoring the first on a tie.
+    private static func combine(_ first: Candidate, _ second: Candidate) -> Candidate {
+        let nearest = first.editDistance <= second.editDistance ? first : second
+        let evidence: Entry?
+        if let firstEvidence = first.evidence, let secondEvidence = second.evidence {
+            evidence = Entry(
+                text: first.text, count: firstEvidence.count + secondEvidence.count,
+                accepted: firstEvidence.accepted + secondEvidence.accepted,
+                rejected: firstEvidence.rejected + secondEvidence.rejected,
+                selfSourced: firstEvidence.selfSourced + secondEvidence.selfSourced,
+                lastUsed: max(firstEvidence.lastUsed, secondEvidence.lastUsed))
+        } else {
+            evidence = first.evidence ?? second.evidence
+        }
+        return Candidate(
+            text: first.text, source: nearest.source, evidence: evidence,
+            editDistance: nearest.editDistance, isIrreversible: nearest.isIrreversible)
     }
 
     /// The verdict on one candidate, taken from the cache whenever the gates have already reached it.
@@ -69,9 +89,10 @@ public actor Verifier {
         for candidate: Candidate, in surface: Surface, typed: String, now: Date,
         before deadline: Budget
     ) async -> Verdict {
+        let generation = forgetGeneration
         let key = VerdictCache.Key(
             candidate: candidate.text, context: Self.context(of: surface, typed: typed))
-        if let remembered = cache.verdict(for: key) { return remembered }
+        if let remembered = cache.verdict(for: key, now: now) { return remembered }
         guard let token = CompletionToken(candidate.text) else { return .plausible }
 
         // Each lookup asks about its own word among its own kinds, so a path's name is not sought among whole paths.
@@ -79,7 +100,7 @@ public actor Verifier {
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
             guard let known = await known(of: lookup.kinds, in: surface, now: now) else { continue }
             guard !Verification.attests(lookup.word, known) else {
-                cache.remember(.attested, for: key)
+                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
                 return .attested
             }
             if judged == nil { judged = (lookup.word, lookup.prefix, known) }
@@ -96,7 +117,7 @@ public actor Verifier {
                 modelObjects: Verification.objects(to: plausibility)),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
             forGood: judged != nil && Verification.isClosedVocabulary(for: token))
-        cache.remember(verdict, for: key)
+        if generation == forgetGeneration { cache.remember(verdict, for: key, now: now) }
         return verdict
     }
 
@@ -119,8 +140,10 @@ public actor Verifier {
     }
 
     /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
-    public func forgetEverything() {
+    public func forgetEverything() async {
+        forgetGeneration &+= 1
         cache.forgetEverything()
+        await scoring?.forgetEverything()
     }
 
     /// How many verdicts are remembered, which is what says a keystroke skipped the gates.

@@ -278,10 +278,10 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         }
     }
 
-    /// Whether a press waits to settle, which only modifiers bound alone do; Fn is read from its own flag.
+    /// Whether a press waits to settle, which modifier holds use before they can start dictation.
     private var waitsToSettle: Bool {
         guard let binding else { return false }
-        return binding.heldModifier != nil && !binding.isFunctionHold
+        return binding.heldModifier != nil
     }
 
     /// Acts on a press once it counts, measured from when the keys went down.

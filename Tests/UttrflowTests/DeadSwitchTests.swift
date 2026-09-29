@@ -1,6 +1,8 @@
 // Tests that every Settings switch reaches something.
 
+import AppKit
 import Foundation
+import Synchronization
 import UttrflowSettings
 import UttrflowUX
 import Testing
@@ -104,6 +106,23 @@ private final class RecordedLoginItem: @unchecked Sendable {
     }
 
     var isEnabled: Bool { lock.withLock { enabled } }
+
+    func setEnabledExternally(_ isEnabled: Bool) {
+        lock.withLock { enabled = isEnabled }
+    }
+}
+
+/// Settings persisted by the app, held in memory for the login-item synchronization test.
+private final class LoginSettingsStore: KeyValueStore {
+    private let values = Mutex<[String: Data]>([:])
+
+    init(_ settings: Settings) {
+        values.withLock { $0[UserDefaultsSettingsStore.defaultKey] = try? JSONEncoder().encode(settings) }
+    }
+
+    func data(forKey key: String) -> Data? { values.withLock { $0[key] } }
+
+    func set(_ data: Data?, forKey key: String) { values.withLock { $0[key] = data } }
 }
 
 @MainActor
@@ -143,5 +162,21 @@ struct LaunchAtLoginWiringTests {
 
         #expect(system.registrations == 0)
         #expect(system.removals == 0)
+    }
+
+    @Test("returning to the app adopts a login-item change made in System Settings")
+    func adoptsExternalDisable() {
+        let system = RecordedLoginItem(startingEnabled: true)
+        let store = UserDefaultsSettingsStore(store: LoginSettingsStore(Settings(opensAtLogin: true)))
+        let app = AppDelegate(
+            container: Sandbox().root, loginItem: system.service, settingsStore: store)
+        app.settingsChanged(to: store.load())
+
+        system.setEnabledExternally(false)
+        app.applicationDidBecomeActive(Notification(name: NSApplication.didBecomeActiveNotification))
+
+        #expect(store.load().opensAtLogin == false)
+        #expect(!system.isEnabled)
+        #expect(system.registrations == 0)
     }
 }

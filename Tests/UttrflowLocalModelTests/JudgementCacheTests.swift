@@ -16,12 +16,12 @@ struct JudgementCacheTests {
 
     @Test("A candidate never remembered reads as nothing.")
     func anUnseenCandidateMisses() {
-        let cache = JudgementCache()
+        var cache = JudgementCache()
         #expect(cache.recall(candidate: "never scored") == nil)
     }
 
-    @Test("Re-remembering a candidate does not grow the cache or change the order.")
-    func reRememberingDoesNotGrow() {
+    @Test("Re-remembering a candidate does not grow the cache and refreshes its recency.")
+    func reRememberingRefreshesRecency() {
         var cache = JudgementCache()
         let first = JudgedLine(tokens: [1], rows: [[0.1]], texts: ["a"])
         let second = JudgedLine(tokens: [2], rows: [[0.2]], texts: ["b"])
@@ -29,6 +29,24 @@ struct JudgementCacheTests {
         cache.remember(second, for: "alpha")
         #expect(cache.count == 1)
         #expect(cache.recall(candidate: "alpha") == second)
+    }
+
+    @Test("Recalling a candidate keeps it alive through a full capacity of new candidates.")
+    func recallingRefreshesRecency() {
+        var cache = JudgementCache()
+        let line = JudgedLine(tokens: [1], rows: [[0.1]], texts: ["a"])
+        cache.remember(line, for: "candidate-A")
+
+        for index in 0..<JudgementCache.capacity {
+            let recalled = cache.recall(candidate: "candidate-A")
+            #expect(recalled == line)
+            let other = JudgedLine(tokens: [index], rows: [[Float(index)]], texts: ["\(index)"])
+            cache.remember(other, for: "candidate-\(index)")
+        }
+
+        #expect(cache.count == JudgementCache.capacity)
+        #expect(cache.recall(candidate: "candidate-A") == line)
+        #expect(cache.recall(candidate: "candidate-0") == nil)
     }
 
     @Test("Capacity drops the oldest candidate, never the most recent.")

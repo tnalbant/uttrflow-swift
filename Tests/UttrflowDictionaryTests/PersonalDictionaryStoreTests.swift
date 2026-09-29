@@ -69,6 +69,33 @@ struct PersonalDictionaryStoreTests {
         #expect(sandbox.onDisk()?.map(\.word) == ["Uttrflow"])
     }
 
+    @Test("deleting a spelling clears pending sightings for its homophones")
+    func removingClearsPendingHomophoneSightings() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let kolin = word("Kolin", from: .observed)
+        try await store.add(kolin)
+        let colinContext = AppContext(applicationName: "Notes", documentName: "Colin project brief")
+
+        for day in 0..<2 {
+            #expect(
+                try await store.learn(
+                    heard: "Colin", wrote: "Colin", seeing: colinContext,
+                    at: epoch.addingTimeInterval(Double(day))
+                )
+                .isEmpty)
+        }
+
+        _ = try await store.remove(kolin.id)
+        #expect(
+            try await store.learn(
+                heard: "Colin", wrote: "Colin", seeing: colinContext,
+                at: epoch.addingTimeInterval(3)
+            )
+            .isEmpty)
+        #expect(await store.allEntries().isEmpty)
+    }
+
     /// The caller asked for it to be gone, and it is.
     @Test("treats forgetting a word it never knew as success")
     func removeUnknown() async throws {
@@ -76,6 +103,23 @@ struct PersonalDictionaryStoreTests {
         let store = PersonalDictionaryStore(file: sandbox.file)
         try await store.add(word("Uttrflow", from: .added))
         #expect(try await store.remove(UUID()).count == 1)
+    }
+
+    @Test("does not relearn a deleted word from a correction over a selection")
+    func correctionHonorsADeletedWordRefusal() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let deleted = word("Uttrflow", from: .learned)
+        try await store.add(deleted)
+        try await store.remove(deleted.id)
+
+        let reopened = PersonalDictionaryStore(file: sandbox.file)
+        let relearned = try await reopened.learn(
+            heard: "utter flow", wrote: "Uttrflow",
+            seeing: .fixture(selectedText: "utter flow"), at: epoch)
+
+        #expect(relearned.isEmpty)
+        #expect(await reopened.allEntries().isEmpty)
     }
 
     /// Reaches the disk inside the call, so a user who clears and quits does not find it still there.
