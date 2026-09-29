@@ -493,13 +493,15 @@ public enum DestructiveCommand {
         {
             return true
         }
-        if let flags = flags(after: "branch"),
-            flags.contains(where: {
-                $0 == "-D" || ($0.hasPrefix("-") && !$0.hasPrefix("--") && $0.contains("D"))
-            })
-                || (flags.contains("--delete") && flags.contains("--force"))
-        {
-            return true
+        if let flags = flags(after: "branch") {
+            let forceDeletes = flags.contains(where: { shortFlags($0, include: "D", valuesAfter: []) })
+            let deletes =
+                flags.contains("--delete")
+                || flags.contains(where: { shortFlags($0, include: "d", valuesAfter: []) })
+            let forces =
+                flags.contains("--force")
+                || flags.contains(where: { shortFlags($0, include: "f", valuesAfter: []) })
+            if forceDeletes || (deletes && forces) { return true }
         }
         if let flags = flags(after: "stash"), flags.first == "drop" || flags.first == "clear" { return true }
         if let flags = flags(after: "checkout"),

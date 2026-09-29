@@ -208,6 +208,21 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Forced branch deletions are destructive regardless of short or long flag spelling.",
+        arguments: [
+            "git branch -d -f topic", "git branch -df topic", "git branch -fd topic",
+            "git branch --delete -f topic", "git branch -d --force topic",
+        ])
+    func recognisesForcedBranchDeletion(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test("Deleting a merged branch without force remains ordinary.")
+    func leavesUnforcedBranchDeletionAlone() {
+        #expect(!DestructiveCommand.matches("git branch -d topic"))
+    }
+
+    @Test(
         "Copying a device stream over a file is destructive.",
         arguments: [
             "cp /dev/null notes.txt", "cp -f /dev/null notes.txt", "cp -- /dev/null notes.txt",
