@@ -84,7 +84,7 @@ struct ShellPromptTests {
         #expect(
             ShellPrompt.input(in: #"PS /Users/dev/project> Write-Output `"hello ❯ world`""#)
                 == #"Write-Output `"hello ❯ world`""#)
-        #expect(ShellPrompt.input(in: "PS /Users/dev/proj`>ect> Get-Location") == "Get-Location")
+        #expect(ShellPrompt.input(in: "PS /Users/dev/one`>two> Get-Location") == "Get-Location")
     }
 
     @Test("A directory-looking command still keeps its spaced redirection.")
