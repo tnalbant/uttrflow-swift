@@ -58,6 +58,8 @@ final class SuggestionCoordinator {
     private let verifier: Verifier
     /// The model that invents a suggestion when the corpus has none, absent until the app hands one over.
     private let generator: (any CandidateGenerating)?
+    /// Reads only focus identity and selection while a completion is armed.
+    private let focusedSelectionReader: @Sendable () async -> FocusedFieldSelection?
     /// What the model last answered or had nothing for, which decides whether it is asked again.
     private var modelPass = ModelPass()
     /// The model pass in flight, cancelled by the next keystroke so a burst never queues one pass per key.
@@ -95,7 +97,7 @@ final class SuggestionCoordinator {
     /// The line capture was last handed as a keystroke, and the field it was in, so a Return can catch up what it displaced.
     private var handed: (line: String, reading: FieldReading)?
     /// The line the accept key takes as last armed by a draw, so a later answer never inherits that claim.
-    private var armedOffer: String?
+    private(set) var armedOffer: String?
     private var lastKeystroke = Date.distantPast
     /// One turn at a time, with a turn that never returns left behind so the loop cannot die with it.
     private var turns = TurnGate()
@@ -123,10 +125,14 @@ final class SuggestionCoordinator {
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
         container: URL, preferences: SuggestionPreferences,
-        scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil
+        scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
+        focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
+            await FocusedFieldReader.focusedSelection()
+        }
     ) throws(PredictStoreError) {
         self.preferences = preferences
         self.generator = generating
+        self.focusedSelectionReader = focusedSelectionReader
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
@@ -337,6 +343,7 @@ final class SuggestionCoordinator {
     /// Takes the ghost and the keys it claims away, and voids every answer in flight, because the caret may have moved under it.
     private func withdraw() {
         stopWatchingSelection()
+        armedOffer = nil
         session.invalidate()
         generating?.cancel()
         cancelPendingWake()
@@ -361,7 +368,9 @@ final class SuggestionCoordinator {
     }
 
     /// Checks the caret every 200 ms only while a drawn offer can be accepted.
-    private func watchSelection(from range: NSRange?) {
+    func armSelectionMonitor(for suggestion: Suggestion, at range: NSRange?) {
+        armedOffer = suggestion.accepting
+        guard armedOffer != nil else { return stopWatchingSelection() }
         stopWatchingSelection()
         selectionGuard = ArmedSelectionGuard(expectedRange: range)
         let generation = selectionPollGeneration
@@ -373,18 +382,23 @@ final class SuggestionCoordinator {
 
     /// Withdraws the offer when Accessibility reports a different selection or focused element.
     private func pollSelection(generation: Int) {
+        guard generation == selectionPollGeneration else { return }
+        Task { [weak self] in await self?.pollFocusedSelection(generation: generation) }
+    }
+
+    /// Reads the focused selection and withdraws an armed offer when it no longer matches.
+    func pollFocusedSelection(generation: Int? = nil) async {
+        let generation = generation ?? selectionPollGeneration
         guard generation == selectionPollGeneration, !selectionPollInFlight,
-            armedOffer != nil, panel.isShowing, !isInserting
+            armedOffer != nil, selectionGuard != nil, !isInserting
         else { return }
         selectionPollInFlight = true
-        Task { [weak self] in
-            let selection = await FocusedFieldReader.focusedSelection()
-            guard let self, generation == self.selectionPollGeneration else { return }
-            self.selectionPollInFlight = false
-            guard var selectionGuard = self.selectionGuard else { return }
-            guard !selectionGuard.observe(selection) else { return self.withdraw() }
-            self.selectionGuard = selectionGuard
-        }
+        let selection = await focusedSelectionReader()
+        guard generation == selectionPollGeneration else { return }
+        selectionPollInFlight = false
+        guard var selectionGuard else { return }
+        guard !selectionGuard.observe(selection) else { return withdraw() }
+        self.selectionGuard = selectionGuard
     }
 
     /// Stops the selection poll and invalidates any result still waiting on Accessibility.
@@ -1009,7 +1023,7 @@ final class SuggestionCoordinator {
             armedOffer = nil
             return
         }
-        watchSelection(from: snapshot.selection)
+        armSelectionMonitor(for: update.suggestion, at: snapshot.selection)
         watchScrolls()
     }
 

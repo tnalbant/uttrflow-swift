@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import UttrflowContext
+import UttrflowPredict
 
 @testable import Uttrflow
 
@@ -13,7 +14,8 @@ struct SuggestionSelectionGuardTests {
             processIdentifier: 41, elementHash: 900, range: NSRange(location: 12, length: 0))
         var armedOffer: String? = "completion"
 
-        #expect(!guardrail.observe(focusedField))
+        let initialSelectionChanged = guardrail.observe(focusedField)
+        #expect(!initialSelectionChanged)
 
         let rotorSelection = FocusedFieldSelection(
             processIdentifier: 41, elementHash: 900, range: NSRange(location: 28, length: 0))
@@ -25,14 +27,14 @@ struct SuggestionSelectionGuardTests {
     @Test("a focused field change withdraws even when the range is unchanged")
     func fieldChangeWithdrawsOffer() {
         var guardrail = ArmedSelectionGuard(expectedRange: NSRange(location: 12, length: 0))
-        #expect(
-            !guardrail.observe(
-                FocusedFieldSelection(
-                    processIdentifier: 41, elementHash: 900, range: NSRange(location: 12, length: 0))))
-        #expect(
-            guardrail.observe(
-                FocusedFieldSelection(
-                    processIdentifier: 41, elementHash: 901, range: NSRange(location: 12, length: 0))))
+        let initialSelectionChanged = guardrail.observe(
+            FocusedFieldSelection(
+                processIdentifier: 41, elementHash: 900, range: NSRange(location: 12, length: 0)))
+        let focusedFieldChanged = guardrail.observe(
+            FocusedFieldSelection(
+                processIdentifier: 41, elementHash: 901, range: NSRange(location: 12, length: 0)))
+        #expect(!initialSelectionChanged)
+        #expect(focusedFieldChanged)
     }
 
     @Test("text typed through the ghost advances its expected caret")
@@ -40,15 +42,62 @@ struct SuggestionSelectionGuardTests {
         var guardrail = ArmedSelectionGuard(expectedRange: NSRange(location: 12, length: 0))
         guardrail.typedThrough("é🐕")
 
-        #expect(
-            !guardrail.observe(
-                FocusedFieldSelection(
-                    processIdentifier: 41, elementHash: 900, range: NSRange(location: 15, length: 0))))
+        let selectionChanged = guardrail.observe(
+            FocusedFieldSelection(
+                processIdentifier: 41, elementHash: 900, range: NSRange(location: 15, length: 0)))
+        #expect(!selectionChanged)
     }
 
     @Test("an unavailable AX selection fails closed")
     func unavailableSelectionWithdrawsOffer() {
         var guardrail = ArmedSelectionGuard(expectedRange: NSRange(location: 12, length: 0))
-        #expect(guardrail.observe(nil))
+        let shouldWithdraw = guardrail.observe(nil)
+        #expect(shouldWithdraw)
+    }
+}
+
+private actor FakeFocusedSelectionReader {
+    private var selection: FocusedFieldSelection?
+
+    init(_ selection: FocusedFieldSelection?) {
+        self.selection = selection
+    }
+
+    func read() -> FocusedFieldSelection? { selection }
+
+    func move(to selection: FocusedFieldSelection?) {
+        self.selection = selection
+    }
+}
+
+@MainActor
+@Suite("Coordinator AX selection polling")
+struct SuggestionCoordinatorSelectionPollingTests {
+    @Test("a rotor-only selection change withdraws the armed offer without an NSEvent")
+    func rotorChangeWithdrawsArmedOffer() async throws {
+        let focused = FocusedFieldSelection(
+            processIdentifier: 41, elementHash: 900, range: NSRange(location: 12, length: 0))
+        let reader = FakeFocusedSelectionReader(focused)
+        let container = FileManager.default.temporaryDirectory
+            .appending(path: "uttrflow-2648-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        let coordinator = try SuggestionCoordinator(
+            container: container, preferences: SuggestionPreferences(isEnabled: true),
+            focusedSelectionReader: { await reader.read() })
+        defer {
+            coordinator.stop()
+            try? FileManager.default.removeItem(at: container)
+        }
+        coordinator.armSelectionMonitor(for: .certain("completion"), at: focused.range)
+
+        await coordinator.pollFocusedSelection()
+        #expect(coordinator.armedOffer == "completion")
+
+        await reader.move(
+            to: FocusedFieldSelection(
+                processIdentifier: 41, elementHash: 900, range: NSRange(location: 28, length: 0)))
+        await coordinator.pollFocusedSelection()
+
+        #expect(coordinator.armedOffer == nil)
     }
 }
