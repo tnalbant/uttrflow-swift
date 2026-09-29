@@ -18,6 +18,8 @@ public enum ClipKind: String, Sendable, Equatable, CaseIterable, Codable {
 
 /// One thing the user copied, shaped to be identified at a glance and pasted without a second thought.
 public struct Clip: Sendable, Equatable, Identifiable, Codable {
+    private static let summaryCharacterLimit = 300
+
     public let id: UUID
     /// Exactly what was copied, never trimmed or normalised, so what goes out is what came in.
     public let text: String
@@ -144,12 +146,18 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
     /// E1 — whether this clip carries formatting worth telling the user about.
     public var isFormatted: Bool { richText != nil }
 
-    /// One line for the list, so a multi-line clip never grows its row.
+    /// One bounded line for the list, so a clip never grows its row.
     public var summary: String {
-        text.split(whereSeparator: \.isNewline)
-            .first
-            .map(String.init)?
-            .trimmingCharacters(in: .whitespaces) ?? ""
+        var firstLine = ""
+        firstLine.reserveCapacity(Self.summaryCharacterLimit)
+        for character in text.prefix(Self.summaryCharacterLimit) {
+            if character.isNewline {
+                if firstLine.isEmpty { continue }
+                break
+            }
+            firstLine.append(character)
+        }
+        return firstLine.trimmingCharacters(in: .whitespaces)
     }
 }
 
