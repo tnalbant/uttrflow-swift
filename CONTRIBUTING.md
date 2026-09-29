@@ -33,6 +33,20 @@ against fixtures emitted by the backend service, which is not open source. They 
 only part of the suite you cannot run, they are not required for any change, and their
 absence is reported rather than silently passing.
 
+## If the build or tests misbehave
+
+An incremental test build can report an impossible mismatch after a type changes — for
+example, `nil` not equalling `nil` after an enum case is added. Clear SwiftPM's build
+products and run the full verification again:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift package clean
+make verify
+```
+
+If the failure remains after a clean run, investigate it as a real failure.
+
 ## How a change gets in
 
 1. **Fork, and branch from `main`.** Short-lived branches, please — a branch that lives for
