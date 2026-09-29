@@ -75,17 +75,11 @@ extension FieldReading {
 
     /// What the field belongs to: the page host for a web field, the directory for a file, the session itself for a terminal on another machine, and for a field that owns no document the window that holds it, since that is what tells one conversation or note from another. See `Docs/predict-precision.md`.
     public var scope: String? {
-        // A terminal on another machine is scoped as itself: its own directory is unknown here, and the document still names this Mac's.
+        // An uncertain terminal title cannot vouch for the machine whose paths this field describes.
         if TerminalApplications.contains(bundleIdentifier),
-            RemoteSession.isNamed(inWindowTitle: windowTitle)
+            let terminalScope = RemoteSession.scope(inWindowTitle: windowTitle)
         {
-            return RemoteSession.scope
-        }
-        // AX exposes the outer terminal document for a multiplexer, not the visible pane's directory.
-        if TerminalApplications.contains(bundleIdentifier),
-            RemoteSession.isMultiplexed(inWindowTitle: windowTitle)
-        {
-            return RemoteSession.scope
+            return terminalScope
         }
         guard let document = Self.trimmed(document) else {
             return Self.conversation(windowTitle, of: applicationName)
