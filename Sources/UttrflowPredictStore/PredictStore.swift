@@ -197,12 +197,13 @@ public actor PredictStore: PredictionStore {
         var byText: [String: Candidate] = [:]
         var order: [String] = []
         for candidate in candidates {
-            guard let existing = byText[candidate.text] else {
-                byText[candidate.text] = candidate
-                order.append(candidate.text)
+            let key = candidate.text.lowercased()
+            guard let existing = byText[key] else {
+                byText[key] = candidate
+                order.append(key)
                 continue
             }
-            byText[candidate.text] = Self.combine(existing, candidate)
+            byText[key] = Self.combine(existing, candidate)
         }
         return Self.strongest(order.compactMap { byText[$0] })
     }
@@ -294,7 +295,7 @@ public actor PredictStore: PredictionStore {
                     $0.bind(3, upper)
                     $0.bind(4, Int64(Self.candidateLimit))
                 }, distance: 0)
-            found += read.filter { seen.insert($0.text).inserted }
+            found += read.filter { seen.insert($0.text.lowercased()).inserted }
         }
         return found
     }
