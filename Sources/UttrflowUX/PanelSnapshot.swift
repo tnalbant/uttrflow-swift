@@ -127,6 +127,8 @@ public struct PanelSnapshot: Sendable, Equatable {
 
     /// Whether a delete can still be taken back; set by the app, which alone still holds the clip.
     public var canUndoDelete: Bool = false
+    /// Identifies each delete that offers undo, including consecutive deletes with the same wording.
+    public var undoAnnouncementID: UUID = UUID()
 
     /// Whether the store has yet to answer, so an empty list is unknown rather than nothing. See `Docs/panel.md`.
     public var isAwaitingList: Bool = false

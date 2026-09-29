@@ -1463,6 +1463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // The earlier delete's timer must not expire this one's offer before its own starts.
             undoTask?.cancel()
             panel?.canUndoDelete = held != nil
+            panel?.undoAnnouncementID = UUID()
             Self.log.info(
                 "delete: undoable=\(held != nil, privacy: .public) flag=\(self.panel?.canUndoDelete == true, privacy: .public)"
             )
