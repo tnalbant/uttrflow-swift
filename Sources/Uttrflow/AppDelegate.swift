@@ -1475,9 +1475,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.log.info(
                 "delete: undoable=\(held != nil, privacy: .public) flag=\(self.panel?.canUndoDelete == true, privacy: .public)"
             )
+            let deletion = Task { [clipboard, retention] in
+                await clipboard.forgetHeldPictures()
+                do {
+                    _ = try await clipboard.delete(
+                        id, keeping: retention, holdingPicture: held != nil)
+                    return .success(())
+                } catch {
+                    return .failure(error)
+                }
+            }
+            undoOffer.trackDelete(deletion, ticket: ticket)
             // Only the latest delete can be undone, so an earlier one's picture is let go first.
-            await clipboard.forgetHeldPictures()
-            _ = try await clipboard.delete(id, keeping: retention, holdingPicture: held != nil)
+            switch await deletion.value {
+            case .success:
+                break
+            case .failure(let error):
+                throw error
+            }
             // A later delete owns the offer and its timer, so a superseded one leaves both alone.
             guard undoOffer.isLatest(ticket) else { return }
             await startForgettingTheUndo()
@@ -1502,9 +1517,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .deleteCategoryAndClips(let name):
             _ = try await clipboard.deleteCategory(name, keeping: retention)
         case .restore(let clip):
+            let deletion = undoOffer.pendingDelete
+            undoOffer.withdraw()
+            if let deletion {
+                switch await deletion.value {
+                case .success:
+                    break
+                case .failure(let error):
+                    throw error
+                }
+            }
             _ = try await clipboard.record(clip, keeping: retention)
             await clipboard.forgetHeldPictures()
-            undoOffer.withdraw()
             panel?.canUndoDelete = false
         }
     }
@@ -1514,11 +1538,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         undoTask?.cancel()
         undoTask = Task { [weak self] in
             try? await Task.sleep(for: AppDelegate.undoWindow)
-            guard !Task.isCancelled else { return }
-            await self?.clipboard.forgetHeldPictures()
-            self?.undoOffer.withdraw()
-            self?.panel?.canUndoDelete = false
-            await self?.refreshPanelIfOpen()
+            guard let self, !Task.isCancelled else { return }
+            await PanelUndoExpiry.expire(
+                withdraw: {
+                    self.undoOffer.withdraw()
+                    self.panel?.canUndoDelete = false
+                },
+                releasingPictures: { await self.clipboard.forgetHeldPictures() })
+            await self.refreshPanelIfOpen()
         }
     }
 
@@ -1556,9 +1583,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { await openSettingsPane(.accessibility) }
         case .undoDelete:
             Self.log.info("undo requested: have=\(self.undoOffer.clip != nil, privacy: .public)")
-            guard let clip = undoOffer.clip else { return }
+            guard let claim = undoOffer.claimForRestore() else { return }
             undoTask?.cancel()
-            apply(.restore(clip))
+            panel?.canUndoDelete = false
+            intentWork = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await claim.waitForDelete()
+                    try await self.carryOut(.restore(claim.clip))
+                } catch let failure as ClipboardStoreError {
+                    self.panel?.notice = .writeFailed(failure.userMessage)
+                }
+                await self.refreshPanelIfOpen()
+            }
         case .format(let id):
             runFormatter(on: id)
         case .openSettings:
