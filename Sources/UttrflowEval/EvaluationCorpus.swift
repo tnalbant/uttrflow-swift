@@ -543,6 +543,13 @@ public enum EvaluationCorpus {
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
         ),
+        .init(
+            id: "compound-ordinal-above-one-hundred", category: .everyday,
+            spoken: "one hundred and twenty first",
+            expected: "One hundred and twenty first.",
+            mustKeep: ["one hundred and twenty first"],
+            mustNotAdd: ["120", "121"]
+        ),
     ]
 
     // MARK: Technical terms that must survive

@@ -32,7 +32,7 @@ struct RulesCorpusTests {
         "percentage", "money",
         "period-as-a-word", "spoken-period",
         "period-after-new-line", "full-stop-new-paragraph", "question-mark-new-line",
-        "dates", "ordinal-not-date",
+        "dates", "ordinal-not-date", "compound-ordinal-above-one-hundred",
         "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",
         "spoken-email-address", "spoken-email-address-with-a-name",
         "spoken-email-address-ending-the-sentence", "spoken-email-addresses-in-a-list",
