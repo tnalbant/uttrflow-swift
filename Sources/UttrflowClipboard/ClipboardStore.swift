@@ -395,10 +395,18 @@ public actor ClipboardStore {
         _ name: String, to destination: String?, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
         var clips = loaded()
+        var freshlyUnkept: Set<UUID> = []
         for index in clips.indices where clips[index].category == name {
+            let wasKept = clips[index].isKept
             clips[index].category = destination
-            // A move-out keeps the clips while losing the collection, so the kept promise the category carried moves to a pin.
-            if destination == nil { clips[index].isPinned = true }
+            if resetAgeIfUnkept(&clips[index], wasKept: wasKept, keeping: retention) {
+                freshlyUnkept.insert(clips[index].id)
+            }
+        }
+        if !freshlyUnkept.isEmpty {
+            clips =
+                clips.filter { freshlyUnkept.contains($0.id) }
+                + clips.filter { !freshlyUnkept.contains($0.id) }
         }
         return try settled(clips, keeping: retention)
     }
@@ -488,14 +496,21 @@ public actor ClipboardStore {
         if let index = clips.firstIndex(where: { $0.id == id }) {
             let wasKept = clips[index].isKept
             edit(&clips[index])
-            // An un-kept clip is freshly copied and moved to the front, so the same write cannot also evict it under the item cap or byte quotas.
-            if wasKept && !clips[index].isKept {
-                let fresh = clips[index].recopied(at: retention.now)
-                clips.remove(at: index)
+            if resetAgeIfUnkept(&clips[index], wasKept: wasKept, keeping: retention) {
+                let fresh = clips.remove(at: index)
                 clips.insert(fresh, at: 0)
             }
         }
         return try settled(clips, keeping: retention)
+    }
+
+    /// Resets a clip's age when this edit removes its last keeping marker.
+    private func resetAgeIfUnkept(
+        _ clip: inout Clip, wasKept: Bool, keeping retention: ClipRetention
+    ) -> Bool {
+        guard wasKept && !clip.isKept else { return false }
+        clip = clip.recopied(at: retention.now)
+        return true
     }
 
     /// Writes what may stay on the disk and answers with what may be shown. See `Docs/retention-clock.md`.
