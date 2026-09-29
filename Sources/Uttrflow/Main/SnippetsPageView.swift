@@ -1,4 +1,4 @@
-// The Snippets page: the table, its inline editor and the worked example.
+// The Snippets page: the editor card, the table, and the empty page.
 
 import UttrflowUX
 import SwiftUI
@@ -6,127 +6,200 @@ import SwiftUI
 /// Triggers you say, and the text you get instead.
 struct SnippetsPageView: View {
     let presentation: SnippetsPresentation
-    /// What is being typed into the inline editor, held by the window so it survives a redraw.
+    /// What is being typed into the editor, held by the window so it survives a redraw.
     @Binding var draft: SnippetDraft
     var onIntent: (MainIntent) -> Void
 
-    private let columns = [
-        MainColumn(title: "Trigger", width: 140),
-        MainColumn(title: "Types", width: nil),
-        MainColumn(title: "Used", width: 40, alignment: .trailing),
-        MainColumn(title: "Last used", width: 70),
-    ]
+    /// The artboard's columns: trigger, text, used, last used, and the row's controls.
+    static let widths: [PageColumnWidth] = [.fixed(150), .share(1), .fixed(60), .fixed(90), .fixed(60)]
 
     var body: some View {
-        if let empty = presentation.emptyState {
-            VStack(spacing: 0) {
-                MainEmptyStateView(state: empty, onIntent: onIntent)
-                    .overlay(alignment: .bottom) {
-                        if let example = presentation.example {
-                            SnippetExampleCard(example: example).padding(.bottom, 8)
-                        }
-                    }
-            }
+        if let empty = presentation.emptyState, presentation.editor == nil {
+            MainEmptyStateView(state: empty, onIntent: onIntent)
         } else {
-            // The editor sits beside the list, so the row being edited never scrolls out of sight.
-            HStack(alignment: .top, spacing: 20) {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    MainSectionLabel(text: presentation.caption)
-                        .padding(.bottom, 7)
-                    ScrollView {
-                        MainRowsCard(
-                            rows: presentation.rows, header: MainTableHeader(columns: columns)
-                        ) { row in
-                            SnippetRowView(row: row, columns: columns, onIntent: onIntent)
-                        }
+                    if let editor = presentation.editor {
+                        SnippetEditorView(editor: editor, draft: $draft, onIntent: onIntent)
+                            .padding(.bottom, 14)
+                    }
+                    if !presentation.rows.isEmpty {
+                        table
                     }
                     if let footnote = presentation.footnote {
                         MainFootnote(text: footnote)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let editor = presentation.editor {
-                    SnippetEditorView(editor: editor, draft: $draft, onIntent: onIntent)
-                        .frame(width: 316)
-                }
             }
         }
     }
+
+    private var table: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            PageTableHeader(titles: ["When I say", "Type this", "Used", "Last", ""], widths: Self.widths)
+            ForEach(presentation.rows) { row in
+                PageDivider()
+                SnippetRowView(row: row, onIntent: onIntent)
+            }
+        }
+        .pageCard()
+    }
 }
 
-/// One snippet.
+/// One snippet; Edit sits at rest and Delete waits for the pointer.
 struct SnippetRowView: View {
     let row: SnippetRow
-    let columns: [MainColumn]
     var onIntent: (MainIntent) -> Void
 
     @State private var isHovered = false
     @FocusState private var focusedControl: String?
 
     var body: some View {
-        HStack(spacing: 10) {
-            MainPillView(pill: row.trigger)
-                .frame(width: columns[0].width, alignment: .leading)
-            Text(row.text)
-                .foregroundStyle(.secondary)
+        PageColumns(widths: SnippetsPageView.widths) {
+            SnippetTriggerPill(text: row.trigger.text, tint: SnippetTint.color(row.tint))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(row.text.replacingOccurrences(of: "\n", with: " "))
+                .foregroundStyle(PagePalette.text.opacity(0.8))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            // Hidden rather than removed, so VoiceOver can reach Edit and Delete and the row keeps its width.
-            HStack(spacing: 5) {
-                ForEach(row.actions) { action in
-                    MainIconButton(action: action, onIntent: onIntent)
-                        .revealedInRow(action.id, isHovered: isHovered, focusedControl: $focusedControl)
-                }
-            }
-            Text(row.timesUsed)
+            Text("\(row.timesUsed)×")
                 .monospacedDigit()
-                .frame(width: columns[2].width, alignment: .trailing)
+                .foregroundStyle(PagePalette.text.opacity(0.6))
             Text(row.lastUsed)
-                .foregroundStyle(.secondary)
-                .frame(width: columns[3].width, alignment: .leading)
+                .font(.system(size: 12))
+                .foregroundStyle(PagePalette.faint)
+                .lineLimit(1)
+            controls
         }
-        .font(.system(size: MainMetrics.calloutSize))
-        .padding(.horizontal, MainMetrics.rowPadding)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isHovered ? Color.mainHover : .clear)
+        .font(.system(size: 13))
+        .padding(.horizontal, PageMetrics.rowInset)
+        .padding(.vertical, 11)
+        .background(isHovered ? PagePalette.text.opacity(0.03) : .clear)
+        .contentShape(.rect)
         .onHover { isHovered = $0 }
+        .accessibilityElement(children: .contain)
         .rowActions(row.actions, onIntent: onIntent)
+    }
+
+    /// Delete's glyph waits for the pointer or the keyboard, left of Edit so Edit keeps the row's end.
+    private var controls: some View {
+        HStack(spacing: 2) {
+            Spacer(minLength: 0)
+            ForEach(trailingOrder) { action in
+                PageRowIconButton(
+                    action: action,
+                    isShown: !action.isDestructive
+                        || RowReveal.isDrawn(isHovered: isHovered, focusedControl: focusedControl),
+                    onIntent: onIntent
+                )
+                .focused($focusedControl, equals: action.id)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    /// Delete first, so the always-drawn Edit ends the row where the design puts it.
+    private var trailingOrder: [MainAction] {
+        row.actions.filter(\.isDestructive) + row.actions.filter { !$0.isDestructive }
     }
 }
 
-/// The inline editor, in the row where the snippet will end up.
+/// The phrase you say, as a tinted pill with a microphone.
+struct SnippetTriggerPill: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "mic")
+                .font(.system(size: 10))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(text).lineLimit(1).truncationMode(.tail)
+        }
+        .font(.system(size: 12.5, weight: .medium))
+        .foregroundStyle(PagePalette.text)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.16), in: Capsule())
+        .overlay { Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 1) }
+        .fixedSize(horizontal: false, vertical: true)
+        .help(text)
+    }
+}
+
+/// The four accents a trigger pill cycles through, in the artboard's order.
+enum SnippetTint {
+    static func color(_ index: Int) -> Color {
+        switch index % SnippetsPresenter.tints {
+        case 0: PagePalette.clipboard
+        case 1: PagePalette.info
+        case 2: PagePalette.suggestion
+        default: PagePalette.dictation
+        }
+    }
+}
+
+/// The snippet being written, on a card over the table.
 struct SnippetEditorView: View {
     let editor: SnippetEditor
     @Binding var draft: SnippetDraft
     var onIntent: (MainIntent) -> Void
 
+    /// Which field has the caret; the trigger for a new snippet, the text for one being edited.
+    @FocusState private var focused: Field?
+
+    /// The card's two fields.
+    enum Field { case trigger, text }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 8) {
-                MainEditorLabel(text: editor.triggerLabel)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(editor.title)
+                    .font(BrandFont.display(size: 14, weight: .semibold))
+                    .foregroundStyle(PagePalette.text)
                 Spacer(minLength: 0)
-                MainPillView(pill: editor.badge)
+                PageBadge(text: editor.badge.text)
             }
-            TextField("", text: trigger)
-                .textFieldStyle(.roundedBorder)
-            MainEditorLabel(text: editor.textLabel)
-                .padding(.top, 2)
-            TextEditor(text: text)
-                .font(.system(size: MainMetrics.calloutSize))
-                .frame(height: 84)
-                .scrollContentBackground(.hidden)
-                .padding(4)
-                .cardSurface(cornerRadius: 6)
-            MainEditorFooter(
+            PageEditorField(label: editor.triggerLabel, symbolName: "mic", tint: PagePalette.dictation) {
+                TextField("", text: trigger).textFieldStyle(.plain)
+                    .focused($focused, equals: .trigger)
+                    .onSubmit(submit)
+            }
+            PageEditorField(label: editor.textLabel, symbolName: "keyboard", tint: PagePalette.suggestion) {
+                TextEditor(text: text)
+                    .focused($focused, equals: .text)
+                    .onKeyPress(.return) { press in
+                        guard
+                            SnippetEditorKeyboard.savesTextEditorReturn(
+                                command: press.modifiers.contains(.command))
+                        else { return .ignored }
+                        submit()
+                        return .handled
+                    }
+                    .scrollContentBackground(.hidden)
+                    .scrollIndicators(.never)
+                    .lineSpacing(3)
+                    .frame(minHeight: 44, maxHeight: 180)
+                    .padding(.horizontal, -5)
+            }
+            PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // A panel, because this is something being filled in, not read past.
-        .cardSurface()
+        .pageCard(edge: PagePalette.dictation.opacity(0.35))
+        .onAppear { focused = editor.editing == nil ? .trigger : .text }
+        .onExitCommand { onIntent(editor.cancel.intent) }
+    }
+
+    /// Return saves only when the current draft passes validation.
+    private func submit() {
+        guard let intent = SnippetEditorKeyboard.saveIntent(canSave: editor.canSave, save: save.intent)
+        else { return }
+        onIntent(intent)
     }
 
     /// Rebuilt from what is in the fields now, not from the presentation drawn a keystroke ago.
@@ -150,28 +223,10 @@ struct SnippetEditorView: View {
     }
 }
 
-/// The worked example on the empty page, so the idea lands before the form does.
-struct SnippetExampleCard: View {
-    let example: SnippetExample
+enum SnippetEditorKeyboard {
+    static func savesTextEditorReturn(command: Bool) -> Bool { command }
 
-    var body: some View {
-        MainCard(padding: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(example.heading.uppercased())
-                    .font(.system(size: MainMetrics.footnoteSize, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                HStack(spacing: 8) {
-                    MainPillView(pill: example.trigger)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                    Text(example.text)
-                        .font(.system(size: MainMetrics.calloutSize))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(width: 400)
-        .accessibilityElement(children: .combine)
+    static func saveIntent(canSave: Bool, save: MainIntent) -> MainIntent? {
+        canSave ? save : nil
     }
 }

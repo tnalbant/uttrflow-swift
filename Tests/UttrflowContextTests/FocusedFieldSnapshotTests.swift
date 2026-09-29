@@ -19,14 +19,16 @@ private func snapshot(
     pointSize: CGFloat? = 13,
     fontFamily: String? = nil,
     textColor: TextColor? = nil,
-    isSecure: Bool = false
+    isSecure: Bool = false,
+    isEnabled: Bool? = nil,
+    isEditable: Bool? = nil
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
         caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
-        isSecure: isSecure, readMicroseconds: 400)
+        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable, readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")
@@ -54,6 +56,14 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("A field reported disabled cannot host a suggestion")
+    func disabledFieldsTakeNothing() {
+        #expect(snapshot(isEnabled: false).placement == nil)
+        #expect(snapshot(isEditable: false).placement == nil)
+        #expect(snapshot(isEnabled: true).placement == .inlineGhost)
+        #expect(snapshot(isEnabled: nil).placement == .inlineGhost)
     }
 
     @Test("The reading carries through to the capability the ladder is decided from.")
@@ -113,6 +123,44 @@ struct FocusedFieldSnapshotTests {
         #expect(snapshot(value: padded, selection: NSRange(location: 2, length: 0)).caretAtLineEnd)
         // Real text ahead, not padding, is still the caret sitting inside the line.
         #expect(!snapshot(value: "ls  -la", selection: NSRange(location: 2, length: 0)).caretAtLineEnd)
+    }
+
+    @Test(
+        "A terminal row's right-hand prompt, set apart by padding, leaves the caret at the end of the input.")
+    func rightHandPromptIsNotTextAfterTheCaret() {
+        let row =
+            "git c" + String(repeating: " ", count: 30) + "main 12:04\n" + String(repeating: " ", count: 45)
+        let reading = snapshot(value: row, selection: NSRange(location: 5, length: 0))
+        #expect(reading.caretAtLineEnd)
+        #expect(reading.rightPromptGap == 30)
+        // A document has no right-hand prompt, so the same row is text after the caret.
+        #expect(!snapshot(bundleIdentifier: "com.apple.TextEdit", value: row).caretAtLineEnd)
+    }
+
+    @Test("Text directly after the caret, with no padding run, is still the caret inside the line.")
+    func textDirectlyAfterTheCaretRefuses() {
+        let reading = snapshot(
+            value: "git commit -m x" + String(repeating: " ", count: 30) + "main",
+            selection: NSRange(location: 3, length: 0))
+        #expect(!reading.caretAtLineEnd)
+        #expect(reading.rightPromptGap == nil)
+    }
+
+    @Test("The ghost's field ends before the right-hand prompt, and is the whole field otherwise.")
+    func ghostFieldStopsBeforeTheRightHandPrompt() throws {
+        let field = CGRect(x: 0, y: 0, width: 800, height: 400)
+        let row = "git c" + String(repeating: " ", count: 11) + "main"
+        let reading = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: row, selection: NSRange(location: 5, length: 0),
+            caret: CGRect(x: 40, y: 20, width: 1, height: 16), field: field, pointSize: 10)
+        let ghost = try #require(reading.ghostField)
+        #expect(abs(ghost.maxX - (41 + 10 * 10 * FocusedFieldSnapshot.monospacedAdvance)) < 0.001)
+        let plain = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: "git c", selection: NSRange(location: 5, length: 0),
+            caret: CGRect(x: 40, y: 20, width: 1, height: 16), field: field, pointSize: 10)
+        #expect(plain.ghostField == field)
     }
 
     @Test("What a completion continues is the caret's own line, not the whole document.")
@@ -231,6 +279,66 @@ struct FocusedFieldSnapshotTests {
         }
     }
 
+    @Test("A heredoc body is not treated as a shell command.")
+    func terminalHeredocBodyIsNotACommand() {
+        let value = "user@host:~/dir$ cat <<'DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine.isEmpty)
+    }
+
+    @Test("Suggestions resume after a heredoc delimiter line.")
+    func terminalHeredocEndsAtItsDelimiter() {
+        let value = "cat <<-\"DONE\"\nrm -rf /some/path\nDONE"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "DONE")
+    }
+
+    @Test("A spaced heredoc operator suppresses suggestions until its delimiter.")
+    func terminalHeredocAllowsWhitespaceBeforeItsDelimiter() {
+        let unquoted = "cat << EOF\nrm -rf /some/path"
+        #expect(
+            snapshot(value: unquoted, selection: NSRange(location: unquoted.utf16.count, length: 0))
+                .currentLine.isEmpty)
+        let quoted = "cat << 'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: quoted, selection: NSRange(location: quoted.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("Indented heredoc delimiters close only with the opener's indentation rule.")
+    func terminalHeredocHonorsIndentedDelimiters() {
+        let tabs = "cat <<-DONE\nrm -rf /some/path\n\tDONE"
+        #expect(
+            snapshot(value: tabs, selection: NSRange(location: tabs.utf16.count, length: 0))
+                .currentLine == "DONE")
+        let spaces = "cat <<~SQL\nrm -rf /some/path\n    SQL"
+        #expect(
+            snapshot(value: spaces, selection: NSRange(location: spaces.utf16.count, length: 0))
+                .currentLine == "SQL")
+        let spaced = "cat <<'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: spaced, selection: NSRange(location: spaced.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("A heredoc-looking token inside a quoted argument does not start a heredoc.")
+    func quotedHeredocTextDoesNotSuppressSuggestions() {
+        let value = "printf 'literal <<DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
+    }
+
+    @Test("A shell here-string is not parsed as a heredoc.")
+    func hereStringDoesNotSuppressSuggestions() {
+        let value = "printf <<< 'literal'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
+    }
+
     @Test("Only the caret's own line has a prompt taken off it, and only in a terminal.")
     func onlyTerminalsDropThePrompt() {
         let scrollback = "user@host:~/dir$ git status\nuser@host:~/dir$ git a"
@@ -275,5 +383,74 @@ struct FocusedFieldSnapshotTests {
         #expect(!FocusedFieldSnapshot.isTextEntry("AXStaticText"))
         #expect(!FocusedFieldSnapshot.isTextEntry("AXGroup"))
         #expect(!FocusedFieldSnapshot.isTextEntry(nil))
+    }
+}
+
+/// A terminal reading of one line with the caret at its end, under a window title.
+private func terminalLine(_ line: String, title: String) -> FocusedFieldSnapshot {
+    FocusedFieldSnapshot(
+        bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea", value: line,
+        selection: NSRange(location: line.utf16.count, length: 0),
+        caret: CGRect(x: 10, y: 20, width: 1, height: 16),
+        pointSize: 13, readMicroseconds: 400, windowTitle: title)
+}
+
+@Suite("A terminal whose screen a full-screen program holds")
+struct FullScreenProgramTests {
+    @Test(
+        "An fzf query or an editor's buffer line gets no ghost and is never read as a command.",
+        arguments: [
+            ("> git st", "tools — fzf — 80×24"), ("git sta", "tools — vim deploy.sh — 80×24"),
+            ("make te", "tools — nvim — 120×40"), ("> git st", "fzf"), ("git sta", "tools — less — 80×24"),
+        ])
+    func programLinesAreLeftAlone(_ line: String, _ title: String) {
+        let reading = terminalLine(line, title: title)
+        #expect(reading.placement == nil, "\(title)")
+        #expect(reading.currentLine.isEmpty, "\(title)")
+        #expect(reading.learnableLine.isEmpty, "\(title)")
+    }
+
+    @Test("The same lines at the shell are read and may take the ghost.")
+    func shellLinesStillWork() {
+        let reading = terminalLine("user@host tools % git st", title: "tools — -zsh — 80×24")
+        #expect(reading.placement == .inlineGhost)
+        #expect(reading.currentLine == "git st")
+        #expect(terminalLine("➜  vimrc git sta", title: "vimrc — -zsh — 80×24").currentLine == "git sta")
+    }
+
+    @Test(
+        "A listed word that is only the directory, host or tab name leaves the shell prompt readable.",
+        arguments: [
+            "watch — -zsh — 80×24", "view — -zsh — 80×24", "top — bash — 120×40", "man — fish — 80×24",
+            "less (-zsh)", "watch (zsh)", "me@top: ~/src/watch", "~/notes/view", "me@view: ~",
+        ])
+    func directoryWordsAreNotThePrograms(_ title: String) {
+        let reading = terminalLine("user@host watch % git st", title: title)
+        #expect(reading.placement == .inlineGhost, "\(title)")
+        #expect(reading.currentLine == "git st", "\(title)")
+    }
+
+    @Test(
+        "A listed program in front is found in every title shape a terminal writes.",
+        arguments: [
+            "~ — vim notes.md — 80×24", "watch — vim notes.md — 80×24", "tools — top — 80×24",
+            "Default (vim)",
+            "top (htop)", "vim notes.md", "sudo vim /etc/hosts", "fzf", "man ls", "watch -n1 git status",
+            "me@host: less build.log",
+        ])
+    func frontProgramsAreFound(_ title: String) {
+        let reading = terminalLine("git sta", title: title)
+        #expect(reading.placement == nil, "\(title)")
+        #expect(reading.currentLine.isEmpty, "\(title)")
+    }
+
+    @Test("Outside a terminal a window title naming an editor changes nothing.")
+    func otherApplicationsAreUnaffected() {
+        let reading = FocusedFieldSnapshot(
+            bundleIdentifier: "com.example.notes", applicationName: "Notes", role: "AXTextArea",
+            value: "git sta",
+            selection: NSRange(location: 7, length: 0), caret: CGRect(x: 10, y: 20, width: 1, height: 16),
+            pointSize: 13, readMicroseconds: 400, windowTitle: "vim tips")
+        #expect(reading.currentLine == "git sta")
     }
 }

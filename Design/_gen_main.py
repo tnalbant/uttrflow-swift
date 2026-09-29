@@ -221,6 +221,7 @@ diag_footer = f"""<div class="row" style="margin-top: 10px; gap: 9px">
           <button class="btn sm">Copy Diagnostics</button>
         </div>"""
 
+
 # Two columns, left the timed journey, right what it is running on — the frame is fixed height
 # and 700px is not enough for one long list of everything DiagnosticsPresentation reports.
 diagnostics = f"""{diag_verdict}
@@ -256,15 +257,22 @@ diagnostics_empty = f"""{diag_verdict}
         </div>
         {diag_footer}"""
 
+# Captions match HistoryPresenter.caption and DiagnosticsPresenter.caption verbatim
+# (Sources/UttrflowUX/HistoryPresentation.swift, Sources/UttrflowUX/DiagnosticsPresentation.swift).
 written = []
-for stem, active, tool_html, content in [
-    ("Main-History", "History", tools(searchbox("Search history")), history),
-    ("Main-Diagnostics", "Diagnostics", "", diagnostics),
-    ("Main-Diagnostics-Empty", "Diagnostics", "", diagnostics_empty),
+for stem, active, caption, search_html, content in [
+    ("Main-History", "History", "Every dictation, kept on this Mac.",
+     searchbox("Search history"), history),
+    ("Main-Diagnostics", "Diagnostics", "What is installed, what is allowed, and how fast it runs.",
+     "", diagnostics),
+    ("Main-Diagnostics-Empty", "Diagnostics", "What is installed, what is allowed, and how fast it runs.",
+     "", diagnostics_empty),
 ]:
     written += write_pair(
         stem,
-        lambda dark, a=active, t=tool_html, c=content:
-            app_window(a, t, c, dark, tails={"Corrections": "7"}, extra_css=MAIN_CSS),
+        lambda dark, a=active, cap=caption, s=search_html, c=content:
+            app_window(
+                a, c, dark, caption=cap, search=s, tails={"Corrections": "7"},
+                extra_css=MAIN_CSS),
     )
 print(f"wrote {len(written)} main window artboards")

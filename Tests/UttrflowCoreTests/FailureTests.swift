@@ -18,10 +18,10 @@ struct FailureCatalogueTests {
         #expect(AudioCaptureError.everyCase.count == 6)
         #expect(SpeechEngineError.everyCase.count == 7)
         #expect(TransformationError.everyCase.count == 3)
-        #expect(TextInsertionError.everyCase.count == 5)
+        #expect(TextInsertionError.everyCase.count == 6)
         #expect(HotkeyError.everyCase.count == 2)
         #expect(DictionaryStoreError.everyCase.count == 4)
-        #expect(allFailures.count == 39)
+        #expect(allFailures.count == 40)
     }
 
     /// A backwards link loops and a repeated case hides the one it displaces; both show as a duplicate.
@@ -96,6 +96,13 @@ struct FailurePresentationTests {
 
         #expect(HotkeyError.observationNotPermitted.recovery == .openSystemSettings(.accessibility))
         #expect(HotkeyError.shortcutUnavailable.recovery == .retry)
+    }
+
+    @Test("model load failure names its available recovery")
+    func modelLoadFailureCopy() {
+        let failure = SpeechEngineError.modelLoadFailed(description: "fixture")
+        #expect(failure.recovery == .retry)
+        #expect(failure.userMessage == "Speech recognition couldn't start. Try again.")
     }
 
     /// A message saying the text could not be copied must not come with a button meaning "paste it".

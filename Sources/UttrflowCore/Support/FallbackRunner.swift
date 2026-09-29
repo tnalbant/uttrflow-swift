@@ -11,6 +11,7 @@ public enum FallbackRunner {
     /// Runs `attempt` on each candidate until one succeeds; an empty list is exhausted with no errors.
     public static func firstSuccess<Candidate, Success: Sendable>(
         among candidates: [Candidate],
+        stopAfterFailure: (any Error) -> Bool = { _ in false },
         attempt: (Candidate) async throws -> Success
     ) async -> FallbackOutcome<Success> {
         var errors: [any Error] = []
@@ -21,6 +22,7 @@ public enum FallbackRunner {
                 return .succeeded(try await attempt(candidate), afterFailing: errors)
             } catch {
                 errors.append(error)
+                if stopAfterFailure(error) { return .exhausted(errors: errors) }
             }
         }
 

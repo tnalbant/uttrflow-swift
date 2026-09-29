@@ -24,7 +24,7 @@
 # whether the prose around them is accurate, which no script can answer. It needs no build.
 #
 # Usage:  ./Scripts/docs_audit.sh            (belongs in `make verify`, ahead of the build)
-#         ./Scripts/docs_audit.sh --self-test   also runs the CLAUDE.md delegation fixture
+#         ./Scripts/docs_audit.sh --self-test   also runs the contract and delegation fixtures
 set -euo pipefail
 
 PACKAGE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,6 +51,65 @@ fail() {
 }
 
 pass() { printf '  ✓ %s\n' "$1"; }
+
+# The PR template is contributor-facing guidance and must agree with AGENTS.md's
+# present-tense comment rule without repeating the full policy. Keep this check narrow.
+comment_checklist_findings() {
+    local template="$1"
+    python3 - "$template" <<'PYTHON'
+import sys
+
+path = sys.argv[1]
+text = open(path, errors="ignore").read()
+required = (
+    "Comments are one line, present tense, and describe what the code does now",
+    "A reason only when it changes what a reader should do",
+    "durable measurements or",
+    "development history",
+)
+stale = "Comments explain *why*, not what"
+missing = [phrase for phrase in required if phrase not in text]
+if stale in text:
+    print(f"{path}: retains the obsolete 'why, not what' checklist instruction")
+for phrase in missing:
+    print(f"{path}: missing comment guidance: {phrase}")
+PYTHON
+}
+
+run_comment_checklist_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-comments.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    cat >"$work/current.md" <<'EOF'
+- [ ] Comments are one line, present tense, and describe what the code does now
+
+A reason only when it changes what a reader should do. Put durable measurements or
+architectural rationale in `Docs/`; put development history in this description or the commit.
+EOF
+    cat >"$work/stale.md" <<'EOF'
+- [ ] Comments explain *why*, not what
+EOF
+
+    printf 'PR comment checklist fixture\n'
+    local current_report stale_report
+    current_report="$(comment_checklist_findings "$work/current.md")"
+    if [[ -z "${current_report//[[:space:]]/}" ]]; then
+        pass "current comment checklist guidance passes"
+    else
+        fail "current comment checklist guidance was flagged" "$current_report"
+    fi
+    stale_report="$(comment_checklist_findings "$work/stale.md")"
+    if [[ "$stale_report" == *"obsolete 'why, not what'"* && "$stale_report" == *"missing comment guidance"* ]]; then
+        pass "the obsolete checklist wording fails"
+    else
+        fail "the obsolete comment checklist wording passed" "$stale_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_comment_checklist_self_test
+    printf '\n'
+fi
 
 changelog_release_bullet_findings() {
     read -r -d '' CHANGELOG_PROGRAM <<'PYTHON' || true
@@ -301,6 +360,74 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     printf '\n'
 fi
 
+# `make verify` intentionally stops before constructing the app bundle. CI's packaging
+# gate is a separate contract, and the contributor guide must name the same shared target.
+read -r -d '' PACKAGING_CONTRACT_PROGRAM <<'PYTHON' || true
+import re
+import sys
+
+guide_path, workflow_path = sys.argv[1:]
+guide = open(guide_path, errors="ignore").read()
+workflow = open(workflow_path, errors="ignore").read()
+findings = []
+stale = re.compile(
+    r"no class of failure that only CI can find|"
+    r"make verify.{0,100}(?:same command CI runs|covers? every CI|all CI failures)",
+    re.IGNORECASE | re.DOTALL,
+)
+for path, text in ((guide_path, guide), (workflow_path, workflow)):
+    match = stale.search(text)
+    if match:
+        line = text.count("\n", 0, match.start()) + 1
+        findings.append(f"{path}:{line}\tclaims make verify covers failures outside its gate")
+if "make app-preflight" not in guide:
+    findings.append(f"{guide_path}:1\tdoes not give the shared packaging preflight command")
+if "run: make app-preflight" not in workflow:
+    findings.append(f"{workflow_path}:1\tCI does not use the documented packaging preflight")
+if guide.find("make verify") > guide.find("make app-preflight"):
+    findings.append(f"{guide_path}:1\tdoes not put make verify before the packaging preflight")
+verify_step = workflow.find("run: make verify")
+packaging_step = workflow.find("run: make app-preflight")
+if verify_step < 0 or packaging_step < 0 or verify_step > packaging_step:
+    findings.append(f"{workflow_path}:1\tCI does not run verify before the packaging preflight")
+print("\n".join(findings))
+PYTHON
+
+packaging_contract_findings() {
+    python3 -c "$PACKAGING_CONTRACT_PROGRAM" "$1" "$2"
+}
+
+run_packaging_contract_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-packaging.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    printf '%s\n' 'Run `make verify`; there is no class of failure that only CI can find.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/stale.md"
+    printf '%s\n' 'Run `make verify` for lint, audits, tests, and coverage.' \
+        'For packaging changes, run `make app-preflight`.' > "$work/corrected.md"
+    printf '%s\n' 'run: make verify' 'run: make app-preflight' > "$work/ci.yml"
+
+    printf 'packaging gate wording fixture\n'
+    local stale_report corrected_report
+    stale_report="$(packaging_contract_findings "$work/stale.md" "$work/ci.yml")"
+    if [[ "$stale_report" == *"covers failures outside its gate"* ]]; then
+        pass "the stale make verify claim fails"
+    else
+        fail "the stale make verify claim passed" "$stale_report"
+    fi
+    corrected_report="$(packaging_contract_findings "$work/corrected.md" "$work/ci.yml")"
+    if [[ -z "${corrected_report//[[:space:]]/}" ]]; then
+        pass "the corrected gate wording and shared command pass"
+    else
+        fail "the corrected packaging guidance was flagged" "$corrected_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_packaging_contract_self_test
+    printf '\n'
+fi
+
 # `--self-test` runs the CLAUDE.md delegation fixture before the normal scan, so the
 # audit's checks themselves fail noisily when they stop biting. Same pattern as
 # log_privacy_audit.py and perf_budget_audit.py.
@@ -356,6 +483,17 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
     failures=0
 fi
 
+printf '\nPackaging gate guidance\n'
+packaging_contract_report="$(packaging_contract_findings CONTRIBUTING.md .github/workflows/ci.yml)"
+if [[ -n "${packaging_contract_report//[[:space:]]/}" ]]; then
+    fail "the contributor guide and CI disagree about the packaging gate" \
+        '`make verify` does not create or verify the app bundle. Keep the documented' \
+        'sequence and CI aligned through `make app-preflight`.' \
+        "" $'\n'"$packaging_contract_report"
+else
+    pass "the guide distinguishes make verify and CI uses its shared app-preflight command"
+fi
+
 cd "$PACKAGE_ROOT"
 
 # ---------------------------------------------------------------------------
@@ -407,7 +545,7 @@ for required in \
     "code-owner review" \
     "approval by someone other than the last pusher" \
     "strict_required_status_checks_policy" \
-    "Keep the worktree and branch while the PR is open"
+    "Once the branch is pushed, remove the worktree and the local branch"
 do
     if ! grep -Fq "$required" AGENTS.md; then
         missing_policy+=("$required")
@@ -672,13 +810,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. The worktree cleanup recipe must wait for a merged pull request.
+# 4. The worktree cleanup recipe must keep the pull request's remote branch.
 # ---------------------------------------------------------------------------
 #
-# The contributor recipe once opened a pull request and immediately deleted the worktree,
-# local branch and remote branch. `git branch -d` does not prove the branch reached `main`;
-# it can succeed when the local branch is merely merged to its upstream. The doc must keep
-# every cleanup command below a GitHub merged-state check.
+# The remote branch is the pull request's source ref, open or merged, and it is never
+# deleted. The local worktree and branch are disposable once the branch is pushed and the
+# pull request exists, so the recipe may clean them up then — but only after both, and it
+# must never carry a command that deletes the remote branch.
 printf '\nWorktree cleanup order\n'
 
 read -r -d '' CLEANUP_PROGRAM <<'PYTHON' || true
@@ -686,18 +824,18 @@ import re
 
 text = open("AGENTS.md", errors="ignore").read()
 start = text.find("**Every feature is built in a worktree")
-end = text.find("`sasta-trader` is a different project", start)
+end = text.find("**Never run `swift build`", start)
 if start == -1 or end == -1:
     print("AGENTS.md  cannot find the worktree recipe section")
     raise SystemExit
 
 section = text[start:end]
 required = [
+    ("branch push", r"^git push -u origin"),
     ("pull request creation", r"^gh pr create --base main"),
-    ("GitHub merge-state check", r"^gh pr view [^\n]*--json mergedAt"),
     ("worktree removal", r"^git worktree remove"),
     ("local branch deletion", r"^git branch -[dD]"),
-    ("remote branch deletion", r"^git push origin --delete"),
+    ("the never-delete rule", r"Remote branches are never deleted"),
 ]
 
 positions = {}
@@ -708,26 +846,26 @@ for name, pattern in required:
     else:
         positions[name] = match.start()
 
-merge = positions.get("GitHub merge-state check")
-if merge is not None:
-    for name in ("worktree removal", "local branch deletion", "remote branch deletion"):
-        where = positions.get(name)
-        if where is not None and where < merge:
-            print(f"AGENTS.md  {name} appears before the GitHub merge-state check")
-
 create = positions.get("pull request creation")
-if create is not None and merge is not None and merge < create:
-    print("AGENTS.md  merge-state check appears before pull request creation")
+push = positions.get("branch push")
+for name in ("worktree removal", "local branch deletion"):
+    where = positions.get(name)
+    for before, label in ((push, "branch push"), (create, "pull request creation")):
+        if where is not None and before is not None and where < before:
+            print(f"AGENTS.md  {name} appears before {label}")
+
+if re.search(r"^git push origin --delete", section, re.MULTILINE):
+    print("AGENTS.md  the recipe deletes the remote branch, which is the pull request's source ref")
 PYTHON
 cleanup_order="$(python3 -c "$CLEANUP_PROGRAM")"
 
 if [[ -n "${cleanup_order//[[:space:]]/}" ]]; then
-    fail "the worktree cleanup recipe can delete a pull request branch before it is merged" \
-        "Keep the worktree and both feature-branch refs while the pull request is open." \
-        "Verify through GitHub that the pull request has merged before cleanup commands." \
+    fail "the worktree cleanup recipe can lose a pull request's branch" \
+        "Push the branch and open the pull request before removing the local worktree and branch," \
+        "and never delete the remote branch: it is the pull request's source ref, open or merged." \
         "" $'\n'"$cleanup_order"
 else
-    pass "branch cleanup follows GitHub merge verification in AGENTS.md"
+    pass "the cleanup recipe keeps the remote branch and cleans up only after the pull request exists"
 fi
 
 # ---------------------------------------------------------------------------
@@ -864,6 +1002,72 @@ else
     fi
 fi
 
+# ---------------------------------------------------------------------------
+
+# 7c. The shared shell draws MainWindowStrip and OrbitPageHeader, with each page's caption.
+# ---------------------------------------------------------------------------
+#
+# #1138 found `Design/_gen_shell.py`'s shared main-window shell still drawing the retired
+# 44px `<div class="toolbar"><h2>` band instead of `MainWindowStrip` (the sidebar toggle
+# and account chip) and `OrbitPageHeader` (kicker, title, purpose caption, and ordered
+# scope/search/add controls). All 28 `Main-*.dc.html` artboards inherited that toolbar.
+printf '\nChrome artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" ]]; then
+    fail "Scripts/design_chrome_contract_audit.py is missing or not executable" \
+        "The audit pins the shell's MainWindowStrip/OrbitPageHeader structure and every" \
+        "page's caption to MainWindowView.swift and each page's own presenter; without it" \
+        "either side can drift and nothing notices."
+else
+    if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/design_chrome_contract_audit.py" >&2; then
+            pass "the shell's MainWindowStrip and OrbitPageHeader match production, with every page's caption"
+        else
+            fail "the shell's chrome disagrees with production" \
+                "The audit prints which structure or caption broke. Update" \
+                "Design/_gen_shell.py's MainWindowStrip/OrbitPageHeader (or the caption in" \
+                "Design/_gen_main.py / Design/_gen_app.py), then regenerate every" \
+                "Main-*.dc.html artboard."
+        fi
+    else
+        fail "Scripts/design_chrome_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not resolve a known-good fixture or catch a" \
+            "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+
+
+# 7d. The Dictation artboards match DictationPresenter's own figures.
+# ---------------------------------------------------------------------------
+#
+# #153 renamed the populated rail's cleanup-ratio tile from "Accuracy" to
+# `DictationPresenter.accuracyTitle`, said plainly that it does not say whether words were
+# heard correctly, and dropped the baseline meter beside it. Nothing tied the design
+# generator to that decision, so #1139 found `Design/_gen_app.py` had drifted back to a
+# 97.2% "Accuracy" tile with a "Baseline" meter row.
+printf '\nDictation artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" ]]; then
+    fail "Scripts/design_dictation_contract_audit.py is missing or not executable" \
+        "The audit pins the Dictation rail to DictationPresenter's accuracyTitle and" \
+        "accuracyCaption, and refuses a restored Accuracy label or baseline meter; without" \
+        "it either side can drift and nothing notices."
+else
+    if "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/design_dictation_contract_audit.py" >&2; then
+            pass "the Dictation rail matches DictationPresenter, with no Accuracy label or baseline meter"
+        else
+            fail "the Dictation rail disagrees with DictationPresenter" \
+                "The audit prints which title, caption or retired label broke. Update" \
+                "Design/_gen_app.py's Dictation section to match, then regenerate both" \
+                "Main-Dictation artboards."
+        fi
+    else
+        fail "Scripts/design_dictation_contract_audit.py --self-test failed" \
+            "The audit's own self-test could not resolve a known-good fixture or catch a" \
+            "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
 # ---------------------------------------------------------------------------
 # 8. CLAUDE.md, if it exists, delegates to AGENTS.md by import or symlink.
 # ---------------------------------------------------------------------------
@@ -1064,6 +1268,7 @@ PYTHON
 fi
 
 # ---------------------------------------------------------------------------
+
 # 11. The Diagnostics artboards match DiagnosticsPresentation's own contract.
 # ---------------------------------------------------------------------------
 #
@@ -1093,6 +1298,39 @@ else
         fail "Scripts/design_diagnostics_contract_audit.py --self-test failed" \
             "The audit's own self-test could not resolve a known-good fixture or catch a" \
             "known regression, so the parser is broken. Fix the audit, not the artboard."
+    fi
+fi
+
+
+# The identity sheet's teal ramp must match BrandPalette's production roles.
+# ---------------------------------------------------------------------------
+#
+# #1130: `Design/_gen_identity.py`'s RAMP named `#17A398` the listening-state colour years
+# after production moved to `BrandPalette.Teal.primary` (`#29C0B4`), and regenerating the
+# sheet reproduced the stale value byte-for-byte because the generator's own literal was
+# wrong. The audit reads each RAMP entry's hex by role and compares it to the `Teal` case
+# documented as that production role, so a colour that drifts from `BrandPalette.swift`
+# fails here instead of surviving silently in a design reference nobody re-reads.
+printf '\nIdentity sheet teal roles\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/identity_role_audit.py" ]]; then
+    fail "Scripts/identity_role_audit.py is missing or not executable" \
+        "The audit pins the identity sheet's swatches to BrandPalette.Teal; without it a" \
+        "role can drift from production again the way #1130 did."
+else
+    if "$PACKAGE_ROOT/Scripts/identity_role_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/identity_role_audit.py" >&2; then
+            pass "every identity swatch matches its BrandPalette.Teal role"
+        else
+            fail "an identity swatch disagrees with BrandPalette.Teal" \
+                "BrandPalette.swift is the documented colour source of truth. Update" \
+                "RAMP in Design/_gen_identity.py to match it, then re-run every" \
+                "Design/_gen_*.py so the regenerated artboards carry the fix."
+        fi
+    else
+        fail "Scripts/identity_role_audit.py --self-test failed" \
+            "The audit's own self-test (a known match and a known mismatch) is no longer" \
+            "both passing, so the comparison is broken. Fix the audit, not the sheet."
     fi
 fi
 

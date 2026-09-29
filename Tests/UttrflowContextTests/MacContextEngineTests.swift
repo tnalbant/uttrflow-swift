@@ -278,6 +278,64 @@ struct MacContextEngineTests {
         #expect(context == .unknown)
     }
 
+    @Test("names the application from the activation feed when the identity read misses the budget")
+    func fallsBackToTheActivationFeedWhenIdentityHangs() async {
+        let clock = GatedClock()
+        let started = Gate()
+        let hung = Gate()
+        let report = Mutex<(@Sendable (FrontmostApplication) -> Void)?>(nil)
+        let engine = makeEngine(
+            frontmost: {
+                await started.open()
+                await hung.wait()
+                return slack
+            },
+            clock: clock,
+            observeActivations: { callback in
+                report.withLock { $0 = callback }
+                return ()
+            }
+        )
+        report.withLock { $0 }?(slack)
+
+        async let reading = engine.currentContext()
+        await started.wait()
+        await clock.gate.open()
+        let context = await reading
+
+        #expect(context.applicationName == "Slack")
+        #expect(context.bundleIdentifier == "com.tinyspeck.slackmacgap")
+    }
+
+    @Test("falls back to the application behind Uttrflow when Uttrflow activated last")
+    func fallbackSkipsItsOwnActivation() async {
+        let clock = GatedClock()
+        let started = Gate()
+        let hung = Gate()
+        let report = Mutex<(@Sendable (FrontmostApplication) -> Void)?>(nil)
+        let engine = makeEngine(
+            frontmost: {
+                await started.open()
+                await hung.wait()
+                return nil
+            },
+            clock: clock,
+            observeActivations: { callback in
+                report.withLock { $0 = callback }
+                return ()
+            }
+        )
+        report.withLock { $0 }?(slack)
+        report.withLock { $0 }?(uttrflow)
+
+        async let reading = engine.currentContext()
+        await started.wait()
+        await clock.gate.open()
+        let context = await reading
+
+        #expect(context.applicationName == "Slack")
+    }
+
     @Test("returns as soon as the reading is done, without waiting out the budget")
     func doesNotWaitOutTheBudgetOnASuccessfulRead() async {
         // The clock's gate is never opened, so only the reading itself can end the wait.
@@ -319,8 +377,11 @@ struct MacContextEngineTests {
         // Mirrors MacContextEngine+System's own arrangement: every window read dispatched onto one queue.
         let queue = DispatchQueue(label: "test.context.read", attributes: .concurrent)
         let callNumber = Mutex(0)
+        // Blocks the first read's queue thread until the test releases it, with no wall-clock guess involved.
+        let releaseFirstRead = DispatchSemaphore(value: 0)
         let application = FrontmostApplication(
             name: "Stalled", bundleIdentifier: "com.example.stalled", processIdentifier: 88_120)
+        let clock = ManualClock()
         let engine = makeEngine(
             frontmost: { application },
             window: { _ in
@@ -331,7 +392,7 @@ struct MacContextEngineTests {
                 return await withCheckedContinuation { continuation in
                     queue.async {
                         if mine == 1 {
-                            Thread.sleep(forTimeInterval: 0.3)
+                            releaseFirstRead.wait()
                             continuation.resume(returning: FocusedWindow(title: "read 1"))
                         } else {
                             continuation.resume(returning: FocusedWindow(title: "read 2"))
@@ -339,16 +400,20 @@ struct MacContextEngineTests {
                     }
                 }
             },
-            clock: ContinuousClock()
+            clock: clock
         )
 
         async let first = engine.currentContext()
-        try? await Task.sleep(for: .milliseconds(20))
-        let second = await engine.currentContext()
+        // Expires the first read's budget by hand, so nothing here races real time under load.
+        await clock.advanceWhenSomethingIsWaiting(by: MacContextEngine.budget)
         let firstContext = await first
-
         #expect(firstContext.documentName == nil, "the first read may degrade rather than block the second")
+
+        let second = await engine.currentContext()
         #expect(second.documentName == "read 2")
+
+        // The abandoned read now finishes and must not resume its continuation a second time, which would trap.
+        releaseFirstRead.signal()
     }
 
     @Test(
@@ -523,6 +588,39 @@ struct MacContextEngineTests {
         let context = await engine.currentContext()
 
         #expect(context.applicationName == "Slack", "Slack activated last, without a context read in between")
+    }
+
+    @Test("keeps an activation seen during a read over that read's older answer")
+    func activationDuringReadOutlivesTheRead() async {
+        let xcode = FrontmostApplication(
+            name: "Xcode", bundleIdentifier: "com.apple.dt.Xcode", processIdentifier: 28_165)
+        let started = Gate()
+        let release = Gate()
+        let answer = Mutex(xcode)
+        let report = Mutex<(@Sendable (FrontmostApplication) -> Void)?>(nil)
+        let engine = makeEngine(
+            frontmost: {
+                let current = answer.withLock { $0 }
+                guard current == xcode else { return current }
+                await started.open()
+                await release.wait()
+                return current
+            },
+            observeActivations: { callback in
+                report.withLock { $0 = callback }
+                return ()
+            }
+        )
+
+        async let first = engine.currentContext()
+        await started.wait()
+        report.withLock { $0 }?(slack)
+        await release.open()
+        _ = await first
+        answer.withLock { $0 = uttrflow }
+        let context = await engine.currentContext()
+
+        #expect(context.applicationName == "Slack", "Slack activated after the Xcode read began")
     }
 
     @Test("never files Uttrflow's own activation under the application behind it")
