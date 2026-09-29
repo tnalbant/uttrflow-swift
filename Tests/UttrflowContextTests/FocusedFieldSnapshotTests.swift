@@ -285,6 +285,18 @@ struct FocusedFieldSnapshotTests {
                 .currentLine == "DONE")
     }
 
+    @Test("A spaced heredoc operator suppresses suggestions until its delimiter.")
+    func terminalHeredocAllowsWhitespaceBeforeItsDelimiter() {
+        let unquoted = "cat << EOF\nrm -rf /some/path"
+        #expect(
+            snapshot(value: unquoted, selection: NSRange(location: unquoted.utf16.count, length: 0))
+                .currentLine.isEmpty)
+        let quoted = "cat << 'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: quoted, selection: NSRange(location: quoted.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
     @Test("Indented heredoc delimiters close only with the opener's indentation rule.")
     func terminalHeredocHonorsIndentedDelimiters() {
         let tabs = "cat <<-DONE\nrm -rf /some/path\n\tDONE"
@@ -304,6 +316,14 @@ struct FocusedFieldSnapshotTests {
     @Test("A heredoc-looking token inside a quoted argument does not start a heredoc.")
     func quotedHeredocTextDoesNotSuppressSuggestions() {
         let value = "printf 'literal <<DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
+    }
+
+    @Test("A shell here-string is not parsed as a heredoc.")
+    func hereStringDoesNotSuppressSuggestions() {
+        let value = "printf <<< 'literal'\nrm -rf /some/path"
         #expect(
             snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
                 .currentLine == "rm -rf /some/path")

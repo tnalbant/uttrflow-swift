@@ -68,6 +68,7 @@ public enum ShellPrompt {
     /// Whether two angle brackets begin a heredoc operator rather than a here-string.
     private static func isHereDocumentOperator(_ characters: [Character], at index: Int) -> Bool {
         index + 1 < characters.count && characters[index] == "<" && characters[index + 1] == "<"
+            && (index == 0 || characters[index - 1] != "<")
             && (index + 2 == characters.count || characters[index + 2] != "<")
     }
 
@@ -81,6 +82,7 @@ public enum ShellPrompt {
             modifier = characters[cursor]
             cursor += 1
         }
+        while cursor < characters.count, characters[cursor].isWhitespace { cursor += 1 }
         let start = cursor
         var tag = ""
         while cursor < characters.count {
