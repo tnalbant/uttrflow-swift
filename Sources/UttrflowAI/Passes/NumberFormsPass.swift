@@ -75,6 +75,16 @@ public struct NumberFormsPass: CleaningPass {
     ) -> Phrase? {
         let keys = shapes.map(\.key)
 
+        if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes) {
+            if let numeral = NumberWords.digits(keys[position + 1]) {
+                return Phrase(text: "-" + numeral, count: 2)
+            }
+            if let magnitude = phrase(at: position + 1, in: shapes, policy: policy, digits: digits) {
+                return Phrase(text: "-" + magnitude.text, count: magnitude.count + 1)
+            }
+            return nil
+        }
+
         guard !finishesAScale(at: position, keys: keys, shapes: shapes) else { return nil }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
             var end = position + ordinal.count
@@ -91,8 +101,12 @@ public struct NumberFormsPass: CleaningPass {
             return Phrase(text: String(ordinal.value), count: end - position)
         }
         guard let item = item(at: position, keys: keys, shapes: shapes) else { return nil }
+        let contextPosition =
+            position > 0 && ["negative", "minus"].contains(keys[position - 1])
+            ? position - 2 : position - 1
         let inContext =
-            position > 0 && !startsASentence(position, shapes) && contextWords.contains(keys[position - 1])
+            contextPosition >= 0 && !startsASentence(position, shapes)
+            && contextWords.contains(keys[contextPosition])
         var end = position + item.count
         var text = item.text
         var isPhrase = false
