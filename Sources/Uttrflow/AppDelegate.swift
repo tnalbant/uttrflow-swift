@@ -298,7 +298,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         refreshMenuBar()
         presentOnboardingIfNeeded()
         // Shown at launch, since a menu-bar icon alone is an interface most people never find.
-        if onboarding == nil { show(.main(.home)) }
+        if onboarding == nil {
+            show(.main(.home))
+        } else {
+            refreshMainWindow()
+        }
         // Configured last, from the setting; the automatic check itself waits for `modelLoadingSettled()`.
         updates.onProgressChanged = { [weak self] in self?.refreshMenuBar() }
         updates.begin(automatically: settings.installsUpdatesAutomatically)
@@ -2071,7 +2075,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Redraws from a fresh snapshot, reading everything on one hop so the pages agree.
     private func refreshMainWindow() {
-        guard mainWindow != nil else { return }
         refreshGeneration += 1
         let reading = refreshGeneration
         Task { [weak self] in
@@ -2093,6 +2096,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer { Task { [weak self] in await self?.refreshPictureThenRedraw() } }
             // A later refresh has newer state, and painting over it would leave the older reading up.
             guard reading == refreshGeneration else { return }
+            refreshMenuBar()
             // Read even out of sight, since the menu's Recent list comes from this reading too.
             guard mainWindow?.isOnScreen == true else {
                 mainWindowIsBehind = true
