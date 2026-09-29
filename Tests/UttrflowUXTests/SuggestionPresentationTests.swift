@@ -117,6 +117,16 @@ struct SuggestionPresentationTests {
         #expect(presentation.inline?.candidate == "Sydenham")
     }
 
+    @Test("Filtering unusable rows preserves the arrow-key selection of the next candidate")
+    func filteringRowsPreservesSelectionIndex() throws {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "", others: ["Sydney", "Soho"]), typed: "S",
+            selection: SuggestionSelection(index: 1, hasMoved: true))
+
+        #expect(presentation.rows.map(\.candidate) == ["Sydney", "Soho"])
+        #expect(try #require(presentation.inline).candidate == "Sydney")
+    }
+
     @Test("The list's fixed text is what the design shows: a branch per row and the three keys under it")
     func theListTextIsTheDesigns() {
         let presentation = SuggestionPresentation(.certain("Sydney"))
