@@ -57,6 +57,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// The Hugging Face cache a whole model is loaded from without asking the hub.
     private let cache: URL
 
+    /// The load in flight, which a second caller joins rather than starting its own.
+    private var loadInFlight: Task<Void, any Error>?
+
     /// Loads the weights from disk when they are whole there, downloading them only when they are not.
     public func prepare(onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
         try await load(downloader: { #hubDownloader(AnonymousHub.client()) }, onProgress: onProgress)
@@ -67,19 +70,38 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         try await load(downloader: nil, onProgress: { _ in })
     }
 
-    /// Reads the weights in, fetching them through `downloader` only where one is given.
+    /// Reads the weights in once however many callers ask at the same time.
     private func load(
         downloader: (@Sendable () -> any MLXLMCommon.Downloader)?,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         guard container == nil else { return }
+        if let loadInFlight { return try await loadInFlight.value }
+        let step = Task { try await self.fill(downloader: downloader, onProgress: onProgress) }
+        loadInFlight = step
+        defer { if loadInFlight == step { loadInFlight = nil } }
+        // The caller that started the load stopping it stops the load, so a release never waits out the read.
+        try await withTaskCancellationHandler(
+            operation: { try await step.value }, onCancel: { step.cancel() })
+    }
+
+    /// Reads the weights in, fetching them through `downloader` only where one is given.
+    private func fill(
+        downloader: (@Sendable () -> any MLXLMCommon.Downloader)?,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws {
         // The instruction warm-up is a pass like any other, so it is held to the cap and leaves nothing cached.
         bufferCache.hold()
         defer { bufferCache.clear() }
         let directory = try await model.weightsDirectory(
             cache: cache, downloader: downloader, onProgress: onProgress)
+        // A load stopped during the fetch reads no weights, and one stopped during the read keeps none for the warm-up.
+        try Task.checkCancellation()
         guard let loaded = try await weights.load(from: directory) else { return }
+        try Task.checkCancellation()
         container = loaded
+        // Lines judged with no model loaded are empty, so they are dropped once there is one.
+        judgementCache.forgetEverything()
         beginPass()
         defer { endPass() }
         warm = await warmInstructions()
@@ -97,6 +119,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// Empties the weights once every pass using them has ended, and hands the freed GPU buffers back to the system.
     public func release() async {
         container = nil
+        loadInFlight?.cancel()
+        loadInFlight = nil
         forgetReadings()
         await passesEnded()
         await weights.unload()
@@ -115,10 +139,32 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         vocabulary = nil
         kept = nil
         judgementCache.forgetEverything()
+        confidenceMemory.forgetEverything()
+    }
+
+    /// How sure each recent pass was of the lines it wrote.
+    private var confidenceMemory = ConfidenceMemory()
+
+    /// Changes whenever retained model output is forgotten, so an older in-flight pass cannot restore it.
+    private var forgetGeneration = 0
+
+    /// Drops candidate text and prompt state when the person forgets suggestions, for one app or all apps.
+    public func forgetEverything() {
+        forgetGeneration += 1
+        kept = nil
+        judgementCache.forgetEverything()
+        confidenceMemory.forgetEverything()
+    }
+
+    public func confidence(ofGenerated line: String) -> Double? {
+        confidenceMemory.confidence(of: line)
     }
 
     /// Per-candidate log-softmax rows the model has already produced, so a keystroke only re-averages from the new `start`.
     private var judgementCache = JudgementCache()
+
+    /// How many candidate lines remain cached, for diagnostics and tests of forgetting.
+    var judgementCacheCount: Int { judgementCache.count }
 
     /// Times `judgedTokens` read a previously-cached line instead of running the forward pass, for the tests about a cache that holds.
     public private(set) var judgementCacheHits = 0
@@ -242,9 +288,13 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         guard let run = try await run(typed: typed, in: situation, asking: .one, tokenShare: 1) else {
             return nil
         }
+        let completions = Self.completions(from: run, typed: typed, asking: .one, in: situation)
+        if run.forgetGeneration == forgetGeneration {
+            confidenceMemory.remember(Self.confidences(of: completions, from: run, typed: typed))
+        }
         return GenerationPass(
             text: run.text, stopReason: run.stop.map { String(describing: $0) } ?? "none",
-            completions: Self.completions(from: run, typed: typed, asking: .one, in: situation))
+            completions: completions)
     }
 
     public func alternatives(
@@ -262,28 +312,44 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         guard let run = try await run(typed: typed, in: situation, asking: ask, tokenShare: tokenShare) else {
             return []
         }
-        return Self.completions(from: run, typed: typed, asking: ask, in: situation)
+        let lines = Self.completions(from: run, typed: typed, asking: ask, in: situation)
+        // Measured from the pass that wrote them, so the gate never runs the model a second time.
+        if run.forgetGeneration == forgetGeneration {
+            confidenceMemory.remember(Self.confidences(of: lines, from: run, typed: typed))
+        }
+        return lines
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
     private struct Run {
+        let forgetGeneration: Int
         let text: String
         let stop: GenerateStopReason?
         let written: String
+        /// Every token the decode sampled, in order, with how likely the model found it.
+        let tokens: [Int]
+        let logProbabilities: [Double]
+        let bytes: [[UInt8]]
     }
 
-    /// What the parser makes of a pass, each line cut where it starts copying the screen; one line the budget cut is kept to its last whole word, which is still the line's own start.
+    /// Each line's confidence as the pass that wrote it measured it, so no second pass is spent scoring it.
+    private static func confidences(of lines: [String], from run: Run, typed: String) -> [String: Double] {
+        GeneratedConfidence.confidences(
+            of: lines, typed: typed, written: run.written, text: run.text, tokens: run.tokens,
+            logProbabilities: run.logProbabilities, bytes: run.bytes)
+    }
+
+    /// What the parser makes of a pass, each line cut where it starts copying the screen and then finished; one line the budget cut is kept to its last whole word, which is still the line's own start.
     private static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
         let text = ask == .one && run.stop == .length ? CompletionText.wholeWords(of: run.text) : run.text
         let context = CompletionText.contextNeverCopied(in: situation)
         // The prefill is the line's own start, so the answer reads as the whole line it would echo.
-        return CompletionText.parse(run.written + text, typed: typed).compactMap {
-            CompletionText.trimmed($0, typed: typed, echoing: context).flatMap {
-                SignOff.unsigned($0, typed: typed, screen: context, ownLines: situation.recentLines)
-            }
+        let lines = CompletionText.parse(run.written + text, typed: typed).compactMap {
+            CompletionText.trimmed($0, typed: typed, echoing: context)
         }
+        return CompletionText.finished(lines, typed: typed, in: situation)
     }
 
     /// One pass over the model: prefilled under the container's lock, decoded outside it so a score never waits on a line; a pass that fails throws, so the caller can tell it from an empty answer.
@@ -293,6 +359,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         // Every pass is held to the cache's cap and leaves nothing in it, however it ends. See `Docs/performance.md`.
         bufferCache.hold()
         defer { bufferCache.clear() }
+        let forgetGeneration = self.forgetGeneration
         guard let container, !Task.isCancelled, LatinScript.writes(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
@@ -317,6 +384,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         let stream: AsyncStream<Generation>
         let generation: Task<Void, Never>
         let read: KeptPrefix?
+        let ledger = SampleLedger()
         do {
             (stream, generation, read) = try await container.perform { loaded in
                 try Task.checkCancellation()
@@ -372,10 +440,13 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                         }
                     iterator = try TokenIterator(
                         input: feed, model: context.model, cache: cache, processor: processor,
-                        sampler: parameters.sampler(), maxTokens: parameters.maxTokens)
+                        sampler: RecordingSampler(inner: parameters.sampler(), ledger: ledger),
+                        maxTokens: parameters.maxTokens)
                 } else {
                     iterator = try TokenIterator(
-                        input: feed, model: context.model, cache: cache, parameters: parameters)
+                        input: feed, model: context.model, cache: cache, processor: parameters.processor(),
+                        sampler: RecordingSampler(inner: parameters.sampler(), ledger: ledger),
+                        prefillStepSize: parameters.prefillStepSize, maxTokens: parameters.maxTokens)
                 }
                 let (stream, generation) = generateTask(
                     promptTokenCount: feed.text.tokens.size, modelConfiguration: context.configuration,
@@ -401,13 +472,18 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         generation.cancel()
         await generation.value
         // Kept only now the decode has stopped writing to the cache, and only while the weights it was read from are loaded.
-        if self.container != nil { self.kept = read }
+        if self.container != nil, self.forgetGeneration == forgetGeneration { self.kept = read }
         if let info {
             Self.log.debug(
                 "PASS prompt=\(info.promptTokenCount) promptMs=\(Int(info.promptTime * 1_000)) generated=\(info.generationTokenCount) generateMs=\(Int(info.generateTime * 1_000))"
             )
         }
-        return Run(text: text, stop: info?.stopReason, written: choice?.written ?? opening?.written ?? "")
+        let sampled = ledger.read()
+        return Run(
+            forgetGeneration: forgetGeneration,
+            text: text, stop: info?.stopReason, written: choice?.written ?? opening?.written ?? "",
+            tokens: sampled.tokens, logProbabilities: sampled.logProbabilities, bytes: vocabulary?.bytes ?? []
+        )
     }
 
     /// One instruction for every field: infer the kind of input from the words, then continue it.
@@ -432,6 +508,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
+        let forgetGeneration = self.forgetGeneration
         bufferCache.hold()
         defer { bufferCache.clear() }
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
@@ -445,7 +522,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
             }
         }
         judgementCacheMisses += 1
-        guard let container, !Task.isCancelled else {
+        // A cancelled pass says nothing about the candidate, so it leaves the cache as it found it.
+        if Task.isCancelled { return [] }
+        guard let container else {
             judgementCache.remember(JudgedLine(tokens: [], rows: [], texts: []), for: candidate)
             return []
         }
@@ -458,7 +537,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                 line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
             return (line, judged)
         }
-        judgementCache.remember(result.0, for: candidate)
+        if self.forgetGeneration == forgetGeneration {
+            judgementCache.remember(result.0, for: candidate)
+        }
         return result.1
     }
 

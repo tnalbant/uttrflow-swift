@@ -41,19 +41,21 @@ public protocol SpeechModelStore: Sendable {
 
 /// What a model's compiled weights consist of; WhisperKit cannot load a directory missing any of them.
 public enum WeightsAssets {
-    /// The compiled bundles every WhisperKit variant needs to turn audio into tokens.
-    public static let bundleNames = ["MelSpectrogram", "AudioEncoder", "TextDecoder"]
-
-    /// The files a load reads from each bundle, relative to the model's directory.
-    public static let fileNames: [String] = bundleNames.flatMap {
-        ["\($0).mlmodelc/coremldata.bin", "\($0).mlmodelc/weights/weight.bin"]
+    /// The files a load reads for `model`, relative to its directory, in a fixed order.
+    public static func fileNames(of model: SpeechModel) -> [String] {
+        model.weightFiles.keys.sorted()
     }
 
-    /// Whether every weight file sits in `folder` and holds at least one byte.
-    public static func arePresent(in folder: URL) -> Bool {
-        fileNames.allSatisfy { name in
+    /// Whether every file `model` pins sits in `folder` and holds at least one byte.
+    public static func arePresent(for model: SpeechModel, in folder: URL) -> Bool {
+        missing(for: model, in: folder).isEmpty
+    }
+
+    /// The files `model` pins that are absent or empty in `folder`.
+    public static func missing(for model: SpeechModel, in folder: URL) -> [String] {
+        fileNames(of: model).filter { name in
             let size = try? folder.appending(path: name).resourceValues(forKeys: [.fileSizeKey]).fileSize
-            return (size ?? 0) > 0
+            return (size ?? 0) <= 0
         }
     }
 }
@@ -129,13 +131,18 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         missingComponents(of: model).isEmpty
     }
 
+    /// Whether the model's folder is there but lacks a file it needs, so it must be downloaded again.
+    public func isIncomplete(_ model: SpeechModel) -> Bool {
+        fileManager.fileExists(atPath: location(of: model).path) && !isInstalled(model)
+    }
+
     /// The parts of `model` still to be fetched, weights first because they own the progress bar.
     func missingComponents(of model: SpeechModel) -> [ModelComponent] {
         let folder = location(of: model)
         return ModelComponent.allCases.filter { component in
             switch component {
             case .weights:
-                !WeightsAssets.arePresent(in: folder)
+                !WeightsAssets.arePresent(for: model, in: folder)
             case .tokenizer:
                 !TokenizerAssets.arePresent(in: folder)
             }
@@ -150,9 +157,16 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
     /// Bytes this model occupies, or `nil` when it is not installed.
     public func bytesOnDisk(_ model: SpeechModel) -> Int64? {
         guard isInstalled(model) else { return nil }
-        return files(in: location(of: model)).reduce(Int64(0)) { total, url in
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            return total + Int64(size)
+        let sizes = files(in: location(of: model)).map { url in
+            (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        }
+        return Self.total(of: sizes)
+    }
+
+    static func total(of sizes: [Int]) -> Int64 {
+        sizes.reduce(Int64(0)) { total, size in
+            let (sum, overflow) = total.addingReportingOverflow(Int64(max(size, 0)))
+            return overflow ? .max : sum
         }
     }
 
@@ -200,7 +214,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         }
 
         // Checked here, or a download that reports success and produces nothing surfaces a launch later.
-        guard WeightsAssets.arePresent(in: staging) else {
+        guard WeightsAssets.arePresent(for: model, in: staging) else {
             discardStaging(of: model)
             throw .modelDownloadFailed(
                 description: "the download completed but \(ModelComponent.weights.described) did not arrive")

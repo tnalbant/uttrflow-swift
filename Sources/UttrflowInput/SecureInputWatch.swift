@@ -9,6 +9,11 @@ public final class SecureInputWatch {
         "Another app has turned on secure keyboard entry, so the shortcut can't be heard. "
         + "Turn it off in that app, or start dictation from the menu bar."
 
+    /// What the user is told while secure keyboard entry pauses AI suggestions.
+    public static let suggestionNotice =
+        "Another app has turned on secure keyboard entry, so AI suggestions are paused. "
+        + "Turn it off in that app to resume suggestions."
+
     /// The system's own answer, which any process holding secure input turns on for everyone.
     public static let system: @Sendable () -> Bool = { IsSecureEventInputEnabled() }
 

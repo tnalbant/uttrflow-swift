@@ -48,7 +48,9 @@ public struct PromptBlock: Sendable, Equatable {
 /// The shipped block for every destination. `Docs/bakeoff.md` records why an example is never a corpus case.
 public enum PromptBlocks {
     public static let standard: [PromptBlockID: PromptBlock] = Dictionary(
-        uniqueKeysWithValues: [document, spreadsheet, sqlEditor, codeEditor, messaging, email, plain].map {
+        uniqueKeysWithValues: [
+            document, spreadsheet, sqlEditor, codeEditor, terminal, messaging, email, plain,
+        ].map {
             ($0.id, $0)
         })
 
@@ -110,6 +112,21 @@ public enum PromptBlocks {
                 cleaned: "Handle the timeout first\nthen retry once with backoff")
         ])
 
+    static let terminal = PromptBlock(
+        id: "terminal",
+        rules: """
+            In a terminal:
+            - keep the case of every command, flag and path; the shell is case-sensitive
+            - keep every line break in the input; do not join lines, and add none
+            - no full stop at the end
+            """,
+        examples: [
+            WorkedExample(
+                typedInto: "a terminal",
+                spoken: "docker compose up dash d",
+                cleaned: "docker compose up -d")
+        ])
+
     static let messaging = PromptBlock(
         id: "messaging",
         rules: """
@@ -145,10 +162,17 @@ public enum PromptBlocks {
             In plain text:
             - full sentences; end with a full stop, question or exclamation mark
             - keep every line break given, and add none
-            - fix a grammar slip: "there is three" → "there are three", "have went" → \
-            "have gone", "a apple" → "an apple", a drifting tense
+            - fix a grammar slip: "there is three" → "there are three", "a apple" → \
+            "an apple", a drifting tense, a lowercase name or acronym
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
-        examples: [])
+        examples: [
+            WorkedExample(
+                spoken: "one on one with rahul before friday",
+                cleaned: "One on one with Rahul before Friday."),
+            WorkedExample(
+                spoken: "review sprint goals then planning",
+                cleaned: "Review sprint goals, then planning."),
+        ])
 }

@@ -54,6 +54,23 @@ struct SecureFieldTests {
                 description: nil))
     }
 
+    @Test(
+        "A camelCase name that glues a short code to another word is secure.",
+        arguments: [
+            "otpField", "otpInput", "enterOtp", "OTPCode", "pinCode", "pinEntry", "userPin",
+            "cvvNumber", "cardCvv", "cvcInput", "cscValue", "ssnField", "userSSN", "pin2",
+        ])
+    func gluedShortCodesAreSecure(name: String) {
+        #expect(SecureField.namesASecret(name))
+    }
+
+    @Test(
+        "A word that merely starts or ends with a short code's letters is not secure.",
+        arguments: ["pinterest", "Pinned", "spinner", "shipping", "Topping", "cvsReceipt", "Spin"])
+    func wordsContainingCodeLettersAreNotSecure(name: String) {
+        #expect(!SecureField.namesASecret(name))
+    }
+
     @Test("An ordinary field is not secure.")
     func ordinaryIsNotSecure() {
         #expect(
@@ -115,5 +132,68 @@ struct SecureFieldRuleTests {
             !SecureField.isSecure(
                 role: "AXTextField", subrole: nil, identifier: nil, placeholder: nil, description: nil,
                 value: { nil }))
+    }
+}
+
+@Suite("Reading a value only from a field that does not hide it")
+struct SecureFieldReadableValueTests {
+    @Test("A field declared secure by its subrole is never asked for its value.")
+    func declaredSecureValueIsNeverFetched() {
+        var asked = false
+        let value = SecureField.readableValue(
+            role: "AXTextField", subrole: "AXSecureTextField", identifier: nil, placeholder: nil,
+            description: nil,
+            value: {
+                asked = true; return "correct-horse-battery"
+            })
+        #expect(value == nil)
+        #expect(!asked)
+    }
+
+    @Test("A field named for a password is never asked for its value.")
+    func namedSecureValueIsNeverFetched() {
+        var asked = false
+        let value = SecureField.readableValue(
+            role: "AXTextField", subrole: nil, identifier: nil, placeholder: "Password",
+            description: nil,
+            value: {
+                asked = true; return "correct-horse-battery"
+            })
+        #expect(value == nil)
+        #expect(!asked)
+    }
+
+    @Test("A value of mask characters alone is dropped once read.")
+    func maskedValueIsDropped() {
+        let value = SecureField.readableValue(
+            role: "AXTextField", subrole: nil, identifier: nil, placeholder: nil, description: nil,
+            value: { "••••••••" })
+        #expect(value == nil)
+    }
+
+    @Test("An ordinary field's value comes back as it is.")
+    func plainValueIsKept() {
+        let value = SecureField.readableValue(
+            role: "AXTextArea", subrole: nil, identifier: nil, placeholder: nil, description: nil,
+            value: { "see you at six" })
+        #expect(value == "see you at six")
+    }
+
+    @Test(
+        "On screen, a secret's name marks only a field, while the secure role marks every element",
+        arguments: [
+            ("AXTextField", nil, "Password", true), ("AXTextArea", nil, "One-time code", true),
+            ("AXComboBox", nil, "Card number", true), ("AXSearchField", nil, "PIN", true),
+            ("AXStaticText", nil, "what's the wifi password?", false),
+            ("AXGroup", nil, "send me the OTP", false),
+            ("AXCell", nil, "card number ending 4242", false),
+            ("AXWebArea", nil, "Reset your password", false),
+            ("AXStaticText", "AXSecureTextField", nil, true), ("AXSecureTextField", nil, nil, true),
+        ] as [(String, String?, String?, Bool)])
+    func secureOnScreen(role: String, subrole: String?, description: String?, secure: Bool) {
+        #expect(
+            SecureField.isDeclaredSecureOnScreen(
+                role: role, subrole: subrole, identifier: nil, placeholder: nil, description: description)
+                == secure)
     }
 }

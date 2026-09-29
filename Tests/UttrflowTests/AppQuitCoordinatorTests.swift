@@ -32,6 +32,7 @@ struct AppQuitCoordinatorTests {
                     },
                     states: { AsyncStream { _ in } }),
                 flushClipboard: {},
+                finishCompletions: {},
                 stopController: {},
                 reply: { replied.withLock { $0 = true } })
         }
@@ -65,9 +66,10 @@ struct AppQuitCoordinatorTests {
                 finishRecording: { events.withLock { $0.append("finish") } },
                 states: { states }),
             flushClipboard: { events.withLock { $0.append("flush") } },
+            finishCompletions: { events.withLock { $0.append("completions") } },
             stopController: { events.withLock { $0.append("stop") } },
             reply: { events.withLock { $0.append("reply") } })
 
-        #expect(events.withLock { $0 } == ["flush", "finish", "stop", "reply"])
+        #expect(events.withLock { $0 } == ["flush", "completions", "finish", "stop", "reply"])
     }
 }
