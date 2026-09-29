@@ -136,6 +136,52 @@ struct ClipboardBudgetTests {
         #expect(!clips.contains { $0.text.hasPrefix("b") })
     }
 
+    @Test("memory eviction follows persisted use order across a clock rollback")
+    func memoryEvictionSurvivesClockRollback() async throws {
+        let file = TemporaryFile()
+        let budget = ClipboardStore.defaultBudget.limiting(bytes: 90)
+        let store = ClipboardStore(file: file.url, budget: budget)
+        let recentlyUsed = clip(String(repeating: "a", count: 40), usedAt: -300)
+        let stale = clip(String(repeating: "b", count: 40), usedAt: 0)
+        try await store.record(recentlyUsed, keeping: week())
+        try await store.record(stale, keeping: week())
+
+        _ = await store.markUsed(recentlyUsed.id, at: noon.addingTimeInterval(-600), keeping: week())
+        await store.flushUse()
+        let reopened = ClipboardStore(file: file.url, budget: budget)
+        _ = try await reopened.record(clip(String(repeating: "c", count: 40), usedAt: 1), keeping: week())
+
+        let clips = await reopened.clips(keeping: week())
+
+        #expect(clips.contains { $0.id == recentlyUsed.id })
+        #expect(!clips.contains { $0.id == stale.id })
+    }
+
+    @Test("picture eviction follows use order across a clock rollback")
+    func pictureEvictionSurvivesClockRollback() async throws {
+        let file = TemporaryFile()
+        let budget = ClipboardStore.defaultBudget.limiting(disk: 100)
+        let store = ClipboardStore(file: file.url, budget: budget)
+        func picture(_ name: String, at date: Date) -> Clip {
+            Clip(
+                text: "", kind: .image, copiedAt: date,
+                image: ClipImage(file: "\(name).png", width: 1, height: 1, bytes: 50, sha: name))
+        }
+        let recentlyUsed = picture("a", at: noon.addingTimeInterval(-300))
+        let stale = picture("b", at: noon)
+        try await store.record(recentlyUsed, keeping: week())
+        try await store.record(stale, keeping: week())
+
+        _ = await store.markUsed(recentlyUsed.id, at: noon.addingTimeInterval(-600), keeping: week())
+        let incoming = picture("c", at: noon.addingTimeInterval(1))
+        _ = try await store.record(incoming, keeping: week())
+
+        let clips = await store.clips(keeping: week())
+
+        #expect(clips.contains { $0.id == recentlyUsed.id })
+        #expect(!clips.contains { $0.id == stale.id })
+    }
+
     @Test("and using a clip that is not there changes nothing")
     func markingAnAbsentClipIsHarmless() async throws {
         let file = TemporaryFile()

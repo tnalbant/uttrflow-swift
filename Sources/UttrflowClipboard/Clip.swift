@@ -29,8 +29,10 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
     /// The picture this clip is, as much of it as a row needs; the bytes live in a file beside the clipboard.
     public let image: ClipImage?
     public let copiedAt: Date
-    /// When this clip was last reached for, which is what eviction ranks by; starts at `copiedAt`.
+    /// The wall-clock time of the latest use; eviction ranks by `lastUsedOrder` instead.
     public let lastUsedAt: Date
+    /// The persisted, monotonic order in which this clip was last used.
+    public let lastUsedOrder: UInt64?
     /// How many times this exact thing has been copied, counting the first; the budget evicts by it.
     public let timesCopied: Int
     /// The application the clip came from, if known; shown as provenance and never a basis for a decision.
@@ -54,6 +56,7 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
         dictations: [UUID] = [],
         dictatedText: String? = nil,
         lastUsedAt: Date? = nil,
+        lastUsedOrder: UInt64? = nil,
         language: CodeLanguage? = nil,
         richText: String? = nil,
         image: ClipImage? = nil,
@@ -69,6 +72,7 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
         self.copiedAt = copiedAt
         // Defaulted from the arrival, not the clock, so a test's fixed date is not silently touched.
         self.lastUsedAt = lastUsedAt ?? copiedAt
+        self.lastUsedOrder = lastUsedOrder
         // Clamped, because a stored zero would sort below every real clip and be evicted first.
         self.timesCopied = max(timesCopied, 1)
         self.source = source
@@ -98,6 +102,7 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
             dictations: values.decodeIfPresent([UUID].self, forKey: .dictations) ?? [],
             dictatedText: values.decodeIfPresent(String.self, forKey: .dictatedText),
             lastUsedAt: values.decodeIfPresent(Date.self, forKey: .lastUsedAt),
+            lastUsedOrder: values.decodeIfPresent(UInt64.self, forKey: .lastUsedOrder),
             language: values.decodeIfPresent(CodeLanguage.self, forKey: .language),
             richText: values.decodeIfPresent(String.self, forKey: .richText),
             image: values.decodeIfPresent(ClipImage.self, forKey: .image),
@@ -108,20 +113,35 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
     }
 
     /// The same clip, reached for at `moment`; a whole copy because `lastUsedAt` is `let`.
-    public func used(at moment: Date) -> Clip {
+    public func used(at moment: Date, order: UInt64) -> Clip {
         Clip(
             id: id, text: text, kind: kind, copiedAt: copiedAt, source: source, origin: origin,
-            dictations: dictations, dictatedText: dictatedText, lastUsedAt: moment, language: language,
+            dictations: dictations, dictatedText: dictatedText, lastUsedAt: moment,
+            lastUsedOrder: order, language: language,
             richText: richText, image: image,
             alias: alias, category: category, isPinned: isPinned, timesCopied: timesCopied)
     }
 
+    /// The same clip reached for at `moment`, preserving its current eviction order.
+    public func used(at moment: Date) -> Clip {
+        used(at: moment, order: lastUsedOrder ?? 0)
+    }
+
     /// The same clip stamped freshly at `moment`, so an un-keep does not also age the clip out.
-    public func recopied(at moment: Date) -> Clip {
+    public func recopied(at moment: Date, order: UInt64) -> Clip {
         Clip(
             id: id, text: text, kind: kind, copiedAt: moment, source: source, origin: origin,
-            dictations: dictations, dictatedText: dictatedText, language: language,
+            dictations: dictations, dictatedText: dictatedText, lastUsedOrder: order, language: language,
             richText: richText, image: image,
+            alias: alias, category: category, isPinned: isPinned, timesCopied: timesCopied)
+    }
+
+    /// The same clip carrying its stable eviction order.
+    func orderedForEviction(_ order: UInt64) -> Clip {
+        Clip(
+            id: id, text: text, kind: kind, copiedAt: copiedAt, source: source, origin: origin,
+            dictations: dictations, dictatedText: dictatedText, lastUsedAt: lastUsedAt,
+            lastUsedOrder: order, language: language, richText: richText, image: image,
             alias: alias, category: category, isPinned: isPinned, timesCopied: timesCopied)
     }
 

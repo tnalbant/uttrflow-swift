@@ -25,6 +25,10 @@ Bytes and items bound different failures: bytes stop the pool being large; the c
 the file being long, and the file is rewritten whole on every copy, so a hundred thousand tiny
 clips would make every ⌘C a slow write.
 
+Memory and disk quotas evict the least recently used clip by a persisted monotonic sequence.
+Wall-clock timestamps still describe when a clip was used, but a clock adjustment cannot change
+which clip the quota removes. Older stores seed the sequence from their existing use timestamps.
+
 ## The largest clip
 
 `largestClip` is 2 MB, about a million characters, and it is the one number that stops

@@ -159,9 +159,9 @@ which keeps arrival order in one pass and without a sort.
 **Least recently used, not fewest copies.** The rule this replaced was "fewest copies, then
 oldest", and its known weakness turned out to be the common case rather than a corner: a value
 copied twenty times last month outranked one pasted twice this morning, so the clip somebody had
-leaned on all week was the first thing thrown away. `Clip.lastUsedAt` exists to make LRU possible,
-and `markUsed` is what keeps it honest — without it, `lastUsedAt` would only ever be the arrival
-time and the policy would be least-recently-*copied* wearing an LRU name.
+leaned on all week was the first thing thrown away. `Clip.lastUsedOrder` ranks eviction, while
+`Clip.lastUsedAt` records when the use happened; `markUsed` updates both so a paste moves the
+clip to the newest position even when the wall clock moves backward.
 
 **Memory and disk are weighed separately.** `weight(of:)` counts a clip's words and deliberately
 not its picture. It once added `image.bytes`, which is the size of a file on disk the process has
