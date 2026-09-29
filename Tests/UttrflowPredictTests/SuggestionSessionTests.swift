@@ -1037,8 +1037,10 @@ struct SuggestionScoringTests {
             elapsedMilliseconds: 0, scores: [:],
             listed: ["git checkout dev", "git checkout develop"])
         #expect(
-            update?.suggestion == .choice(
-                leader: "git checkout dev", others: ["git checkout develop"]))
+            update?.suggestion
+                == .choice(
+                    leader: "git checkout dev",
+                    others: ["git checkout develop"]))
     }
 
     @Test("A reused machine-listed line alone draws as a certain ghost, no score needed.")

@@ -93,7 +93,9 @@ struct DoubtfulCorpusTests {
             let namedDoubtful = Set(testCase.doubtful.flatMap { $0.split(separator: " ") }.map(String.init))
             let found = await spans(for: testCase)
             let matching = found.filter { namedDoubtful.contains($0.heard) }
-            #expect(matching.isEmpty, "\(id): named-doubtful run got a reading: \(matching.map(\.candidates))")
+            #expect(
+                matching.isEmpty,
+                "\(id): named-doubtful run got a reading: \(matching.map(\.candidates))")
         }
     }
 

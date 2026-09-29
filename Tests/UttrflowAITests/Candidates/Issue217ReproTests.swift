@@ -56,9 +56,13 @@ struct Issue217ReadingRestraintTests {
             in: .heard("i ?made a change to the parser", unsure: 0.42),
             for: .showing(title: "parser.rs", preceding: "pub mod parser;\nlet x = "))
         let everyCandidate = spans.flatMap(\.candidates).map(\.spelling)
-        #expect(!everyCandidate.contains("mod"), "screen collision 'mod' must not reach the prompt, got \(everyCandidate)")
+        #expect(
+            !everyCandidate.contains("mod"),
+            "screen collision 'mod' must not reach the prompt, got \(everyCandidate)")
         let promptText = PromptBuilder.doubtfulText(spans)
-        #expect(promptText?.contains("mod") != true, "screen collision 'mod' must not reach the prompt, got \(String(describing: promptText))")
+        #expect(
+            promptText?.contains("mod") != true,
+            "screen collision 'mod' must not reach the prompt, got \(String(describing: promptText))")
     }
 
     /// Being offered was the whole gate, so with nothing offered the guard is what refuses the substitution.

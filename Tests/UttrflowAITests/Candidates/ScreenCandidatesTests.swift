@@ -98,7 +98,9 @@ struct ScreenCandidatesTests {
             in: .heard("i ?made a change to the parser", unsure: 0.42),
             for: .showing(title: "parser.rs", preceding: "pub mod parser;\nlet x = "))
         let everyCandidate = spans.flatMap(\.candidates).map(\.spelling)
-        #expect(!everyCandidate.contains("mod"), "screen collision 'mod' must not reach the prompt, got \(everyCandidate)")
+        #expect(
+            !everyCandidate.contains("mod"),
+            "screen collision 'mod' must not reach the prompt, got \(everyCandidate)")
     }
 
     @Test("still offers a screen word that sounds alike and opens alike")
