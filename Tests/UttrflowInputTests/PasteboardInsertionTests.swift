@@ -146,6 +146,27 @@ final class SwitchableFocus: AccessibilityFocus, @unchecked Sendable {
     func becomeSelfFrontmost() { selfIsFrontmost.withLock { $0 = true } }
 }
 
+/// Returns frontmost apps in order so a test can switch targets at a specific insertion step.
+private final class SequencedFrontmostFocus: AccessibilityFocus, @unchecked Sendable {
+    private let applications: [InsertionDestination]
+    private let index = Mutex(0)
+
+    init(_ applications: [InsertionDestination]) { self.applications = applications }
+
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func frontmostApplication() -> InsertionDestination? {
+        index.withLock { index in
+            let application = applications[min(index, applications.count - 1)]
+            index += 1
+            return application
+        }
+    }
+    func tail(upTo count: Int) -> FieldTail { .unreadable }
+    func focusedFieldIsSecure() -> Bool { false }
+}
+
 /// Holds confirmation open after a paste is posted, so an overlapping insertion has somewhere to race.
 private final class GatedConfirmationFocus: AccessibilityFocus, @unchecked Sendable {
     private let reads = Mutex(0)
@@ -262,6 +283,41 @@ struct PasteboardTextInsertionEngineTests {
 
         #expect(pasteboard.writes.isEmpty, "the clipboard must not be touched once Uttrflow is frontmost")
         #expect(keystrokes.pasteCount == 0, "no paste may be posted into Uttrflow's own window")
+    }
+
+    @Test("does not change the clipboard when the captured app has already changed")
+    func refusesChangedTargetBeforeClipboardWrite() async {
+        let target = InsertionDestination(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let other = InsertionDestination(applicationName: "Browser", bundleIdentifier: "com.example.browser")
+        let focus = SequencedFrontmostFocus([target, other])
+        let pasteboard = FakePasteboard(text: "previous copy")
+        let keystrokes = FakeKeystrokeSender()
+        let sut = engine(pasteboard, keystrokes, focus: focus)
+
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            try await sut.insert("private words", targeting: target)
+        }
+
+        #expect(pasteboard.writes.isEmpty)
+        #expect(pasteboard.text() == "previous copy")
+        #expect(keystrokes.pasteCount == 0)
+    }
+
+    @Test("does not send paste when the destination changes immediately before the keystroke")
+    func refusesChangedTargetBeforePaste() async {
+        let target = InsertionDestination(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let other = InsertionDestination(applicationName: "Browser", bundleIdentifier: "com.example.browser")
+        let focus = SequencedFrontmostFocus([target, target, other])
+        let pasteboard = FakePasteboard()
+        let keystrokes = FakeKeystrokeSender()
+        let sut = engine(pasteboard, keystrokes, focus: focus)
+
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            try await sut.insert("private words", targeting: target)
+        }
+
+        #expect(pasteboard.writes == ["private words"])
+        #expect(keystrokes.pasteCount == 0)
     }
 
     @Test("copies the text and presses paste exactly once")
