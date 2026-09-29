@@ -74,13 +74,28 @@ struct CaretLocatorTests {
         let family = "👨‍👩‍👧‍👦"
         var requested: (Int, Int)?
         let field = CaretLocator.caret(
-            at: (location: family.utf16.count, length: 0), frame: nil, value: family, textSelectionLocation: family.utf16.count,
+            at: (location: family.utf16.count, length: 0), frame: nil, value: family,
+            textSelectionLocation: family.utf16.count,
             bounds: { location, length in
                 requested = (location, length)
                 return CGRect(x: 40, y: 10, width: 72, height: 16)
             }, markerBounds: { nil })
         #expect(requested?.0 == 0 && requested?.1 == family.utf16.count)
         #expect(field == CGRect(x: 112, y: 10, width: 0, height: 16))
+    }
+
+    @Test("A selection gets its caret from the glyph at its start")
+    func selectionUsesStartGlyph() {
+        var requested: (Int, Int)?
+        let found = CaretLocator.caret(
+            at: (location: 12, length: 100_000_000), frame: nil, value: "abcdefghijklm",
+            textSelectionLocation: 12,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 30, y: 10, width: 8, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.1 == 1)
+        #expect(found == CGRect(x: 38, y: 10, width: 0, height: 16))
     }
 
     @Test("A bounded text window supplies its local selection while bounds use the field offset")

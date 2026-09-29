@@ -299,7 +299,8 @@ public enum FocusedFieldReader {
         let secure = declaredSecure || (value.map(SecureField.looksMasked) ?? false)
         guard goOn() else { return nil }
         // The attributed string carries the characters, so a secure field is never asked for its style.
-        let style = secure ? nil : range.flatMap { typeStyle(field, at: $0) }
+        let styleRange = range.flatMap { boundedStyleRange($0) }
+        let style = secure ? nil : styleRange.flatMap { typeStyle(field, at: $0) }
         guard goOn() else { return nil }
         let flipped = cachedPrimaryScreenMaxY.withLock { $0 }
         let marked = CompositionProbe.markedText(of: field)
@@ -424,6 +425,11 @@ public enum FocusedFieldReader {
                     field, kAXStringForRangeParameterizedAttribute,
                     CFRange(location: window.location, length: window.length)) as? String
             })
+    }
+
+    /// Bounds an attributed style read at the start of a selection.
+    private static func boundedStyleRange(_ range: CFRange) -> CFRange {
+        CFRange(location: range.location, length: min(range.length, ValueWindow.selectionLimit))
     }
 
     /// Accessibility measures from the top of the primary screen; AppKit measures from the bottom.

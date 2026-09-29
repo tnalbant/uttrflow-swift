@@ -62,6 +62,29 @@ struct ValueWindowTests {
         #expect(part.caretAtLineEnd == whole.caretAtLineEnd)
     }
 
+    @Test("Select all reads only a bounded window around its start")
+    func selectAllReadStaysBounded() {
+        let documentLength = 100_000_000
+        let selection = NSRange(location: 0, length: documentLength)
+        var requests: [NSRange] = []
+        let window = ValueWindow.range(count: documentLength, selection: selection)
+        #expect(window != nil)
+        if let window {
+            requests.append(window)
+            #expect(window.location == 0)
+            #expect(window.length <= ValueWindow.selectionLimit + ValueWindow.unitsAfter)
+        }
+        let read = ValueWindow.read(
+            count: documentLength, selection: selection, whole: { nil },
+            part: { requested in
+                requests.append(requested)
+                return String(repeating: "x", count: requested.length)
+            })
+        #expect(read.value?.utf16.count ?? 0 <= ValueWindow.selectionLimit + ValueWindow.unitsAfter)
+        #expect(read.selection?.length == ValueWindow.selectionLimit)
+        #expect(requests.allSatisfy { $0.length <= ValueWindow.selectionLimit + ValueWindow.unitsAfter })
+    }
+
     @Test("A short value is read whole, as before.")
     func shortValueIsWhole() {
         let text = NSString(string: "~ $ ls -la")
