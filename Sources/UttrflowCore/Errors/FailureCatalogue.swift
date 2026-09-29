@@ -89,7 +89,8 @@ extension DictionaryStoreError: CataloguedFailure {
         case .couldNotWrite: .couldNotReadSeedRecord
         case .couldNotReadSeedRecord: .wordIsEmpty
         case .wordIsEmpty: .wordAlreadyKnown
-        case .wordAlreadyKnown: nil
+        case .wordAlreadyKnown: .entryHasTooManyWords(maximum: 3)
+        case .entryHasTooManyWords: nil
         }
     }
 }

@@ -310,6 +310,26 @@ struct DictionaryEditorTests {
         #expect(editor.canSave)
     }
 
+    @Test("the editor refuses DBMS with four pronunciation words and says the limit")
+    func fourWordPronunciation() throws {
+        let editor = try #require(
+            HistoryFixture.dictionary(
+                draft: DictionaryDraft(word: "DBMS", pronunciation: "dee bee em ess")
+            ).editor)
+        #expect(editor.problem == "The spelling and pronunciation can each have at most 3 words.")
+        #expect(!editor.canSave)
+    }
+
+    @Test("the editor refuses a four-word spelling even with a short pronunciation")
+    func fourWordSpelling() throws {
+        let editor = try #require(
+            HistoryFixture.dictionary(
+                draft: DictionaryDraft(word: "Bank of New Zealand", pronunciation: "bank")
+            ).editor)
+        #expect(editor.problem == "The spelling and pronunciation can each have at most 3 words.")
+        #expect(!editor.canSave)
+    }
+
     @Test("a blank word says what is missing rather than only refusing")
     func blank() throws {
         let editor = try #require(

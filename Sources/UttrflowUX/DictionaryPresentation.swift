@@ -414,6 +414,10 @@ public enum DictionaryPresenter {
         // An editor that opens complaining is telling somebody off for doing nothing yet.
         if draft.isUntouched { return nil }
         if word.isEmpty { return "A word needs a spelling." }
+        guard PhoneticIndex.supports(word: word, pronunciation: draft.pronunciation) else {
+            return
+                "The spelling and pronunciation can each have at most \(PhoneticIndex.maximumWordsPerEntry) words."
+        }
         // Case only, matching ``PersonalDictionaryStore/add(_:)``, so "café" is not refused over "cafe".
         let clash = snapshot.entries.contains {
             $0.word.compare(word, options: .caseInsensitive) == .orderedSame

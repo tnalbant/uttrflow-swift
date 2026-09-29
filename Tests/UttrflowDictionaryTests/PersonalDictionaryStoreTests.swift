@@ -222,6 +222,37 @@ struct PersonalDictionaryStoreTests {
         #expect(await store.allEntries().isEmpty)
     }
 
+    @Test("refuses the four-word DBMS pronunciation and writes nothing")
+    func addingFourWordPronunciation() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        await #expect(throws: DictionaryStoreError.entryHasTooManyWords(maximum: 3)) {
+            try await store.add(word: "DBMS", pronunciation: "dee bee em ess", at: epoch)
+        }
+        #expect(await store.allEntries().isEmpty)
+        #expect(sandbox.onDisk() == nil)
+    }
+
+    @Test("refuses a long spelling even when its pronunciation fits")
+    func addingFourWordSpelling() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        await #expect(throws: DictionaryStoreError.entryHasTooManyWords(maximum: 3)) {
+            try await store.add(word: "Bank of New Zealand", pronunciation: "bank", at: epoch)
+        }
+        #expect(await store.allEntries().isEmpty)
+    }
+
+    @Test("refuses a long entry through the direct store path")
+    func addingFourWordEntryDirectly() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        await #expect(throws: DictionaryStoreError.entryHasTooManyWords(maximum: 3)) {
+            try await store.add(word("DBMS", saying: "dee bee em ess", from: .added))
+        }
+        #expect(await store.allEntries().isEmpty)
+    }
+
     // MARK: Counting
 
     @Test("counts the dictations an entry was applied to, and the ones the user undid")
@@ -524,6 +555,9 @@ struct DictionaryStoreErrorTests {
         #expect(
             DictionaryStoreError.wordAlreadyKnown.userMessage
                 == "That word is already in your dictionary.")
+        #expect(
+            DictionaryStoreError.entryHasTooManyWords(maximum: 3).userMessage
+                == "The spelling and pronunciation can each have at most 3 words.")
     }
 
     /// Nothing offered, because no recovery the user can perform changes whether the disk accepts a write.
@@ -548,9 +582,15 @@ struct DictionaryStoreErrorTests {
     func catalogued() {
         #expect(
             DictionaryStoreError.everyCase
-                == [.couldNotWrite, .couldNotReadSeedRecord, .wordIsEmpty, .wordAlreadyKnown])
+                == [
+                    .couldNotWrite, .couldNotReadSeedRecord, .wordIsEmpty, .wordAlreadyKnown,
+                    .entryHasTooManyWords(maximum: 3),
+                ])
         #expect(DictionaryStoreError.firstCase.caseAfter == .couldNotReadSeedRecord)
-        #expect(DictionaryStoreError.wordAlreadyKnown.caseAfter == nil)
+        #expect(
+            DictionaryStoreError.wordAlreadyKnown.caseAfter
+                == .entryHasTooManyWords(maximum: 3))
+        #expect(DictionaryStoreError.entryHasTooManyWords(maximum: 3).caseAfter == nil)
     }
 }
 

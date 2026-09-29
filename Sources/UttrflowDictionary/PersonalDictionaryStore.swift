@@ -68,6 +68,9 @@ public actor PersonalDictionaryStore {
     /// Teaches the dictionary a word, replacing any entry that spells it the same way.
     @discardableResult
     public func add(_ entry: DictionaryEntry) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
+            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+        }
         let spelling = entry.word.lowercased()
         let kept =
             load().filter { $0.id != entry.id && $0.word.lowercased() != spelling } + [entry]
@@ -82,10 +85,13 @@ public actor PersonalDictionaryStore {
     ) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let spelling = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !spelling.isEmpty else { throw .wordIsEmpty }
+        let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard PhoneticIndex.supports(word: spelling, pronunciation: sound) else {
+            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+        }
         guard !load().contains(where: { $0.word.lowercased() == spelling.lowercased() }) else {
             throw .wordAlreadyKnown
         }
-        let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
         return try add(
             DictionaryEntry(
                 word: spelling, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
