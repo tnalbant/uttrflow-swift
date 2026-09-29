@@ -315,6 +315,38 @@ struct VerifiedCandidateTests {
             ], in: terminal, typed: "git c", now: moment)
         #expect(offered.map(\.text) == ["git commit"])
     }
+
+    @Test("Candidates that converge on one text keep the nearest source and sum their evidence.")
+    func convergedCandidatesMergeEvidence() async {
+        let verifier = await warmed([:], on: "git commit")
+        let earlier = moment.addingTimeInterval(-60)
+        let offered = await verifier.verified(
+            [
+                Candidate(
+                    text: "git commit", source: .environment, editDistance: 0),
+                Candidate(
+                    text: "git commit", source: .succession,
+                    evidence: Entry(
+                        text: "git commit", count: 9, accepted: 7, rejected: 1,
+                        selfSourced: 2, lastUsed: moment),
+                    editDistance: 1),
+                Candidate(
+                    text: "git commit", source: .personal,
+                    evidence: Entry(
+                        text: "git commit", count: 3, accepted: 1, rejected: 2,
+                        lastUsed: earlier),
+                    editDistance: 2),
+            ], in: terminal, typed: "git c", now: moment)
+
+        #expect(offered.count == 1)
+        #expect(offered.first?.source == .environment)
+        #expect(offered.first?.editDistance == 0)
+        #expect(
+            offered.first?.evidence
+                == Entry(
+                    text: "git commit", count: 12, accepted: 8, rejected: 3,
+                    selfSourced: 2, lastUsed: moment))
+    }
 }
 
 @Suite("A difference only of case is not a typo")

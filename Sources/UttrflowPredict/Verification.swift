@@ -21,13 +21,14 @@ public protocol CandidateScoring: Sendable {
     /// How sure the pass that wrote a generated line was of it, read from that pass with no second one; nothing for a line no recent pass wrote.
     func confidence(ofGenerated line: String) async -> Double?
 
-    /// Forgets every candidate and confidence the scorer remembers.
+    /// Drops any text or model state retained for scoring, which forgetting suggestions requires.
     func forgetEverything() async
 }
 
-extension CandidateScoring {
-    /// A scorer without retained answers has nothing to clear.
-    public func forgetEverything() async {}
+public extension CandidateScoring {
+    /// Scorers without retained state have nothing to forget.
+    func forgetEverything() async {}
+
 }
 
 /// Marks a candidate wrong wherever it is remembered, so it stops accruing weight.

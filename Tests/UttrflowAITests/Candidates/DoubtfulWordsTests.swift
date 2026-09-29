@@ -128,7 +128,7 @@ struct DoubtfulWordsTests {
     @Test("asks the user's own dictionary before the screen and the general vocabulary")
     func dictionaryComesFirst() async {
         let doubtful = DoubtfulWords.including(dictionary: { CorrectionFixtures.index })
-        #expect(doubtful.sources.count == 3)
+        #expect(doubtful.sources.count == 4)
         #expect(doubtful.sources.first is DictionaryCandidates)
     }
 }

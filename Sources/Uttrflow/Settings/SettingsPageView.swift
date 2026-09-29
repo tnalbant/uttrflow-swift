@@ -25,7 +25,13 @@ struct SettingsPageView: View {
             SettingsTabStrip(
                 tabs: presentation.tabs,
                 selected: presentation.query.isEmpty ? presentation.selected : nil
-            ) { model.select($0) }
+            ) { tab in
+                if tab == .diagnostics {
+                    onIntent(.go(.settings(tab)))
+                } else {
+                    model.select(tab)
+                }
+            }
             .padding(.bottom, 22)
             ScrollView {
                 Group {

@@ -19,4 +19,22 @@ struct NotePromotionTests {
         #expect(NotePromotion.note(from: "\n\n") == "<p></p><p></p><p></p>")
         #expect(NotePromotion.note(from: "<a>&") == "<p>&lt;a&gt;&amp;</p>")
     }
+
+    @Test("quotes are escaped and checkbox-looking text stays plain")
+    func escapesQuotesAndKeepsCheckboxTextPlain() {
+        #expect(
+            NotePromotion.note(from: "[x] said \"don't <skip> & go\"")
+                == "<p>[x] said &quot;don&#39;t &lt;skip&gt; &amp; go&quot;</p>"
+        )
+    }
+
+    @Test("promoted text containing quotes reads back unchanged")
+    func quotedTextRoundTripsThroughPlainText() {
+        let original = "it's \"done\""
+        let html = NotePromotion.note(from: original)
+
+        #expect(html.contains("&#39;"))
+        #expect(html.contains("&quot;"))
+        #expect(RichTextPlainForm.plainText(fromHTML: html) == original)
+    }
 }

@@ -73,12 +73,13 @@ so that app still gets K; what this app must not do is dictate as well.
 the binding does not have, marks the hold as used by another shortcut: a press already reported
 becomes `HotkeyEvent.cancelled` rather than `.released`, and nothing counts again until every
 modifier is up. So ⌃⌥⇧⌘K on a ⌃⌘⌥ binding reports one press and one withdrawal, not a press for
-each time ⇧ comes and goes. It applies only to holds of modifiers; Fn is read from its own flag
-and a combination such as ⌥Space or ⇧⌘V already names its key.
+each time ⇧ comes and goes. The same rule applies to Fn: a key pressed while Fn is held withdraws
+the Fn press. Fn is read from its own flag, so an arrow key's Fn flag alone does not start a hold;
+a combination such as ⌥Space or ⇧⌘V already names its key.
 
 A withdrawal alone would still open the microphone and play the start cue before K arrives, so
-`DictationController` also holds such a press back for `modifierSettle` — the same 200 ms as the
-minimum hold — before acting on it:
+`DictationController` also holds modifier-only presses back for `modifierSettle` — the same 200 ms
+as the minimum hold — before acting on them:
 
 - **Withdrawn inside the settle:** nothing happens at all. No microphone, no cue, no insertion.
 - **Held past the settle:** the press counts, measured from when the keys went down, so the

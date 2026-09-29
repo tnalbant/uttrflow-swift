@@ -3,7 +3,10 @@
 import Foundation
 import Testing
 import UttrflowCore
+import UttrflowHistory
 import UttrflowPipeline
+import UttrflowTestSupport
+import UttrflowUX
 
 @testable import Uttrflow
 
@@ -41,6 +44,29 @@ private func recentsFilled(with lines: [String], capacity: Int? = nil) -> Recent
 
 @Suite("Recent dictations")
 struct RecentDictationsTests {
+    @MainActor
+    @Test("a reset reloads Recent after history is deleted with no main window")
+    func resetClearsRecentWithoutMainWindow() async throws {
+        let sandbox = Sandbox()
+        let app = AppDelegate(
+            container: sandbox.root, account: HeldSession(signedIn: true).layer)
+        let history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: sandbox.root))
+        let spoken = "Words that reset removes"
+        app.render(.inserted(DictationOutcome(text: spoken, method: .accessibility, cleanedBy: .rules)))
+        #expect(app.menuBarPresentation.command(.insertRecent(index: 0)) != nil)
+
+        try await eventually {
+            await history.records(keeping: Retention(days: 30, now: Date())).contains { $0.text == spoken }
+        }
+        try await history.deleteEverything()
+
+        app.forget(after: .everything)
+        try await eventually { app.menuBarPresentation.command(.insertRecent(index: 0)) == nil }
+
+        #expect(app.mainWindow == nil)
+        #expect(app.menuBarPresentation.command(.insertRecent(index: 0)) == nil)
+    }
+
     @MainActor
     @Test("salvaged insertion words remain in Recent when the next recording starts")
     func insertionFailureSurvivesNextRecording() throws {

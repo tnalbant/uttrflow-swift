@@ -2,7 +2,7 @@
 public enum FocusedElementPreference {
     /// The roles a person types into; a static text, a group or a cell under the caret is none of these.
     private static let textEntryRoles: Set<String> = [
-        "AXTextArea", "AXTextField", "AXComboBox", "AXSearchField", "AXWebArea",
+        "AXTextArea", "AXTextField", "AXComboBox", "AXSearchField",
     ]
 
     /// Whether a role is one text is entered into.

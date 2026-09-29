@@ -11,6 +11,31 @@ struct Piece: Sendable {
 enum PieceJoiner {
     static let id: PassID = "pieceJoiner"
 
+    /// The finished transcript before seam stops are restored, with the affected seam positions retained.
+    static func snippetInput(
+        _ pieces: [Piece], under formatter: DestinationFormatter, using text: String
+    ) -> SeamSnippetInput {
+        guard pieces.count > 1 else { return SeamSnippetInput(text: text, removableStops: [], source: text) }
+        let texts = pieces.map(\.cleaned.text)
+        let seamed = seamed(texts, under: formatter)
+        var removableStops: [Int] = []
+        var original = ""
+        for index in pieces.indices {
+            if index > 0 { original += " " }
+            original += seamed[index]
+            if index < pieces.count - 1,
+                String(seamed[index]) != String(texts[index]),
+                let last = original.last, ".!?".contains(last)
+            {
+                removableStops.append(original.count - 1)
+            }
+        }
+        let source = original
+        let exact = source == text
+        return SeamSnippetInput(
+            text: text, removableStops: exact ? removableStops : [], source: exact ? source : text)
+    }
+
     /// Every piece as one, with the corrections' word ranges moved to where their piece begins.
     static func join(_ pieces: [Piece], under formatter: DestinationFormatter) -> Piece {
         guard pieces.count > 1, let first = pieces.first else {
@@ -286,6 +311,42 @@ enum PieceJoiner {
         ["moving", "on"], ["also"], ["next"], ["finally"], ["anyway"], ["additionally"],
         ["furthermore"], ["lastly"],
     ]
+}
+
+struct SeamSnippetInput: Sendable {
+    let text: String
+    let removableStops: [Int]
+    let source: String
+
+    func removingSeamStops() -> String {
+        var result = source
+        for index in removableStops.reversed() where index < result.count {
+            result.remove(at: result.index(result.startIndex, offsetBy: index))
+        }
+        return result
+    }
+
+    func restoringUnconsumedStops(in expanded: ExpandedTranscript) -> ExpandedTranscript {
+        guard expanded.text != source else { return .unchanged(text) }
+        let expandedChars = Array(expanded.text)
+        var result = ""
+        var inputOffset = 0
+        var stopOffsets = Set(removableStops)
+        for _ in source {
+            if stopOffsets.remove(inputOffset) != nil {
+                if inputOffset < expandedChars.count,
+                    expandedChars[inputOffset].isWhitespace || expandedChars[inputOffset].isNewline
+                {
+                    result.append(".")
+                }
+            } else if inputOffset < expandedChars.count {
+                result.append(expandedChars[inputOffset])
+            }
+            inputOffset += 1
+        }
+        result += expandedChars.dropFirst(min(inputOffset, expandedChars.count))
+        return ExpandedTranscript(text: result, snippets: expanded.snippets)
+    }
 }
 
 extension DictationCorrection {

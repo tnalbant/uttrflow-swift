@@ -43,6 +43,21 @@ private actor NumberingSpeechEngine: SpeechEngine {
     var calls: Int { sampleCounts.count }
 }
 
+/// A recogniser that gives every pause-delimited piece the same doubtful word.
+private actor RepeatedWordSpeechEngine: SpeechEngine {
+    let kind = SpeechEngineKind.whisperKit
+
+    func prepare() async throws(SpeechEngineError) {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        Transcription(
+            text: "Maddox", detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
+            audioDuration: audio.duration)
+    }
+}
+
 /// A recogniser that keeps every sample it is given, so a test can check none were lost or repeated.
 private actor KeepingSpeechEngine: SpeechEngine {
     let kind = SpeechEngineKind.whisperKit
@@ -115,7 +130,7 @@ private actor HeldCleaner: TranscriptCleaning {
 
 /// A tidier that shouts, so its work on each piece can be seen, and remembers where it was warmed for.
 private final class ShoutingCleaner: TranscriptCleaning, Sendable {
-    private let state = Mutex((warmed: [Destination?](), seen: [String]()))
+    private let state = Mutex((warmed: [Destination?](), seen: [String](), contexts: [AppContext]()))
     private let failOn: String?
 
     init(failOn: String? = nil) {
@@ -124,7 +139,10 @@ private final class ShoutingCleaner: TranscriptCleaning, Sendable {
 
     func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
         let text = request.transcription.text
-        state.withLock { $0.seen.append(text) }
+        state.withLock {
+            $0.seen.append(text)
+            $0.contexts.append(request.context)
+        }
         if let failOn, text.contains(failOn) { throw .outputRejected(reason: "scripted", kind: .lostWord) }
         return TransformationResult(text: text.uppercased(), producedBy: .foundationModels)
     }
@@ -135,6 +153,7 @@ private final class ShoutingCleaner: TranscriptCleaning, Sendable {
 
     var warmed: [Destination?] { state.withLock(\.warmed) }
     var seen: [String] { state.withLock(\.seen) }
+    var contexts: [AppContext] { state.withLock(\.contexts) }
 }
 
 /// Whether a recognition ran beside a tidy, forced by each side waiting for the other rather than hoped for.
@@ -270,6 +289,23 @@ private struct FirstWordCorrector: WordCorrecting {
     }
 }
 
+/// Corrects `Maddox` only while the current document shows the supporting spelling.
+private actor ScreenWordCorrector: WordCorrecting {
+    private(set) var documents: [String?] = []
+
+    func corrections(
+        for transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> [DictationCorrection] {
+        documents.append(context.documentName)
+        guard context.documentName == "Madison marketing plan" else { return [] }
+        return [
+            DictationCorrection(
+                heard: "Maddox", wrote: "Madison", wordRange: 0..<1, entryID: UUID(),
+                reason: "seenOnScreen", heardConfidence: 0.2)
+        ]
+    }
+}
+
 /// Recordings with pauses where the windowing below expects them.
 private enum Take {
     static let rate = AudioSamples.canonicalSampleRate
@@ -361,7 +397,42 @@ struct DictationPipelineEarlyWorkTests {
         #expect(
             counts.reduce(0, +) == Take.threePieces.samples.count,
             "every sample goes to the recogniser once")
-        #expect(cleaner.warmed == [.messaging], "warmed once, for the Slack window the fixture shows")
+        #expect(
+            !cleaner.warmed.isEmpty && cleaner.warmed.allSatisfy { $0 == .messaging },
+            "warmed only for the Slack window the fixture shows")
+        #expect(cleaner.warmed.count <= 3, "at key-down, then at most once per piece tidied while recording")
+    }
+
+    @Test("a dictation of one piece warms the tidier once, at key-down, and not again after its answer")
+    func onePieceWarmsOnce() async throws {
+        let take = AudioSamples.canonical(Take.tone(0.8))
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
+        await capture.setCaptured(take)
+        let cleaner = ShoutingCleaner()
+        let inserter = CollectingInserter()
+        let pipeline = makePipeline(capture: capture, cleaner: cleaner, inserter: inserter)
+
+        await pipeline.startRecording()
+        try await eventually { !cleaner.warmed.isEmpty }
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome != nil)
+        #expect(cleaner.warmed == [.messaging])
+    }
+
+    @Test("each piece tidied while the key is held warms the tidier again for the piece after it")
+    func eachEarlyPieceWarmsForTheNext() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        await capture.setCaptured(Take.threePieces)
+        let cleaner = ShoutingCleaner()
+        let pipeline = makePipeline(capture: capture, cleaner: cleaner)
+
+        await pipeline.startRecording()
+        try await eventually { cleaner.warmed.count >= 3 }
+        await pipeline.finishRecording()
+
+        #expect(cleaner.warmed == [.messaging, .messaging, .messaging])
+        #expect(cleaner.seen.count == 3, "two pieces while held, and the last after release")
     }
 
     @Test("the pieces worked ahead are the recording itself, every sample once and in order")
@@ -380,7 +451,7 @@ struct DictationPipelineEarlyWorkTests {
         #expect(pieces.joined().elementsEqual(Take.threePieces.samples))
     }
 
-    /// The screen is read before the tidier is warmed, so the warm-up is for the right place.
+    /// The first screen read warms the tidier; each piece gets another read for correction evidence.
     @Test(
         "the tidier is warmed for where the screen says the words are going, and for plain text when it says nothing"
     )
@@ -403,8 +474,8 @@ struct DictationPipelineEarlyWorkTests {
             try await waitForCalls(1, on: speech)
             await pipeline.finishRecording()
 
-            #expect(cleaner.warmed == [destination])
-            #expect(await engine.calls.count == 1, "one read serves the warm-up and every piece")
+            #expect(!cleaner.warmed.isEmpty && cleaner.warmed.allSatisfy { $0 == destination })
+            #expect(await engine.calls.count == 4, "one warm-up read and one correction read per piece")
         }
     }
 
@@ -421,7 +492,31 @@ struct DictationPipelineEarlyWorkTests {
         await pipeline.finishRecording()
 
         #expect(await pipeline.currentState.outcome?.insertedInto == "Notes")
-        #expect(await context.calls.count == 1, "one read serves every piece")
+        #expect(await context.calls.count == 4, "one initial read and one correction read per piece")
+    }
+
+    @Test("later pieces use the screen they were spoken against for correction evidence")
+    func refreshesCorrectionContextForEachPiece() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        await capture.setCaptured(Take.threePieces)
+        let cleaner = HeldCleaner()
+        let corrector = ScreenWordCorrector()
+        let context = FakeContextEngine(context: AppContext(documentName: "Madison marketing plan"))
+        let pipeline = makePipeline(
+            capture: capture, speech: RepeatedWordSpeechEngine(), cleaner: cleaner,
+            context: context, corrector: corrector)
+
+        await pipeline.startRecording()
+        try await eventually { await corrector.documents.count == 1 }
+        try await eventually { await cleaner.isHolding }
+
+        await context.setContext(AppContext(documentName: "Quarterly budget"))
+        await cleaner.release()
+        try await eventually { await corrector.documents.count >= 2 }
+        await pipeline.finishRecording()
+
+        #expect(await corrector.documents.prefix(2) == ["Madison marketing plan", "Quarterly budget"])
+        #expect(await pipeline.currentState.outcome?.changes.corrections.count == 1)
     }
 
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
@@ -455,6 +550,26 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(await pipeline.currentState == .idle)
         #expect(inserter.texts.isEmpty)
+    }
+
+    @Test("a retry after canceling a dictation has no context from the cancelled screen")
+    func retryAfterCancelDropsEarlyContext() async throws {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(
+            waiting: [recording], audioOutcome: .success(Take.threePieces))
+        let cleaner = ShoutingCleaner()
+        let context = FakeContextEngine(
+            context: .fixture(applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal"))
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(), cleaner: cleaner, context: context, recordings: recordings)
+
+        await pipeline.startRecording()
+        try await eventually { await pipeline.earlyReadsSettled == 1 }
+        await pipeline.cancel()
+        await pipeline.retry(recording.id)
+
+        #expect(!cleaner.contexts.isEmpty)
+        #expect(cleaner.contexts.allSatisfy { $0 == AppContext() })
     }
 
     @Test("a piece that fails while recording is left for the end, where its failure is reported")

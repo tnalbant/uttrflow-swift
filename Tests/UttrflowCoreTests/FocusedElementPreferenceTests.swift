@@ -69,9 +69,10 @@ import Testing
     }
 
     @Test func isTextEntryAcceptsEveryRoleAPersonTypesInto() {
-        for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField", "AXWebArea"] {
+        for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"] {
             #expect(FocusedElementPreference.isTextEntry(role))
         }
+        #expect(!FocusedElementPreference.isTextEntry("AXWebArea"))
         #expect(!FocusedElementPreference.isTextEntry("AXStaticText"))
         #expect(!FocusedElementPreference.isTextEntry(nil))
     }

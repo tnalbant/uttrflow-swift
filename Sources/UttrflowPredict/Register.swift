@@ -198,9 +198,20 @@ public struct Register: Sendable, Equatable {
         guard let first = label.first, first.isLetter, label.count <= speakerLength,
             label.split(separator: " ").count <= speakerWords,
             label.allSatisfy({ $0.isLetter || $0.isNumber || " ()._-'".contains($0) }),
-            !namesField(label)
+            !namesField(label), !isDateLabel(label)
         else { return nil }
         return label
+    }
+
+    /// Whether a label is a calendar month or weekday followed by a day number.
+    static func isDateLabel(_ label: String) -> Bool {
+        let words = label.split(whereSeparator: \.isWhitespace)
+        guard words.count == 2, let day = Int(words[1]), (1...31).contains(day) else { return false }
+        let calendar = Calendar.current
+        let calendarNames =
+            calendar.monthSymbols + calendar.shortMonthSymbols + calendar.standaloneMonthSymbols
+            + calendar.weekdaySymbols + calendar.shortWeekdaySymbols + calendar.standaloneWeekdaySymbols
+        return calendarNames.contains { $0.caseInsensitiveCompare(String(words[0])) == .orderedSame }
     }
 
     /// Whether a label names a field, by its whole text or its head word, so "Expected result" and "Assigned to" are fields.

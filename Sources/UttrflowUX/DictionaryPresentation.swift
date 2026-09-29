@@ -425,6 +425,13 @@ public enum DictionaryPresenter {
 
     /// No matches, nothing under the chosen chip, or no words at all.
     static func emptyState(for snapshot: DictionarySnapshot, filter: DictionarySource?) -> MainEmptyState {
+        guard !snapshot.entries.isEmpty else {
+            return MainEmptyState(
+                symbolName: "character.book.closed",
+                title: "No words of your own yet",
+                message: "Add names and terms Uttrflow would otherwise get wrong.",
+                action: MainAction(title: "Add Word", symbolName: "plus", intent: .addWord))
+        }
         let query = SearchQuery.needle(in: snapshot.query)
         if !query.isEmpty {
             return .noMatches("No word in your dictionary looks or sounds like “\(query)”.")

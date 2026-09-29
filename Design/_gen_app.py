@@ -69,6 +69,33 @@ APP_CSS = """
     .swatch { width: 8px; height: 8px; border-radius: 3px; flex: none; }
     .track { height: 7px; border-radius: 4px; background: var(--fill-2); overflow: hidden; }
     .track > i { display: block; height: 100%; border-radius: 4px; background: var(--accent-light); }
+    /* Home: the stage, the figures row, and today's list beside the clipboard demonstration. */
+    .stage-card { padding: 20px 22px 18px; }
+    .status { display: flex; align-items: center; gap: 6px; font-size: var(--t-footnote);
+              color: var(--label-2); font-weight: 500; }
+    .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .greet { font-size: var(--t-title1); font-weight: 600; letter-spacing: -0.3px;
+             margin: 8px 0 3px; }
+    .subtitle { font-size: var(--t-body); color: var(--label-2); }
+    .hint { margin-top: 12px; display: flex; align-items: center; gap: 6px;
+            font-size: var(--t-callout); color: var(--label-2); }
+    .figrow { display: flex; margin-top: 16px; }
+    .figrow .fig { flex: 1; text-align: center; }
+    .figrow .fig .v { font-size: var(--t-title1); font-weight: 600;
+                      font-variant-numeric: tabular-nums; }
+    .figrow .fig .k { font-size: var(--t-subhead); color: var(--label-2); margin-top: 2px; }
+    .today-split { display: flex; align-items: flex-start; }
+    .today-list { flex: 1; min-width: 0; }
+    .clip-rail { width: 260px; flex: none; padding-left: 20px; margin-left: 20px;
+                 border-left: 0.5px solid var(--separator); }
+    .clip-rail h4 { font-size: var(--t-body); font-weight: 600; margin: 0 0 4px; }
+    .clip-rail p { font-size: var(--t-subhead); color: var(--label-2); line-height: 1.4;
+                    margin: 0 0 10px; }
+    .clip-row { display: flex; align-items: center; gap: 7px; padding: 6px 8px;
+                border-radius: 6px; font-size: var(--t-callout); }
+    .clip-row.chosen { background: var(--accent-wash); }
+    .clip-row .meta { margin-left: auto; font-size: var(--t-footnote); color: var(--label-3);
+                       white-space: nowrap; }
 """
 
 TAILS = {"Corrections": "4"}
@@ -81,6 +108,66 @@ def iconbtn(glyph, size=13, width=1.6):
 ACTS = ('<div class="acts">' + iconbtn(COPY) + iconbtn(REPEAT) + iconbtn(FLAG)
         + iconbtn(MORE) + "</div>")
 
+
+# =====================================================================
+# Home — the window's first destination: a greeting, today's figures, today's
+# list, and the clipboard shown working. What HomePresenter draws from the
+# app's own state (Sources/UttrflowUX/HomePresentation.swift).
+# =====================================================================
+HOME_ROWS = [
+    ("4:12 PM", "Slack",
+     "Hey John, I&rsquo;ll probably be about 20 minutes late to the meeting&hellip;"),
+    ("3:48 PM", "Notes", "Kal ke standup mein main deployment ke baare mein bataunga."),
+    ("2:30 PM", "Code",
+     "Create a function that takes a user ID and returns their most recent order."),
+]
+
+
+def home_rows():
+    out = ""
+    for when, app, text in HOME_ROWS:
+        out += f"""<div class="drow">
+            <span class="when">{when}</span>
+            <div class="body"><div class="said">{text}</div></div>
+            <div class="row" style="gap:6px; font-size: var(--t-footnote);
+                 color: var(--label-2)">{appchip(app)}</div>
+          </div>"""
+    return out
+
+
+home = f"""<div class="card stage-card">
+          <div class="status"><span class="dot"></span><span>Ready</span></div>
+          <div class="greet">Good afternoon, Naveen</div>
+          <div class="subtitle">3 dictations today, 90 words.</div>
+          <div class="hint"><span class="key" style="height:20px; min-width:20px;
+            padding:0 5px; font-size:10px">&#8997;</span><span class="key" style="height:20px;
+            min-width:20px; padding:0 6px; font-size:10px">Space</span>
+            <span>Say it once &mdash; hold anywhere on your Mac.</span></div>
+          <div class="figrow">
+            <div class="fig"><div class="v">1,240</div><div class="k">Words dictated</div></div>
+            <div class="fig"><div class="v">131</div><div class="k">Words per minute</div></div>
+            <div class="fig"><div class="v">97.2%</div><div class="k">Left as dictated</div></div>
+          </div>
+        </div>
+        <div class="today-split" style="margin-top: 16px">
+          <div class="today-list">
+            <p class="daylabel">Today</p>
+            <div class="card">{home_rows()}</div>
+          </div>
+          <div class="clip-rail">
+            <h4>Everything you have copied, one shortcut away</h4>
+            <p>Uttrflow remembers what you copy, so the thing you had two copies ago is
+              still there.</p>
+            <div class="clip-row"><span>&#128279;</span><span style="flex:1">uttrflow.com/download</span>
+              <span class="meta">just now</span></div>
+            <div class="clip-row"><span>&#128273;</span>
+              <span style="flex:1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+              <span class="meta">2 min ago</span></div>
+            <div class="clip-row chosen"><span>&#128196;</span>
+              <span style="flex:1">Flat 402, Example Residences&hellip;</span>
+              <span class="meta">11 min ago</span></div>
+          </div>
+        </div>"""
 
 # =====================================================================
 # Dictation — today's list, the surface that replaces the old Home.
@@ -319,20 +406,40 @@ corrections_empty = f"""<div class="empty">
 # =====================================================================
 # Insights — only what the app already measures.
 # =====================================================================
+# One retention window feeds the scope label, the day count and the bars below,
+# so the fixture cannot claim one window and draw another.
+RETENTION_DAYS = 14
+SCOPE_TITLE = f"Last {RETENTION_DAYS} days"
 DAYS = [310, 640, 0, 520, 880, 960, 210, 705, 890, 1120, 0, 795, 1150, 1240]
-DATES = [str(d) for d in range(10, 24)]
+assert len(DAYS) == RETENTION_DAYS
+DATES = [str(d) for d in range(24 - RETENTION_DAYS, 24)]
 WPM = [118, 124, 121, 129, 133, 126, 130, 128, 135, 131, 134, 131]
 PEAK = max(DAYS)
+# The mean across the whole window, silent days included — same arithmetic as
+# InsightsPresenter.average, measured against the tallest bar.
+AVERAGE_WORDS = round(sum(DAYS) / len(DAYS))
+AVERAGE_FRACTION = AVERAGE_WORDS / PEAK
+# The bars are drawn at most 70px tall, with a 16px label row beneath them —
+# matching InsightsBars' `height` and `labelHeight`, so the line sits where the view puts it.
+BAR_HEIGHT = 70
+LABEL_HEIGHT = 16
 
 
 def day_bars():
     out = ""
     for i, (v, label) in enumerate(zip(DAYS, DATES)):
         cls = "b today" if i == len(DAYS) - 1 else ("b none" if v == 0 else "b")
-        height = 4 if v == 0 else max(6, round(v / PEAK * 70))
+        height = 4 if v == 0 else max(6, round(v / PEAK * BAR_HEIGHT))
         out += (f'<div class="{cls}"><i style="height:{height}px"></i>'
                 f'<span>{label}</span></div>')
     return out
+
+
+def average_line():
+    """The dashed reference line over the bars, labelled at its right-hand end."""
+    bottom = LABEL_HEIGHT + round(AVERAGE_FRACTION * BAR_HEIGHT)
+    return (f'<div class="avgline" style="bottom:{bottom}px">'
+            f'<span>{AVERAGE_WORDS} a day</span></div>')
 
 
 def sparkline(values, w=150, h=30):
@@ -346,29 +453,30 @@ def sparkline(values, w=150, h=30):
             'stroke-linecap="round" stroke-linejoin="round"/></svg>')
 
 
-LANGS = [("English", 68, "var(--accent)"), ("Hinglish", 24, "var(--accent-2)"),
-         ("Hindi", 8, "var(--accent-tint)")]
-PLACES = [("Slack", 41), ("Code", 26), ("Mail", 18), ("Notes", 15)]
+# Word counts alongside each share, as InsightsPlace carries both.
+PLACES = [("Slack", 41, "3,201 words"), ("Code", 26, "2,032 words"),
+          ("Mail", 18, "1,406 words"), ("Notes", 15, "1,172 words")]
 
-lang_bar = "".join(f'<div style="width:{p}%; background:{c}"></div>' for _, p, c in LANGS)
-lang_legend = "".join(
-    f'<span class="row" style="gap:5px"><span class="swatch" style="background:{c}"></span>'
-    f'{n} {p}%</span>' for n, p, c in LANGS)
 place_rows = "".join(
     f"""<div class="row" style="gap:8px; margin-top:{7 if i else 9}px;
          font-size: var(--t-footnote)">
-      <span style="width:78px; display:flex; align-items:center; gap:5px">{appchip(n)}</span>
+      <span style="width:78px; flex:none; display:flex; align-items:center; gap:5px">
+        {appchip(n)}</span>
       <div class="mini" style="flex:1"><i style="width:{p * 2.4:.0f}%"></i></div>
-      <span class="num" style="width:26px; color: var(--label-2)">{p}%</span>
-    </div>""" for i, (n, p) in enumerate(PLACES))
+      <span class="num" style="width:64px; flex:none; color: var(--label-3)">{w}</span>
+      <span class="num" style="width:30px; flex:none; color: var(--label-2)">{p}%</span>
+    </div>""" for i, (n, p, w) in enumerate(PLACES))
 
 insights = f"""<div class="card" style="padding: 12px 14px">
           <div class="row" style="justify-content: space-between; align-items: baseline">
             <span style="font-size: var(--t-title3); font-weight: 600">Words dictated</span>
             <span class="muted" style="font-size: var(--t-footnote)">
-              {sum(DAYS):,} words &middot; 10&ndash;23 August</span>
+              {sum(DAYS):,} words &middot; {DATES[0]}&ndash;23 August</span>
           </div>
-          <div class="bars" style="margin-top: 10px">{day_bars()}</div>
+          <div class="chart-bars" style="margin-top: 10px">
+            <div class="bars">{day_bars()}</div>
+            {average_line()}
+          </div>
         </div>
         <div class="row" style="gap: 12px; margin-top: 12px; align-items: stretch">
           <div class="card stat" style="flex: 1; padding: 11px 13px">
@@ -376,39 +484,27 @@ insights = f"""<div class="card" style="padding: 12px 14px">
               <div><div class="v">131</div><div class="k">Words per minute</div></div>
               {sparkline(WPM)}
             </div>
-            <div class="c">Your 14-day average is 128. Days you did not dictate are skipped.</div>
+            <div class="c">Days you did not dictate are skipped.</div>
           </div>
           <div class="card stat" style="width: 214px; flex: none; padding: 11px 13px">
-            <div class="v">97.2%</div><div class="k">Accuracy</div>
+            <div class="v">97.2%</div><div class="k">Left as dictated</div>
             <div class="row" style="gap: 7px; margin-top: 9px; font-size: var(--t-footnote);
                  color: var(--label-2)">
               <span style="width: 46px">Now</span>
               <div class="mini" style="flex:1"><i style="width: 97%"></i></div>
             </div>
-            <div class="row" style="gap: 7px; margin-top: 5px; font-size: var(--t-footnote);
-                 color: var(--label-2)">
-              <span style="width: 46px">Baseline</span>
-              <div class="mini" style="flex:1">
-                <i style="width: 95%; background: var(--label-3)"></i></div>
-            </div>
-            <div class="c">Words kept as written, against your first week: 94.8%.</div>
+            <div class="c">The share of your words the clean-up left exactly as you said
+              them. It does not say whether they were heard correctly.</div>
           </div>
         </div>
-        <div class="row" style="gap: 12px; margin-top: 12px; align-items: stretch">
-          <div class="card" style="flex: 1; padding: 11px 13px">
-            <div style="font-size: var(--t-body); font-weight: 600">Languages you spoke</div>
-            <div class="bar-mix" style="display:flex; height: 22px; border-radius: 6px;
-                 overflow: hidden; margin-top: 11px">{lang_bar}</div>
-            <div class="legend">{lang_legend}</div>
-          </div>
-          <div class="card" style="width: 214px; flex: none; padding: 11px 13px">
-            <div style="font-size: var(--t-body); font-weight: 600">Where you dictate</div>
-            {place_rows}
-          </div>
+        <div class="card" style="margin-top: 12px; padding: 11px 13px">
+          <div style="font-size: var(--t-body); font-weight: 600">Where you dictate</div>
+          {place_rows}
         </div>
-        <div class="foot">Measured on this Mac over the last 14 days. Never sent anywhere.<br>
-          There is no &ldquo;time saved&rdquo; tile: it would need a guess at how fast you type,
-          and Uttrflow has never watched you type.</div>"""
+        <div class="foot">Measured on this Mac over the last {RETENTION_DAYS} days. Never sent
+          anywhere.<br>
+          There is no &ldquo;time saved&rdquo; figure: it would need a guess at how fast you
+          type, and Uttrflow has never watched you type.</div>"""
 
 insights_empty = f"""<div class="empty">
           <div class="ring">{icon(CHART, size=34, width=1.4)}</div>
@@ -542,7 +638,7 @@ EXAMPLE = """<div class="card" style="padding: 10px 13px; margin-top: 10px">
           <div class="row" style="gap: 10px; margin-top: 6px; font-size: var(--t-callout);
                align-items: flex-start">
             <span style="width: 74px; flex:none; color: var(--label-2)">Light</span>
-            <span>Um, so I think we should, uh, ship it on Friday.</span>
+            <span>So I think we should ship it on friday.</span>
           </div>
           <div class="row" style="gap: 10px; margin-top: 6px; font-size: var(--t-callout);
                align-items: flex-start">
@@ -555,8 +651,8 @@ EXAMPLE = """<div class="card" style="padding: 10px 13px; margin-top: 10px">
 style = f"""<p class="grp-title" style="margin-top: 0">Tidying up</p>
         <div class="grp">
           {srow("How much Uttrflow tidies", seg(["Light", "Standard"], "Standard"),
-                "Light fixes punctuation and capitalisation only. Standard also drops filler "
-                "words and repairs grammar.")}
+                "Both levels remove filler words and stammers. Standard also rewrites grammar "
+                "and word choice when an on-device model is available.")}
           {srow("Never change technical terms", sw(True),
                 "Code, package names and anything in your Dictionary come through exactly as "
                 "you said them.")}
@@ -615,36 +711,58 @@ account = f"""<div class="card" style="padding: 14px 15px">
 
 
 # =====================================================================
+# Captions and per-state scope/search/add controls match each page's own presenter
+# verbatim (Sources/UttrflowUX/*Presentation.swift) — search and scope are absent exactly
+# where the presenter's chrome leaves them nil for that state, never guessed at here.
+DICTATION_CAPTION = "Everything you said today, and what Uttrflow did with it."
+DICTIONARY_CAPTION = "Names and terms Uttrflow would otherwise get wrong."
+CORRECTIONS_CAPTION = "Dictionary-backed substitutions Uttrflow made after it heard you."
+INSIGHTS_CAPTION = "Where the words went, and how fast they arrived."
+SNIPPETS_CAPTION = "Short triggers that expand into whatever you like."
+STYLE_CAPTION = "How much tidying Uttrflow does to what you actually said."
+ACCOUNT_CAPTION = "Who you are signed in as, and what you are paying for."
+
 SCREENS = [
-    ("Main-Dictation", "Dictation",
-     tools(searchbox("Search today")), dictation, RECENT, TAILS),
-    ("Main-Dictation-Empty", "Dictation",
-     tools(searchbox("Search today")), dictation_empty, RECENT_NONE, None),
-    ("Main-Dictionary", "Dictionary",
-     tools(searchbox("Search words"), addbtn("Add Word")), dictionary, RECENT, TAILS),
-    ("Main-Dictionary-Empty", "Dictionary",
-     tools(searchbox("Search words"), addbtn("Add Word")), dictionary_empty, RECENT, None),
-    ("Main-Corrections", "Corrections",
-     tools(pop("All corrections"), searchbox("Search")), corrections, RECENT, TAILS),
-    ("Main-Corrections-Empty", "Corrections",
-     tools(pop("All corrections"), searchbox("Search")), corrections_empty, RECENT, None),
-    ("Main-Insights", "Insights", tools(pop("Last 14 days")), insights, RECENT, TAILS),
-    ("Main-Insights-Empty", "Insights", tools(pop("Since 21 August")), insights_empty,
-     RECENT_NONE, None),
-    ("Main-Snippets", "Snippets",
-     tools(searchbox("Search snippets"), addbtn("New Snippet")), snippets, RECENT, TAILS),
-    ("Main-Snippets-Empty", "Snippets",
-     tools(searchbox("Search snippets"), addbtn("New Snippet")), snippets_empty,
-     RECENT_NEVER, None),
-    ("Main-Style", "Style", "", style, RECENT, TAILS),
-    ("Main-Account", "Account", "", account, RECENT, TAILS),
+    # Home is the first destination in SidebarPresenter.order.
+    ("Main-Home", "Home", "Today at a glance.", "", "", "", home, "", None),
+    # Dictation: search only when today has rows (DictationPresenter's chrome).
+    ("Main-Dictation", "Dictation", DICTATION_CAPTION,
+     "", searchbox("Search today"), "", dictation, RECENT, TAILS),
+    ("Main-Dictation-Empty", "Dictation", DICTATION_CAPTION,
+     "", "", "", dictation_empty, RECENT_NONE, None),
+    # Dictionary: search only when there are entries; Add Word always.
+    ("Main-Dictionary", "Dictionary", DICTIONARY_CAPTION,
+     "", searchbox("Search words"), addbtn("Add Word"), dictionary, RECENT, TAILS),
+    ("Main-Dictionary-Empty", "Dictionary", DICTIONARY_CAPTION,
+     "", "", addbtn("Add Word"), dictionary_empty, RECENT, None),
+    # Corrections: scope and search both only when there is anything today.
+    ("Main-Corrections", "Corrections", CORRECTIONS_CAPTION,
+     pop("All corrections"), searchbox("Search"), "", corrections, RECENT, TAILS),
+    ("Main-Corrections-Empty", "Corrections", CORRECTIONS_CAPTION,
+     "", "", "", corrections_empty, RECENT, None),
+    # Insights: a scope label always, never a choice; no search, no add.
+    ("Main-Insights", "Insights", INSIGHTS_CAPTION,
+     scopelabel(SCOPE_TITLE), "", "", insights, RECENT, TAILS),
+    ("Main-Insights-Empty", "Insights", INSIGHTS_CAPTION,
+     scopelabel(SCOPE_TITLE), "", "", insights_empty, RECENT_NONE, None),
+    # Snippets: search only when there are snippets; New Snippet always.
+    ("Main-Snippets", "Snippets", SNIPPETS_CAPTION,
+     "", searchbox("Search snippets"), addbtn("New Snippet"), snippets, RECENT, TAILS),
+    ("Main-Snippets-Empty", "Snippets", SNIPPETS_CAPTION,
+     "", "", addbtn("New Snippet"), snippets_empty, RECENT_NEVER, None),
+    # Style and Account: title and caption only, no scope/search/add.
+    ("Main-Style", "Style", STYLE_CAPTION, "", "", "", style, RECENT, TAILS),
+    ("Main-Account", "Account", ACCOUNT_CAPTION, "", "", "", account, RECENT, TAILS),
 ]
 
 written = []
-for stem, active, tool_html, content, recent, tails in SCREENS:
+for stem, active, caption, scope_html, search_html, add_html, content, recent, tails in SCREENS:
     written += write_pair(
         stem,
-        lambda dark, a=active, t=tool_html, c=content, r=recent, x=tails:
-            app_window(a, t, c, dark, recent=r, tails=x, extra_css=APP_CSS),
+        lambda dark, a=active, cap=caption, sc=scope_html, se=search_html, ad=add_html,
+        c=content, r=recent, x=tails:
+            app_window(
+                a, c, dark, caption=cap, scope=sc, search=se, add=ad, recent=r, tails=x,
+                extra_css=APP_CSS),
     )
 print(f"wrote {len(written)} app-window artboards")
