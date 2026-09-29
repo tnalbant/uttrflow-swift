@@ -37,12 +37,12 @@ absence is reported rather than silently passing.
 
 1. **Fork, and branch from `main`.** Short-lived branches, please — a branch that lives for
    weeks is a merge conflict being written slowly.
-2. **Run `make verify` before you push.** It runs the lint, audits, build, tests, coverage,
-   and offline checks. CI then builds and verifies the signed app bundle separately; those
-   packaging, resource, entitlement, and signing checks are not part of `make verify`.
-   When a change can affect them, run the same sequence CI uses: `make verify` followed by
-   `make app-preflight`. `make hooks` installs a pre-push hook that runs `make verify` for
-   you.
+2. **Run `make verify` yourself before pushing a branch.** The pre-push hook runs the
+   disclosure check on every push, but runs `make verify` only when pushing to `main`;
+   `make hooks` installs that hook. CI then builds and verifies the signed app bundle
+   separately; those packaging, resource, entitlement, and signing checks are not part of
+   `make verify`. When a change can affect them, run the same sequence CI uses:
+   `make verify` followed by `make app-preflight`.
 3. **Open a pull request against `main`.** CI runs on it. It must be green.
 4. **A maintainer reviews and merges.** Nobody can push to `main` directly, including the
    maintainer.
