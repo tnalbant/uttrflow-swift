@@ -18,12 +18,9 @@ struct ReloadLeaks: AsyncParsableCommand {
     var model = LocalModel.gemma3.identifier
 
     func run() async throws {
+        let totals = try Self.parseCheckpoints(checkpoints)
         guard let chosen = LocalModel.named(model) else {
             throw ValidationError("Unknown model '\(model)'.")
-        }
-        let totals = checkpoints.split(separator: ",").compactMap { Int($0) }
-        guard !totals.isEmpty, totals == totals.sorted() else {
-            throw ValidationError("Checkpoints must be ascending whole numbers.")
         }
         let scorer = MLXCandidateScorer(model: chosen)
         let started = ContinuousClock.now
@@ -49,6 +46,22 @@ struct ReloadLeaks: AsyncParsableCommand {
                 "reloads \(String(done).leftPadded(to: 3))  median reload \(sorted[sorted.count / 2]) ms  "
                     + "\(Self.footprint())  \(Self.leaks())  same answer \(same)")
         }
+    }
+
+    static func parseCheckpoints(_ checkpoints: String) throws -> [Int] {
+        let components = checkpoints.split(separator: ",", omittingEmptySubsequences: false)
+        let parsed = components.map { Int($0) }
+        guard !components.isEmpty, parsed.allSatisfy({ $0 != nil }) else {
+            throw ValidationError("Checkpoints must be ascending whole numbers.")
+        }
+        let totals = parsed.compactMap { $0 }
+        guard totals == totals.sorted() else {
+            throw ValidationError("Checkpoints must be ascending whole numbers.")
+        }
+        guard totals.allSatisfy({ $0 >= 1 }) else {
+            throw ValidationError("Each checkpoint must be between 1 and \(Int.max).")
+        }
+        return totals
     }
 
     /// One fixed generation, so a reload that loaded the wrong weights shows as a different answer.

@@ -43,19 +43,22 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         }
         landedIn = nil
         // Re-checked here rather than trusted from `canInsert()`, whose answer can go stale by now.
-        guard !focus.isSelfFrontmost() else {
-            throw .noFocusedTextField
-        }
+        try PasteboardPasteAction.requireExternal(focus: focus)
         // Concealed for a field that hides what is typed, so no clipboard history keeps the words.
-        if focus.focusedFieldIsSecure() {
+        let focus = focus
+        if await AccessibilityThread.run(orElse: true, { focus.focusedFieldIsSecure() }) {
             pasteboard.setConcealedText(text)
         } else {
             pasteboard.setText(text, richText: richText)
         }
+        // A write that did not stick would paste whatever the clipboard held before, so the next route takes over.
+        guard pasteboard.text() == text else { throw .clipboardUnavailable }
         // Read before the paste is posted, so an unchanged caret cannot be read back as a fresh landing.
-        let before = focus.tail(upTo: PasteConfirmation.readLength)
+        let before = await AccessibilityThread.run(orElse: .unreadable) {
+            focus.tail(upTo: PasteConfirmation.readLength)
+        }
         // Thrown onwards with the words left on the clipboard: the floor below would only put them back.
-        try keystrokes.sendPaste()
+        try PasteboardPasteAction.postIfExternal(focus: focus, keystrokes: keystrokes)
         // Read as the paste is posted, not after the wait below, so a switch during the wait is not credited.
         landedIn = focus.frontmostApplication()
         // Posting a paste proves nothing, so this waits for the words the way the write above is read back.
@@ -68,6 +71,22 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
 
     /// The application in front as the last paste was posted.
     public func destinationAtLanding() async -> InsertionDestination? { landedIn }
+}
+
+/// Re-checks the frontmost application immediately before posting a paste keystroke.
+enum PasteboardPasteAction {
+    /// Posts ⌘V only while an application other than Uttrflow is frontmost.
+    static func postIfExternal(
+        focus: any AccessibilityFocus, keystrokes: any KeystrokeSender
+    ) throws(TextInsertionError) {
+        try requireExternal(focus: focus)
+        try keystrokes.sendPaste()
+    }
+
+    /// Rejects a paste while Uttrflow is frontmost, before clipboard contents can be changed.
+    static func requireExternal(focus: any AccessibilityFocus) throws(TextInsertionError) {
+        guard !focus.isSelfFrontmost() else { throw .noFocusedTextField }
+    }
 }
 
 extension InsertionArrival {

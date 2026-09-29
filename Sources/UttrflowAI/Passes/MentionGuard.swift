@@ -1,15 +1,18 @@
+import NaturalLanguage
 import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
 enum MentionGuard {
     static let determiners: Set<String> = [
-        "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "each", "every",
+        "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
+        "every",
         "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
     ]
 
     /// The ones a modifier may stand between and the mark; a verb takes its object with nothing in between.
     static let phraseOpeners: Set<String> = [
-        "a", "an", "the", "with", "no", "this", "that", "each", "every", "my", "your", "his",
+        "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "my", "your",
+        "his",
         "her", "its", "their", "our", "another", "any", "some", "same",
     ]
 
@@ -23,18 +26,21 @@ enum MentionGuard {
     /// Whether the mark word at `position` is mentioned; `reach` is how far the phrase's own opener may stand.
     static func isMentioned(
         at position: Int, spanning length: Int, in live: [Int], of draft: Draft, reach: Int = 1,
-        kind: SpokenMarkKind = .trailing
+        kind: SpokenMarkKind = .trailing, bridgedBy bridging: Set<String>? = nil
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
-        if opensThePhrase(ending: position, reaching: reach, in: live, of: draft) { return true }
+        if opensThePhrase(ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging) {
+            return true
+        }
         let next = position + length
         return next < live.count && draft.shape(at: live[next]).key == "of"
     }
 
-    /// Whether a determiner opens the phrase the mark word heads, with only modifiers standing between.
+    /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
     private static func opensThePhrase(
-        ending position: Int, reaching reach: Int, in live: [Int], of draft: Draft
+        ending position: Int, reaching reach: Int, in live: [Int], of draft: Draft,
+        bridgedBy bridging: Set<String>?
     ) -> Bool {
         // A hyphen joins the two words around it, so it heads no phrase and only the word before it speaks.
         let far = draft.shape(at: live[position]).key == "hyphen" ? 1 : reach
@@ -43,8 +49,26 @@ enum MentionGuard {
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
-            if markNames.contains(shape.key) { return false }
+            if let bridging {
+                if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
+            } else if !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
+                return false
+            }
         }
         return false
+    }
+
+    /// Recognizes modifiers in the local noun phrase and ordinal numbers without a word list.
+    private static func isModifier(_ word: String, before head: String) -> Bool {
+        if NumberFormsPass.ordinalUnits[word] != nil { return true }
+        let phrase = "the \(word) \(head)"
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = phrase
+        guard let wordRange = phrase.range(of: word) else { return false }
+        let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
+        // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
+        if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+
+        return lexicalClass == .noun && word.hasSuffix("ing")
     }
 }

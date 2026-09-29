@@ -80,6 +80,30 @@ struct LatestOnlyQueueTests {
         _ = await slow
         _ = await newer
     }
+
+    @Test("Cancellation invalidates a running read before it can send another message")
+    func cancellationInvalidatesRunningWork() async throws {
+        let queue = LatestOnlyQueue(label: "test.latest-only-cancel", qos: .userInitiated)
+        let running = Signal()
+        let checked = Signal()
+        let continueRead = DispatchSemaphore(value: 0)
+        let wanted = Flag()
+
+        async let read = queue.run(within: .seconds(5)) { isWanted -> Int? in
+            running.fire()
+            continueRead.wait()
+            wanted.set(isWanted())
+            checked.fire()
+            return 1
+        }
+        try await arrival(of: running.fired)
+        queue.invalidate()
+        continueRead.signal()
+        try await arrival(of: checked.fired)
+
+        #expect(wanted.value == false)
+        _ = await read
+    }
 }
 
 /// Counts how many reads actually ran.

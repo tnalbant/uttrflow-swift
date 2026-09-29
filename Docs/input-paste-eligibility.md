@@ -46,3 +46,10 @@ and posts ⌘V — not only once, up front. If Uttrflow has become frontmost sin
 `canInsert()` ran, `insert()` throws `.noFocusedTextField` without touching the clipboard,
 and `TextInsertionCoordinator`'s fallback chain takes over from there, same as any other
 strategy declining.
+
+The same re-check sits at the write in `TypedTextInsertionEngine` and in
+`AccessibilityTextInsertionEngine`, for both `insert()` and the completion route's
+`write(_:replacing:)`: every strategy that writes into whatever is focused asks again
+immediately before it backspaces, types or replaces the selection, not only the paste route.
+The Accessibility route runs first, so without its own check a field in Uttrflow's own
+window would take the words before the paste route was ever asked.

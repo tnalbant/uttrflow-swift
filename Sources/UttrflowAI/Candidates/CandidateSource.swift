@@ -71,8 +71,9 @@ public struct DoubtfulWords: Sendable {
         self.sources = sources
     }
 
-    /// The two sources that need nothing wired to them: the screen, and the words everybody knows.
-    public static let standard = DoubtfulWords(sources: [ScreenCandidates(), PhoneticCandidates()])
+    /// The sources that need nothing wired to them: the screen, the words everybody knows, and a homophone partner.
+    public static let standard = DoubtfulWords(
+        sources: [ScreenCandidates(), PhoneticCandidates(), HomophoneCandidates()])
 
     /// The standard sources with the user's own dictionary asked first.
     public static func including(

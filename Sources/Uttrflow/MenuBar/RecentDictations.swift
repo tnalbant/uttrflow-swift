@@ -2,6 +2,7 @@
 
 import Foundation
 import UttrflowHistory
+import UttrflowUX
 
 /// One finished dictation, the record `DictationHistoryStore` keeps; the menu ignores what it lacks room for.
 typealias RecentDictation = DictationRecord
@@ -10,6 +11,8 @@ typealias RecentDictation = DictationRecord
 struct RecentDictationPreview: Sendable, Equatable, Identifiable {
     /// The shortened, single-line form. A menu item must not be a paragraph wide.
     let title: String
+    /// Whether the complete text must also stay out of the menu tooltip.
+    let isSecret: Bool
     /// The whole thing, because inserting or copying a shortened version would be a lie.
     let dictation: RecentDictation
 
@@ -43,7 +46,13 @@ struct RecentDictations: Sendable, Equatable {
     }
 
     var previews: [RecentDictationPreview] {
-        entries.map { RecentDictationPreview(title: Self.shortened($0.text), dictation: $0) }
+        entries.map { dictation in
+            let presentation = DictationTextPresentation(dictation.text)
+            return RecentDictationPreview(
+                title: presentation.isSecret ? presentation.displayText : Self.shortened(dictation.text),
+                isSecret: presentation.isSecret,
+                dictation: dictation)
+        }
     }
 
     /// Collapses a dictation onto one short line, whitespace first.

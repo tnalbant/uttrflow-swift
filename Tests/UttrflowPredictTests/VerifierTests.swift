@@ -84,6 +84,50 @@ struct VerifierTests {
         #expect(verdict == .rejected)
     }
 
+    @Test("A rejected branch is not condemned for good, since it may be fetched tomorrow.")
+    func openVocabularyRejectionIsNotRecorded() async {
+        let store = RecordingSupersession()
+        let verdict = await decided(
+            "git checkout zqxjw", typed: "git checkout z", machine: [.branch: ["main"]],
+            scoring: ScriptedScoring(disliked), supersession: store)
+        #expect(verdict == .rejected)
+        #expect(await store.rejected.isEmpty)
+    }
+
+    @Test("A rejected subcommand is condemned for good, since its vocabulary is closed.")
+    func closedVocabularyRejectionIsRecorded() async {
+        let store = RecordingSupersession()
+        _ = await decided(
+            "git zqxjw", typed: "git z", machine: [.subcommand(of: "git"): ["commit"]],
+            scoring: ScriptedScoring(disliked), supersession: store)
+        #expect(await store.rejected == ["git zqxjw"])
+    }
+
+    @Test(
+        "A model objection to a free last word refuses the line this time only.",
+        arguments: [
+            "ls -la", "echo \"done\"", "echo done",
+        ])
+    func freeWordRejectionIsNotRecorded(line: String) async {
+        let store = RecordingSupersession()
+        let verdict = await decided(
+            line, typed: String(line.prefix(4)), scoring: ScriptedScoring(disliked), supersession: store)
+        #expect(verdict == .rejected)
+        #expect(await store.rejected.isEmpty)
+    }
+
+    @Test("A subcommand the machine never answered for is refused this time only.")
+    func unansweredClosedVocabularyIsNotRecorded() async {
+        let store = RecordingSupersession()
+        let verifier = Verifier(
+            index: EnvironmentIndex(reader: StubEnvironment([:])), scoring: ScriptedScoring(disliked),
+            supersession: store, budgetInMilliseconds: 200, clock: ManualClock())
+        let verdict = await verifier.verdict(
+            for: Candidate(text: "git zqxjw", source: .personal), in: terminal, typed: "git z", now: moment)
+        #expect(verdict == .rejected)
+        #expect(await store.rejected.isEmpty)
+    }
+
     @Test("A candidate the model likes stands even where the machine cannot place it.")
     func keepsWhatTheModelLikes() async {
         let verdict = await decided(
@@ -116,18 +160,31 @@ struct VerifierTests {
         // On a clock the scorer itself pushes past the budget, so the deadline needs no real time to win the race.
         let budgetClock = ManualClock()
         let index = EnvironmentIndex(reader: StubEnvironment([:]))
-        let scoring = NoncooperativeScoring(
-            liked, holdingThreadForMilliseconds: 8_000, advancing: budgetClock)
+        let holding = ThreadHold()
+        let scoring = NoncooperativeScoring(liked, holding: holding, advancing: budgetClock)
         let verifier = Verifier(index: index, scoring: scoring, budgetInMilliseconds: 200, clock: budgetClock)
-        let wall = ContinuousClock()
-        let start = wall.now
         let verdict = await verifier.verdict(
             for: Candidate(text: "git zqxjw", source: .personal), in: terminal, typed: "git z", now: moment)
-        let elapsed = start.duration(to: wall.now)
+        let scorerStillHeld = !holding.hasEnded
+        holding.release()
         #expect(verdict == .rejected)
+        #expect(scorerStillHeld, "the verdict must return while the scorer still holds its thread")
+    }
+
+    @Test("A cancelled turn stops `verified` between candidates, not just after the whole loop.")
+    func stopsBetweenCandidatesOnCancellation() async {
+        let box = TaskBox<[Candidate]>()
+        let scoring = CancellingScoring<[Candidate]>(disliked, cancelling: box)
+        let verifier = await warmed([:], on: "candidate0", scoring: scoring)
+        let candidates = (0..<4).map { Candidate(text: "candidate\($0)", source: .personal) }
+        let task = Task {
+            await verifier.verified(candidates, in: terminal, typed: "", now: moment)
+        }
+        box.task = task
+        _ = await task.value
         #expect(
-            elapsed < .seconds(4),
-            "the verdict must return once the deadline wins, not wait out an 8-second noncooperative scorer")
+            await scoring.asked == 1,
+            "the second candidate must never be scored once the first one's scoring cancelled the turn")
     }
 
     @Test("A candidate the machine attested is answered before the model is asked at all.")
@@ -170,6 +227,7 @@ struct VerifierTests {
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         await verifier.forgetEverything()
         #expect(await verifier.rememberedCount == 0)
+        #expect(await scoring.forgets == 1)
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         #expect(await scoring.asked == 2)
     }
@@ -482,7 +540,9 @@ struct GeneratedLineTests {
 
     @Test("A program the machine has is drawn and one it has not is dropped, in the model's order.")
     func programsAreLookedUp() async {
-        let kept = await standing(["git status", "github"], after: "gi", machine: [.executable: ["git"]])
+        let kept = await standing(
+            ["git status", "github"], after: "gi",
+            machine: [.executable: ["git"], .subcommand(of: "git"): ["status"]])
         #expect(kept == ["git status"])
     }
 
@@ -490,7 +550,7 @@ struct GeneratedLineTests {
     func gitSubcommandsAreLookedUp() async {
         let kept = await standing(
             ["git checkout main", "git check"], after: "git chec",
-            machine: [.subcommand(of: "git"): ["checkout"]])
+            machine: [.subcommand(of: "git"): ["checkout"], .branch: ["main"]])
         #expect(kept == ["git checkout main"])
     }
 
@@ -502,9 +562,37 @@ struct GeneratedLineTests {
         #expect(kept.isEmpty)
     }
 
-    @Test("A machine that has not answered denies nothing, so the model's line stands.")
-    func silenceLetsTheLineStand() async {
-        #expect(await standing(["vim .env.vim"], after: "vim .env", machine: [:]) == ["vim .env.vim"])
+    @Test("A machine that has not answered vouches for nothing, so the model's line waits for the listing.")
+    func silenceHoldsTheLineBack() async {
+        #expect(await standing(["vim .env.vim"], after: "vim .env", machine: [:]).isEmpty)
+    }
+
+    @Test(
+        "A branch the model invented is held back while the branch listing is cold, and a real one stands once it answers."
+    )
+    func coldBranchListingVouchesForNothing() async {
+        let cold = await standing(["git checkout no-such-branch"], after: "git checkout ", machine: [:])
+        #expect(cold.isEmpty)
+        let warm: [EnvironmentKind: [String]] = [.branch: ["main"]]
+        #expect(
+            await standing(["git checkout no-such-branch"], after: "git checkout ", machine: warm).isEmpty)
+        #expect(
+            await standing(["git checkout main"], after: "git checkout ", machine: warm) == [
+                "git checkout main"
+            ])
+    }
+
+    @Test(
+        "An unanswered listing does not end the search early, so an answered one that denies the word decides."
+    )
+    func anUnansweredLookupDoesNotOutvoteAnAnsweredOne() async {
+        let machine: [EnvironmentKind: [String]] = [.entries(under: "docs"): ["guide.md"]]
+        #expect(
+            await standing(["git checkout docs/nowhere"], after: "git checkout d", machine: machine).isEmpty)
+        #expect(
+            await standing(["git checkout docs/guide.md"], after: "git checkout d", machine: machine) == [
+                "git checkout docs/guide.md"
+            ])
     }
 
     /// The listing names `guide.md`, and the candidate is the path that ends in it.
@@ -531,5 +619,23 @@ struct GeneratedLineTests {
         let kept = await standing(
             [".vim"], after: "vim .env", machine: [.file: [".env"]], in: notes)
         #expect(kept == [".vim"])
+    }
+    @Test("A dominant irreversible leader leaves the turn silent, never its rival shown as certain.")
+    func dominantIrreversibleLeaderIsNotReplacedByItsRival() async {
+        let notes = Surface(bundleIdentifier: "com.example.notes", role: "AXTextArea")
+        let context = PredictionContext(typed: "git p")
+        let candidates = [
+            remembered("git push --force", count: 90, irreversible: true),
+            remembered("git push", count: 1),
+        ]
+        let first = PredictionEngine.decision(from: candidates, in: context, now: moment)
+        var shown = first.suggestion
+        if first.suggestion.accepting != nil {
+            let verifier = Verifier(index: EnvironmentIndex(reader: StubEnvironment([:])))
+            let kept = await verifier.verified(candidates, in: notes, typed: context.typed, now: moment)
+            shown = PredictionEngine.decision(from: kept, in: context, now: moment).suggestion
+        }
+        #expect(shown == .silent)
+        #expect(first.silence == .irreversibleNotCertain)
     }
 }

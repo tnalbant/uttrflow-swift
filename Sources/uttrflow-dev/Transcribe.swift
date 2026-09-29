@@ -28,6 +28,8 @@ struct Transcribe: AsyncParsableCommand {
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
 
+    @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
     @Flag(name: .long, help: "Show the transcript as heard, without tidying it.")
     var raw = false
 
@@ -56,7 +58,7 @@ struct Transcribe: AsyncParsableCommand {
     func run() async throws {
         guard let kind = SpeechEngineKind(rawValue: engine) else { return }
         let model = try resolve(modelVariant)
-        let store = FileSystemSpeechModelStore.whisperKit()
+        let store = try modelsDirectory.store()
 
         if kind == .whisperKit, !store.isInstalled(model) {
             throw CleanExit.message(

@@ -14,6 +14,10 @@ public enum MainIntent: Sendable, Equatable {
     case copy(String)
     /// Put this text back into whatever the user is typing in.
     case insert(String)
+    /// Start a dictation, or stop the one running; the same toggle the menu bar and the Dock use.
+    case dictate
+    /// Open History with the caret in its search field.
+    case search
 
     /// This dictation came out wrong: the honest input to teaching.
     case flagDictation(UUID)
@@ -24,6 +28,8 @@ public enum MainIntent: Sendable, Equatable {
     case retryRecording(UUID)
     /// Delete a kept recording without ever hearing it.
     case forgetRecording(UUID)
+    /// Play a kept recording, or stop it if it is playing.
+    case playRecording(UUID)
 
     /// Put a changed word back to what was heard.
     case undoCorrection(UUID)
@@ -57,6 +63,8 @@ public enum MainIntent: Sendable, Equatable {
     case signIn
     /// End the session on this Mac.
     case signOut
+    /// Put away the notice in the window's corner.
+    case dismissNotice
 }
 
 /// Something a page offers the user to click.
@@ -82,6 +90,9 @@ public struct MainAction: Sendable, Equatable, Identifiable {
         self.intent = intent
         self.isDestructive = isDestructive
     }
+
+    /// What pressing it asks first, decided by its intent so every button for one act asks the same.
+    public var confirmation: MainConfirmation? { MainConfirmation.before(intent) }
 }
 
 /// A pane with nothing in it, or with something in the way, saying which of a dozen reasons applies.
@@ -100,8 +111,10 @@ public struct MainEmptyState: Sendable, Equatable {
     public let progress: MainProgress?
     /// The small print under the whole pane.
     public let footnote: String?
+    /// The small picture above the title, and the colour that glows behind it.
+    public let scene: MainEmptyScene
 
-    /// Builds an empty state; everything after the message is optional.
+    /// Builds an empty state; everything after the message is optional, and the scene follows the symbol.
     public init(
         symbolName: String,
         title: String,
@@ -109,7 +122,8 @@ public struct MainEmptyState: Sendable, Equatable {
         action: MainAction? = nil,
         chips: [MainStatistic] = [],
         progress: MainProgress? = nil,
-        footnote: String? = nil
+        footnote: String? = nil,
+        scene: MainEmptyScene? = nil
     ) {
         self.symbolName = symbolName
         self.title = title
@@ -118,6 +132,107 @@ public struct MainEmptyState: Sendable, Equatable {
         self.chips = chips
         self.progress = progress
         self.footnote = footnote
+        self.scene = scene ?? MainEmptyScene(symbolName: symbolName)
+    }
+}
+
+/// The colour a page is known by: dictation, suggestions, the clipboard, or information.
+public enum MainAccent: Sendable, Equatable, CaseIterable {
+    case dictation
+    case suggestion
+    case clipboard
+    case info
+}
+
+/// The small picture an empty page draws above its title, so each page is recognisable before it has content.
+public enum MainEmptyScene: Sendable, Equatable {
+    /// The shortcut's keys beside a waveform, for a page that fills as the user dictates.
+    case dictation
+    /// One of the user's own words on a chip, for the dictionary.
+    case word(String)
+    /// A phrase that expands on a chip, for snippets.
+    case phrase(String)
+    /// A few day bars, filled for the days already spoken on, for a page that waits to chart.
+    case chart
+    /// The state's own symbol on a tile, for everything else.
+    case symbol
+
+    /// The dictionary's example word, which is the one the app always spells right.
+    public static let exampleWord = "Uttrflow"
+    /// The snippets page's example phrase.
+    public static let examplePhrase = "my address"
+
+    /// The scene each page's symbol stands for; a symbol with no page of its own gets the plain tile.
+    public init(symbolName: String) {
+        switch symbolName {
+        case "mic", "clock", "waveform": self = .dictation
+        case "character.book.closed", "book": self = .word(Self.exampleWord)
+        case "doc.on.doc": self = .phrase(Self.examplePhrase)
+        case "chart.bar": self = .chart
+        default: self = .symbol
+        }
+    }
+
+    /// The page's colour, which the scene is drawn in and glows behind it.
+    public var accent: MainAccent {
+        switch self {
+        case .dictation, .symbol: .dictation
+        case .word: .clipboard
+        case .phrase: .suggestion
+        case .chart: .info
+        }
+    }
+}
+
+/// The question asked before a button does something that cannot be taken back.
+public struct MainConfirmation: Sendable, Equatable {
+    /// The question, ending in a question mark.
+    public let title: String
+    /// What happens and what stays.
+    public let message: String
+    /// The button that goes ahead.
+    public let confirmTitle: String
+    /// The button that changes nothing, which Return presses.
+    public let cancelTitle: String
+    /// The SF Symbol on the sheet's tile.
+    public let symbolName: String
+    /// The tile's colour.
+    public let tone: MainTone
+    /// Whether going ahead destroys something, which draws the confirm button in red.
+    public let isDestructive: Bool
+
+    /// Builds a question from its parts.
+    public init(
+        title: String, message: String, confirmTitle: String, cancelTitle: String = "Cancel",
+        symbolName: String, tone: MainTone, isDestructive: Bool
+    ) {
+        self.title = title
+        self.message = message
+        self.confirmTitle = confirmTitle
+        self.cancelTitle = cancelTitle
+        self.symbolName = symbolName
+        self.tone = tone
+        self.isDestructive = isDestructive
+    }
+
+    /// Settings' question in the same sheet, since whatever Settings asks first removes something.
+    public init(_ settings: SettingsConfirmation) {
+        self.init(
+            title: settings.title, message: settings.message, confirmTitle: settings.confirmTitle,
+            cancelTitle: settings.cancelTitle, symbolName: "trash", tone: .critical,
+            isDestructive: true)
+    }
+
+    /// Asked before signing out, because Uttrflow stops until the user signs in again.
+    public static let signOut = MainConfirmation(
+        title: "Sign out of Uttrflow?",
+        message: "Your dictations stay on this Mac. You’ll need to sign in again to keep using Uttrflow.",
+        confirmTitle: "Sign out", symbolName: "rectangle.portrait.and.arrow.forward", tone: .warning,
+        isDestructive: true)
+
+    /// What pressing a button for this intent asks first, or `nil` when it acts at once.
+    public static func before(_ intent: MainIntent) -> MainConfirmation? {
+        intent == .signOut ? signOut : nil
     }
 }
 
@@ -167,14 +282,7 @@ public enum MainPresenter {
 
     /// One verb per recovery, shared so the same button reads the same on every page.
     public static func title(for action: RecoveryAction) -> String {
-        switch action {
-        case .openSystemSettings: "Open Settings"
-        case .retry: "Try Again"
-        case .downloadSpeechModel: "Download"
-        case .pasteManually: "Dismiss"
-        case .showRecentDictations: "Show Recent"
-        case .retryFromRecording: "Retry"
-        }
+        RecoveryActionTitle.title(for: action)
     }
 
     /// The first permission that stops the app working, microphone before Accessibility; shared by all pages.
@@ -234,10 +342,20 @@ public enum MainPresenter {
 /// Numbers as every page writes them; the locale is a parameter so tests do not depend on the region.
 public enum MainFormatting {
     /// A duration in seconds to the hundredth; anything faster is "under 0.01s" rather than `0.00s`.
-    public static func seconds(_ duration: Duration) -> String {
+    public static func seconds(
+        _ duration: Duration, locale: Locale = .autoupdatingCurrent
+    ) -> String {
         let value = duration.inSeconds
-        guard value >= 0.01 else { return "under 0.01s" }
-        return String(format: "%.2fs", value)
+        guard value >= 0.01 else { return "under \(secondsValue(.milliseconds(10), locale: locale))" }
+        return secondsValue(duration, locale: locale)
+    }
+
+    /// A duration in seconds to the hundredth, including values below the display floor.
+    static func secondsValue(
+        _ duration: Duration, locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        duration.inSeconds.formatted(
+            .number.locale(locale).grouping(.never).precision(.fractionLength(2))) + "s"
     }
 
     /// How long somebody talked, in whole seconds: "11s".
@@ -280,7 +398,18 @@ public enum MainFormatting {
 
     /// How many words are in dictated text: whitespace-separated runs, the one definition every figure uses.
     public static func words(in text: String) -> Int {
-        text.split(whereSeparator: \.isWhitespace).count
+        // Counted in one pass without building the substrings, since every redraw counts every dictation.
+        var count = 0
+        var inWord = false
+        for character in text {
+            if character.isWhitespace {
+                inWord = false
+            } else if !inWord {
+                inWord = true
+                count += 1
+            }
+        }
+        return count
     }
 
     /// The time of day a row is stamped with: "4:12 PM".
