@@ -1,4 +1,5 @@
 // What VoiceOver says when a dictation starts, lands or fails.
+import UttrflowCore
 
 /// One sentence for VoiceOver to speak unasked, since the floating button never takes focus.
 public struct DictationAnnouncement: Sendable, Equatable {
@@ -44,8 +45,32 @@ extension DictationPresenter {
             return DictationAnnouncement(text: "Inserted: \(preview(of: said(outcome)))", isUrgent: false)
 
         case .failed(let failure):
+            let message = failure.message.filter { $0 != "…" }
+            guard let recovery = failure.recovery else {
+                return DictationAnnouncement(text: message, isUrgent: true)
+            }
             return DictationAnnouncement(
-                text: failure.message.filter { $0 != "…" }, isUrgent: true)
+                text: "\(message) \(recovery.instruction)", isUrgent: true)
+        }
+    }
+}
+
+private extension RecoveryAction {
+    /// Where VoiceOver users can reach the recovery offered on the floating button.
+    var instruction: String {
+        switch self {
+        case .openSystemSettings:
+            "Open Settings from the Uttrflow menu."
+        case .retry:
+            "Choose Try Again from the Uttrflow menu."
+        case .downloadSpeechModel:
+            "Choose Download from the Uttrflow menu."
+        case .pasteManually:
+            "The text is on your clipboard. Press Command V to paste it."
+        case .showRecentDictations:
+            "Open Recent from the Uttrflow menu to find your words."
+        case .retryFromRecording:
+            "Open History from the Uttrflow menu, then choose Retry on the recording."
         }
     }
 }

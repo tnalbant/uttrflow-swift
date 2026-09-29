@@ -19,14 +19,16 @@ private func snapshot(
     pointSize: CGFloat? = 13,
     fontFamily: String? = nil,
     textColor: TextColor? = nil,
-    isSecure: Bool = false
+    isSecure: Bool = false,
+    isEnabled: Bool? = nil,
+    isEditable: Bool? = nil
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
         caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
-        isSecure: isSecure, readMicroseconds: 400)
+        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable, readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")
@@ -54,6 +56,14 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("A field reported disabled cannot host a suggestion")
+    func disabledFieldsTakeNothing() {
+        #expect(snapshot(isEnabled: false).placement == nil)
+        #expect(snapshot(isEditable: false).placement == nil)
+        #expect(snapshot(isEnabled: true).placement == .inlineGhost)
+        #expect(snapshot(isEnabled: nil).placement == .inlineGhost)
     }
 
     @Test("The reading carries through to the capability the ladder is decided from.")
@@ -115,16 +125,27 @@ struct FocusedFieldSnapshotTests {
         #expect(!snapshot(value: "ls  -la", selection: NSRange(location: 2, length: 0)).caretAtLineEnd)
     }
 
-    @Test(
-        "A terminal row's right-hand prompt, set apart by padding, leaves the caret at the end of the input.")
-    func rightHandPromptIsNotTextAfterTheCaret() {
+    @Test("Text after a terminal caret stays text even when a prompt-like tail follows padding.")
+    func paddedTerminalTailIsStillTextAfterTheCaret() {
         let row =
             "git c" + String(repeating: " ", count: 30) + "main 12:04\n" + String(repeating: " ", count: 45)
         let reading = snapshot(value: row, selection: NSRange(location: 5, length: 0))
-        #expect(reading.caretAtLineEnd)
+        #expect(!reading.caretAtLineEnd)
         #expect(reading.rightPromptGap == 30)
-        // A document has no right-hand prompt, so the same row is text after the caret.
+        // A document also treats the padded tail as text after the caret.
         #expect(!snapshot(bundleIdentifier: "com.apple.TextEdit", value: row).caretAtLineEnd)
+    }
+
+    @Test("Four spaces before command text do not turn an interior caret into the line end.")
+    func spacedCommandTextAfterTheCaretIsStillText() {
+        let value = "ls -la    # list"
+        let reading = snapshot(
+            bundleIdentifier: "com.apple.Terminal", value: value,
+            selection: NSRange(location: "ls -la".utf16.count, length: 0))
+        #expect(!reading.caretAtLineEnd)
+        #expect(reading.hasTextAfterCaret)
+        let context = PredictionContext(typed: reading.currentLine, caretAtLineEnd: reading.caretAtLineEnd)
+        #expect(Quieting.reason(context) == .caretInsideText)
     }
 
     @Test("Text directly after the caret, with no padding run, is still the caret inside the line.")
@@ -136,8 +157,8 @@ struct FocusedFieldSnapshotTests {
         #expect(reading.rightPromptGap == nil)
     }
 
-    @Test("The ghost's field ends before the right-hand prompt, and is the whole field otherwise.")
-    func ghostFieldStopsBeforeTheRightHandPrompt() throws {
+    @Test("The ghost's field ends before a padded terminal tail, and is the whole field otherwise.")
+    func ghostFieldStopsBeforePaddedTerminalText() throws {
         let field = CGRect(x: 0, y: 0, width: 800, height: 400)
         let row = "git c" + String(repeating: " ", count: 11) + "main"
         let reading = FocusedFieldSnapshot(
@@ -259,6 +280,19 @@ struct FocusedFieldSnapshotTests {
         #expect(!snapshot(bundleIdentifier: "com.example.editor").isProse)
     }
 
+    @Test("Known editors are not prose even when their field is a text area.")
+    func knownEditorsAreNotProse() {
+        for bundleIdentifier in [
+            "org.jkiss.dbeaver.core.product", "com.jetbrains.datagrip", "com.microsoft.VSCode",
+        ] {
+            #expect(
+                !snapshot(bundleIdentifier: bundleIdentifier, role: FocusedFieldSnapshot.proseRole)
+                    .isProse)
+        }
+        #expect(
+            snapshot(bundleIdentifier: "com.example.editor", role: FocusedFieldSnapshot.proseRole).isProse)
+    }
+
     @Test("A terminal's line is what was typed at the prompt, not the prompt the shell drew.")
     func aTerminalLineDropsThePrompt() {
         let prompt = "(experiments) user@host experiments % sud"
@@ -267,6 +301,66 @@ struct FocusedFieldSnapshotTests {
                 snapshot(bundleIdentifier: bundleIdentifier, value: prompt, selection: nil)
                     .currentLine == "sud")
         }
+    }
+
+    @Test("A heredoc body is not treated as a shell command.")
+    func terminalHeredocBodyIsNotACommand() {
+        let value = "user@host:~/dir$ cat <<'DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine.isEmpty)
+    }
+
+    @Test("Suggestions resume after a heredoc delimiter line.")
+    func terminalHeredocEndsAtItsDelimiter() {
+        let value = "cat <<-\"DONE\"\nrm -rf /some/path\nDONE"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "DONE")
+    }
+
+    @Test("A spaced heredoc operator suppresses suggestions until its delimiter.")
+    func terminalHeredocAllowsWhitespaceBeforeItsDelimiter() {
+        let unquoted = "cat << EOF\nrm -rf /some/path"
+        #expect(
+            snapshot(value: unquoted, selection: NSRange(location: unquoted.utf16.count, length: 0))
+                .currentLine.isEmpty)
+        let quoted = "cat << 'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: quoted, selection: NSRange(location: quoted.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("Indented heredoc delimiters close only with the opener's indentation rule.")
+    func terminalHeredocHonorsIndentedDelimiters() {
+        let tabs = "cat <<-DONE\nrm -rf /some/path\n\tDONE"
+        #expect(
+            snapshot(value: tabs, selection: NSRange(location: tabs.utf16.count, length: 0))
+                .currentLine == "DONE")
+        let spaces = "cat <<~SQL\nrm -rf /some/path\n    SQL"
+        #expect(
+            snapshot(value: spaces, selection: NSRange(location: spaces.utf16.count, length: 0))
+                .currentLine == "SQL")
+        let spaced = "cat <<'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: spaced, selection: NSRange(location: spaced.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("A heredoc-looking token inside a quoted argument does not start a heredoc.")
+    func quotedHeredocTextDoesNotSuppressSuggestions() {
+        let value = "printf 'literal <<DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
+    }
+
+    @Test("A shell here-string is not parsed as a heredoc.")
+    func hereStringDoesNotSuppressSuggestions() {
+        let value = "printf <<< 'literal'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
     }
 
     @Test("Only the caret's own line has a prompt taken off it, and only in a terminal.")

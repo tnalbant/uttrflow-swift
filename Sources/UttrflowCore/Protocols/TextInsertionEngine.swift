@@ -22,15 +22,45 @@ public protocol TextInsertionEngine: Sendable {
     /// Puts `text` where the user is typing, saying whether it was seen to arrive.
     func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival
 
+    /// Puts text only when the destination still matches the application captured for this insertion.
+    func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival
+
+    /// Inserts formatted text only when the destination still matches the captured application.
+    func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival
+
     /// Inserts, carrying the formatted form where the strategy has a way to; only the pasteboard has one.
     func insert(_ text: String, richText: String?) async throws(TextInsertionError) -> InsertionArrival
+
+    /// The application in front when the last insertion's words were sent, or nil when this strategy did not read it.
+    func destinationAtLanding() async -> InsertionDestination?
 }
 
 extension TextInsertionEngine {
+    /// Strategies without destination checks keep their existing behavior.
+    public func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try await insert(text)
+    }
+
+    /// Strategies without destination checks keep their existing behavior.
+    public func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try await insert(text, richText: richText)
+    }
+
     /// Ignores the formatted form, because writing into a focused element carries no formatting.
     public func insert(
         _ text: String, richText: String?
     ) async throws(TextInsertionError) -> InsertionArrival {
         try await insert(text)
     }
+
+    /// Nil, so the coordinator reads the frontmost application itself once the write returns.
+    public func destinationAtLanding() async -> InsertionDestination? { nil }
 }

@@ -1,3 +1,4 @@
+import NaturalLanguage
 import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
@@ -17,12 +18,6 @@ enum MentionGuard {
 
     /// How far back the word that opens a noun phrase may stand: "the hundred metre dash".
     static let phraseReach = 3
-
-    /// Words that stand between an opener and the noun they modify without heading a phrase themselves: "her first new line".
-    static let modifiers: Set<String> = Set(NumberFormsPass.ordinalUnits.keys).union([
-        "best", "worst", "last", "only", "own", "other", "whole", "latest", "newest",
-        "oldest", "biggest", "longest", "shortest", "favourite", "favorite", "very", "entire",
-    ])
 
     /// The spoken names of marks and layout, which close the phrase an opener began rather than heading it.
     static let markNames: Set<String> = Set(
@@ -54,9 +49,26 @@ enum MentionGuard {
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
-            if markNames.contains(shape.key) { return false }
-            if let bridging, !bridging.contains(shape.key) { return false }
+            if let bridging {
+                if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
+            } else if !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
+                return false
+            }
         }
         return false
+    }
+
+    /// Recognizes modifiers in the local noun phrase and ordinal numbers without a word list.
+    private static func isModifier(_ word: String, before head: String) -> Bool {
+        if NumberFormsPass.ordinalUnits[word] != nil { return true }
+        let phrase = "the \(word) \(head)"
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = phrase
+        guard let wordRange = phrase.range(of: word) else { return false }
+        let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
+        // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
+        if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+
+        return lexicalClass == .noun && word.hasSuffix("ing")
     }
 }

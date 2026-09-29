@@ -117,6 +117,16 @@ struct SuggestionPresentationTests {
         #expect(presentation.inline?.candidate == "Sydenham")
     }
 
+    @Test("Filtering unusable rows preserves the arrow-key selection of the next candidate")
+    func filteringRowsPreservesSelectionIndex() throws {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "", others: ["Sydney", "Soho"]), typed: "S",
+            selection: SuggestionSelection(index: 1, hasMoved: true))
+
+        #expect(presentation.rows.map(\.candidate) == ["Sydney", "Soho"])
+        #expect(try #require(presentation.inline).candidate == "Sydney")
+    }
+
     @Test("The list's fixed text is what the design shows: a branch per row and the three keys under it")
     func theListTextIsTheDesigns() {
         let presentation = SuggestionPresentation(.certain("Sydney"))
@@ -382,6 +392,14 @@ struct SuggestionPresentationTests {
             SuggestionPresentation(.choice(leader: "Sydney", others: ["Sydenham", "Soho"]))
                 .accessibilityLabel
                 == "AI suggestion: Sydney. Tab to accept. Alternatives: Sydenham, Soho.")
+    }
+
+    @Test("A choice keeps alternatives available on the navigable surface, separate from its announcement")
+    func choiceSeparatesAnnouncementFromNavigableLabel() {
+        let presentation = SuggestionPresentation(.choice(leader: "Sydney", others: ["Sydenham", "Soho"]))
+
+        #expect(presentation.announcementLabel == "AI suggestion: Sydney. Tab to accept.")
+        #expect(presentation.accessibilityLabel.contains("Sydenham, Soho"))
     }
 
     @Test("A replacement says out loud how much of the user's own typing it takes back")

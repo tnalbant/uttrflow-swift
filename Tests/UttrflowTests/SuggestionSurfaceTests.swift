@@ -54,6 +54,22 @@ struct SuggestionSurfaceTests {
         #expect(panel.drawn.style == .hidden)
     }
 
+    @Test("A display change withdraws the visible suggestion immediately")
+    func displayChangeWithdrawsTheVisibleSuggestion() throws {
+        let screen = try #require(NSScreen.screens.first).visibleFrame
+        let caret = CGRect(x: screen.minX + 200, y: screen.midY, width: 0, height: 17)
+        let panel = SuggestionPanelController()
+        defer { panel.hide() }
+        panel.show(.certain("meeting"), placement: .inlineGhost, caret: caret)
+        #expect(panel.isShowing)
+
+        NotificationCenter.default.post(
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
+
+        #expect(!panel.isShowing)
+        #expect(panel.drawn.style == .hidden)
+    }
+
     @Test("A suggestion with no room reports hidden and stops idle polling")
     func noRoomReportsHidden() throws {
         let screen = try #require(NSScreen.screens.first).visibleFrame

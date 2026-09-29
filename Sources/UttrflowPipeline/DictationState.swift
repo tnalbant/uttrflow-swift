@@ -11,32 +11,43 @@ public struct DictationFailure: Sendable, Equatable {
     public let transcript: String?
     /// Whether the words were meant for a field that hides what is typed, so they are kept nowhere.
     public let intoSecureField: Bool
+    /// Which recogniser failed, when speech preparation or transcription failed.
+    public let speechEngineKind: SpeechEngineKind?
+    /// The original typed speech failure, when the source error is a speech-engine error.
+    public let speechEngineError: SpeechEngineError?
 
     public init(
         message: String, recovery: RecoveryAction?, severity: FailureSeverity,
-        transcript: String? = nil, intoSecureField: Bool = false
+        transcript: String? = nil, intoSecureField: Bool = false,
+        speechEngineKind: SpeechEngineKind? = nil, speechEngineError: SpeechEngineError? = nil
     ) {
         self.message = message
         self.recovery = recovery
         self.severity = severity
         self.transcript = transcript
         self.intoSecureField = intoSecureField
+        self.speechEngineKind = speechEngineKind
+        self.speechEngineError = speechEngineError
     }
 
     /// The salvaged words Uttrflow may keep or show, which is none for a secure field.
     public var wordsToKeep: String? { intoSecureField ? nil : transcript }
 
     /// Builds the notice from any error; the fallback keeps an unforeseen one off the screen as a type name.
-    public init(_ error: any Error, transcript: String? = nil) {
+    public init(
+        _ error: any Error, transcript: String? = nil,
+        speechEngineKind: SpeechEngineKind? = nil
+    ) {
         if let failure = error as? any UttrflowFailure {
             self.init(
                 message: failure.userMessage, recovery: failure.recovery,
-                severity: failure.severity, transcript: transcript)
+                severity: failure.severity, transcript: transcript,
+                speechEngineKind: speechEngineKind, speechEngineError: error as? SpeechEngineError)
         } else {
             // Recoverable rather than blocking: an unforeseen error is far more likely a one-off.
             self.init(
                 message: "Something went wrong. Please try again.", recovery: .retry,
-                severity: .recoverable, transcript: transcript)
+                severity: .recoverable, transcript: transcript, speechEngineKind: speechEngineKind)
         }
     }
 
@@ -48,14 +59,16 @@ public struct DictationFailure: Sendable, Equatable {
     public func offering(_ recovery: RecoveryAction?) -> DictationFailure {
         DictationFailure(
             message: message, recovery: recovery, severity: severity, transcript: transcript,
-            intoSecureField: intoSecureField)
+            intoSecureField: intoSecureField, speechEngineKind: speechEngineKind,
+            speechEngineError: speechEngineError)
     }
 
     /// The same failure, marked as meant for a field that hides what is typed.
     public func markingSecure(_ secure: Bool) -> DictationFailure {
         DictationFailure(
             message: message, recovery: recovery, severity: severity, transcript: transcript,
-            intoSecureField: secure)
+            intoSecureField: secure, speechEngineKind: speechEngineKind,
+            speechEngineError: speechEngineError)
     }
 }
 

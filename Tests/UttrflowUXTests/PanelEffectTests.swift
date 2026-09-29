@@ -87,7 +87,7 @@ struct PanelEffectTests {
     }
 }
 
-/// Every way of choosing a clip says which clip, since eviction ranks by ``Clip/lastUsedAt``.
+/// Every way of choosing a clip says which clip, since eviction ranks by ``Clip/lastUsedOrder``.
 @Suite("Choosing a clip says which clip")
 struct PanelUseReportingTests {
     /// A plain clip.

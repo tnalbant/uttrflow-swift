@@ -13,6 +13,8 @@ public enum PanelChange: Sendable, Equatable {
     case create(String)
     /// The clip with its text replaced by something the user agreed to, from a re-indenter or formatter.
     case rewriteText(Clip.ID, String)
+    /// Pinning prevents retention from removing the clip; unpinning puts it back under normal retention.
+    case setPinned(Clip.ID, Bool)
     /// The note form of a clip, replaced; ``Clip/text`` is left alone, which keeps the original recoverable.
     case setRichText(Clip.ID, String)
     /// A collection renamed; every clip in it moves with the name and no alias is touched.
