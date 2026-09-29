@@ -1015,10 +1015,12 @@ final class SuggestionCoordinator {
                 generating?.cancel()
                 // Held across the insert so the keys it posts are ignored on both the tap and the monitor.
                 isInserting = true
-                let taken = await take(text, after: typed, in: reading)
+                let returnedKey = await Self.acceptKeyToReturnIfTakeFails(stroke) {
+                    await take(text, after: typed, in: reading)
+                }
                 isInserting = false
                 // A field that is no longer the drawn line gets its key back, so Tab still does what Tab does there.
-                if !taken { KeyStrokeReturn.post(stroke) }
+                if let returnedKey { KeyStrokeReturn.post(returnedKey) }
                 noteActivity()
                 // The field is re-read a moment later, since an application applies the insertion after the keys land.
                 wake(.tick, afterMilliseconds: 80)
@@ -1064,6 +1066,13 @@ final class SuggestionCoordinator {
         }
     }
 
+    /// Returns the swallowed accept stroke only when taking the suggestion fails.
+    static func acceptKeyToReturnIfTakeFails(
+        _ stroke: UttrflowPredict.KeyStroke, taking: () async -> Bool
+    ) async -> UttrflowPredict.KeyStroke? {
+        await taking() ? nil : stroke
+    }
+
     /// Puts the tail into the field and queues the taken line for capture, answering false when the field refused it unwritten.
     private func take(_ text: String, after typed: String, in reading: FieldReading?) async -> Bool {
         // What the gates left is a whole line, so taking it may replace characters as well as add.
@@ -1080,7 +1089,7 @@ final class SuggestionCoordinator {
             } catch {
                 // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
                 Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
-                return true
+                return false
             }
         }
         Self.log.debug(
