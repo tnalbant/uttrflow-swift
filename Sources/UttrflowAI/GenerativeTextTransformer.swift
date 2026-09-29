@@ -40,6 +40,11 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         await model.warm(instructions: prompts.instructions(for: situation?.destination ?? .plain))
     }
 
+    /// Reserves the warm slot for the last piece after earlier model requests have consumed theirs.
+    public func reserveFinalPiece(_ situation: Situation?) async {
+        await warm(for: situation)
+    }
+
     /// Rewrites, unwraps and tidies, then throws `outputRejected` when the meaning guard refuses.
     public func transform(
         _ request: TransformationRequest

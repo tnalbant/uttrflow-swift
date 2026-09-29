@@ -1,4 +1,5 @@
 import Foundation
+import UttrflowAI
 import UttrflowCore
 import UttrflowSettings
 import Testing
@@ -315,7 +316,13 @@ struct SettingsLanguagesPaneTests {
         #expect(example?.spoken == "um so i think we should uh ship it on friday")
         #expect(example?.writtenLabel == "Uttrflow writes · Standard")
         #expect(example?.written == "I think we should ship it on Friday.")
-        #expect(SettingsPresenter.tidied(at: .light) == "Um, so I think we should, uh, ship it on Friday.")
+        #expect(SettingsPresenter.tidied(at: .light) == "So I think we should ship it on friday.")
+        let rulesOutput = CleaningPipeline.standard.run(Draft(text: SettingsPresenter.exampleSpoken)).text
+        #expect(SettingsPresenter.tidied(at: .light) == rulesOutput)
+        #expect(
+            SettingsTidyingLevel.rowExplanation
+                == "Both levels remove filler words and stammers. Standard also rewrites grammar and word choice when an on-device model is available."
+        )
     }
 
     @Test("keeps each language's own name in its offer")
@@ -360,13 +367,17 @@ struct SettingsLanguagesPaneTests {
         }
     }
 
-    @Test("says when this Mac cannot tidy beyond punctuation")
+    @Test("explains what still works when this Mac cannot use Standard tidying")
     func explainsAMissingTidyingEngine() {
         var capabilities = SettingsCapabilities.everything
         capabilities.readyTransformers = [SettingsEngines.floor]
         let pane = SettingsPresenter.pane(
             for: .languages, settings: .default, capabilities: capabilities)
-        #expect(pane.row("tidyingLevel")?.isEnabled == false)
+        let row = pane.row("tidyingLevel")
+        #expect(row?.isEnabled == false)
+        #expect(
+            row?.unavailability
+                == "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules.")
     }
 
     @Test("explains what mixing languages does")
