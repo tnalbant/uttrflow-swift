@@ -120,7 +120,12 @@ public actor ClipboardStore {
 
         let existing = loaded()
         let previous = Self.previous(for: clip, in: existing)
-        let arrival = previous.map { inheriting($0, from: clip) } ?? clip
+        var arrival = previous.map { inheriting($0, from: clip) } ?? clip
+        if let alias = arrival.alias,
+            existing.contains(where: { $0.id != arrival.id && $0.alias == alias })
+        {
+            arrival.alias = nil
+        }
 
         // Prepended, not sorted in: a machine whose clock moved must not shuffle what the user sees.
         let displaced = previous.map { [$0.id] } ?? []
@@ -237,7 +242,10 @@ public actor ClipboardStore {
     public func setAlias(
         _ alias: String?, of id: UUID, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try change(id, keeping: retention) { $0.alias = alias }
+        if let alias, loaded().contains(where: { $0.id != id && $0.alias == alias }) {
+            throw .aliasAlreadyInUse
+        }
+        return try change(id, keeping: retention) { $0.alias = alias }
     }
 
     /// Replaces a clip's plain text, keeping its identity and leaving its formatted note alone.
@@ -502,8 +510,23 @@ public actor ClipboardStore {
     private func settled(
         _ clips: [Clip], keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try save(keptOnDisk(clips, keeping: retention))
-        return retained(clips, keeping: retention)
+        let unique = Self.uniqueAliases(in: clips)
+        try save(keptOnDisk(unique, keeping: retention))
+        return retained(unique, keeping: retention)
+    }
+
+    /// Keeps the first clip holding an alias and removes that alias from later clips.
+    private static func uniqueAliases(in clips: [Clip]) -> [Clip] {
+        var aliases: Set<String> = []
+        return clips.map { clip in
+            guard let alias = clip.alias else { return clip }
+            guard aliases.insert(alias).inserted else {
+                var unnamed = clip
+                unnamed.alias = nil
+                return unnamed
+            }
+            return clip
+        }
     }
 
     /// Spares every kept clip, then applies the window and the per-pool caps to the history.
@@ -629,8 +652,9 @@ public actor ClipboardStore {
         // An unreplaceable file is unknown rather than empty, so every save still meets its refusal.
         historyOnDisk = unreplaceable.contains(file) ? nil : fromHistoryFile
         let stored = fromSavedFile + fromHistoryFile.filter { !savedIDs.contains($0.id) }
-        let list = Self.interleaving(
-            saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept })
+        let list = Self.uniqueAliases(
+            in: Self.interleaving(
+                saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept }))
         wholeList = list
         sweepOnce()
         return list
