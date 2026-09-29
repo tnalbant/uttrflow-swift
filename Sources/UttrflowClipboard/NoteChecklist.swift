@@ -155,7 +155,7 @@ public enum NoteChecklist {
 public enum NotePromotion {
     /// The note form of some plain text: line breaks become paragraphs, and nothing else is interpreted.
     public static func note(from text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false)
+        text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
             .map { "<p>" + escaped(String($0)) + "</p>" }
             .joined()
     }

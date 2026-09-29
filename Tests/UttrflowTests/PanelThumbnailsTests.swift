@@ -2,6 +2,7 @@
 
 import AppKit
 import ImageIO
+import Synchronization
 import Testing
 import UttrflowClipboard
 
@@ -13,9 +14,23 @@ import UttrflowClipboard
 struct PanelThumbnailsTests {
     /// The mock source is `@Sendable` so the cache can run it on a detached task; the counter is shared across that boundary.
     private final class Counter: @unchecked Sendable {
-        var files: [URL] = []
-        var sizes: [Int] = []
-        var calls = 0
+        private let lock = NSLock()
+        private var storedFiles: [URL] = []
+        private var storedSizes: [Int] = []
+        private var storedCalls = 0
+        var files: [URL] { lock.withLock { storedFiles } }
+        var sizes: [Int] { lock.withLock { storedSizes } }
+        var calls: Int { lock.withLock { storedCalls } }
+        /// Records one decode under the lock, since decodes run on detached tasks at once.
+        func record(_ file: URL, maxPixel: Int) {
+            lock.withLock {
+                storedFiles.append(file)
+                storedSizes.append(maxPixel)
+                storedCalls += 1
+            }
+        }
+        /// Counts one decode under the lock.
+        func count() { lock.withLock { storedCalls += 1 } }
     }
 
     /// A picture with real pixels behind it; `NSImage(size:)` has no representation and weighs nothing.
@@ -33,16 +48,18 @@ struct PanelThumbnailsTests {
     static let thumbnailBytes = PanelThumbnails.bytes(of: bitmap())
 
     private func thumbnails(
-        _ answers: [URL: NSImage] = [:], budget: Int? = nil
+        _ answers: [URL: NSImage] = [:], budget: Int? = nil, retryAfter: Duration = .seconds(2)
     ) -> (PanelThumbnails, Counter) {
         let counter = Counter()
         let source = PanelThumbnailSource { file, maxPixel in
-            counter.files.append(file)
-            counter.sizes.append(maxPixel)
-            counter.calls += 1
+            counter.record(file, maxPixel: maxPixel)
             return answers[file]
         }
-        return (PanelThumbnails(source: source, budget: budget ?? PanelThumbnails.defaultBudget), counter)
+        return (
+            PanelThumbnails(
+                source: source, budget: budget ?? PanelThumbnails.defaultBudget, retryAfter: retryAfter),
+            counter
+        )
     }
 
     func file(_ name: String) -> URL {
@@ -62,10 +79,35 @@ struct PanelThumbnailsTests {
         #expect(counter.files == [file])
     }
 
+    @Test("a view starts from the cached picture and a miss is awaited, not polled")
+    func pictureIsAwaited() async {
+        let picture = Self.bitmap()
+        let (thumbnails, counter) = thumbnails([file: picture])
+
+        #expect(thumbnails.cached(file) == nil)
+        #expect(await thumbnails.picture(for: file) === picture)
+        #expect(thumbnails.cached(file) === picture)
+        #expect(await thumbnails.picture(for: file) === picture)
+        #expect(counter.calls == 1)
+    }
+
+    /// The row crops to fill, so the shorter edge is the one that must reach the drawn size.
+    @Test("a picture is decoded large enough that its crop is never stretched")
+    func coversTheCrop() {
+        let edge = PanelThumbnails.maxPixel
+
+        #expect(PanelThumbnailSource.longestEdge(width: 1000, height: 1000, covering: edge) == edge)
+        #expect(PanelThumbnailSource.longestEdge(width: 2000, height: 1000, covering: edge) == edge * 2)
+        #expect(PanelThumbnailSource.longestEdge(width: 1000, height: 3000, covering: edge) == edge * 3)
+        #expect(PanelThumbnailSource.longestEdge(width: 10_000, height: 100, covering: edge) == edge * 4)
+        #expect(PanelThumbnailSource.longestEdge(width: 40, height: 20, covering: edge) == edge)
+    }
+
     /// A clip whose file has been deleted should not cost a trip to the disk on every frame.
     @Test("remembers that a picture is gone")
     func remembersAMiss() async {
-        let (thumbnails, counter) = thumbnails()
+        // An hour, so a slow machine cannot make the miss stale between the reads.
+        let (thumbnails, counter) = thumbnails(retryAfter: .seconds(3600))
 
         thumbnails.prepare(file)
         await thumbnails.waitForIdle(file: file)
@@ -75,10 +117,33 @@ struct PanelThumbnailsTests {
         #expect(counter.files.count == 1)
     }
 
+    /// A picture file restored after a failed decode is decoded again once the miss is stale.
+    @Test("decodes a restored picture after remembering it was gone")
+    func decodesARestoredPicture() async {
+        let counter = Counter()
+        let restored = Self.bitmap()
+        let present = Counter()
+        let source = PanelThumbnailSource { file, _ in
+            counter.count()
+            return present.calls > 0 ? restored : nil
+        }
+        let thumbnails = PanelThumbnails(source: source, retryAfter: .zero)
+
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        present.count()
+
+        #expect(thumbnails.thumbnail(for: file) == nil)
+        await thumbnails.waitForIdle(file: file)
+        #expect(thumbnails.thumbnail(for: file) === restored)
+        #expect(counter.calls == 2)
+    }
+
     /// Asked for at the size it is drawn, not the size of the screenshot.
     @Test("asks for the small version")
     func asksForAThumbnail() async {
-        let (thumbnails, counter) = thumbnails()
+        // An hour, so a slow machine cannot make the miss stale and decode it twice.
+        let (thumbnails, counter) = thumbnails(retryAfter: .seconds(3600))
 
         thumbnails.prepare(file)
         await thumbnails.waitForIdle(file: file)
@@ -103,33 +168,73 @@ struct PanelThumbnailsTests {
         #expect(Set(counter.files) == [file, other])
     }
 
+    /// A decode held on its thread until the test lets it go, and whether it has ended.
+    private final class DecodeHold: Sendable {
+        private let released = DispatchSemaphore(value: 0)
+        private let state = Mutex((calls: 0, ended: false))
+        var calls: Int { state.withLock { $0.calls } }
+        var hasEnded: Bool { state.withLock { $0.ended } }
+        func release() { released.signal() }
+        /// Blocks until released, or for a minute so a caller that waits on it fails rather than hangs.
+        func hold() {
+            state.withLock { $0.calls += 1 }
+            _ = released.wait(timeout: .now() + .seconds(60))
+            state.withLock { $0.ended = true }
+        }
+    }
+
     /// The cache miss returns nil immediately and the source load runs on a background queue, so the row draws the placeholder while the decode happens.
     @Test("miss does not block the caller while the source decodes")
     func missDoesNotBlockTheCaller() async {
-        final class DecodingCounter: @unchecked Sendable {
-            var calls = 0
-        }
-        let decoded = DecodingCounter()
+        let decoding = DecodeHold()
         let image = NSImage(size: NSSize(width: 4, height: 4))
-        let source = PanelThumbnailSource { file, _ in
-            decoded.calls += 1
-            // Long enough that a synchronous call would obviously block the caller.
-            Thread.sleep(forTimeInterval: 0.1)
+        let source = PanelThumbnailSource { _, _ in
+            decoding.hold()
             return image
         }
         let thumbnails = PanelThumbnails(source: source, budget: 1)
 
-        let started = Date()
         let result = thumbnails.thumbnail(for: file)
-        let elapsed = Date().timeIntervalSince(started)
+        let decodeStillHeld = !decoding.hasEnded
+        decoding.release()
 
-        // The miss returns right away; the source cost 100ms but the call did not.
         #expect(result == nil, "miss returns nil, the row draws the placeholder")
-        #expect(elapsed < 0.01, "the call must not have waited for the decode: took \(elapsed)s")
+        #expect(decodeStillHeld, "the call must return while the decode is still held")
 
         await thumbnails.waitForIdle(file: file)
-        #expect(decoded.calls == 1, "the source ran exactly once, off the caller's thread")
+        #expect(decoding.calls == 1, "the source ran exactly once, off the caller's thread")
         #expect(thumbnails.thumbnail(for: file) != nil)
+    }
+
+    @Test("a decode redraws only the row showing that picture")
+    func decodeInvalidatesOneFile() async {
+        final class Flag: @unchecked Sendable { var changed = false }
+        let other = URL(fileURLWithPath: "/tmp/uttrflow-other.png")
+        let (thumbnails, _) = thumbnails([file: NSImage(size: NSSize(width: 4, height: 4))])
+        let flag = Flag()
+        withObservationTracking {
+            _ = thumbnails.thumbnail(for: file)
+        } onChange: {
+            flag.changed = true
+        }
+        await thumbnails.waitForIdle(file: file)
+        thumbnails.prepare(other)
+        await thumbnails.waitForIdle(file: other)
+        #expect(flag.changed, "the row showing the decoded file is told")
+
+        let untouched = Flag()
+        withObservationTracking {
+            _ = thumbnails.thumbnail(for: file)
+        } onChange: {
+            untouched.changed = true
+        }
+        let third = URL(fileURLWithPath: "/tmp/uttrflow-third.png")
+        for index in 0..<50 {
+            let next = third.appendingPathExtension("\(index)")
+            thumbnails.prepare(next)
+            await thumbnails.waitForIdle(file: next)
+        }
+        #expect(!untouched.changed, "fifty other decodes leave this row alone")
     }
 
     /// Calling prepare twice for the same file does not run the source twice; the in-flight tracker deduplicates.
@@ -150,12 +255,18 @@ struct PanelThumbnailsTests {
 @MainActor
 @Suite("What the picture cache lets go of")
 struct PanelThumbnailsCapacityTests {
-    private final class Counter: @unchecked Sendable { var files: [URL] = [] }
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storedFiles: [URL] = []
+        var files: [URL] { lock.withLock { storedFiles } }
+        /// Records one decode under the lock, since several decodes can run at once.
+        func record(_ file: URL) { lock.withLock { storedFiles.append(file) } }
+    }
 
     private func thumbnails(room pictures: Int) -> (PanelThumbnails, Counter) {
         let counter = Counter()
         let source = PanelThumbnailSource { file, _ in
-            counter.files.append(file)
+            counter.record(file)
             return PanelThumbnailsTests.bitmap()
         }
         return (
@@ -272,4 +383,13 @@ struct PanelThumbnailsCapacityTests {
         #expect(PanelThumbnailsTests.thumbnailBytes < 30_000)
     }
 
+    @Test("a representation with no pixels behind it weighs nothing")
+    func aRepresentationWithoutPixelsWeighsNothing() {
+        let empty = NSImage(size: NSSize(width: 68, height: 68))
+        empty.addRepresentation(NSImageRep())
+        #expect(PanelThumbnails.bytes(of: empty) == 0)
+        let mixed = PanelThumbnailsTests.bitmap()
+        mixed.addRepresentation(NSImageRep())
+        #expect(PanelThumbnails.bytes(of: mixed) == PanelThumbnailsTests.thumbnailBytes)
+    }
 }

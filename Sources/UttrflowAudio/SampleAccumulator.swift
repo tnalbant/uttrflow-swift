@@ -43,8 +43,9 @@ public final class SampleAccumulator: Sendable {
             for sample in block {
                 let magnitude = Swift.abs(sample)
                 guard magnitude.isFinite else { continue }
-                if magnitude > state.peak { state.peak = magnitude }
-                sumOfSquares += sample * sample
+                let level = Swift.min(magnitude, 1)
+                if level > state.peak { state.peak = level }
+                sumOfSquares += level * level
             }
             // Root mean square, not the peak, so clicks and lip smacks do not make the meter twitch.
             let rms = (sumOfSquares / Float(block.count)).squareRoot()
@@ -85,6 +86,28 @@ public final class SampleAccumulator: Sendable {
             (state.sealed, state.open.withUnsafeBufferPointer { [Float]($0) }, state.count)
         }
         return Self.joined(sealed, open, total)
+    }
+
+    /// A copy of the samples from `start` onwards, which copies no block that lies wholly before it.
+    public func samples(from start: Int) -> [Float] {
+        let (sealed, open, total, skipped) = state.withLock { state in
+            let skipped = Swift.min(Swift.max(0, start) / Self.blockSize, state.sealed.count)
+            return (
+                Array(state.sealed[skipped...]), state.open.withUnsafeBufferPointer { [Float]($0) },
+                state.count, skipped * Self.blockSize
+            )
+        }
+        let first = Swift.max(0, start) - skipped
+        guard total > skipped + first else { return [] }
+        var samples = [Float]()
+        samples.reserveCapacity(total - skipped - first)
+        var dropping = first
+        for block in sealed + [open] {
+            let taken = Swift.min(dropping, block.count)
+            dropping -= taken
+            samples.append(contentsOf: block[taken...])
+        }
+        return samples
     }
 
     /// Lays the blocks end to end into one array, which is the shape every reader downstream wants.

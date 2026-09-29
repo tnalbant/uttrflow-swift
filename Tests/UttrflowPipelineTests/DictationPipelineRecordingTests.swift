@@ -293,6 +293,31 @@ struct DictationPipelineRecordingTests {
         #expect(await speech.transcribeCalls.events.last?.options.vocabulary == ["NewName"])
     }
 
+    @Test("a multi-piece dictation resolves vocabulary once and shares it with every piece")
+    func dictationReadsVocabularyOnce() async {
+        let words = WordsInTurn(["Uttrflow"])
+        let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
+        let audio = AudioSamples.canonical(
+            [Float](repeating: 0.3, count: 24_000) + [Float](repeating: 0, count: 8_000)
+                + [Float](repeating: 0.3, count: 24_000))
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(audio))
+        await capture.setCaptured(audio)
+        let pipeline = DictationPipeline(
+            capture: capture, speech: speech, cleaner: RecordingFakeCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: RecordingFakeInserter(),
+            speechWords: { _ in words.next() },
+            windowing: SpeechWindowing(
+                minimumLength: 1, sentencePause: 0.3, comfortableLength: 2, anyPause: 0.2,
+                maximumLength: 5, minimumSpeech: 0.2))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(words.reads == 1)
+        #expect(await speech.transcribeCalls.events.count > 1)
+        #expect(await speech.transcribeCalls.events.allSatisfy { $0.options.vocabulary == ["Uttrflow"] })
+    }
+
     @Test("a retry that fails again keeps the recording for another go")
     func retryFailureKeeps() async {
         let recordings = FakeRecordingKeeper(waiting: [recording])
