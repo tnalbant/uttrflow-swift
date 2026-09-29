@@ -18,14 +18,20 @@ struct SpeechModelLoadTests {
     }
 
     @Test(
-        "a load that runs on gives the estimate, and says it is the first load after a restart",
-        arguments: [Duration.seconds(5), .seconds(154)])
-    func slowLoadGivesTheEstimate(elapsed: Duration) {
+        "a load that runs on says the estimate's own time left, and that it is the first load after a restart",
+        arguments: [
+            (Duration.seconds(5), "About 2 min left"), (.seconds(90), "About 1 min left"),
+            (.seconds(120), "Less than a minute left"), (.seconds(154), "Almost ready"),
+        ])
+    func slowLoadGivesTheEstimate(elapsed: Duration, timeLeft: String) throws {
         let load = SpeechModelLoad.loading(elapsed: elapsed)
+        let estimate = try #require(load.estimate)
 
         #expect(load.showsEstimate)
-        #expect(load.message.contains("first load after a restart can take about 2–3 minutes"))
-        #expect(load.detail == "First load after restart: about 2–3 min")
+        #expect(load.detail == timeLeft)
+        #expect(load.detail.lowercased() == estimate.timeLeft)
+        #expect(load.message.hasPrefix("\(timeLeft). The first load after a restart takes a while."))
+        #expect(!load.message.contains("2–3") && !load.detail.contains("2–3"))
     }
 
     @Test("says the speech model is loading, with nothing to press")
@@ -39,7 +45,7 @@ struct SpeechModelLoadTests {
         #expect(load.recovery == nil)
     }
 
-    @Test("a failed load says so and offers a fresh download")
+    @Test("a first failed load says so and offers to load it again")
     func failedCopy() {
         let load = SpeechModelLoad.failed
 
@@ -48,8 +54,21 @@ struct SpeechModelLoadTests {
         #expect(load.title == "The speech model didn’t load")
         #expect(load.line == "Speech model didn’t load")
         #expect(load.status == "Speech model didn’t load")
+        #expect(load.recovery == .retry)
+        #expect(load.message.contains("Try loading it again"))
+    }
+
+    @Test("a damaged model says so and offers a fresh download")
+    func brokenCopy() {
+        let load = SpeechModelLoad.broken
+
+        #expect(!load.isLoading)
+        #expect(load.title == "The speech model is damaged")
+        #expect(load.line == "Speech model is damaged")
+        #expect(load.status == "Speech model is damaged")
         #expect(load.recovery == .downloadSpeechModel)
         #expect(load.message.contains("Download it again"))
+        #expect(load.accessibilityLabel.hasSuffix("Download it again to repair it."))
     }
 
     @Test("a missing model says it was never downloaded and offers the download")
@@ -72,7 +91,29 @@ struct SpeechModelLoadTests {
 
         #expect(!label.contains("…"))
         #expect(!label.contains("–"))
-        #expect(label.hasPrefix("Loading the speech model. "))
-        #expect(label.contains("about 2 to 3 minutes"))
+        #expect(label.hasPrefix("Loading the speech model, "))
+        #expect(label.contains("about 1 minute left"))
+        #expect(!SpeechModelLoad.loading(elapsed: .seconds(1)).accessibilityLabel.contains("minute"))
+    }
+
+    @Test("a load gives an estimate only once it has run past the silent first seconds")
+    func loadGivesTheEstimate() {
+        #expect(SpeechModelLoad.loading(elapsed: .seconds(4)).estimate == nil)
+        #expect(
+            SpeechModelLoad.loading(elapsed: .seconds(5)).estimate
+                == SpeechModelLoadEstimate(elapsed: .seconds(5)))
+        #expect(SpeechModelLoad.failed.estimate == nil)
+        #expect(SpeechModelLoad.missing.estimate == nil)
+    }
+
+    @Test("VoiceOver hears the minutes written out once the estimate shows")
+    func spokenLabel() {
+        let label = SpeechModelLoad.loading(elapsed: .seconds(90)).accessibilityLabel
+
+        #expect(
+            label
+                == "Loading the speech model, about 1 minute left. Dictation starts working as soon as it’s ready."
+        )
+        #expect(!label.contains("~"))
     }
 }

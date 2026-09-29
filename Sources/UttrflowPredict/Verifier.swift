@@ -41,6 +41,8 @@ public actor Verifier {
         let deadline = deadline()
         var kept: [Candidate] = []
         for candidate in candidates {
+            // A keystroke that cancelled this turn's task makes every candidate after this one moot.
+            guard !Task.isCancelled else { break }
             guard
                 let allowed = await allowed(
                     candidate, in: surface, typed: typed, now: now, before: deadline)
@@ -87,12 +89,13 @@ public actor Verifier {
             of: candidate.text, following: typed, before: deadline)
         guard plausibility != .overBudget else { return .rejected }
 
+        // Only a machine that answered can condemn a line for good; the model alone refuses it this time only.
         let verdict = await reported(
             Verification.verdict(
                 word: judged?.word ?? token.token, known: judged?.known ?? [],
                 modelObjects: Verification.objects(to: plausibility)),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
-            forGood: Verification.isClosedVocabulary(for: token))
+            forGood: judged != nil && Verification.isClosedVocabulary(for: token))
         cache.remember(verdict, for: key, now: now)
         return verdict
     }
@@ -108,16 +111,17 @@ public actor Verifier {
             if forGood { await supersession?.recordSupersession(of: text, by: corrected, in: surface) }
             return .corrected(corrected)
         case .rejected:
-            await supersession?.recordRejection(of: text, in: surface)
+            if forGood { await supersession?.recordRejection(of: text, in: surface) }
             return .rejected
         case .attested, .plausible:
             return verdict
         }
     }
 
-    /// Forgets every verdict, which is what leaving a field and the reset in Settings both ask for.
-    public func forgetEverything() {
+    /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
+    public func forgetEverything() async {
         cache.forgetEverything()
+        await scoring?.forgetEverything()
     }
 
     /// How many verdicts are remembered, which is what says a keystroke skipped the gates.
@@ -198,17 +202,36 @@ public actor Verifier {
         return standing
     }
 
-    /// Whether every word the model added is one the machine names, or one no listing could deny.
+    /// Each generated line's mean log-probability per token from the pass that wrote it, absent where no pass measured it or no model is loaded.
+    public func scoreCompletions(_ completions: [String]) async -> [String: Double] {
+        guard let scoring else { return [:] }
+        var scores: [String: Double] = [:]
+        for completion in completions {
+            if let value = await scoring.confidence(ofGenerated: completion) {
+                scores[completion] = value
+            }
+        }
+        return scores
+    }
+
+    /// Whether every word the model added is one the machine names, or one no listing could deny; a listing not yet answered vouches for nothing.
     private func stands(
         _ completion: String, after typed: String, in surface: Surface, now: Date
     ) async -> Bool {
         guard await admits(completion, in: surface, now: now) else { return false }
+        // A field that is not a directory has no listings, so nothing it holds is looked up.
+        guard EnvironmentSource.workingDirectory(of: surface) != nil else { return true }
         for token in Verification.words(of: completion, addedAfter: typed) {
             guard let attestation = Verification.attestation(for: token) else { continue }
             var vouched = false
             for lookup in attestation.lookups where !vouched {
-                let known = await known(of: lookup.kinds, in: surface, now: now)
-                vouched = Verification.stands(lookup.word, known: known)
+                let answer = await knownAndComplete(of: lookup.kinds, in: surface, now: now)
+                if let answer, Verification.attests(lookup.word, answer.known) {
+                    vouched = true
+                } else if answer?.complete != true {
+                    // A listing still out is no proof either way, so only the disk itself may vouch meanwhile.
+                    vouched = lines.confirms(lookup, in: surface.scope)
+                }
             }
             guard vouched else { return false }
         }

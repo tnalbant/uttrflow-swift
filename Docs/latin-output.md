@@ -13,10 +13,10 @@ Three places make it true, from the most specific to the last resort.
 |---|---|
 | `RuleBasedTransformer` | romanises the transcript with `Romaniser` before the passes run, so the floor beneath every model writes Latin letters |
 | `MeaningPreservationGuard.scriptVerdict` | refuses a model's rewrite that is in another script, translates a Devanagari draft, or repeats a worked example, so the router falls back to the rules |
-| `DictationPipeline` | runs `LatinScript.enforced` over the finished message before snippets and insertion, so an untidied or unexpected answer is romanised too |
+| `DictationPipeline` | runs `LatinScript.enforced` over the finished message and again after snippets, immediately before insertion, so untidied text and user-authored expansions are romanised too |
 
-Snippet expansions are the user's own text and run after that last step, so a snippet the
-user wrote in Devanagari is inserted as written.
+Snippet expansions stay stored exactly as the user wrote them. The final script check runs
+after expansion, so a snippet written in Devanagari is inserted romanised in Latin letters.
 
 Recognition still answers in Devanagari, and what that costs in decoder steps — with the options
 for decoding straight to Latin, and why none of them is taken — is measured in
@@ -95,6 +95,26 @@ reads no Devanagari, so it compared nothing.
   Measured on the answers issue 700 recorded: "Meeting is at four o'clock, no no, five o'clock."
   has 8 of 9 words with none and is refused; "Woh kya hai na, yaani mujhe thoda time chahiye."
   has 1 of 9 and is accepted.
+- **A changed word.** Below that, the rewrite's content words are aligned with the romanised
+  draft's, in order, by `WordErrorRate.measure` over the same sound keys, with number words read
+  as their digits, fillers dropped and a word said twice in a row kept once (issues 2087 and
+  2416). Grammar words (Hindi auxiliaries, postpositions and particles, and English
+  `FunctionWords`) are left out of both sides; a negation, a number and a Hindi pronoun never
+  are. A dropped or added content word refuses the rewrite, and so does a substituted one unless
+  it is:
+  - the same word in another form, by `MeaningPreservationGuard.sameRomanisedForm`: an English
+    inflection by `sameForm`, a Hindi verb or noun and its ending ("aa" and "aata", "log" and
+    "logon"), or two cases of one demonstrative ("yah" and "is");
+  - an English loanword the rules romanised, written in its English spelling: the two share a
+    Double Metaphone key of at least two sounds and are not two ordinary English words
+    (`ReadingRestraint.isOrdinaryCollision`). "ticket" for "tikat", "cancel" for "kainsal",
+    "office" for "ophis" and "sorry" for "sauri" are accepted.
+
+  "Maine khana khila." for "मैंने खाना खा लिया" changes the verb and drops "liya", and "Hum doh
+  baje" for "हम धाई बजे" changes the time: "dhai" and "doh" share only a lone T, which says too
+  little to call them one word. Both are refused and the rules' romanisation goes in. What this
+  cannot see: a change of tense on a verb whose stem is kept ("aata" for "aa raha") is accepted,
+  and a changed Hindi word that happens to share a two-sound key with the draft's is too.
 - **A worked example.** A rewrite of three or more words, at least 80% of them one example's
   words in order, is refused when the draft holds fewer than half of that example's words.
   This reads any script, so an English example given back for English that did not say it is

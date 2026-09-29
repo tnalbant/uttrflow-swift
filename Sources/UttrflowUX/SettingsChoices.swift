@@ -1,6 +1,7 @@
 // The choices the settings screens offer, stated as outcomes. See `Docs/ux-settings-model.md`.
 public import UttrflowCore
 public import UttrflowPredict
+import UttrflowSettings
 
 // MARK: - Tidying
 
@@ -23,8 +24,8 @@ public enum SettingsTidyingLevel: String, Sendable, Equatable, CaseIterable {
     public static let rowLabel = "How much Uttrflow tidies"
     /// What the row says underneath on both screens that draw it.
     public static let rowExplanation = """
-        Light fixes punctuation, capitalisation and spacing. Standard also removes filler \
-        words and repairs grammar.
+        Both levels remove filler words and stammers. Standard also rewrites grammar and \
+        word choice when an on-device model is available.
         """
 }
 
@@ -104,12 +105,21 @@ public enum SettingsEngines {
 
 /// How long transcripts are kept, offering only periods the store round-trips unchanged.
 public enum SettingsRetention {
-    /// A day, through to a quarter. Ordered, because they are drawn in this order.
-    public static let offeredDays = [1, 3, 7, 14, 30, 90]
+    /// Finite periods offered in the menu, all within the maximum retention window.
+    public static let finiteOfferedDays = [1, 3, 7, 14, 30, 90]
+
+    /// All saved values offered in the menu, ordered because they are drawn in this order.
+    public static let offeredDays = [Settings.keepAlwaysDays] + finiteOfferedDays
+
+    /// Whether a period means "until I delete it" rather than a number of days.
+    public static func isAlways(days: Int) -> Bool {
+        days >= Settings.keepAlwaysDays
+    }
 
     /// How a period reads in a pop-up.
     public static func title(days: Int) -> String {
-        days == 1 ? "1 day" : "\(days) days"
+        if isAlways(days: days) { return "Always" }
+        return days == 1 ? "1 day" : "\(days) days"
     }
 }
 

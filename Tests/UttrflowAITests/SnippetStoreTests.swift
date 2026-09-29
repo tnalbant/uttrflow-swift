@@ -88,6 +88,17 @@ struct SnippetStoreTests {
         #expect(kept.map(\.created) == [snippetEpoch])
     }
 
+    @Test("keeps a non-Latin expansion as typed for the output boundary to enforce")
+    func preservesNonLatinExpansion() async throws {
+        let sandbox = Sandbox()
+        let store = SnippetStore(file: sandbox.file)
+        let kept = try await store.save(
+            trigger: "greeting", expansion: "हाँ ठीक है", replacing: nil, created: snippetEpoch)
+
+        #expect(kept.map(\.expansion) == ["हाँ ठीक है"])
+        #expect(sandbox.onDisk()?.map(\.expansion) == ["हाँ ठीक है"])
+    }
+
     /// Losing the identity, the date or the counts would make an old snippet look new.
     @Test("editing keeps the identity, the date it was created and what has been counted")
     func editingKeepsWhatWasNotTyped() async throws {

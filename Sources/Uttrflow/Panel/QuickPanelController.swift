@@ -9,6 +9,50 @@ import SwiftUI
 final class QuickPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// Whether the footer offers ⌘Z to put a deleted clip back, kept current by the controller's draw.
+    var offersRestore = false
+
+    /// Set while a row chord is sent through the window, so the send cannot come back here.
+    private var isSendingChord = false
+
+    /// Sends a row chord to the panel's own key handler before the main menu can swallow it, as Minimise does ⌘M.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let claimed =
+            Self.isRowChord(event)
+            || Self.claimsUndo(event, offersRestore: offersRestore, fieldCanUndo: fieldCanUndo)
+        guard !isSendingChord, claimed else {
+            return super.performKeyEquivalent(with: event)
+        }
+        isSendingChord = true
+        defer { isSendingChord = false }
+        sendEvent(event)
+        return true
+    }
+
+    /// Whether the search field has typing to take back, which ⌘Z undoes before it restores a clip.
+    private var fieldCanUndo: Bool {
+        (firstResponder as? NSTextView)?.undoManager?.canUndo ?? false
+    }
+
+    /// Whether ⌘Z restores a clip rather than undo typing: the offer on screen first, then the field; ⇧⌘Z stays Redo.
+    static func claimsUndo(_ event: NSEvent, offersRestore: Bool, fieldCanUndo: Bool) -> Bool {
+        guard event.type == .keyDown, offersRestore || !fieldCanUndo else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return modifiers.subtracting(.capsLock) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "z"
+    }
+
+    /// Whether `event` is ⌘, with or without ⇧, on a key some row action is bound to.
+    static func isRowChord(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.contains(.command), modifiers.isDisjoint(with: [.option, .control]),
+            let character = event.charactersIgnoringModifiers?.lowercased().first
+        else { return false }
+        let chord = PanelChord(character, shifted: modifiers.contains(.shift))
+        return PanelRowAction.allCases.contains { $0.chord == chord }
+    }
 }
 
 /// The panel's content, with the two things AppKit will not give a hosted view for free.
@@ -191,11 +235,16 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     // MARK: - Drawing
 
     private func draw() {
+        panel.offersRestore = presentation.offersUndo
         hostingView.rootView = QuickPanelView(
             presentation: presentation,
-            onKey: { [weak self] key in self?.relay(key) },
-            onIntent: { [weak self] intent in self?.onIntent?(intent, self?.caretOwner) },
-            openCount: openCount)
+            onKey: keyRelay, onIntent: intentRelay, openCount: openCount)
+    }
+
+    /// Made once, so every root the panel draws carries the same callbacks.
+    private lazy var keyRelay: (PanelKey) -> Void = { [weak self] key in self?.relay(key) }
+    private lazy var intentRelay: (PanelIntent) -> Void = { [weak self] intent in
+        self?.onIntent?(intent, self?.caretOwner)
     }
 
     private func postNewAnnouncements(_ lines: [String]) {
