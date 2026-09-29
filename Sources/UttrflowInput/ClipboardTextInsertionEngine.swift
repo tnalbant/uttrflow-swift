@@ -24,7 +24,7 @@ public struct ClipboardTextInsertionEngine: TextInsertionEngine {
             throw .insertionRejected(description: TextInsertion.dictationEnded)
         }
         let focus = focus
-        let writeChangeCount: Int
+        let writeChangeCount: Int?
         if await AccessibilityThread.run(orElse: true, { focus?.focusedFieldIsSecure() == true }) {
             writeChangeCount = pasteboard.writeConcealedText(text)
         } else {

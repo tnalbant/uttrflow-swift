@@ -84,7 +84,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         let focus = focus
         let isSecure = await AccessibilityThread.run(orElse: true) { focus.focusedFieldIsSecure() }
         try PasteboardPasteAction.requireTarget(destination, focus: focus)
-        let writeChangeCount: Int
+        let writeChangeCount: Int?
         if isSecure {
             writeChangeCount = pasteboard.writeConcealedText(text)
         } else {
