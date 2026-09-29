@@ -394,6 +394,14 @@ struct SuggestionPresentationTests {
                 == "AI suggestion: Sydney. Tab to accept. Alternatives: Sydenham, Soho.")
     }
 
+    @Test("A choice keeps alternatives available on the navigable surface, separate from its announcement")
+    func choiceSeparatesAnnouncementFromNavigableLabel() {
+        let presentation = SuggestionPresentation(.choice(leader: "Sydney", others: ["Sydenham", "Soho"]))
+
+        #expect(presentation.announcementLabel == "AI suggestion: Sydney. Tab to accept.")
+        #expect(presentation.accessibilityLabel.contains("Sydenham, Soho"))
+    }
+
     @Test("A replacement says out loud how much of the user's own typing it takes back")
     func labelForAReplacement() {
         #expect(

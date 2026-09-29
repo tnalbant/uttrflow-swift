@@ -157,14 +157,18 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The keys that work the open list, drawn under it in the dimmed style.
     public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
 
-    /// What VoiceOver is told the surface is offering, and what taking it costs.
-    public var accessibilityLabel: String {
+    /// What VoiceOver hears automatically when the offer changes, without exposing unselected candidates.
+    var announcementLabel: String {
         guard let leader = inline else { return style == .dot ? Self.dotLabel : "" }
-        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
         let take = "\(acceptKey.spokenName) to accept\(Self.cost(of: leader))."
-        guard !alternatives.isEmpty else { return "AI suggestion: \(leader.candidate). \(take)" }
-        return "AI suggestion: \(leader.candidate). \(take) Alternatives: "
-            + alternatives.joined(separator: ", ") + "."
+        return "AI suggestion: \(leader.candidate). \(take)"
+    }
+
+    /// What VoiceOver can read while navigating the surface, including alternatives in an open list.
+    public var accessibilityLabel: String {
+        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
+        guard !alternatives.isEmpty else { return announcementLabel }
+        return "\(announcementLabel) Alternatives: \(alternatives.joined(separator: ", "))."
     }
 
     /// What VoiceOver is told the dot left by Escape is, and what a second Escape does.
