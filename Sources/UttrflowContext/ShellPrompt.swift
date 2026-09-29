@@ -41,16 +41,101 @@ public enum ShellPrompt {
 
     /// The delimiter words opened by shell or Ruby heredoc syntax on one command line.
     private static func hereDocumentDelimiters(in line: Substring) -> [HereDocumentDelimiter] {
-        line.matches(
-            of:
-                #/<<([-~]?)(?:'([A-Za-z_][A-Za-z0-9_]*)'|"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))/#
-        )
-        .compactMap { match in
-            guard let tag = (match.output.2 ?? match.output.3 ?? match.output.4).map(String.init) else {
-                return nil
+        let characters = Array(line)
+        var delimiters: [HereDocumentDelimiter] = []
+        var index = 0
+        while index < characters.count {
+            if characters[index] == "\\" {
+                index = min(index + 2, characters.count)
+            } else if characters[index] == "'" || characters[index] == "\"" {
+                index = endOfQuotedText(in: characters, startingAt: index) ?? characters.count
+            } else if characters[index] == "#",
+                index == 0 || characters[index - 1].isWhitespace
+            {
+                break
+            } else if isHereDocumentOperator(characters, at: index),
+                let parsed = hereDocumentDelimiter(in: characters, afterOperatorAt: index)
+            {
+                delimiters.append(parsed.delimiter)
+                index = parsed.nextIndex
+            } else {
+                index += 1
             }
-            return HereDocumentDelimiter(tag: tag, modifier: match.output.1.first)
         }
+        return delimiters
+    }
+
+    /// Whether two angle brackets begin a heredoc operator rather than a here-string.
+    private static func isHereDocumentOperator(_ characters: [Character], at index: Int) -> Bool {
+        index + 1 < characters.count && characters[index] == "<" && characters[index + 1] == "<"
+            && (index + 2 == characters.count || characters[index + 2] != "<")
+    }
+
+    /// Parses the modifier and quote-removed delimiter following an unquoted heredoc operator.
+    private static func hereDocumentDelimiter(
+        in characters: [Character], afterOperatorAt index: Int
+    ) -> (delimiter: HereDocumentDelimiter, nextIndex: Int)? {
+        var cursor = index + 2
+        var modifier: Character?
+        if cursor < characters.count, characters[cursor] == "-" || characters[cursor] == "~" {
+            modifier = characters[cursor]
+            cursor += 1
+        }
+        let start = cursor
+        var tag = ""
+        while cursor < characters.count {
+            let character = characters[cursor]
+            if character == "'" || character == "\"" {
+                guard let end = endOfQuotedText(in: characters, startingAt: cursor) else { return nil }
+                tag += quoteRemoved(in: characters, from: cursor + 1, to: end - 1, quote: character)
+                cursor = end
+            } else if character == "\\", cursor + 1 < characters.count {
+                tag.append(characters[cursor + 1])
+                cursor += 2
+            } else if character.isWhitespace || ";|&<>".contains(character) {
+                break
+            } else {
+                tag.append(character)
+                cursor += 1
+            }
+        }
+        guard cursor > start, !tag.isEmpty else { return nil }
+        return (HereDocumentDelimiter(tag: tag, modifier: modifier), cursor)
+    }
+
+    /// The position after a closed quote, respecting escaped characters in double quotes.
+    private static func endOfQuotedText(in characters: [Character], startingAt start: Int) -> Int? {
+        let quote = characters[start]
+        var index = start + 1
+        while index < characters.count {
+            if quote == "\"", characters[index] == "\\" {
+                index = min(index + 2, characters.count)
+            } else if characters[index] == quote {
+                return index + 1
+            } else {
+                index += 1
+            }
+        }
+        return nil
+    }
+
+    /// Removes the quote and the backslashes that shell quote removal consumes.
+    private static func quoteRemoved(
+        in characters: [Character], from start: Int, to end: Int, quote: Character
+    ) -> String {
+        guard quote == "\"" else { return String(characters[start..<end]) }
+        var result = ""
+        var index = start
+        while index < end {
+            if characters[index] == "\\", index + 1 < end,
+                "$`\"\\".contains(characters[index + 1]) || characters[index + 1].isNewline
+            {
+                index += 1
+            }
+            result.append(characters[index])
+            index += 1
+        }
+        return result
     }
 
     /// One heredoc terminator, with the indentation rule selected by its opener.

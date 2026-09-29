@@ -295,6 +295,18 @@ struct FocusedFieldSnapshotTests {
         #expect(
             snapshot(value: spaces, selection: NSRange(location: spaces.utf16.count, length: 0))
                 .currentLine == "SQL")
+        let spaced = "cat <<'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: spaced, selection: NSRange(location: spaced.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("A heredoc-looking token inside a quoted argument does not start a heredoc.")
+    func quotedHeredocTextDoesNotSuppressSuggestions() {
+        let value = "printf 'literal <<DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
     }
 
     @Test("Only the caret's own line has a prompt taken off it, and only in a terminal.")
