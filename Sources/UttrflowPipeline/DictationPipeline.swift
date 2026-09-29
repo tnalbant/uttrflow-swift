@@ -714,7 +714,10 @@ public actor DictationPipeline {
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         let joined = PieceJoiner.join(pieces, under: .standard(for: joining.destination))
-        let whole = await finishMessage(joined, going: joining, seeing: appContext ?? AppContext())
+        let correctedAtSeams = await correctAcrossSeams(
+            pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
+        let whole = await finishMessage(
+            correctedAtSeams, going: joining, seeing: appContext ?? AppContext())
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
 
@@ -907,6 +910,79 @@ public actor DictationPipeline {
         } catch {
             return .unchanged(transcription.text)
         }
+    }
+
+    /// Gives the dictionary a joined transcript, keeping only proposals that cross a piece boundary.
+    private func correctAcrossSeams(
+        _ pieces: [Piece], in joined: Piece, seeing appContext: AppContext,
+        recording metrics: any MetricsRecording
+    ) async -> Piece {
+        guard pieces.count > 1 else { return joined }
+        let boundaries = pieces.dropLast().reduce(into: [Int]()) { result, piece in
+            result.append((result.last ?? 0) + piece.heard.text.spokenWordCount)
+        }
+        let proposed = await correct(joined.heard, seeing: appContext, recording: metrics).corrections
+        let crossings = proposed.filter { correction in
+            boundaries.contains {
+                correction.wordRange.lowerBound < $0 && correction.wordRange.upperBound > $0
+            } && !joined.corrected.corrections.contains { $0.wordRange.overlaps(correction.wordRange) }
+        }
+        guard !crossings.isEmpty else { return joined }
+
+        var correctedText = joined.corrected.text
+        var cleanedText = joined.cleaned.text
+        var added: [DictationCorrection] = []
+        var shift = 0
+        for correction in crossings.sorted(by: { $0.wordRange.lowerBound < $1.wordRange.lowerBound }) {
+            let earlier = joined.corrected.corrections.filter {
+                $0.wordRange.lowerBound < correction.wordRange.lowerBound
+            }
+            let priorShift = earlier.reduce(0) {
+                $0 + $1.wrote.spokenWords.count - $1.wordRange.count
+            }
+            let correctedStart = correction.wordRange.lowerBound + priorShift + shift
+            let correctedEnd = correction.wordRange.upperBound + priorShift + shift
+            let correctedRange = correctedStart..<correctedEnd
+            let replacement = correction.wrote.spokenWords
+                .map { String(SpokenToken($0).core) }
+                .joined(separator: " ")
+            let mapped = Self.correction(correction, at: correctedRange, writing: replacement)
+            let applied = DictationCorrection.applying([mapped], to: correctedText)
+            guard applied.corrections.count == 1 else { continue }
+            correctedText = applied.text
+            let actual = applied.corrections[0]
+            added.append(Self.correction(actual, at: correction.wordRange))
+            shift += actual.wrote.spokenWords.count - correction.wordRange.count
+
+            let heardShape = Self.correction(correction, at: correction.wordRange, writing: correction.heard)
+            let located = DictationCorrection.locating(
+                [heardShape], from: joined.heard.text, in: cleanedText
+            ).first?.writtenWordIndex
+            if let located {
+                let cleanedRange = located..<(located + correction.wordRange.count)
+                cleanedText =
+                    DictationCorrection.applying(
+                        [Self.correction(correction, at: cleanedRange)], to: cleanedText
+                    ).text
+            }
+        }
+        guard !added.isEmpty else { return joined }
+        return Piece(
+            heard: joined.heard,
+            corrected: CorrectedTranscript(
+                text: correctedText, corrections: joined.corrected.corrections + added),
+            cleaned: TransformationResult(
+                text: cleanedText, producedBy: joined.cleaned.producedBy,
+                cleaning: joined.cleaned.cleaning, entriesTaken: joined.cleaned.entriesTaken))
+    }
+
+    private static func correction(
+        _ correction: DictationCorrection, at range: Range<Int>, writing text: String? = nil
+    ) -> DictationCorrection {
+        DictationCorrection(
+            heard: correction.heard, wrote: text ?? correction.wrote, wordRange: range,
+            entryID: correction.entryID, reason: correction.reason,
+            heardConfidence: correction.heardConfidence)
     }
 
     /// Tidies the transcript, falling back to exactly what was said. The only optional stage.
