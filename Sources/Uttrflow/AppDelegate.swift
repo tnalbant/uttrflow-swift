@@ -117,6 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)?
     /// Frees that model's weights, run when tab-to-complete is turned off.
     private let releaseModel: (@Sendable () async -> Void)?
+    /// Asks which clean-up engines can run, held as a seam so availability changes are testable.
+    private let transformerReadiness: @Sendable (UserProfile) async -> Set<TransformerKind>
     /// Whether the weights have been asked for and not let go since, so turning the feature on twice does not ask twice.
     private var isModelPreparing = false
     /// Counts each ask and each release, so a load that lands after the feature was turned off reports nothing.
@@ -130,8 +132,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let pressureSource = MemoryPressureSource()
     /// Which clean-up engines answered that they could run; internal so a test can read it back.
     private(set) var transformerAvailability: [TransformerKind: Bool] = [:]
+    /// Prevents a slower earlier probe from replacing a newer reading.
+    private var transformerProbeGeneration = 0
+    /// The clean-up engine that produced the last inserted dictation.
+    private(set) var lastCleanedBy: TransformerKind?
     /// What the store last said about the speech model on disk; internal so a test can read it.
     private(set) var speechModelPresence: DiagnosticsModelPresence?
+    /// The built-in recogniser's locale asset inventory answer.
+    private(set) var appleSpeechStatus: DiagnosticsAppleSpeechStatus?
+    /// The built-in recogniser's last typed model-load failure.
+    private(set) var appleSpeechLoadFailure: SpeechEngineError?
 
     /// How far along that fetch is; internal so a test can read back what it did.
     private(set) var suggestionModel: SuggestionModelReadiness = .notAsked {
@@ -141,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             refreshMenuBar()
         }
     }
+    private var suggestionSecureInputNotice: String?
 
     /// Builds the app around one folder, which a test points at a temporary one.
     init(
@@ -148,7 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         account: OnboardingAccountLayer = .forThisBuild(),
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
-        releaseModel: (@Sendable () async -> Void)? = nil
+        releaseModel: (@Sendable () async -> Void)? = nil,
+        transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
+            profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
+        }
     ) {
         self.container = container
         self.loginItem = loginItem
@@ -157,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.generating = generating
         self.prepareModel = prepareModel
         self.releaseModel = releaseModel
+        self.transformerReadiness = transformerReadiness
         history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: container))
         recordings = RecordingStore(directory: RecordingStore.defaultDirectory(in: container))
         dictionary = PersonalDictionaryStore(
@@ -291,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         loadSpeechModel()
         probeTransformers()
         probeSpeechModel()
+        probeAppleSpeechAssets()
         refreshAccount()
         // A Mac that worked without an account keeps no trace of it, and meets sign-in like anyone signed out.
         RetiredLocalAccount.forget()
@@ -299,7 +315,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         refreshMenuBar()
         presentOnboardingIfNeeded()
         // Shown at launch, since a menu-bar icon alone is an interface most people never find.
-        if onboarding == nil { show(.main(.home)) }
+        if onboarding == nil {
+            show(.main(.home))
+        } else {
+            refreshMainWindow()
+        }
         // Configured last, from the setting; the automatic check itself waits for `modelLoadingSettled()`.
         updates.onProgressChanged = { [weak self] in self?.refreshMenuBar() }
         updates.begin(automatically: settings.installsUpdatesAutomatically)
@@ -456,9 +476,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Where a load that has ended leaves the model: ready, missing files, or failed once or twice.
     private func settle(isReady: Bool) -> SpeechModelReadiness {
-        let settled = SpeechModelReadiness.settled(
-            isReady: isReady, isInstalled: modelStore.isInstalled(.default),
-            isIncomplete: modelStore.isIncomplete(.default), failedBefore: speechLoadFailedBefore)
+        let isInstalled = modelStore.isInstalled(.default)
+        let afterLoad = SpeechModelReadiness.afterLoad(isReady: isReady, isInstalled: isInstalled)
+        let settled: SpeechModelReadiness
+        switch afterLoad {
+        case .ready: settled = .ready
+        case .loadFailed: settled = speechLoadFailedBefore ? .loadFailedAgain : .loadFailed
+        case .notInstalled:
+            settled = modelStore.isIncomplete(.default) ? .incomplete : .notInstalled
+        case .downloading, .loading, .loadFailedAgain, .incomplete: settled = afterLoad
+        }
         switch settled {
         case .ready: speechLoadFailedBefore = false
         case .loadFailed, .loadFailedAgain: speechLoadFailedBefore = true
@@ -491,10 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Asks each clean-up engine whether it could run, so Diagnostics has an answer to show; the task ends once it has.
     @discardableResult
     func probeTransformers() -> Task<Void, Never> {
-        Task { [weak self] in
+        transformerProbeGeneration += 1
+        let generation = transformerProbeGeneration
+        return Task { [weak self] in
             guard let self else { return }
-            let ready = await SettingsCapabilities.refreshed(for: settings.profile)
-                .readyTransformers
+            let ready = await transformerReadiness(settings.profile)
+            guard generation == transformerProbeGeneration else { return }
             transformerAvailability = Dictionary(
                 uniqueKeysWithValues: TransformerKind.allCases.map { ($0, ready.contains($0)) })
             refreshMainWindow()
@@ -515,6 +544,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }.value
             guard let self else { return }
             speechModelPresence = presence
+            refreshMainWindow()
+        }
+    }
+
+    /// Reads the system recogniser's asset inventory for the locale its backend loads.
+    @discardableResult
+    func probeAppleSpeechAssets() -> Task<Void, Never> {
+        Task { [weak self] in
+            let status = await AppleSpeechBackend.assetStatus()
+            guard let self else { return }
+            appleSpeechStatus =
+                switch status {
+                case .installed: .installed
+                case .needsDownload: .needsDownload
+                case .downloading: .downloading
+                case .unsupported: .unsupported
+                }
             refreshMainWindow()
         }
     }
@@ -746,6 +792,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             coordinator.onTurnedOffEverywhere = { [weak self] in
                 self?.apply(.toggle(.suggestionsEnabled, isOn: false))
             }
+            coordinator.onSecureInputBlockingChanged = { [weak self] isBlocking in
+                self?.suggestionSecureInputNotice = isBlocking ? SecureInputWatch.suggestionNotice : nil
+                self?.refreshMenuBar()
+            }
             completions = coordinator
             coordinator.start()
         } catch {
@@ -881,6 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Arms the shortcut again when it could not be armed before. See `Docs/shortcuts.md`.
     func applicationDidBecomeActive(_ notification: Notification) {
+        probeTransformers()
         // Whatever held the combination may have quit while the user was away.
         if !unarmedShortcuts.isEmpty { startWatchingForClaimedShortcuts() }
         guard shortcutArming.failure != nil else { return }
@@ -1408,6 +1459,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             _ = try await clipboard.setAlias(alias, of: id, keeping: retention)
         case .setCategory(let id, let category):
             _ = try await clipboard.setCategory(category, of: id, keeping: retention)
+        case .setPinned(let id, let isPinned):
+            _ = try await clipboard.setPinned(isPinned, of: id, keeping: retention)
         case .delete(let id):
             // F7, F9 — kept in hand, because the store forgets it the moment this returns.
             let held = panel?.clips.first { $0.id == id }
@@ -1474,10 +1527,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             panelAnswered(key, behind: behind)
             return
         }
+        if let change = intent.immediateChange {
+            apply(change)
+            return
+        }
 
         switch intent {
-        case .pin(let id): setPinned(true, of: id)
-        case .unpin(let id): setPinned(false, of: id)
+        case .pin, .unpin:
+            // These are routed through `immediateChange` above.
+            break
         case .copy(let id):
             // Through the panel, so a picture is copied as a picture and a missing one is said.
             guard let response = panel?.copying(id) else { return }
@@ -1510,13 +1568,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    private func setPinned(_ isPinned: Bool, of id: UUID) {
-        Task { [clipboard] in
-            _ = try? await clipboard.setPinned(isPinned, of: id, keeping: retention)
-            await refreshPanelIfOpen()
-        }
-    }
-
     /// D5–D7 — runs the formatter and guards its output before anybody is offered a diff.
     private func runFormatter(on id: Clip.ID) {
         guard let clip = panel?.clips.first(where: { $0.id == id }), let language = clip.language
@@ -1531,7 +1582,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Self.log.info("formatter produced nothing for \(language.rawValue, privacy: .public)")
                 return
             }
-            guard FormatterGuard.isFaithful(produced, to: clip.text) else {
+            let original = clip.text
+            // Guarded and compared off the main actor, because both walk the whole clip.
+            let prepared = await Task.detached(priority: .utility) { () -> PreparedFormattingSheet?? in
+                guard FormatterGuard.isFaithful(produced, to: original) else { return .none }
+                guard produced != original else { return .some(nil) }
+                return .some(PreparedFormattingSheet(from: original, to: produced))
+            }.value
+            guard let prepared else {
                 // Logged loudly: a formatter changing what code means, caught by the guard.
                 Self.log.error(
                     "formatter output discarded: not faithful (\(language.rawValue, privacy: .public))"
@@ -1542,6 +1600,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // A panel closed, reopened, re-sheeted, edited or formatted again since is left alone.
             guard request.accepts(into: panel, opens: quickPanel.opens, latestRun: formatterRuns)
             else { return }
+            guard let prepared else { return }
+            panel?.remember(prepared)
             panel?.sheet = .formatting(id, formatted: produced)
             if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
         }
@@ -1570,19 +1630,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// K4 — pastes a picture, on its own path because the Accessibility route writes only strings.
     private func insertImage(_ clip: Clip) {
         markUsed(clip.id)
-        Task { [weak self, clipboard, pasteboard = announcingPasteboard] in
+        Task { [weak self, clipboard, pasteboard = announcingPasteboard, focus] in
             guard let image = clip.image, let data = await clipboard.imageData(for: image) else {
                 // B8 from the other side: the file went between the draw and the keypress.
                 Self.log.error("picture missing at paste: \(clip.id, privacy: .public)")
                 self?.reportPanelPaste(.pictureMissing)
                 return
             }
-            // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
-            pasteboard.setImage(data)
             do {
-                try CGEventKeystrokeSender().sendPaste()
+                // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
+                try PasteboardImageInsertionEngine(
+                    focus: focus, pasteboard: pasteboard, keystrokes: CGEventKeystrokeSender()
+                ).insert(data)
             } catch let failure as TextInsertionError {
-                // On the clipboard either way, which is the floor the text path lands on too.
+                // The image may already be on the clipboard if focus changes during the write.
                 Self.log.error(
                     "picture paste refused: \(failure.userMessage, privacy: .public)")
                 self?.reportPanelPaste(.pictureRefused)
@@ -1732,9 +1793,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
+        if case .inserted(let outcome) = state {
+            lastCleanedBy = outcome.cleanedBy
+            if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
+                probeTransformers()
+            }
+        }
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
+            if speechInUse == .appleSpeech {
+                appleSpeechLoadFailure = nil
+            }
             Self.log.notice(
                 """
                 dictation finished: method=\(outcome.method.rawValue, privacy: .public) \
@@ -1745,40 +1815,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 secure=\(outcome.intoSecureField, privacy: .public)
                 """)
             // A secure field's words are kept nowhere: not as the last transcript, in history, or as a clip.
-            guard let kept = outcome.wordsToKeep else { break }
+            guard let kept = outcome.wordsToKeep,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            else { break }
             lastTranscript = kept
-            let record = DictationRecord(
-                text: kept, when: Date(), applicationName: outcome.insertedInto,
-                applicationIdentifier: outcome.insertedIntoIdentifier,
-                spokenFor: outcome.spokenFor,
-                changes: RecordedChanges(
-                    corrections: outcome.changes.corrections.compactMap {
-                        RecordedCorrection(
-                            heard: $0.heard, wrote: $0.wrote, wordRange: $0.wordRange,
-                            entryID: $0.entryID, reason: $0.reason,
-                            heardConfidence: $0.heardConfidence,
-                            writtenWordIndex: $0.writtenWordIndex)
-                    },
-                    snippets: outcome.changes.snippets.map {
-                        RecordedSnippet(
-                            snippetID: $0.snippetID, matched: $0.matched,
-                            expansion: $0.expansion)
-                    },
-                    spokenWords: outcome.changes.spokenWords))
             lastTranscriptID = record.id
             keep(record)
             // I4 — into the clipboard too, which the watcher never sees because this is not a copy.
             recordAsClip(kept, of: record.id)
         case .failed(let notice):
+            if notice.speechEngineKind == .appleSpeech,
+                case .modelLoadFailed? = notice.speechEngineError
+            {
+                appleSpeechLoadFailure = notice.speechEngineError
+            }
             Self.log.error(
                 """
                 dictation failed: \(notice.message, privacy: .public) \
                 salvaged=\(notice.transcript != nil, privacy: .public) \
                 kept=\(notice.recovery == .retryFromRecording, privacy: .public)
                 """)
-            if let salvaged = notice.wordsToKeep {
+            if notice.wordsToKeep != nil,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
-                keep(DictationRecord(text: salvaged, when: Date()))
+                keep(record)
             }
         case .idle, .recording, .transcribing, .tidying, .inserting:
             break
@@ -1909,10 +1970,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             },
             clips: menuClips,
             updateProgress: updates.progress,
+            canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
             shortcuts: settings.shortcuts,
             unarmedShortcuts: unarmedShortcuts,
             shortcutUnheard: shortcutUnheard,
+            suggestionUnheard: suggestionSecureInputNotice,
             suggestionModel: suggestionModel,
             activation: settings.hotkeyActivation,
             speechModelBytes: SpeechModel.default.downloadBytes
@@ -1960,6 +2023,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .setFeature(let feature, let isOn):
             apply(.toggle(feature.setting, isOn: isOn))
             refreshMenuBar()
+        case .checkForUpdates:
+            updates.checkForUpdates()
         case .quit:
             NSApplication.shared.terminate(nil)
         }
@@ -1972,6 +2037,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // The one gate every window passes: with no session, whatever was asked for, sign-in opens.
         let routed = SessionGate.route(destination, isSignedIn: isSignedIn)
         lastOpened = routed
+        if case .settings(.diagnostics) = routed { probeTransformers() }
         guard drawsWindows else { return }
         switch routed {
         case .onboarding:
@@ -2070,6 +2136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         lastCleaning = nil
+        lastCleanedBy = nil
         forgetLastTranscript()
         Task { [weak self] in
             await self?.diagnostics.forget()
@@ -2085,7 +2152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Redraws from a fresh snapshot, reading everything on one hop so the pages agree.
     private func refreshMainWindow() {
-        guard mainWindow != nil else { return }
         refreshGeneration += 1
         let reading = refreshGeneration
         Task { [weak self] in
@@ -2107,6 +2173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer { Task { [weak self] in await self?.refreshPictureThenRedraw() } }
             // A later refresh has newer state, and painting over it would leave the older reading up.
             guard reading == refreshGeneration else { return }
+            refreshMenuBar()
             // Read even out of sight, since the menu's Recent list comes from this reading too.
             guard mainWindow?.isOnScreen == true else {
                 mainWindowIsBehind = true
@@ -2175,8 +2242,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     engines: settings.engines, speechInUse: speechInUse,
                     transformerAvailability: transformerAvailability,
                     speechModel: speechModelPresence, speechReadiness: speechReadiness,
+                    appleSpeechStatus: appleSpeechStatus,
+                    appleSpeechLoadFailure: appleSpeechLoadFailure,
                     permissions: knownPermissions,
                     measurements: measurements, cleaning: lastCleaning,
+                    lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),
             account: accountPage(at: now),
@@ -2447,6 +2517,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 ApplicationPicker.choose(given: settings.suggestions) { [weak self] identifier in
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
+            case .retrySuggestionModel:
+                guard settings.suggestions.isEnabled, suggestionModel == .failed else { return }
+                prepareTheModelIfNeeded()
             case .openPage(let page): show(.main(page))
             default: break
             }

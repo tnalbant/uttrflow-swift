@@ -90,12 +90,12 @@ enum PathShape {
         // `~` alone, or `/` alone, is a shell shorthand rather than a clip worth filing.
         guard text.count > 2 else { return false }
 
-        // At most one space and no flag: "Application Support" passes, `./deploy.sh --force` does not.
+        // A flag in any component makes this look like a command, not a copied path.
         let parts = text.split(separator: " ", omittingEmptySubsequences: false)
-        guard parts.count <= 2 else { return false }
         guard !parts.contains(where: { $0.hasPrefix("-") }) else { return false }
-        guard text.dropFirst().contains("/") || text.hasPrefix("~/") || text.hasPrefix("./")
-        else { return false }
+        guard (text.hasPrefix("/") || text.hasPrefix("~/")), text.dropFirst().contains("/") else {
+            return false
+        }
 
         // Characters no filesystem path carries, which code and prose use constantly.
         let forbidden: Set<Character> = ["|", "*", "<", ">", "\"", "\n", "\t"]

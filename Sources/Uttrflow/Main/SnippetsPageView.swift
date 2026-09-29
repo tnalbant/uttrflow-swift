@@ -165,11 +165,19 @@ struct SnippetEditorView: View {
             PageEditorField(label: editor.triggerLabel, symbolName: "mic", tint: PagePalette.dictation) {
                 TextField("", text: trigger).textFieldStyle(.plain)
                     .focused($focused, equals: .trigger)
-                    .onSubmit { focused = .text }
+                    .onSubmit(submit)
             }
             PageEditorField(label: editor.textLabel, symbolName: "keyboard", tint: PagePalette.suggestion) {
                 TextEditor(text: text)
                     .focused($focused, equals: .text)
+                    .onKeyPress(.return) { press in
+                        guard
+                            SnippetEditorKeyboard.savesTextEditorReturn(
+                                command: press.modifiers.contains(.command))
+                        else { return .ignored }
+                        submit()
+                        return .handled
+                    }
                     .scrollContentBackground(.hidden)
                     .scrollIndicators(.never)
                     .lineSpacing(3)
@@ -185,6 +193,13 @@ struct SnippetEditorView: View {
         .pageCard(edge: PagePalette.dictation.opacity(0.35))
         .onAppear { focused = editor.editing == nil ? .trigger : .text }
         .onExitCommand { onIntent(editor.cancel.intent) }
+    }
+
+    /// Return saves only when the current draft passes validation.
+    private func submit() {
+        guard let intent = SnippetEditorKeyboard.saveIntent(canSave: editor.canSave, save: save.intent)
+        else { return }
+        onIntent(intent)
     }
 
     /// Rebuilt from what is in the fields now, not from the presentation drawn a keystroke ago.
@@ -205,5 +220,13 @@ struct SnippetEditorView: View {
         Binding(
             get: { draft.text },
             set: { draft = SnippetDraft(editing: draft.editing, trigger: draft.trigger, text: $0) })
+    }
+}
+
+enum SnippetEditorKeyboard {
+    static func savesTextEditorReturn(command: Bool) -> Bool { command }
+
+    static func saveIntent(canSave: Bool, save: MainIntent) -> MainIntent? {
+        canSave ? save : nil
     }
 }

@@ -908,6 +908,36 @@ struct BorrowedFeedbackTests {
         #expect(try await store.candidates(for: folderOne, matching: "git s").count == 1)
     }
 
+    @Test("Typing a retired line by hand makes it available in that folder again.")
+    func typingARetiredLineByHandBringsItBack() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("meeting at 3", in: folderOne, at: moment)
+        try await store.supersede("meeting at 3", with: "meeting at 4", in: folderOne)
+
+        for index in 1...3 {
+            try await store.record(
+                "meeting at 3", in: folderOne, at: moment.addingTimeInterval(Double(index)))
+        }
+
+        let found = try await store.candidates(for: folderOne, matching: "meeting at")
+        #expect(found.map(\.text) == ["meeting at 3"])
+        #expect(found.first?.evidence?.count == 4)
+        #expect(try await store.recent(in: folderOne, limit: 5) == ["meeting at 3"])
+    }
+
+    @Test("Accepting a retired line does not make it available again.")
+    func acceptingARetiredLineDoesNotBringItBack() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("meeting at 3", in: folderOne, at: moment)
+        try await store.supersede("meeting at 3", with: "meeting at 4", in: folderOne)
+        try await store.record("meeting at 3", in: folderOne, selfSourced: true, at: moment)
+
+        #expect(try await store.candidates(for: folderOne, matching: "meeting at").isEmpty)
+        #expect(try await store.recent(in: folderOne, limit: 5).isEmpty)
+    }
+
     @Test("A line known in both folders and retired in one is not brought back by the other.")
     func retiringALineInBothFolders() async throws {
         let corpus = Corpus()

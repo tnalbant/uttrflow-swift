@@ -28,7 +28,7 @@ private func reach(of intent: MenuBarIntent) -> Reach {
         .recover(.showRecentDictations):
         .system
     case .insertRecent, .copyRecent, .insertClip, .copyClip: .nothing
-    case .startDictation, .stopDictation, .openClipboard, .setFeature, .quit: .system
+    case .startDictation, .stopDictation, .openClipboard, .setFeature, .checkForUpdates, .quit: .system
     }
 }
 
@@ -45,12 +45,13 @@ private func name(of intent: MenuBarIntent) -> String {
     case .open: "open"
     case .openClipboard: "openClipboard"
     case .setFeature: "setFeature"
+    case .checkForUpdates: "checkForUpdates"
     case .quit: "quit"
     }
 }
 
 /// How many cases ``MenuBarIntent`` has, bumped deliberately when one is added.
-private let menuBarIntentCaseCount = 11
+private let menuBarIntentCaseCount = 12
 
 /// Every surface a menu item can name.
 private let everyDestination: [UttrflowUX.Destination] =
@@ -58,7 +59,10 @@ private let everyDestination: [UttrflowUX.Destination] =
 
 /// Every item at least once, with each page, each fix and a first and a far row position.
 private let samples: [MenuBarIntent] =
-    [.startDictation, .stopDictation, .openClipboard, .setFeature(.dictation, isOn: false), .quit]
+    [
+        .startDictation, .stopDictation, .openClipboard, .setFeature(.dictation, isOn: false),
+        .checkForUpdates, .quit,
+    ]
     + everyDestination.map { .open($0) }
     + [
         .recover(.openSystemSettings(.microphone)), .recover(.retry), .recover(.downloadSpeechModel),

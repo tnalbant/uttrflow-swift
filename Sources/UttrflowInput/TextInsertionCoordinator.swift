@@ -65,9 +65,10 @@ public struct TextInsertionCoordinator: TextInserting {
             } else {
                 arrival = try await strategy.insert(text, richText: richText)
             }
-            // Read after the write and not before it, so a switch during the insertion names the app that has it.
+            // The strategy's own reading at the moment of sending wins; otherwise read the app after the write.
+            let landed = await strategy.destinationAtLanding()
             return InsertionAttempt(
-                strategy.method, arrival: arrival, destination: focus?.frontmostApplication(),
+                strategy.method, arrival: arrival, destination: landed ?? focus?.frontmostApplication(),
                 intoSecureField: secure)
         }
 
