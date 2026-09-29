@@ -41,6 +41,10 @@ public actor DictationPipeline {
     private var state: DictationState = .idle
     private let observers = StateObservers()
 
+    /// A microphone opened while a modifier press settles, before it belongs to a dictation.
+    private var pendingCapture: Task<Void, Never>?
+    private var pendingCaptureStartedAt: (any Clock<Duration>).Instant?
+
     /// Counts dictations, so a cancel can name the one it abandoned.
     private var generation = 0
     private var cancelledGeneration: Int?
@@ -266,18 +270,66 @@ public actor DictationPipeline {
         guard !isLoading else { return transition(to: .failed(.stillLoading)) }
         hasTurn = true
         defer { hasTurn = false }
-        // At key-down, so a recogniser let go while idle loads while the person speaks.
         await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
 
-        generation += 1
-        let mine = generation
+    /// Opens the microphone before a modifier shortcut settles, keeping speech from key-down onward.
+    public func beginModifierPress(at instant: Duration) async {
+        guard pendingCapture == nil, !isBusy, !isLoading else { return }
+        pendingCaptureStartedAt = instant
         do {
-            // Measured because the user is already speaking: nothing is heard until this returns.
             try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
                 try await capture.start()
             }
+        } catch {
+            pendingCaptureStartedAt = nil
+            transition(to: .failed(DictationFailure(error)))
+            return
+        }
+        pendingCapture = Task {}
+    }
+
+    /// Makes a modifier press's already-open microphone the recording under way.
+    public func adoptModifierPress() async {
+        guard !isBusy, !isLoading else { return }
+        hasTurn = true
+        defer { hasTurn = false }
+        await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
+
+    /// Cancels a modifier press that became another shortcut before it settled.
+    public func cancelModifierPress() async {
+        guard let pendingCapture else { return }
+        self.pendingCapture = nil
+        pendingCaptureStartedAt = nil
+        await capture.cancel()
+    }
+
+    /// Adopts audio already arriving as a dictation after the modifier press settles.
+    private func startRecordingUsingOpenCapture() async {
+        generation += 1
+        let mine = generation
+        do {
+            if let pendingCapture {
+                await pendingCapture.value
+                self.pendingCapture = nil
+                let openedAt = pendingCaptureStartedAt
+                pendingCaptureStartedAt = nil
+                if let openedAt {
+                    await metrics.record(
+                        .init(
+                            stage: .keyDownToAudio,
+                            duration: openedAt.duration(to: clock.now),
+                            succeeded: true))
+                }
+            } else {
+                try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
+                    try await capture.start()
+                }
+            }
             guard !wasCancelled(mine) else {
-                // Cancelled while the microphone was opening: close it rather than listen on.
                 await capture.cancel()
                 return
             }
@@ -291,7 +343,6 @@ public actor DictationPipeline {
             transition(to: .recording)
             beginWorkingAhead(mine)
         } catch {
-            // A cancel during the open leaves the pipeline at rest, so no failure is published over it.
             guard !wasCancelled(mine) else { return }
             transition(to: .failed(DictationFailure(error)))
         }
@@ -393,6 +444,9 @@ public actor DictationPipeline {
 
     /// Abandons the dictation at any stage: nothing is transcribed and nothing is inserted.
     public func cancel() async {
+        pendingCapture?.cancel()
+        pendingCapture = nil
+        pendingCaptureStartedAt = nil
         cancelledGeneration = generation
         earlyWork?.cancel()
         earlyWork = nil

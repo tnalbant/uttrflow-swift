@@ -120,18 +120,25 @@ private final class Rig {
     let inserter: ChordInserter
     let cue: ChordCue
     let clock: ManualClock
+    let metrics: RecordingMetricsRecorder
+    let speech: FakeSpeechEngine
+    private var lastAudio: AudioSamples = .empty
     private var recogniser: HotkeyRecogniser
     let hands = Hands()
 
     static func make(_ binding: HotkeyBinding, _ activation: HotkeyActivation) async throws -> Rig {
         let capture = FakeAudioCaptureEngine()
         let inserter = ChordInserter()
+        let metrics = RecordingMetricsRecorder()
+        let speech = FakeSpeechEngine(
+            transcribeOutcome: .success(.fixture(text: "meet me at the corner")))
         let pipeline = DictationPipeline(
             capture: capture,
-            speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "meet me at the corner"))),
+            speech: speech,
             cleaner: ChordCleaner(),
             context: FakeContextEngine(context: .fixture()),
             inserter: inserter,
+            metrics: metrics,
             clock: ManualClock()
         )
         let cue = ChordCue()
@@ -141,12 +148,14 @@ private final class Rig {
         try await controller.start(binding: binding)
         return Rig(
             controller: controller, pipeline: pipeline, capture: capture, inserter: inserter, cue: cue,
+            metrics: metrics, speech: speech,
             clock: clock, recogniser: HotkeyRecogniser(binding: binding))
     }
 
     private init(
         controller: DictationController<ManualClock>, pipeline: DictationPipeline,
-        capture: FakeAudioCaptureEngine, inserter: ChordInserter, cue: ChordCue, clock: ManualClock,
+        capture: FakeAudioCaptureEngine, inserter: ChordInserter, cue: ChordCue,
+        metrics: RecordingMetricsRecorder, speech: FakeSpeechEngine, clock: ManualClock,
         recogniser: HotkeyRecogniser
     ) {
         self.controller = controller
@@ -154,6 +163,8 @@ private final class Rig {
         self.capture = capture
         self.inserter = inserter
         self.cue = cue
+        self.metrics = metrics
+        self.speech = speech
         self.clock = clock
         self.recogniser = recogniser
     }
@@ -170,6 +181,7 @@ private final class Rig {
 
     /// Holds on past the settle, so a press that is waiting counts.
     func waitOutTheSettle() async {
+        while await capture.state != .recording { await Task.yield() }
         clock.advance(by: DictationController<ManualClock>.modifierSettle)
         await controller.settling()
         await controller.drained()
@@ -185,6 +197,7 @@ private final class Rig {
 
     var isListening: Bool { get async { await pipeline.currentState.isListening } }
     var microphone: [FakeAudioCaptureEngine.Event] { get async { await capture.calls.events } }
+    var pipelineMeasurements: [StageMeasurement] { get async { await metrics.measurements } }
 }
 
 // MARK: - Recognising
@@ -249,7 +262,7 @@ struct ModifierChordActivationTests {
         rig.clock.advance(by: .seconds(1))
         await rig.send(rig.hands.letGo(.option, .command, .control))
 
-        #expect(await rig.microphone.isEmpty)
+        #expect(await rig.microphone == [.start, .cancel])
         #expect(rig.cue.startsPlayed == 0)
         #expect(rig.inserter.received.isEmpty)
     }
@@ -277,7 +290,10 @@ struct ModifierChordActivationTests {
     func holdingTheChordDictates() async throws {
         let rig = try await Rig.make(controlCommandOption, .holdToTalk)
         await rig.send(rig.hands.hold(.control, .command, .option))
-        #expect(await rig.microphone.isEmpty, "nothing opens before the settle")
+        #expect(await rig.microphone == [.start], "capture begins on key-down")
+        let settleAudio = AudioSamples.canonical([0.25, 0.5, 0.75])
+        await rig.capture.appendCaptured(settleAudio)
+        rig.lastAudio = settleAudio
 
         await rig.waitOutTheSettle()
         #expect(await rig.isListening)
@@ -286,6 +302,22 @@ struct ModifierChordActivationTests {
         rig.clock.advance(by: .seconds(3))
         await rig.send(rig.hands.letGo(.option, .command, .control))
         #expect(rig.inserter.received == [chordTidied])
+        #expect(await rig.capture.calls.events == [.start, .stop])
+        #expect(await rig.speech.transcribeCalls.events.first?.audio == rig.lastAudio)
+    }
+
+    @Test("records the key-down to first-audio interval in Diagnostics")
+    func measuresModifierAudioLatency() async throws {
+        let rig = try await Rig.make(controlCommandOption, .holdToTalk)
+        await rig.send(rig.hands.hold(.control, .command, .option))
+        rig.clock.advance(by: .milliseconds(200))
+        await rig.waitOutTheSettle()
+        await rig.send(rig.hands.letGo(.option, .command, .control))
+
+        #expect(
+            await rig.pipelineMeasurements.contains {
+                $0.stage == .keyDownToAudio && $0.duration == .milliseconds(200)
+            })
     }
 
     @Test("pressing ⌃⌘⌥ toggles a dictation on after the settle, and off with the next press")
@@ -309,7 +341,7 @@ struct ModifierChordActivationTests {
         let rig = try await Rig.make(controlCommandOption, .pressToToggle)
         await rig.send(rig.hands.hold(.control, .command, .option))
         rig.clock.advance(by: .milliseconds(80))
-        #expect(await rig.microphone.isEmpty, "nothing opens while the press is still settling")
+        #expect(await rig.microphone == [.start], "capture starts while the press is settling")
         await rig.send(rig.hands.letGo(.option, .command, .control))
 
         #expect(await rig.isListening)
@@ -322,7 +354,7 @@ struct ModifierChordActivationTests {
         rig.clock.advance(by: .milliseconds(80))
         await rig.send(rig.hands.letGo(.option, .command, .control))
 
-        #expect(await rig.microphone.isEmpty)
+        #expect(await rig.microphone == [.start, .cancel])
         #expect(rig.cue.startsPlayed == 0)
     }
 
@@ -353,7 +385,7 @@ struct ModifierChordActivationTests {
         await rig.send(rig.hands.letGo(.option, .command, .control))
 
         #expect(await rig.isListening == false)
-        #expect(await rig.microphone == [.start, .cancel])
+        #expect(await rig.microphone == [.start, .stop, .cancel])
         #expect(rig.inserter.received.isEmpty)
     }
 
@@ -369,7 +401,7 @@ struct ModifierChordActivationTests {
         rig.clock.advance(by: .seconds(1))
         await rig.controller.drained()
 
-        #expect(await rig.microphone.isEmpty)
+        #expect(await rig.microphone == [.start, .cancel])
     }
 
     @Test("Fn held on its own starts dictation after it settles")

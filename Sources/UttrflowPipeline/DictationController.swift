@@ -261,7 +261,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         }
         switch (activation, event) {
         case (_, .pressed) where waitsToSettle:
-            holdBack()
+            await holdBack()
 
         case (_, .pressed):
             await press(at: clock.now)
@@ -285,7 +285,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     }
 
     /// Acts on a press once it counts, measured from when the keys went down.
-    private func press(at instant: ClockType.Instant) async {
+    private func press(at instant: ClockType.Instant, modifierCaptureIsOpen: Bool = false) async {
         switch activation {
         case .holdToTalk:
             pressedAt = instant
@@ -300,7 +300,13 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 pressOpenedTheMicrophone = false
                 return
             }
-            await beginListening()
+            if modifierCaptureIsOpen {
+                await pipeline.adoptModifierPress()
+                cue.playStart()
+                watchTheLimit()
+            } else {
+                await beginListening()
+            }
             pressOpenedTheMicrophone = await pipeline.currentState.isListening
         case .pressToToggle:
             let wasListening = await pipeline.currentState.isListening
@@ -311,11 +317,12 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     }
 
     /// Waits out the settle before a press of modifiers alone counts. See `Docs/shortcuts.md`.
-    private func holdBack() {
+    private func holdBack() async {
         nextPressID += 1
         let id = nextPressID
         let pressedAt = clock.now
         unsettledPress = (id, pressedAt)
+        await pipeline.beginModifierPress(at: pressedAt)
         let deadline = pressedAt.advanced(by: Self.modifierSettle)
         settleTask = Task { [clock, gestureSink] in
             do {
@@ -332,7 +339,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private func settle(_ id: Int) async {
         guard let unsettled = unsettledPress, unsettled.id == id else { return }
         forgetUnsettledPress()
-        await press(at: unsettled.at)
+        await press(at: unsettled.at, modifierCaptureIsOpen: true)
     }
 
     /// A release or withdrawal that arrived before the press settled.
@@ -345,12 +352,19 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             return
         case (_, .cancelled):
             forgetUnsettledPress()
+            await pipeline.cancelModifierPress()
         case (.holdToTalk, .released):
             forgetUnsettledPress()
-            await endTapThatNeverOpened()
+            if unsettled.at.duration(to: clock.now) < Self.minimumHold {
+                await pipeline.cancelModifierPress()
+                await endTapThatNeverOpened()
+            } else {
+                await press(at: unsettled.at, modifierCaptureIsOpen: true)
+                await endHold()
+            }
         case (.pressToToggle, .released):
             forgetUnsettledPress()
-            await press(at: unsettled.at)
+            await press(at: unsettled.at, modifierCaptureIsOpen: true)
         }
     }
 

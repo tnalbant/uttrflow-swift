@@ -45,7 +45,8 @@ struct ProtocolValueTypeTests {
         // In the order the journey runs, which is the order every report draws them in.
         #expect(
             PipelineStage.allCases == [
-                .microphoneOpen, .capture, .drain, .transcription, .correction, .transformation,
+                .microphoneOpen, .keyDownToAudio, .capture, .drain, .transcription, .correction,
+                .transformation,
                 .expansion, .insertion,
             ])
         for stage in PipelineStage.allCases {
