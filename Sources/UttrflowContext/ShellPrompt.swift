@@ -12,10 +12,12 @@ package final class CharacterTally: Sendable {
     func record(_ characters: Int) { read.withLock { $0 += characters } }
 }
 
-/// The user's own input on a terminal line, which Accessibility reports with the shell prompt in front of it.
+/// Removes recognized POSIX, fish, Starship, Nushell and PowerShell prompt shapes without parsing shell commands.
 public enum ShellPrompt {
     /// The characters a prompt ends with, every one of which a command may also legitimately contain.
-    private static let terminators: Set<Character> = ["%", "$", "#", ">", "✗", "✔", "✓", "❯"]
+    private static let terminators: Set<Character> = [
+        "%", "$", "#", ">", "✗", "✔", "✓", "❯", "➜", "➤", "\u{e0b0}",
+    ]
 
     /// How far into a line a prompt is looked for, since a prompt is short and a pasted line need not be.
     package static let searchLimit = 4_096
@@ -79,6 +81,7 @@ public enum ShellPrompt {
         var quote: Character?
         var escaped = false
         var read = 0
+        let isPowerShell = line.hasPrefix("PS ")
         defer { tally?.record(read) }
         var index = line.startIndex
         while index < line.endIndex, read < searchLimit {
@@ -90,16 +93,18 @@ public enum ShellPrompt {
             } else if let open = quote {
                 if character == open {
                     quote = nil
-                } else if open == "\"", character == "\\" {
+                } else if open == "\"",
+                    character == "\\" || (isPowerShell && character == "`")
+                {
                     escaped = true
                 }
             } else if character == "'" || character == "\"" {
                 quote = character
-            } else if character == "\\" {
+            } else if character == "\\" || (isPowerShell && character == "`") {
                 escaped = true
             } else if terminators.contains(character),
                 next == line.endIndex || line[next].isWhitespace,
-                isPlausible(character, after: prefix)
+                isPlausible(character, after: prefix, linePrefix: line[..<index])
             {
                 return index
             }
@@ -110,7 +115,9 @@ public enum ShellPrompt {
     }
 
     /// What each terminator demands of the text before it, since each is typed for other reasons too.
-    private static func isPlausible(_ terminator: Character, after prefix: Prefix) -> Bool {
+    private static func isPlausible(
+        _ terminator: Character, after prefix: Prefix, linePrefix: Substring
+    ) -> Bool {
         switch terminator {
         // zsh puts a space before its `%`, and a percentage never does.
         case "%": prefix.last?.isWhitespace ?? true
@@ -123,8 +130,33 @@ public enum ShellPrompt {
         case ">":
             prefix.isChevrons || prefix.last == "="
                 || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
+                || isPowerShellDirectoryPrompt(linePrefix)
+                || isDirectoryPrompt(linePrefix)
+        // Theme glyphs are prompt endings when they follow a directory-bearing prompt.
+        case "➜", "➤", "\u{e0b0}": isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
         // A tick, a cross and a chevron are drawn by prompt themes and typed by nobody.
         default: true
         }
+    }
+
+    /// A PowerShell prompt starts with `PS ` and ends its current-directory token at `>`.
+    private static func isPowerShellDirectoryPrompt(_ prefix: Substring) -> Bool {
+        guard prefix.hasPrefix("PS ") else { return false }
+        let path = prefix.dropFirst(3)
+        return !path.isEmpty && !(path.last?.isWhitespace ?? true)
+    }
+
+    /// A directory-bearing prompt ends at its path marker rather than treating `>` as a redirection.
+    private static func isDirectoryPrompt(_ prefix: Substring, allowsMarkerSpacing: Bool = false) -> Bool {
+        let trailingWhitespace = prefix.reversed().prefix(while: \.isWhitespace).count
+        let whitespaceSuffix = prefix.suffix(trailingWhitespace)
+        guard
+            allowsMarkerSpacing || trailingWhitespace == 0 || whitespaceSuffix.contains("\n")
+                || whitespaceSuffix.contains("\r")
+        else {
+            return false
+        }
+        let path = prefix.dropLast(trailingWhitespace)
+        return path.hasPrefix("~") || path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("../")
     }
 }
