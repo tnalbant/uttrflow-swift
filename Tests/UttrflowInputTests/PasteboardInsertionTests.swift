@@ -37,7 +37,7 @@ final class FakePasteboard: Pasteboard {
 
     func text() -> String? { state.withLock(\.text) }
 
-    func changeCount() -> Int { state.withLock(\.changeCount) }
+    func changeCount() -> Int? { state.withLock(\.changeCount) }
 
     func setText(_ text: String) {
         state.withLock { state in
@@ -47,7 +47,7 @@ final class FakePasteboard: Pasteboard {
         }
     }
 
-    func writeText(_ text: String, richText: String?) -> Int {
+    func writeText(_ text: String, richText: String?) -> Int? {
         let (writeCount, onTextWrite) = state.withLock {
             state -> (Int, (@Sendable (FakePasteboard) -> Void)?) in
             state.writes.append(text)
@@ -65,7 +65,7 @@ final class FakePasteboard: Pasteboard {
         state.withLock { $0.concealed.append(text) }
     }
 
-    func writeConcealedText(_ text: String) -> Int {
+    func writeConcealedText(_ text: String) -> Int? {
         let writeCount = writeText(text, richText: nil)
         state.withLock { $0.concealed.append(text) }
         return writeCount

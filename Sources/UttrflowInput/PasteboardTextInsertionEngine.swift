@@ -92,7 +92,11 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         }
         // A write that did not stick would paste whatever the clipboard held before, so the next route takes over.
         guard pasteboard.text() == text else {
-            guard pasteboard.changeCount() == writeChangeCount else { throw .clipboardChanged }
+            if let writeChangeCount, let currentChangeCount = pasteboard.changeCount(),
+                currentChangeCount != writeChangeCount
+            {
+                throw .clipboardChanged
+            }
             throw .clipboardUnavailable
         }
         // Read before the paste is posted, so an unchanged caret cannot be read back as a fresh landing.

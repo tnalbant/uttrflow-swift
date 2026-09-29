@@ -11,7 +11,7 @@ public struct ConcealingPasteboard: Pasteboard {
 
     public func text() -> String? { base.text() }
 
-    public func changeCount() -> Int { base.changeCount() }
+    public func changeCount() -> Int? { base.changeCount() }
 
     public func setText(_ text: String) { base.setConcealedText(text) }
 
@@ -20,11 +20,11 @@ public struct ConcealingPasteboard: Pasteboard {
 
     public func setConcealedText(_ text: String) { base.setConcealedText(text) }
 
-    public func writeText(_ text: String, richText: String?) -> Int {
+    public func writeText(_ text: String, richText: String?) -> Int? {
         base.writeConcealedText(text)
     }
 
-    public func writeConcealedText(_ text: String) -> Int { base.writeConcealedText(text) }
+    public func writeConcealedText(_ text: String) -> Int? { base.writeConcealedText(text) }
 
     public func setImage(_ data: Data) { base.setImage(data) }
 }

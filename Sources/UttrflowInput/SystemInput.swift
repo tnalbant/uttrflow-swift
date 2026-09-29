@@ -27,14 +27,14 @@ public struct SystemPasteboard: Pasteboard {
         NSPasteboard.general.string(forType: .string)
     }
 
-    public func changeCount() -> Int { NSPasteboard.general.changeCount }
+    public func changeCount() -> Int? { NSPasteboard.general.changeCount }
 
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
     public func setText(_ text: String, richText: String?) {
         _ = writeText(text, richText: richText)
     }
 
-    public func writeText(_ text: String, richText: String?) -> Int {
+    public func writeText(_ text: String, richText: String?) -> Int? {
         willWrite(text)
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
@@ -53,7 +53,7 @@ public struct SystemPasteboard: Pasteboard {
         _ = writeConcealedText(text)
     }
 
-    public func writeConcealedText(_ text: String) -> Int {
+    public func writeConcealedText(_ text: String) -> Int? {
         willWrite(text)
         // Built whole and written once, so no reader sees the words before the marker.
         let item = NSPasteboardItem()
