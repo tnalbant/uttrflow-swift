@@ -12,7 +12,8 @@ public struct HomophoneCandidates: CandidateSource {
         let heard = ReadingRestraint.closedUp(word.text)
 
         guard let group = Homophones.group(containing: word.text) else { return [] }
-        return group
+        return
+            group
             .filter { $0 != heard }
             .prefix(Self.maximumOffered)
             .map { Reading($0) }
