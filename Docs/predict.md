@@ -151,7 +151,8 @@ watch the keyboard, and to put the completion into the field.
 
 The rest of the screen follows from the master switch: **Only suggest when it is sure**
 draws a completion and never a list, **Pause everywhere** stops for half an hour, and the
-**Applications** list carries the four editors that ship switched off, everything the user
+**Applications** list carries the two editors that ship switched off (Cursor and Visual
+Studio Code, which have suggestions of their own), everything the user
 has switched off since, and everything the corpus has learned from — so a switch that is
 off can always be found and turned back on.
 
@@ -159,6 +160,9 @@ Where suggestions may be offered is where typing may be learned from: one decisi
 the AI suggestions screen. The answer is kept in
 `~/Library/Application Support/Uttrflow/predict-consent.v1.json`, written the first time the
 loop meets an application the screen already allows, and rewritten when a switch there moves.
+
+Importing a shell's history asks the same question of the terminal it seeds: an application not
+yet allowed, or declined, gets nothing, and the one-time import stays unspent until it is allowed.
 
 Both sides file an application under `ApplicationKey`, which is its bundle identifier lowercased,
 because macOS is not consistent about the case and the two sides do not see it from the same
@@ -238,6 +242,47 @@ tap, the panel, and the corpus. It reads the field off the main thread, and a tu
 takes longer than `SuggestionSession.turnBudgetInMilliseconds` draws nothing at all —
 answering a moment that has passed is worse than answering nothing.
 
+**A field snapshot starts only after a 180 ms typing pause.** Keystrokes withdraw the ghost
+and disarm its key immediately, then replace the pending snapshot deadline. A delayed wake
+is generation-checked after cancellation, and a read already in progress stops after its
+current Accessibility message when a newer key invalidates it. Return, focus changes and
+other non-typing wakes keep their immediate path. This places the pause before the field
+read; the 120 ms generation debounce remains measured from the latest key, so it has already
+elapsed when generation begins.
+
+**Stable answers belong to one focused element and its window.** The five field identity
+attributes are requested in one `AXUIElementCopyMultipleAttributeValues` call, with the
+existing per-attribute fallback when that batch is unsupported. The result, document,
+window title and field/window frames are held for that process, focused element and window.
+The next read checks the focused element and its current window before using the cache;
+focus moves clear it, and a process, element or window change replaces it. The cache holds
+one entry, so it cannot carry another process's answers forward.
+
+**Per-keystroke message budget: at most 3 in a steady 10-key-per-second burst.** The
+deterministic counting fake charges 24 Accessibility messages for one ordinary field
+snapshot. Eight keys 100 ms apart reset the 180 ms deadline, so the burst produces one
+snapshot: 24 messages across eight keys, or 3 per key. A newer key cancels queued work, and
+the queue invalidation stops a running read before its next message. This is the burst
+budget; a single isolated key can still cause one full snapshot.
+
+Each Accessibility message also gives up after `FocusedFieldReader.elementTimeoutInSeconds`,
+but that only stops the waiting: the other application still does the work for every
+message already sent. A snapshot stops at the next question once
+`FieldReadBudget.allowanceInNanoseconds` (40 ms) has passed. A field's first overrun is
+forgiven, because the first read in a new process is a cold start (about 60 ms in a browser
+once its full tree is switched on); a second overrun leaves the field alone for a rest that
+starts at 10 s and doubles on each further overrun up to 5 minutes (`SlowFields`), and a
+read that keeps to the budget ends the rest. A very long web text area, whose caret questions
+each run into the timeout, therefore costs its application one read per rest rather than
+one per turn, and draws no suggestion.
+
+**A resting field quiets its whole application.** Asking an application which element has
+focus can itself be the slow part (about 100 ms in a browser holding a 200 KB text area), so
+while the focused field rests, a turn and the surroundings walk send that application no
+message at all (`SlowFields.isQuiet`). A click, an application switch, Tab, Escape or any ⌘
+shortcut may have moved focus, so each ends the quiet; the next read asks for the focus once,
+and a field that still rests quiets the application again for the rest of its rest.
+
 ### One ghost, and only while it is true
 
 **There is one panel for the process** (`SuggestionPanelController.shared`), so a loop
@@ -246,7 +291,17 @@ replaces, and a stopped loop draws nothing. The view is not animated: a new sugg
 replaces the old one whole, measured before the panel is placed, so the two are never
 drawn in the same spot at once.
 
-**A ghost is withdrawn by anything that may move the caret** — a key, a click, a scroll, the
+**A key that types the ghost's next letters keeps it.** On a plain append with the highlight
+unmoved, `SuggestionSession.typedThrough` carries the offer past the key and the panel moves the
+rest of the ghost by exactly the width the typed letters took off it, in one frame change and
+without hiding it; the turn the key wakes reads the new line and redraws only if it differs.
+
+**A ghost is drawn whole or not at all.** The panel measures the ghost line at its full width
+in the view it draws and refuses one wider than the room to the field's edge, and a ghost
+that is not on screen whole claims no key, so Tab never inserts what was not shown. Drawing
+the offer already on screen, at the same caret within a point, lays out and places nothing.
+
+**Any other key withdraws the ghost, as does anything else that may move the caret** — a click, a scroll, the
 application in front changing, a Space change or the display sleeping. Each one hides the
 panel, disarms the keys and calls `SuggestionSession.invalidate`, which voids every answer
 still being worked out: `resolve`, `resolveGenerated` and `expandGenerated` return nothing
@@ -288,10 +343,13 @@ When the corpus and the machine both have nothing for the line and the generator
 `isReady`, the turn takes the model path in `SuggestionCoordinator.generate` instead of
 `resolve`:
 
-- **Reuse first.** The model's last answer for this field is kept, and while the line still
-  begins one of its lines — typing on, or backspacing — that answer is drawn again and no
-  pass runs. An empty answer is remembered against the exact line it was given for, so a
-  tick does not ask the same question again; the next keystroke asks afresh.
+- **Reuse first, only while typing on.** The model's last answer is kept with the line it
+  was given for and the text before that line. While the user types forward from that line,
+  in the same field and after the same text, the answer is drawn again with no pass, after
+  it meets the machine's gate again. A deletion, a move to another line, or a change to the
+  text before the line forgets it, so a continuation the user deleted is not offered back and
+  one written for one place is not offered in another. An empty answer is remembered against
+  the exact line and place it was given for, so a tick does not ask the same question again.
 - **120 ms debounce.** A pass sleeps what is left of `generationDebounceInMilliseconds`
   since the key was pressed, which is nothing when the pause was already that long; the
   next keystroke still cancels the pass, so a burst still costs one pass for its last
@@ -303,7 +361,7 @@ When the corpus and the machine both have nothing for the line and the generator
 - **One line first.** The pass asks for the single most likely completion and stops at its
   newline; `resolveGenerated` draws it as `.certain`. The alternatives are fetched in a
   second pass once that line is on screen and `expandGenerated` turns it into a `.choice`,
-  so ↓ still opens a list and nobody waited for it. Quiet mode never expands.
+  so ⌥↓ still opens a list and nobody waited for it. Quiet mode never expands.
 - **Drawn against the field as it is now.** A late answer is drawn only after a fresh read
   finds the same field and the same line (`drawFresh`), so a scrolled caret is followed and
   a changed line is not written over.
@@ -457,16 +515,21 @@ than as one strong answer. Below the threshold the answer is a `.choice` of at m
 command whose acceptance cannot be undone by pressing Backspace — is never shown without
 full separation, and never appears among the alternatives of a `.choice` at any score.
 
-Before any of that, `Quieting.reason` runs seven ordered predicates and returns the first
-that fires: turned off here, secure field, a field that reports no caret to draw at, text
-selected, caret not at the end of its line, three suggestions typed past in this field
-already, or a prose writer who has not yet paused for 400 ms. It returns *which* rule fired, so the diagnostics can say why nothing
+Before any of that, `Quieting.reason` runs its ordered predicates and returns the first
+that fires: turned off here, secure field, marked text, a field that reports no caret to
+draw at, text selected, caret not at the end of its line, a field that says its own list
+of choices is open (`AXExpanded` on the focused field, as a combobox answers; one attribute
+read per turn), a word that opens the
+application's own mention, emoji, channel or slash-command picker (`AppPicker`, never on a
+terminal's command line), three suggestions typed past in this field already, or a prose
+writer who has not yet paused for 400 ms. It returns *which* rule fired, so the diagnostics can say why nothing
 was drawn instead of leaving silence indistinguishable from a broken feature.
 
 Composition does not gate. `PredictionContext.isComposing` is still read and carried, but
 `Quieting.reason` never consults it, and no reason is named for it. Every other silence does
 carry its reason: `SuggestionUpdate.silence` is set wherever the session or the engine
-settles on nothing — an empty or over-long line, a minimised field, the gates leaving
+settles on nothing — an empty or over-long line, a list line holding only its marker
+(`ListMarker`), a minimised field, the gates leaving
 nothing, evidence too thin, a budget overrun — and the coordinator logs that, never a reason
 recomputed from outside. [predict-ime.md](predict-ime.md) has what the composition signal
 reaches and what a gate on it cost.

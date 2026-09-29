@@ -42,18 +42,25 @@ extension PanelPresenter {
         guard isSearching else { return [] }
 
         var groups: [PanelResultGroup] = []
+        // Each run is gathered in place and built once, so a long run costs its length and not its square.
+        var run: [PanelRow] = []
+        var runField: PanelMatchField?
+        func close() {
+            guard let field = runField else { return }
+            groups.append(
+                PanelResultGroup(
+                    field: field, title: heading(for: field), rows: run, more: omitted[field, default: 0]))
+        }
         for row in rows {
             guard let field = row.matched else { continue }
-            if let last = groups.last, last.field == field {
-                groups[groups.count - 1] = PanelResultGroup(
-                    field: field, title: last.title, rows: last.rows + [row], more: last.more)
-            } else {
-                groups.append(
-                    PanelResultGroup(
-                        field: field, title: heading(for: field), rows: [row],
-                        more: omitted[field, default: 0]))
+            if field != runField {
+                close()
+                run = []
+                runField = field
             }
+            run.append(row)
         }
+        close()
         return groups
     }
 
@@ -89,9 +96,7 @@ extension PanelPresenter {
     /// The part of a long clip the search found, for content matches only; `nil` if it is on line one.
     static func excerpt(of text: String, around needle: String, locale: Locale) -> String? {
         guard !needle.isEmpty,
-            let found = text.range(
-                of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: nil,
-                locale: locale)
+            let found = text.range(of: needle, ignoringCaseAndAccentsIn: locale)
         else { return nil }
 
         // Nothing to do when the match is already on the line the row would show anyway.

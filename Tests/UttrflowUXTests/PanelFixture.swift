@@ -56,7 +56,7 @@ enum PanelFixture {
         resuming resume: PanelResume? = nil
     ) -> PanelSnapshot {
         var snapshot = PanelSnapshot.opening(now: now, locale: locale, resuming: resume)
-        snapshot.install(clips, missingImages: [], formattableLanguages: [])
+        snapshot.install(clips, missingImages: [], formattableLanguages: [], now: now)
         return snapshot
     }
 }

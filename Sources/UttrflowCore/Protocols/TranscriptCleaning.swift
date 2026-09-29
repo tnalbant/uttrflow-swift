@@ -12,6 +12,9 @@ public protocol TranscriptCleaning: Sendable {
 
     /// Finishes a message joined from pieces cleaned at `.piece` scope: its casing and its final stop, asked once.
     func finishMessage(_ text: String, for request: TransformationRequest) async -> String
+
+    /// Reserves the next prepared model session for the final piece of this dictation.
+    func reserveFinalPiece(_ situation: Situation?) async
 }
 
 extension TranscriptCleaning {
@@ -22,6 +25,9 @@ extension TranscriptCleaning {
     public func finishMessage(_ text: String, for request: TransformationRequest) async -> String {
         text
     }
+
+    /// Does nothing for cleaners without a prepared model session.
+    public func reserveFinalPiece(_ situation: Situation?) async {}
 }
 
 /// Puts finished text wherever the user is typing and says how; the pipeline never sees the strategies.

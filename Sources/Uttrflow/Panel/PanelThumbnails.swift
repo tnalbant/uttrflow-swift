@@ -2,7 +2,7 @@
 
 import AppKit
 import Foundation
-import Observation
+import SwiftUI
 import UttrflowClipboard
 
 /// Where a picture clip's thumbnail comes from; injected so the cache is testable without photographs.
@@ -13,7 +13,6 @@ struct PanelThumbnailSource: Sendable {
 
 /// Thumbnails beside image clips, decoded once off the main thread and bounded in measured bytes. See Docs/clipboard-budget.md.
 @MainActor
-@Observable
 final class PanelThumbnails {
     static let shared = PanelThumbnails()
 
@@ -29,16 +28,25 @@ final class PanelThumbnails {
     /// The decoded (or absent) thumbnail for a file that has been asked for; absent entries means a decode is in flight.
     private(set) var known: [URL: NSImage?] = [:]
     /// What each answer is costing, so the total is kept without measuring the whole cache.
-    @ObservationIgnored private var cost: [URL: Int] = [:]
-    @ObservationIgnored private var held = 0
-    /// Least recently asked for, first; a plain array, because the cache is small.
-    @ObservationIgnored private var order: [URL] = []
+    private var cost: [URL: Int] = [:]
+    private var held = 0
+    /// When each file was last asked for, so touching one is constant time.
+    private var lastUse: [URL: Int] = [:]
+    private var clock = 0
     /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
-    @ObservationIgnored private var inflight: [URL: Task<Void, Never>] = [:]
+    private var inflight: [URL: Task<Void, Never>] = [:]
+    /// When each failed decode was recorded, so a file restored later is decoded again.
+    private var missedAt: [URL: ContinuousClock.Instant] = [:]
+    /// How long a failed decode is trusted before the file is read again.
+    private let retryAfter: Duration
 
-    init(source: PanelThumbnailSource = .system, budget: Int = PanelThumbnails.defaultBudget) {
+    init(
+        source: PanelThumbnailSource = .system, budget: Int = PanelThumbnails.defaultBudget,
+        retryAfter: Duration = .seconds(2)
+    ) {
         self.source = source
         self.budget = max(budget, 0)
+        self.retryAfter = retryAfter
     }
 
     /// What a decoded thumbnail costs, measured from the bitmap rather than the point size.
@@ -57,6 +65,7 @@ final class PanelThumbnails {
 
     /// The cached thumbnail for `file`, or `nil` while a miss is being decoded off the main actor.
     func thumbnail(for file: URL) -> NSImage? {
+        forgetStaleMiss(file)
         if let remembered = known[file] {
             touch(file)
             return remembered
@@ -67,6 +76,7 @@ final class PanelThumbnails {
 
     /// Starts an off-main decode for `file`; a no-op if one is already in flight, or the answer is already cached.
     func prepare(_ file: URL) {
+        forgetStaleMiss(file)
         if known[file] != nil { return }
         if inflight[file] != nil { return }
         let source = self.source
@@ -77,7 +87,19 @@ final class PanelThumbnails {
         }
     }
 
-    /// Awaits the decode that `prepare(_:)` started for `file`; used by tests, not by the panel.
+    /// What is already decoded for `file`, touching nothing, so a view can start from it without a flash.
+    func cached(_ file: URL) -> NSImage? {
+        known[file] ?? nil
+    }
+
+    /// The thumbnail for `file`, awaiting an off-main decode when it is not yet known.
+    func picture(for file: URL) async -> NSImage? {
+        if let remembered = thumbnail(for: file) { return remembered }
+        await waitForIdle(file: file)
+        return cached(file)
+    }
+
+    /// Awaits the decode that `prepare(_:)` started for `file`.
     func waitForIdle(file: URL) async {
         await inflight[file]?.value
     }
@@ -89,24 +111,37 @@ final class PanelThumbnails {
         let result = bytes.image
         let cost = Self.bytes(of: result)
         known[file] = result
+        missedAt[file] = result == nil ? .now : nil
         self.cost[file] = cost
         held += cost
         touch(file)
         forgetTheLeastRecent()
     }
 
+    /// Drops a remembered failure once it is older than `retryAfter`, so the next ask decodes again.
+    private func forgetStaleMiss(_ file: URL) {
+        guard let missed = missedAt[file], missed.duration(to: .now) >= retryAfter else { return }
+        missedAt[file] = nil
+        known.removeValue(forKey: file)
+        cost.removeValue(forKey: file)
+        lastUse.removeValue(forKey: file)
+    }
+
     /// Moves a file to the end of the queue, so it is the last thing forgotten.
     private func touch(_ file: URL) {
-        if let index = order.firstIndex(of: file) { order.remove(at: index) }
-        order.append(file)
+        clock += 1
+        lastUse[file] = clock
     }
 
     /// Drops the least recently used thumbnails until the cache fits; the newest stays even over budget.
     private func forgetTheLeastRecent() {
-        while held > budget, order.count > 1 {
-            let oldest = order.removeFirst()
+        while held > budget, lastUse.count > 1,
+            let oldest = lastUse.min(by: { $0.value < $1.value })?.key
+        {
+            lastUse.removeValue(forKey: oldest)
             held -= cost.removeValue(forKey: oldest) ?? 0
             known.removeValue(forKey: oldest)
+            missedAt.removeValue(forKey: oldest)
         }
     }
 
@@ -117,4 +152,33 @@ final class PanelThumbnails {
 /// A wrapper that carries an `NSImage` between actors without `Sendable` conformance.
 struct Loaded: @unchecked Sendable {
     let image: NSImage?
+}
+
+/// One picture clip's thumbnail, which alone redraws when its decode lands.
+struct PanelThumbnailView: View {
+    let file: URL
+    @State private var picture: NSImage?
+
+    /// Starts from what the cache already holds, so a row scrolled back into view draws at once.
+    init(file: URL) {
+        self.file = file
+        _picture = State(initialValue: PanelThumbnails.shared.cached(file))
+    }
+
+    var body: some View {
+        Group {
+            if let picture {
+                Image(nsImage: picture)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.panelCard
+            }
+        }
+        // Decoded off the main actor; a row reused for a different file starts over.
+        .task(id: file) {
+            picture = PanelThumbnails.shared.cached(file)
+            picture = await PanelThumbnails.shared.picture(for: file)
+        }
+    }
 }
