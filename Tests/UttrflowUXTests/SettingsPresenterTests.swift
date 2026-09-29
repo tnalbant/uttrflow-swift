@@ -175,6 +175,18 @@ struct SettingsGeneralPaneTests {
                 == .shortcut(action: .clipboard, keys: ["⇧", "⌘", "V"]))
     }
 
+    @Test("explains the Dictate shortcut for the selected activation mode")
+    func explainsDictateActivation() throws {
+        var settings = Settings.default
+        let hold = try #require(general(settings).row("shortcut.dictate")?.explanation)
+        #expect(hold == "Hold ⌃⌥ to talk, anywhere")
+
+        settings.hotkeyActivation = .pressToToggle
+        let toggle = try #require(general(settings).row("shortcut.dictate")?.explanation)
+        #expect(toggle == "Press ⌃⌥ to start talking, and again to stop")
+        #expect(!toggle.contains("Double-tap"))
+    }
+
     @Test("offers both ways of activating, with the stored one selected")
     func offersBothActivations() {
         var settings = Settings.default
