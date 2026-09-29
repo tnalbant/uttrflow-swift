@@ -307,12 +307,12 @@ local, full stop: the product's whole claim is that dictation happens on this Ma
 here. If that ever changes it is a product decision with a privacy page attached, not a
 refactor.
 
-**This app talks to the backend's API and to nothing else on the network** — see
-`UttrflowAccount`, which is deliberately the only module that can reach a server. That is
-what makes "the offline promise" checkable rather than asserted: there is one place to look.
-The one exception is opt-in crash diagnostics: when the user switches them on, crash and
-hang reports go to Sentry from `UttrflowDiagnostics`, which only the app target links and
-which scrubs every event first. `Docs/crash-reporting.md` is what is sent and why.
+Network access is not limited to the account backend: sign-in/session calls live in
+`UttrflowAccount`, speech-model/tokenizer assets can be downloaded, and Sparkle checks for
+and downloads app updates. The networking audit and its limits are recorded in
+[`Docs/offline.md`](Docs/offline.md). Opt-in crash diagnostics also send scrubbed crash and
+hang reports to Sentry from `UttrflowDiagnostics`; see [`Docs/crash-reporting.md`](Docs/crash-reporting.md)
+for what is sent and why.
 
 ## What dictation is for — NON-NEGOTIABLE
 
