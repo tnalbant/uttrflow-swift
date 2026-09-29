@@ -72,4 +72,22 @@ struct DockContrastTests {
         #expect(ratio(BrandPalette.Semantic.warning, lightGlass) < 4.5)
         #expect(ratio(BrandPalette.Semantic.success, lightGlass) < 3)
     }
+
+    @Test("Increase Contrast makes notice text fully opaque over solid glass")
+    func increasedContrastNotices() {
+        let standard = DockNoticeAppearance(increasedContrast: false)
+        #expect(standard.textOpacity(normal: 0.58) == 0.58)
+        #expect(standard.textOpacity(normal: 0.72) == 0.72)
+        #expect(!standard.usesOpaqueGlass)
+
+        let increased = DockNoticeAppearance(increasedContrast: true)
+        #expect(increased.textOpacity(normal: 0.58) == 1)
+        #expect(increased.textOpacity(normal: 0.72) == 1)
+        #expect(increased.usesOpaqueGlass)
+
+        let glass = BrandPalette.Redesign.dockGlass.tone
+        let ink = BrandPalette.Redesign.textStrong
+        #expect(ratio(ink.dark, glass.dark) >= 4.5)
+        #expect(ratio(ink.light, glass.light) >= 4.5)
+    }
 }

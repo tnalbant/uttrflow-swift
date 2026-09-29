@@ -59,6 +59,7 @@ final class DockPanelController {
     /// Where the microphone's level is pulled from on the main actor, keeping redraws off the audio thread.
     private var levelSource: (@Sendable () -> Float)?
     private var levelTimer: Timer?
+    private var appearanceObserver: (any NSObjectProtocol)?
 
     private let panel: DockPanel
     private let hostingView: DockHostingView<DockView>
@@ -100,7 +101,13 @@ final class DockPanelController {
             self?.model.isHovering = isHovering
         }
 
+        observeAppearance()
         reposition()
+    }
+
+    isolated deinit {
+        guard let appearanceObserver else { return }
+        NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver)
     }
 
     // MARK: - Lifecycle
@@ -184,6 +191,18 @@ final class DockPanelController {
     /// Says why the shortcut cannot be heard in place of the keycap hint, or nil to show the keycap again.
     func setShortcutUnheard(_ reason: String?) {
         model.shortcutUnheard = reason
+    }
+
+    /// Keeps notice colours aligned with the system's current Increase Contrast setting.
+    private func observeAppearance() {
+        appearanceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.model.increasesContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            }
+        }
     }
 
     // MARK: - Geometry
