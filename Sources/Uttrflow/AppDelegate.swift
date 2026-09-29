@@ -1932,6 +1932,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             },
             clips: menuClips,
             updateProgress: updates.progress,
+            canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
             shortcuts: settings.shortcuts,
             unarmedShortcuts: unarmedShortcuts,
@@ -1983,6 +1984,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .setFeature(let feature, let isOn):
             apply(.toggle(feature.setting, isOn: isOn))
             refreshMenuBar()
+        case .checkForUpdates:
+            updates.checkForUpdates()
         case .quit:
             NSApplication.shared.terminate(nil)
         }

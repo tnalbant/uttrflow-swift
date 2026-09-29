@@ -163,6 +163,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var clips: [Clip]
     /// How far along an update is, if one is under way.
     public var updateProgress: UpdateProgress
+    /// Whether this build has a configured, verifiable update feed.
+    public var canCheckForUpdates: Bool
 
     /// Which of the three halves of the product are switched on.
     public var features: MenuBarFeatures
@@ -191,6 +193,7 @@ public struct MenuBarState: Sendable, Equatable {
         recents: [MenuBarRecent] = [],
         clips: [Clip] = [],
         updateProgress: UpdateProgress = .idle,
+        canCheckForUpdates: Bool = false,
         features: MenuBarFeatures = MenuBarFeatures(),
         shortcuts: ShortcutSet = .default,
         unarmedShortcuts: Set<ShortcutAction> = [],
@@ -207,6 +210,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.recents = recents
         self.clips = clips
         self.updateProgress = updateProgress
+        self.canCheckForUpdates = canCheckForUpdates
         self.features = features
         self.shortcuts = shortcuts
         self.unarmedShortcuts = unarmedShortcuts
@@ -237,6 +241,8 @@ public enum MenuBarIntent: Sendable, Equatable {
     case openClipboard
     /// Move one of the three switches, naming the one it moves so the other two cannot follow.
     case setFeature(MenuBarFeature, isOn: Bool)
+    /// Starts a manual update check when the current build has a trusted update feed.
+    case checkForUpdates
     case quit
 }
 
@@ -538,6 +544,11 @@ public enum MenuBarPresenter {
                 MenuBarCommand(
                     title: "Settings…", intent: .open(.settings(.general)),
                     shortcut: MenuBarShortcut(key: ",", modifiers: .command))))
+
+        if state.canCheckForUpdates {
+            items.append(
+                .command(MenuBarCommand(title: "Check for Updates…", intent: .checkForUpdates)))
+        }
 
         items.append(.separator)
         items.append(

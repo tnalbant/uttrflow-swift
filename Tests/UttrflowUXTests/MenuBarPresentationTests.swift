@@ -191,11 +191,16 @@ struct MenuBarContentsTests {
         #expect(shown.items.contains(.sectionHeader("Turn on and off")))
     }
 
-    /// Update checks live in Settings, so neither the popover nor its menu offers one.
-    @Test("offers no update check")
-    func noUpdateCheck() {
-        let shown = MenuBarPresenter.present(MenuBarState(updateProgress: .idle))
-        #expect(!shown.commands.map(\.title).contains { $0.contains("Update") })
+    /// A manual check is available only when this build has a valid update feed.
+    @Test("offers a manual update check only when updates are configured")
+    func checkForUpdatesAvailability() {
+        let unavailable = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: false))
+        #expect(unavailable.command(.checkForUpdates) == nil)
+
+        let available = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: true))
+        #expect(available.command(.checkForUpdates)?.title == "Check for Updates…")
     }
 
     /// The problem and its fix sit together in the header, with nothing between them to hunt past.
