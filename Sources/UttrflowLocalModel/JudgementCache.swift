@@ -51,23 +51,33 @@ struct JudgementCache: Sendable {
 
     /// Each entry against the candidate the model was asked to score.
     private var held: [String: JudgedLine] = [:]
-    /// The candidates in the order they were first remembered, which is what capacity drops from.
+    /// The candidates from least to most recently used, which is what capacity drops from.
     private var order: [String] = []
 
     /// A cache holding nothing.
     init() {}
 
     /// The line for this candidate, nil when none is remembered.
-    func recall(candidate: String) -> JudgedLine? { held[candidate] }
+    mutating func recall(candidate: String) -> JudgedLine? {
+        guard let line = held[candidate] else { return nil }
+        markRecentlyUsed(candidate)
+        return line
+    }
 
     /// Remembers a freshly-scored line, dropping the oldest to stay within capacity.
     mutating func remember(_ line: JudgedLine, for candidate: String) {
-        if held[candidate] == nil { order.append(candidate) }
+        markRecentlyUsed(candidate)
         held[candidate] = line
         while order.count > Self.capacity {
             let dropped = order.removeFirst()
             held.removeValue(forKey: dropped)
         }
+    }
+
+    /// Moves a remembered candidate to the newest position or adds it there.
+    private mutating func markRecentlyUsed(_ candidate: String) {
+        order.removeAll { $0 == candidate }
+        order.append(candidate)
     }
 
     /// Drops every remembered line, which is what leaving a field or releasing the model both ask for.
