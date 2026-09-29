@@ -50,6 +50,8 @@ private actor RecordingModel: ReleasableModel {
     }
 
     func logLikelihood(of candidate: String, following context: String) async -> Double? { -1 }
+
+    func confidence(ofGenerated line: String) async -> Double? { -0.5 }
 }
 
 /// Every reload event in the order it was told, collected from whichever thread tells it.
@@ -111,6 +113,7 @@ struct IdleReleaseTests {
         _ = try await model.completions(for: "Thanks", in: situation)
         _ = try await model.alternatives(for: "Thanks", in: situation, excluding: "Thanks done")
         #expect(await model.logLikelihood(of: "Thanks a lot", following: "Thanks") == -1)
+        #expect(await model.confidence(ofGenerated: "Thanks a lot") == -0.5)
         #expect(await model.releaseIfIdle(at: start + .seconds(599)))
     }
 
@@ -230,5 +233,15 @@ struct IdleReleaseTests {
         try await model.prepare(onProgress: { _ in })
         await model.watching?.value
         #expect(await inner.steps == ["load", "release"])
+    }
+
+    @Test("the watch next wakes when the window would run out, not on a fixed fraction of it")
+    func waitsForTheRestOfTheWindow() async throws {
+        let model = IdleReleasingModel(model: RecordingModel(), idleAfter: .seconds(600))
+        let now = ContinuousClock.now
+        let left = await model.timeUntilIdle(at: now)
+        #expect(left <= .seconds(600))
+        #expect(left > .seconds(590))
+        #expect(await model.timeUntilIdle(at: now + .seconds(3600)) == .seconds(60))
     }
 }

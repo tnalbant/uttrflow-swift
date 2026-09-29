@@ -145,6 +145,33 @@ struct SpeechWindowingTests {
         #expect(zip(windows, windows.dropFirst()).allSatisfy { $0.upperBound == $1.lowerBound })
     }
 
+    /// Issue 2319: one short word between long pauses is carried into the next window rather than decoded alone.
+    @Test("never gives a window holding only a short word said between long pauses")
+    func carriesALoneWord() {
+        let audio =
+            Take.speech(1) + Take.silence(4) + Take.speech(0.3) + Take.silence(4) + Take.speech(1)
+        let windows = windowing.windows(in: audio, sampleRate: Take.rate)
+        let wordStart = 5 * Take.rate
+        let wordEnd = wordStart + Int(0.3 * Double(Take.rate))
+        let holding = windows.filter { $0.lowerBound <= wordStart && $0.upperBound >= wordEnd }
+        #expect(holding.count == 1)
+        let nextPhrase = 9 * Take.rate + Take.rate / 3
+        #expect(holding.allSatisfy { $0.lowerBound < Take.rate || $0.upperBound > nextPhrase })
+    }
+
+    @Test("joins a last window holding only a short word onto the window before it")
+    func joinsAShortTail() {
+        let audio = Take.speech(7) + Take.silence(3) + Take.speech(0.3) + Take.silence(0.5)
+        let windows = windowing.windows(in: audio, sampleRate: Take.rate)
+        #expect(windows == [0..<audio.count])
+    }
+
+    @Test("keeps a silent tail its own window, so no silence is added to the speech before it")
+    func keepsASilentTail() {
+        let audio = Take.speech(7) + Take.silence(8)
+        #expect(windowing.windows(in: audio, sampleRate: Take.rate).count == 2)
+    }
+
     @Test("a short recording is one window, and nothing is none")
     func shortAndEmptyRecordings() {
         #expect(windowing.windows(in: Take.speech(3), sampleRate: Take.rate) == [0..<(3 * Take.rate)])
@@ -167,18 +194,20 @@ struct SpeechWindowingTests {
 
     @Test("windowing a finished recording does not slow down quadratically with its length")
     func windowsScalesLinearly() {
-        func elapsed(_ seconds: Double) -> Duration {
+        /// The CPU time this thread spends windowing `seconds` of speech, least of three, so waiting for a core is not counted.
+        func cost(_ seconds: Double) -> UInt64 {
             let audio = Take.speech(seconds, level: 0.3)
-            let clock = ContinuousClock()
-            let start = clock.now
-            _ = windowing.windows(in: audio, sampleRate: Take.rate)
-            return clock.now - start
+            let runs = (0..<3).map { _ in
+                let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+                _ = windowing.windows(in: audio, sampleRate: Take.rate)
+                return clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
+            }
+            return runs.min() ?? 0
         }
-        _ = elapsed(60)  // warm up allocation/caches before timing.
-        let short = elapsed(60)
-        let long = elapsed(240)
-        // Quadratic work would make the 4x-longer recording take roughly 16x as long.
-        #expect(long < short * 10)
+        let short = cost(30)
+        let long = cost(240)
+        // Eight times the audio costs about ten times the work when linear, and over thirty times when quadratic.
+        #expect(long < short * 20, "30 s took \(short) ns of CPU, 240 s took \(long) ns")
     }
 
     @Test("carries the lengths it was given")

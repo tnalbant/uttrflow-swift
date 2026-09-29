@@ -39,6 +39,97 @@ private let check = TerminalLineCheck(files: project())
 /// The directory most lines are judged from.
 private let api = "/Users/someone/api"
 
+/// A fork with two remotes: `shared` on both, `solo` on one alone though both loose and packed, `split` loose on one and packed on the other.
+private func fork() -> FakeDisk {
+    FakeDisk(
+        home: "/Users/someone", searchPaths: ["/usr/bin"],
+        directories: [
+            "/Users/someone/fork/.git/refs/heads", "/Users/someone/fork/.git/refs/remotes/origin",
+            "/Users/someone/fork/.git/refs/remotes/upstream",
+        ],
+        files: [
+            "/Users/someone/fork/.git/refs/heads/main", "/Users/someone/fork/.git/refs/remotes/origin/shared",
+            "/Users/someone/fork/.git/refs/remotes/upstream/shared",
+            "/Users/someone/fork/.git/refs/remotes/origin/solo",
+            "/Users/someone/fork/.git/refs/remotes/origin/split",
+        ],
+        executables: ["/usr/bin/git"],
+        texts: [
+            "/Users/someone/fork/.git/packed-refs":
+                "abc123 refs/remotes/origin/solo\nabc124 refs/remotes/upstream/split\nabc125 refs/remotes/upstream/packed-only\n"
+        ])
+}
+
+/// A project with one script per interpreter and each interpreter on the search path.
+private let scripts = TerminalLineCheck(
+    files: FakeDisk(
+        home: "/Users/someone", searchPaths: ["/usr/bin"],
+        directories: ["/Users/someone/tools"],
+        files: [
+            "/Users/someone/tools/present.py", "/Users/someone/tools/app.js", "/Users/someone/tools/run.sh",
+            "/Users/someone/tools/task.rb", "/Users/someone/tools/fix.pl", "/Users/someone/tools/notes.txt",
+        ],
+        executables: [
+            "/usr/bin/python3", "/usr/bin/node", "/usr/bin/bash", "/usr/bin/ruby", "/usr/bin/perl",
+            "/usr/bin/php",
+        ]))
+
+@Suite("Checking the script an interpreter runs")
+struct InterpreterScriptTests {
+    @Test(
+        "A script named after the interpreter's flags must exist here.",
+        arguments: [
+            "python3 -u missing.py", "python3 -W ignore missing.py", "python3 -B -O missing.py",
+            "node --inspect gone.js", "node -r dotenv/config gone.js", "bash -x nothere.sh",
+            "bash -o pipefail nothere.sh", "bash -l nothere.sh", "ruby -w old.rb", "ruby -I lib old.rb",
+            "perl -w gone.pl", "perl -pie 's/a/b/' notes.txt", "php -f gone.php", "python3 -- missing.py",
+        ])
+    func missingScriptsAreRefused(_ line: String) {
+        #expect(!scripts.allows(line, in: "/Users/someone/tools"), "\(line) names a missing script")
+    }
+
+    @Test(
+        "A script that exists stands, and code given inline, as a module or on the standard input needs no file.",
+        arguments: [
+            "python3 -u present.py", "python3 -W ignore present.py", "python3 -m http.server",
+            "python3 -c 'print(1)'",
+            "python3 -Bc 'print(1)'", "python3", "python3 -", "node -e '1'", "node --eval=1", "node -p 1",
+            "node --inspect app.js", "bash -x run.sh", "bash -lc 'ls'", "bash -s", "ruby -w task.rb",
+            "ruby -e 'puts 1'", "perl -pi -e 's/a/b/' notes.txt", "perl -w fix.pl", "php -r 'echo 1;'",
+        ])
+    func presentAndInlineStand(_ line: String) {
+        #expect(scripts.allows(line, in: "/Users/someone/tools"), "\(line) needs nothing missing")
+    }
+}
+
+@Suite("Checking a git line in a repository with two remotes")
+struct TwoRemoteCheckTests {
+    @Test(
+        "A branch only one remote has is checked out or switched to, however its refs are stored.",
+        arguments: [
+            "git switch solo", "git checkout solo", "git switch packed-only", "git checkout packed-only",
+        ])
+    func oneRemoteStands(_ line: String) {
+        #expect(TerminalLineCheck(files: fork()).allows(line, in: "/Users/someone/fork"), "\(line)")
+    }
+
+    @Test(
+        "A branch two remotes both have is refused, since git will not guess which one to track.",
+        arguments: ["git switch shared", "git checkout shared", "git switch split", "git checkout split"])
+    func twoRemotesAreAmbiguous(_ line: String) {
+        #expect(!TerminalLineCheck(files: fork()).allows(line, in: "/Users/someone/fork"), "\(line)")
+    }
+
+    @Test("Each remote holding the branch is counted once, loose and packed together.")
+    func remotesAreCountedOnce() throws {
+        let repository = try #require(GitRepository.holding("/Users/someone/fork", files: fork()))
+        #expect(repository.remotes(holdingBranch: "solo") == ["origin"])
+        #expect(repository.remotes(holdingBranch: "split") == ["origin", "upstream"])
+        #expect(repository.remotes(holdingBranch: "shared") == ["origin", "upstream"])
+        #expect(repository.remotes(holdingBranch: "gone") == [])
+    }
+}
+
 @Suite("Checking a terminal line against the disk")
 struct TerminalLineCheckTests {
     @Test(
@@ -197,6 +288,31 @@ struct TerminalLineCheckTests {
         #expect(!check.allows("git checkout main", in: "/table"))
         #expect(!check.allows("git checkout main", in: "/broken"))
         #expect(!check.allows("git checkout main", in: "/"))
+    }
+
+    @Test("A commit named by a loose object's id is allowed only when exactly one object on disk matches.")
+    func objectIDs() {
+        let object = "/repo/.git/objects/a1/b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+        let twin = "/repo/.git/objects/ff/00aa11bb22cc33dd44ee55ff6677889900aabb"
+        let disk = FakeDisk(
+            directories: ["/repo/.git/refs/heads", "/repo/.git/objects/a1", "/repo/.git/objects/ff"],
+            files: [object, twin, twin.replacingOccurrences(of: "00aa", with: "00ab")],
+            executables: ["/usr/bin/git"])
+        let check = TerminalLineCheck(files: disk)
+        for line in [
+            "git checkout a1b2c3d", "git checkout A1B2C3D", "git checkout a1b2c3d~1",
+            "git checkout a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", "git switch -d a1b2c3d",
+            "git switch -c topic a1b2c3d", "git checkout -b topic a1b2",
+        ] {
+            #expect(check.allows(line, in: "/repo"), "\(line)")
+        }
+        for line in [
+            "git checkout a1b2c3e", "git checkout a1b", "git checkout ff00", "git checkout 0123abc",
+            "git switch -d 9999999", "git switch a1b2c3d", "git checkout a1b2c3dz", "git checkout ../a1b2c3d",
+        ] {
+            #expect(!check.allows(line, in: "/repo"), "\(line)")
+        }
+        #expect(DestructiveCommand.matches("git checkout a1b2c3d -- .", failClosedOnUnresolved: true))
     }
 
     @Test("A packed-refs too large to read whole vouches for nothing.")

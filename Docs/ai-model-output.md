@@ -73,9 +73,11 @@ context holds a negator — measured: kept negators 0, rewritten plus echo 1. Th
 therefore a permitted *origin* for an addition, subtracted on the added side, and still a
 source of survivors on the dropped side.
 
-`inventionVerdict` stands down when any kept token is non-ASCII, because romanising
+`inventionVerdict` stands down when any kept token is not Latin script, because romanising
 Devanagari produces words with no counterpart in the draft by construction; those rewrites
-are left to the base checks, as the survival loop already left them.
+are left to the base checks, as the survival loop already left them. An accent is Latin
+script: "José", "résumé" and "café" are read like any other word, so one accented name in an
+English draft does not switch the check off for the whole rewrite.
 
 It runs after the function-word churn check so a rewrite that did both still reports the
 churn, which is the more useful reason.
@@ -108,7 +110,7 @@ and writes Hinglish accurately against the evaluation corpus (see `Docs/bakeoff.
 saves a Hindi speaker a 3 GB download and 4 GB of memory. Nothing goes in that list without a
 corpus measurement; a bad rewrite still has the meaning guard and the router beneath it.
 
-**What the guard can and cannot read there.** Its tokeniser is ASCII-shaped, so a Devanagari
+**What the guard can and cannot read there.** Its tokeniser reads Latin script only, so a Devanagari
 draft is left to the base checks — emptiness, a preamble, the growth ratio, invented numbers —
 and the word-survival, place and churn checks compare nothing. `scriptVerdict` is the exception:
 it romanises the draft and refuses a rewrite that translates it, is in another script, or repeats
@@ -127,7 +129,7 @@ measure against, and it should not be closed by refusing what cannot be read.
 
 Every refusal carries a `reason` and a `RefusalKind`. The reason is written for a person looking
 at the screen and quotes what was said — "the rewrite lost or replaced 'Zorvane'" — because the
-Diagnostics page stays on the Mac. The kind is a closed enum with a word-free `summary`, and that
+Diagnostics tab stays on the Mac. The kind is a closed enum with a word-free `summary`, and that
 is what Copy Diagnostics puts on the clipboard: "a word was lost or replaced".
 
 The two were one string until #645, and the copied report appended the reason verbatim while

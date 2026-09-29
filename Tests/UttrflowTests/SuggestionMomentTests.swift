@@ -10,13 +10,15 @@ import UttrflowPredictCapture
 
 /// A field in a mail composer, with a line above the caret's line and a caret at its end.
 private func composer(
-    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea"
+    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea",
+    isEnabled: Bool? = nil, isComposing: Bool = true
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: "com.Example.Mail", applicationName: "Mail", role: role, subrole: subrole,
         identifier: "body", placeholder: "Message", accessibilityDescription: "Message body",
         document: "draft", value: value, selection: NSRange(location: value.utf16.count, length: 0),
-        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isComposing: true,
+        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isEnabled: isEnabled,
+        isComposing: isComposing,
         windowTitle: "Re: plans")
 }
 
@@ -28,6 +30,13 @@ struct SuggestionMomentTests {
         #expect(reading.isSecure)
         #expect(reading.subrole == "AXSecureTextField")
         #expect(!SuggestionMoment.reading(of: composer()).isSecure)
+    }
+
+    @Test("A field the read found secure only by its masked value stays secure")
+    func aMaskedOnlyFieldReadsSecure() {
+        let snapshot = FocusedFieldSnapshot(
+            bundleIdentifier: "com.example.app", applicationName: "App", role: "AXTextField", isSecure: true)
+        #expect(SuggestionMoment.reading(of: snapshot).isSecure)
     }
 
     @Test("The bundle identifier and everything else the field publishes pass through unchanged")
@@ -54,6 +63,18 @@ struct SuggestionMomentTests {
         #expect(context.canDraw)
         let nowhere = FocusedFieldSnapshot(bundleIdentifier: "a.b", applicationName: "B", role: "AXTextField")
         #expect(!SuggestionMoment.context(of: nowhere, millisecondsSinceKeystroke: 0).canDraw)
+        #expect(!context.showsOwnList)
+        let listing = FocusedFieldSnapshot(
+            bundleIdentifier: "a.b", applicationName: "B", role: "AXTextField", showsOwnList: true)
+        #expect(SuggestionMoment.context(of: listing, millisecondsSinceKeystroke: 0).showsOwnList)
+    }
+
+    @Test("A disabled field refuses a suggestion before generation")
+    func disabledFieldCannotDraw() {
+        let context = SuggestionMoment.context(
+            of: composer(isEnabled: false, isComposing: false), millisecondsSinceKeystroke: 500)
+        #expect(!context.canDraw)
+        #expect(Quieting.reason(context) == .nowhereToDraw)
     }
 
     @Test("The situation holds the preceding text, the screen around the field and the recent lines")
@@ -93,5 +114,34 @@ struct SuggestionMomentTests {
         #expect(
             SuggestionMoment.recentLines(["Thanks", "See you", "Thanks for"], typing: "Thanks for coming")
                 == ["See you"])
+    }
+
+    @Test("The place an answer is remembered at is exactly the preceding text the model is shown")
+    func thePlaceIsWhatTheModelSees() {
+        #expect(SuggestionMoment.place(of: composer()) == "Dear team,")
+        let long = String(repeating: "word ", count: 200) + "end\nThanks for"
+        let snapshot = composer(value: long)
+        let place = SuggestionMoment.place(of: snapshot)
+        #expect(place?.count == SuggestionMoment.precedingContextLength)
+        #expect(place?.hasSuffix("end") == true)
+        let situation = SuggestionMoment.situation(of: snapshot, surroundings: nil, recentLines: [])
+        #expect(place == situation.preceding)
+        #expect(SuggestionMoment.place(of: composer(value: "Thanks for")) == nil)
+    }
+
+    @Test("A window is one app's one document, whatever the field holds")
+    func aWindowIsAnAppsDocument() {
+        func field(_ bundle: String, _ document: String?, _ value: String) -> FocusedFieldSnapshot {
+            FocusedFieldSnapshot(
+                bundleIdentifier: bundle, applicationName: "App", role: "AXTextArea", document: document,
+                value: value)
+        }
+        let key = SuggestionMoment.windowKey(of: field("com.example.mail", "draft", "Hi"))
+        #expect(key == SuggestionMoment.windowKey(of: field("com.example.mail", "draft", "Hi there")))
+        #expect(key != SuggestionMoment.windowKey(of: field("com.example.mail", "reply", "Hi")))
+        #expect(key != SuggestionMoment.windowKey(of: field("com.example.notes", "draft", "Hi")))
+        #expect(
+            SuggestionMoment.windowKey(of: field("com.example.mail", nil, "Hi"))
+                != SuggestionMoment.windowKey(of: field("com.example.mail", "draft", "Hi")))
     }
 }
