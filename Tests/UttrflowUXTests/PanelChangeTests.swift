@@ -220,7 +220,26 @@ struct PanelChangeEffectTests {
 
         #expect(PanelOutcome.change(.delete(id)).effect == .applyAndRedraw(.delete(id)))
         #expect(PanelOutcome.change(.setAlias(id, "x")).effect == .applyAndRedraw(.setAlias(id, "x")))
+        #expect(
+            PanelOutcome.change(.setPinned(id, true)).effect
+                == .applyAndRedraw(.setPinned(id, true)))
         #expect(PanelOutcome.change(.delete(id)).effect != .close)
+    }
+
+    @Test("pin and unpin row actions use the write path")
+    func pinActionsBecomeStoreChanges() {
+        let id = UUID()
+        let pin = PanelIntent.pin(id).immediateChange
+        let unpin = PanelIntent.unpin(id).immediateChange
+
+        #expect(pin == .setPinned(id, true))
+        #expect(unpin == .setPinned(id, false))
+        #expect(
+            pin.map { PanelOutcome.change($0).effect }
+                == .some(.applyAndRedraw(.setPinned(id, true))))
+        #expect(
+            unpin.map { PanelOutcome.change($0).effect }
+                == .some(.applyAndRedraw(.setPinned(id, false))))
     }
 }
 

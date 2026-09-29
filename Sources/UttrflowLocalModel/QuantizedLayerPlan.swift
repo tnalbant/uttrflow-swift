@@ -1,6 +1,7 @@
 // Decides which layers are built quantized from the weights on disk, before the weights are read.
 import Foundation
 import MLX
+import MLXLMCommon
 
 /// The quantized layers a snapshot holds, read from its safetensors headers. See `Docs/performance.md`.
 struct QuantizedLayerPlan: Sendable, Equatable {
@@ -56,6 +57,15 @@ struct QuantizedLayerPlan: Sendable, Equatable {
         case "BF16": .bfloat16
         case "F32": .float32
         default: nil
+        }
+    }
+
+    /// Whether every quantization group size from the model configuration can shape a scale tensor.
+    static func hasValidGroupSizes(_ quantization: BaseConfiguration.PerLayerQuantization) -> Bool {
+        if let groupSize = quantization.quantization?.groupSize, groupSize <= 0 { return false }
+        return quantization.perLayerQuantization.values.allSatisfy { option in
+            guard case .quantize(let layer) = option else { return true }
+            return layer.groupSize > 0
         }
     }
 

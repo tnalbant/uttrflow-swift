@@ -66,6 +66,39 @@ struct ShellHistoryTests {
         #expect(ShellHistory.read(atPath: NSTemporaryDirectory() + "uttrflow-absent-history").isEmpty)
     }
 
+    @Test("Metafied UTF-8 bytes in zsh history are restored before decoding.")
+    func zshMetafiedTextIsDecoded() throws {
+        let scratch = Scratch()
+        try FileManager.default.createDirectory(
+            atPath: scratch.directory, withIntermediateDirectories: true)
+        var data = Data(": 1:0;echo caf".utf8)
+        data.append(contentsOf: [0x83, 0xE3, 0x83, 0x89, 0x0A])
+        FileManager.default.createFile(atPath: scratch.path(".zsh_history"), contents: data)
+        #expect(ShellHistory.read(atPath: scratch.path(".zsh_history")) == ["echo café"])
+    }
+
+    @Test("Bash history keeps its plain UTF-8 encoding.")
+    func bashTextIsNotUnmetafied() throws {
+        let scratch = Scratch()
+        try FileManager.default.createDirectory(
+            atPath: scratch.directory, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: scratch.path(".bash_history"), contents: Data("echo café\n".utf8))
+        #expect(ShellHistory.read(atPath: scratch.path(".bash_history")) == ["echo café"])
+    }
+
+    @Test("A command with a remaining replacement character is dropped.")
+    func undecodableCommandIsDropped() throws {
+        let scratch = Scratch()
+        try FileManager.default.createDirectory(
+            atPath: scratch.directory, withIntermediateDirectories: true)
+        var data = Data("echo ".utf8)
+        data.append(0xFF)
+        data.append(contentsOf: Array("\nmake verify\n".utf8))
+        FileManager.default.createFile(atPath: scratch.path(".bash_history"), contents: data)
+        #expect(ShellHistory.read(atPath: scratch.path(".bash_history")) == ["make verify"])
+    }
+
     @Test("Bytes that are not text are replaced rather than refusing the whole file.")
     func invalidBytesAreTolerated() throws {
         let scratch = Scratch()

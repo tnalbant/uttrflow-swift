@@ -105,10 +105,18 @@ struct SightingLedger: Sendable {
     /// The refused words oldest first, which is what the store writes down.
     var refusals: [String] { refusalOrder }
 
-    /// Stops counting a word and stops it being counted again; what a deletion reaches.
+    /// Whether the user has explicitly refused to learn this spelling.
+    func isRefused(_ word: String) -> Bool { refused.contains(word.lowercased()) }
+
+    /// Stops counting pending homophones and stops the refused spelling being counted again.
     mutating func refuse(_ word: String) {
         let key = word.lowercased()
-        sightings[key] = nil
+        let sound = DoubleMetaphone.code(for: word)
+        sightings = sightings.filter { sightingKey, sighting in
+            guard sightingKey != key else { return false }
+            guard !sound.isSilent else { return true }
+            return !sound.sounds(like: DoubleMetaphone.code(for: sighting.word))
+        }
         guard refused.insert(key).inserted else { return }
         refusalOrder.append(key)
         if refusalOrder.count > Self.maximumRefused {

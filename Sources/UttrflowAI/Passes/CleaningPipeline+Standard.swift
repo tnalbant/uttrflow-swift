@@ -8,7 +8,7 @@ extension CleaningPipeline {
     public static func beforeModel(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps)
+        piece(numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout, steps: steps)
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -22,11 +22,12 @@ extension CleaningPipeline {
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
     public static func piece(
-        numbers: NumberPolicy, digits: DigitGrouping, steps: CleaningSteps = .default
+        numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
+        steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         let cleanings: [any CleaningPass] = [
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
-            SpokenPunctuationPass(), LayoutWordsPass(),
+            SpokenPunctuationPass(), LayoutWordsPass(layout: layout),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
         ]
@@ -58,9 +59,20 @@ extension CleaningPipeline {
         CleaningPipeline(passes: [
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
-                onScreen: situation.app.textOnScreen, heard: heard),
-            TerminalStopPass(policy: terminalStop(formatter, in: situation), layout: formatter.layout),
+                onScreen: situation.app.textOnScreen, heard: heard,
+                capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                    && formatter.destination != .codeEditor),
+            TerminalStopPass(
+                policy: terminalStop(formatter, in: situation), layout: formatter.layout,
+                insertionPoint: situation.insertion),
         ])
+    }
+
+    /// The typed whole-text rules that apply once the pieces have been laid out.
+    public static func wholeText(
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+    ) -> CleaningPipeline {
+        message(for: formatter, situation: situation, heard: heard)
     }
 
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.

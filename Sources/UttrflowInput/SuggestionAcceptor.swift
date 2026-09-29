@@ -41,12 +41,25 @@ public struct SuggestionAcceptor: Sendable {
     }
 
     /// Writes an edit `aim` returned, adding its text and taking back what it replaces.
-    public func write(_ edit: Acceptance.Edit) async throws(TextInsertionError) -> TextInsertionMethod? {
-        try await completion.write(edit.inserted, replacing: edit.replaced)
+    public func write(
+        _ edit: Acceptance.Edit, expectedWindowNumber: UInt32? = nil
+    ) async throws(TextInsertionError) -> TextInsertionMethod? {
+        if let expectedWindowNumber {
+            let focusedWindowNumber = await AccessibilityThread.run(orElse: nil) {
+                focus?.focusedWindowNumber()
+            }
+            guard focusedWindowNumber == expectedWindowNumber else {
+                throw .insertionRejected(
+                    description: "the focused field is in a different or unidentified window")
+            }
+        }
+        return try await completion.write(edit.inserted, replacing: edit.replaced)
     }
 
     /// The drawn edit rebased onto the field as it is now, refused unless the field can be read and is that line.
-    public func aim(_ suggestion: Suggestion, after typed: String) async -> Aim {
+    public func aim(
+        _ suggestion: Suggestion, after typed: String, expectedWindowNumber: UInt32? = nil
+    ) async -> Aim {
         guard let drawn = suggestion.edit(after: typed) else { return .nothing }
         guard let focus else { return .write(drawn) }
         // A field that hides what is typed never takes a suggestion, whatever it was drawn in.
@@ -54,9 +67,18 @@ public struct SuggestionAcceptor: Sendable {
             return .refused("the focused field hides what is typed")
         }
         let reach = max(typed.count + drawn.inserted.count, 1)
-        let tail = await AccessibilityThread.run(orElse: .unreadable) { focus.tail(upTo: reach) }
+        let reading = await AccessibilityThread.run(orElse: (nil, FieldTail.unreadable)) {
+            focus.windowNumberAndTail(upTo: reach)
+        }
+        if let expectedWindowNumber {
+            guard reading.windowNumber == expectedWindowNumber else {
+                return .refused("the focused field is in a different or unidentified window")
+            }
+        }
         // A ghost is drawn only where the field was read, so a field that cannot be read now is not the one it was drawn in.
-        guard case .text(let before) = tail else { return .refused("the focused field cannot be read") }
+        guard case .text(let before) = reading.tail else {
+            return .refused("the focused field cannot be read")
+        }
         if let rebased = Acceptance.rebase(drawn, after: typed, onto: before) { return .write(rebased) }
         // The whole suggestion already being there means the keys got ahead of the read, and there is nothing left to do.
         if before.hasSuffix(typed + drawn.inserted), !drawn.isReplacement { return .nothing }

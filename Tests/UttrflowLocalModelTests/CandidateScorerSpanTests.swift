@@ -93,6 +93,22 @@ struct MLXCandidateScorerJudgementCacheTests {
         #expect(await scorer.judgementCacheHits == 0)
     }
 
+    @Test("Forgetting suggestions empties cached candidate text")
+    func forgettingSuggestionsEmptiesTheCache() async {
+        let scorer = MLXCandidateScorer(
+            model: .gemma3, maximumTokens: 16, bufferCache: Self.noOpCache)
+        _ = await scorer.judgedTokens(of: "please send the report", following: "p")
+        #expect(await scorer.judgementCacheMisses == 1)
+        #expect(await scorer.judgementCacheCount == 1)
+
+        await scorer.forgetEverything()
+        #expect(await scorer.judgementCacheCount == 0)
+        _ = await scorer.judgedTokens(of: "please send the report", following: "p")
+
+        #expect(await scorer.judgementCacheMisses == 2)
+        #expect(await scorer.judgementCacheHits == 0)
+    }
+
     @Test("A cancelled scoring attempt leaves nothing cached, so the next attempt runs afresh")
     func cancelledAttemptIsNotCached() async {
         let scorer = MLXCandidateScorer(

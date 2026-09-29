@@ -49,4 +49,11 @@ struct MenuBarPanelTests {
         #expect(bar.isPopoverContentHosted)
         bar.closePopover()
     }
+
+    @Test("A development build labels the menu-bar item Dev in blue")
+    func developmentBuildHasBlueDevLabel() {
+        let title = MenuBarController.title(isDevelopmentBuild: true, iconMissing: false)
+        #expect(title.string == "Dev")
+        #expect(title.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .systemBlue)
+    }
 }

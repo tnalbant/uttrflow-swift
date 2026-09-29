@@ -29,3 +29,15 @@ public enum Suggestion: Sendable, Equatable {
         return Acceptance.edit(accepting: accepting, after: typed)
     }
 }
+
+/// What the shared generated-line gate decides the app and bake-off may draw.
+public enum GeneratedSuggestionDecision: Sendable, Equatable {
+    /// No generated line can extend the typed text.
+    case noCandidate
+    /// Candidates extend the typed text, but none may be drawn at the scores given.
+    case unsure
+    /// One candidate clears the certainty floor.
+    case certain(String)
+    /// The leader and its alternatives clear the choice floor.
+    case choice(leader: String, others: [String])
+}
