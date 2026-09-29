@@ -1,19 +1,34 @@
 // Times retrieval over the personal dictionary.
-private import Foundation
+import Foundation
+private import Darwin
 private import SQLite3
+import Testing
 
 /// Times the retrieval the prediction engine will do, on a synthetic corpus of this Mac's making.
 enum RetrievalBenchmark {
     /// Answers a prefix query the way phase 2 will, so the plan's numbers are checked and not assumed.
     struct Index {
         private let handle: OpaquePointer
+        private let directory: URL
+        var directoryPathForTesting: String { directory.path(percentEncoded: false) }
 
         /// Builds the table, the index and the rows, in one transaction, in a temporary file.
-        init?(_ corpus: [Entry]) {
-            let path = NSTemporaryDirectory() + "uttrflow-probe-\(getpid()).sqlite"
-            try? FileManager.default.removeItem(atPath: path)
+        init?(_ corpus: [Entry], temporaryDirectory: URL = .temporaryDirectory) {
+            let directory = temporaryDirectory.appending(
+                path: "uttrflow-probe-\(UUID().uuidString)", directoryHint: .isDirectory)
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+            } catch {
+                return nil
+            }
+            self.directory = directory
+            TemporaryDirectories.register(directory)
+            let path = directory.appending(path: "corpus.sqlite").path(percentEncoded: false)
             var handle: OpaquePointer?
-            guard sqlite3_open(path, &handle) == SQLITE_OK, let handle else { return nil }
+            guard sqlite3_open(path, &handle) == SQLITE_OK, let handle else {
+                try? FileManager.default.removeItem(at: directory)
+                return nil
+            }
             self.handle = handle
             exec("PRAGMA journal_mode=WAL")
             exec("CREATE TABLE entry (surface_id INTEGER NOT NULL, text TEXT NOT NULL)")
@@ -45,7 +60,10 @@ enum RetrievalBenchmark {
                 surface, prefix + "%", nil)
         }
 
-        func close() { sqlite3_close(handle) }
+        func close() {
+            sqlite3_close(handle)
+            try? FileManager.default.removeItem(at: directory)
+        }
 
         private func count(_ sql: String, _ surface: Int32, _ first: String, _ second: String?) -> Int {
             var statement: OpaquePointer?
@@ -177,5 +195,44 @@ enum RetrievalBenchmark {
             swap(&last, &current)
         }
         return last.min() ?? limit + 1
+    }
+}
+
+/// Removes registered benchmark directories when the process exits normally.
+enum TemporaryDirectories {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var directories: Set<URL> = []
+    private static let exitHandler: Int32 = atexit { cleanup() }
+
+    static func register(_ directory: URL) {
+        _ = exitHandler
+        lock.lock()
+        directories.insert(directory)
+        lock.unlock()
+    }
+
+    private static func cleanup() {
+        lock.lock()
+        let registered = directories
+        directories.removeAll()
+        lock.unlock()
+        for directory in registered { try? FileManager.default.removeItem(at: directory) }
+    }
+}
+
+@Suite("Retrieval benchmark temporary files")
+struct RetrievalBenchmarkTests {
+    @Test("Closing an index removes its database and WAL sidecars")
+    func closingRemovesTemporaryFiles() throws {
+        let root = URL.temporaryDirectory.appending(path: "uttrflow-probe-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let index = try #require(
+            RetrievalBenchmark.Index(RetrievalBenchmark.corpus(100), temporaryDirectory: root))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 1)
+
+        index.close()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 }

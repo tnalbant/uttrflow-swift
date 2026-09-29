@@ -1,6 +1,7 @@
 public import UttrflowCore
 import Foundation
 import Security
+private import os
 
 /// The refresh token in this Mac's Keychain; small so reading it is the review. See Docs/account-keychain.md.
 public struct KeychainTokenStore: TokenStore {
@@ -23,12 +24,23 @@ public struct KeychainTokenStore: TokenStore {
         self.fileAccount = Self.codeIdentity().map { "\(account) · \($0)" }
     }
 
+    /// Which keychain took the token, never the token itself.
+    private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "account")
+
     /// The two keychains in the order tried; an ad-hoc build gets the second. See Docs/account-keychain.md.
     private enum Keychain: CaseIterable {
         /// The one to want; needs a keychain-access-group entitlement, so a team identifier.
         case dataProtection
         /// Where an ad-hoc build lands, under a name of its own per build.
         case file
+
+        /// The name a log line uses for it.
+        var name: String {
+            switch self {
+            case .dataProtection: "data-protection"
+            case .file: "file-based"
+            }
+        }
     }
 
     /// The attributes naming this Mac's item in `keychain`, or `nil` when this build may not have one there.
@@ -64,16 +76,38 @@ public struct KeychainTokenStore: TokenStore {
         return nil
     }
 
-    /// Deletes then adds in the first keychain that takes it, and throws when neither does; never silent.
+    /// Writes to the first keychain that takes it, then removes the other copy; a failed write deletes nothing.
     public func store(_ refreshToken: String) throws(AccountError) {
-        clear()
-        for keychain in Keychain.allCases {
-            guard var insert = query(keychain) else { continue }
-            insert[kSecValueData as String] = Data(refreshToken.utf8)
-            insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            if SecItemAdd(insert as CFDictionary, nil) == errSecSuccess { return }
+        let data = Data(refreshToken.utf8)
+        for keychain in Keychain.allCases where write(data, to: keychain) {
+            Self.log.notice("session: token kept in the \(keychain.name, privacy: .public) keychain")
+            for other in Keychain.allCases where other != keychain {
+                guard let query = query(other) else { continue }
+                _ = SecItemDelete(query as CFDictionary)
+            }
+            return
         }
+        Self.log.error("session: neither keychain took the token")
         throw .sessionCouldNotBeKept
+    }
+
+    /// Replaces the item in `keychain`, or adds it when there is none, and says whether either worked.
+    private func write(_ data: Data, to keychain: Keychain) -> Bool {
+        guard let query = query(keychain) else { return false }
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        switch SecItemUpdate(query as CFDictionary, attributes as CFDictionary) {
+        case errSecSuccess:
+            return true
+        case errSecItemNotFound:
+            var insert = query
+            insert.merge(attributes) { _, new in new }
+            return SecItemAdd(insert as CFDictionary, nil) == errSecSuccess
+        default:
+            return false
+        }
     }
 
     /// Removes it from both, so a sign-out leaves no live credential in the keychain this build is not using.

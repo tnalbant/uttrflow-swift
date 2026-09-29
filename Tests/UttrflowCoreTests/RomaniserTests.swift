@@ -34,6 +34,8 @@ struct RomaniserTests {
             ("किताब", "kitaab"), ("बताया", "bataya"), ("पूरा", "poora"), ("चीज़", "cheez"), ("दूँगा", "dunga"),
             ("कुर्सियाँ", "kursiyan"), ("मिलेंगे", "milenge"), ("हमें", "hamein"), ("उन्होंने", "unhone"),
             ("मैंने", "maine"), ("पहुँच", "pahunch"), ("बच्चा", "baccha"), ("ज्ञान", "gyaan"), ("क्षमा", "kshama"),
+            ("गाँव", "gaon"), ("पाँव", "paon"), ("छाँव", "chhaon"), ("गाँवों", "gaonon"),
+            ("गाव", "gaav"), ("कार्य", "karya"), ("मित्र", "mitra"),
             ("वजह", "wajah"), ("पहले", "pehle"), ("आए", "aaye"), ("लीजिए", "lijiye"),
             ("दुःख", "duhkh"), ("सफ़र", "safar"), ("क़िला", "qila"), ("ॐ", "om"), ("जगत्", "jagat"),
             ("न", "na"), ("आ", "aa"),
@@ -73,6 +75,15 @@ struct RomaniserTests {
         #expect(Romaniser.romanised("  ठीक", capitalisingSentences: true) == "  Thik")
     }
 
+    @Test("romanises long mixed-script text without changing sentence capitalization")
+    func longMixedScriptText() {
+        let devanagari = "कल"
+        let input = Array(repeating: "English \(devanagari) sentence. ", count: 2_000).joined()
+        let expected = Array(repeating: "English kal sentence. ", count: 2_000).joined()
+
+        #expect(Romaniser.romanised(input, capitalisingSentences: true) == expected)
+    }
+
     /// No letter of the block may survive, whatever it sits next to.
     @Test("never leaves a Devanagari scalar behind, for any scalar of the block alone or after a consonant")
     func noDevanagariSurvives() {
@@ -103,6 +114,20 @@ struct RomaniserTests {
         arguments: [("hai", "hain"), ("four", "chaar"), ("is", "hai"), ("h", "")])
     func soundKeysDiffer(first: String, second: String) {
         #expect(Romaniser.soundKey(first) != Romaniser.soundKey(second))
+    }
+
+    /// पहुँच and पहुंच are the same word, one written with chandrabindu and one with anusvara.
+    @Test("folds chandrabindu to anusvara and drops nukta, so spelling variants share a form")
+    func scriptFoldedMergesVariants() {
+        #expect(
+            Romaniser.scriptFolded("\u{092A}\u{0939}\u{0941}\u{0901}\u{091A}")
+                == Romaniser.scriptFolded("\u{092A}\u{0939}\u{0941}\u{0902}\u{091A}"))
+        #expect(Romaniser.scriptFolded("\u{0915}\u{093C}") == Romaniser.scriptFolded("\u{0915}"))
+    }
+
+    @Test("leaves a non-Devanagari spelling untouched")
+    func scriptFoldedPassesOtherScriptsThrough() {
+        #expect(Romaniser.scriptFolded("Uttrflow") == "Uttrflow")
     }
 
     @Test("romanises a transcription's text and timed words, keeping its timings and language")

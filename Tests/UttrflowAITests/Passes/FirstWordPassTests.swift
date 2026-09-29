@@ -17,6 +17,20 @@ struct FirstWordPassTests {
         cleaned(text, by: FirstWordPass(policy: .asSpoken, heard: heard))
     }
 
+    /// An ellipsis is a pause inside the sentence, so the word after it keeps the case it was heard in.
+    @Test(
+        "leaves the word after an ellipsis as it was heard",
+        arguments: [
+            ("we should... move the meeting", "We should... move the meeting"),
+            ("we should\u{2026} move it", "We should\u{2026} move it"),
+            ("wait... What happened", "Wait... What happened"),
+            ("really...? yes", "Really...? Yes"),
+        ]
+    )
+    func leavesTheWordAfterAnEllipsis(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test(
         "capitalises the start of every sentence",
         arguments: [
@@ -70,6 +84,13 @@ struct FirstWordPassTests {
         #expect(sut.apply(paragraph).text == "Hello\n\nThere\n- Milk\neggs")
     }
 
+    @Test("the same known abbreviations do not end a sentence inside a dictation")
+    func sharedAbbreviationsStayInsideSentence() {
+        for abbreviation in InsertionPoint.sentenceAbbreviations {
+            #expect(!FirstWordPass.endsSentence(abbreviation + "."))
+        }
+    }
+
     @Test(
         "lower-cases the first word for a caret mid-sentence, and a later sentence still starts with a capital",
         arguments: [
@@ -92,6 +113,20 @@ struct FirstWordPassTests {
     func capitalElsewhere(state: InsertionPoint.SentenceState) {
         #expect(fromCaret("the build failed.", state: state) == "The build failed.")
         #expect(fromCaret("The build failed.", state: state) == "The build failed.")
+    }
+
+    /// A terminal's caret is reported as `.unknown`; with `.asSpoken` the heard case is what survives.
+    @Test(
+        "as spoken keeps the heard case of a terminal command at an unknown caret",
+        arguments: [
+            ("ls dash la", "ls dash la"),
+            ("npm run build", "npm run build"),
+            ("git commit dash m fix the login bug", "git commit dash m fix the login bug"),
+        ]
+    )
+    func asSpokenForTerminalAtUnknownCaret(text: String, expected: String) {
+        let pass = FirstWordPass(policy: .asSpoken, state: .unknown, heard: text)
+        #expect(cleaned(text, by: pass) == expected)
     }
 
     @Test(

@@ -36,14 +36,20 @@ public struct SystemEnvironmentReader: EnvironmentReading {
     /// The justfile names read, in this order: `justfile`, `Justfile`, `.justfile`.
     static let justfiles = ["justfile", "Justfile", ".justfile"]
 
+    /// The most bytes one project or shell configuration file may hold before it is not read at all.
+    static let fileLimit = 1_048_576
+
     /// Runs every program a lookup needs; never in the terminal's directory. See `Docs/command-lookups.md`.
     private let launcher: any ProgramLaunching
 
     /// The directories a verb lookup may run a program from.
     private let programDirectories: [String]
 
-    /// What a directory listing is read through, so a test can count what it stats without touching a disk.
+    /// Every file and directory read goes through this, which refuses a remote volume. See `SystemFileSystem`.
     private let files: any FileSystemProbing
+
+    /// The same disk behind a short-lived cache, so a branch refresh does not walk the refs tree afresh.
+    private let refFiles: CachedFileSystem
 
     /// A reader over this Mac, which needs nothing to be told.
     public init() {
@@ -60,6 +66,7 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         self.launcher = launcher
         self.programDirectories = programDirectories
         self.files = files
+        self.refFiles = CachedFileSystem(files)
     }
 
     /// Every value of one kind here, each kind read the way that kind is read; `prefix` narrows a name listing to what has been typed so far.
@@ -82,7 +89,7 @@ public struct SystemEnvironmentReader: EnvironmentReading {
 
     /// The repository's refs by their short names — branches, tags and remote branches — read off disk without running git, absent outside a repository.
     private func branches(in directory: String) -> [String]? {
-        GitRepository.holding(directory, files: SystemFileSystem())?.refNames(limit: Self.verbLimit)
+        GitRepository.holding(directory, files: refFiles)?.refNames(limit: Self.verbLimit)
     }
 
     /// What one directory holds, narrowed to `prefix` before anything is stat'ed, so a name that could never complete the typed word never costs a stat; hidden entries included since a dotfile is named on purpose, nothing where the directory does not exist, and no answer where it cannot be read.
@@ -92,7 +99,11 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         -> [String]?
     {
         let path = Self.resolve(under, from: directory)
-        guard files.kind(atPath: path) == .directory else { return [] }
+        switch files.kind(atPath: path) {
+        case .directory: break
+        case .unknown: return nil
+        case .file, .missing: return []
+        }
         guard let names = files.names(inDirectory: path, limit: .max) else { return nil }
         let candidates = EnvironmentSource.matching(names, prefix: prefix)
         let kept =
@@ -142,9 +153,9 @@ public struct SystemEnvironmentReader: EnvironmentReading {
         case "git":
             return await gitSubcommands()
         case "make":
-            return Self.firstReadable(of: Self.makefiles, in: directory).map(MakefileTargets.names(in:))
+            return firstReadable(of: Self.makefiles, in: directory).map(MakefileTargets.names(in:))
         case "just":
-            return Self.firstReadable(of: Self.justfiles, in: directory).map(JustfileRecipes.names(in:))
+            return firstReadable(of: Self.justfiles, in: directory).map(JustfileRecipes.names(in:))
         case let runner where runner.hasSuffix(" run"):
             return scripts(in: directory)
         case let runner where CommandGrammar.scriptRunners.contains(runner):
@@ -156,8 +167,8 @@ public struct SystemEnvironmentReader: EnvironmentReading {
     }
 
     /// The text of the first of `names` that can be read in `directory`, or nothing.
-    private static func firstReadable(of names: [String], in directory: String) -> String? {
-        names.lazy.compactMap { try? String(contentsOfFile: "\(directory)/\($0)", encoding: .utf8) }.first
+    private func firstReadable(of names: [String], in directory: String) -> String? {
+        names.lazy.compactMap { files.contents(ofFile: "\(directory)/\($0)", limit: Self.fileLimit) }.first
     }
 
     /// How a program is asked to list its verbs, which is `--help` for most and a listing command for the few that keep one.
@@ -175,7 +186,7 @@ public struct SystemEnvironmentReader: EnvironmentReading {
 
     /// The scripts the project here declares, absent when it has no manifest or one that does not parse.
     private func scripts(in directory: String) -> [String]? {
-        (try? String(contentsOfFile: "\(directory)/package.json", encoding: .utf8))
+        files.contents(ofFile: "\(directory)/package.json", limit: Self.fileLimit)
             .flatMap(PackageScripts.names(in:))
     }
 
@@ -214,9 +225,9 @@ public struct SystemEnvironmentReader: EnvironmentReading {
 
     /// Every alias the user's shell configuration declares, read as text rather than by running it.
     private func aliases() -> [String] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = files.homeDirectory
         let text = Self.aliasFiles
-            .compactMap { try? String(contentsOf: home.appending(path: $0), encoding: .utf8) }
+            .compactMap { files.contents(ofFile: "\(home)/\($0)", limit: Self.fileLimit) }
             .joined(separator: "\n")
         return Array(ShellAliases.names(in: text).prefix(Self.valueLimit))
     }

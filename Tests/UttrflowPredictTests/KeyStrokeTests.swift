@@ -14,6 +14,14 @@ struct KeyStrokeTests {
         #expect(Key(keyCode: keyCode) == key)
     }
 
+    @Test("Every key this feature takes names the code that presses it again.")
+    func keyCodesRoundTrip() {
+        for key in Key.allCases where key != .other {
+            #expect(key.keyCode.map(Key.init(keyCode:)) == key)
+        }
+        #expect(Key.other.keyCode == nil)
+    }
+
     @Test("Every other key is one this feature has no opinion about.")
     func everythingElseIsOther() {
         #expect(Key(keyCode: 0) == .other)
@@ -66,9 +74,12 @@ struct ArmedKeysTests {
         #expect(ArmedKeys.slot(of: KeyStroke(.tab, modifiers: .shift)).isEmpty)
     }
 
-    @Test("Option only claims the two strokes that use it.")
-    func optionClaimsTwoStrokes() {
-        #expect(ArmedKeys.slot(of: KeyStroke(.downArrow, modifiers: .option)).isEmpty)
+    @Test("Option only claims the strokes that use it, and a bare arrow claims no slot at all.")
+    func optionClaimsItsStrokes() {
+        #expect(ArmedKeys.slot(of: KeyStroke(.downArrow, modifiers: .option)) == .optionDownArrow)
+        #expect(ArmedKeys.slot(of: KeyStroke(.upArrow, modifiers: .option)) == .optionUpArrow)
+        #expect(ArmedKeys.slot(of: KeyStroke(.downArrow)).isEmpty)
+        #expect(ArmedKeys.slot(of: KeyStroke(.upArrow)).isEmpty)
         #expect(ArmedKeys.slot(of: KeyStroke(.return, modifiers: .option)).isEmpty)
         #expect(ArmedKeys.slot(of: KeyStroke(.rightArrow, modifiers: .option)).isEmpty)
     }

@@ -133,6 +133,8 @@ struct SpokenPunctuationPassTests {
             "comma first",
             "a long period of time",
             "this period was hard",
+            "these comma separated values are easy to read",
+            "those question mark icons are confusing",
             "insert a colon",
             "say open quote",
             "a well hyphen",

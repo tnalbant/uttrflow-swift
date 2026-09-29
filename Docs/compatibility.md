@@ -49,15 +49,12 @@ something other, than it looks like it measures.
 **"Reports success, changes nothing" no longer looks like success.** The column's value
 is named after the defect as it was first seen, and the wording invites you to look for
 `Inserted via accessibility` over an unchanged screen. You will not see that any more.
-`SelectionWriter.replaceSelection(with:)` reads the field's value before the write and
-again after it, and throws `insertionRejected` — "the field accepted the text and did not
-change" — when they match, so `--via accessibility` into such a field **fails** and says
-why. Record the column from that message, not from the screen.
-
-One limit worth knowing while you do: the guard fires only when the field answers
-`value()` both times. A field that will not say what it holds is trusted, deliberately —
-a verification, not a precondition — so `reports success, changes nothing` and a genuine
-silent success are indistinguishable there. That is the case #601 is about.
+`SelectionWriter.replaceSelection(with:)` checks that the selection collapses to the
+expected caret after the write. When the field accepts the write but leaves the selection
+unchanged, it reports an unconfirmed insertion and stops before trying paste or typing.
+An unreadable or unexpected resulting selection takes the same path, since another
+strategy could duplicate text that already landed. Record the column from that message,
+not from the screen.
 
 **`--via paste` does not print the confirmation timing.** `Insert` installs its
 `report(_:)` printout — "words reached the caret after 0.42s" — only on the default route,
@@ -87,7 +84,10 @@ column that decides whether anything can be drawn at all.
 | App | Field | Published | AX write | Paste | Confirmed | Full route | Caret | Value | Marked text | Completion | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Google Chrome | address bar | | | | | | | value only | no | | Whether the field itself is published is #101's to settle; nothing on this branch measures it. Window title answered; the selection is refused with `kAXErrorNoValue`, so half the context read comes back and half does not ([context-accessibility.md](context-accessibility.md)). `AXTextInputMarkedRange` is absent from the binary, checked against two control attributes that are present, so this is a real absence rather than a failed search ([predict-ime.md](predict-ime.md)) |
-| Google Chrome | rich editor in a page | yes | | | | nowhere, before the fix | wrong place, now right | | no | | A browser SQL editor renders its own text and keeps a one- to three-pixel textarea parked at the caret for input methods. Accessibility answered the caret's glyph bounds with a zero-size rectangle, the field had no placement, and the panel was hidden with nothing logged. The reader now takes that narrow field's frame as the caret. **Live confirmation in Chrome is still pending** ([predict-reliability.md](predict-reliability.md)) |
+| Google Chrome 153, macOS 26.5.1 | single-line | only after `AXEnhancedUserInterface` | | | | | right | yes | | | With the full tree off, value and selection answer and every caret bound is a zero-size rectangle, so there is no placement. Chrome refuses `AXManualAccessibility` and applies `AXEnhancedUserInterface` while answering the write as not implemented; the suggestion loop turns it on for a caretless field once per process and off when suggestions stop. The caret was right about two seconds after the switch ([predict-reliability.md](predict-reliability.md)) |
+| Google Chrome 153, macOS 26.5.1 | multi-line | only after `AXEnhancedUserInterface` | | | | | right | yes | | | As the single-line row. The text-marker selection (`AXSelectedTextMarkerRange` measured with `AXLengthForTextMarkerRange` from the field's start) agreed with `AXSelectedTextRange` across a line break, and is what the reader uses where the range is refused ([predict-reliability.md](predict-reliability.md)) |
+| Google Chrome 153, macOS 26.5.1 | rich editor in a page | yes | | | | | right | yes | | | A code editor that renders its own text keeps an empty one-pixel textarea focused at the caret, so the field has neither a line nor a caret. The reader now reads the line off the rendered row the textarea sits on, split at the textarea's position, and takes that row's height for the caret; measured on a SQL-mode editor with `SELECT id, name FROM users WHERE` typed: line read whole, caret at the line's end, `inlineGhost`, about 8 ms a read ([predict-reliability.md](predict-reliability.md)) |
+| Safari 26.5, macOS 26.5.1 | code editor in a page | yes | | | | | right | yes | | | WebKit widens the hidden textarea such an editor keeps at the caret to about 1 000 × 14 pt, so an empty text area one bare line tall (18 pt at most) is taken as the parked input too. WebKit also lays each highlighted run of a line straight into the tall editor rather than into a line element, so such runs share a row by their parent and their line band. Measured on a SQL-mode editor with `SELECT id, name FROM users WHERE` typed: line read whole, caret at the line's end, `inlineGhost`, about 8 ms a read warm ([predict-reliability.md](predict-reliability.md)) |
 | Safari | address bar | | | | | | | | unknown | | Not settled either way. The marked-range walk could not resolve a focused element for a `WKWebView` at all, and walking the web view's subtree found no text element, so WebKit's own answer is unmeasured — Chromium's result does not speak for it ([predict-ime.md](predict-ime.md)) |
 
 ## Applications built on a bundled browser engine

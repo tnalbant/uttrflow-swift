@@ -1,6 +1,7 @@
 // A serial queue that runs only the newest request, since a read nobody waits for still costs the next one.
 
 internal import Dispatch
+import UttrflowCore
 private import Synchronization
 
 /// Runs blocking reads one at a time, skipping any that a newer request has replaced. See `Docs/predict.md`.
@@ -16,15 +17,18 @@ final class LatestOnlyQueue: Sendable {
     /// How many requests have taken a number, which is how a test queues one behind another without a sleep.
     var requested: Int { latest.count }
 
+    /// Makes the work already running stop before its next message, and drops any work still waiting in the queue.
+    func invalidate() { _ = latest.next() }
+
     /// Runs `work` on the queue under `allowance`, unless a newer request arrives before it starts.
     func run<Answer: Sendable>(
         within allowance: Duration,
         _ work: @escaping @Sendable (_ isWanted: @Sendable () -> Bool) -> Answer?
     ) async -> Answer? {
         let latest = self.latest
-        let ticket = latest.next()
+        let ticket = latest.request()
         let isWanted: @Sendable () -> Bool = { latest.isCurrent(ticket) }
-        return await Deadline.first(within: allowance) { [queue] in
+        return await withDeadline(allowance) { [queue] in
             await withCheckedContinuation { continuation in
                 queue.async { [isWanted] in
                     // A read whose turn has been replaced is dropped here, before it sends a single message.
@@ -39,6 +43,7 @@ final class LatestOnlyQueue: Sendable {
 /// The newest request's number, shared by every block the queue holds.
 private final class Latest: Sendable {
     private let number = Mutex(0)
+    private let requests = Mutex(0)
 
     /// Takes the next number, which makes every earlier request unwanted.
     func next() -> Int {
@@ -48,9 +53,15 @@ private final class Latest: Sendable {
         }
     }
 
+    /// Takes a new request ticket and counts it independently from cancellations.
+    func request() -> Int {
+        requests.withLock { $0 += 1 }
+        return next()
+    }
+
     /// Whether this request is still the newest one.
     func isCurrent(_ ticket: Int) -> Bool { number.withLock { $0 } == ticket }
 
     /// How many numbers have been taken.
-    var count: Int { number.withLock { $0 } }
+    var count: Int { requests.withLock { $0 } }
 }
