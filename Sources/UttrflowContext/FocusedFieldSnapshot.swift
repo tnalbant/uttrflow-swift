@@ -101,7 +101,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.showsOwnList = showsOwnList
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
-        let prose = role == Self.proseRole && !TerminalApplications.contains(bundleIdentifier)
+        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
         let line = Self.caretLine(
             of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
         self.currentLine = line.text
@@ -308,9 +308,15 @@ extension FocusedFieldSnapshot {
     /// The role a multi-line field publishes, which a document and a shell both use.
     public static let proseRole = "AXTextArea"
 
+    private static func isProseApplication(_ bundleIdentifier: String) -> Bool {
+        guard !TerminalApplications.contains(bundleIdentifier) else { return false }
+        guard let kind = AppKind(bundleIdentifier: bundleIdentifier) else { return true }
+        return kind != .sqlEditor && kind != .codeEditor
+    }
+
     /// Whether the field holds prose rather than a command or an address.
     public var isProse: Bool {
-        role == Self.proseRole && !TerminalApplications.contains(bundleIdentifier)
+        role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
     }
 }
 

@@ -259,6 +259,19 @@ struct FocusedFieldSnapshotTests {
         #expect(!snapshot(bundleIdentifier: "com.example.editor").isProse)
     }
 
+    @Test("Known editors are not prose even when their field is a text area.")
+    func knownEditorsAreNotProse() {
+        for bundleIdentifier in [
+            "org.jkiss.dbeaver.core.product", "com.jetbrains.datagrip", "com.microsoft.VSCode",
+        ] {
+            #expect(
+                !snapshot(bundleIdentifier: bundleIdentifier, role: FocusedFieldSnapshot.proseRole)
+                    .isProse)
+        }
+        #expect(
+            snapshot(bundleIdentifier: "com.example.editor", role: FocusedFieldSnapshot.proseRole).isProse)
+    }
+
     @Test("A terminal's line is what was typed at the prompt, not the prompt the shell drew.")
     func aTerminalLineDropsThePrompt() {
         let prompt = "(experiments) user@host experiments % sud"
