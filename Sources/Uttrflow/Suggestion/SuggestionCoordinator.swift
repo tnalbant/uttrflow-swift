@@ -51,6 +51,7 @@ final class SuggestionCoordinator {
     private let interceptor = KeyInterceptor()
     private let secureInput = SecureInputWatch()
     private let acceptor: SuggestionAcceptor
+    private let focusedFieldValueObserver: any FocusedFieldValueObserving
     /// What the user has decided on the Suggestions screen, which the app hands over as it changes.
     private var preferences: SuggestionPreferences
     /// What exists on this machine right now, which the corpus cannot know. See `Docs/predict.md`.
@@ -131,6 +132,7 @@ final class SuggestionCoordinator {
     init(
         container: URL, preferences: SuggestionPreferences,
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
+        focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
         focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
             await FocusedFieldReader.focusedSelection()
         }
@@ -138,6 +140,7 @@ final class SuggestionCoordinator {
         self.preferences = preferences
         self.generator = generating
         self.focusedSelectionReader = focusedSelectionReader
+        self.focusedFieldValueObserver = focusedFieldValueObserver ?? FocusedFieldValueObserver()
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
@@ -228,7 +231,10 @@ final class SuggestionCoordinator {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.checkSecureInput()
-                if !self.secureInput.isBlocking { self.applicationChanged() }
+                if !self.secureInput.isBlocking {
+                    self.focusedFieldValueObserver.refresh()
+                    self.applicationChanged()
+                }
             }
         }
         checkSecureInput()
@@ -257,6 +263,8 @@ final class SuggestionCoordinator {
         if !activityIsWatched {
             watchForActivity()
             activityIsWatched = true
+        } else {
+            watchFocusedFieldValues()
         }
     }
 
@@ -267,6 +275,7 @@ final class SuggestionCoordinator {
         Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
         if secureInput.isBlocking {
             withdraw()
+            focusedFieldValueObserver.stop()
             interceptor.stop()
             onSecureInputBlockingChanged?(true)
             panel.announce(SecureInputWatch.suggestionNotice)
@@ -306,6 +315,7 @@ final class SuggestionCoordinator {
         activations = nil
         for observer in spaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         spaceObservers = []
+        focusedFieldValueObserver.stop()
         // A browser's full Accessibility tree stays on only while suggestions do.
         FocusedFieldReader.releaseFullTrees()
     }
@@ -317,6 +327,7 @@ final class SuggestionCoordinator {
 
     /// Keystrokes elsewhere, the application in front changing, and a clock for the pauses.
     private func watchForActivity() {
+        watchFocusedFieldValues()
         let keys = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             let pastes = Self.isPaste(event)
             // A paste, the person's or this app's own, puts words in the line that were never typed.
@@ -326,6 +337,7 @@ final class SuggestionCoordinator {
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
+                MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
             }
             MainActor.assumeIsolated { self?.keyPressed(Key(keyCode: event.keyCode), typing: text) }
         }
@@ -334,6 +346,7 @@ final class SuggestionCoordinator {
         let clicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
             FocusedFieldReader.focusMayHaveMoved()
             MainActor.assumeIsolated {
+                self?.focusedFieldValueObserver.refresh()
                 self?.noteActivity()
                 self?.withdraw()
                 self?.wake(.tick)
@@ -348,6 +361,20 @@ final class SuggestionCoordinator {
                     [weak self] _ in MainActor.assumeIsolated { self?.withdraw() }
                 })
         }
+    }
+
+    func watchFocusedFieldValues() {
+        focusedFieldValueObserver.start { [weak self] in self?.accessibilityValueChanged() }
+    }
+
+    /// Withdraws an offer when the focused field changes without a corresponding key event.
+    private func accessibilityValueChanged() {
+        guard !isStopped, !isInserting, armedOffer != nil,
+            Date().timeIntervalSince(lastKeystroke) * 1000 >= Double(Self.fieldReadDebounceInMilliseconds)
+        else { return }
+        noteActivity()
+        withdraw()
+        wake(.tick)
     }
 
     /// Whether a key-down may move keyboard focus to another field: Tab, Escape, or any ⌘ shortcut.
@@ -1033,7 +1060,7 @@ final class SuggestionCoordinator {
     }
 
     /// Arms the tap first and draws second, so no key is claimed that nothing is offering.
-    private func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
+    func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
         // A stopped loop, or an answer from a read that a key, click or switch has since overtaken, draws nothing and claims no key.
         guard !isStopped, session.isCurrent else {
             stopWatchingSelection()
