@@ -10,6 +10,8 @@ final class TapState: @unchecked Sendable {
 
     /// Which slots are being taken, and the only thing the callback loads.
     let armed = Atomic<UInt32>(0)
+    /// Whether an application menu is open, which returns claimed keys to the application.
+    private let nativeMenuIsOpen = Atomic<Bool>(false)
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
     let hold = KeyHold()
 
@@ -111,6 +113,11 @@ final class TapState: @unchecked Sendable {
         return isListening
     }
 
+    /// Updates whether a native menu owns its keyboard gestures.
+    func setNativeMenuIsOpen(_ isOpen: Bool) {
+        nativeMenuIsOpen.store(isOpen, ordering: .releasing)
+    }
+
     /// Replays the held keys and answers whether the tap stays on now that nothing is held.
     func releaseHeldKeys(post: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }) -> Bool {
         // A held bare Tab is replayed only for a current bare-Tab offer, so the disarmed accept gap cannot leak literal input.
@@ -131,6 +138,7 @@ final class TapState: @unchecked Sendable {
     func takes(_ event: CGEvent) -> Bool {
         // A key pressed while a taken keystroke is carried out waits for it, so it cannot overtake an insertion.
         if hold.keep(event) { return true }
+        guard !nativeMenuIsOpen.load(ordering: .acquiring) else { return false }
         let stroke = KeyStroke(
             keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
             modifiers: KeyModifiers(event.flags))
