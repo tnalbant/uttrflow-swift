@@ -46,6 +46,32 @@ struct SnippetExpanderTests {
         #expect(standardExpander().expand(transcript).text == expected)
     }
 
+    @Test(
+        "matches trigger words joined by written joiners or spaces",
+        arguments: [
+            ("sign-off", "sign off", "Regards"),
+            ("sign-off", "Sign-off", "Regards"),
+            ("e-mail", "e-mail", "Email"),
+            ("e-mail", "e mail", "Email"),
+            ("and/or", "and/or", "Either"),
+            ("and/or", "and or", "Either"),
+        ]
+    )
+    func writtenJoinersMatch(trigger: String, transcript: String, expansion: String) {
+        let result = SnippetExpander(snippets: [makeSnippet(trigger: trigger, expansion: expansion)])
+            .expand("Use \(transcript) now.")
+
+        #expect(result.text == "Use \(expansion) now.")
+    }
+
+    @Test("a word trigger does not match inside a longer hyphenated word")
+    func wordTriggerDoesNotMatchInsideJoinedWord() {
+        let expander = SnippetExpander(snippets: [makeSnippet(trigger: "ops", expansion: "Operations")])
+
+        #expect(expander.expand("dev-ops-team").text == "dev-ops-team")
+        #expect(expander.expand("ops team").text == "Operations team")
+    }
+
     @Test("puts the expansion exactly where the words were, and leaves the rest alone")
     func replacesOnlyTheWords() {
         let result = standardExpander().expand("Before. My address. After.")

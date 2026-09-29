@@ -68,7 +68,10 @@ public struct SnippetExpander: Sendable {
 
         for offset in 1..<length {
             let between = Self.gap(runs[position + offset - 1], runs[position + offset], transcript)
-            if !Self.separatesWords(between) { return false }
+            let triggerJoiner = candidate.joiners[offset - 1]
+            if !Self.separatesWords(between) && !Self.matchesJoiner(between, triggerJoiner) {
+                return false
+            }
         }
 
         if position > 0, Self.joinsWords(Self.gap(runs[position - 1], runs[position], transcript)) {
@@ -91,6 +94,12 @@ public struct SnippetExpander: Sendable {
     /// Whether a gap is plain spacing inside one phrase: not glue ("sign_off") and not a sentence end.
     private static func separatesWords(_ gap: Substring) -> Bool {
         !joinsWords(gap) && !gap.contains(where: endsAPhrase)
+    }
+
+    /// Whether the transcript uses the same explicit joiner that the trigger spells between these words.
+    private static func matchesJoiner(_ gap: Substring, _ joiner: Character?) -> Bool {
+        guard let joiner else { return false }
+        return gap.count == 1 && gap.first == joiner && !gap.contains(where: endsAPhrase)
     }
 
     /// Punctuation after which the next word starts a new thought; commas and brackets are tolerated pauses.
@@ -116,6 +125,8 @@ extension SnippetExpander {
         let snippet: Snippet
         /// The trigger's words, lower-cased.
         let words: [String]
+        /// Explicit joiners between trigger words; whitespace and tolerated pauses are `nil`.
+        let joiners: [Character?]
         /// The expansion tidied like a transcript, so "is the user quoting this?" is one substring search.
         let quoted: String
         /// The trigger rejoined; breaks ties so two equally long triggers cannot swap places between runs.
@@ -125,6 +136,15 @@ extension SnippetExpander {
         init(snippet: Snippet, words: [String]) {
             self.snippet = snippet
             self.words = words
+            let runs = snippet.trigger.snippetWordRuns()
+            joiners = zip(runs, runs.dropFirst()).map { first, second in
+                let gap = snippet.trigger[first.range.upperBound..<second.range.lowerBound]
+                guard gap.count == 1, let character = gap.first,
+                    SnippetExpander.wordJoiners.contains(character),
+                    !SnippetExpander.endsAPhrase(character)
+                else { return nil }
+                return character
+            }
             quoted = TextTidy.collapseWhitespace(snippet.expansion).lowercased()
             key = words.joined(separator: " ")
         }
