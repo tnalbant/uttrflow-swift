@@ -10,10 +10,11 @@ public enum QuestionShape {
         let lastClause = shapes.dropLast().lastIndex { $0.suffix.contains(",") }.map {
             Array(words[($0 + 1)...])
         }
-        return ([words] + (lastClause.map { [$0] } ?? [])).contains {
-            let clause = Array($0.drop(while: openers.contains))
-            return opensAQuestion(clause) && !runsOn(clause)
-        }
+        let openingClause = Array(words.drop(while: openers.contains))
+        if opensAQuestion(openingClause) { return true }
+        guard let lastClause else { return false }
+        let clause = Array(lastClause.drop(while: openers.contains))
+        return opensAQuestion(clause) && !runsOn(clause)
     }
 
     /// Whether a clause opens the way a question does: a question word before its verb, or a verb before its subject.
