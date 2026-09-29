@@ -100,6 +100,14 @@ struct InterpreterScriptTests {
     func presentAndInlineStand(_ line: String) {
         #expect(scripts.allows(line, in: "/Users/someone/tools"), "\(line) needs nothing missing")
     }
+
+    @Test(
+        "Scripts resolved outside the current directory do not have to exist here.",
+        arguments: ["ruby -S rake", "perl -S prove", "node --run build"])
+    func externalScriptsStand(_ line: String) {
+        #expect(
+            scripts.allows(line, in: "/Users/someone/tools"), "\(line) is resolved outside this directory")
+    }
 }
 
 @Suite("Checking a git line in a repository with two remotes")
