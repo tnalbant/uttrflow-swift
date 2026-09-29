@@ -30,14 +30,14 @@ public struct ClipboardTextInsertionEngine: TextInsertionEngine {
         } else {
             writeChangeCount = pasteboard.writeText(text, richText: nil)
         }
-        guard pasteboard.text() == text else {
-            if let writeChangeCount, let currentChangeCount = pasteboard.changeCount(),
-                currentChangeCount != writeChangeCount
-            {
-                throw .clipboardChanged
-            }
-            throw .clipboardUnavailable
+        let readback = pasteboard.text()
+        let readbackChangeCount = pasteboard.changeCount()
+        if let writeChangeCount, let readbackChangeCount,
+            writeChangeCount != readbackChangeCount
+        {
+            throw .clipboardChanged
         }
+        guard readback == text else { throw .clipboardUnavailable }
         return .notReported
     }
 }

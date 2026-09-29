@@ -105,7 +105,9 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
             focus.tail(upTo: PasteConfirmation.readLength)
         }
         // AX may take long enough for another device or app to replace the clipboard.
-        if let verifiedChangeCount, pasteboard.changeCount() != verifiedChangeCount {
+        if let verifiedChangeCount, let currentChangeCount = pasteboard.changeCount(),
+            currentChangeCount != verifiedChangeCount
+        {
             throw .clipboardChanged
         }
         // Thrown onwards with the words left on the clipboard: the floor below would only put them back.
