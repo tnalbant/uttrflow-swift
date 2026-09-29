@@ -85,6 +85,12 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     private static func requiresLeadingSpace(in text: String, precedingText: String) -> Bool {
         // The dictated text already opens with its own whitespace, so the field is already joined.
         if text.first?.isWhitespace == true { return false }
+        // Punctuation and clitics attach to the preceding text instead of opening a new word.
+        if text.first.map(attachingPunctuation.contains) == true
+            || attachingCliticPrefixes.contains(where: text.hasPrefix)
+        {
+            return false
+        }
         guard let previous = precedingText.last, !previous.isWhitespace, !previous.isNewline else {
             return false
         }
@@ -103,4 +109,12 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     private static let openingBracketOrQuote: Set<Character> = [
         "(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}",
     ]
+
+    /// Punctuation and clitics that attach to the text before the caret.
+    private static let attachingPunctuation: Set<Character> = [
+        ",", ".", ";", ":", "!", "?", ")", "]", "}", "\"", "'", "”", "’",
+    ]
+
+    /// Clitic spellings whose first character is not punctuation.
+    private static let attachingCliticPrefixes = ["n't", "n’t"]
 }

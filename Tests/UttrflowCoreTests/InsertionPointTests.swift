@@ -102,6 +102,20 @@ struct InsertionPointTests {
         #expect(point.paddedBoundary(for: "world") == " world")
     }
 
+    @Test(
+        "punctuation and clitics attach to preceding text without a generated space",
+        arguments: [
+            ", then", ".", ";", ":", "!", "?", ")", "]", "}", "\"", "”", "’",
+            "'s", "n't", "'re", "'ll", "'d", "'ve", "'m",
+        ]
+    )
+    func punctuationAndCliticsAttach(dictated: String) {
+        for preceding in ["hello", "7", " "] {
+            let point = InsertionPoint(precedingText: preceding, followingText: nil)
+            #expect(point.paddedBoundary(for: dictated) == dictated)
+        }
+    }
+
     @Test("a word after a space already brings its own join, so no leading space is added")
     func leadingSpaceAfterASpace() {
         let point = InsertionPoint(precedingText: "Hello ", followingText: "world")
