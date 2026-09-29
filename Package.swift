@@ -429,6 +429,13 @@ let package = Package(
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
+            name: "UttrflowBakeoffTests",
+            dependencies: [
+                "uttrflow-bakeoff", .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: sharedSwiftSettings
+        ),
+        .testTarget(
             name: "UttrflowPermissionsTests",
             dependencies: ["UttrflowPermissions", "UttrflowTestSupport"],
             swiftSettings: sharedSwiftSettings
