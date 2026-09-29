@@ -34,6 +34,58 @@ struct PanelShortcutsTests {
         #expect(Set(chords).count == chords.count)
     }
 
+    @Test("each row action keeps its documented shortcut")
+    func actionShortcutMapping() {
+        let expected: [(PanelRowAction, PanelChord)] = [
+            (.reveal, PanelChord("r")),
+            (.copy, PanelChord("c", shifted: true)),
+            (.pin, PanelChord("p")),
+            (.alias, PanelChord("n")),
+            (.move, PanelChord("m")),
+            (.format, PanelChord("f", shifted: true)),
+            (.reindent, PanelChord("i", shifted: true)),
+            (.makeNote, PanelChord("t", shifted: true)),
+            (.delete, PanelChord("\u{8}", shifted: true)),
+        ]
+
+        #expect(PanelRowAction.allCases.count == expected.count)
+        for (action, chord) in expected {
+            #expect(action.chord == chord, "\(action)")
+        }
+    }
+
+    @Test("every offered row action resolves from its own shortcut")
+    func everyOfferedActionResolvesFromItsShortcut() {
+        let plain = PanelFixture.clip("Hello there")
+        var plainSnapshot = PanelFixture.panel([plain])
+        plainSnapshot.selection = plain.id
+
+        let secret = PanelFixture.clip("sk-012345678901234567890123", kind: .secret)
+        var secretSnapshot = PanelFixture.panel([secret])
+        secretSnapshot.selection = secret.id
+
+        let code = Clip(
+            text: "func f() {\n\tlet x = 1\n        let y = 2\n}", kind: .code,
+            copiedAt: PanelFixture.now, language: .swift)
+        var codeSnapshot = PanelFixture.panel([code])
+        codeSnapshot.selection = code.id
+        codeSnapshot.formattableLanguages = [.swift]
+
+        var resolvedChords: Set<PanelChord> = []
+        for snapshot in [plainSnapshot, secretSnapshot, codeSnapshot] {
+            let page = PanelPresenter.present(snapshot)
+            for action in page.selectedRow?.actions ?? [] {
+                guard let chord = action.shortcut else {
+                    #expect(action.title == "Insert")
+                    continue
+                }
+                resolvedChords.insert(chord)
+                #expect(page.intent(for: chord) == action.intent, action.title)
+            }
+        }
+        #expect(resolvedChords == Set(PanelRowAction.allCases.map(\.chord)))
+    }
+
     /// The search field owns these, and taking one would stop the user editing their own query.
     @Test("no chord is one the search field needs")
     func chordsLeaveTheFieldAlone() {
