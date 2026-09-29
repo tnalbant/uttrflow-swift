@@ -63,13 +63,18 @@ final class DockPanelController {
     private let panel: DockPanel
     private let hostingView: DockHostingView<DockView>
     private let model: DockViewModel
+    private let notificationCenter: NotificationCenter
+    private let visibleFrameProvider: (@MainActor () -> CGRect?)?
+    private var screenParametersObserver: (any NSObjectProtocol)?
     private var anchor: DockAnchor
     private var panelSize: CGSize
 
     init(
         presentation: DockPresentation = DictationPresenter.dock(for: .idle),
         shortcut: String = "⌃⌥",
-        anchor: DockAnchor = .bottomRight
+        anchor: DockAnchor = .bottomRight,
+        notificationCenter: NotificationCenter = .default,
+        visibleFrameProvider: (@MainActor () -> CGRect?)? = nil
     ) {
         let model = DockViewModel(
             presentation: presentation, shortcut: shortcut, anchor: anchor)
@@ -77,6 +82,8 @@ final class DockPanelController {
         model.isShown = false
         self.model = model
         self.anchor = anchor
+        self.notificationCenter = notificationCenter
+        self.visibleFrameProvider = visibleFrameProvider
         self.panelSize = CGSize(
             width: DockMetrics.gripWidth + DockMetrics.gripHitPadding * 2,
             height: DockMetrics.gripHeight + DockMetrics.gripHitPadding * 2)
@@ -100,7 +107,19 @@ final class DockPanelController {
             self?.model.isHovering = isHovering
         }
 
+        screenParametersObserver = notificationCenter.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reposition() }
+        }
+
         reposition()
+    }
+
+    isolated deinit {
+        if let screenParametersObserver { notificationCenter.removeObserver(screenParametersObserver) }
     }
 
     // MARK: - Lifecycle
@@ -122,6 +141,9 @@ final class DockPanelController {
 
     /// Whether the button is on screen.
     var isVisible: Bool { panel.isVisible }
+
+    /// The panel's current frame, for placement checks.
+    var frame: CGRect { panel.frame }
 
     /// Whether the button's view draws anything, which it does only while the panel is on screen.
     var drawsContent: Bool { model.isShown }
@@ -203,8 +225,12 @@ final class DockPanelController {
     }
 
     private var visibleFrame: CGRect {
+        if let visibleFrame = visibleFrameProvider?() { return visibleFrame }
         // With no screen to place against, staying put beats moving somewhere arbitrary.
-        (panel.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? panel.frame
+        let screens = NSScreen.screens
+        let panelScreen = panel.screen.flatMap { current in screens.first { $0 == current } }
+        let mainScreen = NSScreen.main.flatMap { current in screens.first { $0 == current } }
+        return (panelScreen ?? mainScreen ?? screens.first)?.visibleFrame ?? panel.frame
     }
 
     private func configurePanel() {
