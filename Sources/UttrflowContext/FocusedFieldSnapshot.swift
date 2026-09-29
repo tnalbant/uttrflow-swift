@@ -4,6 +4,22 @@ public import UttrflowPredict
 
 public import struct Foundation.NSRange
 
+/// The focused Accessibility element and its selected text range, without reading its contents.
+public struct FocusedFieldSelection: Sendable, Equatable {
+    /// The process that owns the focused element.
+    public let processIdentifier: Int32
+    /// The focused element's Accessibility identity within its process.
+    public let elementHash: UInt
+    /// The selection in UTF-16 units.
+    public let range: NSRange
+
+    public init(processIdentifier: Int32, elementHash: UInt, range: NSRange) {
+        self.processIdentifier = processIdentifier
+        self.elementHash = elementHash
+        self.range = range
+    }
+}
+
 /// One reading of the focused field: what identifies it, what it holds, and where its caret is.
 public struct FocusedFieldSnapshot: Sendable, Equatable {
     /// The application the field belongs to.

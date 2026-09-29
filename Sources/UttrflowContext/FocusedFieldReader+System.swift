@@ -27,6 +27,10 @@ public enum FocusedFieldReader {
     /// Its own thread, because these calls block until the other application answers.
     private static let queue = LatestOnlyQueue(label: "com.uttrflow.focused-field", qos: .userInitiated)
 
+    /// Keeps armed-offer checks from replacing a full field read.
+    private static let selectionQueue = LatestOnlyQueue(
+        label: "com.uttrflow.focused-selection", qos: .utility)
+
     /// Holds the stable answers for one focused field and window only.
     private static let stableSnapshot = OneEntryCache<StableSnapshotKey, StableSnapshotValue>()
 
@@ -118,6 +122,24 @@ public enum FocusedFieldReader {
             return reading
         }
     }
+
+    /// Reads only the focused element and selection, for the short time a suggestion is armed.
+    public static func focusedSelection() async -> FocusedFieldSelection? {
+        guard let app = await frontmostApp() else { return nil }
+        return await selectionQueue.run(within: .milliseconds(250)) { isWanted in
+            guard isWanted(), AXIsProcessTrusted(),
+                let field = SurfaceProbe.focusedField(of: app.processIdentifier), isWanted()
+            else { return nil }
+            _ = AXUIElementSetMessagingTimeout(field, elementTimeoutInSeconds)
+            guard let range = SurfaceProbe.selectedRange(field), isWanted() else { return nil }
+            return FocusedFieldSelection(
+                processIdentifier: app.processIdentifier, elementHash: CFHash(field),
+                range: NSRange(location: range.location, length: range.length))
+        }
+    }
+
+    /// Cancels a selection poll when the offer is withdrawn.
+    public static func cancelFocusedSelectionRead() { selectionQueue.invalidate() }
 
     /// Stops the current field read after its in-flight message, so a canceled turn sends no further questions.
     public static func cancelRead() { queue.invalidate() }

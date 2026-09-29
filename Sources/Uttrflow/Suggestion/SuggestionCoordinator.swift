@@ -79,6 +79,11 @@ final class SuggestionCoordinator {
     private var monitors: [Any] = []
     /// The scroll monitor, present only while a ghost is drawn, since a scroll matters only then.
     private var scrollMonitor: Any?
+    /// Polls only the focused selection while a ghost can still be accepted.
+    private var selectionTimer: Timer?
+    private var selectionGuard: ArmedSelectionGuard?
+    private var selectionPollInFlight = false
+    private var selectionPollGeneration = 0
     private var activations: (any NSObjectProtocol)?
     /// The Space and sleep observers, each of which leaves a ghost with no field under it.
     private var spaceObservers: [any NSObjectProtocol] = []
@@ -217,6 +222,7 @@ final class SuggestionCoordinator {
         FocusedFieldReader.prepare()
         // A ghost the panel takes off screen on its own, when it grows past its room, gives up its keys too.
         panel.onWithdrawnUnasked = { [weak self] in
+            self?.stopWatchingSelection()
             self?.interceptor.arm([])
             self?.armedOffer = nil
         }
@@ -243,6 +249,7 @@ final class SuggestionCoordinator {
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors = []
         stopWatchingScrolls()
+        stopWatchingSelection()
         if let activations { NSWorkspace.shared.notificationCenter.removeObserver(activations) }
         activations = nil
         for observer in spaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
@@ -329,6 +336,7 @@ final class SuggestionCoordinator {
 
     /// Takes the ghost and the keys it claims away, and voids every answer in flight, because the caret may have moved under it.
     private func withdraw() {
+        stopWatchingSelection()
         session.invalidate()
         generating?.cancel()
         cancelPendingWake()
@@ -350,6 +358,43 @@ final class SuggestionCoordinator {
     private func stopWatchingScrolls() {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         scrollMonitor = nil
+    }
+
+    /// Checks the caret every 200 ms only while a drawn offer can be accepted.
+    private func watchSelection(from range: NSRange?) {
+        stopWatchingSelection()
+        selectionGuard = ArmedSelectionGuard(expectedRange: range)
+        let generation = selectionPollGeneration
+        selectionTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollSelection(generation: generation) }
+        }
+        selectionTimer?.tolerance = 0.05
+    }
+
+    /// Withdraws the offer when Accessibility reports a different selection or focused element.
+    private func pollSelection(generation: Int) {
+        guard generation == selectionPollGeneration, !selectionPollInFlight,
+            armedOffer != nil, panel.isShowing, !isInserting
+        else { return }
+        selectionPollInFlight = true
+        Task { [weak self] in
+            let selection = await FocusedFieldReader.focusedSelection()
+            guard let self, generation == self.selectionPollGeneration else { return }
+            self.selectionPollInFlight = false
+            guard var selectionGuard = self.selectionGuard else { return }
+            guard !selectionGuard.observe(selection) else { return self.withdraw() }
+            self.selectionGuard = selectionGuard
+        }
+    }
+
+    /// Stops the selection poll and invalidates any result still waiting on Accessibility.
+    private func stopWatchingSelection() {
+        selectionPollGeneration += 1
+        selectionTimer?.invalidate()
+        selectionTimer = nil
+        selectionGuard = nil
+        selectionPollInFlight = false
+        FocusedFieldReader.cancelFocusedSelectionRead()
     }
 
     /// Withdraws a ghost the scroll has left behind, once, and lets the clock redraw it where the caret now is.
@@ -391,7 +436,7 @@ final class SuggestionCoordinator {
         return characters
     }
 
-    /// One key pressed in another application, which is the only thing that moves the caret for us.
+    /// One key pressed in another application, which may update the focused field.
     private func keyPressed(_ key: Key, typing text: String? = nil) {
         noteActivity()
         lastKeystroke = Date()
@@ -420,6 +465,7 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         guard panel.advance(to: session.typed, showing: update.suggestion) else { return false }
+        selectionGuard?.typedThrough(text)
         wake(.keystroke)
         return true
     }
@@ -644,6 +690,7 @@ final class SuggestionCoordinator {
         let keystrokesSeen = session.keystrokes
         // The session already holds this answer, so the key armed for the drawn one is let go until this one is drawn.
         if !Self.keepsClaimWhileReading(armed: armedOffer, next: update.suggestion) {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             armedOffer = nil
@@ -923,6 +970,7 @@ final class SuggestionCoordinator {
     /// Draws whatever a turn with no field behind it settled on, which is always nothing.
     private func draw(_ step: SuggestionStep) {
         guard !isStopped, case .settled(let update) = step else { return }
+        stopWatchingSelection()
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         panel.hide()
@@ -933,6 +981,7 @@ final class SuggestionCoordinator {
     private func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
         // A stopped loop, or an answer from a read that a key, click or switch has since overtaken, draws nothing and claims no key.
         guard !isStopped, session.isCurrent else {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             return
@@ -941,6 +990,7 @@ final class SuggestionCoordinator {
         armedOffer = update.suggestion.accepting
         // Nothing is drawn off the caret's line, and what is not drawn claims no key.
         guard let snapshot, let caret = Self.caret(for: update.suggestion, in: snapshot) else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             panel.hide()
@@ -954,10 +1004,12 @@ final class SuggestionCoordinator {
             fontFamily: snapshot.fontFamily, textColor: snapshot.textColor)
         // An offer the panel could not show whole claims no key, so Tab never inserts what was not drawn.
         guard shown else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             return
         }
+        watchSelection(from: snapshot.selection)
         watchScrolls()
     }
 
@@ -970,6 +1022,7 @@ final class SuggestionCoordinator {
     /// Draws what a move or a dismissal left where the ghost already stands, since no field was read for it and typing may have moved it.
     private func redraw(_ update: SuggestionUpdate) {
         guard !isStopped, session.isCurrent else {
+            stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
             return
@@ -977,6 +1030,7 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         guard panel.redraw(update.suggestion, typed: session.typed, selection: session.selection) else {
+            stopWatchingSelection()
             interceptor.arm([])
             armedOffer = nil
             return
@@ -1010,6 +1064,7 @@ final class SuggestionCoordinator {
             )
             switch action {
             case .accept(let text):
+                stopWatchingSelection()
                 panel.hide()
                 interceptor.arm([])
                 generating?.cancel()
