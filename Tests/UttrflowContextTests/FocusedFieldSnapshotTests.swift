@@ -269,6 +269,34 @@ struct FocusedFieldSnapshotTests {
         }
     }
 
+    @Test("A heredoc body is not treated as a shell command.")
+    func terminalHeredocBodyIsNotACommand() {
+        let value = "user@host:~/dir$ cat <<'DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine.isEmpty)
+    }
+
+    @Test("Suggestions resume after a heredoc delimiter line.")
+    func terminalHeredocEndsAtItsDelimiter() {
+        let value = "cat <<-\"DONE\"\nrm -rf /some/path\nDONE"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "DONE")
+    }
+
+    @Test("Indented heredoc delimiters close only with the opener's indentation rule.")
+    func terminalHeredocHonorsIndentedDelimiters() {
+        let tabs = "cat <<-DONE\nrm -rf /some/path\n\tDONE"
+        #expect(
+            snapshot(value: tabs, selection: NSRange(location: tabs.utf16.count, length: 0))
+                .currentLine == "DONE")
+        let spaces = "cat <<~SQL\nrm -rf /some/path\n    SQL"
+        #expect(
+            snapshot(value: spaces, selection: NSRange(location: spaces.utf16.count, length: 0))
+                .currentLine == "SQL")
+    }
+
     @Test("Only the caret's own line has a prompt taken off it, and only in a terminal.")
     func onlyTerminalsDropThePrompt() {
         let scrollback = "user@host:~/dir$ git status\nuser@host:~/dir$ git a"

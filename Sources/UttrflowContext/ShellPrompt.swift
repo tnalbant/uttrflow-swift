@@ -20,6 +20,53 @@ public enum ShellPrompt {
     /// How far into a line a prompt is looked for, since a prompt is short and a pasted line need not be.
     package static let searchLimit = 4_096
 
+    /// Whether the caret sits in the body of an unfinished shell heredoc.
+    package static func isHereDocumentBody(in value: String, before caret: String.Index) -> Bool {
+        let prefix = value[..<caret]
+        let lines = prefix.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > 1 else { return false }
+        var delimiters: [HereDocumentDelimiter] = []
+        for line in lines.dropLast() {
+            if let delimiter = delimiters.first {
+                if delimiter.matches(String(line)) { delimiters.removeFirst() }
+            } else {
+                delimiters.append(contentsOf: hereDocumentDelimiters(in: line))
+            }
+        }
+        if let delimiter = delimiters.first, lines.last.map(String.init).map(delimiter.matches) == true {
+            delimiters.removeFirst()
+        }
+        return !delimiters.isEmpty
+    }
+
+    /// The delimiter words opened by shell or Ruby heredoc syntax on one command line.
+    private static func hereDocumentDelimiters(in line: Substring) -> [HereDocumentDelimiter] {
+        line.matches(
+            of:
+                #/<<([-~]?)(?:'([A-Za-z_][A-Za-z0-9_]*)'|"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))/#
+        )
+        .compactMap { match in
+            guard let tag = (match.output.2 ?? match.output.3 ?? match.output.4).map(String.init) else {
+                return nil
+            }
+            return HereDocumentDelimiter(tag: tag, modifier: match.output.1.first)
+        }
+    }
+
+    /// One heredoc terminator, with the indentation rule selected by its opener.
+    private struct HereDocumentDelimiter {
+        let tag: String
+        let modifier: Character?
+
+        func matches(_ line: String) -> Bool {
+            switch modifier {
+            case "-": String(line.drop(while: { $0 == "\t" })) == tag
+            case "~": line.drop(while: \.isWhitespace).elementsEqual(tag)
+            default: line == tag
+            }
+        }
+    }
+
     /// Counts the characters read while bound, so a test can bound the work without a clock.
     @TaskLocal package static var tally: CharacterTally?
 
