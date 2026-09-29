@@ -17,7 +17,7 @@ public enum SecretShapes {
         let literals = ClipBytes.read(text) { _, bytes in
             (
                 pem: ClipBytes.contains(bytes, "-----BEGIN"), jwt: ClipBytes.contains(bytes, "eyJ"),
-                url: ClipBytes.contains(bytes, "://")
+                url: ClipBytes.contains(bytes, "://") || ClipBytes.contains(bytes, "hooks.slack.com")
             )
         }
         if literals.pem, text.contains(pemHeader) { return true }
