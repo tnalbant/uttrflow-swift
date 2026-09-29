@@ -147,6 +147,15 @@ struct StandardPipelineTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
+    @Test("splits fillers glued to their neighbours by pause ellipses")
+    func splitsGluedFillers() {
+        #expect(
+            CleaningPipeline.standard.run(
+                Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+            ).text == "The invoice is overdue."
+        )
+    }
+
     @Test("keeps the record of every pass that touched a word")
     func provenance() {
         let draft = CleaningPipeline.standard.run(Draft(text: "um at four no sorry at five"))

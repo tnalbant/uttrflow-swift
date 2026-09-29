@@ -59,6 +59,11 @@ public enum EvaluationCorpus {
             expected: "So basically the thing is, we need more time."
         ),
         .init(
+            id: "fillers-glued-by-pause-ellipses", category: .everyday,
+            spoken: "Ah...the...um...the invoice is...ah...overdue",
+            expected: "The invoice is overdue."
+        ),
+        .init(
             id: "filler-carrying-a-question-mark", category: .everyday,
             spoken: "so are we shipping today, uh?",
             expected: "So are we shipping today?",
