@@ -27,6 +27,12 @@ public enum SpeechModelReadiness: Sendable, Equatable {
     case incomplete
     case notInstalled
 
+    /// Where a completed model load leaves readiness, before retry and incomplete-folder details are applied.
+    public static func afterLoad(isReady: Bool, isInstalled: Bool) -> SpeechModelReadiness {
+        if isReady { return .ready }
+        return isInstalled ? .loadFailed : .notInstalled
+    }
+
     /// What to tell a person about the load, timed from `start`; `nil` when there is no load to speak of.
     public func load<Moment: InstantProtocol>(
         since start: Moment?, now: Moment
@@ -44,9 +50,12 @@ public enum SpeechModelReadiness: Sendable, Equatable {
     public static func settled(
         isReady: Bool, isInstalled: Bool, isIncomplete: Bool, failedBefore: Bool
     ) -> SpeechModelReadiness {
-        if isReady { return .ready }
-        guard isInstalled else { return isIncomplete ? .incomplete : .notInstalled }
-        return failedBefore ? .loadFailedAgain : .loadFailed
+        switch afterLoad(isReady: isReady, isInstalled: isInstalled) {
+        case .ready: .ready
+        case .loadFailed: failedBefore ? .loadFailedAgain : .loadFailed
+        case .notInstalled: isIncomplete ? .incomplete : .notInstalled
+        case .downloading, .loading, .loadFailedAgain, .incomplete: .notInstalled
+        }
     }
 
     /// What fixes a model that cannot dictate: one reload after a first failure, a download otherwise.

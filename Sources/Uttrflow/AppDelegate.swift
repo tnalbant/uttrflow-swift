@@ -460,9 +460,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Where a load that has ended leaves the model: ready, missing files, or failed once or twice.
     private func settle(isReady: Bool) -> SpeechModelReadiness {
-        let settled = SpeechModelReadiness.settled(
-            isReady: isReady, isInstalled: modelStore.isInstalled(.default),
-            isIncomplete: modelStore.isIncomplete(.default), failedBefore: speechLoadFailedBefore)
+        let isInstalled = modelStore.isInstalled(.default)
+        let afterLoad = SpeechModelReadiness.afterLoad(isReady: isReady, isInstalled: isInstalled)
+        let settled: SpeechModelReadiness
+        switch afterLoad {
+        case .ready: settled = .ready
+        case .loadFailed: settled = speechLoadFailedBefore ? .loadFailedAgain : .loadFailed
+        case .notInstalled:
+            settled = modelStore.isIncomplete(.default) ? .incomplete : .notInstalled
+        case .downloading, .loading, .loadFailedAgain, .incomplete: settled = afterLoad
+        }
         switch settled {
         case .ready: speechLoadFailedBefore = false
         case .loadFailed, .loadFailedAgain: speechLoadFailedBefore = true
