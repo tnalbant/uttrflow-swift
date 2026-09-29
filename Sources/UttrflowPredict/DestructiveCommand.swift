@@ -368,6 +368,10 @@ public enum DestructiveCommand {
             if hasRecursiveOption(arguments) { return true }
         case "git":
             if matchesDestructiveGit(arguments) { return true }
+        case "hg":
+            if matchesDestructiveMercurial(arguments) { return true }
+        case "svn":
+            if matchesDestructiveSubversion(arguments) { return true }
         case "find":
             if lowered.contains("-delete") { return true }
             // The command `-exec` runs is judged as its own clause, so a wrapper in front of it is read past.
@@ -523,6 +527,67 @@ public enum DestructiveCommand {
 
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
     private static let historyDestroyers: Set<String> = ["filter-branch", "filter-repo", "prune"]
+
+    /// Whether a Mercurial command removes history or discards working-copy changes.
+    private static func matchesDestructiveMercurial(_ arguments: [String]) -> Bool {
+        guard let index = operationIndex(arguments, valued: mercurialGlobalOptions) else { return false }
+        let operation = arguments[index].lowercased()
+        if ["strip", "prune", "purge"].contains(operation) { return true }
+        guard operation == "update" else { return false }
+        let flags = arguments.dropFirst(index + 1)
+        return hasOption("--clean", in: flags) || hasShortOption("C", in: flags)
+    }
+
+    /// Whether a Subversion command deletes a repository path or discards local changes.
+    private static func matchesDestructiveSubversion(_ arguments: [String]) -> Bool {
+        guard let index = operationIndex(arguments, valued: subversionGlobalOptions) else { return false }
+        return ["delete", "del", "remove", "rm", "revert"].contains(arguments[index].lowercased())
+    }
+
+    /// Global options that consume a value before Mercurial's command.
+    private static let mercurialGlobalOptions: Set<String> = [
+        "-R", "--repository", "--cwd", "--config", "--configfile", "--encoding", "--encodingmode",
+        "--pager", "--color",
+    ]
+
+    /// Global options that consume a value before Subversion's subcommand.
+    private static let subversionGlobalOptions: Set<String> = [
+        "--username", "--password", "--config-dir", "--config-option", "--changelist",
+    ]
+
+    /// The first operation after a command's leading global options.
+    private static func operationIndex(_ arguments: [String], valued: Set<String>) -> Int? {
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let word = arguments[index]
+            if word == "--" {
+                return arguments.index(after: index) < arguments.endIndex
+                    ? arguments.index(after: index) : nil
+            }
+            guard word.hasPrefix("-") else { return index }
+            index = arguments.index(after: index)
+            if valued.contains(word), index < arguments.endIndex { index = arguments.index(after: index) }
+        }
+        return nil
+    }
+
+    /// Whether the option occurs before an option terminator.
+    private static func hasOption(_ option: String, in arguments: ArraySlice<String>) -> Bool {
+        for argument in arguments {
+            if argument == "--" { return false }
+            if argument == option { return true }
+        }
+        return false
+    }
+
+    /// Whether a clustered short option occurs before an option terminator.
+    private static func hasShortOption(_ option: Character, in arguments: ArraySlice<String>) -> Bool {
+        for argument in arguments {
+            if argument == "--" { return false }
+            if shortFlags(argument, include: option, valuesAfter: []) { return true }
+        }
+        return false
+    }
 
     /// Whether a cluster of short flags holds this one, read only up to the first flag whose value runs on in the same word.
     private static func shortFlags(

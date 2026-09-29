@@ -101,6 +101,38 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Mercurial history removal and destructive updates are recognised.",
+        arguments: [
+            "hg strip -r 3", "hg prune --rev 3", "hg purge", "hg purge --all", "hg update -C",
+            "hg update --clean", "hg -R repo strip -r 3", "hg --config ui.merge=internal:fail update -C",
+            "sudo hg strip -r 3", "env HGPLAIN=1 hg purge",
+        ])
+    func recognisesDestructiveMercurial(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Subversion deletion aliases and revert are recognised.",
+        arguments: [
+            "svn delete https://svn.example.com/repo/trunk -m x", "svn del file", "svn remove file",
+            "svn rm file", "svn revert -R .", "svn --username alice delete URL",
+            "sudo svn revert -R .",
+        ])
+    func recognisesDestructiveSubversion(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Non-destructive Mercurial and Subversion commands remain ordinary.",
+        arguments: [
+            "hg log", "hg --config ui.verbose=true log", "hg update", "hg update -- -C", "svn status",
+            "svn --username alice status",
+        ])
+    func keepsOrdinaryMercurialAndSubversionCommands(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "Quoting or escaping the executable does not hide a destructive command.",
         arguments: [
             #""rm" -rf build"#, "'rm' -rf build", #"r\m -rf build"#,
