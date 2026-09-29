@@ -40,11 +40,22 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
+        if followingTextContinuesSentence { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)
         return WordShape.finished(word, with: asks ? "?" : ".")
+    }
+
+    /// Whether text after the replacement already ends or continues the sentence.
+    private var followingTextContinuesSentence: Bool {
+        guard let followingText = insertionPoint.followingText else { return false }
+        let leadingWhitespace = followingText.prefix(while: \.isWhitespace)
+        guard !leadingWhitespace.contains(where: \.isNewline),
+            let next = followingText.dropFirst(leadingWhitespace.count).first
+        else { return false }
+        return ".!?…,:;".contains(next) || next.isLowercase
     }
 
     /// Whether the sentence the draft ends on asks a direct question by its word order.
