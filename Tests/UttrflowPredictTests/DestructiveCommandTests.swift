@@ -25,6 +25,13 @@ struct DestructiveCommandTests {
             "asr restore --source a.dmg --target /dev/rdisk2s1",
             "shutdown -h now",
             "reboot",
+            "killall -9 Finder",
+            "killall -KILL Finder",
+            "pkill -9 -f node",
+            "pkill -KILL node",
+            "pkill -s 9 node",
+            "kill -9 -1",
+            "kill -KILL -1",
             ":(){ :|:& };:",
         ])
     func recognisesDestructive(_ line: String) {
@@ -41,6 +48,11 @@ struct DestructiveCommandTests {
             "SELECT * FROM users",
             "make verify",
             "npm run dev",
+            "kill 1234",
+            "kill -TERM 1234",
+            "pkill node",
+            "pkill -TERM -f node",
+            "killall Finder",
             "restart the staging database",
         ])
     func leavesOrdinaryAlone(_ line: String) {

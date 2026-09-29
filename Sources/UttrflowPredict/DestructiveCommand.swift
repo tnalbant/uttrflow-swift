@@ -296,6 +296,12 @@ public enum DestructiveCommand {
             }
         case "mv", "cp":
             if lowered.last == "/dev/null" { return true }
+        case "killall":
+            if lowered.contains(where: { $0 == "-9" || $0 == "-kill" || $0 == "-s9" || $0 == "-skill" }) {
+                return true
+            }
+        case "pkill", "kill":
+            if processKillIsDestructive(lowered) { return true }
         case "rsync":
             if lowered.contains(where: rsyncDeletes) { return true }
         case "tee":
@@ -410,6 +416,19 @@ public enum DestructiveCommand {
             return true
         }
         return false
+    }
+
+    /// Whether a process signal or target can terminate more than one ordinary process.
+    private static func processKillIsDestructive(_ arguments: [String]) -> Bool {
+        let signalFlags: Set<String> = ["-9", "-kill", "--signal=9", "--signal=kill"]
+        if arguments.contains(where: signalFlags.contains) { return true }
+        if zip(arguments, arguments.dropFirst()).contains(where: { flag, value in
+            ["-s", "--signal"].contains(flag) && ["9", "kill"].contains(value)
+        }) {
+            return true
+        }
+        let positionals = positionals(arguments, valued: ["-s", "--signal", "-p", "--pid"])
+        return positionals.contains("-1")
     }
 
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
