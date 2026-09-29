@@ -49,9 +49,9 @@ enum MentionGuard {
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
-            if markNames.contains(shape.key) { return false }
-            if let bridging, !bridging.contains(shape.key) { return false }
-            if bridging == nil, !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
+            if let bridging {
+                if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
+            } else if !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
                 return false
             }
         }
@@ -66,11 +66,9 @@ enum MentionGuard {
         tagger.string = phrase
         guard let wordRange = phrase.range(of: word) else { return false }
         let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
-        // Adverbs can modify an adjective in the same phrase ("the very last new line").
+        // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
 
-        // Participles such as "opening" can be adjectives in this attributive position even when
-        // NaturalLanguage labels the ambiguous surface form as a noun.
         return lexicalClass == .noun && word.hasSuffix("ing")
     }
 }
