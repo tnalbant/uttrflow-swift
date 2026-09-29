@@ -8,6 +8,7 @@ public enum Romaniser {
         guard containsDevanagari(text) else { return text }
         let scalars = Array(text.unicodeScalars)
         var output = String.UnicodeScalarView()
+        var outputEndsSentence = true
         var index = 0
         while index < scalars.count {
             let scalar = scalars[index]
@@ -18,18 +19,25 @@ public enum Romaniser {
                 // A stop the recogniser also wrote in Latin is kept once.
                 let next = index + 1 < scalars.count ? scalars[index + 1] : nil
                 if !(next.map { ".!?".unicodeScalars.contains($0) } ?? false) { output.append(".") }
+                outputEndsSentence = true
                 index += 1
             } else if isWordScalar(scalar) {
                 var end = index
                 while end < scalars.count, isWordScalar(scalars[end]) { end += 1 }
                 let spelled = word(Array(scalars[index..<end]))
-                let opens = capitalisingSentences && opensSentence(String(output))
+                let opens = capitalisingSentences && outputEndsSentence
                 output.append(
                     contentsOf: (opens ? spelled.prefix(1).uppercased() + spelled.dropFirst() : spelled)
                         .unicodeScalars)
+                outputEndsSentence = false
                 index = end
             } else {
                 if !isDevanagari(scalar) { output.append(scalar) }
+                if ".!?\n".unicodeScalars.contains(scalar) {
+                    outputEndsSentence = true
+                } else if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                    outputEndsSentence = false
+                }
                 index += 1
             }
         }
@@ -45,6 +53,13 @@ public enum Romaniser {
     /// Whether any Devanagari is present.
     public static func containsDevanagari(_ text: String) -> Bool {
         text.unicodeScalars.contains(where: isDevanagari)
+    }
+
+    /// A Devanagari spelling with chandrabindu folded to anusvara and nukta marks dropped, so spelling variants like पहुँच and पहुंच share a form; other scripts pass through unchanged.
+    public static func scriptFolded(_ text: String) -> String {
+        guard containsDevanagari(text) else { return text }
+        let scalars = normalised(Array(text.unicodeScalars)).filter { $0 != nukta }
+        return String(String.UnicodeScalarView(scalars))
     }
 
     /// A romanised word folded so its common spelling variants meet: "theek" and "thik", "woh" and "wo".
@@ -154,10 +169,13 @@ public enum Romaniser {
     /// Drops the unwritten vowel at the end of a word and between a vowel and a consonant that carries one: "karana" is "karna".
     static func dropSilentVowels(_ syllables: inout [Syllable]) {
         let count = syllables.count
-        // A cluster ending in "y", "r" or "v" keeps it, as in "mitra" and "karya"; "agast" and "dost" do not.
+        // A cluster ending in "y", "r" or "v" keeps it, except nasalised "aa" before final "v"; "mitra" and "karya" keep it.
         if count > 1, syllables[count - 1].isInherent,
             let last = syllables[count - 1].consonants.last,
-            syllables[count - 1].consonants.count == 1 || !["य", "र", "व"].contains(last.base)
+            syllables[count - 1].consonants.count == 1
+                || !["य", "र"].contains(last.base)
+                    && !(last.base == va && syllables[count - 2].isNasal
+                        && syllables[count - 2].vowel == "aa")
         {
             syllables[count - 1].vowel = ""
         }

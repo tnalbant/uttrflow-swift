@@ -22,10 +22,13 @@ public enum SecretShapes {
         }
         if literals.pem, text.contains(pemHeader) { return true }
         if literals.jwt, hasJSONWebToken(text) { return true }
-        if literals.url, hasCredentialledURL(text) { return true }
+        if literals.url, hasCredentialledURL(text) || hasBearerURL(text) || hasTokenUserinfoURL(text) {
+            return true
+        }
         if VendorKeyWindows.matches(text, pattern: vendorKey, tally: patternTally) { return true }
         if NamedSecretStems.present(in: text), hasNamedSecret(text) { return true }
         if CardNumberShape.matches(text) { return true }
+        if hasCommandCredential(text) { return true }
         return hasHighEntropyToken(text)
     }
 
@@ -46,6 +49,39 @@ public enum SecretShapes {
         var read = 0
         defer { tally?.record(read) }
         return CredentialledURLScan.matches(text, read: &read)
+    }
+
+    /// A URL whose userinfo is one generated token with no colon, as `https://<token>@host/repo` carries it.
+    static func hasTokenUserinfoURL(_ text: String) -> Bool {
+        var read = 0
+        defer { tally?.record(read) }
+        var rest = Substring(text)
+        while let scheme = rest.firstRange(of: "://") {
+            let userinfo = rest[scheme.upperBound...].prefix { !($0.isWhitespace || "/@:".contains($0)) }
+            read += 3 + userinfo.count
+            let after = userinfo.endIndex
+            if after < rest.endIndex, rest[after] == "@", rest.index(after: after) < rest.endIndex,
+                !rest[rest.index(after: after)].isWhitespace, looksGenerated(String(userinfo))
+            {
+                return true
+            }
+            rest = rest[after...]
+        }
+        return false
+    }
+
+    /// A password handed to a command as an argument, or an authorization header's value.
+    static func hasCommandCredential(_ text: String) -> Bool {
+        var read = 0
+        defer { tally?.record(read) }
+        return CommandCredentialShape.matches(text, read: &read)
+    }
+
+    /// A chat webhook, or a URL signed or carrying a token, which acts for whoever holds it.
+    static func hasBearerURL(_ text: String) -> Bool {
+        var read = 0
+        defer { tally?.record(read) }
+        return BearerURLShape.matches(text, read: &read)
     }
 
     /// Keys whose issuers gave them a prefix, each with a minimum length so prose about `sk-` is not one.
@@ -79,8 +115,8 @@ public enum SecretShapes {
     /// Hex long enough to be a digest or a key rather than a number.
     private static let hexTokenLength = 32
 
-    /// The shortest token the statistical rule looks at; below it randomness reads like an identifier.
-    private static let entropicTokenLength = 24
+    /// The shortest single-token password the statistical rule looks at; below it randomness reads like an identifier.
+    private static let entropicTokenLength = 12
 
     /// Bits per character above which a token counts as generated; measured. See Docs/clipboard-secrets.md.
     private static let entropyFloor = 3.8
@@ -128,7 +164,9 @@ public enum SecretShapes {
             return true
         }
         guard token.count >= entropicTokenLength,
-            token.allSatisfy({ isDigit($0) || isLetter($0) || "+/=_-".utf8.contains($0) }),
+            token.allSatisfy({
+                isDigit($0) || isLetter($0) || "+/=_-!@#$%^&*()[]{}:;,.?~`\\|<>\"'".utf8.contains($0)
+            }),
             token.contains(where: isDigit),
             token.contains(where: isLetter)
         else { return false }
@@ -144,7 +182,7 @@ public enum SecretShapes {
         return bits >= entropyFloor && !isJoinedWords(String(decoding: token, as: UTF8.self))
     }
 
-    private static func looksGenerated(_ token: String) -> Bool {
+    static func looksGenerated(_ token: String) -> Bool {
         guard !isPathLike(token) else { return false }
 
         // Hex has a sixteen-symbol alphabet and can never reach the general floor.
@@ -158,9 +196,9 @@ public enum SecretShapes {
         return entropy(of: token) >= entropyFloor && !isJoinedWords(token)
     }
 
-    /// Whether a token is words joined by `-`, `_` or `/`, like a branch or slug; see Docs/clipboard-secrets.md.
+    /// Whether a token is words joined by `-`, `_`, `/` or `.`, like a branch, slug, or bundle id.
     static func isJoinedWords(_ token: String) -> Bool {
-        let segments = token.split(separator: /[-_\/]/, omittingEmptySubsequences: false)
+        let segments = token.split(separator: /[-_\/.]/, omittingEmptySubsequences: false)
         return segments.count >= 3 && segments.allSatisfy(isWordLike)
     }
 
@@ -178,11 +216,11 @@ public enum SecretShapes {
         return tail.allSatisfy(\.isLowercase) || letters.allSatisfy(\.isUppercase)
     }
 
-    /// The alphabet every generated token is drawn from; a full stop or comma anywhere disqualifies.
+    /// Uses the byte scanner's exact alphabet; Swift classifies some of its symbols outside punctuation.
     private static func isTokenCharacter(_ character: Character) -> Bool {
         character.isLetter && character.isASCII
             || character.isNumber && character.isASCII
-            || "+/=_-".contains(character)
+            || "+/=_-!@#$%^&*()[]{}:;,.?~`\\|<>\"'".contains(character)
     }
 
     /// A path shares base64's alphabet, so anything that opens like one is left to the general rules.

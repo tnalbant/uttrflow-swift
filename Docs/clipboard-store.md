@@ -78,7 +78,7 @@ partitioned on the first read and written to their own file by the next ordinary
 above the store can tell the difference, and a read that writes is a surprise nobody at the call
 site would expect.
 
-This is why `persistedSaved` exists. It records what the saved file is known to hold, as opposed
+This is why `savedOnDisk` exists. It records what the saved file is known to hold, as opposed
 to what is in memory, and the two differ exactly once: after that first read, memory already holds
 the saved clips and the saved file does not exist. Comparing the write against memory would decide
 there was nothing to write, and the migration would never reach the disk.
@@ -105,6 +105,16 @@ from the new copy, because it genuinely was copied again, just now, from somewhe
 language and the rich text is what once quietly hollowed out a clip: a Swift snippet lost its
 language chip on the second copy and a formatted note lost its formatting, while the row looked
 identical.
+
+One exception to the kind: a kept clip (pinned, named or filed) that is on disk keeps its kind and
+language when the same text arrives again classified as a secret. A secret is never written to
+disk, so taking the arrival's kind would delete the one clip the store promises never to age out,
+and the text was already on disk and shown in the panel under the user's own decision to keep it.
+A clip that is not kept still becomes a secret and leaves the disk.
+
+The rich text comes from the new copy only when the new copy carries some. A plain copy of the
+same text keeps the clip's rich text, because that may be a note the user wrote or promoted in the
+panel, checklist state included, and a plain copy has nothing to replace it with.
 
 ## Rebuilding a clip
 

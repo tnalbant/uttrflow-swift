@@ -3,6 +3,7 @@
 import Foundation
 import Testing
 import UttrflowCore
+import UttrflowPipeline
 
 @testable import Uttrflow
 
@@ -37,5 +38,42 @@ struct DiagnosticsEngineProbeTests {
         for kind in TransformerKind.allCases {
             #expect(answered[kind] != nil, "\(kind.rawValue) was left unanswered")
         }
+    }
+
+    /// #1668: the speech model row was never given an answer, so it read Not checked yet forever.
+    @Test("the speech model is looked for on disk too")
+    func speechModelIsLookedFor() async {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+        #expect(app.speechModelPresence == nil)
+
+        await app.probeSpeechModel().value
+        #expect(app.speechModelPresence != nil, "the page would still say Not checked yet")
+    }
+
+    @Test("only a typed Apple Speech load failure marks its diagnostics card failed")
+    func appleSpeechLoadFailureIsEngineScoped() {
+        let apple = AppDelegate(container: Sandbox().root)
+        let appleError = SpeechEngineError.modelLoadFailed(description: "unsupported locale")
+        let appleFailure = DictationFailure(appleError, speechEngineKind: .appleSpeech)
+        apple.render(.failed(appleFailure))
+
+        #expect(appleFailure.speechEngineError == appleError)
+        #expect(apple.appleSpeechLoadFailure == appleError)
+
+        let whisper = AppDelegate(container: Sandbox().root)
+        whisper.render(
+            .failed(
+                DictationFailure(
+                    SpeechEngineError.modelLoadFailed(description: "fixture"),
+                    speechEngineKind: .whisperKit)))
+        #expect(whisper.appleSpeechLoadFailure == nil)
+
+        let untyped = AppDelegate(container: Sandbox().root)
+        untyped.render(
+            .failed(
+                DictationFailure(
+                    message: appleError.userMessage, recovery: .retry, severity: .recoverable)))
+        #expect(untyped.appleSpeechLoadFailure == nil)
     }
 }

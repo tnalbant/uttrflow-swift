@@ -98,7 +98,11 @@ public final class MacContextEngine: ContextEngine, Sendable {
             let isOurselves = self.isOurselves(application)
             self.memory.withLock { memory in
                 memory.lastActivated = application
-                if !isOurselves { memory.appBehind = application }
+                if !isOurselves {
+                    // Supersedes any read still in flight, so its older answer is not kept.
+                    memory.requestNumber &+= 1
+                    memory.appBehind = application
+                }
             }
         }
         activationToken.withLock { $0 = token }
@@ -191,7 +195,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
 
     /// Runs `work`, waits no longer than ``budget`` for it, and abandons what is left. See `Docs/context-budget.md`.
     private func withinBudget(_ work: @escaping @Sendable () async -> Void) async {
-        _ = await Deadline.first(within: Self.budget, on: clock) {
+        _ = await withDeadline(Self.budget, clock: clock) {
             await work()
             return true
         }
