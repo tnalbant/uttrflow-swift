@@ -47,14 +47,32 @@ public actor Verifier {
                 let allowed = await allowed(
                     candidate, in: surface, typed: typed, now: now, before: deadline)
             else { continue }
-            // A corrected typo and the genuine line can land on the same text; the one typed as-is is the real one.
             if let same = kept.firstIndex(where: { $0.text == allowed.text }) {
-                if allowed.editDistance < kept[same].editDistance { kept[same] = allowed }
+                kept[same] = Self.combine(kept[same], allowed)
             } else {
                 kept.append(allowed)
             }
         }
         return kept
+    }
+
+    /// A converged text sums its evidence and keeps the nearest source, favoring the first on a tie.
+    private static func combine(_ first: Candidate, _ second: Candidate) -> Candidate {
+        let nearest = first.editDistance <= second.editDistance ? first : second
+        let evidence: Entry?
+        if let firstEvidence = first.evidence, let secondEvidence = second.evidence {
+            evidence = Entry(
+                text: first.text, count: firstEvidence.count + secondEvidence.count,
+                accepted: firstEvidence.accepted + secondEvidence.accepted,
+                rejected: firstEvidence.rejected + secondEvidence.rejected,
+                selfSourced: firstEvidence.selfSourced + secondEvidence.selfSourced,
+                lastUsed: max(firstEvidence.lastUsed, secondEvidence.lastUsed))
+        } else {
+            evidence = first.evidence ?? second.evidence
+        }
+        return Candidate(
+            text: first.text, source: nearest.source, evidence: evidence,
+            editDistance: nearest.editDistance, isIrreversible: nearest.isIrreversible)
     }
 
     /// The verdict on one candidate, taken from the cache whenever the gates have already reached it.
