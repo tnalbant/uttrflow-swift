@@ -144,6 +144,7 @@ struct NoteChecklistTests {
     func malformed() {
         #expect(NoteChecklist.items(in: "<input type=\"checkbox\"").isEmpty)
         #expect(NoteChecklist.toggling(0, in: "<li class=\"checked\"") == nil)
+        #expect(NoteChecklist.items(in: "<li class=\"checked").isEmpty)
         #expect(NoteChecklist.items(in: "").isEmpty)
     }
 }
