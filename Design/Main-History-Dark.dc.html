@@ -25,8 +25,8 @@
       --sidebar-bg: #EAE9F0;
       --fill: rgba(0,0,0,0.05);
       --fill-2: rgba(0,0,0,0.08);
-      /* Teal ramp, hue 175 — derived from the mark's signal teal (#17A398).
-         The brand teal itself only reaches 3.1:1 on white, so it stays a mark
+      /* Teal ramp, hue 175 — derived from the live accent teal (#29C0B4).
+         The brand teal itself only reaches 2.3:1 on white, so it stays a mark
          and state colour and never carries interface text; this ramp is what
          fills use. White 13px text needs 4.5:1, which caps a text-bearing fill
          at 29% lightness. Everything that carries no text goes lighter, which
@@ -38,8 +38,8 @@
       --accent-wash: #EFF8F7;    /* tinted backgrounds */
       --accent-dark: #29C0B4;    /* on dark surfaces — 7.4:1 on #1E1E1E */
       --logo-ink: #101316;       /* the mark's ink; chalk on dark, see _gen_shell */
-      /* The accent as a foreground rather than a fill: waveform bars, the second
-         series in a chart. A lighter weight of the one accent, not a second hue —
+      /* The accent as a foreground rather than a fill: the quick panel's selected
+         row and icons. A lighter weight of the one accent, not a second hue —
          the identity is ink, chalk, signal and slate, and a fifth colour invented
          for contrast is how a palette stops meaning anything. */
       --accent-2: #5FE0D3;
@@ -195,10 +195,33 @@
 
     .pane { flex: 1; min-width: 0; display: flex; flex-direction: column;
             background: var(--window-bg); }
-    .toolbar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 18px;
-               border-bottom: 0.5px solid var(--separator); flex: none; }
-    .toolbar h2 { font-size: var(--t-title3); font-weight: 600; margin: 0; }
-    .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+    /* MainWindowStrip: the sidebar toggle at one end, the account chip at the other. */
+    .strip { height: 40px; flex: none; display: flex; align-items: center; padding: 0 12px; }
+    .stoggle { width: 26px; height: 22px; border-radius: 6px; display: flex;
+               align-items: center; justify-content: center; color: var(--label-2);
+               background: transparent; border: none; }
+    .achip { margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+             height: 26px; padding: 3px 9px 3px 3px; border-radius: 999px;
+             background: var(--hover-bg); border: 0.5px solid var(--separator);
+             font-size: var(--t-callout); color: var(--label-2); }
+    .achip .aavatar { width: 26px; height: 26px; border-radius: 50%; flex: none;
+                      display: flex; align-items: center; justify-content: center;
+                      font-size: 10.5px; font-weight: 600; color: #FFFFFF;
+                      background: linear-gradient(135deg, var(--accent), var(--accent-dark)); }
+    .achip .achev { color: var(--label-3); display: flex; }
+
+    /* OrbitPageHeader: kicker, title, caption, then scope/search/add in that order. */
+    .header { height: 112px; flex: none; display: flex; align-items: center; gap: 12px;
+              padding: 0 22px; background: var(--card-bg);
+              border-bottom: 0.5px solid var(--separator); }
+    .header .htext { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .header .hkicker { font-size: var(--t-footnote); font-weight: 500; letter-spacing: 1.6px;
+                        color: var(--accent-text); }
+    .header .htitle { font-size: 29px; font-weight: 700; letter-spacing: -0.3px; }
+    .header .hcap { font-size: var(--t-body); color: var(--label-2); }
+    .header .tools { margin-left: auto; display: flex; align-items: center; gap: 8px;
+                      flex: none; }
     .content { flex: 1; min-height: 0; padding: 18px 22px 14px; overflow: hidden;
                display: flex; flex-direction: column; }
 
@@ -273,12 +296,29 @@
     .statrow { display: flex; }
     .statrow .stat { flex: 1; padding: 11px 13px; }
     .statrow .stat + .stat { border-left: 0.5px solid var(--separator); }
-    .bar-track { height: 22px; border-radius: 6px; overflow: hidden; display: flex; }
-    .lat { display: flex; align-items: center; gap: 12px; padding: 8px 13px;
-           font-size: var(--t-callout); }
+    .bar-track { height: 18px; border-radius: 5px; overflow: hidden; display: flex; }
+    .lat { display: flex; align-items: center; gap: 10px; padding: 5px 11px;
+           font-size: var(--t-footnote); line-height: 1.25; }
     .lat + .lat { border-top: 0.5px solid var(--separator); }
     .lat .n { font-variant-numeric: tabular-nums; }
-    .swatch { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+    .swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+    .diagverdict { display: flex; align-items: center; gap: 10px; padding: 9px 13px; }
+    .diagverdict .dot { width: 7px; height: 7px; border-radius: 50%; flex: none;
+                         background: #34C759; }
+    .frow { display: flex; align-items: center; gap: 10px; padding: 5px 11px;
+            font-size: var(--t-footnote); line-height: 1.25; }
+    .frow + .frow { border-top: 0.5px solid var(--separator); }
+    .frow .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+    .frow .d { color: var(--label-2); text-align: right; }
+    .diagstats { display: flex; flex-wrap: wrap; }
+    .diagstats .stat { flex: 1 1 33%; min-width: 130px; padding: 7px 11px;
+                        border-top: 0.5px solid var(--separator); }
+    .diagstats .stat:nth-child(-n+3) { border-top: none; }
+    .diagstats .v { font-size: var(--t-body); font-weight: 600;
+                     font-variant-numeric: tabular-nums; }
+    .diagstats .k { font-size: 10px; color: var(--label-2); margin-top: 1px; }
+    .diaglabel { font-size: var(--t-footnote); font-weight: 600; color: var(--label-2);
+                 margin: 8px 0 5px 3px; }
 </style>
 </helmet>
 <div class="stage night theme-dark" style="width: 980px; height: 700px; padding: 40px">
@@ -306,7 +346,15 @@
         <div class="sidefoot">2026.9.14 (9)</div>
       </div>
       <div class="pane">
-        <div class="toolbar"><h2>History</h2><div class="tools"><div class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>Search history</div></div></div>
+        <div class="strip"><div class="stoggle" title="Hide Sidebar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5" width="17.2" height="14" rx="2.6"/><path d="M9.6 5v14"/></svg></div><div class="achip"><span class="aavatar">NB</span><span>Naveen Bhatt</span><span class="achev"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></div></div>
+        <div class="header">
+          <div class="htext">
+            <div class="hkicker">HISTORY</div>
+            <div class="htitle">History</div>
+            <div class="hcap">Every dictation, kept on this Mac.</div>
+          </div>
+          <div class="tools"><div class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>Search history</div></div>
+        </div>
         <div class="content"><div style="margin-top: 0px"><p class="daylabel">Yesterday</p><div class="card"><div class="hrow">
             <span class="when">6:58 PM</span>
             <div style="min-width:0; flex:1">

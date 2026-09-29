@@ -4,12 +4,34 @@ import Foundation
 extension StringProtocol {
     /// Whether `needle` occurs here ignoring case, accents, curly quotes, dash kinds and whitespace runs.
     func contains(_ needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Bool {
+        SearchFolding.contains(
+            SearchFolding.folded(needle) ?? needle,
+            inFolded: SearchFolding.folded(self) ?? String(self), locale: locale)
+    }
+
+    /// Whether this text, whole, is `needle` under the same folding as `contains(_:ignoringCaseAndAccentsIn:)`.
+    func equals(_ needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Bool {
         let haystack = SearchFolding.folded(self) ?? String(self)
         let needle = SearchFolding.folded(needle) ?? needle
-        return haystack.range(
-            of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: nil,
-            locale: locale
-        ) != nil
+        return haystack.compare(needle, options: [.caseInsensitive, .diacriticInsensitive], locale: locale)
+            == .orderedSame
+    }
+}
+
+extension String {
+    /// Where `needle` first occurs under the search folding, as a range of this unfolded text.
+    func range(of needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Range<String.Index>? {
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let needle = SearchFolding.folded(needle) ?? needle
+        guard let folded = SearchFolding.foldedWithOrigins(self) else {
+            return range(of: needle, options: options, range: nil, locale: locale)
+        }
+        guard let found = folded.text.range(of: needle, options: options, range: nil, locale: locale)
+        else { return nil }
+        let scalars = folded.text.unicodeScalars
+        let lower = scalars.distance(from: scalars.startIndex, to: found.lowerBound)
+        let upper = scalars.distance(from: scalars.startIndex, to: found.upperBound)
+        return folded.origins[lower]..<folded.origins[upper]
     }
 }
 
@@ -20,6 +42,14 @@ enum SearchFolding {
     private static let dashes: Set<Unicode.Scalar> = [
         "\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}", "\u{2014}", "\u{2212}",
     ]
+
+    /// Whether an already-folded needle occurs in an already-folded haystack, ignoring case and accents.
+    static func contains(_ needle: String, inFolded haystack: String, locale: Locale) -> Bool {
+        haystack.range(
+            of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: nil,
+            locale: locale
+        ) != nil
+    }
 
     /// The lowest scalar this folding rewrites, below which only whitespace can need it.
     private static let lowestRewritten: UInt32 = 0x2010
@@ -79,6 +109,42 @@ enum SearchFolding {
             }
         }
         return String(out)
+    }
+
+    /// The folded text with, per folded scalar, where it starts in `text`, plus the end; `nil` if unchanged.
+    static func foldedWithOrigins(_ text: String) -> (text: String, origins: [String.Index])? {
+        guard folded(text) != nil else { return nil }
+        var out = String.UnicodeScalarView()
+        var origins: [String.Index] = []
+        var previousWasSpace = false
+        let scalars = text.unicodeScalars
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if isWhitespace(scalar) {
+                if !previousWasSpace {
+                    out.append(" ")
+                    origins.append(index)
+                }
+                previousWasSpace = true
+            } else {
+                previousWasSpace = false
+                out.append(straightened(scalar))
+                origins.append(index)
+            }
+            index = scalars.index(after: index)
+        }
+        origins.append(scalars.endIndex)
+        return (String(out), origins)
+    }
+
+    /// The keyboard form of one non-whitespace scalar.
+    private static func straightened(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        guard scalar.value >= lowestRewritten else { return scalar }
+        if apostrophes.contains(scalar) { return "'" }
+        if quotes.contains(scalar) { return "\"" }
+        if dashes.contains(scalar) { return "-" }
+        return scalar
     }
 }
 

@@ -132,21 +132,32 @@ struct GitRepository: Sendable {
         Self.isRefName(name) && has("refs/heads/\(name)")
     }
 
-    /// Whether any remote has a branch of this name, which `checkout` and `switch` turn into a local one.
+    /// Whether exactly one remote has a branch of this name, which is when `checkout` and `switch` turn it into a local one.
     func hasRemoteBranch(named name: String) -> Bool {
-        guard Self.isRefName(name) else { return false }
-        let remotes = TerminalPath.joined(commonDirectory, "refs/remotes")
-        for remote in files.names(inDirectory: remotes, limit: Self.remoteLimit) ?? []
-        where has("refs/remotes/\(remote)/\(name)") {
-            return true
-        }
-        return packedRefs?.contains { ref in
-            guard ref.hasPrefix("refs/remotes/") else { return false }
-            return ref.dropFirst("refs/remotes/".count).drop { $0 != "/" }.dropFirst() == name
-        } ?? false
+        remotes(holdingBranch: name)?.count == 1
     }
 
-    /// Whether a name is anything `checkout` could take as a commit: `HEAD` and its relatives, a branch, a tag or a remote's branch.
+    /// The remotes with a branch of this name, loose or packed, each counted once; absent when `packed-refs` cannot be read whole.
+    func remotes(holdingBranch name: String) -> Set<String>? {
+        guard Self.isRefName(name) else { return [] }
+        guard let packed = packedRefs else { return nil }
+        var holding: Set<String> = []
+        let remotes = TerminalPath.joined(commonDirectory, "refs/remotes")
+        for remote in files.names(inDirectory: remotes, limit: Self.remoteLimit) ?? [] {
+            let ref = TerminalPath.joined(commonDirectory, "refs/remotes/\(remote)/\(name)")
+            if case .file = files.kind(atPath: ref) { holding.insert(remote) }
+        }
+        for ref in packed where ref.hasPrefix("refs/remotes/") {
+            let rest = ref.dropFirst("refs/remotes/".count)
+            guard let slash = rest.firstIndex(of: "/"), rest[rest.index(after: slash)...] == name else {
+                continue
+            }
+            holding.insert(String(rest[..<slash]))
+        }
+        return holding
+    }
+
+    /// Whether a name is anything `checkout` could take as a commit: `HEAD` and its relatives, a branch, a tag, a remote's branch or a loose object's id.
     func hasCommit(named name: String) -> Bool {
         let base = String(name.prefix { $0 != "~" && $0 != "^" })
         guard
@@ -155,6 +166,30 @@ struct GitRepository: Sendable {
         else { return false }
         if base == "HEAD" || base == "@" { return true }
         guard Self.isRefName(base) else { return false }
-        return ["refs/heads/", "refs/tags/", "refs/remotes/", "refs/"].contains { has($0 + base) }
+        if ["refs/heads/", "refs/tags/", "refs/remotes/", "refs/"].contains(where: { has($0 + base) }) {
+            return true
+        }
+        return hasLooseObject(abbreviated: base)
+    }
+
+    /// The fewest hex digits git takes as an object id.
+    static let shortestObjectID = 4
+
+    /// The most names read from one loose-object folder, past which an id is not believed.
+    static let looseFolderLimit = 4_096
+
+    /// Whether exactly one loose object begins with this hex id; a packed object is not read, so it is not vouched for.
+    func hasLooseObject(abbreviated id: String) -> Bool {
+        let hex = id.lowercased()
+        guard (Self.shortestObjectID...64).contains(hex.count), hex.allSatisfy(\.isHexDigit) else {
+            return false
+        }
+        let folder = TerminalPath.joined(commonDirectory, "objects/" + hex.prefix(2))
+        guard let names = files.names(inDirectory: folder, limit: Self.looseFolderLimit) else { return false }
+        let rest = hex.dropFirst(2)
+        let matches = names.filter { $0.count >= 38 && $0.hasPrefix(rest) }
+        guard matches.count == 1, let only = matches.first else { return false }
+        if case .file = files.kind(atPath: TerminalPath.joined(folder, only)) { return true }
+        return false
     }
 }

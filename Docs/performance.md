@@ -52,11 +52,12 @@ has to be.
 | state | budget | today |
 |---|---|---|
 | idle: menu bar only, windows closed, suggestions off | ~0% of a core; at most 2 timer wakeups a second from the app's own code | clipboard poll 1.7/s at the shipped 500 ms interval (100 ms tolerance) |
-| idle with tab-to-complete on | nothing beyond the line above once 12 s have passed with no keystroke, click or switch and nothing drawn | a 1 Hz tick, each one an Accessibility read of the frontmost app, that stops itself 12 s after the last activity once nothing is drawn (`SuggestionTicking`) |
+| idle with tab-to-complete on | nothing beyond the line above once 12 s have passed with no keystroke, click or switch, drawn ghost or not | a 1 Hz tick, each one an Accessibility read of the frontmost app, that stops itself 12 s after the last activity (`SuggestionTicking`); a redraw of what is already on screen does no layout and no placement |
 | typing, suggestions on | the tap callback does one atomic load; a turn per keystroke, coalesced to one running and one waiting; a model pass only after 120 ms of quiet, cancelled by the next key | as budgeted |
 | a model suggestion pass | at utility priority; none in Low Power Mode or at serious thermal pressure; ≤ 1 processor-second per pass on M1 | run at utility priority and gated on energy conditions (`DiscretionaryGenerator`); 0.17 processor-seconds per pass here since #427, so ≈ 0.3 on M1 |
 | dictation | speech ≤ 0.1 processor-seconds per second of audio on M1; finished within 0.5× the audio's length on M1 | 0.04 here, which scales to ≈ 0.07; 0.20× wall clock here on a loaded machine |
 | a copy | classified at utility priority, off the main thread; ≤ 0.2 processor-seconds for a 2 MB clip on M1 | 0.085 here for the costliest 2 MB clip measured, ≈ 0.17 on M1 (#460) |
+| between dictations, the tidier | no prewarmed model session made that nothing will use | one prewarm at key-down; one after each piece tidied while the key is held; none after the last piece (#1513) |
 | animation | none continuous while nobody can see it; none decorative under Reduce Motion, Low Power Mode or serious thermal pressure | decorative motion follows Reduce Motion, Low Power Mode and thermal pressure (`MotionBudget`); nothing runs continuously while hidden |
 
 How the rows were measured, on 13 September 2026, on a machine at a load average of 50–180 from
@@ -244,8 +245,10 @@ reclaims on its own.
 
 The suggestion model is what the budget is about. On an 8 GB Mac its 3 GB is close to half of
 all memory, which is why nothing loads it for somebody who never asked, and why turning the
-feature off gives it back. `AppDelegate` releases it when the switch goes off, after any load
-still running has landed, and `MLXCandidateScorer.release()` swaps out the weights (keeping the modules
+feature off gives it back. `AppDelegate` releases it when the switch goes off or memory is pressed. A
+load still running is stopped first rather than waited out: the download is cancelled, and the
+weights are not read (or, when the read had begun, not kept for the warm-up), so neither a fetch nor
+a 2.5 GB read runs on after the release. Then `MLXCandidateScorer.release()` swaps out the weights (keeping the modules
 and tokenizer, see "Reloads no longer quantise" below), drops the warmed instructions and the
 vocabulary, and empties MLX's cache. Measured with
 `uttrflow-bakeoff gpu-memory --release`:
@@ -298,7 +301,7 @@ on every run:
 |---|---|
 | wakeups | a repeating `Timer` (including one whose `repeats` is passed in), repeating `DispatchSource` timer, display link, sleeping loop, or function that delays (`asyncAfter`, `perform(_:with:afterDelay:)`, a sleep, a one-shot `Timer`) and then calls itself, in product code has an interval under 500 ms, or one the audit cannot resolve, and is not listed with the reason it is not an idle cost |
 | priority | the suggestion and local-model modules ask for more than utility priority, detach a task without one, or the app uses the suggestion model outside a `Discretionary` wrapper |
-| motion | a `TimelineView`, `repeatForever`, phase or keyframe animator or repeating symbol effect reads neither `MotionBudget` nor `WindowAttention`, or is paused by a literal |
+| motion | a `TimelineView`, `repeatForever`, phase or keyframe animator or repeating symbol effect reads neither `MotionBudget` nor `WindowAttention`, is paused by a literal, or never reads `WindowAttention` outside the dock and menu bar panels, which never become key |
 | cache | a model pass (`perform`, `generate`, `TokenIterator`, `ChatSession`) sits in no function that caps MLX's cache and clears it on exit, a `release()` does not clear it, or the cap is over 256 MB |
 | counters | `ResourceBudget`'s limits differ from the table above |
 
@@ -785,6 +788,30 @@ is the card's `background`, for its `visibleRect` and watched every enclosing `N
 does not see SwiftUI's scroll clipping: the scrolled-out card still cost 31.4% across the rise,
 and 31.1% once the window was shortened below it.
 
+### The menu bar popover's loading bar
+
+The popover's unknown-length bar was a SwiftUI `repeatForever` offset inside the glass, so every
+display frame ran SwiftUI's animation pass on the main thread and invalidated the group that
+carries the aurora's `blur(40)` and the glass's `shadow(radius: 20)`. The run is now a
+`CAGradientLayer` slid by a `CABasicAnimation` (`MenuBarSlidingRun.swift`), drawn above the glass
+through an anchor preference, so a frame costs the app nothing and the glass is never redrawn for
+it. It moves only while `moves` (from `MotionBudgetObserver`) allows and while it is in a window;
+the controller empties the panel on close, which removes the layer.
+
+Measured on 28 September 2026 in a debug test build, the popover hosted in an on-screen borderless
+window, main-thread time over three-second samples, on a machine under heavy unrelated load
+(load average about 100), so the before figures carry that noise:
+
+| | main thread, share of a core |
+|---|---|
+| SwiftUI `repeatForever` inside the glass (10 samples) | 14–97%, median 66% |
+| Core Animation run above the glass (8 samples) | 0.0% in every sample |
+| no bar, for comparison | 0.0% |
+
+Offscreen renders of the popover match the old one within 1/255 except on the bar's rounded ends
+(at most 7/255). `ImageRenderer` cannot draw a platform view, so an offscreen render of the
+loading state shows SwiftUI's placeholder where the run is; the live popover does not.
+
 ### The clipboard poll
 
 macOS offers no notification for a copy, so `PasteboardWatcher` reads the change count on a
@@ -931,6 +958,17 @@ with time: 3,420 leaked nodes and 583 KB at one minute, the same at 92 minutes.
 | `OnboardingFlow` cycle | 2.4 KB per onboarding controller | ours | fixed |
 | `mlx::core::array::ArrayDesc` cycles | 0.4–1.7 MB on the first load only | MLX | reloads fixed here, first load upstream |
 | `NSXPCConnection` cycles (AppIntents daemon) | 4.7 KB | the system | not ours |
+| CoreAudio `ListenerBinding` / `ParameterListenerBinding` (148 nodes) | 9.5 KB | ours, the cue engine | fixed size, by design |
+
+**The cue engine's listener bindings.** `ShapedSoundPlayer.prewarm(_:)`
+(`Sources/UttrflowAudio/RecordingCue+Engine.swift`) builds one `AVAudioEngine`, starts it once
+and pauses it, and `pauseWhenIdle()` only pauses it between cues, so it lives as long as the
+process. CoreAudio reports the listener bindings that engine registers as 148 leaks of 9,472
+bytes. The count is the same after prewarm and after eight cues, and it drops to zero when the
+engine is torn down by a rebuild, so it is the engine being alive, not growth. Tearing it down
+when idle would remove the group, but the next cue would then have to build the engine before
+it sounds, about 150 ms by the comment on `prewarm`, and that delay has not been measured on the
+cue path. The engine is kept.
 
 **The onboarding cycle.** `OnboardingModel` set `flow.onChange` to a closure that captured
 `self` weakly but the `flow` argument strongly, so the flow held a closure that held the flow.
@@ -1047,6 +1085,21 @@ written down here when somebody does. Whether the opening swallows a syllable or
 decides whether anything about the audio graph's lifetime is worth changing — and the obvious
 change, keeping an input graph alive between recordings, is a privacy question before it is a
 latency one.
+
+**Creating the recording's file is no longer part of the opening.** `RecordingStore.begin` used
+to make the folder, create the WAV, exclude it from backup, write its header and stamp its
+creation date — and wait for the previous writer to drain — before the microphone started. All of
+that now runs on the writer's own task, which creates the file before writing the first block it
+was handed, so nothing captured in between is lost. Timed on a quiet Apple Silicon Mac, 300
+`begin()` calls in a row against a temporary folder (#1521):
+
+| `RecordingStore.begin()` | median | p90 | p99 | max |
+|---|---|---|---|---|
+| before, file work inline | 225–340 µs | 314–513 µs | 540–652 µs | 2.8–4.9 ms |
+| after, file work on the writer | 13–26 µs | 24–42 µs | 57–125 µs | 62–459 µs |
+
+That is the part of `microphoneOpen` this change owns; the audio graph's own cost is still
+unmeasured, as above, and a disk under load stretches the "before" row, not the "after" one.
 
 Dictionary correction and snippet expansion are not here either, for a different reason:
 this table predates them. Both are now timed in the product and appear on the Diagnostics
@@ -1465,6 +1518,19 @@ after a restart, add `--no-prewarm` after the next one, and watch `ANECompilerSe
   come out the same; it wants the recorded corpus.
 - **A shorter vocabulary prompt.** The cost above is real and so is the accuracy it buys; trading
   one for the other wants measuring on vocabularies of the size people keep.
+
+## The system recogniser, per piece
+
+Measured on an Apple M5 Pro, macOS 26.5.1, debug build, calling `AppleSpeechBackend` directly on
+one 5.3-second spoken clip, fifteen pieces with a 300 ms gap between them, two runs each (#1510).
+
+| build | median per piece |
+|---|---|
+| before: asset check, format query, new transcriber and analyser inside every call | 121, 124 ms |
+| after: settled in `load()`, the next pair prepared once a piece answers | 101, 93 ms |
+
+Roughly 25 ms, a fifth of each piece, leaves the wait after key release. A standalone probe of
+the framework put the asset query at 5-130 ms per call, the largest when the system had been idle.
 
 ## What these numbers are not
 
