@@ -28,6 +28,14 @@ struct PredictionEngineTests {
         #expect(result == .choice(leader: "git commit -m", others: ["git checkout"]))
     }
 
+    @Test("Case variants do not appear together in a choice.")
+    func caseVariantsDoNotShareAChoice() {
+        let result = suggestion([
+            remembered("Hello", count: 10), remembered("hello", count: 9),
+        ])
+        #expect(result != .choice(leader: "Hello", others: ["hello"]))
+    }
+
     @Test("Nothing to say means nothing is drawn.")
     func noCandidates() {
         #expect(suggestion([]) == .silent)

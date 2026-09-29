@@ -5,7 +5,7 @@ public import struct Foundation.Data
 public protocol Pasteboard: Sendable {
     /// The current text, or `nil` when the clipboard holds something else.
     func text() -> String?
-    /// The clipboard generation, which changes when another writer replaces its contents.
+    /// A token that changes whenever the clipboard is written, or `nil` when ownership cannot be observed.
     func changeCount() -> Int?
     /// Replaces the contents.
     func setText(_ text: String)

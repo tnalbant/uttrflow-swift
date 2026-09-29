@@ -90,18 +90,23 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         } else {
             writeChangeCount = pasteboard.writeText(text, richText: richText)
         }
-        // A write that did not stick would paste whatever the clipboard held before, so the next route takes over.
-        guard pasteboard.text() == text else {
-            if let writeChangeCount, let currentChangeCount = pasteboard.changeCount(),
-                currentChangeCount != writeChangeCount
-            {
-                throw .clipboardChanged
-            }
-            throw .clipboardUnavailable
+        // A different clipboard generation means another writer owns it now.
+        let readback = pasteboard.text()
+        let readbackChangeCount = pasteboard.changeCount()
+        if let writeChangeCount, let readbackChangeCount,
+            writeChangeCount != readbackChangeCount
+        {
+            throw .clipboardChanged
         }
+        guard readback == text else { throw .clipboardUnavailable }
+        let verifiedChangeCount = writeChangeCount
         // Read before the paste is posted, so an unchanged caret cannot be read back as a fresh landing.
         let before = await AccessibilityThread.run(orElse: .unreadable) {
             focus.tail(upTo: PasteConfirmation.readLength)
+        }
+        // AX may take long enough for another device or app to replace the clipboard.
+        if let verifiedChangeCount, pasteboard.changeCount() != verifiedChangeCount {
+            throw .clipboardChanged
         }
         // Thrown onwards with the words left on the clipboard: the floor below would only put them back.
         try PasteboardPasteAction.postIfExternal(

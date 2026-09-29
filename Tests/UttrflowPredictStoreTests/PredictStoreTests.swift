@@ -76,6 +76,19 @@ struct RecordingTests {
         #expect(found.first?.evidence?.count == 3)
     }
 
+    @Test("A line differing only by case is offered once.")
+    func caseVariantsAreDeduplicated() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("Hello", in: terminal, at: moment)
+        try await store.record("hello", in: terminal, at: moment.addingTimeInterval(1))
+
+        let found = try await store.candidates(for: terminal, matching: "h")
+        #expect(found.map(\.text).count == 1)
+        #expect(found.first?.text == "hello")
+        #expect(found.first?.evidence?.count == 2)
+    }
+
     @Test("An empty value is not worth remembering.")
     func ignoresEmpty() async throws {
         let corpus = Corpus()
