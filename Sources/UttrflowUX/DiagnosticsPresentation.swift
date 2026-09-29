@@ -168,6 +168,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let measurements: [StageMeasurement]
     /// What the clean-up steps did to the last dictation, absent until one has been tidied.
     public let cleaning: CleaningRecord?
+    /// Which engine tidied the last inserted dictation, including `.untidied` when none did.
+    public let lastCleanedBy: TransformerKind?
     /// How far along the model AI suggestions need is.
     public let suggestionModel: SuggestionModelReadiness
     /// Which build is running.
@@ -185,6 +187,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         permissions: [PermissionKind: PermissionStatus] = [:],
         measurements: [StageMeasurement] = [],
         cleaning: CleaningRecord? = nil,
+        lastCleanedBy: TransformerKind? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         version: AppVersion = .unknown,
         machine: String? = nil
@@ -197,6 +200,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.permissions = permissions
         self.measurements = measurements
         self.cleaning = cleaning
+        self.lastCleanedBy = lastCleanedBy
         self.suggestionModel = suggestionModel
         self.version = version
         self.machine = machine
@@ -409,11 +413,23 @@ public enum DiagnosticsPresenter {
                 title: "Clean-up", symbolName: "wand.and.stars", tint: .suggestion, name: name,
                 chips: chips, status: status, state: state)
         }
+        if let lastCleanedBy = snapshot.lastCleanedBy {
+            guard lastCleanedBy != .untidied else {
+                return card(name(for: lastCleanedBy), [], "Last dictation", .attention)
+            }
+            let origin =
+                lastCleanedBy == .cloud
+                ? "Hosted" : (lastCleanedBy == .localModel ? "Downloaded" : "Built in")
+            let chips = lastCleanedBy == .cloud ? [origin] : [origin, onDevice]
+            let state: DiagnosticsState =
+                snapshot.transformerAvailability[lastCleanedBy] == false ? .attention : .good
+            return card(name(for: lastCleanedBy), chips, "Last dictation", state)
+        }
         guard let inUse = ordered.first(where: { snapshot.transformerAvailability[$0] == true }) else {
             return card("Not checked yet", [], "Checking", .unknown)
         }
         let origin = inUse == .localModel ? "Downloaded" : "Built in"
-        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "In use", .good)
+        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "Ready", .good)
     }
 
     /// The model AI suggestions need, and how far along it is.

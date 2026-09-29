@@ -117,6 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)?
     /// Frees that model's weights, run when tab-to-complete is turned off.
     private let releaseModel: (@Sendable () async -> Void)?
+    /// Asks which clean-up engines can run, held as a seam so availability changes are testable.
+    private let transformerReadiness: @Sendable (UserProfile) async -> Set<TransformerKind>
     /// Whether the weights have been asked for and not let go since, so turning the feature on twice does not ask twice.
     private var isModelPreparing = false
     /// Counts each ask and each release, so a load that lands after the feature was turned off reports nothing.
@@ -130,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let pressureSource = MemoryPressureSource()
     /// Which clean-up engines answered that they could run; internal so a test can read it back.
     private(set) var transformerAvailability: [TransformerKind: Bool] = [:]
+    /// Prevents a slower earlier probe from replacing a newer reading.
+    private var transformerProbeGeneration = 0
+    /// The clean-up engine that produced the last inserted dictation.
+    private(set) var lastCleanedBy: TransformerKind?
     /// What the store last said about the speech model on disk; internal so a test can read it.
     private(set) var speechModelPresence: DiagnosticsModelPresence?
 
@@ -148,7 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         account: OnboardingAccountLayer = .forThisBuild(),
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
-        releaseModel: (@Sendable () async -> Void)? = nil
+        releaseModel: (@Sendable () async -> Void)? = nil,
+        transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
+            profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
+        }
     ) {
         self.container = container
         self.loginItem = loginItem
@@ -157,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.generating = generating
         self.prepareModel = prepareModel
         self.releaseModel = releaseModel
+        self.transformerReadiness = transformerReadiness
         history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: container))
         recordings = RecordingStore(directory: RecordingStore.defaultDirectory(in: container))
         dictionary = PersonalDictionaryStore(
@@ -490,10 +500,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Asks each clean-up engine whether it could run, so Diagnostics has an answer to show; the task ends once it has.
     @discardableResult
     func probeTransformers() -> Task<Void, Never> {
-        Task { [weak self] in
+        transformerProbeGeneration += 1
+        let generation = transformerProbeGeneration
+        return Task { [weak self] in
             guard let self else { return }
-            let ready = await SettingsCapabilities.refreshed(for: settings.profile)
-                .readyTransformers
+            let ready = await transformerReadiness(settings.profile)
+            guard generation == transformerProbeGeneration else { return }
             transformerAvailability = Dictionary(
                 uniqueKeysWithValues: TransformerKind.allCases.map { ($0, ready.contains($0)) })
             refreshMainWindow()
@@ -880,6 +892,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Arms the shortcut again when it could not be armed before. See `Docs/shortcuts.md`.
     func applicationDidBecomeActive(_ notification: Notification) {
+        probeTransformers()
         // Whatever held the combination may have quit while the user was away.
         if !unarmedShortcuts.isEmpty { startWatchingForClaimedShortcuts() }
         guard shortcutArming.failure != nil else { return }
@@ -1718,6 +1731,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
+        if case .inserted(let outcome) = state {
+            lastCleanedBy = outcome.cleanedBy
+            if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
+                probeTransformers()
+            }
+        }
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
@@ -1958,6 +1977,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // The one gate every window passes: with no session, whatever was asked for, sign-in opens.
         let routed = SessionGate.route(destination, isSignedIn: isSignedIn)
         lastOpened = routed
+        if case .settings(.diagnostics) = routed { probeTransformers() }
         guard drawsWindows else { return }
         switch routed {
         case .onboarding:
@@ -2056,6 +2076,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         lastCleaning = nil
+        lastCleanedBy = nil
         forgetLastTranscript()
         Task { [weak self] in
             await self?.diagnostics.forget()
@@ -2163,6 +2184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     speechModel: speechModelPresence, speechReadiness: speechReadiness,
                     permissions: knownPermissions,
                     measurements: measurements, cleaning: lastCleaning,
+                    lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),
             account: accountPage(at: now),
