@@ -64,6 +64,26 @@ struct FileSystemSpeechModelStoreTests {
         }
     }
 
+    @Test("totals no file sizes as zero")
+    func totalOfNoFileSizes() {
+        #expect(FileSystemSpeechModelStore.total(of: []) == 0)
+    }
+
+    @Test("totals ordinary file sizes")
+    func totalOfOrdinaryFileSizes() {
+        #expect(FileSystemSpeechModelStore.total(of: [17, 25, 8]) == 50)
+    }
+
+    @Test("treats negative file sizes as zero")
+    func totalIgnoresNegativeFileSizes() {
+        #expect(FileSystemSpeechModelStore.total(of: [-9, 12]) == 12)
+    }
+
+    @Test("saturates file size totals at Int64.max")
+    func totalOfOverflowingFileSizes() {
+        #expect(FileSystemSpeechModelStore.total(of: [Int.max, 1]) == Int64.max)
+    }
+
     @Test("puts each model in its own directory under the root")
     func location() {
         let sandbox = Sandbox()

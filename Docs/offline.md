@@ -223,8 +223,8 @@ older build is repaired rather than trusted.
 **What they saw.** The dev tool reported
 `modelLoadFailed(description: "Download failed: …")`. In the app the same error became
 `SpeechEngineError.modelLoadFailed`, so the user got *"Speech recognition couldn't
-start. Try again, or reinstall it from Settings."* — a complete sentence, but it named
-the wrong cause and offered `.retry`, which failed identically every time.
+start. Try again."* The available recovery is `.retry`; the message no longer points to
+a Settings control that does not exist.
 
 **The fix landed in the store rather than the backend**, which is where the gap was.
 `SpeechModelStore.missingComponents(of:)` treats the tokenizer as a component of its own,

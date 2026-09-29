@@ -168,15 +168,28 @@ struct Complete: AsyncParsableCommand {
             } catch {
                 failure = "error: \(error)"
             }
-            // The app draws a model's lone line only when its own pass scored it over the floor, so the run holds it the same way.
             let scoring = scorer as? any CandidateScoring
-            if let scoring, let first = completions.first {
-                confidence = await scoring.confidence(ofGenerated: first)
+            var scores: [String: Double] = [:]
+            if let scoring {
+                for completion in completions {
+                    if let score = await scoring.confidence(ofGenerated: completion) {
+                        scores[completion] = score
+                    }
+                }
             }
-            let held =
-                scoring != nil && !completions.isEmpty
-                && !Verification.clears(confidence, floor: Verification.certainFloor)
-            let drawn = held ? [] : completions
+            confidence = completions.first.flatMap { scores[$0] }
+            let decision = SuggestionSession.generatedDecision(
+                completions, typed: fixture.typed, scores: scores)
+            let drawn: [String]
+            switch decision {
+            case .noCandidate, .unsure:
+                drawn = []
+            case .certain(let line):
+                drawn = [line]
+            case .choice(let leader, let others):
+                drawn = [leader] + others
+            }
+            let held = !completions.isEmpty && decision == .unsure
             let elapsed = Int((ContinuousClock.now - started) / .milliseconds(1))
             // The second pass the gate no longer spends is timed apart from the turn, to show what it would cost.
             if judge, let scoring, let first = completions.first {

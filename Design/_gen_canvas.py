@@ -44,7 +44,7 @@ ROWS = [
 
     ("in-use",
      "Every day\nThe floating button is the whole product for most people. It is the recorder too — it expands in place rather than a second panel appearing somewhere else.",
-     [("Dock-States.dc.html", 900, 780, None), ("Dock-Placement.dc.html", 900, 700, None),
+     [("Dock-States.dc.html", 900, 880, None), ("Dock-Placement.dc.html", 900, 700, None),
       ("MenuBar.dc.html", 700, 620, None)]),
 
     ("predict",
@@ -58,6 +58,10 @@ ROWS = [
      ] for pair in (
          (f"{stem}.dc.html", *size, None),
          (f"{stem}-Dark.dc.html", *size, None))]),
+
+    ("home",
+     "The app window: Home\nThe first destination in the shipped sidebar, with today's figures, dictations and clipboard demonstration.",
+     [("Main-Home.dc.html", *MAIN, None), ("Main-Home-Dark.dc.html", *MAIN, None)]),
 
     ("dictation",
      "The app window: Dictation\nThe sidebar turns a utility into an application. Product mark at the top, a flat list of destinations, the active one in accent, and — where a competitor puts a promo banner — your own most recent dictation. Dictation is the home surface: today's list newest first, hover actions on the row, and a rail of the three things the app can actually measure. Empty is a returning user who has not spoken today, so it shows yesterday rather than nothing.",
@@ -95,10 +99,12 @@ ROWS = [
       ("Main-Account.dc.html", *MAIN, None), ("Main-Account-Dark.dc.html", *MAIN, None)]),
 
     ("main-window",
-     "History and Diagnostics\nUnchanged in substance, redrawn inside the shell. Today lives on Dictation now, so History starts at yesterday. Diagnostics is still where the PRD's latency and failure numbers surface.",
+     "History and Diagnostics\nRedrawn inside the shell. Today lives on Dictation now, so History starts at yesterday. Diagnostics draws every stage DiagnosticsPresentation measures &mdash; including the ones nothing has ever timed &mdash; plus engines, last-dictation clean-up, permissions and on-this-Mac storage; the empty pair is what shows before anything has been dictated.",
      [("Main-History.dc.html", *MAIN, None), ("Main-History-Dark.dc.html", *MAIN, None),
       ("Main-Diagnostics.dc.html", *MAIN, None),
-      ("Main-Diagnostics-Dark.dc.html", *MAIN, None)]),
+      ("Main-Diagnostics-Dark.dc.html", *MAIN, None),
+      ("Main-Diagnostics-Empty.dc.html", *MAIN, None),
+      ("Main-Diagnostics-Empty-Dark.dc.html", *MAIN, None)]),
 
     ("settings",
      "Settings\nIts own window, reached from the sidebar. Every choice is worded as an outcome — nothing here asks the user to understand how Uttrflow works.",

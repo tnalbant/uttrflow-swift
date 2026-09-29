@@ -183,6 +183,13 @@ struct SnippetsEmptyTests {
         #expect(page.emptyState?.action?.intent == .addSnippet)
     }
 
+    @Test("offers a new snippet when the last one is deleted during search")
+    func emptyDuringSearch() {
+        let page = HistoryFixture.snippets(query: "anything")
+        #expect(page.emptyState?.title == "No snippets yet")
+        #expect(page.emptyState?.action?.intent == .addSnippet)
+    }
+
     @Test("the empty page says the idea in one line")
     func oneLine() {
         let page = HistoryFixture.snippets()

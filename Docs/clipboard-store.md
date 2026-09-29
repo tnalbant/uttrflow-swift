@@ -78,7 +78,7 @@ partitioned on the first read and written to their own file by the next ordinary
 above the store can tell the difference, and a read that writes is a surprise nobody at the call
 site would expect.
 
-This is why `persistedSaved` exists. It records what the saved file is known to hold, as opposed
+This is why `savedOnDisk` exists. It records what the saved file is known to hold, as opposed
 to what is in memory, and the two differ exactly once: after that first read, memory already holds
 the saved clips and the saved file does not exist. Comparing the write against memory would decide
 there was nothing to write, and the migration would never reach the disk.
