@@ -4,6 +4,11 @@ public import UttrflowCore
 private import AVFoundation
 private import Speech
 
+/// The system's answer about a locale's speech assets.
+public enum AppleSpeechAssetStatus: Sendable, Equatable {
+    case installed, needsDownload, downloading, unsupported
+}
+
 /// The macOS system recogniser: no download, faster than Whisper, no Hindi; excluded from coverage.
 public actor AppleSpeechBackend: TranscriptionBackend {
     /// Fed to the analyser in chunks rather than one buffer, matching how a live microphone delivers.
@@ -22,6 +27,20 @@ public actor AppleSpeechBackend: TranscriptionBackend {
     public static func supports(_ language: LanguageCode) async -> Bool {
         await SpeechTranscriber.supportedLocales
             .contains { LanguageCode($0.identifier(.bcp47)) == language }
+    }
+
+    /// Checks the same locale and asset inventory used by the built-in recogniser.
+    public static func assetStatus(
+        locale: Locale = Locale(identifier: "en-US")
+    ) async -> AppleSpeechAssetStatus {
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        return switch await AssetInventory.status(forModules: [transcriber]) {
+        case .installed: AppleSpeechAssetStatus.installed
+        case .unsupported: AppleSpeechAssetStatus.unsupported
+        case .supported: AppleSpeechAssetStatus.needsDownload
+        case .downloading: AppleSpeechAssetStatus.downloading
+        @unknown default: AppleSpeechAssetStatus.unsupported
+        }
     }
 
     /// The audio format the analyser reads, found once the locale's assets are installed.

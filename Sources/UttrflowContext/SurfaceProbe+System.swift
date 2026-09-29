@@ -104,6 +104,14 @@ public enum SurfaceProbe {
         return (value as? NSNumber)?.intValue
     }
 
+    /// One attribute read as a boolean, or nothing where the element answers something else.
+    static func boolean(_ owner: AXUIElement, _ attribute: String) -> Bool? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(owner, attribute as CFString, &value) == .success
+        else { return nil }
+        return (value as? NSNumber)?.boolValue
+    }
+
     /// One `AXValue` attribute, unwrapped into the Core Graphics type it stands for.
     static func value<T>(_ owner: AXUIElement, _ attribute: String, _ kind: AXValueType) -> T? {
         var value: AnyObject?

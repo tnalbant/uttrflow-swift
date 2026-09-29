@@ -135,6 +135,16 @@ struct SuggestionCoordinatorClockTests {
         #expect(text.contains("guard panel.isShowing else { return stopWatchingScrolls() }"))
         #expect(!text.contains("if let scrolls { monitors.append(scrolls) }"))
     }
+
+    @Test("withdraws on mouse-up and rereads after a drop reaches the field")
+    func mouseUpWithdrawsAndSchedulesFreshRead() throws {
+        let text = try source
+        #expect(text.contains("matching: [.leftMouseDown, .leftMouseUp]"))
+        #expect(text.contains("event.type == .leftMouseUp ? Self.mouseUpReadDelayInMilliseconds : 0"))
+        #expect(text.contains("self?.withdraw()"))
+        #expect(text.contains("wake(.tick, afterMilliseconds: Self.mouseUpReadDelayInMilliseconds)"))
+        #expect(SuggestionCoordinator.mouseUpReadDelayInMilliseconds > 0)
+    }
 }
 
 /// The coordinator hides a ghost for the whole time a mouse button can move its window.

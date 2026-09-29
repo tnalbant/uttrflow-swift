@@ -165,7 +165,7 @@ public enum CappedDecodeRetry {
         let fragmentSeconds = fragmentWordDuration.inSeconds
         for word in allWords {
             let duration = word.end - word.start
-            guard duration <= fragmentSeconds else { continue }
+            guard duration > 0, duration <= fragmentSeconds else { continue }
             return word.end
         }
         return segments.last?.end

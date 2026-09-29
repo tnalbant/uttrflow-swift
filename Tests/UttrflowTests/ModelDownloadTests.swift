@@ -148,12 +148,14 @@ struct ModelDownloadTests {
         #expect(app.suggestionModel == .notAsked)
     }
 
-    @Test("A fetch that failed is asked for again, rather than leaving the feature dead until a relaunch.")
-    func aFailedFetchIsAskedForAgain() async {
+    @Test("Retry asks for a failed model again without toggling Suggestions.")
+    func retryAsksForFailedModelAgain() async {
         let asks = Asks()
         let sandbox = Sandbox()
+        let store = ModelDownloadSettingsStore(settings(suggesting: false))
         let app = AppDelegate(
             container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            settingsStore: store,
             prepareModel: { _ in
                 await asks.asked()
                 throw HubRefused()
@@ -165,10 +167,11 @@ struct ModelDownloadTests {
         #expect(app.suggestionModel == .failed)
         #expect(await asks.count == 1)
 
-        app.settingsChanged(to: settings(suggesting: false))
-        app.settingsChanged(to: settings(suggesting: true))
+        app.apply(.retrySuggestionModel)
         await app.modelPreparation?.value
         #expect(await asks.count == 2)
+        #expect(app.suggestionModel == .failed)
+        #expect(store.load().suggestions.isEnabled)
     }
 
     @Test(

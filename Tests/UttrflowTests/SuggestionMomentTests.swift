@@ -10,13 +10,15 @@ import UttrflowPredictCapture
 
 /// A field in a mail composer, with a line above the caret's line and a caret at its end.
 private func composer(
-    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea"
+    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea",
+    isEnabled: Bool? = nil, isComposing: Bool = true
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: "com.Example.Mail", applicationName: "Mail", role: role, subrole: subrole,
         identifier: "body", placeholder: "Message", accessibilityDescription: "Message body",
         document: "draft", value: value, selection: NSRange(location: value.utf16.count, length: 0),
-        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isComposing: true,
+        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isEnabled: isEnabled,
+        isComposing: isComposing,
         windowTitle: "Re: plans")
 }
 
@@ -67,6 +69,25 @@ struct SuggestionMomentTests {
         #expect(SuggestionMoment.context(of: listing, millisecondsSinceKeystroke: 0).showsOwnList)
     }
 
+    @Test("A command with spaced text after the caret is quieted as an interior caret.")
+    func aSpacedCommandTailDoesNotOfferACompletion() {
+        let value = "ls -la    # list"
+        let snapshot = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: value, selection: NSRange(location: "ls -la".utf16.count, length: 0))
+        let context = SuggestionMoment.context(of: snapshot, millisecondsSinceKeystroke: 250)
+        #expect(Quieting.reason(context) == .caretInsideText)
+    }
+
+    @Test("A disabled field refuses a suggestion before generation")
+    func disabledFieldCannotDraw() {
+        let context = SuggestionMoment.context(
+            of: composer(isEnabled: false, isComposing: false), millisecondsSinceKeystroke: 500)
+        #expect(!context.canDraw)
+        #expect(Quieting.reason(context) == .nowhereToDraw)
+    }
+    }
+
     @Test("The situation holds the preceding text, the screen around the field and the recent lines")
     func theSituationHoldsWhatTheSnapshotHolds() {
         let around = Surroundings(windowTitle: "Re: plans", text: "See you at the north gate")
@@ -80,6 +101,19 @@ struct SuggestionMomentTests {
         #expect(situation.surroundings == "See you at the north gate")
         #expect(situation.recentLines == ["Thanks, see you then"])
         #expect(situation.isMultiline)
+    }
+
+    @Test("Terminal scrollback does not make a shell command multiline")
+    func terminalScrollbackIsNotMultiline() {
+        let terminal = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: "previous command\ngit che")
+        let terminalSituation = SuggestionMoment.situation(of: terminal, surroundings: nil, recentLines: [])
+        let composerSituation = SuggestionMoment.situation(
+            of: composer(), surroundings: nil, recentLines: [])
+
+        #expect(!terminalSituation.isMultiline)
+        #expect(composerSituation.isMultiline)
     }
 
     @Test("With nothing around it, a single-line field is named by its placeholder or its role")

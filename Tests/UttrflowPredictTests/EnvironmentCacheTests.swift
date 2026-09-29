@@ -65,6 +65,37 @@ struct EnvironmentCacheTests {
     }
 }
 
+@Suite("How much the index holds (#1493)")
+struct EnvironmentCapacityTests {
+    static let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test("recording past the capacity keeps the count within it and the directory still being asked about")
+    func capacityHoldsAndTheCurrentDirectorySurvives() async {
+        let index = EnvironmentIndex(reader: StubEnvironment([.file: ["README.md"]]))
+        _ = await index.values(of: .file, in: "/here", now: Self.now)
+        await index.settle()
+        for step in 0..<(EnvironmentIndex.capacity + 50) {
+            let at = Self.now.addingTimeInterval(Double(step) / 100)
+            _ = await index.values(of: .file, in: "/here", now: at)
+            _ = await index.values(of: .file, in: "/visited/\(step)", now: at)
+            await index.settle()
+        }
+        #expect(await index.count <= EnvironmentIndex.capacity)
+        #expect(await index.values(of: .file, in: "/here", now: Self.now) == ["README.md"])
+    }
+
+    @Test("an answer several lifetimes past its expiry is dropped on the next record")
+    func longExpiredAnswersAreDropped() async {
+        let index = EnvironmentIndex(reader: StubEnvironment([.file: ["a"]]))
+        _ = await index.values(of: .file, in: "/old", now: Self.now)
+        await index.settle()
+        let later = Self.now.addingTimeInterval(EnvironmentIndex.lifetimeInSeconds * 10)
+        _ = await index.values(of: .file, in: "/new", now: later)
+        await index.settle()
+        #expect(await index.count == 1)
+    }
+}
+
 /// A monotonic clock that jumps a fixed step on every read.
 private final class SteppingSeconds: @unchecked Sendable {
     private let lock = NSLock()
@@ -112,7 +143,7 @@ private actor ScriptedEnvironment: EnvironmentReading {
 
     init(_ answers: [[String]?]) { self.answers = answers }
 
-    func values(of kind: EnvironmentKind, in directory: String) async -> [String]? {
+    func values(of kind: EnvironmentKind, in directory: String, matching prefix: String) async -> [String]? {
         reads += 1
         return answers.count > 1 ? answers.removeFirst() : answers.first ?? nil
     }
