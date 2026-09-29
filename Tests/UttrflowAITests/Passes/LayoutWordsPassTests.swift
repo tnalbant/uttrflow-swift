@@ -31,10 +31,34 @@ struct LayoutWordsPassTests {
                 "then\n2. call the landlord\n3. pay the rent"
             ),
             ("we need number 1 milk number 2 eggs", "we need\n1. milk\n2. eggs"),
+            (
+                "agenda number one budget number two hiring number three offsite",
+                "agenda\n1. budget\n2. hiring\n3. offsite"
+            ),
+            (
+                "the steps are number one gather the files number two check the names",
+                "the steps are\n1. gather the files\n2. check the names"
+            ),
+            ("number one budget number two hiring", "1. budget\n2. hiring"),
         ]
     )
     func numbersItems(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps connected number words in a sentence when an item ends in a conjunction",
+        arguments: [
+            "the list includes number one speed number two cost and number three quality all of which matter",
+            "we ranked number one on speed number two on price and number three on support last year",
+            "we ranked number one on speed number two on price number three on support last year",
+            "she said number one was the plan and number two was the backup which we never used",
+            "they named number one Ada and number two Lin before the vote closed",
+            "we need number one milk number two eggs or number three bread",
+        ]
+    )
+    func keepsConjoinedNumbersInSentences(input: String) {
+        #expect(cleaned(input, by: sut) == input)
     }
 
     /// Issue 254: with no lookback to ask, a phrase opening its sentence is an item only if the speaker set it off.
