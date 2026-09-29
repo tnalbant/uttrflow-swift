@@ -307,17 +307,61 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         return .text(tail)
     }
 
+    /// Reads the window and its text from one AX element, so matching text in another window cannot authorize a write.
+    public func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard count > 0, let element = focusedElement() else { return (nil, .unreadable) }
+        let number = Self.windowNumber(of: element)
+        guard let value = readableValue(of: element),
+            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: range.location, upTo: count)
+        else { return (number, .unreadable) }
+        return (number, .text(tail))
+    }
+
+    /// The window containing this focused field, or nothing when the system cannot identify it.
+    private static func windowNumber(of element: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(element, &number) == .success else { return nil }
+        return number
+    }
+
+    /// The window containing the field currently focused for insertion.
+    public func focusedWindowNumber() -> UInt32? {
+        focusedElement().flatMap(Self.windowNumber(of:))
+    }
+
     public func focusedTextField() -> (any FocusedTextField)? {
         guard let candidate = focusedElement() else { return nil }
 
-        // A field that will not report its selection will not accept one either.
-        var selection: AnyObject?
         guard
-            AXUIElementCopyAttributeValue(
-                candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+            FocusedTextFieldEligibility.accepts(
+                role: stringAttribute(kAXRoleAttribute, of: candidate),
+                selectedTextIsReadable: {
+                    var selection: AnyObject?
+                    return AXUIElementCopyAttributeValue(
+                        candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+                },
+                selectedTextIsSettable: {
+                    var settable = DarwinBoolean(false)
+                    return AXUIElementIsAttributeSettable(
+                        candidate, kAXSelectedTextAttribute as CFString, &settable) == .success
+                        && settable.boolValue
+                })
         else { return nil }
 
         return SelectionWriter(field: AXSelectionAttributes(element: candidate))
+    }
+}
+
+/// Confirms the focused element is a writable text control before exposing it to insertion.
+enum FocusedTextFieldEligibility {
+    /// A readable selection alone does not establish that the element accepts text writes.
+    static func accepts(
+        role: String?, selectedTextIsReadable: () -> Bool, selectedTextIsSettable: () -> Bool
+    ) -> Bool {
+        FocusedElementPreference.isTextEntry(role)
+            && selectedTextIsReadable()
+            && selectedTextIsSettable()
     }
 }
 
@@ -335,15 +379,29 @@ private struct AXSelectionAttributes: SelectionAttributes, @unchecked Sendable {
     }
 
     func setSelectedText(_ text: String) -> AXError {
-        AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString)
+        guard attributeIsSettable(kAXSelectedTextAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
+        return AXUIElementSetAttributeValue(
+            element, kAXSelectedTextAttribute as CFString, text as CFString)
     }
 
     /// A range that cannot be described is reported as an illegal argument, which the writer refuses.
     func setSelectedRange(_ range: CFRange) -> AXError {
+        guard attributeIsSettable(kAXSelectedTextRangeAttribute as CFString, on: element) else {
+            return .attributeUnsupported
+        }
         var range = range
         guard let value = AXValueCreate(.cfRange, &range) else { return .illegalArgument }
         return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
     }
+}
+
+/// Returns whether the Accessibility server confirms an attribute accepts writes.
+private func attributeIsSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
+    var settable = DarwinBoolean(false)
+    return AXUIElementIsAttributeSettable(element, attribute, &settable) == .success
+        && settable.boolValue
 }
 
 /// The element's value, or `nil` for a secure field, whose value is never asked for.

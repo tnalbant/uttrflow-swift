@@ -17,7 +17,8 @@ enum SuggestionMoment {
             subrole: snapshot.subrole, identifier: snapshot.identifier,
             placeholder: snapshot.placeholder,
             accessibilityDescription: snapshot.accessibilityDescription, document: snapshot.document,
-            windowTitle: snapshot.windowTitle, applicationName: snapshot.applicationName,
+            windowTitle: snapshot.windowTitle, windowNumber: snapshot.windowNumber,
+            applicationName: snapshot.applicationName,
             isKnownSecure: snapshot.isSecure)
     }
 

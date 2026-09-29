@@ -335,7 +335,7 @@ public enum HomePresenter {
                     dropped: HistoryPresenter.dropped(
                         snapshot.entries, days: snapshot.settings.transcriptRetentionDays,
                         now: snapshot.now),
-                    calendar: calendar, locale: locale)
+                    calendar: calendar, now: snapshot.now, locale: locale)
                 : [],
             recent: blocked == nil ? listed.map { row(for: $0, locale: locale) } : [],
             recentTitle: title(for: listed, calendar: calendar, now: snapshot.now),

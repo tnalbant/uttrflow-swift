@@ -645,7 +645,7 @@ struct DictationPipelineStateTests {
     /// "um" tidies to nothing, and inserting nothing over a selection deletes it.
     @Test(
         "inserts nothing when tidying leaves nothing, rather than deleting the selection",
-        arguments: ["", "   "])
+        arguments: ["", "   ", ".", "…"])
     func tidyingToNothingInsertsNothing(tidiedAway: String) async {
         let inserter = FakeInserter()
         let pipeline = makePipeline(

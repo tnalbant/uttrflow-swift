@@ -542,7 +542,7 @@ EXAMPLE = """<div class="card" style="padding: 10px 13px; margin-top: 10px">
           <div class="row" style="gap: 10px; margin-top: 6px; font-size: var(--t-callout);
                align-items: flex-start">
             <span style="width: 74px; flex:none; color: var(--label-2)">Light</span>
-            <span>Um, so I think we should, uh, ship it on Friday.</span>
+            <span>So I think we should ship it on friday.</span>
           </div>
           <div class="row" style="gap: 10px; margin-top: 6px; font-size: var(--t-callout);
                align-items: flex-start">
@@ -555,8 +555,8 @@ EXAMPLE = """<div class="card" style="padding: 10px 13px; margin-top: 10px">
 style = f"""<p class="grp-title" style="margin-top: 0">Tidying up</p>
         <div class="grp">
           {srow("How much Uttrflow tidies", seg(["Light", "Standard"], "Standard"),
-                "Light fixes punctuation and capitalisation only. Standard also drops filler "
-                "words and repairs grammar.")}
+                "Both levels remove filler words and stammers. Standard also rewrites grammar "
+                "and word choice when an on-device model is available.")}
           {srow("Never change technical terms", sw(True),
                 "Code, package names and anything in your Dictionary come through exactly as "
                 "you said them.")}

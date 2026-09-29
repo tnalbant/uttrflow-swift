@@ -20,6 +20,140 @@ public enum ShellPrompt {
     /// How far into a line a prompt is looked for, since a prompt is short and a pasted line need not be.
     package static let searchLimit = 4_096
 
+    /// Whether the caret sits in the body of an unfinished shell heredoc.
+    package static func isHereDocumentBody(in value: String, before caret: String.Index) -> Bool {
+        let prefix = value[..<caret]
+        let lines = prefix.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > 1 else { return false }
+        var delimiters: [HereDocumentDelimiter] = []
+        for line in lines.dropLast() {
+            if let delimiter = delimiters.first {
+                if delimiter.matches(String(line)) { delimiters.removeFirst() }
+            } else {
+                delimiters.append(contentsOf: hereDocumentDelimiters(in: line))
+            }
+        }
+        if let delimiter = delimiters.first, lines.last.map(String.init).map(delimiter.matches) == true {
+            delimiters.removeFirst()
+        }
+        return !delimiters.isEmpty
+    }
+
+    /// The delimiter words opened by shell or Ruby heredoc syntax on one command line.
+    private static func hereDocumentDelimiters(in line: Substring) -> [HereDocumentDelimiter] {
+        let characters = Array(line)
+        var delimiters: [HereDocumentDelimiter] = []
+        var index = 0
+        while index < characters.count {
+            if characters[index] == "\\" {
+                index = min(index + 2, characters.count)
+            } else if characters[index] == "'" || characters[index] == "\"" {
+                index = endOfQuotedText(in: characters, startingAt: index) ?? characters.count
+            } else if characters[index] == "#",
+                index == 0 || characters[index - 1].isWhitespace
+            {
+                break
+            } else if isHereDocumentOperator(characters, at: index),
+                let parsed = hereDocumentDelimiter(in: characters, afterOperatorAt: index)
+            {
+                delimiters.append(parsed.delimiter)
+                index = parsed.nextIndex
+            } else {
+                index += 1
+            }
+        }
+        return delimiters
+    }
+
+    /// Whether two angle brackets begin a heredoc operator rather than a here-string.
+    private static func isHereDocumentOperator(_ characters: [Character], at index: Int) -> Bool {
+        index + 1 < characters.count && characters[index] == "<" && characters[index + 1] == "<"
+            && (index == 0 || characters[index - 1] != "<")
+            && (index + 2 == characters.count || characters[index + 2] != "<")
+    }
+
+    /// Parses the modifier and quote-removed delimiter following an unquoted heredoc operator.
+    private static func hereDocumentDelimiter(
+        in characters: [Character], afterOperatorAt index: Int
+    ) -> (delimiter: HereDocumentDelimiter, nextIndex: Int)? {
+        var cursor = index + 2
+        var modifier: Character?
+        if cursor < characters.count, characters[cursor] == "-" || characters[cursor] == "~" {
+            modifier = characters[cursor]
+            cursor += 1
+        }
+        while cursor < characters.count, characters[cursor].isWhitespace { cursor += 1 }
+        let start = cursor
+        var tag = ""
+        while cursor < characters.count {
+            let character = characters[cursor]
+            if character == "'" || character == "\"" {
+                guard let end = endOfQuotedText(in: characters, startingAt: cursor) else { return nil }
+                tag += quoteRemoved(in: characters, from: cursor + 1, to: end - 1, quote: character)
+                cursor = end
+            } else if character == "\\", cursor + 1 < characters.count {
+                tag.append(characters[cursor + 1])
+                cursor += 2
+            } else if character.isWhitespace || ";|&<>".contains(character) {
+                break
+            } else {
+                tag.append(character)
+                cursor += 1
+            }
+        }
+        guard cursor > start, !tag.isEmpty else { return nil }
+        return (HereDocumentDelimiter(tag: tag, modifier: modifier), cursor)
+    }
+
+    /// The position after a closed quote, respecting escaped characters in double quotes.
+    private static func endOfQuotedText(in characters: [Character], startingAt start: Int) -> Int? {
+        let quote = characters[start]
+        var index = start + 1
+        while index < characters.count {
+            if quote == "\"", characters[index] == "\\" {
+                index = min(index + 2, characters.count)
+            } else if characters[index] == quote {
+                return index + 1
+            } else {
+                index += 1
+            }
+        }
+        return nil
+    }
+
+    /// Removes the quote and the backslashes that shell quote removal consumes.
+    private static func quoteRemoved(
+        in characters: [Character], from start: Int, to end: Int, quote: Character
+    ) -> String {
+        guard quote == "\"" else { return String(characters[start..<end]) }
+        var result = ""
+        var index = start
+        while index < end {
+            if characters[index] == "\\", index + 1 < end,
+                "$`\"\\".contains(characters[index + 1]) || characters[index + 1].isNewline
+            {
+                index += 1
+            }
+            result.append(characters[index])
+            index += 1
+        }
+        return result
+    }
+
+    /// One heredoc terminator, with the indentation rule selected by its opener.
+    private struct HereDocumentDelimiter {
+        let tag: String
+        let modifier: Character?
+
+        func matches(_ line: String) -> Bool {
+            switch modifier {
+            case "-": String(line.drop(while: { $0 == "\t" })) == tag
+            case "~": line.drop(while: \.isWhitespace).elementsEqual(tag)
+            default: line == tag
+            }
+        }
+    }
+
     /// Counts the characters read while bound, so a test can bound the work without a clock.
     @TaskLocal package static var tally: CharacterTally?
 

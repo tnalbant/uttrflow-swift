@@ -338,6 +338,61 @@ struct DiagnosticsEngineTests {
         #expect(try #require(page.models.first { $0.title == "Speech" }).status == "Ready")
     }
 
+    @Test(
+        "the built-in speech card and report reflect locale asset readiness",
+        arguments: [
+            (DiagnosticsAppleSpeechStatus.unchecked, "Not checked yet", DiagnosticsState.unknown),
+            (.needsDownload, "Needs download", .attention),
+            (.unsupported, "Unsupported", .attention),
+            (.downloading, "Downloading", .unknown),
+            (.installed, "Ready", .good),
+        ])
+    func appleSpeechAssetStatus(
+        status: DiagnosticsAppleSpeechStatus, label: String, state: DiagnosticsState
+    ) throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(appleSpeechStatus: status), locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+
+        #expect(card.status == label)
+        #expect(card.state == state)
+        #expect(
+            DiagnosticsPresenter.report(
+                for: DiagnosticsSnapshot(appleSpeechStatus: status), locale: DiagnosticsFixture.locale
+            ).contains("  Speech (Faster): \(label)"))
+    }
+
+    @Test("a Whisper model load failure does not mark installed Apple Speech as failed")
+    func otherEngineLoadFailureDoesNotAffectAppleSpeech() throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(
+                engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
+                speechInUse: .appleSpeech, speechReadiness: .loadFailed,
+                appleSpeechStatus: .installed),
+            locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+        let row = try #require(page.engines.first { $0.title == "Speech" })
+
+        #expect(card.status == "In use")
+        #expect(card.state == .good)
+        #expect(row.detail == "In use")
+    }
+
+    @Test("the typed Apple Speech load failure appears in the card and report")
+    func appleSpeechLoadFailureReachesDiagnostics() throws {
+        let snapshot = DiagnosticsSnapshot(
+            speechInUse: .appleSpeech, appleSpeechStatus: .installed,
+            appleSpeechLoadFailure: .modelLoadFailed(description: "unsupported locale"))
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+
+        #expect(card.status == "Failed to load")
+        #expect(card.state == .attention)
+        #expect(
+            DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+                .contains("Speech (Faster): Failed to load"))
+    }
+
     /// The first one that can run is the one that runs; the rest are standing by.
     @Test("only the first available clean-up engine is in use")
     func firstAvailableIsInUse() {

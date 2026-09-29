@@ -6,6 +6,20 @@ import Testing
 @testable import UttrflowCore
 @testable import UttrflowInput
 
+/// The attribute probes for a focused accessibility element.
+private struct MockFocusedAccessibilityElement {
+    let role: String
+    let selectedTextIsReadable: Bool
+    let selectedTextIsSettable: Bool
+
+    func isEligibleForTextInsertion() -> Bool {
+        FocusedTextFieldEligibility.accepts(
+            role: role,
+            selectedTextIsReadable: { selectedTextIsReadable },
+            selectedTextIsSettable: { selectedTextIsSettable })
+    }
+}
+
 /// A text field held in memory that answers its selection attributes as scripted and records every write.
 final class FakeSelectionField: SelectionAttributes, Sendable {
     struct State: Sendable {
@@ -90,6 +104,13 @@ private func isRejection(_ error: TextInsertionError?) -> Bool {
 
 @Suite("Writing into a field through its Accessibility attributes")
 struct SelectionWriterTests {
+    @Test func rejectsReadableSelectionOnANonSettableElement() {
+        let element = MockFocusedAccessibilityElement(
+            role: "AXTextField", selectedTextIsReadable: true, selectedTextIsSettable: false)
+
+        #expect(!element.isEligibleForTextInsertion())
+    }
+
     @Test("replaces the selection with the text")
     func replacesTheSelection() throws {
         let field = FakeSelectionField("Hello earth", caret: 6, length: 5)

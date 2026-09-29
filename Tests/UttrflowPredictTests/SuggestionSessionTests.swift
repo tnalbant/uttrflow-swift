@@ -992,7 +992,7 @@ struct SuggestionScoringTests {
     func missingScorerKeepsTurnQuiet() throws {
         var session = SuggestionSession()
         let asked = try asked(&session, typing: "git c")
-        // The scorer is absent or held back (Low Power Mode, weights still loading), so scoreCompletions returns [:] and no line is scored.
+        // Scorer absent or held back (Low Power Mode, weights still loading): scoreCompletions returns [:] and no line is scored.
         let noneScored = session.resolveGenerated(
             ["git checkout"], for: asked, elapsedMilliseconds: 0, scores: [:])
         #expect(noneScored == .quiet(because: .modelUnsure))
@@ -1030,7 +1030,7 @@ struct SuggestionScoringTests {
             scores: ["git checkout main": 0])
         _ = session.expandGenerated(
             ["git checkout dev", "git checkout develop"], for: first, scores: nil)
-        // A keystroke narrowed the line to "d"; only "dev" and "develop" prefix-match it, neither passed a model pass so neither has a score, and the gate must still let the listed ones through.
+        // Keystroke narrowed the line to "d"; only "dev" and "develop" prefix-match it; neither was scored, so the gate must let the listed ones through.
         let narrowed = try asked(&session, typing: "git checkout d")
         let update = session.resolveGenerated(
             ["git checkout dev", "git checkout develop"], for: narrowed,

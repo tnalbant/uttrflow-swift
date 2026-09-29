@@ -17,7 +17,10 @@ that is the most useful sentence you can write here — it stops the reviewer pr
 - [ ] `make verify` passes locally (lint, PII audit, build, tests, coverage floor, offline audit)
 - [ ] New behaviour has a test, or there is a reason in the PR why it cannot
 - [ ] No real email address, postal address or personal data in fixtures — `example.com` and invented streets
-- [ ] Comments explain *why*, not what
+- [ ] Comments are one line, present tense, and describe what the code does now
+
+Add a reason only when it changes what a reader should do. Put durable measurements or
+architectural rationale in `Docs/`; put development history in this description or the commit.
 
 <!--
 If this is a draft or an idea you want a view on before finishing, open it as a draft and
