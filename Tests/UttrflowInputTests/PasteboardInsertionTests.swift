@@ -27,6 +27,7 @@ final class FakePasteboard: Pasteboard {
     }
 
     func text() -> String? { state.withLock(\.text) }
+    func changeCount() -> Int? { state.withLock(\.changeCount) }
 
     func setText(_ text: String) {
         state.withLock { state in
@@ -260,6 +261,25 @@ struct PasteboardTextInsertionEngineTests {
         #expect(keystrokes.pasteCount == 0, "a paste now would put the stale clipboard into the field")
     }
 
+    @Test("aborts when another app replaces the clipboard after verification")
+    func abortsWhenClipboardChangesBeforePaste() async {
+        let pasteboard = FakePasteboard(text: "previous words")
+        let focus = CountingFocus(answer: "the field has not changed yet")
+        // Models Universal Clipboard replacing the board during the off-main caret read.
+        let countingFocus = InterleavingFocus(base: focus) {
+            pasteboard.copyFromAnotherApp("copied from another device")
+        }
+        let keystrokes = FakeKeystrokeSender()
+        let sut = engine(pasteboard, keystrokes, focus: countingFocus)
+
+        await #expect(throws: TextInsertionError.clipboardUnavailable) {
+            try await sut.insert("dictated words")
+        }
+
+        #expect(pasteboard.text() == "copied from another device")
+        #expect(keystrokes.pasteCount == 0, "Cmd+V must not paste the interloping clipboard contents")
+    }
+
     @Test("copies an empty transcript without inventing anything")
     func emptyText() async throws {
         let pasteboard = FakePasteboard(text: "previous")
@@ -331,6 +351,34 @@ struct PasteboardTextInsertionEngineTests {
 
         #expect(seen.withLock { $0.count } == 1)
     }
+}
+
+/// Runs an interleaving when the engine crosses into the AX caret read.
+private final class InterleavingFocus: AccessibilityFocus, @unchecked Sendable {
+    private let base: any AccessibilityFocus
+    private let onTail: @Sendable () -> Void
+    private let didInterleave = Mutex(false)
+
+    init(base: any AccessibilityFocus, onTail: @escaping @Sendable () -> Void) {
+        self.base = base
+        self.onTail = onTail
+    }
+
+    func focusedTextField() -> (any FocusedTextField)? { base.focusedTextField() }
+    func hasFocusedElement() -> Bool { base.hasFocusedElement() }
+    func isSelfFrontmost() -> Bool { base.isSelfFrontmost() }
+    func tail(upTo count: Int) -> FieldTail {
+        let shouldInterleave = didInterleave.withLock { didInterleave -> Bool in
+            guard !didInterleave else { return false }
+            didInterleave = true
+            return true
+        }
+        if shouldInterleave { onTail() }
+        return base.tail(upTo: count)
+    }
+    func frontmostApplication() -> InsertionDestination? { base.frontmostApplication() }
+    func focusedFieldIsSecure() -> Bool { base.focusedFieldIsSecure() }
+    func precedingText(_ count: Int) -> String? { base.precedingText(count) }
 }
 
 @Suite("The route that is assembled without a logger")

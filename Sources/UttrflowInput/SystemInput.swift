@@ -27,6 +27,10 @@ public struct SystemPasteboard: Pasteboard {
         NSPasteboard.general.string(forType: .string)
     }
 
+    public func changeCount() -> Int? {
+        NSPasteboard.general.changeCount
+    }
+
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
     public func setText(_ text: String, richText: String?) {
         willWrite(text)

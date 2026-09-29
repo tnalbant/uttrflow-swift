@@ -5,6 +5,8 @@ public import struct Foundation.Data
 public protocol Pasteboard: Sendable {
     /// The current text, or `nil` when the clipboard holds something else.
     func text() -> String?
+    /// A token that changes whenever the clipboard is written, or `nil` when ownership cannot be observed.
+    func changeCount() -> Int?
     /// Replaces the contents.
     func setText(_ text: String)
 
@@ -25,6 +27,9 @@ public protocol KeystrokeSender: Sendable {
 }
 
 extension Pasteboard {
+    /// Test doubles and pasteboards without ownership tracking may decline this check.
+    public func changeCount() -> Int? { nil }
+
     /// A pasteboard that cannot carry formatting simply writes the words.
     public func setText(_ text: String, richText: String?) { setText(text) }
 }
