@@ -6,10 +6,15 @@ public struct TerminalStopPass: CleaningPass {
 
     public let policy: TerminalStopPolicy
     public let layout: LayoutPolicy
+    public let insertionPoint: InsertionPoint
 
-    public init(policy: TerminalStopPolicy = .always, layout: LayoutPolicy = .paragraphs) {
+    public init(
+        policy: TerminalStopPolicy = .always, layout: LayoutPolicy = .paragraphs,
+        insertionPoint: InsertionPoint = .unknown
+    ) {
         self.policy = policy
         self.layout = layout
+        self.insertionPoint = insertionPoint
     }
 
     public func apply(_ draft: Draft) -> Draft {
@@ -35,7 +40,7 @@ public struct TerminalStopPass: CleaningPass {
 
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
-        if draft.endsInListItem { return word }
+        if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)

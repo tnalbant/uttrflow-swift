@@ -59,7 +59,9 @@ extension CleaningPipeline {
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
                 onScreen: situation.app.textOnScreen, heard: heard),
-            TerminalStopPass(policy: terminalStop(formatter, in: situation), layout: formatter.layout),
+            TerminalStopPass(
+                policy: terminalStop(formatter, in: situation), layout: formatter.layout,
+                insertionPoint: situation.insertion),
         ])
     }
 

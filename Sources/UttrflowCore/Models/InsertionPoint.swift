@@ -30,6 +30,14 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Derived from the preceding text, never read from the field.
     public var sentenceState: SentenceState { Self.sentenceState(before: precedingText) }
 
+    /// Whether the caret's line opens with a list marker, so added text stays an unfinished list item.
+    public var isOnListItemLine: Bool {
+        guard let precedingText else { return false }
+        let line =
+            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        return Self.listItemRemainder(in: line) != nil
+    }
+
     /// Reads the sentence state off the line the caret sits on, since a list marker is not a word.
     public static func sentenceState(before text: String?) -> SentenceState {
         guard let text else { return .unknown }
@@ -45,16 +53,25 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// The line without the one list, quote or heading marker it opens with, which is typed but not written.
     private static func withoutOpeningMarker(_ line: Substring) -> Substring {
+        if let list = listItemRemainder(in: line) { return list }
         let body = line.drop(while: \.isWhitespace)
         if let marker = openingMarkers.first(where: { body.hasPrefix($0) }) {
             // A run of the same mark is one marker: "## " is a heading, ">>" a quotation inside a quotation.
             return body.drop { String($0) == marker }
         }
-        // A numbered item: its digits, then the stop or bracket that closes the number.
+        return body
+    }
+
+    /// The text after the bullet or number that opens a list item.
+    private static func listItemRemainder(in line: Substring) -> Substring? {
+        let body = line.drop(while: \.isWhitespace)
+        if let marker = Draft.bulletTokens.sorted().first(where: { body.hasPrefix($0) }) {
+            return body.drop { String($0) == marker }
+        }
         let digits = body.prefix(while: \.isNumber)
-        let rest = body.dropFirst(digits.count)
-        guard !digits.isEmpty, rest.first.map({ ".)".contains($0) }) == true else { return body }
-        return rest.dropFirst()
+        let closingMark = body.dropFirst(digits.count)
+        guard !digits.isEmpty, closingMark.first.map({ ".)".contains($0) }) == true else { return nil }
+        return closingMark.dropFirst()
     }
 
     /// What a line may open with that is a marker rather than words: a list item, a quotation, a heading.

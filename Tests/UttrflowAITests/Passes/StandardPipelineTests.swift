@@ -48,6 +48,18 @@ struct StandardPipelineTests {
         #expect(pipeline.passes.contains { $0 is CaretEchoPass } == false)
     }
 
+    @Test(
+        "leaves a dictated list item open when the caret sits after its marker",
+        arguments: ["- ", "* ", "\u{2022} ", "2. "])
+    func listItemAtCaret(marker: String) {
+        let app = AppContext(precedingText: "notes\n" + marker)
+        let situation = Situation(app: app, insertion: app.insertionPoint, destination: .document)
+        let pipeline = CleaningPipeline.standard(for: .standard(for: .document), situation: situation)
+
+        #expect(pipeline.run(Draft(text: "buy milk")).text == "Buy milk")
+        #expect(pipeline.run(Draft(text: "is it ready?")).text == "Is it ready?")
+    }
+
     @Test("hands the caret's text to the echo pass after the model")
     func echoPassKnowsTheCaret() {
         let app = AppContext(documentName: "Notes", precedingText: "because ")
