@@ -307,12 +307,12 @@ local, full stop: the product's whole claim is that dictation happens on this Ma
 here. If that ever changes it is a product decision with a privacy page attached, not a
 refactor.
 
-**This app talks to the backend's API and to nothing else on the network** — see
-`UttrflowAccount`, which is deliberately the only module that can reach a server. That is
-what makes "the offline promise" checkable rather than asserted: there is one place to look.
-The one exception is opt-in crash diagnostics: when the user switches them on, crash and
-hang reports go to Sentry from `UttrflowDiagnostics`, which only the app target links and
-which scrubs every event first. `Docs/crash-reporting.md` is what is sent and why.
+Network access is not limited to the account backend: sign-in/session calls live in
+`UttrflowAccount`, speech-model/tokenizer assets can be downloaded, and Sparkle checks for
+and downloads app updates. The networking audit and its limits are recorded in
+[`Docs/offline.md`](Docs/offline.md). Opt-in crash diagnostics also send scrubbed crash and
+hang reports to Sentry from `UttrflowDiagnostics`; see [`Docs/crash-reporting.md`](Docs/crash-reporting.md)
+for what is sent and why.
 
 ## What dictation is for — NON-NEGOTIABLE
 
@@ -416,9 +416,12 @@ not pay for standard runners.** The constraint was cost, the cost is gone, and t
 gate — `.githooks/pre-push`, installed with `make hooks` — is still worth having because it
 is still the fastest answer.
 
-There are eight workflows and each earns its keep: CI, quality (text and disclosure
-checks), security, dependency review, release, CodeQL (weekly), Scorecard, and the oracle
-sweep (nightly). Do not add another without asking.
+The tracked workflows are CI (build and test), CodeQL (weekly static analysis), dependency
+review (new dependency vulnerabilities and licences), Oracle sweep (exhaustive randomized
+clipboard-reader tests, nightly and on related pull requests), Quality (disclosure, workflow,
+spelling and link checks), Release (build and publish releases), Scorecard (supply-chain
+posture), and Security (secret, workflow and dependency scans). Adding a workflow requires
+explicit approval.
 
 **Never run `git add -A`, `git add .`, or `git commit -a`.** More than one agent works in
 this repository at once, and a blanket add sweeps another session's half-finished work
@@ -450,14 +453,14 @@ than no merge at all.
 
 ## Building and releasing
 
-`Docs/releasing.md` is the only correct description. In short:
+`Docs/releasing.md` covers a release by hand; `RELEASING.md` covers the tag workflow. In short:
 
 ```bash
 make verify        # lint, build, 6,000+ tests, coverage floor — what the gate runs
 make hooks         # once per clone; hooks are not cloned
 make app-hardened  # a build fit to test on another Mac
 make dmg           # the disk image
-make publish       # to the public downloads repository, using this Mac's gh login
+make publish       # to the public downloads repository: this Mac's gh login by hand, RELEASES_TOKEN in the workflow
 ```
 
 Versioning is **`YY.MMDD.REVISION`** (`26.0926.0`; tag `v26.0926.0`), hand-edited in
@@ -467,7 +470,8 @@ it, semver up to 0.5.0 are retired. See `Docs/releasing.md`. `CFBundleVersion` i
 release. The five-part `YEAR.MONTH.DAY.HOUR.PATCH` scheme stays rejected, as `Docs/releasing.md` says.
 
 Downloads go to the public **uttrflow/releases** repository, separate from this source
-repository. The published asset is `Uttrflow.dmg` with **no version in the name** — that is
+repository, holding disk images and `latest.json` but no source code. The published asset
+is `Uttrflow.dmg` with **no version in the name** — that is
 what makes the `/releases/latest/download/` URL permanent.
 
 **The tag names the release, and notarisation has nothing to do with it.** A run

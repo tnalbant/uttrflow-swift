@@ -69,6 +69,33 @@ struct PersonalDictionaryStoreTests {
         #expect(sandbox.onDisk()?.map(\.word) == ["Uttrflow"])
     }
 
+    @Test("deleting a spelling clears pending sightings for its homophones")
+    func removingClearsPendingHomophoneSightings() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let kolin = word("Kolin", from: .observed)
+        try await store.add(kolin)
+        let colinContext = AppContext(applicationName: "Notes", documentName: "Colin project brief")
+
+        for day in 0..<2 {
+            #expect(
+                try await store.learn(
+                    heard: "Colin", wrote: "Colin", seeing: colinContext,
+                    at: epoch.addingTimeInterval(Double(day))
+                )
+                .isEmpty)
+        }
+
+        _ = try await store.remove(kolin.id)
+        #expect(
+            try await store.learn(
+                heard: "Colin", wrote: "Colin", seeing: colinContext,
+                at: epoch.addingTimeInterval(3)
+            )
+            .isEmpty)
+        #expect(await store.allEntries().isEmpty)
+    }
+
     /// The caller asked for it to be gone, and it is.
     @Test("treats forgetting a word it never knew as success")
     func removeUnknown() async throws {

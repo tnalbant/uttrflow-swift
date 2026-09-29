@@ -30,8 +30,9 @@ final class PanelThumbnails {
     /// What each answer is costing, so the total is kept without measuring the whole cache.
     private var cost: [URL: Int] = [:]
     private var held = 0
-    /// Least recently asked for, first; a plain array, because the cache is small.
-    private var order: [URL] = []
+    /// When each file was last asked for, so touching one is constant time.
+    private var lastUse: [URL: Int] = [:]
+    private var clock = 0
     /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
     private var inflight: [URL: Task<Void, Never>] = [:]
     /// When each failed decode was recorded, so a file restored later is decoded again.
@@ -123,19 +124,21 @@ final class PanelThumbnails {
         missedAt[file] = nil
         known.removeValue(forKey: file)
         cost.removeValue(forKey: file)
-        order.removeAll { $0 == file }
+        lastUse.removeValue(forKey: file)
     }
 
     /// Moves a file to the end of the queue, so it is the last thing forgotten.
     private func touch(_ file: URL) {
-        if let index = order.firstIndex(of: file) { order.remove(at: index) }
-        order.append(file)
+        clock += 1
+        lastUse[file] = clock
     }
 
     /// Drops the least recently used thumbnails until the cache fits; the newest stays even over budget.
     private func forgetTheLeastRecent() {
-        while held > budget, order.count > 1 {
-            let oldest = order.removeFirst()
+        while held > budget, lastUse.count > 1,
+            let oldest = lastUse.min(by: { $0.value < $1.value })?.key
+        {
+            lastUse.removeValue(forKey: oldest)
             held -= cost.removeValue(forKey: oldest) ?? 0
             known.removeValue(forKey: oldest)
             missedAt.removeValue(forKey: oldest)

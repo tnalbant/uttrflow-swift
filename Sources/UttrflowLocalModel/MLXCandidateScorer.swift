@@ -145,12 +145,26 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// How sure each recent pass was of the lines it wrote.
     private var confidenceMemory = ConfidenceMemory()
 
+    /// Changes whenever retained model output is forgotten, so an older in-flight pass cannot restore it.
+    private var forgetGeneration = 0
+
+    /// Drops candidate text and prompt state when the person forgets suggestions, for one app or all apps.
+    public func forgetEverything() {
+        forgetGeneration += 1
+        kept = nil
+        judgementCache.forgetEverything()
+        confidenceMemory.forgetEverything()
+    }
+
     public func confidence(ofGenerated line: String) -> Double? {
         confidenceMemory.confidence(of: line)
     }
 
     /// Per-candidate log-softmax rows the model has already produced, so a keystroke only re-averages from the new `start`.
     private var judgementCache = JudgementCache()
+
+    /// How many candidate lines remain cached, for diagnostics and tests of forgetting.
+    var judgementCacheCount: Int { judgementCache.count }
 
     /// Times `judgedTokens` read a previously-cached line instead of running the forward pass, for the tests about a cache that holds.
     public private(set) var judgementCacheHits = 0
@@ -275,7 +289,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
             return nil
         }
         let completions = Self.completions(from: run, typed: typed, asking: .one, in: situation)
-        confidenceMemory.remember(Self.confidences(of: completions, from: run, typed: typed))
+        if run.forgetGeneration == forgetGeneration {
+            confidenceMemory.remember(Self.confidences(of: completions, from: run, typed: typed))
+        }
         return GenerationPass(
             text: run.text, stopReason: run.stop.map { String(describing: $0) } ?? "none",
             completions: completions)
@@ -298,12 +314,15 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         }
         let lines = Self.completions(from: run, typed: typed, asking: ask, in: situation)
         // Measured from the pass that wrote them, so the gate never runs the model a second time.
-        confidenceMemory.remember(Self.confidences(of: lines, from: run, typed: typed))
+        if run.forgetGeneration == forgetGeneration {
+            confidenceMemory.remember(Self.confidences(of: lines, from: run, typed: typed))
+        }
         return lines
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
     private struct Run {
+        let forgetGeneration: Int
         let text: String
         let stop: GenerateStopReason?
         let written: String
@@ -340,6 +359,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         // Every pass is held to the cache's cap and leaves nothing in it, however it ends. See `Docs/performance.md`.
         bufferCache.hold()
         defer { bufferCache.clear() }
+        let forgetGeneration = self.forgetGeneration
         guard let container, !Task.isCancelled, LatinScript.writes(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
@@ -452,7 +472,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         generation.cancel()
         await generation.value
         // Kept only now the decode has stopped writing to the cache, and only while the weights it was read from are loaded.
-        if self.container != nil { self.kept = read }
+        if self.container != nil, self.forgetGeneration == forgetGeneration { self.kept = read }
         if let info {
             Self.log.debug(
                 "PASS prompt=\(info.promptTokenCount) promptMs=\(Int(info.promptTime * 1_000)) generated=\(info.generationTokenCount) generateMs=\(Int(info.generateTime * 1_000))"
@@ -460,6 +480,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         }
         let sampled = ledger.read()
         return Run(
+            forgetGeneration: forgetGeneration,
             text: text, stop: info?.stopReason, written: choice?.written ?? opening?.written ?? "",
             tokens: sampled.tokens, logProbabilities: sampled.logProbabilities, bytes: vocabulary?.bytes ?? []
         )
@@ -487,6 +508,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
+        let forgetGeneration = self.forgetGeneration
         bufferCache.hold()
         defer { bufferCache.clear() }
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
@@ -515,7 +537,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                 line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
             return (line, judged)
         }
-        judgementCache.remember(result.0, for: candidate)
+        if self.forgetGeneration == forgetGeneration {
+            judgementCache.remember(result.0, for: candidate)
+        }
         return result.1
     }
 

@@ -19,14 +19,16 @@ private func snapshot(
     pointSize: CGFloat? = 13,
     fontFamily: String? = nil,
     textColor: TextColor? = nil,
-    isSecure: Bool = false
+    isSecure: Bool = false,
+    isEnabled: Bool? = nil,
+    isEditable: Bool? = nil
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
         caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
-        isSecure: isSecure, readMicroseconds: 400)
+        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable, readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")
@@ -54,6 +56,14 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("A field reported disabled cannot host a suggestion")
+    func disabledFieldsTakeNothing() {
+        #expect(snapshot(isEnabled: false).placement == nil)
+        #expect(snapshot(isEditable: false).placement == nil)
+        #expect(snapshot(isEnabled: true).placement == .inlineGhost)
+        #expect(snapshot(isEnabled: nil).placement == .inlineGhost)
     }
 
     @Test("The reading carries through to the capability the ladder is decided from.")
@@ -278,6 +288,66 @@ struct FocusedFieldSnapshotTests {
                 snapshot(bundleIdentifier: bundleIdentifier, value: prompt, selection: nil)
                     .currentLine == "sud")
         }
+    }
+
+    @Test("A heredoc body is not treated as a shell command.")
+    func terminalHeredocBodyIsNotACommand() {
+        let value = "user@host:~/dir$ cat <<'DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine.isEmpty)
+    }
+
+    @Test("Suggestions resume after a heredoc delimiter line.")
+    func terminalHeredocEndsAtItsDelimiter() {
+        let value = "cat <<-\"DONE\"\nrm -rf /some/path\nDONE"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "DONE")
+    }
+
+    @Test("A spaced heredoc operator suppresses suggestions until its delimiter.")
+    func terminalHeredocAllowsWhitespaceBeforeItsDelimiter() {
+        let unquoted = "cat << EOF\nrm -rf /some/path"
+        #expect(
+            snapshot(value: unquoted, selection: NSRange(location: unquoted.utf16.count, length: 0))
+                .currentLine.isEmpty)
+        let quoted = "cat << 'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: quoted, selection: NSRange(location: quoted.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("Indented heredoc delimiters close only with the opener's indentation rule.")
+    func terminalHeredocHonorsIndentedDelimiters() {
+        let tabs = "cat <<-DONE\nrm -rf /some/path\n\tDONE"
+        #expect(
+            snapshot(value: tabs, selection: NSRange(location: tabs.utf16.count, length: 0))
+                .currentLine == "DONE")
+        let spaces = "cat <<~SQL\nrm -rf /some/path\n    SQL"
+        #expect(
+            snapshot(value: spaces, selection: NSRange(location: spaces.utf16.count, length: 0))
+                .currentLine == "SQL")
+        let spaced = "cat <<'END TAG'\nrm -rf /some/path\nEND TAG"
+        #expect(
+            snapshot(value: spaced, selection: NSRange(location: spaced.utf16.count, length: 0))
+                .currentLine == "END TAG")
+    }
+
+    @Test("A heredoc-looking token inside a quoted argument does not start a heredoc.")
+    func quotedHeredocTextDoesNotSuppressSuggestions() {
+        let value = "printf 'literal <<DONE'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
+    }
+
+    @Test("A shell here-string is not parsed as a heredoc.")
+    func hereStringDoesNotSuppressSuggestions() {
+        let value = "printf <<< 'literal'\nrm -rf /some/path"
+        #expect(
+            snapshot(value: value, selection: NSRange(location: value.utf16.count, length: 0))
+                .currentLine == "rm -rf /some/path")
     }
 
     @Test("Only the caret's own line has a prompt taken off it, and only in a terminal.")

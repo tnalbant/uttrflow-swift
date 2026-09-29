@@ -1,4 +1,6 @@
 {
-  "files": {},
-  "total": 0
+  "files": {
+    "Tests/UttrflowPredictTests/SuggestionSessionTests.swift": 2
+  },
+  "total": 2
 }

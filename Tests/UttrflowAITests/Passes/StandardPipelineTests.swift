@@ -129,6 +129,22 @@ struct StandardPipelineTests {
     }
 
     @Test(
+        "keeps the comma the sentence needs when a filler between commas goes",
+        arguments: [
+            ("The deadline is, um, Friday.", "The deadline is Friday."),
+            ("Well, um, I think so.", "Well, I think so."),
+            ("I think, uh, that's right, uh, yeah.", "I think that's right, yeah."),
+            ("Um, so, I think we should go.", "So, I think we should go."),
+            ("Yes, um, I agree.", "Yes, I agree."),
+            ("Okay, uh, let's start.", "Okay, let's start."),
+            ("We should, uh, ship it.", "We should ship it."),
+        ]
+    )
+    func fillerBetweenCommas(spoken: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: spoken)).text == expected)
+    }
+
+    @Test(
         "keeps a heard id or ill that opens a piece mid-sentence, and repairs it at a sentence start",
         arguments: [
             (InsertionPoint.SentenceState.midSentence, "Id is required", "id is required."),

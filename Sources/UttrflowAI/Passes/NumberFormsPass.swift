@@ -201,6 +201,16 @@ public struct NumberFormsPass: CleaningPass {
         guard let parsed = NumberWords.cardinal(unbroken(from: position, keys: keys, shapes: shapes)) else {
             return nil
         }
+        // A unit after a scale starts a digit string only when another spoken digit follows it.
+        let last = position + parsed.count - 1
+        if parsed.count > 1, last + 1 < keys.count,
+            ["hundred", "thousand"].contains(keys[last - 1]),
+            singleDigit(keys[last]) != nil,
+            joined(last, shapes), joined(last + 1, shapes), singleDigit(keys[last + 1]) != nil,
+            let shorter = NumberWords.cardinal(keys[position..<last]), shorter.count == parsed.count - 1
+        {
+            return Item(value: shorter.value, text: String(shorter.value), count: shorter.count, spoken: true)
+        }
         return Item(value: parsed.value, text: String(parsed.value), count: parsed.count, spoken: true)
     }
 

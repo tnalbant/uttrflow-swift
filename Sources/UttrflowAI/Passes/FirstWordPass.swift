@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
-public struct FirstWordPass: CleaningPass {
+public struct FirstWordPass: WholeTextCleaningPass {
     public static let id: PassID = .firstWord
 
     public let policy: FirstWordPolicy
@@ -81,7 +81,8 @@ public struct FirstWordPass: CleaningPass {
     /// Whether the word closes a sentence; a dotted abbreviation such as "p.m." carries a stop of its own.
     static func endsSentence(_ text: String) -> Bool {
         let shape = WordShape(text)
-        return shape.endsSentence && !shape.core.contains(".")
+        let abbreviation = InsertionPoint.sentenceAbbreviations.contains(shape.core.lowercased())
+        return shape.endsSentence && !abbreviation && !shape.core.contains(".")
     }
 
     /// "i" and "i'll" become "I" and "I'll"; nothing else changes.
