@@ -646,9 +646,12 @@ public actor DictationPipeline {
             return
         }
 
-        // Snippets after the tidier, whose punctuation is what stops a trigger crossing a sentence.
+        // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
+        let snippetInput = PieceJoiner.snippetInput(
+            pieces, under: .standard(for: joining.destination), using: written)
+        let layout = DestinationFormatter.standard(for: joining.destination).layout
         let expanded = await expand(
-            written, laidOut: DestinationFormatter.standard(for: joining.destination).layout)
+            written, matching: snippetInput, laidOut: layout)
         guard !wasCancelled(mine) else { return }
         let output = LatinScript.enforced(expanded.text)
         guard !output.isBlank else {
@@ -851,16 +854,19 @@ public actor DictationPipeline {
     }
 
     /// Expands the user's snippets under the destination's layout, treating a blank expansion as nothing to do.
-    private func expand(_ text: String, laidOut layout: LayoutPolicy) async -> ExpandedTranscript {
+    private func expand(
+        _ text: String, matching seamInput: SeamSnippetInput, laidOut layout: LayoutPolicy
+    ) async -> ExpandedTranscript {
         do {
             let expanded = try await metrics.measuringInTime(.expansion, clock: clock) {
                 try await withStageTimeout(StageTimeout.quick, clock: clock) { [snippets] in
-                    try await snippets.expand(text)
+                    try await snippets.expand(seamInput.removingSeamStops())
                 }
             }
             guard let expanded, !expanded.text.isBlank else { return .unchanged(text) }
             // A line break is Return in a single-line field, so an expansion's breaks join as the tidier's did.
-            return layout.contains(.singleLine) ? expanded.onOneLine : expanded
+            let restored = seamInput.restoringUnconsumedStops(in: expanded)
+            return layout.contains(.singleLine) ? restored.onOneLine : restored
         } catch {
             return .unchanged(text)
         }
