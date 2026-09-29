@@ -68,7 +68,9 @@
 # that gitleaks flags are allowed by
 # their exact matched text (`regexTarget = "match"`, key name and all) rather than by
 # the bare value — a real `api_key`-shaped credential with that same value but a
-# different key name or separator still fails.
+# different key name or separator still fails. `DictationSecretPresentationTests.swift`
+# reuses the same `9f2b7c4e1a8d3f6b` value, in its own key-name-and-value shape, to prove
+# a dictated secret is masked the same way on every history surface.
 [extend]
 useDefault = true
 
@@ -117,4 +119,5 @@ useDefault = true
     '''^api_key: 9f2b7c4e1a8d3f6b"$''',
     '''^secret-keys = abcd1234efgh5678"$''',
     '''^SECRETKEY=abcd1234efgh5678"$''',
+    '''^secret = "API_KEY=9f2b7c4e1a8d3f6b"$''',
   ]
