@@ -186,15 +186,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
             case .choice(let leader, let others): [leader] + others
             }
         // The edit is the one acceptance applies, so drawing and doing cannot disagree.
-        let usable: [(candidate: String, edit: Acceptance.Edit)] = offered.compactMap {
-            guard !$0.allSatisfy(\.isWhitespace),
-                let edit = Acceptance.edit(accepting: $0, after: typed)
+        let usable: [(index: Int, candidate: String, edit: Acceptance.Edit)] = offered.enumerated().compactMap
+        {
+            guard !$1.allSatisfy(\.isWhitespace),
+                let edit = Acceptance.edit(accepting: $1, after: typed)
             else { return nil }
-            return ($0, edit)
+            return ($0, $1, edit)
         }
         guard !usable.isEmpty else { return [] }
-        // The highlight can be moved with the arrow keys, so it follows the chosen row, not always the leader.
-        let chosen = min(max(selected, 0), usable.count - 1)
+        // Arrow-key selection counts original candidates, including ones this field cannot accept.
+        let chosen = usable.firstIndex { $0.index >= selected } ?? usable.count - 1
         return usable.enumerated().map {
             Row(candidate: $1.candidate, edit: $1.edit, isSelected: $0 == chosen)
         }

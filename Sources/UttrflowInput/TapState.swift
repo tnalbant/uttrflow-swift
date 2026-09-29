@@ -113,7 +113,17 @@ final class TapState: @unchecked Sendable {
 
     /// Replays the held keys and answers whether the tap stays on now that nothing is held.
     func releaseHeldKeys(post: (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }) -> Bool {
-        hold.release(post: post)
+        // A held bare Tab is replayed only for a current bare-Tab offer, so the disarmed accept gap cannot leak literal input.
+        let suppressUnarmedTab = hold.isHoldingBareTabAccept
+        hold.release(
+            post: post,
+            where: { event in
+                let stroke = KeyStroke(
+                    keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
+                    modifiers: KeyModifiers(event.flags))
+                let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
+                return !suppressUnarmedTab || stroke != KeyStroke(.tab) || bareTabIsArmed
+            })
         return isListening
     }
 
@@ -125,7 +135,7 @@ final class TapState: @unchecked Sendable {
             keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
             modifiers: KeyModifiers(event.flags))
         guard route(ArmedKeys.slot(of: stroke)) else { return false }
-        hold.begin()
+        hold.begin(suppressingUnarmedTab: stroke == KeyStroke(.tab))
         return true
     }
 

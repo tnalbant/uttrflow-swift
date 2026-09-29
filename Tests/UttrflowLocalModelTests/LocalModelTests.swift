@@ -53,6 +53,15 @@ struct LocalModelTests {
         #expect(LocalModel.named("not-a-model") == nil)
     }
 
+    @Test("finds every catalogue model by its catalogue name")
+    func catalogueAliases() {
+        #expect(LocalModel.named("gemma3Small") == .gemma3Small)
+        #expect(LocalModel.named("llama32") == .llama32)
+        #expect(LocalModel.named("qwen3") == .qwen3)
+        #expect(LocalModel.named("ministral3") == .ministral3)
+        #expect(LocalModel.named("gemma3") == .gemma3)
+    }
+
     @Test("describes each candidate well enough to compare them")
     func carriesIdentifyingDetail() {
         for model in LocalModel.candidates {

@@ -80,7 +80,7 @@ struct JudgementCache: Sendable {
         order.append(candidate)
     }
 
-    /// Drops every remembered line, which is what leaving a field or releasing the model both ask for.
+    /// Drops every remembered line when leaving a field, forgetting suggestions, or releasing the model.
     mutating func forgetEverything() {
         held.removeAll()
         order.removeAll()

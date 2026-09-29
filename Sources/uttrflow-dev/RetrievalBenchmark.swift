@@ -1,5 +1,5 @@
 // Times retrieval over the personal dictionary.
-private import Foundation
+import Foundation
 private import Darwin
 private import SQLite3
 import Testing
@@ -201,8 +201,8 @@ enum RetrievalBenchmark {
 /// Removes registered benchmark directories when the process exits normally.
 enum TemporaryDirectories {
     private static let lock = NSLock()
-    private static var directories: Set<URL> = []
-    private static let exitHandler: Void = { atexit(cleanup) }
+    nonisolated(unsafe) private static var directories: Set<URL> = []
+    private static let exitHandler: Int32 = atexit { cleanup() }
 
     static func register(_ directory: URL) {
         _ = exitHandler

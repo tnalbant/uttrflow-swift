@@ -150,9 +150,27 @@ struct PanelDeleteSheetPresentationTests {
         let filed = PanelFixture.clip("y", minutesAgo: 1, category: "Work")
         let pinned = PanelFixture.clip("z", minutesAgo: 1, isPinned: true)
 
-        #expect(Self.sheet(aliased)?.note?.contains("pgprod") == true)
-        #expect(Self.sheet(filed)?.note?.contains("Work") == true)
-        #expect(Self.sheet(pinned)?.note?.contains("pinned") == true)
+        #expect(Self.sheet(aliased)?.note == "It answers to “pgprod”, which will be gone too.")
+        #expect(Self.sheet(filed)?.note == "It is filed under “Work”.")
+        #expect(Self.sheet(pinned)?.note == "It is pinned.")
+    }
+
+    @Test("an ordinary clip has a clear question without an irrelevant note")
+    func ordinaryClipCopy() {
+        let sheet = Self.sheet(PanelFixture.clip("x", minutesAgo: 1))
+
+        #expect(sheet?.title == "Delete this clip?")
+        #expect(sheet?.note == nil)
+        #expect(sheet?.confirmTitle == "Delete")
+    }
+
+    @Test("a masked credential's contents never appear in the delete note")
+    func maskedCredentialCopy() {
+        let secret = PanelFixture.clip("Zx9kLmQ2rT7p", kind: .secret, minutesAgo: 1, isPinned: true)
+        let note = Self.sheet(secret)?.note
+
+        #expect(note == "It is pinned.")
+        #expect(note?.contains("Zx9kLmQ2rT7p") == false)
     }
 
     @Test("the button says Delete, not OK")

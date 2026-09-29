@@ -1,17 +1,22 @@
-// The one error the clipboard store can report.
+// Errors the clipboard store can report.
 
 public import UttrflowCore
 
-/// The one thing that can go wrong keeping the clipboard: the file would not take the change.
+/// A failure while keeping the clipboard.
 public enum ClipboardStoreError: UttrflowFailure {
     /// The clipboard file could not be written or removed.
     case couldNotWrite
+    /// Another clip already answers to the alias.
+    case aliasAlreadyInUse
 
     public var userMessage: String {
-        "Your clipboard history could not be updated on this Mac."
+        switch self {
+        case .couldNotWrite: "Your clipboard history could not be updated on this Mac."
+        case .aliasAlreadyInUse: "That name already belongs to another clip."
+        }
     }
 
-    /// Nothing offered: no recovery the user can perform changes whether the disk accepts a write.
+    /// Choosing another alias is an ordinary edit, not a recovery action.
     public var recovery: RecoveryAction? { nil }
 
     /// Degraded, not blocking: the clipboard still works and the panel still opens on what it had.
@@ -23,7 +28,8 @@ extension ClipboardStoreError: CataloguedFailure {
 
     public var caseAfter: Self? {
         switch self {
-        case .couldNotWrite: nil
+        case .couldNotWrite: .aliasAlreadyInUse
+        case .aliasAlreadyInUse: nil
         }
     }
 }
