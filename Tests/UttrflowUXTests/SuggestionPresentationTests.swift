@@ -289,6 +289,15 @@ struct SuggestionPresentationTests {
     }
 
     @Test(
+        "The Escape dot is opaque under Increase Contrast and Reduce Transparency",
+        arguments: [highContrast, opaque])
+    func settingMakesTheEscapeDotOpaque(appearance: SuggestionAppearance) {
+        let dot = SuggestionPresentation(.minimised, appearance: appearance)
+        #expect(dot.style == .dot)
+        #expect(dot.opacity == SuggestionPresentation.opaqueGhostOpacity)
+    }
+
+    @Test(
         "At full strength under a display setting the ghost is underlined, so it never looks typed",
         arguments: [highContrast, opaque])
     func opaqueGhostIsUnderlined(appearance: SuggestionAppearance) {
@@ -314,6 +323,13 @@ struct SuggestionPresentationTests {
             SuggestionPresentation(.certain("Sydney")).opacity
                 == SuggestionPresentation.ghostOpacity)
         #expect(SuggestionPresentation(.certain("Sydney")).style == .ghost)
+    }
+
+    @Test("The Escape dot keeps its faint opacity with standard appearance")
+    func plainEscapeDotIsFaint() {
+        let dot = SuggestionPresentation(.minimised)
+        #expect(dot.style == .dot)
+        #expect(dot.opacity == SuggestionPresentation.ghostOpacity)
     }
 
     @Test("Neither setting turns a silent suggestion into anything")

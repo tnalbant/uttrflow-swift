@@ -52,7 +52,7 @@ struct SuggestionView: View {
     /// All that is left after the user presses escape.
     private var dot: some View {
         Circle()
-            .fill(ink(SuggestionPresentation.ghostOpacity))
+            .fill(ink(presentation.opacity))
             .frame(
                 width: SuggestionPresentation.dotDiameter,
                 height: SuggestionPresentation.dotDiameter)
