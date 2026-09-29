@@ -126,7 +126,7 @@ struct RawTranscriptMappingTests {
         #expect(segments[1].text == "there")
     }
 
-    @Test("reports a transcript of nothing but markers as blank")
+    @Test("maps marker-only non-speech descriptions to blank text")
     func markersOnlyIsBlank() {
         #expect(RawTranscript(text: "[BLANK_AUDIO]").transcription(audioDuration: .zero).isBlank)
         #expect(RawTranscript(text: "*pain*").transcription(audioDuration: .zero).isBlank)

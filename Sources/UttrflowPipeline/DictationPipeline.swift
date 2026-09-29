@@ -843,8 +843,8 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
-                    guard transcription.isBlank else { return Heard.words(transcription) }
-                    return Heard.nothing
+                    if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
+                    return Heard.words(transcription)
                 } catch SpeechEngineError.audioTooShort {
                     // Alone, a hold too brief to transcribe says so, since the fix is to hold longer.
                     guard !whole else { throw SpeechEngineError.audioTooShort }
