@@ -43,6 +43,21 @@ private actor NumberingSpeechEngine: SpeechEngine {
     var calls: Int { sampleCounts.count }
 }
 
+/// A recogniser that gives every pause-delimited piece the same doubtful word.
+private actor RepeatedWordSpeechEngine: SpeechEngine {
+    let kind = SpeechEngineKind.whisperKit
+
+    func prepare() async throws(SpeechEngineError) {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        Transcription(
+            text: "Maddox", detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
+            audioDuration: audio.duration)
+    }
+}
+
 /// A recogniser that keeps every sample it is given, so a test can check none were lost or repeated.
 private actor KeepingSpeechEngine: SpeechEngine {
     let kind = SpeechEngineKind.whisperKit
@@ -270,6 +285,23 @@ private struct FirstWordCorrector: WordCorrecting {
     }
 }
 
+/// Corrects `Maddox` only while the current document shows the supporting spelling.
+private actor ScreenWordCorrector: WordCorrecting {
+    private(set) var documents: [String?] = []
+
+    func corrections(
+        for transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> [DictationCorrection] {
+        documents.append(context.documentName)
+        guard context.documentName == "Madison marketing plan" else { return [] }
+        return [
+            DictationCorrection(
+                heard: "Maddox", wrote: "Madison", wordRange: 0..<1, entryID: UUID(),
+                reason: "seenOnScreen", heardConfidence: 0.2)
+        ]
+    }
+}
+
 /// Recordings with pauses where the windowing below expects them.
 private enum Take {
     static let rate = AudioSamples.canonicalSampleRate
@@ -380,7 +412,7 @@ struct DictationPipelineEarlyWorkTests {
         #expect(pieces.joined().elementsEqual(Take.threePieces.samples))
     }
 
-    /// The screen is read before the tidier is warmed, so the warm-up is for the right place.
+    /// The first screen read warms the tidier; each piece gets another read for correction evidence.
     @Test(
         "the tidier is warmed for where the screen says the words are going, and for plain text when it says nothing"
     )
@@ -404,7 +436,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.finishRecording()
 
             #expect(cleaner.warmed == [destination])
-            #expect(await engine.calls.count == 1, "one read serves the warm-up and every piece")
+            #expect(await engine.calls.count == 4, "one warm-up read and one correction read per piece")
         }
     }
 
@@ -421,7 +453,31 @@ struct DictationPipelineEarlyWorkTests {
         await pipeline.finishRecording()
 
         #expect(await pipeline.currentState.outcome?.insertedInto == "Notes")
-        #expect(await context.calls.count == 1, "one read serves every piece")
+        #expect(await context.calls.count == 4, "one initial read and one correction read per piece")
+    }
+
+    @Test("later pieces use the screen they were spoken against for correction evidence")
+    func refreshesCorrectionContextForEachPiece() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        await capture.setCaptured(Take.threePieces)
+        let cleaner = HeldCleaner()
+        let corrector = ScreenWordCorrector()
+        let context = FakeContextEngine(context: AppContext(documentName: "Madison marketing plan"))
+        let pipeline = makePipeline(
+            capture: capture, speech: RepeatedWordSpeechEngine(), cleaner: cleaner,
+            context: context, corrector: corrector)
+
+        await pipeline.startRecording()
+        try await eventually { await corrector.documents.count == 1 }
+        try await eventually { await cleaner.isHolding }
+
+        await context.setContext(AppContext(documentName: "Quarterly budget"))
+        await cleaner.release()
+        try await eventually { await corrector.documents.count >= 2 }
+        await pipeline.finishRecording()
+
+        #expect(await corrector.documents.prefix(2) == ["Madison marketing plan", "Quarterly budget"])
+        #expect(await pipeline.currentState.outcome?.changes.corrections.count == 1)
     }
 
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
