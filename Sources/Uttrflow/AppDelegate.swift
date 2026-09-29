@@ -132,6 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var transformerAvailability: [TransformerKind: Bool] = [:]
     /// What the store last said about the speech model on disk; internal so a test can read it.
     private(set) var speechModelPresence: DiagnosticsModelPresence?
+    /// The built-in recogniser's locale asset inventory answer.
+    private(set) var appleSpeechStatus: DiagnosticsAppleSpeechStatus?
 
     /// How far along that fetch is; internal so a test can read back what it did.
     private(set) var suggestionModel: SuggestionModelReadiness = .notAsked {
@@ -290,6 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         loadSpeechModel()
         probeTransformers()
         probeSpeechModel()
+        probeAppleSpeechAssets()
         refreshAccount()
         // A Mac that worked without an account keeps no trace of it, and meets sign-in like anyone signed out.
         RetiredLocalAccount.forget()
@@ -514,6 +517,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }.value
             guard let self else { return }
             speechModelPresence = presence
+            refreshMainWindow()
+        }
+    }
+
+    /// Reads the system recogniser's asset inventory for the locale its backend loads.
+    @discardableResult
+    func probeAppleSpeechAssets() -> Task<Void, Never> {
+        Task { [weak self] in
+            let status = await AppleSpeechBackend.assetStatus()
+            guard let self else { return }
+            appleSpeechStatus =
+                switch status {
+                case .installed: .installed
+                case .needsDownload: .needsDownload
+                case .downloading: .downloading
+                case .unsupported: .unsupported
+                }
             refreshMainWindow()
         }
     }
@@ -2161,6 +2181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     engines: settings.engines, speechInUse: speechInUse,
                     transformerAvailability: transformerAvailability,
                     speechModel: speechModelPresence, speechReadiness: speechReadiness,
+                    appleSpeechStatus: appleSpeechStatus,
                     permissions: knownPermissions,
                     measurements: measurements, cleaning: lastCleaning,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
