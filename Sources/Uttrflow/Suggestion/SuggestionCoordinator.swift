@@ -8,6 +8,30 @@ import UttrflowPredict
 import UttrflowPredictCapture
 import UttrflowPredictStore
 
+@MainActor
+protocol SuggestionProcessActivityManaging {
+    func begin()
+    func end()
+}
+
+@MainActor
+private final class ProcessSuggestionActivity: SuggestionProcessActivityManaging {
+    private var activity: NSObjectProtocol?
+
+    func begin() {
+        guard activity == nil else { return }
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Keeps typing suggestions responsive while the app is in the background.")
+    }
+
+    func end() {
+        guard let activity else { return }
+        ProcessInfo.processInfo.endActivity(activity)
+        self.activity = nil
+    }
+}
+
 /// Why the loop is running this turn, which decides what capture is told about it.
 private enum SuggestionReason {
     /// A key was pressed in another application.
@@ -52,6 +76,8 @@ final class SuggestionCoordinator {
     private let secureInput = SecureInputWatch()
     private let acceptor: SuggestionAcceptor
     private let focusedFieldValueObserver: any FocusedFieldValueObserving
+    /// Keeps background typing work responsive for the coordinator's lifetime.
+    private let processActivity: any SuggestionProcessActivityManaging
     /// What the user has decided on the Suggestions screen, which the app hands over as it changes.
     private var preferences: SuggestionPreferences
     /// What exists on this machine right now, which the corpus cannot know. See `Docs/predict.md`.
@@ -137,11 +163,13 @@ final class SuggestionCoordinator {
         container: URL, preferences: SuggestionPreferences,
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
+        processActivity: any SuggestionProcessActivityManaging = ProcessSuggestionActivity(),
         focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
             await FocusedFieldReader.focusedSelection()
         }
     ) throws(PredictStoreError) {
         self.preferences = preferences
+        self.processActivity = processActivity
         self.generator = generating
         self.focusedSelectionReader = focusedSelectionReader
         self.focusedFieldValueObserver = focusedFieldValueObserver ?? FocusedFieldValueObserver()
@@ -227,6 +255,7 @@ final class SuggestionCoordinator {
 
     /// Arms the tap and starts watching, or says why it cannot.
     func start() {
+        processActivity.begin()
         isStopped = false
         tapRest.cancel()
         secureInputObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -291,6 +320,7 @@ final class SuggestionCoordinator {
 
     /// Takes the surface away, disarms the tap and stops watching.
     func stop() {
+        processActivity.end()
         isStopped = true
         onSecureInputBlockingChanged?(false)
         tapRest.cancel()
