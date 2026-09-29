@@ -11,6 +11,17 @@ struct FieldReadingTests {
         #expect(reading.surface == Surface(bundleIdentifier: "com.example.terminal", role: "AXTextArea"))
     }
 
+    @Test("Window identity distinguishes same-app fields with otherwise identical surfaces.")
+    func windowsAreDistinctSurfaces() throws {
+        let first = try #require(
+            FieldReading(bundleIdentifier: "com.example.editor", role: "AXTextArea", windowNumber: 41)
+                .surface)
+        let second = try #require(
+            FieldReading(bundleIdentifier: "com.example.editor", role: "AXTextArea", windowNumber: 42)
+                .surface)
+        #expect(first != second)
+    }
+
     @Test("A field whose application does not name itself is no surface at all.")
     func namelessApplicationIsNoSurface() {
         #expect(FieldReading(bundleIdentifier: "  ", role: "AXTextArea").surface == nil)

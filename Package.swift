@@ -388,7 +388,9 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowUXTests",
-            dependencies: ["UttrflowPredict", "UttrflowUX", "UttrflowTestSupport"],
+            dependencies: [
+                "UttrflowAI", "UttrflowPredict", "UttrflowUX", "UttrflowTestSupport",
+            ],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
@@ -426,6 +428,13 @@ let package = Package(
         .testTarget(
             name: "UttrflowEvalTests",
             dependencies: ["UttrflowAI", "UttrflowAudio", "UttrflowEval", "UttrflowTestSupport"],
+            swiftSettings: sharedSwiftSettings
+        ),
+        .testTarget(
+            name: "UttrflowBakeoffTests",
+            dependencies: [
+                "uttrflow-bakeoff", .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(

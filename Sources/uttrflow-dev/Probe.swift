@@ -26,6 +26,12 @@ struct ProbeSurface: AsyncParsableCommand {
     @Option(name: .long, help: "Where to write the markdown report.")
     var output: String?
 
+    func validate() throws {
+        guard seconds >= 1 else {
+            throw ValidationError("--seconds must be 1 or greater.")
+        }
+    }
+
     func run() async throws {
         guard AXIsProcessTrusted() else {
             print("Accessibility is not granted to this binary, so every read would return nothing.")
@@ -74,6 +80,12 @@ struct ProbeRetrieval: AsyncParsableCommand {
 
     @Option(name: .long, help: "How many entries to measure against.")
     var entries: Int = 50_000
+
+    func validate() throws {
+        guard entries >= 1 else {
+            throw ValidationError("--entries must be 1 or greater.")
+        }
+    }
 
     func run() async throws {
         let corpus = RetrievalBenchmark.corpus(entries)

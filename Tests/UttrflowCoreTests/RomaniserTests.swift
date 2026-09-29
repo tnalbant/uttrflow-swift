@@ -34,6 +34,8 @@ struct RomaniserTests {
             ("किताब", "kitaab"), ("बताया", "bataya"), ("पूरा", "poora"), ("चीज़", "cheez"), ("दूँगा", "dunga"),
             ("कुर्सियाँ", "kursiyan"), ("मिलेंगे", "milenge"), ("हमें", "hamein"), ("उन्होंने", "unhone"),
             ("मैंने", "maine"), ("पहुँच", "pahunch"), ("बच्चा", "baccha"), ("ज्ञान", "gyaan"), ("क्षमा", "kshama"),
+            ("गाँव", "gaon"), ("पाँव", "paon"), ("छाँव", "chhaon"), ("गाँवों", "gaonon"),
+            ("गाव", "gaav"), ("कार्य", "karya"), ("मित्र", "mitra"),
             ("वजह", "wajah"), ("पहले", "pehle"), ("आए", "aaye"), ("लीजिए", "lijiye"),
             ("दुःख", "duhkh"), ("सफ़र", "safar"), ("क़िला", "qila"), ("ॐ", "om"), ("जगत्", "jagat"),
             ("न", "na"), ("आ", "aa"),

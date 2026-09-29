@@ -27,6 +27,12 @@ public enum SpeechModelReadiness: Sendable, Equatable {
     case incomplete
     case notInstalled
 
+    /// Where a completed model load leaves readiness, before retry and incomplete-folder details are applied.
+    public static func afterLoad(isReady: Bool, isInstalled: Bool) -> SpeechModelReadiness {
+        if isReady { return .ready }
+        return isInstalled ? .loadFailed : .notInstalled
+    }
+
     /// What to tell a person about the load, timed from `start`; `nil` when there is no load to speak of.
     public func load<Moment: InstantProtocol>(
         since start: Moment?, now: Moment
@@ -44,9 +50,12 @@ public enum SpeechModelReadiness: Sendable, Equatable {
     public static func settled(
         isReady: Bool, isInstalled: Bool, isIncomplete: Bool, failedBefore: Bool
     ) -> SpeechModelReadiness {
-        if isReady { return .ready }
-        guard isInstalled else { return isIncomplete ? .incomplete : .notInstalled }
-        return failedBefore ? .loadFailedAgain : .loadFailed
+        switch afterLoad(isReady: isReady, isInstalled: isInstalled) {
+        case .ready: .ready
+        case .loadFailed: failedBefore ? .loadFailedAgain : .loadFailed
+        case .notInstalled: isIncomplete ? .incomplete : .notInstalled
+        case .downloading, .loading, .loadFailedAgain, .incomplete: .notInstalled
+        }
     }
 
     /// What fixes a model that cannot dictate: one reload after a first failure, a download otherwise.
@@ -154,6 +163,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var clips: [Clip]
     /// How far along an update is, if one is under way.
     public var updateProgress: UpdateProgress
+    /// Whether this build has a configured, verifiable update feed.
+    public var canCheckForUpdates: Bool
 
     /// Which of the three halves of the product are switched on.
     public var features: MenuBarFeatures
@@ -166,6 +177,8 @@ public struct MenuBarState: Sendable, Equatable {
 
     /// Why the dictation shortcut cannot be heard right now, or nil when it can.
     public var shortcutUnheard: String?
+    /// Why AI suggestions cannot receive keyboard input right now, or nil when they can.
+    public var suggestionUnheard: String?
     /// How far along the AI suggestion model is, so a switch that is on but waiting says so.
     public var suggestionModel: SuggestionModelReadiness
     /// Whether the dictation shortcut is held or pressed, so the hint uses the right verb.
@@ -182,10 +195,12 @@ public struct MenuBarState: Sendable, Equatable {
         recents: [MenuBarRecent] = [],
         clips: [Clip] = [],
         updateProgress: UpdateProgress = .idle,
+        canCheckForUpdates: Bool = false,
         features: MenuBarFeatures = MenuBarFeatures(),
         shortcuts: ShortcutSet = .default,
         unarmedShortcuts: Set<ShortcutAction> = [],
         shortcutUnheard: String? = nil,
+        suggestionUnheard: String? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         activation: HotkeyActivation = .holdToTalk,
         speechModelBytes: Int64? = nil
@@ -198,10 +213,12 @@ public struct MenuBarState: Sendable, Equatable {
         self.recents = recents
         self.clips = clips
         self.updateProgress = updateProgress
+        self.canCheckForUpdates = canCheckForUpdates
         self.features = features
         self.shortcuts = shortcuts
         self.unarmedShortcuts = unarmedShortcuts
         self.shortcutUnheard = shortcutUnheard
+        self.suggestionUnheard = suggestionUnheard
         self.suggestionModel = suggestionModel
         self.activation = activation
         self.speechModelBytes = speechModelBytes
@@ -228,6 +245,8 @@ public enum MenuBarIntent: Sendable, Equatable {
     case openClipboard
     /// Move one of the three switches, naming the one it moves so the other two cannot follow.
     case setFeature(MenuBarFeature, isOn: Bool)
+    /// Starts a manual update check when the current build has a trusted update feed.
+    case checkForUpdates
     case quit
 }
 
@@ -529,6 +548,11 @@ public enum MenuBarPresenter {
                 MenuBarCommand(
                     title: "Settings…", intent: .open(.settings(.general)),
                     shortcut: MenuBarShortcut(key: ",", modifiers: .command))))
+
+        if state.canCheckForUpdates {
+            items.append(
+                .command(MenuBarCommand(title: "Check for Updates…", intent: .checkForUpdates)))
+        }
 
         items.append(.separator)
         items.append(

@@ -219,6 +219,38 @@ struct PromptTests {
         #expect(PromptBuilder.nearestLines(long, within: 11).hasSuffix("word word"))
     }
 
+    @Test("Leading context keeps the longest prefix within an over-budget token allowance")
+    func leadingKeepsLongestPrefixWithinAllowance() {
+        let text = String(repeating: "word ", count: 80)
+        let allowance = 20
+        let prefix = PromptBuilder.leading(text, within: allowance)
+
+        #expect(text.hasPrefix(prefix))
+        #expect(PromptBuilder.estimatedTokens(prefix) <= allowance)
+        #expect(PromptBuilder.estimatedTokens(String(text.prefix(prefix.count + 1))) > allowance)
+    }
+
+    @Test("A first screen line that alone overflows its budget is kept in trimmed form")
+    func firstScreenLineAloneOverflows() {
+        let first = String(repeating: "word ", count: 80)
+        let shown = PromptBuilder.nearestLines(first, within: 12)
+        #expect(!shown.isEmpty)
+        #expect(PromptBuilder.estimatedTokens(shown) <= 11)
+        #expect(first.hasSuffix(shown))
+    }
+
+    @Test("The nearest screen line is trimmed at both ends before it is shown")
+    func nearestScreenLineIsTrimmed() {
+        #expect(
+            PromptBuilder.nearestLines("older line\n  nearest line   ", within: 20)
+                == "older line\nnearest line")
+    }
+
+    @Test("Whitespace-only screen lines do not stop nearer useful lines from fitting")
+    func whitespaceOnlyScreenLinesAreIgnored() {
+        #expect(PromptBuilder.nearestLines("\n  \t \nnear the field\n \n", within: 12) == "near the field")
+    }
+
     @Test(
         "A window title as long as a page keeps its first characters only, so the person's lines still fit.")
     func aLongWindowTitleIsCapped() {

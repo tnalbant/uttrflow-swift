@@ -116,6 +116,11 @@ struct MenuBarStatusTests {
                 == "Speech model not downloaded")
     }
 
+    @Test("says Getting ready while the speech model is loading")
+    func loadingStatusLine() {
+        #expect(MenuBarPresenter.present(MenuBarState(speechModel: .loading)).statusLine == "Getting ready…")
+    }
+
     /// A downloader reporting 140% is the downloader's bug, and not the menu bar's to show.
     @Test("keeps a nonsense percentage out of the menu bar")
     func percentageIsClamped() {
@@ -186,11 +191,16 @@ struct MenuBarContentsTests {
         #expect(shown.items.contains(.sectionHeader("Turn on and off")))
     }
 
-    /// Update checks live in Settings, so neither the popover nor its menu offers one.
-    @Test("offers no update check")
-    func noUpdateCheck() {
-        let shown = MenuBarPresenter.present(MenuBarState(updateProgress: .idle))
-        #expect(!shown.commands.map(\.title).contains { $0.contains("Update") })
+    /// A manual check is available only when this build has a valid update feed.
+    @Test("offers a manual update check only when updates are configured")
+    func checkForUpdatesAvailability() {
+        let unavailable = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: false))
+        #expect(unavailable.command(.checkForUpdates) == nil)
+
+        let available = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: true))
+        #expect(available.command(.checkForUpdates)?.title == "Check for Updates…")
     }
 
     /// The problem and its fix sit together in the header, with nothing between them to hunt past.
@@ -467,6 +477,14 @@ struct MenuBarHeaderTests {
 
 @Suite("What the popover lets the user do")
 struct MenuBarEnablementTests {
+    @Test("uses the shared remaining-time phrase as a dictation nears its cap")
+    func listeningShowsRemainingTime() {
+        let advice = DictationAdvice.approaching(remaining: .seconds(74))
+        let shown = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, recordingAdvice: advice))
+        #expect(shown.statusLine == "Listening… \(RemainingTime.phrase(for: advice) ?? "")")
+    }
+
     /// Disabled rather than failing silently, which is what a refused microphone would look like.
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {
@@ -713,6 +731,11 @@ struct MenuBarUpdateTests {
         #expect(line(.idle) == "Ready")
     }
 
+    @Test("says when the update feed is being checked")
+    func checking() {
+        #expect(line(.checking) == "Checking for updates…")
+    }
+
     /// A failure is why the menu was opened, so an update does not get to hide one.
     @Test("a failure still outranks an update")
     func failureWins() {
@@ -821,6 +844,33 @@ struct MenuBarUnheardShortcutTests {
         let state = MenuBarState(features: MenuBarFeatures(dictation: false), shortcutUnheard: reason)
         guard case .hint = MenuBarPresenter.present(state).header else {
             Issue.record("the unheard shortcut was said while dictation is off")
+            return
+        }
+    }
+}
+
+@Suite("AI suggestions paused by secure keyboard entry")
+struct MenuBarUnheardSuggestionTests {
+    private let reason =
+        "Another app has turned on secure keyboard entry, so AI suggestions are paused."
+
+    @Test("shows why suggestions are paused while the feature is on")
+    func saysWhySuggestionsPaused() {
+        let state = MenuBarState(
+            features: MenuBarFeatures(suggestions: true), suggestionUnheard: reason)
+        let shown = MenuBarPresenter.present(state)
+        #expect(
+            shown.header
+                == .status(
+                    MenuBarStatus(title: "AI suggestions paused", detail: reason, emphasis: .attention)))
+    }
+
+    @Test("hides the suggestion notice when the feature is off")
+    func silentWhenSuggestionsAreOff() {
+        let state = MenuBarState(
+            features: MenuBarFeatures(suggestions: false), suggestionUnheard: reason)
+        guard case .hint = MenuBarPresenter.present(state).header else {
+            Issue.record("the suggestion notice was shown while AI suggestions are off")
             return
         }
     }

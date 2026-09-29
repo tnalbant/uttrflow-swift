@@ -119,8 +119,9 @@ public actor Verifier {
     }
 
     /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
-    public func forgetEverything() {
+    public func forgetEverything() async {
         cache.forgetEverything()
+        await scoring?.forgetEverything()
     }
 
     /// How many verdicts are remembered, which is what says a keystroke skipped the gates.

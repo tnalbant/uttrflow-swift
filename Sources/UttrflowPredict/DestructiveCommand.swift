@@ -33,6 +33,40 @@ public enum DestructiveCommand {
             || flag == "--remove-sent-files"
     }
 
+    /// The source operands of `cp`, after options and their values are removed.
+    private static func cpSources(_ arguments: [String]) -> [String] {
+        var operands: [String] = []
+        var rest = arguments[...]
+        var targetDirectory = false
+        while let argument = rest.popFirst() {
+            if argument == "--" {
+                operands += rest
+                break
+            }
+            if argument == "-S" || argument == "--suffix" {
+                if !rest.isEmpty { rest.removeFirst() }
+                continue
+            }
+            if argument.hasPrefix("-S") && argument.count > 2 || argument.hasPrefix("--suffix=") {
+                continue
+            }
+            if argument == "-t" || argument == "--target-directory" {
+                targetDirectory = true
+                if !rest.isEmpty { rest.removeFirst() }
+                continue
+            }
+            if argument.hasPrefix("-t") && argument.count > 2 || argument.hasPrefix("--target-directory=") {
+                targetDirectory = true
+                continue
+            }
+            if argument.count > 1 && argument.hasPrefix("-") {
+                continue
+            }
+            operands.append(argument)
+        }
+        return targetDirectory ? operands : Array(operands.dropLast())
+    }
+
     /// A word that runs the command after it: its flags that take a value, and how many plain words of its own precede the command.
     private struct Wrapper {
         let valued: Set<String>
@@ -179,7 +213,67 @@ public enum DestructiveCommand {
         "launchctl": VerbTool(
             valued: [],
             destroys: { positionals, _ in ["remove", "bootout", "unload"].contains(positionals.first) }),
+        "npm": VerbTool(
+            valued: [
+                "--registry", "--userconfig", "--globalconfig", "--prefix", "--cache", "--workspace", "-w",
+                "--scope", "--loglevel", "--otp",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "pnpm": VerbTool(
+            valued: [
+                "--filter", "-F", "--dir", "--registry", "--store-dir", "--virtual-store-dir", "--prefix",
+                "--config-dir", "--reporter",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "yarn": VerbTool(
+            valued: [
+                "--cwd", "--use-yarnrc", "--mutex", "--network-concurrency", "--network-timeout",
+                "--cache-folder", "--modules-folder", "--registry", "--scope",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "cargo": VerbTool(
+            valued: ["--config", "-Z"],
+            destroys: { positionals, _ in positionals.first == "yank" }),
+        "pip": pipTool,
+        "pip3": pipTool,
+        "brew": VerbTool(
+            valued: brewValued,
+            destroys: { positionals, arguments in
+                ["uninstall", "remove"].contains(positionals.first)
+                    && hasOption("--zap", in: arguments, valued: brewValued)
+            }),
     ]
+
+    /// Package-manager options that take a value before their subcommand.
+    private static let pipValued: Set<String> = [
+        "--python", "--proxy", "--retries", "--timeout", "--index-url", "--extra-index-url",
+        "--find-links", "--trusted-host", "--cert", "--client-cert", "--cache-dir", "--log",
+        "--log-file", "--exists-action", "--no-binary", "--only-binary",
+    ]
+
+    /// Pip's quiet unattended uninstallation, recognized only when it is the actual pip subcommand.
+    private static let pipTool = VerbTool(
+        valued: pipValued,
+        destroys: pipUninstall
+    )
+
+    private static func pipUninstall(_ positionals: [String], _ arguments: [String]) -> Bool {
+        positionals.first == "uninstall"
+            && (hasOption("-y", in: arguments, valued: pipValued)
+                || hasOption("--yes", in: arguments, valued: pipValued))
+    }
+
+    private static let brewValued: Set<String> = ["--repository"]
+
+    private static func hasOption(_ option: String, in arguments: [String], valued: Set<String>) -> Bool {
+        var remaining = arguments[...]
+        while let argument = remaining.popFirst() {
+            if argument == "--" { return false }
+            if argument == option { return true }
+            if valued.contains(argument), !remaining.isEmpty { remaining.removeFirst() }
+        }
+        return false
+    }
 
     /// Docker and Podman, which destroy by pruning, by removing a volume, or by forcing a container or an image out.
     private static let containerTool = VerbTool(
@@ -259,12 +353,25 @@ public enum DestructiveCommand {
         guard case .named(let command, let arguments) = parsed else { return false }
         let lowered = arguments.map { $0.lowercased() }
         if destroyers.contains(command) || command.hasPrefix("mkfs.") { return true }
+        if command == "python" || command == "python3" || command.hasPrefix("python3."),
+            let module = lowered.firstIndex(of: "-m"),
+            lowered.indices.contains(module + 1), lowered[module + 1] == "pip"
+        {
+            let pipArguments = Array(lowered.dropFirst(module + 2))
+            if pipUninstall(positionals(pipArguments, valued: pipValued), pipArguments) { return true }
+        }
         if let tool = verbTools[command], tool.destroys(positionals(lowered, valued: tool.valued), lowered) {
             return true
         }
         switch command {
+        case "chmod", "chown", "chgrp":
+            if hasRecursiveOption(arguments) { return true }
         case "git":
             if matchesDestructiveGit(arguments) { return true }
+        case "hg":
+            if matchesDestructiveMercurial(arguments) { return true }
+        case "svn":
+            if matchesDestructiveSubversion(arguments) { return true }
         case "find":
             if lowered.contains("-delete") { return true }
             // The command `-exec` runs is judged as its own clause, so a wrapper in front of it is read past.
@@ -294,8 +401,14 @@ public enum DestructiveCommand {
             {
                 return true
             }
-        case "mv", "cp":
+        case "mv":
             if lowered.last == "/dev/null" { return true }
+        case "cp":
+            if cpSources(arguments).contains(where: {
+                $0.lowercased() == "/dev/null" || $0.lowercased() == "/dev/zero"
+            }) {
+                return true
+            }
         case "rsync":
             if lowered.contains(where: rsyncDeletes) { return true }
         case "tee":
@@ -415,6 +528,67 @@ public enum DestructiveCommand {
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
     private static let historyDestroyers: Set<String> = ["filter-branch", "filter-repo", "prune"]
 
+    /// Whether a Mercurial command removes history or discards working-copy changes.
+    private static func matchesDestructiveMercurial(_ arguments: [String]) -> Bool {
+        guard let index = operationIndex(arguments, valued: mercurialGlobalOptions) else { return false }
+        let operation = arguments[index].lowercased()
+        if ["strip", "prune", "purge"].contains(operation) { return true }
+        guard operation == "update" else { return false }
+        let flags = arguments.dropFirst(index + 1)
+        return hasOption("--clean", in: flags) || hasShortOption("C", in: flags)
+    }
+
+    /// Whether a Subversion command deletes a repository path or discards local changes.
+    private static func matchesDestructiveSubversion(_ arguments: [String]) -> Bool {
+        guard let index = operationIndex(arguments, valued: subversionGlobalOptions) else { return false }
+        return ["delete", "del", "remove", "rm", "revert"].contains(arguments[index].lowercased())
+    }
+
+    /// Global options that consume a value before Mercurial's command.
+    private static let mercurialGlobalOptions: Set<String> = [
+        "-R", "--repository", "--cwd", "--config", "--configfile", "--encoding", "--encodingmode",
+        "--pager", "--color",
+    ]
+
+    /// Global options that consume a value before Subversion's subcommand.
+    private static let subversionGlobalOptions: Set<String> = [
+        "--username", "--password", "--config-dir", "--config-option", "--changelist",
+    ]
+
+    /// The first operation after a command's leading global options.
+    private static func operationIndex(_ arguments: [String], valued: Set<String>) -> Int? {
+        var index = arguments.startIndex
+        while index < arguments.endIndex {
+            let word = arguments[index]
+            if word == "--" {
+                return arguments.index(after: index) < arguments.endIndex
+                    ? arguments.index(after: index) : nil
+            }
+            guard word.hasPrefix("-") else { return index }
+            index = arguments.index(after: index)
+            if valued.contains(word), index < arguments.endIndex { index = arguments.index(after: index) }
+        }
+        return nil
+    }
+
+    /// Whether the option occurs before an option terminator.
+    private static func hasOption(_ option: String, in arguments: ArraySlice<String>) -> Bool {
+        for argument in arguments {
+            if argument == "--" { return false }
+            if argument == option { return true }
+        }
+        return false
+    }
+
+    /// Whether a clustered short option occurs before an option terminator.
+    private static func hasShortOption(_ option: Character, in arguments: ArraySlice<String>) -> Bool {
+        for argument in arguments {
+            if argument == "--" { return false }
+            if shortFlags(argument, include: option, valuesAfter: []) { return true }
+        }
+        return false
+    }
+
     /// Whether a cluster of short flags holds this one, read only up to the first flag whose value runs on in the same word.
     private static func shortFlags(
         _ word: String, include flag: Character, valuesAfter valued: Set<Character>
@@ -423,6 +597,17 @@ public enum DestructiveCommand {
         for letter in word.dropFirst() {
             if letter == flag { return true }
             if valued.contains(letter) { return false }
+        }
+        return false
+    }
+
+    /// Whether a permission or ownership command requests a recursive change before its option terminator.
+    private static func hasRecursiveOption(_ arguments: [String]) -> Bool {
+        for argument in arguments {
+            if argument == "--" { return false }
+            if argument == "--recursive" || shortFlags(argument, include: "R", valuesAfter: []) {
+                return true
+            }
         }
         return false
     }

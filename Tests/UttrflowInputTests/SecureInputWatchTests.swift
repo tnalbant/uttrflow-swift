@@ -40,6 +40,12 @@ struct SecureInputWatchTests {
         #expect(SecureInputWatch.notice.contains("menu bar"))
     }
 
+    @Test("explains why suggestions pause and how to resume them")
+    func suggestionNoticeNamesTheWayBack() {
+        #expect(SecureInputWatch.suggestionNotice.contains("AI suggestions are paused"))
+        #expect(SecureInputWatch.suggestionNotice.contains("Turn it off in that app"))
+    }
+
     @Test("asks the system by default, which answers without side effects")
     func systemAnswer() {
         let watch = SecureInputWatch()

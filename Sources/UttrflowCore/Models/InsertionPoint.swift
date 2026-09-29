@@ -40,7 +40,22 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
             let isBlank = line.allSatisfy(\.isWhitespace)
             return isBlank && text.contains(where: \.isNewline) ? .startOfSentence : .startOfText
         }
-        return sentenceEnds.contains(last) ? .startOfSentence : .midSentence
+        if sentenceEnds.contains(last) {
+            let word = line.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
+            let normalizedWord = String(
+                word.lowercased().reversed()
+                    .drop(while: { ".!?…,:;\"'”’)]}".contains($0) })
+                    .reversed()
+                    .drop(while: { "\"'“(".contains($0) })
+            )
+            let isKnownAbbreviation =
+                sentenceAbbreviations.contains(normalizedWord)
+                || normalizedWord.split(separator: ".").count > 1
+            if !word.isEmpty, !isKnownAbbreviation {
+                return .startOfSentence
+            }
+        }
+        return .midSentence
     }
 
     /// The line without the one list, quote or heading marker it opens with, which is typed but not written.
@@ -63,6 +78,9 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// The marks after which a new sentence begins.
     private static let sentenceEnds: Set<Character> = [".", "!", "?"]
+
+    /// Dotted forms that keep the current sentence open, shared with first-word casing.
+    public static let sentenceAbbreviations: Set<String> = ["e.g", "i.e", "vs", "etc", "p.m", "a.m"]
 
     /// Pads `text` with a space at each caret edge where it would otherwise join a neighbouring word.
     public func paddedBoundary(for text: String) -> String {
@@ -88,7 +106,14 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         guard let previous = precedingText.last, !previous.isWhitespace, !previous.isNewline else {
             return false
         }
-        return !openingBracketOrQuote.contains(previous)
+        return !openingBracket.contains(previous) && !Self.isOpeningStraightQuote(previous, in: precedingText)
+    }
+
+    /// Whether a straight quote follows a boundary that opens a quoted span.
+    private static func isOpeningStraightQuote(_ quote: Character, in precedingText: String) -> Bool {
+        guard quote == "\"" || quote == "'" else { return false }
+        guard let beforeQuote = precedingText.dropLast().last else { return true }
+        return beforeQuote.isWhitespace || openingBracket.contains(beforeQuote)
     }
 
     /// Whether the dictated word needs a trailing space to read as separate from `followingText`.
@@ -99,8 +124,6 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         return next.isLetter || next.isNumber || next == "_"
     }
 
-    /// Brackets and quotes that open a context the dictated word belongs inside, so no space precedes it.
-    private static let openingBracketOrQuote: Set<Character> = [
-        "(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}",
-    ]
+    /// Brackets and curly opening quotes that start a context the dictated word belongs inside.
+    private static let openingBracket: Set<Character> = ["(", "[", "{", "\u{201C}", "\u{2018}"]
 }
