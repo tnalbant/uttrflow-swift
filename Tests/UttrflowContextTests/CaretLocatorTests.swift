@@ -53,6 +53,46 @@ struct CaretLocatorTests {
         #expect(field.caret(at: (location: 5, length: 0)) == CGRect(x: 48, y: 10, width: 0, height: 16))
     }
 
+    @Test("A surrogate-pair emoji is queried as one character before the caret")
+    func surrogateEmojiUsesItsFullRange() {
+        var requested: (Int, Int)?
+        let field = CaretLocator.caret(
+            at: (location: 2, length: 0), frame: nil, text: "👍",
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 40, y: 10, width: 18, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.0 == 0 && requested?.1 == 2)
+        #expect(field == CGRect(x: 58, y: 10, width: 0, height: 16))
+    }
+
+    @Test("A ZWJ family is queried as one character before the caret")
+    func familyEmojiUsesItsFullRange() {
+        let family = "👨‍👩‍👧‍👦"
+        var requested: (Int, Int)?
+        let field = CaretLocator.caret(
+            at: (location: family.utf16.count, length: 0), frame: nil, text: family,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 40, y: 10, width: 72, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.0 == 0 && requested?.1 == family.utf16.count)
+        #expect(field == CGRect(x: 112, y: 10, width: 0, height: 16))
+    }
+
+    @Test("A bounded text window supplies its local selection while bounds use the field offset")
+    func boundedTextWindowKeepsTheFieldOffset() {
+        var requested: (Int, Int)?
+        let field = CaretLocator.caret(
+            at: (location: 1_002, length: 0), frame: nil, text: "a👍", textSelectionLocation: 3,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 40, y: 10, width: 18, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.0 == 1_000 && requested?.1 == 2)
+        #expect(field == CGRect(x: 58, y: 10, width: 0, height: 16))
+    }
+
     @Test("Zero-size glyph bounds fall through to the marker, as a Chromium field answers them.")
     func zeroSizeGlyphsFallThrough() {
         let field = locator(

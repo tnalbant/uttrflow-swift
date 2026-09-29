@@ -5,9 +5,16 @@ enum CaretLocator {
     /// The caret at the selection, or at the text marker alone when the field refuses to say where its selection is; `frame` is the field's own.
     static func caret(
         at selection: (location: Int, length: Int)?, frame: CGRect?, pointSize: CGFloat? = nil,
+        text: String? = nil, textSelectionLocation: Int? = nil,
         bounds: (_ location: Int, _ length: Int) -> CGRect?, markerBounds: () -> CGRect?
     ) -> CGRect? {
-        if let selection, let rect = caret(inRange: selection, bounds: bounds) { return rect }
+        if let selection,
+            let rect = caret(
+                inRange: selection, text: text,
+                textSelectionLocation: textSelectionLocation ?? selection.location, bounds: bounds)
+        {
+            return rect
+        }
         // A web field answers glyph bounds with a zero-size rectangle, but its selection's text-marker range still has a place on screen.
         if let rect = markerBounds(), isLine(rect, in: frame, pointSize: pointSize) {
             return CGRect(x: rect.minX, y: rect.minY, width: 0, height: rect.height)
@@ -41,7 +48,9 @@ enum CaretLocator {
 
     /// The caret read off the glyph beside it, because a zero-length range's own bounds lies.
     private static func caret(
-        inRange selection: (location: Int, length: Int), bounds: (_ location: Int, _ length: Int) -> CGRect?
+        inRange selection: (location: Int, length: Int), text: String?,
+        textSelectionLocation: Int,
+        bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> CGRect? {
         // A real selection, unlike a caret, reports its own bounds honestly.
         if selection.length > 0, let rect = bounds(selection.location, selection.length), rect.height > 0 {
@@ -49,7 +58,9 @@ enum CaretLocator {
         }
         let location = selection.location
         // The caret sits at the trailing edge of the glyph before it, which is what typing just moved past.
-        if location > 0, let before = bounds(location - 1, 1), before.height > 0 {
+        let precedingLength =
+            precedingCharacterLength(in: text, beforeUTF16Offset: textSelectionLocation) ?? 1
+        if location > 0, let before = bounds(location - precedingLength, precedingLength), before.height > 0 {
             return CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height)
         }
         // At the very start there is no glyph before, so the caret takes the leading edge of the one after.
@@ -59,5 +70,16 @@ enum CaretLocator {
         // An empty line has no glyph beside the caret, so its own bounds is all there is.
         if let rect = bounds(selection.location, selection.length), rect.height > 0 { return rect }
         return nil
+    }
+
+    /// The UTF-16 length of the complete character immediately before the caret.
+    private static func precedingCharacterLength(in text: String?, beforeUTF16Offset offset: Int) -> Int? {
+        guard let text, offset > 0 else { return nil }
+        let utf16 = text.utf16
+        guard offset <= utf16.count,
+            let end = String.Index(utf16.index(utf16.startIndex, offsetBy: offset), within: text)
+        else { return nil }
+        let start = text.index(before: end)
+        return text[start..<end].utf16.count
     }
 }
