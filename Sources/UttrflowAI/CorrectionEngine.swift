@@ -63,12 +63,10 @@ public struct WordCorrectionEngine: Sendable {
         return nil
     }
 
-    /// Whether an entry may take a run of several words: it must spell them, or at least open as they do.
+    /// Whether an entry spells a run, or at least opens as it does.
     static func spells(_ entry: DictionaryEntry, asHeard heard: String) -> Bool {
-        // One word for one word is the ordinary case, and the evidence alone decides it.
-        guard heard.split(whereSeparator: \.isWhitespace).count > 1 else { return true }
         // Either the spelling or the pronunciation the user wrote for it, which is what that field is for.
-        return [entry.word, entry.soundsLike].contains {
+        [entry.word, entry.soundsLike].contains {
             ReadingRestraint.closedUp($0) == ReadingRestraint.closedUp(heard)
                 || ReadingRestraint.opensAlike($0, heard: heard)
         }
@@ -96,7 +94,9 @@ struct UncertainSpan: Sendable, Equatable {
 
     /// Every run up to the index's word limit in which every word is doubted, most deserving first.
     static func spans(in utterance: Utterance, below threshold: Double) -> [UncertainSpan] {
-        spans(in: utterance.words.map { ($0.text, $0.confidence) }, below: threshold)
+        spans(
+            in: utterance.words.map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
+            below: threshold)
     }
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
@@ -104,8 +104,15 @@ struct UncertainSpan: Sendable, Equatable {
         spans(
             in: draft.words
                 .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-                .map { ($0.text, $0.confidence) },
+                .map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
             below: threshold)
+    }
+
+    /// A word in a Homophones group is doubted regardless of recogniser confidence, so its partners can be tried.
+    private static func effectiveConfidence(
+        text: String, confidence: Double
+    ) -> (text: String, confidence: Double) {
+        Homophones.group(containing: text) == nil ? (text, confidence) : (text, -1)
     }
 
     /// The runs themselves, over anything that can name a word and how sure the recogniser was of it.

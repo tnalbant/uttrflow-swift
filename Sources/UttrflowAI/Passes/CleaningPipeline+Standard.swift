@@ -63,6 +63,13 @@ extension CleaningPipeline {
         ])
     }
 
+    /// The typed whole-text rules that apply once the pieces have been laid out.
+    public static func wholeText(
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+    ) -> CleaningPipeline {
+        message(for: formatter, situation: situation, heard: heard)
+    }
+
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.
     private static func terminalStop(
         _ formatter: DestinationFormatter, in situation: Situation

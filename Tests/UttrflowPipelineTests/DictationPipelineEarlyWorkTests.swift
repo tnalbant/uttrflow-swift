@@ -43,6 +43,23 @@ private actor NumberingSpeechEngine: SpeechEngine {
     var calls: Int { sampleCounts.count }
 }
 
+/// A recogniser that keeps every sample it is given, so a test can check none were lost or repeated.
+private actor KeepingSpeechEngine: SpeechEngine {
+    let kind = SpeechEngineKind.whisperKit
+    private(set) var pieces: [[Float]] = []
+
+    func prepare() async throws(SpeechEngineError) {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        pieces.append(audio.samples)
+        return Transcription(
+            text: "w\(pieces.count) x", detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
+            audioDuration: audio.duration)
+    }
+}
+
 /// A recogniser whose first recognition does not finish until the test lets it, so the key can come up mid-recognition.
 private actor HeldSpeechEngine: SpeechEngine {
     let kind = SpeechEngineKind.whisperKit
@@ -268,6 +285,9 @@ private enum Take {
     /// One phrase with no pause in it, so nothing is ever worked ahead.
     static let onePiece = AudioSamples.canonical(tone(1.2))
 
+    /// A first piece with its trailing pause, and nothing captured beyond it: `threePieces`' opening.
+    static let firstPieceOnly = AudioSamples.canonical(tone(1.2) + silence(0.5))
+
     /// Three phrases with a clear pause after the first two.
     static let threePieces = AudioSamples.canonical(
         tone(1.2) + silence(0.5) + tone(1.2) + silence(0.5) + tone(0.4))
@@ -277,7 +297,8 @@ private enum Take {
 
 /// Windows short enough for a test recording to have several.
 private let quick = SpeechWindowing(
-    minimumLength: 1, sentencePause: 0.3, comfortableLength: 2, anyPause: 0.2, maximumLength: 5)
+    minimumLength: 1, sentencePause: 0.3, comfortableLength: 2, anyPause: 0.2, maximumLength: 5,
+    minimumSpeech: 0.2)
 
 extension DictationState {
     fileprivate var outcome: DictationOutcome? {
@@ -376,6 +397,22 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(cleaner.warmed == [.messaging, .messaging, .messaging])
         #expect(cleaner.seen.count == 3, "two pieces while held, and the last after release")
+    }
+
+    @Test("the pieces worked ahead are the recording itself, every sample once and in order")
+    func piecesLoseNoAudio() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        await capture.setCaptured(Take.threePieces)
+        let speech = KeepingSpeechEngine()
+        let pipeline = makePipeline(capture: capture, speech: speech)
+
+        await pipeline.startRecording()
+        try await eventually { await speech.pieces.count >= 2 }
+        await pipeline.finishRecording()
+
+        let pieces = await speech.pieces
+        #expect(pieces.count == 3)
+        #expect(pieces.joined().elementsEqual(Take.threePieces.samples))
     }
 
     /// The screen is read before the tidier is warmed, so the warm-up is for the right place.
@@ -507,27 +544,63 @@ struct DictationPipelineEarlyWorkTests {
         #expect(await speech.calls == 3)
     }
 
-    @Test("a speech-bearing piece with no words fails the dictation instead of inserting a partial answer")
-    func speechBearingPieceIsNotSkipped() async {
+    @Test("a speech-bearing piece with no words is decoded again, without the vocabulary, in its own place")
+    func speechBearingPieceIsDecodedAgain() async {
         for blank in [false, true] {
             let speech = NumberingSpeechEngine(
                 silentCalls: blank ? [] : [2], blankCalls: blank ? [2] : [])
-            let inserter = CollectingInserter()
             let pipeline = makePipeline(
                 capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
-                speech: speech, inserter: inserter, earlyPoll: .seconds(60))
+                speech: speech, earlyPoll: .seconds(60))
 
             await pipeline.startRecording()
             await pipeline.finishRecording()
 
-            #expect(
-                await pipeline.currentState
-                    == .failed(
-                        DictationFailure(
-                            SpeechEngineError.transcriptionFailed(
-                                description: "speech in a recording piece produced no words"))))
-            #expect(inserter.texts.isEmpty)
+            let outcome = await pipeline.currentState.outcome
+            #expect(outcome?.text == "W1 X. W3 X. W4 X")
+            #expect(outcome?.missedPieces == 0)
+            #expect(await speech.calls == 4)
+            #expect(await speech.biases[2].isEmpty, "the second decode goes without the vocabulary")
         }
+    }
+
+    /// A long dictation is many pieces, and one short blank one must not cost the rest. Issue #2099.
+    @Test("a piece with speech that decodes to no words twice is left out and counted, and the rest go in")
+    func speechBearingPieceIsSkippedAfterTwoDecodes() async {
+        let speech = NumberingSpeechEngine(blankCalls: [2, 3])
+        let inserter = CollectingInserter()
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: speech, inserter: inserter, earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        let outcome = await pipeline.currentState.outcome
+        #expect(outcome?.text == "W1 X. W4 X")
+        #expect(outcome?.missedPieces == 1)
+        #expect(inserter.texts == ["W1 X. W4 X"])
+    }
+
+    @Test(
+        "a recording whose every speech-bearing piece decodes to no words fails as untranscribed, not silent")
+    func everyPieceMissedFails() async {
+        let speech = NumberingSpeechEngine(blankCalls: Set(1...6))
+        let inserter = CollectingInserter()
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: speech, inserter: inserter, earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(
+            await pipeline.currentState
+                == .failed(
+                    DictationFailure(
+                        SpeechEngineError.transcriptionFailed(
+                            description: "speech in a recording piece produced no words"))))
+        #expect(inserter.texts.isEmpty)
     }
 
     @Test("a genuinely silent trailing window is skipped after speech")
@@ -672,7 +745,7 @@ struct DictationPipelineEarlyWorkTests {
         // The time limit cancels a serial pipeline's wait, which then ends every stage's wait with it.
         let retrying = Task { await pipeline.retry(recording.id) }
         await withTaskCancellationHandler {
-            await retrying.value
+            _ = await retrying.value
         } onCancel: {
             rendezvous.giveUp()
         }
@@ -712,6 +785,28 @@ struct DictationPipelineEarlyWorkTests {
             pipeline, holding: { await cleaner.isHolding }, letGo: { await cleaner.release() })
 
         #expect(await metrics.measurements.contains { $0.stage == .drain })
+    }
+
+    /// Issue 853: the hand-off used to wait for the whole tidy before recognising anything after it.
+    @Test("recognises the audio after an early piece while that piece is still being tidied")
+    func tailRecognitionDoesNotWaitForAHeldTidy() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
+        // While recording, only the first piece's audio has arrived; the rest comes back from `stop()`.
+        await capture.setCaptured(Take.firstPieceOnly)
+        let cleaner = HeldCleaner()
+        let speech = NumberingSpeechEngine()
+        let pipeline = makePipeline(capture: capture, speech: speech, cleaner: cleaner)
+
+        await pipeline.startRecording()
+        try await eventually { await cleaner.isHolding }
+        let finishing = Task { await pipeline.finishRecording() }
+        try await waitForCalls(2, on: speech)
+        #expect(await cleaner.isHolding, "the first piece's tidy is still held")
+
+        await cleaner.release()
+        await finishing.value
+
+        #expect(await pipeline.currentState.outcome?.text == "w1 x. w2 x. w3 x")
     }
 
     /// Issue 344: recognition is usually the longer half of the in-flight piece, and was the half the drain missed.

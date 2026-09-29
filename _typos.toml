@@ -7,7 +7,7 @@
 # `swfit` and `chekout` appear thirty-odd times each because a test has to assert that
 # `chance("comit", meaning: "commit")` beats `chance("commt", …)`. It predicts from partial
 # input, so `hel`, `chec`, `statu` and `ommit` are prefixes mid-typing rather than words.
-# It transcribes Hinglish, so `tak`, `woh`, `arre`, `didi` and `lene` are vocabulary. And
+# It transcribes Hinglish, so `tak`, `woh`, `arre`, `didi`, `lene` and `mata` are vocabulary. And
 # it names things after what they are: `ANE` is Apple's Neural Engine, `caf` is Core Audio
 # Format, `PN` and `TIO` are Double Metaphone digraphs.
 #
@@ -54,10 +54,12 @@ extend-exclude = [
 mis = "mis"
 gti = "gti"
 comit = "comit"
+chekout = "chekout"
 ommit = "ommit"
 statu = "statu"
 chec = "chec"
 hel = "hel"
+tomor = "tomor"
 ser = "ser"
 caf = "caf"
 gud = "gud"
@@ -75,6 +77,7 @@ thik = "thik"
 tak = "tak"
 woh = "woh"
 arre = "arre"
+mata = "mata"
 tha = "tha"
 thi = "thi"
 ein = "ein"

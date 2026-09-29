@@ -7,7 +7,13 @@ public enum Homophones {
         let word = ReadingRestraint.closedUp(word)
         let other = ReadingRestraint.closedUp(other)
         guard word != other else { return false }
-        return groups.contains { $0.contains(word) && $0.contains(other) }
+        return group(containing: word)?.contains(other) == true
+    }
+
+    /// Returns the hand-kept sound-alike spellings for one word, including the word itself.
+    public static func group(containing word: String) -> Set<String>? {
+        let word = ReadingRestraint.closedUp(word)
+        return groups.first { $0.contains(word) }
     }
 
     /// Sets said identically; a pair whose vowels differ at all — "main" and "man" — belongs in none of them.

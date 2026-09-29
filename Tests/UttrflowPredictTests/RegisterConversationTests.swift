@@ -79,6 +79,21 @@ private let moments: [ScreenMoment] = [
         screen: ["From: Sam", "To: me", "Subject: August invoice", "Could you share the invoice?"],
         isChat: false),
     ScreenMoment(
+        name: "task list with repeated field labels", field: "Notes",
+        screen: ["Owner: Dev team", "Due: Friday", "Owner: Design", "Due: Monday"], isChat: false),
+    ScreenMoment(
+        name: "bug template repeated per report", field: "Description",
+        screen: [
+            "Expected: the file saves", "Actual: nothing happens", "Expected: a warning",
+            "Actual: the app quits",
+        ], isChat: false),
+    ScreenMoment(
+        name: "quoted mail thread headers", field: nil,
+        screen: [
+            "From: Sam", "To: Alex", "Subject: Invoice", "Sounds good.", "From: Alex", "To: Sam",
+            "Subject: Invoice", "Could you share it?",
+        ], isChat: false),
+    ScreenMoment(
         name: "named turns in a chat", field: "Message",
         screen: [
             "Priya: where did the log go?", "Me: in dist/, one sec", "Priya: found it, thanks!",
@@ -127,6 +142,8 @@ struct RegisterConversationTests {
         #expect(Register.speaker(of: "Priya: on my way") == "Priya")
         #expect(Register.speaker(of: "Neha (PM): confirmed") == "Neha (PM)")
         #expect(Register.speaker(of: "Support bot:") == "Support bot")
+        #expect(Register.speaker(of: "Studio 54: lights on") == "Studio 54")
+        #expect(Register.speaker(of: "Jan 15: Fixed login bug") == nil)
         #expect(Register.speaker(of: "Standup moved to 10:30 tomorrow") == nil)
         #expect(Register.speaker(of: "Steps to reproduce the crash: open it") == nil)
         #expect(Register.speaker(of: "12: twelve") == nil)
@@ -137,6 +154,41 @@ struct RegisterConversationTests {
         #expect(!Register.hasSpeakerTurns(["A: one", "B: two", "C: three"]))
         #expect(!Register.hasSpeakerTurns(["A: one", "A: two", "A: three"]))
         #expect(Register.hasSpeakerTurns(["A: one", "B: two", "A: three"]))
+        #expect(
+            !Register.hasSpeakerTurns([
+                "Jan 15: Fixed login bug", "Jan 16: Added dark mode support",
+                "Jan 15: Patched security issue",
+            ]))
+    }
+
+    @Test("A field label is never a speaker.", arguments: Register.fieldLabels.sorted())
+    func fieldLabelsAreNotSpeakers(label: String) {
+        let capitalised = label.prefix(1).uppercased() + label.dropFirst()
+        #expect(Register.speaker(of: "\(capitalised): value") == nil)
+        #expect(Register.speaker(of: "\(label.uppercased()): value") == nil)
+    }
+
+    @Test(
+        "A label headed by a field's word is a field, not a speaker.",
+        arguments: [
+            "Expected result", "Actual result", "Expected behavior", "Actual behavior", "Steps to reproduce",
+            "Due date", "Start date", "Assigned to", "Reported by", "Created at",
+        ])
+    func multiWordFieldLabelsAreNotSpeakers(label: String) {
+        #expect(Register.speaker(of: "\(label): value") == nil)
+    }
+
+    @Test("A bug report template repeated twice reads as a record, not two speakers taking turns.")
+    func bugReportTemplateIsNotAConversation() {
+        let report = [
+            "Expected result: the list scrolls", "Actual result: it jumps to the top",
+            "Expected result: the badge clears", "Actual result: it stays",
+        ]
+        #expect(!Register.isConversation(report))
+        #expect(
+            Register.isConversation([
+                "Priya: on my way", "Neha (PM): confirmed", "Priya: see you", "Neha (PM): ok",
+            ]))
     }
 
     @Test("A time of day is one or two digits, a colon and two digits, wherever it sits in the line.")

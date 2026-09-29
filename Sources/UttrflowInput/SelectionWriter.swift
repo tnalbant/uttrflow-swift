@@ -1,5 +1,6 @@
 // Replaces a field's selection through its Accessibility attributes, checking each step.
 import ApplicationServices
+import Foundation
 import UttrflowCore
 
 /// The four Accessibility attributes a selection is read and written through; the real one wraps an `AXUIElement`.
@@ -20,8 +21,6 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
     let field: Field
 
     func replaceSelection(with text: String) throws(TextInsertionError) {
-        // Read first so the write can be checked; a field that will not answer is trusted.
-        let before = field.value()
         let selectionBefore = field.selectedRange()
 
         let result = field.setSelectedText(text)
@@ -29,18 +28,10 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
             throw .insertionRejected(description: "the field refused the text (\(result.rawValue))")
         }
 
-        // The selection collapsing to where this text ends is a write, even where the text it replaced reads the same.
-        if let selectionBefore, let after = field.selectedRange(), after.length == 0,
+        guard !text.isEmpty else { return }
+        guard let selectionBefore, let after = field.selectedRange(), after.length == 0,
             after.location == selectionBefore.location + text.utf16.count
-        {
-            return
-        }
-
-        // A success that changed nothing is the failure this catches. See `Docs/insertion.md`.
-        if let before, let after = field.value(), before == after, !text.isEmpty {
-            throw .insertionRejected(
-                description: "the field accepted the text and did not change")
-        }
+        else { throw .insertionUnconfirmed }
     }
 
     /// Grows the selection back over what is replaced first, so one write replaces it and undo sees one edit.
@@ -52,6 +43,7 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         do {
             try replaceSelection(with: text)
         } catch {
+            if error == .insertionUnconfirmed { throw error }
             // A field that takes the selection and refuses the text keeps its caret, not a selection.
             _ = try? select(caret)
             throw error

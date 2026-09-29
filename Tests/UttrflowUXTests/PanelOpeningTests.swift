@@ -39,7 +39,7 @@ struct PanelOpeningTests {
     @Test("the list arriving says what it means, and an empty clipboard then says so")
     func installedEmptyListSaysSo() {
         var opening = PanelSnapshot.opening(now: PanelFixture.now)
-        opening.install([], missingImages: [], formattableLanguages: [])
+        opening.install([], missingImages: [], formattableLanguages: [], now: PanelFixture.now)
 
         #expect(!opening.isAwaitingList)
         #expect(PanelPresenter.present(opening).emptyState?.title == "Nothing copied yet")
@@ -49,7 +49,8 @@ struct PanelOpeningTests {
     func typingSurvivesTheList() {
         var opening = PanelSnapshot.opening(now: PanelFixture.now, locale: PanelFixture.locale)
         opening.query = "second"
-        opening.install(PanelFixture.clips, missingImages: [], formattableLanguages: [])
+        opening.install(
+            PanelFixture.clips, missingImages: [], formattableLanguages: [], now: PanelFixture.now)
 
         #expect(opening.query == "second")
         #expect(PanelPresenter.present(opening).rows.map(\.summary) == ["The second thing"])
@@ -66,7 +67,7 @@ struct PanelOpeningTests {
 
         opening.install(
             [PanelFixture.clip("filed", minutesAgo: 1, category: "Work")], missingImages: [],
-            formattableLanguages: [])
+            formattableLanguages: [], now: PanelFixture.now)
 
         #expect(opening.category == "Work")
     }
@@ -81,7 +82,7 @@ struct PanelOpeningTests {
         opening.query = "filed"
         opening.install(
             [PanelFixture.clip("filed", minutesAgo: 1, category: "Work")], missingImages: [],
-            formattableLanguages: [])
+            formattableLanguages: [], now: PanelFixture.now)
 
         #expect(opening.category == nil)
     }
@@ -95,13 +96,14 @@ struct PanelOpeningTests {
             closedAt: PanelFixture.now.addingTimeInterval(-3))
         var opening = PanelSnapshot.opening(
             now: PanelFixture.now, locale: PanelFixture.locale, resuming: resume)
-        opening.install([filed], missingImages: [], formattableLanguages: [])
+        opening.install([filed], missingImages: [], formattableLanguages: [], now: PanelFixture.now)
         #expect(opening.category == "Work")
         // The user leaves the collection, as the All chip does.
         opening.category = nil
 
         let copied = PanelFixture.clip("just copied", minutesAgo: 0)
-        opening.install([copied, filed], missingImages: [], formattableLanguages: [])
+        opening.install(
+            [copied, filed], missingImages: [], formattableLanguages: [], now: PanelFixture.now)
 
         #expect(opening.category == nil)
         #expect(PanelPresenter.present(opening).rows.map(\.summary) == ["just copied"])

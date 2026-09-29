@@ -11,7 +11,7 @@ final class SuggestionPanel: NSPanel {
 }
 
 /// What the surface was last asked to draw, so a display setting can change under it.
-private struct SuggestionRequest {
+private struct SuggestionRequest: Equatable {
     var suggestion: Suggestion = .silent
     /// What is already in the field, so the surface offers only what the suggestion adds.
     var typed: String = ""
@@ -29,6 +29,23 @@ private struct SuggestionRequest {
     var fontFamily: String?
     /// The field's own text colour, so the ghost reads against the field and not against Uttrflow's appearance.
     var textColor: TextColor?
+
+    /// How far apart two reads of one caret may be and still be the same place, since a field can report it a point off.
+    static let caretTolerance: CGFloat = 1
+
+    /// Whether this asks for exactly what `other` drew, the caret allowed its read-to-read wobble.
+    func draws(sameAs other: Self) -> Bool {
+        var aligned = self
+        aligned.caret = other.caret
+        return aligned == other && Self.sameCaret(caret, other.caret)
+    }
+
+    /// Whether two caret reads are one place.
+    private static func sameCaret(_ lhs: CGRect?, _ rhs: CGRect?) -> Bool {
+        guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+        return abs(lhs.minX - rhs.minX) <= caretTolerance && abs(lhs.maxX - rhs.maxX) <= caretTolerance
+            && abs(lhs.minY - rhs.minY) <= caretTolerance && abs(lhs.maxY - rhs.maxY) <= caretTolerance
+    }
 }
 
 /// Owns the panel the suggestion is drawn in, one for the whole process so no two ghosts are ever on screen.
@@ -39,13 +56,18 @@ final class SuggestionPanelController {
 
     private let panel: SuggestionPanel
     private let hostingView: NSHostingView<SuggestionView>
+    /// Lays out the ghost line alone at its full width, which is how a ghost too long for its room is caught.
+    private var measurer: NSHostingView<SuggestionGhostLine>?
     private var request = SuggestionRequest()
     private var panelSize = CGSize(width: 1, height: 1)
     private var appearanceObserver: (any NSObjectProtocol)?
+    private var screenParametersObserver: (any NSObjectProtocol)?
     private var announcer = SuggestionAnnouncer()
     /// Reads an announcement aloud to VoiceOver; a test swaps it to hear what would be said.
     var announce: @MainActor (String) -> Void = SuggestionPanelController.post
     private var isActuallyShowing = false
+    /// Called when the panel takes a drawn ghost off screen without being asked, so its keys are let go.
+    var onWithdrawnUnasked: (@MainActor () -> Void)?
 
     init() {
         hostingView = NSHostingView(rootView: SuggestionView(presentation: .init(.silent)))
@@ -57,14 +79,18 @@ final class SuggestionPanelController {
             presentation: SuggestionPresentation(.silent),
             onDesiredSize: { [weak self] size in self?.resize(to: size) })
         observeAppearance()
+        observeScreenParameters()
     }
 
     isolated deinit {
-        guard let appearanceObserver else { return }
-        NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver)
+        if let appearanceObserver { NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver) }
+        if let screenParametersObserver {
+            NotificationCenter.default.removeObserver(screenParametersObserver)
+        }
     }
 
-    /// Says what to draw and what to draw it against; `.silent` takes the surface away.
+    /// Says what to draw and what to draw it against, answering whether the offer is on screen whole; `.silent` takes the surface away.
+    @discardableResult
     func show(
         _ suggestion: Suggestion,
         typed: String = "",
@@ -77,12 +103,46 @@ final class SuggestionPanelController {
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
         textColor: TextColor? = nil
-    ) {
-        request = SuggestionRequest(
+    ) -> Bool {
+        let next = SuggestionRequest(
             suggestion: suggestion, typed: typed, placement: placement, caret: caret,
             window: window, field: field, fieldPointSize: fieldPointSize, selection: selection,
             acceptKey: acceptKey, fontFamily: fontFamily, textColor: textColor)
-        render()
+        // The same offer at the same caret is already on screen, so nothing is laid out, placed or fronted again.
+        if isActuallyShowing, next.draws(sameAs: request) { return true }
+        request = next
+        return render()
+    }
+
+    /// Draws another offer, highlight or dot at the caret the panel already follows, answering whether it is on screen whole.
+    @discardableResult
+    func redraw(_ suggestion: Suggestion, typed: String, selection: SuggestionSelection) -> Bool {
+        var next = request
+        next.suggestion = suggestion
+        next.typed = typed
+        next.selection = selection
+        if isActuallyShowing, next.draws(sameAs: request) { return true }
+        request = next
+        return render()
+    }
+
+    /// Follows a key that typed the ghost's next characters: the rest stays where it is drawn, and nothing is hidden.
+    @discardableResult
+    func advance(to typed: String, showing suggestion: Suggestion) -> Bool {
+        guard isActuallyShowing, let caret = request.caret, let before = drawn.inline else { return false }
+        let drawnWidth = width(of: before, in: drawn)
+        var next = request
+        next.typed = typed
+        next.suggestion = suggestion
+        let after = SuggestionPresentation(
+            suggestion, typed: typed, selection: next.selection, fieldPointSize: next.fieldPointSize,
+            appearance: Self.appearance(), acceptKey: next.acceptKey, fontFamily: next.fontFamily,
+            fieldTextColor: next.textColor)
+        guard let remaining = after.inline else { return false }
+        // The caret moves by exactly the width the typed characters took off the ghost, so the rest does not shift.
+        next.caret = caret.offsetBy(dx: drawnWidth - width(of: remaining, in: after), dy: 0)
+        request = next
+        return render()
     }
 
     func hide() {
@@ -92,7 +152,7 @@ final class SuggestionPanelController {
         render()
     }
 
-    /// Whether a suggestion is on screen, which keeps the pause clock following the field.
+    /// Whether a suggestion is on screen, which is what a scroll or a typed-through key acts on.
     var isShowing: Bool { isActuallyShowing }
 
     /// Exposed so a probe or a test can read back what was actually configured.
@@ -104,46 +164,77 @@ final class SuggestionPanelController {
     /// How many times the view has been replaced, so a test can see that a redundant hide changes nothing.
     private(set) var renders = 0
 
+    /// How many times the panel has been placed, so a test can see that one redraw moves it once.
+    private(set) var placements = 0
+
+    /// How many times the panel has been taken off screen, so a test can see a typed-through ghost never blinks.
+    private(set) var withdrawals = 0
+
+    /// The ghost line's full width in this presentation's face, as the view would draw it with no room limit.
+    private func width(of row: SuggestionPresentation.Row, in presentation: SuggestionPresentation) -> CGFloat
+    {
+        let line = SuggestionGhostLine(presentation: presentation, row: row)
+        guard let measurer else {
+            let made = NSHostingView(rootView: line)
+            measurer = made
+            return made.fittingSize.width
+        }
+        measurer.rootView = line
+        return measurer.fittingSize.width
+    }
+
+    /// Takes the panel off screen, and says so to VoiceOver.
+    private func withdraw() {
+        announcer.surfaceWithdrawn()
+        isActuallyShowing = false
+        withdrawals += 1
+        panel.orderOut(nil)
+    }
+
     /// Redraws from the last request, measuring the new content before the panel is placed so old and new are never on screen together.
-    private func render() {
+    @discardableResult
+    private func render() -> Bool {
         // Nothing to place means no screen to look up.
         let room =
             request.suggestion == .silent
             ? nil
             : request.caret.flatMap {
                 SuggestionGeometry.availableWidth(
-                    caret: $0, field: request.field, window: request.window, screen: visibleFrame)
+                    caret: $0, field: request.field, window: request.window, screen: screenFrame)
             }
-        let presentation = SuggestionPresentation(
+        var presentation = SuggestionPresentation(
             request.suggestion, typed: request.typed, selection: request.selection,
             fieldPointSize: request.fieldPointSize, appearance: Self.appearance(),
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
             fieldTextColor: request.textColor, maximumWidth: room)
+        // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.
+        if let inline = presentation.inline, let room = presentation.maximumWidth,
+            !SuggestionGeometry.fits(width(of: inline, in: presentation), in: room)
+        {
+            presentation = SuggestionPresentation(.silent)
+        }
         hostingView.rootView = SuggestionView(
             presentation: presentation,
             onDesiredSize: { [weak self] size in self?.resize(to: size) })
         renders += 1
         guard presentation.style != .hidden else {
-            announcer.surfaceWithdrawn()
-            isActuallyShowing = false
-            panel.orderOut(nil)
-            return
+            withdraw()
+            return false
         }
         let measured = hostingView.fittingSize
         if measured.width > 0, measured.height > 0 {
             panelSize = CGSize(width: measured.width.rounded(.up), height: measured.height.rounded(.up))
         }
         guard reposition() else {
-            announcer.surfaceWithdrawn()
-            isActuallyShowing = false
-            panel.orderOut(nil)
-            return
+            withdraw()
+            return false
         }
-        // `orderFrontRegardless`, never `makeKeyAndOrderFront`: no keyboard is taken.
-        panel.orderFrontRegardless()
+        // `orderFrontRegardless`, never `makeKeyAndOrderFront`: no keyboard is taken; a panel already up is not fronted again.
+        if !isActuallyShowing || !panel.isVisible { panel.orderFrontRegardless() }
         isActuallyShowing = true
         // The panel is out of VoiceOver's reach, so the offer and its accept key are spoken once as it appears.
         if let text = announcer.announcement(for: presentation) { announce(text) }
+        return true
     }
 
     /// Asks VoiceOver to speak at low priority, so the echo of the user's own typing is not cut off.
@@ -171,7 +262,16 @@ final class SuggestionPanelController {
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.render() }
+            MainActor.assumeIsolated { _ = self?.render() }
+        }
+    }
+
+    /// Takes the ghost off a display that has just changed, before its old frame is stranded.
+    private func observeScreenParameters() {
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
         }
     }
 
@@ -185,10 +285,11 @@ final class SuggestionPanelController {
             return
         }
         guard reposition() else {
-            isActuallyShowing = false
-            return panel.orderOut(nil)
+            withdraw()
+            onWithdrawnUnasked?()
+            return
         }
-        panel.orderFrontRegardless()
+        if !isActuallyShowing || !panel.isVisible { panel.orderFrontRegardless() }
         isActuallyShowing = true
     }
 
@@ -198,8 +299,10 @@ final class SuggestionPanelController {
         guard
             let anchor = SuggestionGeometry.anchor(
                 for: request.placement, caret: request.caret, window: request.window,
-                field: request.field, screen: visibleFrame, size: panelSize)
+                field: request.field, screen: screenFrame, size: panelSize)
         else { return false }
+        guard anchor.frame != panel.frame else { return true }
+        placements += 1
         panel.setFrame(anchor.frame, display: true)
         return true
     }
@@ -210,9 +313,10 @@ final class SuggestionPanelController {
         return NSScreen.screens.first { $0.frame.contains(CGPoint(x: caret.minX, y: caret.midY)) }
     }
 
-    private var visibleFrame: CGRect {
+    /// The screen's whole frame, Dock and menu bar bands included, since a full-screen window's own caret can sit in either.
+    private var screenFrame: CGRect {
         // With no screen to place against, staying put beats moving somewhere arbitrary.
-        (screenHoldingCaret ?? panel.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+        (screenHoldingCaret ?? panel.screen ?? NSScreen.main ?? NSScreen.screens.first)?.frame
             ?? panel.frame
     }
 
