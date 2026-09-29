@@ -559,6 +559,7 @@ public enum SettingsPresenter {
                             settings, .everything
                         ).with(icon: .symbol("bolt", .amber)),
                         pauseRow(settings, moment),
+                        retrySuggestionModelRow(settings, capabilities),
                     ]),
                 applicationGroup(settings, personalisation),
                 acceptKeyGroup(settings, personalisation),
@@ -612,10 +613,20 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "exclamationmark.triangle",
                 title: title,
-                message:
-                    "AI suggestions cannot run without it. Check your connection, then turn the "
-                    + "switch off and on again to try once more.")
+                message: "AI suggestions cannot run without it. Check your connection, then try again.")
         }
+    }
+
+    /// Offers recovery only after a failed fetch.
+    private static func retrySuggestionModelRow(
+        _ settings: Settings, _ capabilities: SettingsCapabilities
+    ) -> SettingsRow? {
+        guard settings.suggestions.isEnabled, capabilities.suggestionModel == .failed else { return nil }
+        return SettingsRow(
+            id: "retrySuggestionModel", label: "Suggestion model could not be fetched",
+            explanation: "Check your connection, then fetch the model again.",
+            control: .action(title: "Retry", change: .retrySuggestionModel),
+            icon: .symbol("arrow.clockwise", .suggestion))
     }
 
     /// The half-hour pause, which lifts itself and so is a button rather than a switch.

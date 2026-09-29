@@ -2433,6 +2433,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 ApplicationPicker.choose(given: settings.suggestions) { [weak self] identifier in
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
+            case .retrySuggestionModel:
+                guard settings.suggestions.isEnabled, suggestionModel == .failed else { return }
+                prepareTheModelIfNeeded()
             case .openPage(let page): show(.main(page))
             default: break
             }
