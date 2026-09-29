@@ -237,7 +237,9 @@ public actor DictationPipeline {
             guard swap == speechSwaps else { return }
             isReady = false
             // Never over a dictation in progress: loading can run while the user speaks.
-            if !isBusy { transition(to: .failed(DictationFailure(error))) }
+            if !isBusy {
+                transition(to: .failed(DictationFailure(error, speechEngineKind: engine.kind)))
+            }
         }
     }
 
@@ -591,7 +593,7 @@ public actor DictationPipeline {
                         biasedTowards: await vocabulary(seeing: earlyContext ?? AppContext()),
                         recording: tally, skippingAMiss: true)
                 } catch {
-                    failure = DictationFailure(error)
+                    failure = DictationFailure(error, speechEngineKind: speech.kind)
                     tidying.cancelAll()
                     return
                 }
@@ -641,7 +643,7 @@ public actor DictationPipeline {
         let written = LatinScript.enforced(whole.cleaned.text)
 
         // Inserting a blank would delete the user's selection, so it is refused like silence.
-        guard !written.isBlank else {
+        guard written.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
@@ -651,7 +653,7 @@ public actor DictationPipeline {
             written, laidOut: DestinationFormatter.standard(for: joining.destination).layout)
         guard !wasCancelled(mine) else { return }
         let output = LatinScript.enforced(expanded.text)
-        guard !output.isBlank else {
+        guard output.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
@@ -980,8 +982,11 @@ public actor DictationPipeline {
 }
 
 extension String {
-    /// Nothing but whitespace, the emptiness ``Transcription/isBlank`` means.
+    /// Whether the string contains only whitespace.
     fileprivate var isBlank: Bool { allSatisfy(\.isWhitespace) }
+
+    /// Whether any letter or digit can be inserted in place of the user's selection.
+    fileprivate var hasRecognisableContent: Bool { contains { $0.isLetter || $0.isNumber } }
 }
 
 extension Transcription {

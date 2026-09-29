@@ -14,15 +14,20 @@ final class FakePasteboard: Pasteboard {
         var concealed: [String] = []
         var pictures: [Data] = []
         var acceptsWrites = true
+        var onImageWrite: (@Sendable () -> Void)?
     }
 
     private let state = Mutex(State())
 
     /// `acceptsWrites: false` models a clipboard that takes the write and then does not hold it.
-    init(text: String? = nil, acceptsWrites: Bool = true) {
+    init(
+        text: String? = nil, acceptsWrites: Bool = true,
+        onImageWrite: (@Sendable () -> Void)? = nil
+    ) {
         state.withLock { state in
             state.text = text
             state.acceptsWrites = acceptsWrites
+            state.onImageWrite = onImageWrite
         }
     }
 
@@ -44,11 +49,13 @@ final class FakePasteboard: Pasteboard {
 
     /// K4 — a picture write, kept apart from the text ones so a test can tell them apart.
     func setImage(_ data: Data) {
-        state.withLock { state in
+        let onImageWrite = state.withLock { state -> (@Sendable () -> Void)? in
             state.pictures.append(data)
             state.changeCount += 1
             if state.acceptsWrites { state.text = nil }
+            return state.onImageWrite
         }
+        onImageWrite?()
     }
 
     /// Stands in for another app copying something while the paste is in flight.
@@ -330,6 +337,51 @@ struct PasteboardTextInsertionEngineTests {
             .insert("dictated words")
 
         #expect(seen.withLock { $0.count } == 1)
+    }
+}
+
+@Suite("PasteboardImageInsertionEngine")
+struct PasteboardImageInsertionEngineTests {
+    @Test("rechecks the frontmost application after writing the image")
+    func rechecksFrontmostAfterWritingImage() async {
+        let imageData = await Task.detached { Data([0x89, 0x50, 0x4E, 0x47]) }.value
+        let focus = SwitchableFocus()
+        let pasteboard = FakePasteboard(onImageWrite: { focus.becomeSelfFrontmost() })
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
+
+        #expect(throws: TextInsertionError.self) { try sut.insert(imageData) }
+        #expect(pasteboard.pictures == [imageData])
+        #expect(keystrokes.pasteCount == 0, "a rejected image must not post ⌘V")
+    }
+
+    @Test("does not replace the clipboard when Uttrflow is already frontmost")
+    func refusesBeforeWritingWhenUttrflowIsFrontmost() {
+        let focus = SwitchableFocus()
+        focus.becomeSelfFrontmost()
+        let pasteboard = FakePasteboard()
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
+
+        #expect(throws: TextInsertionError.self) { try sut.insert(Data([0x89, 0x50])) }
+        #expect(pasteboard.pictures.isEmpty)
+        #expect(keystrokes.pasteCount == 0)
+    }
+
+    @Test("writes and pastes an image while another application is frontmost")
+    func pastesImageToExternalApplication() throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let pasteboard = FakePasteboard()
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: SwitchableFocus(), pasteboard: pasteboard, keystrokes: keystrokes)
+
+        try sut.insert(imageData)
+
+        #expect(pasteboard.pictures == [imageData])
+        #expect(keystrokes.pasteCount == 1)
     }
 }
 

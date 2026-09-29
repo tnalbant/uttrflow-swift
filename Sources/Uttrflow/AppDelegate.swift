@@ -132,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var transformerAvailability: [TransformerKind: Bool] = [:]
     /// What the store last said about the speech model on disk; internal so a test can read it.
     private(set) var speechModelPresence: DiagnosticsModelPresence?
+    /// The built-in recogniser's locale asset inventory answer.
+    private(set) var appleSpeechStatus: DiagnosticsAppleSpeechStatus?
+    /// The built-in recogniser's last typed model-load failure.
+    private(set) var appleSpeechLoadFailure: SpeechEngineError?
 
     /// How far along that fetch is; internal so a test can read back what it did.
     private(set) var suggestionModel: SuggestionModelReadiness = .notAsked {
@@ -291,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         loadSpeechModel()
         probeTransformers()
         probeSpeechModel()
+        probeAppleSpeechAssets()
         refreshAccount()
         // A Mac that worked without an account keeps no trace of it, and meets sign-in like anyone signed out.
         RetiredLocalAccount.forget()
@@ -456,9 +461,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Where a load that has ended leaves the model: ready, missing files, or failed once or twice.
     private func settle(isReady: Bool) -> SpeechModelReadiness {
-        let settled = SpeechModelReadiness.settled(
-            isReady: isReady, isInstalled: modelStore.isInstalled(.default),
-            isIncomplete: modelStore.isIncomplete(.default), failedBefore: speechLoadFailedBefore)
+        let isInstalled = modelStore.isInstalled(.default)
+        let afterLoad = SpeechModelReadiness.afterLoad(isReady: isReady, isInstalled: isInstalled)
+        let settled: SpeechModelReadiness
+        switch afterLoad {
+        case .ready: settled = .ready
+        case .loadFailed: settled = speechLoadFailedBefore ? .loadFailedAgain : .loadFailed
+        case .notInstalled:
+            settled = modelStore.isIncomplete(.default) ? .incomplete : .notInstalled
+        case .downloading, .loading, .loadFailedAgain, .incomplete: settled = afterLoad
+        }
         switch settled {
         case .ready: speechLoadFailedBefore = false
         case .loadFailed, .loadFailedAgain: speechLoadFailedBefore = true
@@ -515,6 +527,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }.value
             guard let self else { return }
             speechModelPresence = presence
+            refreshMainWindow()
+        }
+    }
+
+    /// Reads the system recogniser's asset inventory for the locale its backend loads.
+    @discardableResult
+    func probeAppleSpeechAssets() -> Task<Void, Never> {
+        Task { [weak self] in
+            let status = await AppleSpeechBackend.assetStatus()
+            guard let self else { return }
+            appleSpeechStatus =
+                switch status {
+                case .installed: .installed
+                case .needsDownload: .needsDownload
+                case .downloading: .downloading
+                case .unsupported: .unsupported
+                }
             refreshMainWindow()
         }
     }
@@ -1570,19 +1599,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// K4 — pastes a picture, on its own path because the Accessibility route writes only strings.
     private func insertImage(_ clip: Clip) {
         markUsed(clip.id)
-        Task { [weak self, clipboard, pasteboard = announcingPasteboard] in
+        Task { [weak self, clipboard, pasteboard = announcingPasteboard, focus] in
             guard let image = clip.image, let data = await clipboard.imageData(for: image) else {
                 // B8 from the other side: the file went between the draw and the keypress.
                 Self.log.error("picture missing at paste: \(clip.id, privacy: .public)")
                 self?.reportPanelPaste(.pictureMissing)
                 return
             }
-            // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
-            pasteboard.setImage(data)
             do {
-                try CGEventKeystrokeSender().sendPaste()
+                // Named by its bytes, so a copy landing in the same tick is not claimed by this write.
+                try PasteboardImageInsertionEngine(
+                    focus: focus, pasteboard: pasteboard, keystrokes: CGEventKeystrokeSender()
+                ).insert(data)
             } catch let failure as TextInsertionError {
-                // On the clipboard either way, which is the floor the text path lands on too.
+                // The image may already be on the clipboard if focus changes during the write.
                 Self.log.error(
                     "picture paste refused: \(failure.userMessage, privacy: .public)")
                 self?.reportPanelPaste(.pictureRefused)
@@ -1726,6 +1756,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
+            if speechInUse == .appleSpeech {
+                appleSpeechLoadFailure = nil
+            }
             Self.log.notice(
                 """
                 dictation finished: method=\(outcome.method.rawValue, privacy: .public) \
@@ -1736,40 +1769,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 secure=\(outcome.intoSecureField, privacy: .public)
                 """)
             // A secure field's words are kept nowhere: not as the last transcript, in history, or as a clip.
-            guard let kept = outcome.wordsToKeep else { break }
+            guard let kept = outcome.wordsToKeep,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            else { break }
             lastTranscript = kept
-            let record = DictationRecord(
-                text: kept, when: Date(), applicationName: outcome.insertedInto,
-                applicationIdentifier: outcome.insertedIntoIdentifier,
-                spokenFor: outcome.spokenFor,
-                changes: RecordedChanges(
-                    corrections: outcome.changes.corrections.compactMap {
-                        RecordedCorrection(
-                            heard: $0.heard, wrote: $0.wrote, wordRange: $0.wordRange,
-                            entryID: $0.entryID, reason: $0.reason,
-                            heardConfidence: $0.heardConfidence,
-                            writtenWordIndex: $0.writtenWordIndex)
-                    },
-                    snippets: outcome.changes.snippets.map {
-                        RecordedSnippet(
-                            snippetID: $0.snippetID, matched: $0.matched,
-                            expansion: $0.expansion)
-                    },
-                    spokenWords: outcome.changes.spokenWords))
             lastTranscriptID = record.id
             keep(record)
             // I4 — into the clipboard too, which the watcher never sees because this is not a copy.
             recordAsClip(kept, of: record.id)
         case .failed(let notice):
+            if notice.speechEngineKind == .appleSpeech,
+                case .modelLoadFailed? = notice.speechEngineError
+            {
+                appleSpeechLoadFailure = notice.speechEngineError
+            }
             Self.log.error(
                 """
                 dictation failed: \(notice.message, privacy: .public) \
                 salvaged=\(notice.transcript != nil, privacy: .public) \
                 kept=\(notice.recovery == .retryFromRecording, privacy: .public)
                 """)
-            if let salvaged = notice.wordsToKeep {
+            if notice.wordsToKeep != nil,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
-                keep(DictationRecord(text: salvaged, when: Date()))
+                keep(record)
             }
         case .idle, .recording, .transcribing, .tidying, .inserting:
             break
@@ -1900,6 +1924,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             },
             clips: menuClips,
             updateProgress: updates.progress,
+            canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
             shortcuts: settings.shortcuts,
             unarmedShortcuts: unarmedShortcuts,
@@ -1952,6 +1977,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .setFeature(let feature, let isOn):
             apply(.toggle(feature.setting, isOn: isOn))
             refreshMenuBar()
+        case .checkForUpdates:
+            updates.checkForUpdates()
         case .quit:
             NSApplication.shared.terminate(nil)
         }
@@ -2167,6 +2194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     engines: settings.engines, speechInUse: speechInUse,
                     transformerAvailability: transformerAvailability,
                     speechModel: speechModelPresence, speechReadiness: speechReadiness,
+                    appleSpeechStatus: appleSpeechStatus,
+                    appleSpeechLoadFailure: appleSpeechLoadFailure,
                     permissions: knownPermissions,
                     measurements: measurements, cleaning: lastCleaning,
                     suggestionModel: suggestionModel, version: .ofThisBuild,

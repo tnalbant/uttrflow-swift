@@ -64,8 +64,10 @@ public struct ModelPass: Sendable {
     public func plan(for query: SuggestionQuery, at place: String?) -> Plan {
         let lowered = query.typed.lowercased()
         let last = lastGenerated.flatMap { Self.typesOn(query, at: place, from: $0) ? $0 : nil }
-        let kept = last?.completions.filter { $0.lowercased().hasPrefix(lowered) && $0 != query.typed }
-            ?? []
+        let kept =
+            last?.completions.filter {
+                $0.lowercased().hasPrefix(lowered) && $0 != query.typed
+            } ?? []
         if !kept.isEmpty {
             let listedSubset = (last?.listed ?? []).intersection(Set(kept))
             return .reuse(kept, listed: listedSubset)
@@ -80,8 +82,11 @@ public struct ModelPass: Sendable {
 
     /// Whether the line is the answered one typed forward, in the same field and after the same text.
     private static func typesOn(
-        _ query: SuggestionQuery, at place: String?,
-        from last: (surface: Surface, typed: String, place: String?, completions: [String], listed: Set<String>)
+        _ query: SuggestionQuery,
+        at place: String?,
+        from last: (
+            surface: Surface, typed: String, place: String?, completions: [String], listed: Set<String>
+        )
     ) -> Bool {
         last.surface == query.surface && last.place == place && query.typed.hasPrefix(last.typed)
     }

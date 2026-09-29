@@ -253,7 +253,7 @@ no Xcode scheme.
 
 ```
 Sources/
-  UttrflowCore         Protocols, models, errors, metrics. Pure stdlib — no platform imports.
+  UttrflowCore         Shared protocols, models, errors and utilities; imports Foundation, Darwin and os.
   UttrflowAudio        Microphone capture, resampling, WAV encoding, file reading.
   UttrflowSpeech       Speech to text. One engine, two interchangeable recognisers.
   UttrflowAI           Turning a transcript into the words the speaker meant.
@@ -264,7 +264,7 @@ Sources/
   UttrflowHistory      What was dictated, kept between launches and aged out on a clock.
   UttrflowDictionary   Words you say that a general model does not know, found by sound.
   UttrflowAccount      Who is signed in, and what their subscription allows.
-  UttrflowClipboard    Clipboard history and the panel that shows it.
+  UttrflowClipboard    Clipboard history, classification and storage; panel UI lives in Uttrflow/Panel.
   UttrflowPredict      Finishing a line you have typed before: the turn, the gates, the ranking.
   UttrflowPredictStore The corpus of what you have typed, on this Mac, in SQLite.
   UttrflowPredictCapture

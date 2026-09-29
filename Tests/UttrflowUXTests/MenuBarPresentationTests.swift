@@ -116,6 +116,11 @@ struct MenuBarStatusTests {
                 == "Speech model not downloaded")
     }
 
+    @Test("says Getting ready while the speech model is loading")
+    func loadingStatusLine() {
+        #expect(MenuBarPresenter.present(MenuBarState(speechModel: .loading)).statusLine == "Getting ready…")
+    }
+
     /// A downloader reporting 140% is the downloader's bug, and not the menu bar's to show.
     @Test("keeps a nonsense percentage out of the menu bar")
     func percentageIsClamped() {
@@ -186,11 +191,16 @@ struct MenuBarContentsTests {
         #expect(shown.items.contains(.sectionHeader("Turn on and off")))
     }
 
-    /// Update checks live in Settings, so neither the popover nor its menu offers one.
-    @Test("offers no update check")
-    func noUpdateCheck() {
-        let shown = MenuBarPresenter.present(MenuBarState(updateProgress: .idle))
-        #expect(!shown.commands.map(\.title).contains { $0.contains("Update") })
+    /// A manual check is available only when this build has a valid update feed.
+    @Test("offers a manual update check only when updates are configured")
+    func checkForUpdatesAvailability() {
+        let unavailable = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: false))
+        #expect(unavailable.command(.checkForUpdates) == nil)
+
+        let available = MenuBarPresenter.present(
+            MenuBarState(updateProgress: .idle, canCheckForUpdates: true))
+        #expect(available.command(.checkForUpdates)?.title == "Check for Updates…")
     }
 
     /// The problem and its fix sit together in the header, with nothing between them to hunt past.
@@ -467,6 +477,14 @@ struct MenuBarHeaderTests {
 
 @Suite("What the popover lets the user do")
 struct MenuBarEnablementTests {
+    @Test("uses the shared remaining-time phrase as a dictation nears its cap")
+    func listeningShowsRemainingTime() {
+        let advice = DictationAdvice.approaching(remaining: .seconds(74))
+        let shown = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, recordingAdvice: advice))
+        #expect(shown.statusLine == "Listening… \(RemainingTime.phrase(for: advice) ?? "")")
+    }
+
     /// Disabled rather than failing silently, which is what a refused microphone would look like.
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {
@@ -711,6 +729,11 @@ struct MenuBarUpdateTests {
     @Test("nothing happening says nothing about updates")
     func idleIsSilent() {
         #expect(line(.idle) == "Ready")
+    }
+
+    @Test("says when the update feed is being checked")
+    func checking() {
+        #expect(line(.checking) == "Checking for updates…")
     }
 
     /// A failure is why the menu was opened, so an update does not get to hide one.
