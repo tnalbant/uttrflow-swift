@@ -161,10 +161,13 @@ public enum Romaniser {
     /// Drops the unwritten vowel at the end of a word and between a vowel and a consonant that carries one: "karana" is "karna".
     static func dropSilentVowels(_ syllables: inout [Syllable]) {
         let count = syllables.count
-        // A cluster ending in "y", "r" or "v" keeps it, as in "mitra" and "karya"; "agast" and "dost" do not.
+        // A cluster ending in "y", "r" or "v" keeps it, except nasalised "aa" before final "v"; "mitra" and "karya" keep it.
         if count > 1, syllables[count - 1].isInherent,
             let last = syllables[count - 1].consonants.last,
-            syllables[count - 1].consonants.count == 1 || !["य", "र", "व"].contains(last.base)
+            syllables[count - 1].consonants.count == 1
+                || !["य", "र"].contains(last.base)
+                    && !(last.base == va && syllables[count - 2].isNasal
+                        && syllables[count - 2].vowel == "aa")
         {
             syllables[count - 1].vowel = ""
         }
