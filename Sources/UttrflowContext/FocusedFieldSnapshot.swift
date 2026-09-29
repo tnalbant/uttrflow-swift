@@ -40,6 +40,10 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let textColor: TextColor?
     /// Whether the field hides what is typed into it.
     public let isSecure: Bool
+    /// Whether the field reports that it accepts input, or nothing when Accessibility does not answer.
+    public let isEnabled: Bool?
+    /// Whether the field reports that its text is editable, or nothing when Accessibility does not answer.
+    public let isEditable: Bool?
     /// Whether an input method is mid-composition, which owns both the screen and the Tab key.
     public let isComposing: Bool
     /// What the field itself says about an input method's marked text, before any guess from the input source.
@@ -73,6 +77,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         fontFamily: String? = nil,
         textColor: TextColor? = nil,
         isSecure: Bool = false,
+        isEnabled: Bool? = nil,
+        isEditable: Bool? = nil,
         isComposing: Bool = false,
         markedText: MarkedText = .unanswered,
         showsOwnList: Bool = false,
@@ -96,6 +102,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.fontFamily = fontFamily
         self.textColor = textColor
         self.isSecure = isSecure
+        self.isEnabled = isEnabled
+        self.isEditable = isEditable
         self.isComposing = isComposing
         self.markedText = markedText
         self.showsOwnList = showsOwnList
@@ -127,7 +135,10 @@ extension FocusedFieldSnapshot {
     var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || textColor != nil }
 
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
-    public var placement: SuggestionPlacement? { isHeldByFullScreenProgram ? nil : capability.placement }
+    public var placement: SuggestionPlacement? {
+        isEnabled == false || isEditable == false || isHeldByFullScreenProgram
+            ? nil : capability.placement
+    }
 
     /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.
     public var isHeldByFullScreenProgram: Bool {

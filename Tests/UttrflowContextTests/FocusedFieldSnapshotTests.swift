@@ -19,14 +19,16 @@ private func snapshot(
     pointSize: CGFloat? = 13,
     fontFamily: String? = nil,
     textColor: TextColor? = nil,
-    isSecure: Bool = false
+    isSecure: Bool = false,
+    isEnabled: Bool? = nil,
+    isEditable: Bool? = nil
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
         caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
-        isSecure: isSecure, readMicroseconds: 400)
+        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable, readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")
@@ -54,6 +56,14 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("A field reported disabled cannot host a suggestion")
+    func disabledFieldsTakeNothing() {
+        #expect(snapshot(isEnabled: false).placement == nil)
+        #expect(snapshot(isEditable: false).placement == nil)
+        #expect(snapshot(isEnabled: true).placement == .inlineGhost)
+        #expect(snapshot(isEnabled: nil).placement == .inlineGhost)
     }
 
     @Test("The reading carries through to the capability the ladder is decided from.")

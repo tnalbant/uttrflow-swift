@@ -10,13 +10,15 @@ import UttrflowPredictCapture
 
 /// A field in a mail composer, with a line above the caret's line and a caret at its end.
 private func composer(
-    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea"
+    subrole: String? = nil, value: String = "Dear team,\nThanks for", role: String = "AXTextArea",
+    isEnabled: Bool? = nil, isComposing: Bool = true
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: "com.Example.Mail", applicationName: "Mail", role: role, subrole: subrole,
         identifier: "body", placeholder: "Message", accessibilityDescription: "Message body",
         document: "draft", value: value, selection: NSRange(location: value.utf16.count, length: 0),
-        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isComposing: true,
+        caret: CGRect(x: 10, y: 10, width: 1, height: 14), pointSize: 13, isEnabled: isEnabled,
+        isComposing: isComposing,
         windowTitle: "Re: plans")
 }
 
@@ -65,6 +67,14 @@ struct SuggestionMomentTests {
         let listing = FocusedFieldSnapshot(
             bundleIdentifier: "a.b", applicationName: "B", role: "AXTextField", showsOwnList: true)
         #expect(SuggestionMoment.context(of: listing, millisecondsSinceKeystroke: 0).showsOwnList)
+    }
+
+    @Test("A disabled field refuses a suggestion before generation")
+    func disabledFieldCannotDraw() {
+        let context = SuggestionMoment.context(
+            of: composer(isEnabled: false, isComposing: false), millisecondsSinceKeystroke: 500)
+        #expect(!context.canDraw)
+        #expect(Quieting.reason(context) == .nowhereToDraw)
     }
 
     @Test("The situation holds the preceding text, the screen around the field and the recent lines")

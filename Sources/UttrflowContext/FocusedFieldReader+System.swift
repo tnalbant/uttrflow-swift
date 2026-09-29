@@ -280,6 +280,10 @@ public enum FocusedFieldReader {
         // A combobox field says when its own list is open, one flag on the field itself.
         let ownList = SurfaceProbe.integer(field, "AXExpanded") == 1
         guard goOn() else { return nil }
+        let isEnabled = SurfaceProbe.boolean(field, kAXEnabledAttribute)
+        guard goOn() else { return nil }
+        let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
+        guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
         let caretRect = caret(field, at: range, frame: fieldRect, pointSize: style?.size, while: goOn)
         guard goOn() else { return nil }
@@ -316,6 +320,8 @@ public enum FocusedFieldReader {
             fontFamily: style?.family,
             textColor: style?.color,
             isSecure: secure,
+            isEnabled: isEnabled,
+            isEditable: isEditable,
             isComposing: Composition.isComposing(
                 markedText: marked, inputSource: CompositionProbe.inputSourceKind()),
             markedText: marked,

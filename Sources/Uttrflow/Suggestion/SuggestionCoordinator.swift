@@ -940,7 +940,9 @@ final class SuggestionCoordinator {
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         // Nothing is drawn off the caret's line, and what is not drawn claims no key.
-        guard let snapshot, let caret = Self.caret(for: update.suggestion, in: snapshot) else {
+        guard let snapshot, snapshot.placement == .inlineGhost,
+            let caret = Self.caret(for: update.suggestion, in: snapshot)
+        else {
             interceptor.arm([])
             armedOffer = nil
             panel.hide()
