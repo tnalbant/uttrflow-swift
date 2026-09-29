@@ -62,7 +62,7 @@ public enum SettingsEditor {
         case .pauseSuggestions(let isOn):
             try requireSuggestionsAreOn(in: settings)
             updated.suggestions.setPaused(isOn, at: moment)
-        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions:
+        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel, .openPage:
             // Named rather than left to a `default`, which would swallow the next case added.
             break
         }
@@ -84,6 +84,7 @@ public enum SettingsEditor {
         }
         switch field {
         case .dictationEnabled: settings.dictationEnabled = isOn
+        case .handsFreeEnabled: settings.handsFreeEnabled = isOn
         case .clipboardEnabled: settings.clipboardEnabled = isOn
         case .showsFloatingButton: settings.showsFloatingButton = isOn
         case .shrinksToGripWhenIdle: settings.shrinksToGripWhenIdle = isOn
@@ -91,6 +92,8 @@ public enum SettingsEditor {
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts = isOn
         case .opensAtLogin: settings.opensAtLogin = isOn
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically = isOn
+        case .sharesUsageStatistics: settings.sharesUsageStatistics = isOn
+        case .sendsCrashReports: settings.sendsCrashReports = isOn
         case .suggestionsEnabled: settings.suggestions.isEnabled = isOn
         case .quietSuggestions: settings.suggestions.isQuiet = isOn
         }
@@ -112,7 +115,8 @@ public enum SettingsEditor {
         in settings: Settings
     ) -> String? {
         switch field {
-        case .dictationEnabled, .clipboardEnabled, .showsFloatingButton, .minimisesWhileDictating:
+        case .dictationEnabled, .handsFreeEnabled, .clipboardEnabled, .showsFloatingButton,
+            .minimisesWhileDictating, .sharesUsageStatistics:
             nil
         case .shrinksToGripWhenIdle:
             settings.showsFloatingButton
@@ -127,7 +131,7 @@ public enum SettingsEditor {
             capabilities.canCheckForUpdates
                 ? nil
                 : "This build has no update feed, so there is nothing for it to install."
-        case .suggestionsEnabled:
+        case .suggestionsEnabled, .sendsCrashReports:
             nil
         case .quietSuggestions:
             settings.suggestions.isEnabled ? nil : suggestionsAreOff
@@ -217,7 +221,7 @@ public enum SettingsEditor {
         given capabilities: SettingsCapabilities
     ) -> String? {
         guard level == .standard, !capabilities.canTidyBeyondTheFloor else { return nil }
-        return "Full tidying is not available on this Mac yet, so Uttrflow will punctuate only."
+        return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
     }
 
     /// Throws when the engine behind this quality is not downloaded, then selects it.

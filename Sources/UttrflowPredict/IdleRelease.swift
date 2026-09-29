@@ -48,6 +48,8 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private var lastAsked = ContinuousClock.now
     /// The latest load or release, which the next one waits for so they land in the order they were asked.
     private var work: Task<Void, Never>?
+    /// Stops the load in flight, so a release reads no more weights and fetches no more bytes for it.
+    private var stopLoading: @Sendable () -> Void = {}
     private var watch: Task<Void, Never>?
     /// Receives each step of a reload that follows an idle release.
     private let onReload: @Sendable (IdleReload) -> Void
@@ -82,7 +84,11 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
             }
         }
         work = Task { _ = await step.value }
-        if let error = await step.value {
+        stopLoading = { step.cancel() }
+        // A caller that gives up on the load stops it, rather than leaving it to read every weight.
+        if let error = await withTaskCancellationHandler(
+            operation: { await step.value }, onCancel: { step.cancel() })
+        {
             await settle(asked)
             throw error
         }
@@ -105,6 +111,9 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         isHeld = false
         advance()
         watch?.cancel()
+        // The load in flight stops at its next safe point, so the release waits for no download and no read.
+        stopLoading()
+        stopLoading = {}
         let previous = work
         let model = model
         let step = Task {
@@ -142,6 +151,10 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         return await model.logLikelihood(of: candidate, following: context)
     }
 
+    public func confidence(ofGenerated line: String) async -> Double? {
+        await model.confidence(ofGenerated: line)
+    }
+
     /// Lets the model go when it has not been asked for in the window; returns whether it is still held.
     @discardableResult
     func releaseIfIdle(at now: ContinuousClock.Instant) async -> Bool {
@@ -172,7 +185,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         onReload(.started)
         let previous = work
         let model = model
-        work = Task { [weak self] in
+        let reload = Task { [weak self] in
             await previous?.value
             do {
                 // Never a download: a query is typing, and only the person may start a fetch.
@@ -182,6 +195,8 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
                 await self?.reloadFailed(asked)
             }
         }
+        work = reload
+        stopLoading = { reload.cancel() }
     }
 
     /// Settles a reload that failed and says so, unless something newer was asked for since.
@@ -219,15 +234,22 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         if ready { watchForIdle() }
     }
 
-    /// Checks for idleness a few times per window for as long as the model is held.
+    /// Checks for idleness once each time the window could have run out, for as long as the model is held.
     private func watchForIdle() {
         watch?.cancel()
-        let interval = idleAfter / 4
+        let first = idleAfter
         watch = Task { [weak self] in
+            var wait = first
             while !Task.isCancelled {
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: wait)
                 guard !Task.isCancelled, let self, await releaseIfIdle(at: .now) else { return }
+                wait = await timeUntilIdle(at: .now)
             }
         }
+    }
+
+    /// How long until the window runs out if nothing asks again, never less than a tenth of it.
+    func timeUntilIdle(at now: ContinuousClock.Instant) -> Duration {
+        max(idleAfter - lastAsked.duration(to: now), idleAfter / 10)
     }
 }

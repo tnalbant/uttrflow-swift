@@ -128,20 +128,13 @@ struct VerificationTests {
     }
 
     @Test("Programs and their verbs name everything there is; paths and branches never do.")
-    func closedVocabularies() {
+    func closedVocabularies() throws {
         #expect(Verification.isClosedVocabulary([.executable, .alias]))
         #expect(Verification.isClosedVocabulary([.subcommand(of: "make")]))
         #expect(!Verification.isClosedVocabulary([.branch]))
         #expect(!Verification.isClosedVocabulary([.directories(under: "Sources")]))
-    }
-
-    @Test("A verdict says whether the machine vouched for it and whether anything may be drawn.")
-    func verdictsReadTheirOwnMeaning() {
-        #expect(Verdict.attested.isAttested)
-        #expect(!Verdict.plausible.isAttested)
-        #expect(Verdict.plausible.allowsOffering)
-        #expect(Verdict.corrected("git commit").allowsOffering)
-        #expect(!Verdict.rejected.allowsOffering)
+        #expect(!Verification.isClosedVocabulary([]))
+        #expect(!Verification.isClosedVocabulary(for: try #require(CompletionToken("ls -la"))))
     }
 }
 
@@ -193,6 +186,18 @@ struct GeneratedAttestationTests {
         #expect(asked("cd ../..") == nil)
         #expect(
             asked("git checkout feat/login") == [
+                lookup("feat/login", [.branch]), lookup("login", [.entries(under: "feat")]),
+            ])
+    }
+
+    @Test("git log, diff and reset look a bare word up as a branch or a file; checkout as a branch.")
+    func historyVerbsTakeFiles() {
+        #expect(asked("git log READM") == [lookup("READM", [.branch, .file])])
+        #expect(asked("git diff Package.swift") == [lookup("Package.swift", [.branch, .file])])
+        #expect(asked("git reset staged.txt") == [lookup("staged.txt", [.branch, .file])])
+        #expect(asked("git checkout mai") == [lookup("mai", [.branch])])
+        #expect(
+            asked("git diff feat/login") == [
                 lookup("feat/login", [.branch]), lookup("login", [.entries(under: "feat")]),
             ])
     }

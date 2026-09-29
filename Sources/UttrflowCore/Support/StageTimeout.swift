@@ -18,6 +18,9 @@ public enum StageTimeout: Sendable {
 
     /// Context, correction, expansion and insertion: local, but each can block on another app.
     public static let quick = Duration.seconds(15)
+
+    /// Loading the speech model: about twice the slowest measured cold load, 154 s. See `Docs/startup.md`.
+    public static let speechModelLoad = Duration.seconds(300)
 }
 
 /// Runs `work`, answering `nil` when `limit` wins; the work is cancelled then, not awaited, since it may hang.
@@ -27,24 +30,25 @@ public func withStageTimeout<Success: Sendable>(
     _ work: @escaping @Sendable () async throws -> Success
 ) async throws -> Success? {
     let race = StageRace<Success>()
-    var timer: Task<Void, Never>?
-    var working: Task<Void, Never>?
-    await withCheckedContinuation { continuation in
-        // Armed before either racer exists, so neither can arrive at an empty race.
-        race.arm(continuation)
-        working = Task {
-            do { race.finish(.finished(try await work())) } catch { race.finish(.failed(error)) }
+    await withTaskCancellationHandler {
+        await withCheckedContinuation { continuation in
+            race.arm(continuation)
+            race.start(clock: clock, limit: limit, work: work)
         }
-        timer = Task { [clock] in
-            try? await clock.sleep(for: limit)
-            race.finish(.expired)
-        }
+    } onCancel: {
+        race.finish(.cancelled)
     }
-    // Cancelled so a stage that answers in time leaves no task waiting out the limit.
-    timer?.cancel()
-    // And the work, so "this stage is over" is one fact: work that has finished ignores this.
-    working?.cancel()
     return try race.result()
+}
+
+/// The work's answer if it arrives within `allowance` (at least 1 ms), else `nil`, the work cancelled and not awaited.
+public func withDeadline<Answer: Sendable>(
+    _ allowance: Duration,
+    clock: any Clock<Duration> = ContinuousClock(),
+    _ work: @escaping @Sendable () async -> Answer?
+) async -> Answer? {
+    let answer = try? await withStageTimeout(max(allowance, .milliseconds(1)), clock: clock) { await work() }
+    return answer ?? nil
 }
 
 /// Whichever of a stage and its limit answered first, and what it answered.
@@ -54,29 +58,62 @@ private final class StageRace<Success: Sendable>: Sendable {
         case finished(Success)
         case failed(any Error)
         case expired
+        case cancelled
     }
 
     /// The waiting caller and the first answer, kept together under one lock.
     private struct State {
         var waiting: CheckedContinuation<Void, Never>?
         var outcome: Outcome?
+        var timer: Task<Void, Never>?
+        var working: Task<Void, Never>?
     }
 
     private let state = Mutex(State())
 
     /// Parks the caller until the first answer.
     func arm(_ continuation: CheckedContinuation<Void, Never>) {
-        state.withLock { $0.waiting = continuation }
+        let resume = state.withLock { state -> Bool in
+            guard state.outcome == nil else { return true }
+            state.waiting = continuation
+            return false
+        }
+        if resume { continuation.resume() }
+    }
+
+    /// Starts both racers, cancelling tasks immediately when an outcome already won.
+    func start(
+        clock: any Clock<Duration>, limit: Duration,
+        work: @escaping @Sendable () async throws -> Success
+    ) {
+        state.withLock { state in
+            guard state.outcome == nil else { return }
+            state.working = Task {
+                do { finish(.finished(try await work())) } catch { finish(.failed(error)) }
+            }
+            state.timer = Task { [clock] in
+                try? await clock.sleep(for: limit)
+                guard !Task.isCancelled else { return }
+                finish(.expired)
+            }
+        }
     }
 
     /// Records an answer, and wakes the caller for the first one only.
     func finish(_ outcome: Outcome) {
-        let waiting = state.withLock { state -> CheckedContinuation<Void, Never>? in
+        let completed = state.withLock {
+            state -> (CheckedContinuation<Void, Never>?, Task<Void, Never>?, Task<Void, Never>?)? in
             guard state.outcome == nil else { return nil }
             state.outcome = outcome
-            defer { state.waiting = nil }
-            return state.waiting
+            let completed = (state.waiting, state.timer, state.working)
+            state.waiting = nil
+            state.timer = nil
+            state.working = nil
+            return completed
         }
+        guard let (waiting, timer, working) = completed else { return }
+        timer?.cancel()
+        working?.cancel()
         waiting?.resume()
     }
 
@@ -85,8 +122,7 @@ private final class StageRace<Success: Sendable>: Sendable {
         switch state.withLock({ $0.outcome }) {
         case .finished(let value): value
         case .failed(let error): throw error
-        // Only reachable if the caller resumed without an outcome, which cannot happen.
-        case .expired, nil: nil
+        case .expired, .cancelled, nil: nil
         }
     }
 }

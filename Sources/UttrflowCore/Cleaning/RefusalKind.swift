@@ -40,6 +40,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case echoedExample
     /// The rewrite translated what was said instead of romanising it.
     case translated
+    /// The answer the model gave back was byte-identical to the input it was handed, so the rules engine should take over.
+    case unchangedAnswer
 
     /// What a pasted report calls this, which names the kind and never the words.
     public var summary: String {
@@ -63,6 +65,7 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .notLatinScript: "the answer was not in the Latin alphabet"
         case .echoedExample: "the answer repeated a worked example"
         case .translated: "the answer was translated rather than romanised"
+        case .unchangedAnswer: "the answer was identical to what was said"
         }
     }
 }
