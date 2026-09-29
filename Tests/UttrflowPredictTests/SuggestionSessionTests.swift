@@ -914,6 +914,39 @@ struct SuggestionScoringTests {
         #expect(update?.suggestion == .choice(leader: "git checkout", others: ["git commit"]))
     }
 
+    @Test("The fixture gate and app agree on list floors and leaders below the choice floor.")
+    func fixtureGateMatchesGeneratedDecision() throws {
+        let cases: [([String: Double], Suggestion)] = [
+            (
+                ["git checkout": -1.2, "git commit": -1.0],
+                .choice(leader: "git checkout", others: ["git commit"])
+            ),
+            (["git checkout": -1.6, "git commit": -1.0], .silent),
+            (["git checkout": -0.5, "git commit": -1.6], .certain("git checkout")),
+        ]
+
+        for (scores, expected) in cases {
+            var session = SuggestionSession()
+            let asked = try asked(&session, typing: "git c")
+            let update = session.resolveGenerated(
+                ["git checkout", "git commit"], for: asked, elapsedMilliseconds: 0, scores: scores)
+            let decision = SuggestionSession.generatedDecision(
+                ["git checkout", "git commit"], typed: "git c", scores: scores)
+            let fixtureSuggestion: Suggestion
+            switch decision {
+            case .noCandidate, .unsure:
+                fixtureSuggestion = .silent
+            case .certain(let line):
+                fixtureSuggestion = .certain(line)
+            case .choice(let leader, let others):
+                fixtureSuggestion = .choice(leader: leader, others: others)
+            }
+
+            #expect(update?.suggestion == expected)
+            #expect(fixtureSuggestion == update?.suggestion)
+        }
+    }
+
     @Test("All lines below the choice floor leave the turn quiet.")
     func allLowScoreIsQuiet() throws {
         var session = SuggestionSession()
@@ -1039,8 +1072,9 @@ struct SuggestionScoringTests {
             elapsedMilliseconds: 0, scores: [:],
             listed: ["git checkout dev", "git checkout develop"])
         #expect(
-            update?.suggestion == .choice(
-                leader: "git checkout dev", others: ["git checkout develop"]))
+            update?.suggestion
+                == .choice(
+                    leader: "git checkout dev", others: ["git checkout develop"]))
     }
 
     @Test("A reused machine-listed line alone draws as a certain ghost, no score needed.")
