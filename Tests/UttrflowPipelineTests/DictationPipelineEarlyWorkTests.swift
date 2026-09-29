@@ -115,7 +115,7 @@ private actor HeldCleaner: TranscriptCleaning {
 
 /// A tidier that shouts, so its work on each piece can be seen, and remembers where it was warmed for.
 private final class ShoutingCleaner: TranscriptCleaning, Sendable {
-    private let state = Mutex((warmed: [Destination?](), seen: [String]()))
+    private let state = Mutex((warmed: [Destination?](), seen: [String](), contexts: [AppContext]()))
     private let failOn: String?
 
     init(failOn: String? = nil) {
@@ -124,7 +124,10 @@ private final class ShoutingCleaner: TranscriptCleaning, Sendable {
 
     func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
         let text = request.transcription.text
-        state.withLock { $0.seen.append(text) }
+        state.withLock {
+            $0.seen.append(text)
+            $0.contexts.append(request.context)
+        }
         if let failOn, text.contains(failOn) { throw .outputRejected(reason: "scripted", kind: .lostWord) }
         return TransformationResult(text: text.uppercased(), producedBy: .foundationModels)
     }
@@ -135,6 +138,7 @@ private final class ShoutingCleaner: TranscriptCleaning, Sendable {
 
     var warmed: [Destination?] { state.withLock(\.warmed) }
     var seen: [String] { state.withLock(\.seen) }
+    var contexts: [AppContext] { state.withLock(\.contexts) }
 }
 
 /// Whether a recognition ran beside a tidy, forced by each side waiting for the other rather than hoped for.
@@ -455,6 +459,26 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(await pipeline.currentState == .idle)
         #expect(inserter.texts.isEmpty)
+    }
+
+    @Test("a retry after canceling a dictation has no context from the cancelled screen")
+    func retryAfterCancelDropsEarlyContext() async throws {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(
+            waiting: [recording], audioOutcome: .success(Take.threePieces))
+        let cleaner = ShoutingCleaner()
+        let context = FakeContextEngine(
+            context: .fixture(applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal"))
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(), cleaner: cleaner, context: context, recordings: recordings)
+
+        await pipeline.startRecording()
+        try await eventually { await pipeline.earlyReadsSettled == 1 }
+        await pipeline.cancel()
+        await pipeline.retry(recording.id)
+
+        #expect(!cleaner.contexts.isEmpty)
+        #expect(cleaner.contexts.allSatisfy { $0 == AppContext() })
     }
 
     @Test("a piece that fails while recording is left for the end, where its failure is reported")

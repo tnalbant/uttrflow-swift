@@ -384,6 +384,8 @@ public actor DictationPipeline {
         earlyTidyTask = nil
         earlySpans = []
         earlyCut = 0
+        pieceInFlight = false
+        earlyContext = nil
         await capture.cancel()
         await discardOpenRecording()
         transition(to: .idle)
