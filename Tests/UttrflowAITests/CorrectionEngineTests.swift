@@ -251,9 +251,31 @@ extension Array {
 struct MultiWordCorrectionTests {
     // MARK: - A run of several words
 
-    /// Measured on this corpus: two signals clear the margin, and at length nothing else stopped them.
+    @Test("does not replace a spoken phrase with a name that only shares its opening")
+    func refusesMadisonForMadSon() {
+        let madison = DictionaryEntry(word: "Madison", origin: .added, firstSeen: .now)
+        let proposals = WordCorrectionEngine().proposals(
+            for: CorrectionFixtures.spoken("we should tell the ?mad ?son of the king about it tomorrow"),
+            against: PhoneticIndex(entries: [madison]),
+            seeing: CorrectionFixtures.showing("Madison marketing plan"))
+
+        #expect(proposals.isEmpty)
+    }
+
+    @Test("corrects a spoken Kubernetes pronunciation when the entry says it sounds that way")
+    func correctsKubernetesPronunciation() throws {
+        let kubernetes = DictionaryEntry(
+            word: "Kubernetes", pronunciation: "kuber netes", origin: .added, firstSeen: .now)
+        let proposals = WordCorrectionEngine().proposals(
+            for: CorrectionFixtures.spoken("we should restart the ?kuber ?netes pod after the deploy"),
+            against: PhoneticIndex(entries: [kubernetes]),
+            seeing: CorrectionFixtures.showing("Kubernetes deployment"))
+
+        #expect(try #require(proposals.only).replacement == "Kubernetes")
+    }
+
     @Test(
-        "refuses an entry that neither spells a multi-word run nor opens as it does",
+        "refuses an entry that neither spells a multi-word run nor writes out its pronunciation",
         arguments: [
             ("URL", "air well"), ("Aditi", "it to"),
         ])
@@ -265,10 +287,10 @@ struct MultiWordCorrectionTests {
     }
 
     @Test(
-        "keeps a run the entry spells, or opens as",
+        "keeps a run the entry writes out",
         arguments: [
             ("PaymentSheet", "payment sheet"), ("setUserPrefs", "set user prefs"),
-            ("Uttrflow", "utter flow"), ("SQL", "s q l"), ("Grafana", "graf an a"),
+            ("SQL", "s q l"), ("Grafana", "graf an a"),
         ])
     func keepsARunItSpells(entry: String, heard: String) {
         #expect(
