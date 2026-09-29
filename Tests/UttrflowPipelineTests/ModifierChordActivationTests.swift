@@ -372,19 +372,35 @@ struct ModifierChordActivationTests {
         #expect(await rig.microphone.isEmpty)
     }
 
-    @Test("Fn still dictates the moment it goes down, and an arrow key during the hold changes nothing")
-    func functionHoldUnchanged() async throws {
+    @Test("Fn held on its own starts dictation after it settles")
+    func functionHoldWaitsToSettle() async throws {
         let rig = try await Rig.make(.functionHold, .holdToTalk)
         await rig.send(rig.hands.hold(.function))
+        #expect(await rig.isListening == false)
+        await rig.waitOutTheSettle()
         #expect(await rig.isListening)
 
-        await rig.send([
-            SystemKeyboard.stroke(keyCode: rightArrow, flags: .maskSecondaryFn, phase: .down),
-            SystemKeyboard.stroke(keyCode: rightArrow, flags: .maskSecondaryFn, phase: .up),
-        ])
         rig.clock.advance(by: .seconds(3))
         await rig.send(rig.hands.letGo(.function))
         #expect(rig.inserter.received == [chordTidied])
+    }
+
+    @Test("Fn plus a key does not start dictation or insert anything")
+    func functionHoldWithKeyDoesNotDictate() async throws {
+        let rig = try await Rig.make(.functionHold, .holdToTalk)
+        await rig.send(rig.hands.hold(.function))
+        await rig.send([
+            SystemKeyboard.stroke(keyCode: 51, flags: .maskSecondaryFn, phase: .down),
+            SystemKeyboard.stroke(keyCode: 51, flags: .maskSecondaryFn, phase: .up),
+        ])
+        await rig.waitOutTheSettle()
+        rig.clock.advance(by: .seconds(3))
+        await rig.send(rig.hands.letGo(.function))
+
+        #expect(await rig.isListening == false)
+        #expect(await rig.microphone.isEmpty)
+        #expect(rig.cue.startsPlayed == 0)
+        #expect(rig.inserter.received.isEmpty)
     }
 
     @Test(

@@ -59,6 +59,15 @@ public enum PanelIntent: Sendable, Equatable {
             nil
         }
     }
+
+    /// A row action that writes directly to the store without first asking a question.
+    public var immediateChange: PanelChange? {
+        switch self {
+        case .pin(let id): .setPinned(id, true)
+        case .unpin(let id): .setPinned(id, false)
+        default: nil
+        }
+    }
 }
 
 /// What a bottom-bar button is drawn with, as cases rather than a name a `Shape` cannot answer.
@@ -259,6 +268,8 @@ public struct PanelPresentation: Sendable, Equatable {
     public let scope: String?
     /// What VoiceOver is told when each line appears in the open panel.
     public let announcements: [String]
+    /// Stable identities for the corresponding lines, changed only when a new announcement event occurs.
+    public let announcementIDs: [UUID]
     /// What VoiceOver says choosing a row will do, which is a copy when the panel cannot paste.
     public let rowHint: String
 
@@ -278,6 +289,7 @@ public struct PanelPresentation: Sendable, Equatable {
         microphone: PanelMicrophone = PanelPresenter.microphone(for: .ready),
         scope: String? = nil,
         announcements: [String] = [],
+        announcementIDs: [UUID] = [],
         rowHint: String = PanelPresenter.pasteRowHint
     ) {
         self.rows = rows
@@ -295,6 +307,7 @@ public struct PanelPresentation: Sendable, Equatable {
         self.microphone = microphone
         self.scope = scope
         self.announcements = announcements
+        self.announcementIDs = announcementIDs
         self.rowHint = rowHint
     }
 
@@ -328,6 +341,12 @@ public enum PanelPresenter {
     /// The notice and the undo offer, as spoken; the controller posts each appearance. See `Docs/app-quick-panel.md`.
     static func announcements(for snapshot: PanelSnapshot) -> [String] {
         [snapshot.notice?.message, snapshot.canUndoDelete ? undoAnnouncement : nil].compactMap { $0 }
+    }
+
+    /// Event identities parallel to `announcements`, so a repeated action is spoken after a redraw.
+    static func announcementIDs(for snapshot: PanelSnapshot) -> [UUID] {
+        [snapshot.notice?.announcementID, snapshot.canUndoDelete ? snapshot.undoAnnouncementID : nil]
+            .compactMap { $0 }
     }
 
     /// What VoiceOver says a row does, so a copy-only panel never promises a paste.
@@ -387,6 +406,7 @@ public enum PanelPresenter {
             microphone: microphone(for: snapshot.dictation),
             scope: scope(for: snapshot),
             announcements: announcements(for: snapshot),
+            announcementIDs: announcementIDs(for: snapshot),
             rowHint: rowHint(for: snapshot.insertion)
         )
     }

@@ -125,6 +125,10 @@ extension MenuBarPresenter {
         case .idle, .finished:
             break
         }
+        if let notice = state.suggestionUnheard, state.features.suggestions {
+            return .status(
+                MenuBarStatus(title: "AI suggestions paused", detail: notice, emphasis: .attention))
+        }
         if state.shortcutUnheard != nil, state.features.dictation {
             return .status(
                 MenuBarStatus(

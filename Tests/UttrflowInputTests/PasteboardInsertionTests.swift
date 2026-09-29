@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 import Synchronization
 import Testing
 
@@ -14,15 +15,20 @@ final class FakePasteboard: Pasteboard {
         var concealed: [String] = []
         var pictures: [Data] = []
         var acceptsWrites = true
+        var onImageWrite: (@Sendable () -> Void)?
     }
 
     private let state = Mutex(State())
 
     /// `acceptsWrites: false` models a clipboard that takes the write and then does not hold it.
-    init(text: String? = nil, acceptsWrites: Bool = true) {
+    init(
+        text: String? = nil, acceptsWrites: Bool = true,
+        onImageWrite: (@Sendable () -> Void)? = nil
+    ) {
         state.withLock { state in
             state.text = text
             state.acceptsWrites = acceptsWrites
+            state.onImageWrite = onImageWrite
         }
     }
 
@@ -44,11 +50,13 @@ final class FakePasteboard: Pasteboard {
 
     /// K4 — a picture write, kept apart from the text ones so a test can tell them apart.
     func setImage(_ data: Data) {
-        state.withLock { state in
+        let onImageWrite = state.withLock { state -> (@Sendable () -> Void)? in
             state.pictures.append(data)
             state.changeCount += 1
             if state.acceptsWrites { state.text = nil }
+            return state.onImageWrite
         }
+        onImageWrite?()
     }
 
     /// Stands in for another app copying something while the paste is in flight.
@@ -138,6 +146,43 @@ final class SwitchableFocus: AccessibilityFocus, @unchecked Sendable {
     func becomeSelfFrontmost() { selfIsFrontmost.withLock { $0 = true } }
 }
 
+/// Holds confirmation open after a paste is posted, so an overlapping insertion has somewhere to race.
+private final class GatedConfirmationFocus: AccessibilityFocus, @unchecked Sendable {
+    private let reads = Mutex(0)
+    private let waiting = Mutex(false)
+    private let continueConfirmation = DispatchSemaphore(value: 0)
+
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func tail(upTo count: Int) -> FieldTail {
+        let read = reads.withLock { reads -> Int in
+            reads += 1
+            return reads
+        }
+        guard read == 2 else { return .text("previous text") }
+        waiting.withLock { $0 = true }
+        continueConfirmation.wait()
+        return .text("first insertion")
+    }
+    var isWaitingForConfirmation: Bool { waiting.withLock { $0 } }
+
+    func finishConfirmation() { continueConfirmation.signal() }
+}
+
+/// Signals when the second coordinator has passed its eligibility check.
+private final class SignalingFocus: AccessibilityFocus, @unchecked Sendable {
+    private let checked = Mutex(false)
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool {
+        checked.withLock { $0 = true }
+        return false
+    }
+    func tail(upTo count: Int) -> FieldTail { .text("previous text") }
+    var didCheckEligibility: Bool { checked.withLock { $0 } }
+}
+
 @Suite("PasteboardTextInsertionEngine")
 struct PasteboardTextInsertionEngineTests {
     private func engine(
@@ -147,6 +192,40 @@ struct PasteboardTextInsertionEngineTests {
     ) -> PasteboardTextInsertionEngine {
         PasteboardTextInsertionEngine(
             focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
+    }
+
+    @Test("independent coordinators sharing a pasteboard do not overlap confirmations")
+    func independentCoordinatorsSerializePasteboardWrites() async throws {
+        let pasteboard = FakePasteboard()
+        let firstFocus = GatedConfirmationFocus()
+        let firstEngine = PasteboardTextInsertionEngine(
+            focus: firstFocus,
+            pasteboard: pasteboard,
+            keystrokes: FakeKeystrokeSender(),
+            confirmation: PasteConfirmation(focus: firstFocus, clock: ScriptedClock()))
+        let first = TextInsertionCoordinator(strategies: [firstEngine], focus: firstFocus)
+        let firstTask = Task { try await first.insert("first insertion") }
+
+        while !firstFocus.isWaitingForConfirmation { await Task.yield() }
+
+        let secondFocus = SignalingFocus()
+        let secondEngine = PasteboardTextInsertionEngine(
+            focus: secondFocus,
+            pasteboard: pasteboard,
+            keystrokes: FakeKeystrokeSender(),
+            confirmation: PasteConfirmation(
+                focus: secondFocus, clock: ScriptedClock()))
+        let second = TextInsertionCoordinator(strategies: [secondEngine], focus: secondFocus)
+        let secondTask = Task { try await second.insert("second insertion") }
+
+        while !secondFocus.didCheckEligibility { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(pasteboard.writes == ["first insertion"], "the active confirmation still owns the pasteboard")
+
+        firstFocus.finishConfirmation()
+        _ = try await firstTask.value
+        _ = try await secondTask.value
+        #expect(pasteboard.writes == ["first insertion", "second insertion"])
     }
 
     /// Declining costs the user an insertion where trying costs nothing. See `Docs/input-paste-eligibility.md`.
@@ -166,7 +245,8 @@ struct PasteboardTextInsertionEngineTests {
     }
 
     /// The guard's whole point: eligibility answered for another app must not survive a switch to Uttrflow.
-    @Test("rejects the paste and leaves the clipboard alone when Uttrflow is frontmost at the write")
+    @Test(
+        "rejects the paste and leaves the clipboard alone when Uttrflow becomes frontmost after eligibility")
     func revalidatesFrontmostBeforeWriting() async {
         let focus = SwitchableFocus()
         let pasteboard = FakePasteboard()
@@ -330,6 +410,51 @@ struct PasteboardTextInsertionEngineTests {
             .insert("dictated words")
 
         #expect(seen.withLock { $0.count } == 1)
+    }
+}
+
+@Suite("PasteboardImageInsertionEngine")
+struct PasteboardImageInsertionEngineTests {
+    @Test("rechecks the frontmost application after writing the image")
+    func rechecksFrontmostAfterWritingImage() async {
+        let imageData = await Task.detached { Data([0x89, 0x50, 0x4E, 0x47]) }.value
+        let focus = SwitchableFocus()
+        let pasteboard = FakePasteboard(onImageWrite: { focus.becomeSelfFrontmost() })
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
+
+        #expect(throws: TextInsertionError.self) { try sut.insert(imageData) }
+        #expect(pasteboard.pictures == [imageData])
+        #expect(keystrokes.pasteCount == 0, "a rejected image must not post ⌘V")
+    }
+
+    @Test("does not replace the clipboard when Uttrflow is already frontmost")
+    func refusesBeforeWritingWhenUttrflowIsFrontmost() {
+        let focus = SwitchableFocus()
+        focus.becomeSelfFrontmost()
+        let pasteboard = FakePasteboard()
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
+
+        #expect(throws: TextInsertionError.self) { try sut.insert(Data([0x89, 0x50])) }
+        #expect(pasteboard.pictures.isEmpty)
+        #expect(keystrokes.pasteCount == 0)
+    }
+
+    @Test("writes and pastes an image while another application is frontmost")
+    func pastesImageToExternalApplication() throws {
+        let imageData = Data([0x89, 0x50, 0x4E, 0x47])
+        let pasteboard = FakePasteboard()
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: SwitchableFocus(), pasteboard: pasteboard, keystrokes: keystrokes)
+
+        try sut.insert(imageData)
+
+        #expect(pasteboard.pictures == [imageData])
+        #expect(keystrokes.pasteCount == 1)
     }
 }
 

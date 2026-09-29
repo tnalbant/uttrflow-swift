@@ -319,6 +319,28 @@ struct GrammarGuardTests {
                 .isAccepted)
     }
 
+    @Test("rejects swapping a modal and preposition between aligned clauses")
+    func rejectsSmallWordSwapsAcrossClauses() {
+        #expect(
+            !verdict(
+                "we can send it to the client but we must keep it from the server",
+                "We must send it from the client but we can keep it to the server."
+            ).isAccepted)
+    }
+
+    @Test("keeps amount symbols when checking a draft")
+    func keepsQuantitySymbolsInDraft() {
+        for (spoken, rewritten) in [
+            ("the fee is 5%", "The fee is 5."),
+            ("the fee is $5", "The fee is 5 dollars."),
+            ("the change was -3.5%", "The change was 3.5%"),
+        ] {
+            #expect(
+                !sut.verdict(draft: Draft(text: spoken), rewritten: rewritten).isAccepted,
+                "\(spoken) → \(rewritten)")
+        }
+    }
+
     @Test("rejects a double negative flattened into standard English")
     func rejectsFlattenedDoubleNegative() {
         #expect(!verdict("we didn't do nothing wrong", "We didn't do anything wrong.").isAccepted)
@@ -376,6 +398,15 @@ struct GrammarGuardTests {
             !verdict(
                 "we should approve the design but we should not approve the budget",
                 "We should not approve the design but we should approve the budget."
+            ).isAccepted)
+    }
+
+    @Test("rejects a Hindi negation moved to another clause")
+    func rejectsMovedHindiNegation() {
+        #expect(
+            !verdict(
+                "mujhe yeh nahi chahiye lekin use yeh chahiye",
+                "Mujhe yeh chahiye lekin use yeh nahi chahiye."
             ).isAccepted)
     }
 
@@ -637,6 +668,19 @@ struct GrammarGuardTests {
             draft: draft("the main thing is money"), rewritten: "The main thing is mine.",
             offering: offered)
         #expect(!verdict.isAccepted, "'mine' was never offered as a reading of 'money'")
+    }
+
+    @Test("accepts an offered spelling only at its doubtful span")
+    func acceptsOfferedReadingAtItsSpan() {
+        let offered = [DoubtfulSpan(heard: "money", confidence: 0.31, candidates: ["main"])]
+        #expect(
+            sut.verdict(
+                draft: draft("the amount is money"), rewritten: "The amount is main.", offering: offered
+            ).isAccepted)
+        #expect(
+            !sut.verdict(
+                draft: draft("main is money"), rewritten: "Main is mine.", offering: offered
+            ).isAccepted)
     }
 
     /// The second "mark" is the doubtful one, and the first covers for the "Mike" written in its place.
@@ -982,6 +1026,13 @@ struct GuardMatchStrengthTests {
             verdict("tell Aarav about the change", "Tell Aaron about the change.")
                 == .rejected(reason: "the rewrite lost or replaced 'Aarav'", kind: .lostWord))
         #expect(!survives("aarav", as: "Aaron"))
+    }
+
+    @Test("rejects a one-character substitution despite a shared prefix")
+    func refusesConfirmConfuse() {
+        #expect(
+            verdict("please confirm the booking", "Please confuse the booking.")
+                == .rejected(reason: "the rewrite lost or replaced 'confirm'", kind: .lostWord))
     }
 
     /// Hindi ending shapes apply only to known verb stems, in either direction.

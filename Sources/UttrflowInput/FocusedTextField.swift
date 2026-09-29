@@ -28,6 +28,9 @@ public protocol AccessibilityFocus: Sendable {
     /// The focused text field, or `nil` when what is focused cannot take text.
     func focusedTextField() -> (any FocusedTextField)?
 
+    /// The field owned by `destination`, or `nil` when its owner cannot be verified.
+    func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)?
+
     /// Whether anything at all is focused that could take a paste, which many fields allow while refusing a selection read.
     func hasFocusedElement() -> Bool
 
@@ -40,11 +43,22 @@ public protocol AccessibilityFocus: Sendable {
     /// As much of the text before the caret as there is, up to `count`, or that the field will not say.
     func tail(upTo count: Int) -> FieldTail
 
+    /// The containing window and tail from one focused element read.
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail)
+
+    /// The containing window of the field that will receive an insertion.
+    func focusedWindowNumber() -> UInt32?
+
     /// The application in front right now, which is where a write lands. See `Docs/insertion.md`.
     func frontmostApplication() -> InsertionDestination?
 
     /// Whether the focused field hides what is typed, asked without reading a declared secure field's value.
     func focusedFieldIsSecure() -> Bool
+}
+
+extension AccessibilityFocus {
+    /// Implementations without owner checks cannot safely target a captured application.
+    public func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)? { nil }
 }
 
 /// What a field says about the text before its caret, keeping "too short" apart from "will not say".
@@ -61,6 +75,14 @@ extension AccessibilityFocus {
 
     /// The same default: a field that will not report its value will not report its tail either.
     public func tail(upTo count: Int) -> FieldTail { .unreadable }
+
+    /// A reader without a window-aware API cannot prove the field belongs to the drawn window.
+    public func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (nil, tail(upTo: count))
+    }
+
+    /// A reader without a window-aware API cannot prove where an insertion will land.
+    public func focusedWindowNumber() -> UInt32? { nil }
 
     /// A reader with no window server behind it cannot say what is in front, and says so.
     public func frontmostApplication() -> InsertionDestination? { nil }

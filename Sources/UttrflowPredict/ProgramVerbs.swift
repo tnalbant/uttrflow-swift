@@ -111,7 +111,7 @@ enum HelpCommands {
         if indented >= 2, commaSeparated.count >= 2, commaSeparated.allSatisfy({ isName(Substring($0)) }) {
             return commaSeparated
         }
-        guard let first = line.split(separator: " ").first else { return [] }
+        guard let first = line.split(whereSeparator: \.isWhitespace).first else { return [] }
         // gh writes each name with a colon after it, which is the layout's and not the name's.
         let name = first.hasSuffix(":") ? first.dropLast() : first
         guard isName(name) else { return [] }

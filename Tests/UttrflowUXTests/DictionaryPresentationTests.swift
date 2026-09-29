@@ -246,6 +246,13 @@ struct DictionaryEmptyTests {
         #expect(page.footnote == nil)
     }
 
+    @Test("offers a word when the last dictionary entry is deleted during search")
+    func emptyDuringSearch() {
+        let page = HistoryFixture.dictionary(query: "anything")
+        #expect(page.emptyState?.title == "No words of your own yet")
+        #expect(page.emptyState?.action?.intent == .addWord)
+    }
+
     @Test("a search that matched nothing says what it was looking for")
     func noMatches() {
         let empty = HistoryFixture.dictionary(

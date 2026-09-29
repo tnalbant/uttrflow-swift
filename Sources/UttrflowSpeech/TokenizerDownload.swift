@@ -1,5 +1,6 @@
 // Fetches a model's assets at install time, the module's only network call.
 internal import Foundation
+internal import Synchronization
 internal import UttrflowCore
 private import CryptoKit
 
@@ -89,19 +90,25 @@ private func verified(file: URL, expected: SpeechModelFile) throws -> Bool {
     return try sha256(of: file) == expected.sha256
 }
 
-private func fetchPinnedFile(
+typealias SpeechAssetDownloader =
+    @Sendable (
+        URL, @escaping @Sendable (Int64) -> Void
+    ) async throws -> (URL, URLResponse)
+
+func fetchPinnedFile(
     repository: String,
     revision: String,
     path: String,
     destination: URL,
     expected: SpeechModelFile,
+    downloader: SpeechAssetDownloader? = nil,
     onProgress: @escaping @Sendable (Int64) -> Void
 ) async throws {
     guard let url = URL(string: "https://huggingface.co/\(repository)/resolve/\(revision)/\(path)") else {
         throw SpeechModelFetchFailure(reason: "\(repository) is not an address")
     }
 
-    let (downloaded, response) = try await URLSession.shared.download(from: url)
+    let (downloaded, response) = try await (downloader ?? downloadSpeechAsset)(url, onProgress)
     defer { try? FileManager.default.removeItem(at: downloaded) }
     guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -135,6 +142,107 @@ private func fetchPinnedFile(
     try fileManager.moveItem(at: temporary, to: destination)
     try PrivateFile.tighten(at: destination)
     onProgress(expected.bytes)
+}
+
+private func downloadSpeechAsset(
+    from url: URL, onProgress: @escaping @Sendable (Int64) -> Void
+) async throws -> (URL, URLResponse) {
+    let download = SpeechAssetURLSessionDownload(onProgress: onProgress)
+    return try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { continuation in
+            download.start(from: url, continuation: continuation)
+        }
+    } onCancel: {
+        download.cancel()
+    }
+}
+
+private final class SpeechAssetURLSessionDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private struct SessionState: Sendable {
+        var session: URLSession?
+        var task: URLSessionDownloadTask?
+        var cancelled = false
+    }
+
+    private let onProgress: @Sendable (Int64) -> Void
+    private let state = Mutex(SessionState())
+    private var continuation: CheckedContinuation<(URL, URLResponse), any Error>?
+    private var temporaryURL: URL?
+    private var moveError: (any Error)?
+
+    init(onProgress: @escaping @Sendable (Int64) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func start(
+        from url: URL, continuation: CheckedContinuation<(URL, URLResponse), any Error>
+    ) {
+        self.continuation = continuation
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        let task = session.downloadTask(with: url)
+        state.withLock { state in
+            state.session = session
+            state.task = task
+            task.resume()
+            if state.cancelled {
+                task.cancel()
+            }
+        }
+    }
+
+    func cancel() {
+        state.withLock { state in
+            state.cancelled = true
+            state.task?.cancel()
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesWritten > 0 else { return }
+        onProgress(totalBytesWritten)
+    }
+
+    func urlSession(
+        _ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL
+    ) {
+        let temporary = FileManager.default.temporaryDirectory
+            .appending(path: "uttrflow-speech-\(UUID().uuidString).download")
+        do {
+            try FileManager.default.moveItem(at: location, to: temporary)
+            temporaryURL = temporary
+        } catch {
+            moveError = error
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?
+    ) {
+        defer {
+            session.finishTasksAndInvalidate()
+            state.withLock {
+                $0.session = nil
+                $0.task = nil
+            }
+        }
+        guard let continuation else { return }
+        self.continuation = nil
+        if let error {
+            continuation.resume(throwing: error)
+        } else if let moveError {
+            continuation.resume(throwing: moveError)
+        } else if let temporaryURL, let response = task.response {
+            continuation.resume(returning: (temporaryURL, response))
+        } else {
+            continuation.resume(throwing: URLError(.badServerResponse))
+        }
+    }
 }
 
 private func sha256(of file: URL) throws -> String {
