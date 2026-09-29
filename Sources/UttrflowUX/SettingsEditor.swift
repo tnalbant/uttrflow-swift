@@ -197,8 +197,41 @@ public enum SettingsEditor {
             // Deliverable in general, but Carbon refuses every held-modifier-only combination.
             return SettingsRejection(reason: heldChordNotClaimable)
         }
+        if action == .dictate, binding.heldModifier == nil,
+            let reason = dictateCombinationConflict(binding)
+        {
+            return SettingsRejection(reason: reason)
+        }
         return nil
     }
+
+    /// Refuses Dictate key combinations that type into the focused app or invoke macOS actions.
+    private static func dictateCombinationConflict(_ binding: HotkeyBinding) -> String? {
+        if binding.modifiers.contains(.option), printableKeyCodes.contains(binding.keyCode) {
+            return
+                "Option with a character key can type into the app you are using. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 49, binding.modifiers.contains(.command) {
+            return
+                "⌘Space opens Spotlight, so it can take focus from the app you are dictating into. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 49, binding.modifiers.contains(.control) {
+            return
+                "⌃Space changes the input source, so it can interrupt dictation. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 48, binding.modifiers.contains(.command) {
+            return
+                "⌘Tab switches apps, so it can take focus from the app you are dictating into. Choose another Dictate shortcut."
+        }
+        return nil
+    }
+
+    /// ANSI key codes whose key can type a character with Option held.
+    private static let printableKeyCodes: Set<UInt16> = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17,
+        18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+        37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 49, 50,
+    ]
 
     // MARK: - Engines
 

@@ -47,6 +47,36 @@ struct SettingsShortcutValidationTests {
         #expect(try applied(.shortcut(.dictate, binding)).hotkey == binding)
     }
 
+    @Test("refuses Option plus Space and printable keys because they can type into the focused app")
+    func refusesOptionCharacterShortcuts() {
+        for binding in [.optionSpace, HotkeyBinding(keyCode: 0, modifiers: [.option])] {
+            let reason = refusal(.shortcut(.dictate, binding))
+            #expect(reason?.contains("Option") == true, "\(binding)")
+            #expect(reason?.contains("type into the app") == true, "\(binding)")
+        }
+    }
+
+    @Test("refuses macOS shortcuts that open system UI or change the input source")
+    func refusesReservedDictateShortcuts() {
+        let spotlightReason = refusal(.shortcut(.dictate, HotkeyBinding(keyCode: 49, modifiers: [.command])))
+        #expect(spotlightReason?.contains("⌘Space opens Spotlight") == true)
+
+        let shortcuts = [
+            HotkeyBinding(keyCode: 49, modifiers: [.control]),
+            HotkeyBinding(keyCode: 48, modifiers: [.command]),
+        ]
+        for binding in shortcuts {
+            #expect(
+                refusal(.shortcut(.dictate, binding))?.contains("Choose another Dictate shortcut") == true)
+        }
+    }
+
+    @Test("keeps held modifier and Fn Dictate bindings available")
+    func acceptsListenOnlyBindings() {
+        #expect(refusal(.shortcut(.dictate, .controlOptionHold)) == nil)
+        #expect(refusal(.shortcut(.dictate, .functionHold)) == nil)
+    }
+
     @Test("refuses a shortcut with no modifier, and says to add one")
     func refusesBareKey() {
         let reason = refusal(.shortcut(.dictate, HotkeyBinding(keyCode: 40, modifiers: [])))
