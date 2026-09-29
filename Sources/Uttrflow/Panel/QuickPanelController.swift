@@ -2,6 +2,7 @@
 
 import AppKit
 import UttrflowClipboard
+import UttrflowCore
 import UttrflowUX
 import SwiftUI
 
@@ -160,6 +161,12 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
 
     /// Whose caret this is. Captured on the way in, reported on the way out.
     private var caretOwner: NSRunningApplication?
+
+    var insertionDestination: InsertionDestination? {
+        guard let caretOwner else { return nil }
+        return InsertionDestination(
+            applicationName: caretOwner.localizedName, bundleIdentifier: caretOwner.bundleIdentifier)
+    }
     /// Live only while the panel is on screen; see ``watchForLeaving()``.
     private var clicks: Any?
     private var switching: (any NSObjectProtocol)?

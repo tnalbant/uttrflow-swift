@@ -35,6 +35,18 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
     public func insert(
         _ text: String, richText: String?
     ) async throws(TextInsertionError) -> InsertionArrival {
+        try await insert(text, richText: richText, targeting: nil)
+    }
+
+    public func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try await insert(text, richText: richText, targeting: Optional(destination))
+    }
+
+    private func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) -> InsertionArrival {
         // The clipboard is the user's, so a stage that has given up must not take it. See `Docs/insertion.md`.
         guard !Task.isCancelled else {
             throw .insertionRejected(description: TextInsertion.dictationEnded)
@@ -43,6 +55,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         guard !focus.isSelfFrontmost() else {
             throw .noFocusedTextField
         }
+        try refuseIfTargetChanged(destination)
         // Concealed for a field that hides what is typed, so no clipboard history keeps the words.
         let focus = focus
         if await AccessibilityThread.run(orElse: true, { focus.focusedFieldIsSecure() }) {
@@ -56,6 +69,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         let before = await AccessibilityThread.run(orElse: .unreadable) {
             focus.tail(upTo: PasteConfirmation.readLength)
         }
+        try refuseIfTargetChanged(destination)
         // Thrown onwards with the words left on the clipboard: the floor below would only put them back.
         try keystrokes.sendPaste()
         // Posting a paste proves nothing, so this waits for the words the way the write above is read back.
@@ -64,6 +78,13 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         report?(outcome)
         // The borrowed clipboard is deliberately never restored. See `Docs/insertion.md`.
         return InsertionArrival(outcome)
+    }
+
+    private func refuseIfTargetChanged(_ destination: InsertionDestination?) throws(TextInsertionError) {
+        guard let destination else { return }
+        guard destination.isKnown, let expected = destination.bundleIdentifier,
+            focus.frontmostApplication()?.bundleIdentifier == expected
+        else { throw .insertionTargetChanged }
     }
 }
 
