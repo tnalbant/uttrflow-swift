@@ -96,7 +96,9 @@ struct UncertainSpan: Sendable, Equatable {
 
     /// Every run up to the index's word limit in which every word is doubted, most deserving first.
     static func spans(in utterance: Utterance, below threshold: Double) -> [UncertainSpan] {
-        spans(in: utterance.words.map { ($0.text, $0.confidence) }, below: threshold)
+        spans(
+            in: utterance.words.map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
+            below: threshold)
     }
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
@@ -104,8 +106,15 @@ struct UncertainSpan: Sendable, Equatable {
         spans(
             in: draft.words
                 .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-                .map { ($0.text, $0.confidence) },
+                .map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
             below: threshold)
+    }
+
+    /// A word in a Homophones group is doubted regardless of recogniser confidence, so its partners can be tried.
+    private static func effectiveConfidence(
+        text: String, confidence: Double
+    ) -> (text: String, confidence: Double) {
+        Homophones.group(containing: text) == nil ? (text, confidence) : (text, -1)
     }
 
     /// The runs themselves, over anything that can name a word and how sure the recogniser was of it.
