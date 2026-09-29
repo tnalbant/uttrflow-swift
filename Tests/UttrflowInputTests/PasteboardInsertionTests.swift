@@ -16,6 +16,7 @@ final class FakePasteboard: Pasteboard {
         var pictures: [Data] = []
         var acceptsWrites = true
         var onImageWrite: (@Sendable () -> Void)?
+        var onTextWrite: (@Sendable (FakePasteboard) -> Void)?
     }
 
     private let state = Mutex(State())
@@ -23,16 +24,20 @@ final class FakePasteboard: Pasteboard {
     /// `acceptsWrites: false` models a clipboard that takes the write and then does not hold it.
     init(
         text: String? = nil, acceptsWrites: Bool = true,
-        onImageWrite: (@Sendable () -> Void)? = nil
+        onImageWrite: (@Sendable () -> Void)? = nil,
+        onTextWrite: (@Sendable (FakePasteboard) -> Void)? = nil
     ) {
         state.withLock { state in
             state.text = text
             state.acceptsWrites = acceptsWrites
             state.onImageWrite = onImageWrite
+            state.onTextWrite = onTextWrite
         }
     }
 
     func text() -> String? { state.withLock(\.text) }
+
+    func changeCount() -> Int { state.withLock(\.changeCount) }
 
     func setText(_ text: String) {
         state.withLock { state in
@@ -42,10 +47,28 @@ final class FakePasteboard: Pasteboard {
         }
     }
 
+    func writeText(_ text: String, richText: String?) -> Int {
+        let (writeCount, onTextWrite) = state.withLock {
+            state -> (Int, (@Sendable (FakePasteboard) -> Void)?) in
+            state.writes.append(text)
+            state.changeCount += 1
+            if state.acceptsWrites { state.text = text }
+            return (state.changeCount, state.onTextWrite)
+        }
+        onTextWrite?(self)
+        return writeCount
+    }
+
     /// A concealed write, which lands like any other and is also counted apart so a test can see the marker.
     func setConcealedText(_ text: String) {
         setText(text)
         state.withLock { $0.concealed.append(text) }
+    }
+
+    func writeConcealedText(_ text: String) -> Int {
+        let writeCount = writeText(text, richText: nil)
+        state.withLock { $0.concealed.append(text) }
+        return writeCount
     }
 
     /// K4 — a picture write, kept apart from the text ones so a test can tell them apart.
@@ -396,6 +419,27 @@ struct PasteboardTextInsertionEngineTests {
         #expect(keystrokes.pasteCount == 0, "a paste now would put the stale clipboard into the field")
     }
 
+    @Test("stops fallback when another writer replaces the clipboard after the paste write")
+    func doesNotOverwriteNewCopyDuringFallback() async {
+        let copiedText = "the user's newer copy"
+        let pasteboard = FakePasteboard(onTextWrite: { pasteboard in
+            pasteboard.copyFromAnotherApp(copiedText)
+        })
+        let keystrokes = FakeKeystrokeSender()
+        let focus = FakeFocus(field: FakeTextField())
+        let paste = engine(pasteboard, keystrokes, focus: focus)
+        let floor = ClipboardTextInsertionEngine(pasteboard: pasteboard)
+        let coordinator = TextInsertionCoordinator(strategies: [paste, floor], focus: focus)
+
+        await #expect(throws: TextInsertionError.clipboardChanged) {
+            try await coordinator.insert("dictated words")
+        }
+
+        #expect(pasteboard.writes == ["dictated words"])
+        #expect(pasteboard.text() == copiedText)
+        #expect(keystrokes.pasteCount == 0)
+    }
+
     @Test("copies an empty transcript without inventing anything")
     func emptyText() async throws {
         let pasteboard = FakePasteboard(text: "previous")
@@ -550,6 +594,21 @@ struct ClipboardTextInsertionEngineTests {
         await #expect(throws: TextInsertionError.clipboardUnavailable) {
             try await sut.insert("dictated words")
         }
+    }
+
+    @Test("preserves a newer copy when the clipboard floor loses ownership")
+    func preservesNewCopyAfterFloorWrite() async {
+        let copiedText = "the user's newer copy"
+        let pasteboard = FakePasteboard(onTextWrite: { pasteboard in
+            pasteboard.copyFromAnotherApp(copiedText)
+        })
+
+        await #expect(throws: TextInsertionError.clipboardChanged) {
+            try await ClipboardTextInsertionEngine(pasteboard: pasteboard).insert("dictated words")
+        }
+
+        #expect(pasteboard.writes == ["dictated words"])
+        #expect(pasteboard.text() == copiedText)
     }
 
     @Test("copies an empty transcript without complaining")

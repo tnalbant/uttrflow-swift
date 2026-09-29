@@ -24,12 +24,16 @@ public struct ClipboardTextInsertionEngine: TextInsertionEngine {
             throw .insertionRejected(description: TextInsertion.dictationEnded)
         }
         let focus = focus
+        let writeChangeCount: Int
         if await AccessibilityThread.run(orElse: true, { focus?.focusedFieldIsSecure() == true }) {
-            pasteboard.setConcealedText(text)
+            writeChangeCount = pasteboard.writeConcealedText(text)
         } else {
-            pasteboard.setText(text)
+            writeChangeCount = pasteboard.writeText(text, richText: nil)
         }
-        guard pasteboard.text() == text else { throw .clipboardUnavailable }
+        guard pasteboard.text() == text else {
+            guard pasteboard.changeCount() == writeChangeCount else { throw .clipboardChanged }
+            throw .clipboardUnavailable
+        }
         return .notReported
     }
 }

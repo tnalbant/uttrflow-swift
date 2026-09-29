@@ -84,13 +84,17 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         let focus = focus
         let isSecure = await AccessibilityThread.run(orElse: true) { focus.focusedFieldIsSecure() }
         try PasteboardPasteAction.requireTarget(destination, focus: focus)
+        let writeChangeCount: Int
         if isSecure {
-            pasteboard.setConcealedText(text)
+            writeChangeCount = pasteboard.writeConcealedText(text)
         } else {
-            pasteboard.setText(text, richText: richText)
+            writeChangeCount = pasteboard.writeText(text, richText: richText)
         }
         // A write that did not stick would paste whatever the clipboard held before, so the next route takes over.
-        guard pasteboard.text() == text else { throw .clipboardUnavailable }
+        guard pasteboard.text() == text else {
+            guard pasteboard.changeCount() == writeChangeCount else { throw .clipboardChanged }
+            throw .clipboardUnavailable
+        }
         // Read before the paste is posted, so an unchanged caret cannot be read back as a fresh landing.
         let before = await AccessibilityThread.run(orElse: .unreadable) {
             focus.tail(upTo: PasteConfirmation.readLength)

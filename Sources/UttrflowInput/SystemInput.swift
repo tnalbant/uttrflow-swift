@@ -27,23 +27,33 @@ public struct SystemPasteboard: Pasteboard {
         NSPasteboard.general.string(forType: .string)
     }
 
+    public func changeCount() -> Int { NSPasteboard.general.changeCount }
+
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
     public func setText(_ text: String, richText: String?) {
+        _ = writeText(text, richText: richText)
+    }
+
+    public func writeText(_ text: String, richText: String?) -> Int {
         willWrite(text)
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        if let richText { item.setString(richText, forType: .html) }
         clearForThisMacOnly()
-        NSPasteboard.general.setString(text, forType: .string)
-        if let richText { NSPasteboard.general.setString(richText, forType: .html) }
+        NSPasteboard.general.writeObjects([item])
+        return NSPasteboard.general.changeCount
     }
 
     public func setText(_ text: String) {
-        // Before the clear, which is itself what moves the change count.
-        willWrite(text)
-        clearForThisMacOnly()
-        NSPasteboard.general.setString(text, forType: .string)
+        _ = writeText(text, richText: nil)
     }
 
     /// The plain flavour beside the concealed marker, which clipboard managers read as a password.
     public func setConcealedText(_ text: String) {
+        _ = writeConcealedText(text)
+    }
+
+    public func writeConcealedText(_ text: String) -> Int {
         willWrite(text)
         // Built whole and written once, so no reader sees the words before the marker.
         let item = NSPasteboardItem()
@@ -51,6 +61,7 @@ public struct SystemPasteboard: Pasteboard {
         item.setData(Data(), forType: Self.concealedType)
         clearForThisMacOnly()
         NSPasteboard.general.writeObjects([item])
+        return NSPasteboard.general.changeCount
     }
 
     /// The prefix of every nspasteboard.org marker type, which names a format and not an app.

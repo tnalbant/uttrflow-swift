@@ -124,7 +124,8 @@ extension TextInsertionError: CataloguedFailure {
         switch self {
         case .noFocusedTextField: .accessibilityDenied
         case .accessibilityDenied: .clipboardUnavailable
-        case .clipboardUnavailable: .insertionTimedOut
+        case .clipboardUnavailable: .clipboardChanged
+        case .clipboardChanged: .insertionTimedOut
         case .insertionTimedOut: .insertionRejected(description: "")
         case .insertionRejected: .insertionUnconfirmed
         case .insertionUnconfirmed: .insertionTargetChanged

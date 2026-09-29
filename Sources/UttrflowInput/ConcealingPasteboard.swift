@@ -11,12 +11,20 @@ public struct ConcealingPasteboard: Pasteboard {
 
     public func text() -> String? { base.text() }
 
+    public func changeCount() -> Int { base.changeCount() }
+
     public func setText(_ text: String) { base.setConcealedText(text) }
 
     /// The formatted flavour is dropped, since a concealed write carries the plain words alone.
     public func setText(_ text: String, richText: String?) { base.setConcealedText(text) }
 
     public func setConcealedText(_ text: String) { base.setConcealedText(text) }
+
+    public func writeText(_ text: String, richText: String?) -> Int {
+        base.writeConcealedText(text)
+    }
+
+    public func writeConcealedText(_ text: String) -> Int { base.writeConcealedText(text) }
 
     public func setImage(_ data: Data) { base.setImage(data) }
 }

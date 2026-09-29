@@ -5,6 +5,8 @@ public import struct Foundation.Data
 public protocol Pasteboard: Sendable {
     /// The current text, or `nil` when the clipboard holds something else.
     func text() -> String?
+    /// The clipboard generation, which changes when another writer replaces its contents.
+    func changeCount() -> Int
     /// Replaces the contents.
     func setText(_ text: String)
 
@@ -13,6 +15,12 @@ public protocol Pasteboard: Sendable {
 
     /// Replaces the contents with words marked concealed, so clipboard histories keep them out.
     func setConcealedText(_ text: String)
+
+    /// Writes text and returns the generation created by that write.
+    func writeText(_ text: String, richText: String?) -> Int
+
+    /// Writes concealed text and returns the generation created by that write.
+    func writeConcealedText(_ text: String) -> Int
 
     /// K4 — replaces the contents with a picture, as PNG bytes, so no caller needs the platform clipboard.
     func setImage(_ data: Data)
@@ -25,6 +33,21 @@ public protocol KeystrokeSender: Sendable {
 }
 
 extension Pasteboard {
+    /// A pasteboard without generation tracking remains compatible with simple in-memory implementations.
+    public func changeCount() -> Int { 0 }
+
     /// A pasteboard that cannot carry formatting simply writes the words.
     public func setText(_ text: String, richText: String?) { setText(text) }
+
+    /// Captures the generation immediately after the write.
+    public func writeText(_ text: String, richText: String?) -> Int {
+        setText(text, richText: richText)
+        return changeCount()
+    }
+
+    /// Captures the generation immediately after the concealed write.
+    public func writeConcealedText(_ text: String) -> Int {
+        setConcealedText(text)
+        return changeCount()
+    }
 }

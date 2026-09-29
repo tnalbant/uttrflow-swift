@@ -6,6 +6,8 @@ public enum TextInsertionError: UttrflowFailure {
     case accessibilityDenied
     /// The clipboard itself refused the text.
     case clipboardUnavailable
+    /// Another process replaced the clipboard during insertion, so its newer contents are preserved.
+    case clipboardChanged
     /// The insertion deadline passed before any delivery result was confirmed.
     case insertionTimedOut
     /// The focused app refused the text, which is on the clipboard instead.
@@ -24,6 +26,8 @@ public enum TextInsertionError: UttrflowFailure {
             "Accessibility access is required to insert text into other applications."
         case .clipboardUnavailable:
             "The text couldn't be inserted or copied. It's kept under Recent in the menu bar."
+        case .clipboardChanged:
+            "Your clipboard changed during insertion. Your dictation is saved under Recent in the menu bar."
         case .insertionTimedOut:
             "The application did not respond. Your dictation is saved under Recent in the menu bar."
         case .insertionRejected:
@@ -42,6 +46,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .accessibilityDenied: .openSystemSettings(.accessibility)
         // The clipboard failed, so "paste" would point at the one place the words are not.
         case .clipboardUnavailable: .showRecentDictations
+        case .clipboardChanged: .showRecentDictations
         case .insertionTimedOut: .showRecentDictations
         case .insertionTargetChanged: .showRecentDictations
         case .insertionRejected: .pasteManually
@@ -55,7 +60,8 @@ public enum TextInsertionError: UttrflowFailure {
         // Nothing on screen took the text this once; the next attempt, with something focused, does.
         case .noFocusedTextField: .recoverable
         // The words exist and the user can reach them; they only missed where they were aimed.
-        case .accessibilityDenied, .clipboardUnavailable, .insertionTimedOut, .insertionRejected,
+        case .accessibilityDenied, .clipboardUnavailable, .clipboardChanged, .insertionTimedOut,
+            .insertionRejected,
             .insertionUnconfirmed, .insertionTargetChanged:
             .degraded
         }
@@ -64,7 +70,7 @@ public enum TextInsertionError: UttrflowFailure {
     /// Whether another route must not attempt the same insertion.
     public var stopsFallback: Bool {
         switch self {
-        case .insertionUnconfirmed, .insertionTargetChanged: true
+        case .insertionUnconfirmed, .insertionTargetChanged, .clipboardChanged: true
         default: false
         }
     }
