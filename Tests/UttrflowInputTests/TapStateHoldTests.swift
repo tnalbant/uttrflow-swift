@@ -57,7 +57,7 @@ struct TapStateHoldTests {
         #expect(posted == [0])
     }
 
-    @Test("a held Tab is replayed when the next offer has already been armed")
+    @Test("a held Tab is re-evaluated when the next offer is armed before release")
     func tabIsReevaluatedAgainstRearmedOffer() throws {
         let state = Self.makeState()
         #expect(state.arm(.tab))
@@ -65,6 +65,7 @@ struct TapStateHoldTests {
         #expect(state.arm([]))
         #expect(state.takes(try Self.key(48)))
         #expect(state.arm(.tab))
+        #expect(state.armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0)
 
         var replayedAndTaken = false
         #expect(
