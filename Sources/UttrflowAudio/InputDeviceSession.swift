@@ -154,7 +154,18 @@ public final class InputDeviceSession: Sendable {
                     device.close()
                     return
                 }
-            } catch {
+            } catch let error {
+                if error == .microphoneDenied {
+                    let report = state.withLock { state -> (@Sendable (CaptureInterruption) -> Void)? in
+                        guard state.health == .reopening else { return nil }
+                        state.health = .gone
+                        state.reopening = nil
+                        defer { state.report = nil }
+                        return state.report
+                    }
+                    report?(.ended(.microphoneDenied))
+                    return
+                }
                 continue
             }
         }
