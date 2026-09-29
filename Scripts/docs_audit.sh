@@ -52,6 +52,65 @@ fail() {
 
 pass() { printf '  ✓ %s\n' "$1"; }
 
+# The PR template is contributor-facing guidance and must agree with AGENTS.md's
+# present-tense comment rule without repeating the full policy. Keep this check narrow.
+comment_checklist_findings() {
+    local template="$1"
+    python3 - "$template" <<'PYTHON'
+import sys
+
+path = sys.argv[1]
+text = open(path, errors="ignore").read()
+required = (
+    "Comments are one line, present tense, and describe what the code does now",
+    "A reason only when it changes what a reader should do",
+    "durable measurements or",
+    "development history",
+)
+stale = "Comments explain *why*, not what"
+missing = [phrase for phrase in required if phrase not in text]
+if stale in text:
+    print(f"{path}: retains the obsolete 'why, not what' checklist instruction")
+for phrase in missing:
+    print(f"{path}: missing comment guidance: {phrase}")
+PYTHON
+}
+
+run_comment_checklist_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-docs-audit-comments.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+    cat >"$work/current.md" <<'EOF'
+- [ ] Comments are one line, present tense, and describe what the code does now
+
+A reason only when it changes what a reader should do. Put durable measurements or
+architectural rationale in `Docs/`; put development history in this description or the commit.
+EOF
+    cat >"$work/stale.md" <<'EOF'
+- [ ] Comments explain *why*, not what
+EOF
+
+    printf 'PR comment checklist fixture\n'
+    local current_report stale_report
+    current_report="$(comment_checklist_findings "$work/current.md")"
+    if [[ -z "${current_report//[[:space:]]/}" ]]; then
+        pass "current comment checklist guidance passes"
+    else
+        fail "current comment checklist guidance was flagged" "$current_report"
+    fi
+    stale_report="$(comment_checklist_findings "$work/stale.md")"
+    if [[ "$stale_report" == *"obsolete 'why, not what'"* && "$stale_report" == *"missing comment guidance"* ]]; then
+        pass "the obsolete checklist wording fails"
+    else
+        fail "the obsolete comment checklist wording passed" "$stale_report"
+    fi
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_comment_checklist_self_test
+    printf '\n'
+fi
+
 changelog_release_bullet_findings() {
     read -r -d '' CHANGELOG_PROGRAM <<'PYTHON' || true
 import re
