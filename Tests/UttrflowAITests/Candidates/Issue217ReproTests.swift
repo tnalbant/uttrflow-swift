@@ -58,7 +58,7 @@ struct Issue217ReadingRestraintTests {
         let everyCandidate = spans.flatMap(\.candidates).map(\.spelling)
         #expect(!everyCandidate.contains("mod"), "screen collision 'mod' must not reach the prompt, got \(everyCandidate)")
         let promptText = PromptBuilder.doubtfulText(spans)
-        #expect(promptText == nil || !promptText.contains("mod"), "screen collision 'mod' must not reach the prompt, got \(String(describing: promptText))")
+        #expect(promptText?.contains("mod") != true, "screen collision 'mod' must not reach the prompt, got \(String(describing: promptText))")
     }
 
     /// Being offered was the whole gate, so with nothing offered the guard is what refuses the substitution.
