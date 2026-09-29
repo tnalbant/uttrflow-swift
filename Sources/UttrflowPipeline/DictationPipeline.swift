@@ -237,7 +237,9 @@ public actor DictationPipeline {
             guard swap == speechSwaps else { return }
             isReady = false
             // Never over a dictation in progress: loading can run while the user speaks.
-            if !isBusy { transition(to: .failed(DictationFailure(error))) }
+            if !isBusy {
+                transition(to: .failed(DictationFailure(error, speechEngineKind: engine.kind)))
+            }
         }
     }
 
@@ -591,7 +593,7 @@ public actor DictationPipeline {
                         biasedTowards: await vocabulary(seeing: earlyContext ?? AppContext()),
                         recording: tally, skippingAMiss: true)
                 } catch {
-                    failure = DictationFailure(error)
+                    failure = DictationFailure(error, speechEngineKind: speech.kind)
                     tidying.cancelAll()
                     return
                 }

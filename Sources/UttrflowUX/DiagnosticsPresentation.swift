@@ -178,6 +178,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let speechReadiness: SpeechModelReadiness?
     /// The system recogniser's locale asset status; absent means not checked.
     public let appleSpeechStatus: DiagnosticsAppleSpeechStatus?
+    /// The built-in recogniser's last typed load failure, when one occurred.
+    public let appleSpeechLoadFailure: SpeechEngineError?
     /// What macOS has granted, for every permission asked about.
     public let permissions: [PermissionKind: PermissionStatus]
     /// Every stage timing recorded since the app started.
@@ -199,6 +201,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         speechModel: DiagnosticsModelPresence? = nil,
         speechReadiness: SpeechModelReadiness? = nil,
         appleSpeechStatus: DiagnosticsAppleSpeechStatus? = nil,
+        appleSpeechLoadFailure: SpeechEngineError? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
         measurements: [StageMeasurement] = [],
         cleaning: CleaningRecord? = nil,
@@ -212,6 +215,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.speechModel = speechModel
         self.speechReadiness = speechReadiness
         self.appleSpeechStatus = appleSpeechStatus
+        self.appleSpeechLoadFailure = appleSpeechLoadFailure
         self.permissions = permissions
         self.measurements = measurements
         self.cleaning = cleaning
@@ -347,7 +351,10 @@ public enum DiagnosticsPresenter {
     static func appleSpeechCard(_ snapshot: DiagnosticsSnapshot, inUse: Bool) -> DiagnosticsModelCard {
         let status: String
         let state: DiagnosticsState
-        if inUse, snapshot.speechReadiness == .loadFailed || snapshot.speechReadiness == .loadFailedAgain {
+        if case .modelLoadFailed? = snapshot.appleSpeechLoadFailure,
+            snapshot.appleSpeechStatus != .unsupported,
+            snapshot.appleSpeechStatus != .needsDownload
+        {
             (status, state) = ("Failed to load", .attention)
         } else {
             switch snapshot.appleSpeechStatus {
