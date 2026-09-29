@@ -120,6 +120,24 @@ struct AcceptanceTests {
         #expect(deleting.applied(to: "git commit") == "git")
     }
 
+    @Test("A repeated typed suffix keeps the longest echoed start of the suggestion.")
+    func rebasesWhenTheEchoRepeatsTheTypedSuffix() throws {
+        let edit = Acceptance.Edit(replaced: "", inserted: "ha that's funny")
+        let rebased = try #require(Acceptance.rebase(edit, after: "ha", onto: "haha"))
+
+        #expect(rebased.inserted == " that's funny")
+        #expect(rebased.applied(to: "haha") == "haha that's funny")
+    }
+
+    @Test("A continuation already present after the typed text needs no further insertion.")
+    func rebasesWhenTheWholeSuggestionIsAlreadyPresent() throws {
+        let edit = Acceptance.Edit(replaced: "", inserted: "ha that's funny")
+        let rebased = try #require(Acceptance.rebase(edit, after: "ha", onto: "haha that's funny"))
+
+        #expect(rebased.inserted.isEmpty)
+        #expect(rebased.applied(to: "haha that's funny") == "haha that's funny")
+    }
+
     @Test(
         "A suggestion stored with a decomposed accent still only adds past the bare base letter typed so far."
     )

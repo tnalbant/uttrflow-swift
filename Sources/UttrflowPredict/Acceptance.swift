@@ -36,16 +36,14 @@ public enum Acceptance {
 
     /// The edit re-aimed at what the field holds before the caret now, or `nil` when the field no longer fits it.
     public static func rebase(_ edit: Edit, after typed: String, onto before: String) -> Edit? {
-        guard before.hasSuffix(typed) else {
-            // Characters typed since the read can only be matched against an insert, so a replacement must see the line it read.
-            return edit.isReplacement ? nil : rebaseAhead(edit, after: typed, onto: before)
-        }
-        return edit
+        guard !edit.isReplacement else { return before.hasSuffix(typed) ? edit : nil }
+        return rebaseAhead(edit, after: typed, onto: before) ?? (before.hasSuffix(typed) ? edit : nil)
     }
 
     /// Finds the longest start of the inserted text the field already holds past `typed`, and inserts only the rest.
     private static func rebaseAhead(_ edit: Edit, after typed: String, onto before: String) -> Edit? {
         let inserted = Array(edit.inserted)
+        guard !inserted.isEmpty else { return nil }
         for echoed in stride(from: inserted.count - 1, through: 1, by: -1) {
             let ahead = typed + String(inserted[..<echoed])
             if before.hasSuffix(ahead) {
