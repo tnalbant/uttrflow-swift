@@ -21,9 +21,11 @@ struct Dictate: AsyncParsableCommand {
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
 
+    @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
     func run() async throws {
         let model = try resolve(modelVariant)
-        let store = FileSystemSpeechModelStore.whisperKit()
+        let store = try modelsDirectory.store()
         guard store.isInstalled(model) else {
             throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
         }
@@ -149,6 +151,11 @@ actor PlaybackCaptureEngine: AudioCaptureEngine {
     func capturedSoFar() async -> AudioSamples {
         guard sharesEarly, currentState == .recording else { return .empty }
         return .canonical(accumulator.snapshot)
+    }
+
+    func capturedSoFar(from start: Int) async -> AudioSamples {
+        guard sharesEarly, currentState == .recording else { return .empty }
+        return .canonical(accumulator.samples(from: start))
     }
 }
 

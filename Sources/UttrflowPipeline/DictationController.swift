@@ -23,8 +23,14 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     /// Told when the gesture that ends a recording changes, so the dock can say so even mid-recording.
     private let onStopGestureChange: @Sendable (StopGesture) -> Void
     private var limitTask: Task<Void, Never>?
+    /// Which dictation's cap `limitTask` is, so an older cap can neither finish nor stop a newer one.
+    private var limitGeneration = 0
+    /// The last finished dictation's recognition and insertion, which run off the queue. See Docs/pipeline-gestures.md.
+    private var processing: Task<Void, Never>?
 
     private var activation: HotkeyActivation
+    /// Whether a double tap of held keys leaves the microphone open; off, a short tap is only a slip.
+    private var handsFreeEnabled: Bool
     private var pressedAt: ClockType.Instant?
     /// When the last slip ended, so the next one can tell whether it is the second of a pair.
     private var lastTapEndedAt: ClockType.Instant?
@@ -46,8 +52,14 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         case settled(Int)
         /// A new activation mode, answered once adopted.
         case activation(HotkeyActivation, CheckedContinuation<Void, Never>)
+        /// Hands-free switched on or off, answered once adopted.
+        case handsFree(Bool, CheckedContinuation<Void, Never>)
         /// Answered once everything queued ahead of it has been handled.
         case drained(CheckedContinuation<Void, Never>)
+        /// The cap started for this generation of dictation has been reached.
+        case limitReached(Int)
+        /// Answered once the queue reaches it, whatever is still being processed.
+        case reached(CheckedContinuation<Void, Never>)
     }
 
     /// Every gesture from every source, handled one at a time. See Docs/pipeline-gestures.md.
@@ -59,6 +71,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         monitor: any HotkeyMonitoring,
         cue: any RecordingCueing = SilentCue(),
         activation: HotkeyActivation = .holdToTalk,
+        handsFreeEnabled: Bool = true,
         clock: ClockType,
         limit: DictationLimit = .default,
         onAdvice: @escaping @Sendable (DictationAdvice) -> Void = { _ in },
@@ -68,6 +81,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         self.monitor = monitor
         self.cue = cue
         self.activation = activation
+        self.handsFreeEnabled = handsFreeEnabled
         self.clock = clock
         self.limit = limit
         self.onAdvice = onAdvice
@@ -80,25 +94,33 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 guard let self else {
                     // A caller still waiting is answered, so it is not left suspended forever.
                     switch gesture {
-                    case .control(let handled), .drained(let handled), .activation(_, let handled):
+                    case .control(let handled), .drained(let handled), .reached(let handled),
+                        .activation(_, let handled), .handsFree(_, let handled):
                         handled.resume()
-                    case .key, .settled: break
+                    case .key, .settled, .limitReached: break
                     }
                     continue
                 }
                 switch gesture {
                 case .key(let event):
-                    await handle(event)
+                    await respond(to: event)
                 case .control(let handled):
                     await toggleListening()
-                    handled.resume()
+                    await answer(handled)
                 case .settled(let id):
                     await settle(id)
                 case .activation(let activation, let handled):
                     await adopt(activation)
-                    handled.resume()
+                    await answer(handled)
+                case .handsFree(let enabled, let handled):
+                    await adoptHandsFree(enabled)
+                    await answer(handled)
                 case .drained(let handled):
+                    await answer(handled)
+                case .reached(let handled):
                     handled.resume()
+                case .limitReached(let generation):
+                    await finishAtTheLimit(generation)
                 }
             }
         }
@@ -158,10 +180,34 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         onStopGestureChange(currentStopGesture)
         guard await pipeline.currentState.isListening else { return }
         stopWatchingTheLimit()
-        await pipeline.finishRecording()
+        await finishListening()
     }
 
     public var currentActivation: HotkeyActivation { activation }
+
+    /// Switches the double tap on or off, queued behind every gesture. See Docs/pipeline-gestures.md.
+    public nonisolated func setHandsFreeEnabled(_ enabled: Bool) async {
+        await withCheckedContinuation { handled in
+            // A controller already gone has no queue, so the change is answered at once.
+            guard case .enqueued = gestureSink.yield(.handsFree(enabled, handled)) else {
+                handled.resume()
+                return
+            }
+        }
+    }
+
+    /// Adopts the switch, closing a microphone a double tap left open once the gesture is off.
+    private func adoptHandsFree(_ enabled: Bool) async {
+        guard enabled != handsFreeEnabled else { return }
+        handsFreeEnabled = enabled
+        lastTapEndedAt = nil
+        guard !enabled else { return }
+        await forgetHandsFreeIfEnded()
+        guard isHandsFree else { return }
+        await stopHandsFree()
+    }
+
+    public var isHandsFreeEnabled: Bool { handsFreeEnabled }
 
     /// What the dock has to say to end a recording that is under way right now.
     public var currentStopGesture: StopGesture {
@@ -184,9 +230,31 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         onStopGestureChange(currentStopGesture)
     }
 
+    /// Answers a waiting caller once any dictation finished so far has been inserted, without holding the queue.
+    private func answer(_ handled: CheckedContinuation<Void, Never>) {
+        guard let processing else { return handled.resume() }
+        Task {
+            await processing.value
+            handled.resume()
+        }
+    }
+
+    /// Closes the microphone and leaves recognition and insertion to run while the next gesture is handled.
+    private func finishListening() async {
+        guard let started = await pipeline.stopListening() else { return }
+        processing = started
+    }
+
     // MARK: Events
 
+    /// Handles one event and returns once any dictation it finished has been inserted.
     public func handle(_ event: HotkeyEvent) async {
+        await respond(to: event)
+        await processing?.value
+    }
+
+    /// Handles one event, returning as soon as the microphone is closed.
+    private func respond(to event: HotkeyEvent) async {
         if let unsettled = unsettledPress {
             await resolveUnsettledPress(unsettled, with: event)
             return
@@ -224,6 +292,11 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             await forgetHandsFreeIfEnded()
             // Hands-free is already listening; pressing again is the start of the gesture that ends it.
             guard !isHandsFree else {
+                pressOpenedTheMicrophone = false
+                return
+            }
+            // A click already opened the microphone, so this press does not own the recording.
+            if await pipeline.currentState.isListening {
                 pressOpenedTheMicrophone = false
                 return
             }
@@ -312,6 +385,16 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         }
     }
 
+    /// Suspends until every gesture queued so far has been handled, without waiting for insertion.
+    func caughtUp() async {
+        await withCheckedContinuation { handled in
+            guard case .enqueued = gestureSink.yield(.reached(handled)) else {
+                handled.resume()
+                return
+            }
+        }
+    }
+
     /// Toggles a dictation from a click, queued behind every other gesture; returns once handled. See Docs/pipeline-gestures.md.
     public nonisolated func toggleFromControl() async {
         await withCheckedContinuation { handled in
@@ -328,7 +411,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         if await pipeline.currentState.isListening {
             setHandsFree(false)
             stopWatchingTheLimit()
-            await pipeline.finishRecording()
+            await finishListening()
         } else {
             await beginListening()
         }
@@ -343,10 +426,12 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         }
     }
 
-    /// Warns before the cap and finishes at it, keeping the words. See `Docs/stuck-recording.md`.
+    /// Warns before the cap and queues its finish like any gesture, keeping the words. See `Docs/stuck-recording.md`.
     private func watchTheLimit() {
         limitTask?.cancel()
-        limitTask = Task { [weak self, clock, limit, onAdvice] in
+        limitGeneration += 1
+        let generation = limitGeneration
+        limitTask = Task { [clock, limit, onAdvice, gestureSink] in
             let start = clock.now
             do {
                 // Deadlines from the start, so a late wake-up cannot push the cap back.
@@ -359,16 +444,23 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 // Cancelled, which is the ordinary end of every dictation.
                 return
             }
-            onAdvice(.finishNow)
-            await self?.finishAtTheLimit()
+            gestureSink.yield(.limitReached(generation))
         }
     }
 
-    /// Ends a dictation that reached the cap, keeping every word of it.
-    private func finishAtTheLimit() async {
-        guard await pipeline.currentState.isListening else { return }
+    /// Ends a dictation that reached its own cap, keeping every word of it; a stale cap does nothing.
+    private func finishAtTheLimit(_ generation: Int) async {
+        guard generation == limitGeneration, limitTask != nil else { return }
+        onAdvice(.finishNow)
+        guard await pipeline.currentState.isListening else { return stopWatchingTheLimit(generation) }
         setHandsFree(false)
-        await pipeline.finishRecording()
+        await finishListening()
+        stopWatchingTheLimit(generation)
+    }
+
+    /// Stops the cap of the given generation only, so a late call cannot stop the next dictation's.
+    private func stopWatchingTheLimit(_ generation: Int) {
+        guard generation == limitGeneration else { return }
         stopWatchingTheLimit()
     }
 
@@ -385,7 +477,11 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
         let now = clock.now
         let wasTap = pressed.map { $0.duration(to: now) < Self.minimumHold } ?? false
-        if wasTap, let last = lastTapEndedAt, last.duration(to: now) < Self.doubleTapWindow {
+        if wasTap, handsFreeEnabled, let last = lastTapEndedAt,
+            last.duration(to: now) < Self.doubleTapWindow
+        {
+            // A press that did not open the microphone and was not part of a hands-free toggle cannot change the gesture a click-started dictation is waiting for.
+            guard pressOpenedTheMicrophone || isHandsFree else { return }
             lastTapEndedAt = nil
             if isHandsFree { await stopHandsFree() } else { setHandsFree(true) }
             return
@@ -394,6 +490,12 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             lastTapEndedAt = now
             // A single tap while hands-free changes nothing; it may yet be half of the pair that ends it.
             guard !isHandsFree else { return }
+            // A slip on a click-started dictation finishes it cleanly, the way a release would, rather than discarding the words.
+            guard pressOpenedTheMicrophone else {
+                stopWatchingTheLimit()
+                await finishListening()
+                return
+            }
             stopWatchingTheLimit()
             await pipeline.cancel()
             return
@@ -403,11 +505,12 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         // Letting go of a key that was never held is what ends a hold, and hands-free has no hold.
         guard !isHandsFree else { return }
         stopWatchingTheLimit()
-        await pipeline.finishRecording()
+        await finishListening()
     }
 
     /// A tap too short to settle, counted towards a double tap without opening the microphone for one.
     private func endTapThatNeverOpened() async {
+        guard handsFreeEnabled else { return }
         let now = clock.now
         guard let last = lastTapEndedAt, last.duration(to: now) < Self.doubleTapWindow else {
             lastTapEndedAt = now
@@ -430,6 +533,6 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private func stopHandsFree() async {
         setHandsFree(false)
         stopWatchingTheLimit()
-        await pipeline.finishRecording()
+        await finishListening()
     }
 }

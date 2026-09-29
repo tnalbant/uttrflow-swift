@@ -1,5 +1,6 @@
 import Synchronization
 import Testing
+import Foundation
 
 @testable import UttrflowCore
 @testable import UttrflowInput
@@ -64,6 +65,27 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
     }
 }
 
+/// Pauses after Delete has landed, so quit can be interleaved before the replacement is typed.
+private final class PausingTypist: KeystrokeTyping, @unchecked Sendable {
+    private let deleted = Mutex(false)
+    private let typedValues = Mutex<[String]>([])
+    private let resumeTyping = DispatchSemaphore(value: 0)
+
+    var didDelete: Bool { deleted.withLock { $0 } }
+    var typed: [String] { typedValues.withLock { $0 } }
+
+    func type(_ text: String) throws(TextInsertionError) {
+        resumeTyping.wait()
+        typedValues.withLock { $0.append(text) }
+    }
+
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) {
+        deleted.withLock { $0 = true }
+    }
+
+    func allowTyping() { resumeTyping.signal() }
+}
+
 @Suite("Typing a completion in")
 struct TypedTextInsertionEngineTests {
     @Test("The text goes to the typist exactly as it was given.")
@@ -87,6 +109,40 @@ struct TypedTextInsertionEngineTests {
             focus: FakeFocus(isSelf: true), typist: RecordingTypist())
         #expect(await ours.canInsert() == false)
         #expect(await ours.canWrite() == false)
+    }
+
+    @Test("A completion refuses when Uttrflow came to the front after canWrite() said yes.")
+    func writeRefusesWhenSelfBecameFrontmost() async {
+        let focus = SwitchableFocus()
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: focus, typist: typist)
+        #expect(await engine.canWrite())
+
+        focus.becomeSelfFrontmost()
+
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.write("mit", replacing: "co")
+        }
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            try await engine.write("mit", replacing: "")
+        }
+        #expect(typist.deletions.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("An insertion refuses when Uttrflow came to the front after canInsert() said yes.")
+    func insertRefusesWhenSelfBecameFrontmost() async {
+        let focus = SwitchableFocus()
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: focus, typist: typist)
+        #expect(await engine.canInsert())
+
+        focus.becomeSelfFrontmost()
+
+        await #expect(throws: TextInsertionError.noFocusedTextField) {
+            _ = try await engine.insert("mit")
+        }
+        #expect(typist.text.isEmpty)
     }
 
     @Test("A refusal from the typist is the engine's refusal too.")
@@ -142,6 +198,30 @@ struct TypedTextInsertionEngineTests {
 
         #expect(typist.deletions == [4])
         #expect(typist.text == ["it commit"])
+    }
+
+    @Test("quit waits through the gap between deleting and typing a replacement")
+    func quitWaitsForReplacement() async throws {
+        let typist = PausingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(preceding: "git "), typist: typist)
+        let writing = Task { try await engine.write("it commit", replacing: "git ") }
+        while !typist.didDelete { try await Task.sleep(for: .milliseconds(1)) }
+
+        let draining = Task { await engine.finishWrites() }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(!draining.isCancelled)
+        #expect(typist.typed.isEmpty)
+
+        typist.allowTyping()
+        try await writing.value
+        await draining.value
+        #expect(typist.typed == ["it commit"])
+
+        await #expect(
+            throws: TextInsertionError.insertionRejected(description: "the application is terminating")
+        ) {
+            try await engine.write("late", replacing: "")
+        }
     }
 
     @Test(
@@ -454,5 +534,173 @@ struct BackwardSelectionTailTests {
         // Inside the emoji's surrogate pair, which is not a position in the string at all.
         #expect(BackwardSelection.tail(in: "ab🙂", endingAt: 3, upTo: 8) == nil)
         #expect(BackwardSelection.tail(in: "ab", endingAt: 99, upTo: 8) == nil)
+    }
+}
+
+/// Focus whose field holds `before` ahead of the caret, as a terminal shows it after the shell echoes.
+private struct EchoedFocus: AccessibilityFocus {
+    let field: any FocusedTextField
+    let before: String
+    func focusedTextField() -> (any FocusedTextField)? { field }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedFieldIsSecure() -> Bool { false }
+    func tail(upTo count: Int) -> FieldTail { .text(String(before.suffix(count))) }
+}
+
+@Suite("Accepting against a read that lags the last keystroke")
+struct LaggingReadAcceptTests {
+    private func acceptor(_ field: RecordingField, before: String) -> SuggestionAcceptor {
+        let focus = EchoedFocus(field: field, before: before)
+        return SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: RecordingTypist()), focus: focus)
+    }
+
+    @Test("A read one key behind inserts the remainder the field needs now, not the one drawn.")
+    func rebasesOntoTheEchoedLine() async throws {
+        let field = RecordingField()
+        try await acceptor(field, before: "$ sudo s").accept(.certain("sudo su ubuntu"), after: "sudo ")
+        #expect(field.text == ["u ubuntu"])
+    }
+
+    @Test("A field that matches the read gets the drawn edit unchanged.")
+    func keepsACurrentEdit() async throws {
+        let field = RecordingField()
+        try await acceptor(field, before: "$ sudo ").accept(.certain("sudo su ubuntu"), after: "sudo ")
+        #expect(field.text == ["su ubuntu"])
+    }
+
+    @Test("A field that has moved off the suggestion is refused and left alone.")
+    func refusesADivergedLine() async throws {
+        let field = RecordingField()
+        await #expect(throws: TextInsertionError.self) {
+            try await acceptor(field, before: "$ sudo x").accept(.certain("sudo su ubuntu"), after: "sudo ")
+        }
+        #expect(field.text.isEmpty)
+    }
+
+    @Test("A field already holding the whole suggestion is written nothing.")
+    func writesNothingWhenComplete() async throws {
+        let field = RecordingField()
+        let method = try await acceptor(field, before: "$ sudo su ubuntu")
+            .accept(.certain("sudo su ubuntu"), after: "sudo ")
+        #expect(method == nil)
+        #expect(field.text.isEmpty)
+    }
+
+    @Test("A replacement is refused when the field no longer ends with the line it was drawn for.")
+    func refusesAStaleReplacement() async throws {
+        let field = RecordingField()
+        await #expect(throws: TextInsertionError.self) {
+            try await acceptor(field, before: "gti cx").accept(.certain("git commit -m"), after: "gti c")
+        }
+        #expect(field.text.isEmpty)
+    }
+}
+
+/// Focus whose field has stopped answering, or hides what is typed, at the moment of acceptance.
+private struct ChangedFocus: AccessibilityFocus {
+    let field: any FocusedTextField
+    let isSecure: Bool
+    let tail: FieldTail
+    var windowNumber: UInt32? = nil
+    func focusedTextField() -> (any FocusedTextField)? { field }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedFieldIsSecure() -> Bool { isSecure }
+    func tail(upTo count: Int) -> FieldTail { tail }
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (windowNumber, tail)
+    }
+}
+
+@Suite("Accepting into a field that changed under the ghost")
+struct ChangedFieldAcceptTests {
+    private func acceptor(
+        _ field: RecordingField, typist: RecordingTypist, isSecure: Bool = false, tail: FieldTail
+    ) -> SuggestionAcceptor {
+        let focus = ChangedFocus(field: field, isSecure: isSecure, tail: tail)
+        return SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+    }
+
+    @Test("A field that cannot be read at acceptance is refused, and an add-only edit writes nothing.")
+    func refusesAnUnreadableAppend() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let accepting = acceptor(field, typist: typist, tail: .unreadable)
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com")
+                == .refused("the focused field cannot be read"))
+        await #expect(throws: TextInsertionError.self) {
+            try await accepting.accept(.certain("git commit"), after: "git com")
+        }
+        #expect(field.text.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A field that cannot be read at acceptance is refused, and a replacing edit sends no backspace.")
+    func refusesAnUnreadableReplacement() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        await #expect(throws: TextInsertionError.self) {
+            try await acceptor(field, typist: typist, tail: .unreadable)
+                .accept(.certain("git commit -m"), after: "gti c")
+        }
+        #expect(field.text.isEmpty)
+        #expect(field.replaced.isEmpty)
+        #expect(typist.deletions.isEmpty)
+    }
+
+    @Test("A field that hides what is typed is refused even when its line reads as the one drawn.")
+    func refusesASecureField() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let accepting = acceptor(field, typist: typist, isSecure: true, tail: .text("git com"))
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com")
+                == .refused("the focused field hides what is typed"))
+        await #expect(throws: TextInsertionError.self) {
+            try await accepting.accept(.certain("git commit"), after: "git com")
+        }
+        #expect(field.text.isEmpty)
+    }
+
+    @Test("A readable field that is the drawn line is aimed at the edit drawn.")
+    func aimsAtAReadableField() async {
+        let field = RecordingField()
+        let accepting = acceptor(field, typist: RecordingTypist(), tail: .text("git com"))
+        let aim = await accepting.aim(.certain("git commit"), after: "git com")
+        #expect(aim == .write(Acceptance.Edit(replaced: "", inserted: "mit")))
+    }
+
+    @Test("Matching text in a different window is refused before any insertion is attempted.")
+    func refusesMatchingTextInAnotherWindow() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"), windowNumber: 42)
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+
+        let aim = await accepting.aim(
+            .certain("git commit"), after: "git com", expectedWindowNumber: 41)
+
+        #expect(aim == .refused("the focused field is in a different or unidentified window"))
+        #expect(field.text.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("An unidentified focused window cannot authorize an acceptance for a known window.")
+    func refusesUnidentifiedWindow() async {
+        let field = RecordingField()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"))
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: RecordingTypist()), focus: focus)
+
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com", expectedWindowNumber: 41)
+                == .refused("the focused field is in a different or unidentified window"))
     }
 }

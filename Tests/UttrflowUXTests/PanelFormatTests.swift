@@ -94,6 +94,7 @@ struct PanelFormatTests {
         #expect(sheet?.note?.contains("lines would change") == true)
         #expect(sheet?.diff.contains { $0.kind == .added } == true)
         #expect(sheet?.diff.contains { $0.kind == .removed } == true)
+        #expect(sheet?.conflict == "This change cannot be undone")
         #expect(sheet?.confirmTitle == "Keep it")
     }
 
@@ -110,6 +111,7 @@ struct PanelFormatTests {
 
         #expect(sheet.diff.isEmpty)
         #expect(sheet.note == "Too large to compare line by line: 30000 lines before, 30001 after")
+        #expect(sheet.conflict == "This change cannot be undone")
         #expect(sheet.isConfirmEnabled)
         #expect(
             PanelPresenter.formattingSheet(.tooLarge(before: 1, after: 1), changes: false).isConfirmEnabled

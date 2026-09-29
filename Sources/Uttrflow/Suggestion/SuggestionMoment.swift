@@ -17,7 +17,9 @@ enum SuggestionMoment {
             subrole: snapshot.subrole, identifier: snapshot.identifier,
             placeholder: snapshot.placeholder,
             accessibilityDescription: snapshot.accessibilityDescription, document: snapshot.document,
-            windowTitle: snapshot.windowTitle, applicationName: snapshot.applicationName)
+            windowTitle: snapshot.windowTitle, windowNumber: snapshot.windowNumber,
+            applicationName: snapshot.applicationName,
+            isKnownSecure: snapshot.isSecure)
     }
 
     /// Everything about this moment that can silence a suggestion, given how long since the last keystroke.
@@ -29,7 +31,14 @@ enum SuggestionMoment {
             hasSelection: snapshot.hasSelection, isComposing: snapshot.isComposing,
             isSecure: snapshot.isSecure, isProse: snapshot.isProse,
             millisecondsSinceKeystroke: millisecondsSinceKeystroke,
-            canDraw: snapshot.placement == .inlineGhost, markedText: snapshot.markedText)
+            canDraw: snapshot.placement == .inlineGhost, markedText: snapshot.markedText,
+            isCommandLine: TerminalApplications.contains(snapshot.bundleIdentifier),
+            showsOwnList: snapshot.showsOwnList)
+    }
+
+    /// Where in the field the line sits: the text before it, exactly as much as the model is shown.
+    static func place(of snapshot: FocusedFieldSnapshot) -> String? {
+        snapshot.preceding(maxLength: precedingContextLength)
     }
 
     /// Which window a walk belongs to, from what the field read already says about it.
@@ -53,6 +62,7 @@ enum SuggestionMoment {
             document: snapshot.document,
             preceding: snapshot.preceding(maxLength: precedingContextLength),
             windowTitle: around?.windowTitle, surroundings: around?.text, recentLines: recent,
+            timedTurnLines: around?.timedTurnLines ?? 0,
             isMultiline: snapshot.role == FocusedFieldSnapshot.proseRole
                 || snapshot.value?.contains(where: \.isNewline) == true)
     }

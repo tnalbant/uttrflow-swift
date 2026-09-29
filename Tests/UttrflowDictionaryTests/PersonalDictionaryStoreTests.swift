@@ -69,6 +69,33 @@ struct PersonalDictionaryStoreTests {
         #expect(sandbox.onDisk()?.map(\.word) == ["Uttrflow"])
     }
 
+    @Test("deleting a spelling clears pending sightings for its homophones")
+    func removingClearsPendingHomophoneSightings() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let kolin = word("Kolin", from: .observed)
+        try await store.add(kolin)
+        let colinContext = AppContext(applicationName: "Notes", documentName: "Colin project brief")
+
+        for day in 0..<2 {
+            #expect(
+                try await store.learn(
+                    heard: "Colin", wrote: "Colin", seeing: colinContext,
+                    at: epoch.addingTimeInterval(Double(day))
+                )
+                .isEmpty)
+        }
+
+        _ = try await store.remove(kolin.id)
+        #expect(
+            try await store.learn(
+                heard: "Colin", wrote: "Colin", seeing: colinContext,
+                at: epoch.addingTimeInterval(3)
+            )
+            .isEmpty)
+        #expect(await store.allEntries().isEmpty)
+    }
+
     /// The caller asked for it to be gone, and it is.
     @Test("treats forgetting a word it never knew as success")
     func removeUnknown() async throws {
@@ -550,5 +577,35 @@ struct DictionarySetAsideTests {
         await #expect(throws: DictionaryStoreError.couldNotWrite) {
             try await PersonalDictionaryStore(file: sandbox.file).removeEverything()
         }
+    }
+}
+
+@Suite("Holding the dictionary in memory between calls")
+struct PersonalDictionaryCacheTests {
+    @Test("A counted use rebuilds the index from memory, without decoding the file again")
+    func countsWithoutRereading() async throws {
+        let sandbox = Sandbox()
+        let entry = word("Uttrflow")
+        try sandbox.seed([entry])
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        _ = await store.allEntries()
+        _ = await store.index()
+        try await store.recordUse(of: entry.id)
+        _ = await store.index()
+        #expect(await store.allEntries().first?.timesUsed == 1)
+        #expect(await store.cache.diskReads == 1)
+    }
+
+    @Test("A file replaced on disk is read again, and the index follows it")
+    func seesReplacedFile() async throws {
+        let sandbox = Sandbox()
+        try sandbox.seed([word("Uttrflow")])
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        _ = await store.index()
+        let replacement = word("Kubernetes")
+        try sandbox.seed([replacement])
+        #expect(await store.allEntries().map(\.word) == ["Kubernetes"])
+        #expect(await store.index() == PhoneticIndex(entries: [replacement]))
+        #expect(await store.cache.diskReads == 2)
     }
 }
