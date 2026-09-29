@@ -20,6 +20,8 @@ public final class FullTreeSwitch: Sendable {
     /// The Chromium browsers, the only applications the screen reader's switch is set on, since it slows window animations elsewhere.
     static let chromiumBrowsers = DestinationRules.chromiumBrowsers
 
+    private static let normalizedChromiumBrowsers = Set(chromiumBrowsers.map { $0.lowercased() })
+
     /// How long after an attempt that got no answer the same process may be asked again.
     static let retryInNanoseconds: UInt64 = 5_000_000_000
 
@@ -43,7 +45,7 @@ public final class FullTreeSwitch: Sendable {
 
     /// Whether a read calls for the tree: always in a Chromium browser, whose first read may run out of time, and elsewhere for a text field with no caret.
     static func isNeeded(in bundleIdentifier: String, after reading: FocusedFieldSnapshot?) -> Bool {
-        if chromiumBrowsers.contains(bundleIdentifier) { return true }
+        if isChromiumBrowser(bundleIdentifier) { return true }
         guard let reading else { return false }
         return reading.caret == nil && !reading.isSecure && FocusedFieldSnapshot.isTextEntry(reading.role)
     }
@@ -73,7 +75,7 @@ public final class FullTreeSwitch: Sendable {
     ) {
         guard mayAsk(processIdentifier, at: now) else { return }
         var attributes = [Self.manualAttribute]
-        if Self.chromiumBrowsers.contains(bundleIdentifier) { attributes.append(Self.enhancedAttribute) }
+        if Self.isChromiumBrowser(bundleIdentifier) { attributes.append(Self.enhancedAttribute) }
         for attribute in attributes {
             let wrote = state.withLock { $0.written[processIdentifier]?.contains(attribute) ?? false }
             if host.read(attribute) == true {
@@ -95,6 +97,10 @@ public final class FullTreeSwitch: Sendable {
                 return
             }
         }
+    }
+
+    private static func isChromiumBrowser(_ bundleIdentifier: String) -> Bool {
+        normalizedChromiumBrowsers.contains(bundleIdentifier.lowercased())
     }
 
     /// Turns off every attribute this switch wrote that is not known to be off, and forgets every process, so the next start asks again.
