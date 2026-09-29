@@ -10,6 +10,7 @@ struct OnboardingTrialTests {
     @Test("listens while recording, and shows the words that came back")
     func recordingThenWords() {
         #expect(OnboardingWindowController.trial(for: .recording) == .listening)
+        #expect(OnboardingWindowController.trial(for: .failed(.stillLoading)) == .stillLoading)
         let outcome = DictationOutcome(text: "ship it", method: .accessibility, cleanedBy: .rules)
         #expect(OnboardingWindowController.trial(for: .inserted(outcome)) == .heard("ship it"))
     }
