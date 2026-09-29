@@ -166,6 +166,8 @@ public struct MenuBarState: Sendable, Equatable {
 
     /// Why the dictation shortcut cannot be heard right now, or nil when it can.
     public var shortcutUnheard: String?
+    /// Why AI suggestions cannot receive keyboard input right now, or nil when they can.
+    public var suggestionUnheard: String?
     /// How far along the AI suggestion model is, so a switch that is on but waiting says so.
     public var suggestionModel: SuggestionModelReadiness
     /// Whether the dictation shortcut is held or pressed, so the hint uses the right verb.
@@ -186,6 +188,7 @@ public struct MenuBarState: Sendable, Equatable {
         shortcuts: ShortcutSet = .default,
         unarmedShortcuts: Set<ShortcutAction> = [],
         shortcutUnheard: String? = nil,
+        suggestionUnheard: String? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
         activation: HotkeyActivation = .holdToTalk,
         speechModelBytes: Int64? = nil
@@ -202,6 +205,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.shortcuts = shortcuts
         self.unarmedShortcuts = unarmedShortcuts
         self.shortcutUnheard = shortcutUnheard
+        self.suggestionUnheard = suggestionUnheard
         self.suggestionModel = suggestionModel
         self.activation = activation
         self.speechModelBytes = speechModelBytes

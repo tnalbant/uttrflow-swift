@@ -116,6 +116,8 @@ final class SuggestionCoordinator {
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
     var onTurnedOffEverywhere: (() -> Void)?
+    /// Tells the menu bar why suggestion input is paused.
+    var onSecureInputBlockingChanged: ((Bool) -> Void)?
 
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
@@ -253,8 +255,10 @@ final class SuggestionCoordinator {
         if secureInput.isBlocking {
             withdraw()
             interceptor.stop()
+            onSecureInputBlockingChanged?(true)
             panel.announce(SecureInputWatch.suggestionNotice)
         } else {
+            onSecureInputBlockingChanged?(false)
             startInterceptor()
         }
     }
@@ -262,6 +266,7 @@ final class SuggestionCoordinator {
     /// Takes the surface away, disarms the tap and stops watching.
     func stop() {
         isStopped = true
+        onSecureInputBlockingChanged?(false)
         tapRest.cancel()
         session.invalidate()
         interceptor.arm([])

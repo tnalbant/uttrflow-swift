@@ -141,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             refreshMenuBar()
         }
     }
+    private var suggestionSecureInputNotice: String?
 
     /// Builds the app around one folder, which a test points at a temporary one.
     init(
@@ -744,6 +745,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // ⌥⎋ persists the master switch off, so the screen agrees and turning it back on rebuilds the loop.
             coordinator.onTurnedOffEverywhere = { [weak self] in
                 self?.apply(.toggle(.suggestionsEnabled, isOn: false))
+            }
+            coordinator.onSecureInputBlockingChanged = { [weak self] isBlocking in
+                self?.suggestionSecureInputNotice = isBlocking ? SecureInputWatch.suggestionNotice : nil
+                self?.refreshMenuBar()
             }
             completions = coordinator
             coordinator.start()
@@ -1899,6 +1904,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             shortcuts: settings.shortcuts,
             unarmedShortcuts: unarmedShortcuts,
             shortcutUnheard: shortcutUnheard,
+            suggestionUnheard: suggestionSecureInputNotice,
             suggestionModel: suggestionModel,
             activation: settings.hotkeyActivation,
             speechModelBytes: SpeechModel.default.downloadBytes

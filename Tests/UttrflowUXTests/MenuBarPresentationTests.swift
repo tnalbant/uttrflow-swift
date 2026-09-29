@@ -825,3 +825,30 @@ struct MenuBarUnheardShortcutTests {
         }
     }
 }
+
+@Suite("AI suggestions paused by secure keyboard entry")
+struct MenuBarUnheardSuggestionTests {
+    private let reason =
+        "Another app has turned on secure keyboard entry, so AI suggestions are paused."
+
+    @Test("shows why suggestions are paused while the feature is on")
+    func saysWhySuggestionsPaused() {
+        let state = MenuBarState(
+            features: MenuBarFeatures(suggestions: true), suggestionUnheard: reason)
+        let shown = MenuBarPresenter.present(state)
+        #expect(
+            shown.header
+                == .status(
+                    MenuBarStatus(title: "AI suggestions paused", detail: reason, emphasis: .attention)))
+    }
+
+    @Test("hides the suggestion notice when the feature is off")
+    func silentWhenSuggestionsAreOff() {
+        let state = MenuBarState(
+            features: MenuBarFeatures(suggestions: false), suggestionUnheard: reason)
+        guard case .hint = MenuBarPresenter.present(state).header else {
+            Issue.record("the suggestion notice was shown while AI suggestions are off")
+            return
+        }
+    }
+}
