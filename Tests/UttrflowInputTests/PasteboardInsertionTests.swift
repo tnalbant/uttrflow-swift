@@ -38,8 +38,6 @@ final class FakePasteboard: Pasteboard {
     func text() -> String? { state.withLock(\.text) }
     func changeCount() -> Int? { state.withLock(\.changeCount) }
 
-    func changeCount() -> Int? { state.withLock(\.changeCount) }
-
     func setText(_ text: String) {
         state.withLock { state in
             state.writes.append(text)
