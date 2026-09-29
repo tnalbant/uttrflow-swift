@@ -1,4 +1,4 @@
-// Tests that tab-to-complete's clock runs only while activity or a drawn suggestion can use it.
+// Tests that tab-to-complete observes active fields quickly and visible ghosts slowly.
 
 import Foundation
 import Testing
@@ -7,7 +7,7 @@ import UttrflowPredictCapture
 
 @testable import Uttrflow
 
-/// The clock that notices pauses, which must stop once nothing is happening.
+/// The clock that notices pauses and watches fields beneath visible ghosts.
 @Suite("When tab-to-complete's clock runs")
 struct SuggestionTickingTests {
     private let noon = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -36,8 +36,8 @@ struct SuggestionTickingTests {
         _ = ticking.noteActivity(at: noon)
 
         let answer3 = ticking.tick(
-            at: noon.addingTimeInterval(SuggestionTicking.window - 0.5))
-        #expect(answer3)
+            at: noon.addingTimeInterval(SuggestionTicking.window - 0.5), ghostIsVisible: true)
+        #expect(answer3 == .wake)
         #expect(ticking.isRunning)
     }
 
@@ -47,20 +47,58 @@ struct SuggestionTickingTests {
         _ = ticking.noteActivity(at: noon)
 
         let answer4 = ticking.tick(
-            at: noon.addingTimeInterval(SuggestionTicking.window + 0.5))
-        #expect(!answer4)
+            at: noon.addingTimeInterval(SuggestionTicking.window + 0.5), ghostIsVisible: false)
+        #expect(answer4 == .stop)
         #expect(!ticking.isRunning)
     }
 
-    @Test(
-        "stops past the window even while a suggestion is on screen, so a still ghost is not re-read every second"
-    )
-    func aDrawnSuggestionDoesNotKeepItRunning() {
+    @Test("continues field reads slowly after idle while a ghost remains visible")
+    func aDrawnSuggestionKeepsTheSafetyNet() {
         var ticking = SuggestionTicking()
+        var session = SuggestionSession()
+        let surface = Surface(bundleIdentifier: "com.example.editor", role: "AXTextField")
         _ = ticking.noteActivity(at: noon)
+        guard
+            case .query(let query) = session.turn(
+                in: surface, at: PredictionContext(typed: "git c")
+            ).step
+        else {
+            Issue.record("the initial field read should ask for a suggestion")
+            return
+        }
+        let initial = session.resolveGenerated(
+            ["git commit -m"], for: query, elapsedMilliseconds: 0,
+            scores: ["git commit -m": Verification.certainFloor + 1])
+        #expect(initial?.suggestion == .certain("git commit -m"))
 
-        let answer5 = ticking.tick(at: noon.addingTimeInterval(SuggestionTicking.window + 0.5))
-        #expect(!answer5)
+        let changedField = "rewritten by the host application"
+        let answer5 = ticking.tick(
+            at: noon.addingTimeInterval(SuggestionTicking.window + 0.5), ghostIsVisible: true)
+        #expect(answer5 == .wakeAndSlow)
+        if answer5 == .wakeAndSlow {
+            let changed = session.turn(in: surface, at: PredictionContext(typed: changedField))
+            guard case .query(let changedQuery) = changed.step else {
+                Issue.record("the slow tick should re-read the changed field")
+                return
+            }
+            let replacement = session.resolveGenerated(
+                [], for: changedQuery, elapsedMilliseconds: 0, whenEmpty: .nothingOffered, scores: [:])
+            #expect(replacement?.suggestion == .silent)
+            #expect(session.suggestion == .silent)
+        }
+        #expect(ticking.isRunning)
+        #expect(SuggestionTicking.ghostInterval > SuggestionTicking.interval)
+
+        let answer6 = ticking.tick(
+            at: noon.addingTimeInterval(SuggestionTicking.window + SuggestionTicking.ghostInterval),
+            ghostIsVisible: true)
+        #expect(answer6 == .wake)
+        #expect(ticking.isRunning)
+
+        let answer7 = ticking.tick(
+            at: noon.addingTimeInterval(SuggestionTicking.window + SuggestionTicking.ghostInterval * 2),
+            ghostIsVisible: false)
+        #expect(answer7 == .stop)
         #expect(!ticking.isRunning)
     }
 
@@ -69,20 +107,20 @@ struct SuggestionTickingTests {
         var ticking = SuggestionTicking()
         _ = ticking.noteActivity(at: noon)
         let later = noon.addingTimeInterval(SuggestionTicking.window * 3)
-        _ = ticking.tick(at: later)
+        _ = ticking.tick(at: later, ghostIsVisible: false)
 
         let answer6 = ticking.noteActivity(at: later)
         #expect(answer6)
-        let answer7 = ticking.tick(at: later.addingTimeInterval(1))
-        #expect(answer7)
+        let answer8 = ticking.tick(at: later.addingTimeInterval(1), ghostIsVisible: true)
+        #expect(answer8 == .wake)
     }
 
     @Test("a tick after the clock stopped wakes nothing")
     func aStrayTickIsIgnored() {
         var copy = SuggestionTicking()
 
-        let answer8 = copy.tick(at: noon)
-        #expect(!answer8)
+        let answer9 = copy.tick(at: noon, ghostIsVisible: true)
+        #expect(answer9 == .stop)
     }
 
     @Test("lasts long enough for the idle commit to be made by a tick")
@@ -93,6 +131,12 @@ struct SuggestionTickingTests {
     @Test("lasts past the prose pause, which is booked on its own")
     func coversTheProsePause() {
         #expect(SuggestionTicking.window * 1000 > Double(Quieting.proseHesitationInMilliseconds))
+    }
+
+    @Test("keeps slow ticks coalescible")
+    func carriesToleranceForGhostTicks() {
+        #expect(SuggestionTicking.tolerance > 0)
+        #expect(SuggestionTicking.tolerance < SuggestionTicking.ghostInterval)
     }
 
     @Test("lets the system move a tick, by less than the interval")
@@ -125,7 +169,15 @@ struct SuggestionCoordinatorClockTests {
 
     @Test("gives the timer a tolerance so the system can coalesce it")
     func setsATolerance() throws {
-        #expect(try source.contains("tolerance = SuggestionTicking.tolerance"))
+        #expect(try source.contains("timer.tolerance = min(SuggestionTicking.tolerance"))
+    }
+
+    @Test("switches to slower field reads while a ghost remains visible")
+    func slowsForVisibleGhost() throws {
+        let text = try source
+        #expect(text.contains("ticking.tick(at: Date(), ghostIsVisible: panel.isShowing)"))
+        #expect(text.contains("scheduleTicker(every: SuggestionTicking.ghostInterval)"))
+        #expect(text.contains("wake(.tick)"))
     }
 
     @Test("watches scrolls only once a ghost is drawn, and stops when none is")

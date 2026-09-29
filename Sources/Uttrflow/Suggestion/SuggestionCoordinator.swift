@@ -98,7 +98,7 @@ final class SuggestionCoordinator {
     /// Whether a held mouse button can still move the focused window under a ghost.
     private var isPointerGestureActive = false
     private var ticker: Timer?
-    /// Whether the pause clock should be running, which it is only for a short window after activity.
+    /// Whether field observation is active or kept alive by a visible ghost.
     private var ticking = SuggestionTicking()
     private var swallowed: Task<Void, Never>?
     private var lastReading: FieldReading?
@@ -511,21 +511,31 @@ final class SuggestionCoordinator {
     /// Starts the pause clock if it is not running; every activity calls this.
     private func noteActivity() {
         guard ticking.noteActivity(at: Date()) else { return }
-        let timer = Timer.scheduledTimer(withTimeInterval: SuggestionTicking.interval, repeats: true) {
+        scheduleTicker(every: SuggestionTicking.interval)
+    }
+
+    /// Schedules field observation at the cadence for the current phase.
+    private func scheduleTicker(every interval: TimeInterval) {
+        ticker?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
             [weak self] _ in MainActor.assumeIsolated { self?.tick() }
         }
-        timer.tolerance = SuggestionTicking.tolerance
+        timer.tolerance = min(SuggestionTicking.tolerance, interval / 5)
         ticker = timer
     }
 
-    /// Wakes a turn while the clock is wanted, and stops it once nothing has happened for its window.
+    /// Wakes a turn while a field can change beneath a visible ghost.
     private func tick() {
-        guard ticking.tick(at: Date()) else {
+        switch ticking.tick(at: Date(), ghostIsVisible: panel.isShowing) {
+        case .wake:
+            wake(.tick)
+        case .wakeAndSlow:
+            scheduleTicker(every: SuggestionTicking.ghostInterval)
+            wake(.tick)
+        case .stop:
             ticker?.invalidate()
             ticker = nil
-            return
         }
-        wake(.tick)
     }
 
     /// The text a key puts on the line, or nothing for a shortcut, an arrow or any other key that types no text.
