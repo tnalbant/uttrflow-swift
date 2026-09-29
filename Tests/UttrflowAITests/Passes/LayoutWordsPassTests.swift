@@ -123,6 +123,23 @@ struct LayoutWordsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test("preserves every reported adjective mention and still follows a spoken line break command")
+    func preservesIssue2458AcceptanceCases() {
+        let mentions = [
+            "our best new line got a laugh",
+            "her last new line, honestly, flopped",
+            "that final new paragraph needs work",
+            "the opening new line got applause",
+            "her next new paragraph starts badly",
+            "a great new line got a laugh",
+            "the funniest new line was hers",
+        ]
+        for input in mentions {
+            #expect(cleaned(input, by: sut) == input)
+        }
+        #expect(cleaned("write the date new line then sign it", by: sut) == "write the date\nthen sign it")
+    }
+
     @Test(
         "leaves a layout phrase opened by a plural determiner",
         arguments: [

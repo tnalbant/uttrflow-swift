@@ -1,3 +1,4 @@
+import NaturalLanguage
 import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
@@ -50,23 +51,20 @@ enum MentionGuard {
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
             if markNames.contains(shape.key) { return false }
             if let bridging, !bridging.contains(shape.key) { return false }
-            if bridging == nil, !isModifier(shape.key) { return false }
+            if bridging == nil, !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
+                return false
+            }
         }
         return false
     }
 
-    /// Recognizes open-class adjective forms locally while leaving command verbs and nouns unbridged.
-    private static func isModifier(_ word: String) -> Bool {
+    /// Recognizes adjectives in the local noun phrase and ordinal numbers without an adjective list.
+    private static func isModifier(_ word: String, before head: String) -> Bool {
         if NumberFormsPass.ordinalUnits[word] != nil { return true }
-        if [
-            "best", "worst", "last", "only", "own", "other", "whole", "favourite", "favorite", "very",
-            "entire",
-        ].contains(word) {
-            return true
-        }
-        return ["est", "er", "ing", "ed", "ous", "ful", "less", "ive", "able", "ible", "al", "ic", "y"]
-            .contains { suffix in
-                word.count > suffix.count + 2 && word.hasSuffix(suffix)
-            }
+        let phrase = "the \(word) \(head)"
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = phrase
+        guard let wordRange = phrase.range(of: word) else { return false }
+        return tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0 == .adjective
     }
 }
