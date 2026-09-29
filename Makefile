@@ -57,6 +57,7 @@ match-report: ## List the word matches still decided by shape, with the line.
 .PHONY: ratchet-test
 ratchet-test: ## Prove the comment and word-match baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
+	@python3 Scripts/loose_match_audit_test.py
 
 .PHONY: range-test
 range-test: ## Prove the disclosure audit reads every revision range the pre-push hook hands it. Needs no build.
