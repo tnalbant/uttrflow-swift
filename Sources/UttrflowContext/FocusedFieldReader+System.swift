@@ -263,9 +263,14 @@ public enum FocusedFieldReader {
             role: role, subrole: identity.subrole, identifier: identity.identifier,
             placeholder: identity.placeholder, description: identity.description)
         guard goOn() else { return nil }
-        // A web field that refuses the character range still says where its selection is in text markers.
-        let range =
-            SurfaceProbe.selectedRange(field) ?? (declaredSecure || !goOn() ? nil : markerSelection(field))
+        let selected = SurfaceProbe.selection(field)
+        if case .discontinuous = selected { return nil }
+        let range: CFRange?
+        if case .range(let value) = selected {
+            range = value
+        } else {
+            range = declaredSecure || !goOn() ? nil : markerSelection(field)
+        }
         guard goOn() else { return nil }
         let read = declaredSecure ? (value: nil, selection: nil) : boundedValue(of: field, at: range)
         let value = read.value

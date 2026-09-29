@@ -291,7 +291,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         guard
             count > 0, let element = focusedElement(),
             let value = readableValue(of: element),
-            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
+            let range = selectionRange(of: element)
         else { return nil }
         return BackwardSelection.text(in: value, endingAt: range.location, exactly: count)
     }
@@ -301,7 +301,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         guard
             count > 0, let element = focusedElement(),
             let value = readableValue(of: element),
-            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element),
+            let range = selectionRange(of: element),
             let tail = BackwardSelection.tail(in: value, endingAt: range.location, upTo: count)
         else { return .unreadable }
         return .text(tail)
@@ -311,11 +311,12 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         guard let candidate = focusedElement() else { return nil }
 
         // A field that will not report its selection will not accept one either.
-        var selection: AnyObject?
+        var selectedText: AnyObject?
         guard
             AXUIElementCopyAttributeValue(
-                candidate, kAXSelectedTextAttribute as CFString, &selection) == .success
+                candidate, kAXSelectedTextAttribute as CFString, &selectedText) == .success
         else { return nil }
+        if case .discontinuous = selection(of: candidate) { return nil }
 
         return SelectionWriter(field: AXSelectionAttributes(element: candidate))
     }
@@ -331,7 +332,7 @@ private struct AXSelectionAttributes: SelectionAttributes, @unchecked Sendable {
     }
 
     func selectedRange() -> CFRange? {
-        rangeAttribute(kAXSelectedTextRangeAttribute, of: element)
+        selectionRange(of: element)
     }
 
     func setSelectedText(_ text: String) -> AXError {
@@ -375,6 +376,35 @@ private func rangeAttribute(_ name: String, of element: AXUIElement) -> CFRange?
     else { return nil }
 
     // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
+    var range = CFRange()
+    guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) else {
+        return nil
+    }
+    return range
+}
+
+/// The focused field's single usable selection, or nothing when it reports multiple ranges.
+private func selectionRange(of element: AXUIElement) -> CFRange? {
+    if case .range(let range) = selection(of: element) { return range }
+    return nil
+}
+
+/// Reads plural selections before the singular attribute, which can be stale for multi-cursor fields.
+private func selection(of element: AXUIElement) -> AccessibilitySelection {
+    var plural: AnyObject?
+    let pluralResult = AXUIElementCopyAttributeValue(
+        element, kAXSelectedTextRangesAttribute as CFString, &plural)
+    if pluralResult == .success, let values = plural as? [AnyObject], values.count > 1 {
+        return .discontinuous
+    }
+    let pluralRanges = (plural as? [AnyObject])?.compactMap { rangeValue($0) }
+    return AccessibilitySelection.resolve(
+        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges)
+}
+
+/// Unwraps one Accessibility value as a character range.
+private func rangeValue(_ value: AnyObject) -> CFRange? {
+    guard CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
     var range = CFRange()
     guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) else {
         return nil

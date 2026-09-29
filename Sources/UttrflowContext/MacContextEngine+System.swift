@@ -96,13 +96,20 @@ extension MacContextEngine {
         // Asked before any text is, so a field that hides what is typed is never read.
         if let field, isSecure(field) { return FocusedWindow(title: title, isSecure: true) }
         guard isWanted() else { return FocusedWindow(title: title) }
+        let resolvedSelection = field.map(SurfaceProbe.selection)
+        if let resolvedSelection, case .discontinuous = resolvedSelection {
+            return FocusedWindow(title: title)
+        }
         let selected = field.flatMap { SurfaceProbe.string($0, kAXSelectedTextAttribute) }
         guard isWanted() else { return FocusedWindow(title: title, selectedText: selected) }
         let caret = field.flatMap { field in
-            let selection = SurfaceProbe.selectedRange(field).flatMap { range in
+            let textRange = resolvedSelection.flatMap { answer -> CFRange? in
+                guard case .range(let range) = answer else { return nil }
+                return range
+            }.flatMap { range in
                 AccessibilityRange.selection(location: range.location, length: range.length)
             }
-            return CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: selection)
+            return CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: textRange)
         }
         return FocusedWindow(
             title: title, selectedText: selected,
