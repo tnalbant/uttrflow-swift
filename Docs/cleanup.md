@@ -174,7 +174,7 @@ in `Docs/cleanup-design.md` gives that place a name. `Situation` is what the scr
 when the key went down, read once per dictation within the context engine's 100 ms
 budget: the app, an `InsertionPoint` — up to 300 characters before the caret and 100
 after, from the focused field's value and selected range — and a `Destination`
-(`document`, `spreadsheet`, `sqlEditor`, `codeEditor`, `messaging`, `email`, `plain`).
+(`document`, `spreadsheet`, `sqlEditor`, `codeEditor`, `terminal`, `messaging`, `email`, `plain`).
 The destination is read off one table, `DestinationRules.standard`, by bundle
 identifier prefix, window title or a whole word of the application name, in that order;
 nothing outside `DestinationClassifier` turns an application into a destination or an
@@ -185,14 +185,14 @@ where the words are going. `Tests/UttrflowCoreTests/OneAppTableTests.swift` is w
 that scoped claim true: every reverse-DNS literal anywhere in `Sources` must be one
 `DestinationClassifier` has an answer for, and the seven `UttrflowPredict` still owes sit
 in one list that may shrink and may never grow. A row also names the `AppKind` it
-covers — finer than the destination, since a terminal and an editor want the same
-treatment but read differently in the prompt — and that kind is where the "Typed into:"
+covers — finer than the destination, since Notes and a document editor both resolve to
+`document` but read differently in the prompt — and that kind is where the "Typed into:"
 caption comes from, so the caption and the style block cannot name two different places. `DestinationFormatter.registry` holds one value per destination and, so far, four decisions:
 how the first word is cased, whether the last sentence gets a full stop, whether grammar
 slips are repaired (`.repair` for a document, an email and plain text; `.asSpoken`
 everywhere else), and the layout
 (`paragraphs` and `lists` for a document or an email, `paragraphs` alone for a message
-or plain text, `preserveNewlines` for code and SQL, `singleLine` for a cell). A first
+or plain text, `preserveNewlines` for code, SQL and a terminal, `singleLine` for a cell). A first
 word lowered mid-sentence keeps its capital when it is "I", an acronym, or looks like a
 name: the same word is capitalised off a sentence start elsewhere in the output, or in
 the window title, the selection or the text around the caret — a text capitalised
