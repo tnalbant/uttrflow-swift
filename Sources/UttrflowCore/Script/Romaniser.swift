@@ -8,6 +8,7 @@ public enum Romaniser {
         guard containsDevanagari(text) else { return text }
         let scalars = Array(text.unicodeScalars)
         var output = String.UnicodeScalarView()
+        var outputEndsSentence = true
         var index = 0
         while index < scalars.count {
             let scalar = scalars[index]
@@ -18,18 +19,25 @@ public enum Romaniser {
                 // A stop the recogniser also wrote in Latin is kept once.
                 let next = index + 1 < scalars.count ? scalars[index + 1] : nil
                 if !(next.map { ".!?".unicodeScalars.contains($0) } ?? false) { output.append(".") }
+                outputEndsSentence = true
                 index += 1
             } else if isWordScalar(scalar) {
                 var end = index
                 while end < scalars.count, isWordScalar(scalars[end]) { end += 1 }
                 let spelled = word(Array(scalars[index..<end]))
-                let opens = capitalisingSentences && opensSentence(String(output))
+                let opens = capitalisingSentences && outputEndsSentence
                 output.append(
                     contentsOf: (opens ? spelled.prefix(1).uppercased() + spelled.dropFirst() : spelled)
                         .unicodeScalars)
+                outputEndsSentence = false
                 index = end
             } else {
                 if !isDevanagari(scalar) { output.append(scalar) }
+                if ".!?\n".unicodeScalars.contains(scalar) {
+                    outputEndsSentence = true
+                } else if !CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                    outputEndsSentence = false
+                }
                 index += 1
             }
         }

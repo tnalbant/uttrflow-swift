@@ -73,6 +73,15 @@ struct RomaniserTests {
         #expect(Romaniser.romanised("  ठीक", capitalisingSentences: true) == "  Thik")
     }
 
+    @Test("romanises long mixed-script text without changing sentence capitalization")
+    func longMixedScriptText() {
+        let devanagari = "कल"
+        let input = Array(repeating: "English \(devanagari) sentence. ", count: 2_000).joined()
+        let expected = Array(repeating: "English kal sentence. ", count: 2_000).joined()
+
+        #expect(Romaniser.romanised(input, capitalisingSentences: true) == expected)
+    }
+
     /// No letter of the block may survive, whatever it sits next to.
     @Test("never leaves a Devanagari scalar behind, for any scalar of the block alone or after a consonant")
     func noDevanagariSurvives() {
