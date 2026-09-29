@@ -92,6 +92,13 @@ struct FirstWordPassTests {
         #expect(sut.apply(paragraph).text == "First line\n\nSecond line")
     }
 
+    @Test("the same known abbreviations do not end a sentence inside a dictation")
+    func sharedAbbreviationsStayInsideSentence() {
+        for abbreviation in InsertionPoint.sentenceAbbreviations {
+            #expect(!FirstWordPass.endsSentence(abbreviation + "."))
+        }
+    }
+
     @Test(
         "lower-cases the first word for a caret mid-sentence, and a later sentence still starts with a capital",
         arguments: [
