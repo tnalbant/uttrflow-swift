@@ -1763,26 +1763,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 secure=\(outcome.intoSecureField, privacy: .public)
                 """)
             // A secure field's words are kept nowhere: not as the last transcript, in history, or as a clip.
-            guard let kept = outcome.wordsToKeep else { break }
+            guard let kept = outcome.wordsToKeep,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            else { break }
             lastTranscript = kept
-            let record = DictationRecord(
-                text: kept, when: Date(), applicationName: outcome.insertedInto,
-                applicationIdentifier: outcome.insertedIntoIdentifier,
-                spokenFor: outcome.spokenFor,
-                changes: RecordedChanges(
-                    corrections: outcome.changes.corrections.compactMap {
-                        RecordedCorrection(
-                            heard: $0.heard, wrote: $0.wrote, wordRange: $0.wordRange,
-                            entryID: $0.entryID, reason: $0.reason,
-                            heardConfidence: $0.heardConfidence,
-                            writtenWordIndex: $0.writtenWordIndex)
-                    },
-                    snippets: outcome.changes.snippets.map {
-                        RecordedSnippet(
-                            snippetID: $0.snippetID, matched: $0.matched,
-                            expansion: $0.expansion)
-                    },
-                    spokenWords: outcome.changes.spokenWords))
             lastTranscriptID = record.id
             keep(record)
             // I4 — into the clipboard too, which the watcher never sees because this is not a copy.
@@ -1799,9 +1783,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 salvaged=\(notice.transcript != nil, privacy: .public) \
                 kept=\(notice.recovery == .retryFromRecording, privacy: .public)
                 """)
-            if let salvaged = notice.wordsToKeep {
+            if notice.wordsToKeep != nil,
+                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
-                keep(DictationRecord(text: salvaged, when: Date()))
+                keep(record)
             }
         case .idle, .recording, .transcribing, .tidying, .inserting:
             break
