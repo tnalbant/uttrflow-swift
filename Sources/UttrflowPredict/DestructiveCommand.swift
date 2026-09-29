@@ -213,7 +213,67 @@ public enum DestructiveCommand {
         "launchctl": VerbTool(
             valued: [],
             destroys: { positionals, _ in ["remove", "bootout", "unload"].contains(positionals.first) }),
+        "npm": VerbTool(
+            valued: [
+                "--registry", "--userconfig", "--globalconfig", "--prefix", "--cache", "--workspace", "-w",
+                "--scope", "--loglevel", "--otp",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "pnpm": VerbTool(
+            valued: [
+                "--filter", "-F", "--dir", "--registry", "--store-dir", "--virtual-store-dir", "--prefix",
+                "--config-dir", "--reporter",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "yarn": VerbTool(
+            valued: [
+                "--cwd", "--use-yarnrc", "--mutex", "--network-concurrency", "--network-timeout",
+                "--cache-folder", "--modules-folder", "--registry", "--scope",
+            ],
+            destroys: { positionals, _ in positionals.first == "unpublish" }),
+        "cargo": VerbTool(
+            valued: ["--config", "-Z"],
+            destroys: { positionals, _ in positionals.first == "yank" }),
+        "pip": pipTool,
+        "pip3": pipTool,
+        "brew": VerbTool(
+            valued: brewValued,
+            destroys: { positionals, arguments in
+                ["uninstall", "remove"].contains(positionals.first)
+                    && hasOption("--zap", in: arguments, valued: brewValued)
+            }),
     ]
+
+    /// Package-manager options that take a value before their subcommand.
+    private static let pipValued: Set<String> = [
+        "--python", "--proxy", "--retries", "--timeout", "--index-url", "--extra-index-url",
+        "--find-links", "--trusted-host", "--cert", "--client-cert", "--cache-dir", "--log",
+        "--log-file", "--exists-action", "--no-binary", "--only-binary",
+    ]
+
+    /// Pip's quiet unattended uninstallation, recognized only when it is the actual pip subcommand.
+    private static let pipTool = VerbTool(
+        valued: pipValued,
+        destroys: pipUninstall
+    )
+
+    private static func pipUninstall(_ positionals: [String], _ arguments: [String]) -> Bool {
+        positionals.first == "uninstall"
+            && (hasOption("-y", in: arguments, valued: pipValued)
+                || hasOption("--yes", in: arguments, valued: pipValued))
+    }
+
+    private static let brewValued: Set<String> = ["--repository"]
+
+    private static func hasOption(_ option: String, in arguments: [String], valued: Set<String>) -> Bool {
+        var remaining = arguments[...]
+        while let argument = remaining.popFirst() {
+            if argument == "--" { return false }
+            if argument == option { return true }
+            if valued.contains(argument), !remaining.isEmpty { remaining.removeFirst() }
+        }
+        return false
+    }
 
     /// Docker and Podman, which destroy by pruning, by removing a volume, or by forcing a container or an image out.
     private static let containerTool = VerbTool(
@@ -293,6 +353,13 @@ public enum DestructiveCommand {
         guard case .named(let command, let arguments) = parsed else { return false }
         let lowered = arguments.map { $0.lowercased() }
         if destroyers.contains(command) || command.hasPrefix("mkfs.") { return true }
+        if command == "python" || command == "python3" || command.hasPrefix("python3."),
+            let module = lowered.firstIndex(of: "-m"),
+            lowered.indices.contains(module + 1), lowered[module + 1] == "pip"
+        {
+            let pipArguments = Array(lowered.dropFirst(module + 2))
+            if pipUninstall(positionals(pipArguments, valued: pipValued), pipArguments) { return true }
+        }
         if let tool = verbTools[command], tool.destroys(positionals(lowered, valued: tool.valued), lowered) {
             return true
         }

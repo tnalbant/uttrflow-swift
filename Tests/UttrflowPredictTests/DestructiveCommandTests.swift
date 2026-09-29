@@ -32,6 +32,38 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Package removal commands are destructive, including when wrapped or preceded by options.",
+        arguments: [
+            "npm unpublish package@1.0.0 --force", "pnpm unpublish package", "yarn unpublish package",
+            "cargo yank package --vers 1.0.0", "pip uninstall -y requests", "pip3 uninstall --yes requests",
+            "brew uninstall --cask --zap app", "brew remove --zap app", "sudo npm unpublish package",
+            "sudo pnpm unpublish package", "sudo yarn unpublish package",
+            "sudo cargo yank package --vers 1.0.0",
+            "sudo pip uninstall -y requests", "sudo pip3 uninstall --yes requests",
+            "sudo brew uninstall --zap app",
+            "sudo brew remove --zap app", "python -m pip uninstall -y requests",
+            "python3 -m pip uninstall --yes requests", "python3.12 -m pip uninstall -y requests",
+            "sudo python -m pip uninstall -y requests",
+            "npm --registry https://registry.example unpublish package",
+            "cargo --config config.toml yank package", "brew --repository /opt/homebrew uninstall --zap app",
+        ])
+    func recognisesIrreversiblePackageRemoval(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Package-manager builds and installs remain ordinary, as do removals without irreversible options.",
+        arguments: [
+            "npm publish package", "cargo build", "pip install requests", "pip uninstall requests",
+            "brew uninstall app", "brew remove app", "npm --registry unpublish publish",
+            "cargo --config yank build", "pip uninstall -- -y", "brew uninstall -- --zap",
+            "brew --repository uninstall install --zap app",
+        ])
+    func packageBuildsAndSafeOperationsRemainOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "Ordinary commands are left alone.",
         arguments: [
             "git commit -m 'work'",
