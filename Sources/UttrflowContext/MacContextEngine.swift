@@ -1,6 +1,7 @@
 public import UttrflowCore
 
 import Foundation
+private import os
 private import Synchronization
 
 /// One running application, reduced to what a context needs to know about it.
@@ -68,6 +69,8 @@ public final class MacContextEngine: ContextEngine, Sendable {
     private struct AppMemory {
         var requestNumber: UInt64 = 0
         var appBehind: FrontmostApplication?
+        /// The last application macOS reported activating, Uttrflow included.
+        var lastActivated: FrontmostApplication?
     }
 
     private let memory = Mutex(AppMemory())
@@ -91,8 +94,16 @@ public final class MacContextEngine: ContextEngine, Sendable {
         self.clock = clock
         // Every stored property now has a value, so `self` is safe to capture from here on.
         let token = observeActivations { [weak self] application in
-            guard let self, !self.isOurselves(application) else { return }
-            self.memory.withLock { $0.appBehind = application }
+            guard let self else { return }
+            let isOurselves = self.isOurselves(application)
+            self.memory.withLock { memory in
+                memory.lastActivated = application
+                if !isOurselves {
+                    // Supersedes any read still in flight, so its older answer is not kept.
+                    memory.requestNumber &+= 1
+                    memory.appBehind = application
+                }
+            }
         }
         activationToken.withLock { $0 = token }
     }
@@ -115,7 +126,12 @@ public final class MacContextEngine: ContextEngine, Sendable {
             reading.record(window: await readFocusedWindow(subject))
         }
 
-        let gathered = reading.value
+        var gathered = reading.value
+        // Identity missed the budget, so it comes from the activation feed instead.
+        if gathered.application == nil, let fallback = activationFallback() {
+            Self.log.notice("Context identity timed out; named from the activation feed")
+            gathered.application = fallback
+        }
         // A secure field's text is dropped here too, so no reader can carry it into a prompt.
         if gathered.window?.isSecure == true {
             return AppContext(
@@ -150,6 +166,17 @@ public final class MacContextEngine: ContextEngine, Sendable {
         return frontmost
     }
 
+    /// The application the activation feed says is in front, never Uttrflow; `nil` when the feed is silent.
+    private func activationFallback() -> FrontmostApplication? {
+        memory.withLock { memory in
+            guard let last = memory.lastActivated else { return nil }
+            return isOurselves(last) ? memory.appBehind : last
+        }
+    }
+
+    /// Records a read whose identity half missed the budget, so it can be seen in the field.
+    private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "context")
+
     /// Two ways to recognise ourselves, because either can be missing.
     private func isOurselves(_ application: FrontmostApplication) -> Bool {
         Self.isOurselves(
@@ -168,7 +195,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
 
     /// Runs `work`, waits no longer than ``budget`` for it, and abandons what is left. See `Docs/context-budget.md`.
     private func withinBudget(_ work: @escaping @Sendable () async -> Void) async {
-        _ = await Deadline.first(within: Self.budget, on: clock) {
+        _ = await withDeadline(Self.budget, clock: clock) {
             await work()
             return true
         }

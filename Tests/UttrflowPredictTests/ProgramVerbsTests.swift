@@ -137,6 +137,10 @@ struct ProgramVerbsTests {
             HelpCommands.names(in: npm) == ["access", "adduser", "audit", "bugs", "completion", "config"])
         #expect(HelpCommands.names(in: "--cache\ncommands\ninstall\n") == ["commands", "install"])
         #expect(HelpCommands.names(in: "Usage: swift [options] file\n  Compiles the file given.\n").isEmpty)
+        #expect(HelpCommands.names(in: "  this is ordinary indented prose\n").isEmpty)
+        #expect(
+            HelpCommands.names(in: "  build2\tBuilds the project\n  test3\tRuns the tests\n")
+                == ["build2", "test3"])
     }
 }
 

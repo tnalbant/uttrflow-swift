@@ -38,13 +38,16 @@ private actor LoadGate {
 
 /// A recogniser whose load takes as long as the test says, and may fail at the end of it.
 private final class SlowLoadingSpeechEngine: SpeechEngine, Sendable {
-    let kind: SpeechEngineKind = .whisperKit
+    let kind: SpeechEngineKind
     private let gate: LoadGate
     private let failure: SpeechEngineError?
 
-    init(gate: LoadGate, failure: SpeechEngineError? = nil) {
+    init(
+        gate: LoadGate, failure: SpeechEngineError? = nil, kind: SpeechEngineKind = .whisperKit
+    ) {
         self.gate = gate
         self.failure = failure
+        self.kind = kind
     }
 
     func prepare() async throws(SpeechEngineError) {
@@ -144,6 +147,25 @@ struct DictationPipelineLoadingTests {
         #expect(await pipeline.currentState == .failed(DictationFailure(failure)))
     }
 
+    @Test("an Apple Speech preparation failure keeps its engine and typed cause")
+    func failedAppleSpeechLoadKeepsItsCause() async throws {
+        let gate = LoadGate()
+        await gate.open()
+        let failure = SpeechEngineError.modelLoadFailed(description: "unsupported locale")
+        let pipeline = makePipeline(
+            speech: SlowLoadingSpeechEngine(gate: gate, failure: failure, kind: .appleSpeech),
+            capture: FakeAudioCaptureEngine())
+
+        await pipeline.prepare()
+
+        guard case .failed(let notice) = await pipeline.currentState else {
+            Issue.record("the failed Apple Speech load did not reach pipeline state")
+            return
+        }
+        #expect(notice.speechEngineKind == .appleSpeech)
+        #expect(notice.speechEngineError == failure)
+    }
+
     @Test("a pipeline nobody prepared dictates at once, loading on demand as before")
     func unpreparedPipelineIsNotRefused() async {
         let capture = FakeAudioCaptureEngine()
@@ -158,5 +180,61 @@ struct DictationPipelineLoadingTests {
     func refusalIsTheSharedNotice() {
         #expect(DictationFailure.stillLoading == refusal)
         #expect(DictationFailure.stillLoading.message == SpeechModelLoad.refusal)
+    }
+}
+
+@Suite("A speech model load that never returns", .timeLimit(.minutes(1)))
+struct DictationPipelineLoadDeadlineTests {
+    private func makePipeline(speech: FakeSpeechEngine, clock: ManualClock) -> DictationPipeline {
+        DictationPipeline(
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: PassThroughCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
+            clock: clock, speechLoadLimit: .seconds(300))
+    }
+
+    @Test("fails with the retry once the limit passes, and is no longer loading")
+    func stuckLoadFailsAtTheLimit() async {
+        let clock = ManualClock()
+        let speech = FakeSpeechEngine(prepareHangs: true)
+        let pipeline = makePipeline(speech: speech, clock: clock)
+
+        let loading = Task { await pipeline.prepare() }
+        await clock.advanceWhenSomethingIsWaiting(by: .seconds(300))
+        await loading.value
+
+        #expect(await !pipeline.isLoading)
+        #expect(await !pipeline.isReady)
+        guard case .failed(let failure) = await pipeline.currentState else {
+            Issue.record("a stuck load was not reported as failed")
+            return
+        }
+        #expect(failure.recovery == .retry)
+        await speech.finishHungLoads()
+    }
+
+    @Test("a retry after the stuck load finally ends loads as usual")
+    func retryAfterTheStuckLoadEnds() async {
+        let clock = ManualClock()
+        let speech = FakeSpeechEngine(prepareHangs: true)
+        let pipeline = makePipeline(speech: speech, clock: clock)
+        let loading = Task { await pipeline.prepare() }
+        await clock.advanceWhenSomethingIsWaiting(by: .seconds(300))
+        await loading.value
+
+        await speech.finishHungLoads()
+        await pipeline.prepare()
+
+        #expect(await pipeline.isReady)
+        #expect(await pipeline.currentState == .idle)
+    }
+
+    @Test("a load inside the limit is not cut short")
+    func loadInsideTheLimitSucceeds() async {
+        let pipeline = makePipeline(speech: FakeSpeechEngine(), clock: ManualClock())
+
+        await pipeline.prepare()
+
+        #expect(await pipeline.isReady)
+        #expect(await !pipeline.isLoading)
     }
 }
