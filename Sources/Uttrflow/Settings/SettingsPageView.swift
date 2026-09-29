@@ -196,7 +196,8 @@ struct SettingsTabStrip: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.title)
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAddTraits(.isButton)
+                .accessibilitySelection(isSelected)
             }
         }
         .padding(3)
