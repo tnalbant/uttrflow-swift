@@ -61,6 +61,7 @@ final class SuggestionPanelController {
     private var request = SuggestionRequest()
     private var panelSize = CGSize(width: 1, height: 1)
     private var appearanceObserver: (any NSObjectProtocol)?
+    private var screenParametersObserver: (any NSObjectProtocol)?
     private var announcer = SuggestionAnnouncer()
     /// Reads an announcement aloud to VoiceOver; a test swaps it to hear what would be said.
     var announce: @MainActor (String) -> Void = SuggestionPanelController.post
@@ -78,11 +79,14 @@ final class SuggestionPanelController {
             presentation: SuggestionPresentation(.silent),
             onDesiredSize: { [weak self] size in self?.resize(to: size) })
         observeAppearance()
+        observeScreenParameters()
     }
 
     isolated deinit {
-        guard let appearanceObserver else { return }
-        NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver)
+        if let appearanceObserver { NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver) }
+        if let screenParametersObserver {
+            NotificationCenter.default.removeObserver(screenParametersObserver)
+        }
     }
 
     /// Says what to draw and what to draw it against, answering whether the offer is on screen whole; `.silent` takes the surface away.
@@ -259,6 +263,15 @@ final class SuggestionPanelController {
             object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { _ = self?.render() }
+        }
+    }
+
+    /// Takes the ghost off a display that has just changed, before its old frame is stranded.
+    private func observeScreenParameters() {
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
         }
     }
 

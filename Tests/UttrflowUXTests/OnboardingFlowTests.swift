@@ -64,6 +64,25 @@ struct OnboardingFlowTests {
         #expect(!harness.published.contains { $0.step == .accessibility })
     }
 
+    @Test("finishes manually when Accessibility is denied, and ready when it is granted")
+    func finishingReflectsAccessibilityPermission() async {
+        let denied = Harness(microphone: .granted, accessibility: .denied)
+        await denied.flow.start()
+
+        #expect(denied.step == .ready)
+        #expect(denied.detail == .finishing(.pastesManually))
+        await denied.flow.perform(.finish)
+        #expect(denied.finishedWith == .pastesManually)
+
+        let granted = Harness(microphone: .granted, accessibility: .granted)
+        await granted.flow.start()
+
+        #expect(granted.step == .ready)
+        #expect(granted.detail == .finishing(.ready))
+        await granted.flow.perform(.finish)
+        #expect(granted.finishedWith == .ready)
+    }
+
     @Test("a yes at the prompt says so on the page, and Continue moves on")
     func grantingAtThePromptSaysSo() async {
         let harness = Harness(

@@ -302,17 +302,34 @@ public struct SuggestionSession: Sendable, Equatable {
             return settle(.silent, silence: .overBudget)
         }
         let offerable = completions.filter(isOfferable)
-        let drawable = Self.drawable(offerable, past: pending.typed)
-        let usable = drawable.map {
-            Self.keepingTypedCase($0, typed: pending.typed)
-        }
-        guard let leader = usable.first else { return settle(.silent, silence: silence) }
-        let leaderListed = listed.contains(drawable[0])
-        let leaderScore = listed.contains(drawable[0]) ? Verification.choiceFloor : scores[drawable[0]]
-        // A list's leader has to clear the choice bar, and so does every alternative kept beside it.
-        guard Verification.clears(leaderScore, floor: Verification.choiceFloor) else {
+        let decision = Self.generatedDecision(offerable, typed: pending.typed, scores: scores, listed: listed)
+        let suggestion: Suggestion
+        switch decision {
+        case .noCandidate:
+            return settle(.silent, silence: silence)
+        case .unsure:
             return settle(.silent, silence: .modelUnsure)
+        case .certain(let leader):
+            suggestion = .certain(leader)
+        case .choice(let leader, let others):
+            suggestion = .choice(leader: leader, others: others)
         }
+        let update = settle(suggestion, silence: nil)
+        shownIsGenerated = true
+        return update
+    }
+
+    /// Applies the app's drawable-line and confidence floors without the turn state.
+    public static func generatedDecision(
+        _ completions: [String], typed: String, scores: [String: Double], listed: Set<String> = []
+    ) -> GeneratedSuggestionDecision {
+        let drawable = Self.drawable(completions, past: typed)
+        let usable = drawable.map { Self.keepingTypedCase($0, typed: typed) }
+        guard let leader = usable.first else { return .noCandidate }
+        let leaderListed = listed.contains(drawable[0])
+        let leaderScore = leaderListed ? Verification.choiceFloor : scores[drawable[0]]
+        // A list's leader has to clear the choice bar, and so does every alternative kept beside it.
+        guard Verification.clears(leaderScore, floor: Verification.choiceFloor) else { return .unsure }
         let others = zip(drawable.dropFirst(), usable.dropFirst()).compactMap { scored, drawn in
             let lineScore = listed.contains(scored) ? Verification.choiceFloor : scores[scored]
             return Verification.clears(lineScore, floor: Verification.choiceFloor) ? drawn : nil
@@ -321,13 +338,8 @@ public struct SuggestionSession: Sendable, Equatable {
         // A lone leader has to clear the stricter bar; a machine-listed value is certain by existence and skips the score gate.
         let leaderClearsCertain =
             leaderListed || Verification.clears(leaderScore, floor: Verification.certainFloor)
-        guard !kept.isEmpty || leaderClearsCertain else {
-            return settle(.silent, silence: .modelUnsure)
-        }
-        let update = settle(
-            kept.isEmpty ? .certain(leader) : .choice(leader: leader, others: kept), silence: nil)
-        shownIsGenerated = true
-        return update
+        guard !kept.isEmpty || leaderClearsCertain else { return .unsure }
+        return kept.isEmpty ? .certain(leader) : .choice(leader: leader, others: kept)
     }
 
     /// Adds the alternatives that arrived after the one line was drawn, so Down has a list to open without redrawing the line; nil scores mean the machine listed them.

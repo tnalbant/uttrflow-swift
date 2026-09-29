@@ -285,6 +285,13 @@ public enum SnippetsPresenter {
 
     /// No matches, or no snippets at all.
     static func emptyState(for snapshot: SnippetsSnapshot) -> MainEmptyState {
+        guard !snapshot.snippets.isEmpty else {
+            return MainEmptyState(
+                symbolName: "doc.on.doc",
+                title: "No snippets yet",
+                message: "Say a short phrase, and Uttrflow types the whole thing.",
+                action: MainAction(title: "New Snippet", symbolName: "plus", intent: .addSnippet))
+        }
         let query = SearchQuery.needle(in: snapshot.query)
         if !query.isEmpty {
             return .noMatches("No snippet of yours mentions “\(query)”.")

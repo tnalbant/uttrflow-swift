@@ -92,18 +92,27 @@ struct HotkeyRecogniserTests {
         #expect(!r.isDown)
     }
 
-    @Test("an arrow key pressed during a hold neither starts nor ends it")
-    func arrowKeyDuringAHoldChangesNothing() {
+    @Test("a key pressed during Fn hold withdraws it")
+    func keyDuringFunctionHoldWithdraws() {
         var r = HotkeyRecogniser(binding: .functionHold)
         #expect(r.receive(held([], fn: true)) == .pressed)
-        #expect(r.receive(key(Self.rightArrow, .down)) == nil)
+        #expect(r.receive(key(51, .down, fn: true)) == .cancelled)
         #expect(r.receive(key(Self.rightArrow, .up)) == nil)
-        #expect(r.isDown)
-        #expect(r.receive(held([])) == .released)
+        #expect(!r.isDown)
+        #expect(r.receive(held([], fn: true)) == nil)
+        #expect(r.receive(held([])) == nil)
     }
 
-    @Test("only the flags change ends a hold, so no later keystroke can end it early")
-    func onlyAFlagsChangeEndsAHold() {
+    @Test("Fn arrow events without a reported Fn hold still do not start a hold")
+    func arrowKeyWithoutFunctionHoldChangesNothing() {
+        var r = HotkeyRecogniser(binding: .functionHold)
+        #expect(r.receive(key(Self.rightArrow, .down)) == nil)
+        #expect(r.receive(key(Self.rightArrow, .up)) == nil)
+        #expect(!r.isDown)
+    }
+
+    @Test("a key event without Fn does not end an Fn hold")
+    func keyWithoutFunctionFlagDoesNotEndHold() {
         var r = HotkeyRecogniser(binding: .functionHold)
         #expect(r.receive(held([], fn: true)) == .pressed)
         #expect(r.receive(key(0, .down, fn: false)) == nil)

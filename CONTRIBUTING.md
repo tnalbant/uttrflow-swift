@@ -33,13 +33,30 @@ against fixtures emitted by the backend service, which is not open source. They 
 only part of the suite you cannot run, they are not required for any change, and their
 absence is reported rather than silently passing.
 
+## If the build or tests misbehave
+
+An incremental test build can report an impossible mismatch after a type changes — for
+example, `nil` not equalling `nil` after an enum case is added. Clear SwiftPM's build
+products and run the full verification again:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift package clean
+make verify
+```
+
+If the failure remains after a clean run, investigate it as a real failure.
+
 ## How a change gets in
 
 1. **Fork, and branch from `main`.** Short-lived branches, please — a branch that lives for
    weeks is a merge conflict being written slowly.
-2. **Run `make verify` before you push.** It is the same command CI runs, so there is no
-   class of failure that only CI can find. `make hooks` installs a pre-push hook that runs
-   it for you.
+2. **Run `make verify` yourself before pushing a branch.** The pre-push hook runs the
+   disclosure check on every push, but runs `make verify` only when pushing to `main`;
+   `make hooks` installs that hook. CI then builds and verifies the signed app bundle
+   separately; those packaging, resource, entitlement, and signing checks are not part of
+   `make verify`. When a change can affect them, run the same sequence CI uses:
+   `make verify` followed by `make app-preflight`.
 3. **Open a pull request against `main`.** CI runs on it. It must be green.
 4. **A maintainer reviews and merges.** Nobody can push to `main` directly, including the
    maintainer.

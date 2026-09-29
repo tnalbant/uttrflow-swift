@@ -60,7 +60,10 @@ public struct RuleBasedTransformer: TextTransformationEngine {
     ) -> CleaningPipeline {
         switch request.scope {
         case .message: .standard(for: formatter, situation: request.situation, steps: steps)
-        case .piece: .piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps)
+        case .piece:
+            .piece(
+                numbers: formatter.numbers, digits: formatter.digits,
+                layout: formatter.layout, steps: steps)
         }
     }
 }

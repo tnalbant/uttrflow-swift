@@ -205,7 +205,7 @@ extension PanelPresenter {
             draft: "",
             placeholder: "",
             note: note,
-            conflict: nil,
+            conflict: "This change cannot be undone",
             collections: [],
             confirmTitle: "Keep it",
             isConfirmEnabled: isConfirmEnabled,

@@ -17,7 +17,7 @@ public struct SuggestionAnnouncer: Sendable, Equatable {
 
     /// The text to announce for what is now on screen, or nothing when it was already announced or offers no text.
     public mutating func announcement(for presentation: SuggestionPresentation) -> String? {
-        let label = presentation.accessibilityLabel
+        let label = presentation.announcementLabel
         guard presentation.style != .hidden, !label.isEmpty else {
             spoken = nil
             return nil
