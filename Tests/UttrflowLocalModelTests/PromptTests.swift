@@ -219,6 +219,17 @@ struct PromptTests {
         #expect(PromptBuilder.nearestLines(long, within: 11).hasSuffix("word word"))
     }
 
+    @Test("Leading context keeps the longest prefix within an over-budget token allowance")
+    func leadingKeepsLongestPrefixWithinAllowance() {
+        let text = String(repeating: "word ", count: 80)
+        let allowance = 20
+        let prefix = PromptBuilder.leading(text, within: allowance)
+
+        #expect(text.hasPrefix(prefix))
+        #expect(PromptBuilder.estimatedTokens(prefix) <= allowance)
+        #expect(PromptBuilder.estimatedTokens(String(text.prefix(prefix.count + 1))) > allowance)
+    }
+
     @Test("A first screen line that alone overflows its budget is kept in trimmed form")
     func firstScreenLineAloneOverflows() {
         let first = String(repeating: "word ", count: 80)
