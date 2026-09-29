@@ -208,6 +208,23 @@ struct MenuBarContentsTests {
         #expect(fix.isEnabled)
     }
 
+    @Test("offers a floating failure's recovery in the keyboard menu")
+    func floatingFailureRecoveryIsInTheMenu() {
+        let failure = FailurePresentation(
+            headline: "Dictation failed.", detail: nil, symbolName: "arrow.clockwise",
+            severity: .recoverable, placement: .floatingButton,
+            action: FailureAction(title: "Try Again", recovery: .retry))
+        let shown = MenuBarPresenter.present(MenuBarState(failure: failure))
+        let recoveries = shown.items.compactMap { item -> MenuBarCommand? in
+            guard case .command(let command) = item,
+                case .recover = command.intent
+            else { return nil }
+            return command
+        }
+
+        #expect(recoveries == [MenuBarCommand(title: "Try Again", intent: .recover(.retry))])
+    }
+
     /// A failure's own fix wins the pill, so the header never offers two at once.
     @Test("puts a failure's fix ahead of the download")
     func failureFixWinsOverSetup() {

@@ -515,6 +515,10 @@ public enum MenuBarPresenter {
         for state: MenuBarState, statusLine: String, emphasis: MenuBarEmphasis
     ) -> [MenuBarItem] {
         var items: [MenuBarItem] = [.status(text: statusLine, emphasis: emphasis), .separator]
+        if let recovery = recovery(for: state) {
+            items.append(.command(recovery))
+            items.append(.separator)
+        }
         items.append(contentsOf: featureItems(for: state.features, suggestionModel: state.suggestionModel))
 
         items.append(.separator)
