@@ -52,6 +52,56 @@ fail() {
 
 pass() { printf '  ✓ %s\n' "$1"; }
 
+graphflow_guide_problem=""
+check_graphflow_guide_reference() {
+    local root="$1"
+    graphflow_guide_problem=""
+    if [[ ! -f "$root/graphflow.yaml" ]]; then
+        graphflow_guide_problem="graphflow.yaml is missing"
+        return 1
+    fi
+    if ! grep -Fq 'Docs/graphflow.md' "$root/graphflow.yaml"; then
+        graphflow_guide_problem="graphflow.yaml does not point to Docs/graphflow.md"
+        return 1
+    fi
+    if [[ ! -f "$root/Docs/graphflow.md" ]]; then
+        graphflow_guide_problem="graphflow.yaml points to Docs/graphflow.md, but that file is missing"
+        return 1
+    fi
+    return 0
+}
+
+run_graphflow_guide_self_test() {
+    local work
+    work="$(mktemp -d -t uttrflow-graphflow-guide.XXXXXX)"
+    trap 'rm -rf "$work"' RETURN
+
+    mkdir -p "$work/valid/Docs" "$work/missing/Docs" "$work/unreferenced/Docs"
+    printf '# See `Docs/graphflow.md`.\n' > "$work/valid/graphflow.yaml"
+    printf '# Guide\n' > "$work/valid/Docs/graphflow.md"
+    printf '# See `Docs/graphflow.md`.\n' > "$work/missing/graphflow.yaml"
+    printf '# Guide\n' > "$work/unreferenced/Docs/graphflow.md"
+    printf '# Graphflow guide reference self-test\n'
+
+    if check_graphflow_guide_reference "$work/valid"; then
+        pass "existing Graphflow guide reference passes"
+    else
+        fail "a valid Graphflow guide reference failed" "$graphflow_guide_problem"
+    fi
+    if check_graphflow_guide_reference "$work/missing"; then
+        fail "a missing Graphflow guide passed" \
+            "The audit must catch the dead reference from issue #1286."
+    else
+        pass "missing Graphflow guide fails"
+    fi
+    if check_graphflow_guide_reference "$work/unreferenced"; then
+        fail "an unreferenced Graphflow guide passed" \
+            "The config must keep an explicit pointer to its guide."
+    else
+        pass "missing Graphflow guide reference fails"
+    fi
+}
+
 changelog_release_bullet_findings() {
     read -r -d '' CHANGELOG_PROGRAM <<'PYTHON' || true
 import re
@@ -166,6 +216,11 @@ EOF
             "The fixture recreated issue #1123, but the audit did not report it."
     fi
 }
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_graphflow_guide_self_test
+    printf '\n'
+fi
 
 if [[ "$SELF_TEST" -eq 1 ]]; then
     run_changelog_self_test
@@ -357,6 +412,14 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
 fi
 
 cd "$PACKAGE_ROOT"
+
+printf 'Graphflow operating guide\n'
+if check_graphflow_guide_reference "$PACKAGE_ROOT"; then
+    pass "graphflow.yaml points to the tracked Docs/graphflow.md guide"
+else
+    fail "the Graphflow operating guide reference is broken" "$graphflow_guide_problem"
+fi
+printf '\n'
 
 # ---------------------------------------------------------------------------
 # 0. The scan must actually be looking at something.
