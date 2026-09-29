@@ -58,7 +58,7 @@ public struct LayoutWordsPass: CleaningPass {
         guard position == 0 || draft.shape(at: live[position - 1]).endsSentence else {
             return !MentionGuard.isMentioned(
                 at: position, spanning: length, in: live, of: draft, reach: MentionGuard.phraseReach,
-                bridgedBy: MentionGuard.modifiers)
+            )
         }
         // A break straight after a sentence's stop is how people dictate one: "full stop new paragraph".
         if position > 0, found.mark.allSatisfy(\.isNewline) { return true }

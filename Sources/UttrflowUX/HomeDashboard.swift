@@ -244,7 +244,9 @@ public enum HomeDashboard {
         kept: [HistoryEntry], today: [HistoryEntry], now: Date, calendar: Calendar, locale: Locale
     ) -> [HomeStatTile] {
         let words = today.totalWords
-        let days = streak(in: kept, now: now, calendar: calendar)
+        let days =
+            DictationPresenter.currentStreak(
+                in: kept, dropped: [], now: now, calendar: calendar)?.days ?? 0
         let pace = DictationPresenter.pace(of: kept)
         let share = DictationPresenter.accuracy(of: kept)
         return [
@@ -280,22 +282,10 @@ public enum HomeDashboard {
         return whole.formatted(.percent.precision(.fractionLength(0)).locale(locale))
     }
 
-    /// Days in a row with a dictation, ending today or yesterday; a day not over yet does not break it.
+    /// Current days in a row with a dictation, ending today or yesterday.
     static func streak(in entries: [HistoryEntry], now: Date, calendar: Calendar) -> Int {
-        let days = Set(entries.map { calendar.startOfDay(for: $0.when) })
-        var day = calendar.startOfDay(for: now)
-        if !days.contains(day) { day = previous(day, calendar: calendar) }
-        var run = 0
-        while days.contains(day) {
-            run += 1
-            day = previous(day, calendar: calendar)
-        }
-        return run
-    }
-
-    /// The start of the day before.
-    private static func previous(_ day: Date, calendar: Calendar) -> Date {
-        calendar.date(byAdding: .day, value: -1, to: day) ?? day.addingTimeInterval(-86_400)
+        DictationPresenter.currentStreak(
+            in: entries, dropped: [], now: now, calendar: calendar)?.days ?? 0
     }
 
     // MARK: - The rail

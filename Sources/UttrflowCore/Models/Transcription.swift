@@ -64,8 +64,8 @@ public struct Transcription: Sendable, Equatable {
         self.effort = effort
     }
 
-    /// `true` when the engine recognised nothing usable — silence, or noise only.
+    /// `true` when recognition contains no letter or digit — silence, or noise only.
     public var isBlank: Bool {
-        text.allSatisfy(\.isWhitespace)
+        !text.contains { $0.isLetter || $0.isNumber }
     }
 }

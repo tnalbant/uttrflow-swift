@@ -17,7 +17,6 @@ struct QuickPanelView: View {
     @State private var query: String = ""
     /// True while `query` is being set from `presentation.query` rather than typed, so that set is never relayed as a search.
     @State private var isSyncingQuery = false
-    @State private var hovered: UUID?
     /// Which row's ⋯ menu is open, if any; every action in it also has a key of its own.
     @State private var openMenu: UUID?
     /// Which menu item the pointer is on, tracked by `PointerWatch` because `onHover` is inactive here.
@@ -63,7 +62,6 @@ struct QuickPanelView: View {
             isSyncingQuery = false
         }
         .task(id: openCount) {
-            hovered = nil
             // A resumed sheet with a field keeps the caret; its `onAppear` does not run again (#920).
             guard presentation.sheet?.takesTyping == true else {
                 isSearchFocused = true
@@ -392,177 +390,14 @@ struct QuickPanelView: View {
             .padding(.vertical, 5)
     }
 
-    /// B6 — ⌘-click is ⌘⏎ on the row under the pointer.
-    private func choose(_ row: PanelRow, plain: Bool) {
-        relayKey(plain ? .choosePlain(row.id) : .choose(row.id))
-    }
-
+    /// The row view with this panel's callbacks; only its value inputs decide whether it redraws.
     private func rowView(_ row: PanelRow) -> some View {
-        let look = QuickPanelRowAppearance.of(
-            row, hovered: hovered, hasSelection: presentation.selectedRow != nil)
-        return Button {
-            // Reads ⌘ at the click rather than tracking it as state; a modifier is not a mode.
-            choose(row, plain: NSEvent.modifierFlags.contains(.command))
-        } label: {
-            HStack(spacing: 9) {
-                mark(row)
-                if let file = row.imageFile { thumbnail(file) }
-                if let alias = row.alias { aliasChip(alias) }
-                if let language = row.language { languageChip(language) }
-                if let measurements = row.measurements {
-                    Text(measurements)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(
-                            row.isImageMissing ? Color.panelKey : Color.panelLabelSoft
-                        )
-                        .lineLimit(1)
-                        // Sized to content, or an empty summary takes half the row and truncates this.
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                Text(row.summary)
-                    .font(
-                        .system(
-                            size: row.isMasked ? 12 : 12.5,
-                            // The mask is drawn in the text face, whose bullets are the design's size.
-                            design: row.isMonospaced && !row.isMasked ? .monospaced : .default)
-                    )
-                    .foregroundStyle(row.isMasked ? Color.panelLabelDim : Color.panelLabel)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Shows the whole line as a tooltip; whether there is one is `PanelRow.tooltip`'s answer.
-                    .help(row.tooltip ?? "")
-                trailing(row, showsActions: look.showsActions)
-            }
-            // Tighter on the leading edge: the glyph sits in the gutter, the ⋯ wants the room on the right.
-            .padding(.leading, 6)
-            .padding(.trailing, 9)
-            .frame(height: QuickPanelMetrics.rowHeight)
-            .background(
-                look.isSelected
-                    // A wash of the accent under the ring; together they mark the row without shouting.
-                    ? AnyShapeStyle(Color.panelAccent.opacity(0.08))
-                    : AnyShapeStyle(look.isFilled ? Color.panelLift : .clear),
-                in: .rect(cornerRadius: 8)
-            )
-            // A faint ring, not a brighter fill, because hover fills too and only one row answers Return.
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(
-                        look.isSelected ? Color.panelAccent.opacity(0.38) : .clear,
-                        lineWidth: 1)
-            )
-            .opacity(look.isSubdued ? 0.55 : 1)
-            .contentShape(.rect)
-        }
-        .buttonStyle(PressableRow())
-        // In front of the row, not behind it: hit testing stops at the first view that claims the point.
-        .overlay(
-            RightClickWatch { openMenu = row.id }
+        QuickPanelRow(
+            row: row, hasSelection: presentation.selectedRow != nil,
+            isMenuOpen: openMenu == row.id, hint: presentation.rowHint, openCount: openCount,
+            onKey: { relayKey($0) }, onAction: { perform($0) }, onMenu: { openMenu = $0 }
         )
-        // `NSTrackingArea` rather than `.onHover`, which only reports while Uttrflow is the active app.
-        .background(
-            PointerWatch { isInside in
-                if isInside {
-                    hovered = row.id
-                } else if hovered == row.id {
-                    hovered = nil
-                }
-            }
-        )
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: look)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(QuickPanelSpeech.label(for: row))
-        .accessibilityHint(presentation.rowHint)
-        .accessibilityAddTraits(look.isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityActions {
-            // The same actions the pointer gets, spoken; the ⋯ button is hidden from VoiceOver.
-            ForEach(row.actions) { action in
-                Button(action.title) { perform(action.intent) }
-            }
-        }
-    }
-
-    @ViewBuilder private func mark(_ row: PanelRow) -> some View {
-        let glyph = Image(systemName: row.symbolName)
-        let colour = tint(for: row.kind)
-        if QuickPanelSpeech.hasTile(row.kind) {
-            glyph
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(colour)
-                .frame(width: 22, height: 22)
-                .background(colour.opacity(0.15), in: .rect(cornerRadius: 6))
-        } else {
-            // Small and dim: four rows in five carry this glyph, so it must read as texture, not signal.
-            glyph
-                .font(.system(size: 10, weight: .regular))
-                .foregroundStyle(colour.opacity(0.62))
-                .frame(width: 17)
-        }
-    }
-
-    /// The picture, decoded once at drawn size; a file that has gone shows the card colour.
-    private func thumbnail(_ file: URL) -> some View {
-        // Its own view, so a decode landing redraws this picture and not the whole panel; see `PanelThumbnails`.
-        PanelThumbnailView(file: file)
-            .frame(width: 34, height: 24)
-            .clipShape(.rect(cornerRadius: 4))
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.panelLine, lineWidth: 1))
-            .accessibilityHidden(true)
-    }
-
-    /// Drawn only when the detector is confident, and quieter than the alias chip beside it.
-    private func languageChip(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundStyle(Color.panelCode)
-            .padding(.horizontal, 6)
-            .frame(height: 18)
-            .background(Color.panelCode.opacity(0.12), in: .rect(cornerRadius: 5))
-            .fixedSize()
-            .accessibilityLabel("\(text) code")
-    }
-
-    private func aliasChip(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .foregroundStyle(Color.panelKey)
-            .padding(.horizontal, 8)
-            .frame(height: 20)
-            .background(Color.panelKey.opacity(0.14), in: .rect(cornerRadius: 6))
-            .fixedSize()
-    }
-
-    /// The pin and the ⋯, anchored outside any hover swap so the far right of a row never moves.
-    @ViewBuilder private func trailing(_ row: PanelRow, showsActions: Bool) -> some View {
-        HStack(spacing: 6) {
-            // Only state that belongs to this clip: a pin. Time and actions live in the ⋯ menu.
-            if row.isPinned {
-                Image(systemName: "pin")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.panelAccentBright)
-            }
-            Button {
-                openMenu = openMenu == row.id ? nil : row.id
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 11))
-                    // Ghost grey at rest, ordinary grey on the row being looked at: findable, not noticeable.
-                    .foregroundStyle(colourOfDots(for: row, showsActions: showsActions))
-                    .frame(width: 20, height: 22)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            // The row already speaks every action through its accessibility actions.
-            .accessibilityHidden(true)
-        }
-        .fixedSize()
-    }
-
-    private func colourOfDots(for row: PanelRow, showsActions: Bool) -> Color {
-        if openMenu == row.id { return .panelAccentBright }
-        if showsActions || row.isSelected { return .panelLabelSoft }
-        return .panelGhost
+        .equatable()
     }
 
     /// The open ⋯ menu, anchored to the panel's edge so the scroll view never clips it, plus its click-away.
@@ -917,32 +752,26 @@ struct QuickPanelView: View {
     /// One handler for the chords and the long moves; two `onKeyPress(phases:)` on one view do not compose.
     private func keyPress(_ press: KeyPress) -> KeyPress.Result {
         let jumped = jumpKey(press)
-        return jumped == .handled ? jumped : commandKey(press)
-    }
-
-    /// Every ⌘-chord, in the order the panel claims them.
-    private func commandKey(_ press: KeyPress) -> KeyPress.Result {
-        guard press.modifiers.contains(.command) else { return .ignored }
-        if press.characters == "z" {
-            onIntent(.undoDelete)
-            return .handled
-        }
-        // ⌘⏎ pastes the words without the formatting: a modifier, not a mode.
-        if press.key == .return {
-            return send(.returnPlain)
-        }
-        if let intent = rowIntent(for: press) {
+        guard jumped != .handled else { return jumped }
+        let decision = PanelKeyHandling.decision(
+            characters: press.characters,
+            commandHeld: press.modifiers.contains(.command),
+            shiftHeld: press.modifiers.contains(.shift),
+            isReturn: press.key == .return,
+            isEscape: press.key == .escape,
+            rowMenuOpen: openMenu != nil,
+            presentation: presentation)
+        switch decision {
+        case .key(let key), .keyAfterClosingMenu(let key):
+            return send(key)
+        case .intent(let intent):
             perform(intent)
             return .handled
+        case .closeMenu:
+            return send(.escape)
+        case .ignore:
+            return .ignored
         }
-        return commandDigit(press)
-    }
-
-    /// What a ⌘ chord does to the highlighted row, which the presenter answers from that row's own actions.
-    private func rowIntent(for press: KeyPress) -> PanelIntent? {
-        guard let character = press.characters.lowercased().first else { return nil }
-        let chord = PanelChord(character, shifted: press.modifiers.contains(.shift))
-        return presentation.intent(for: chord)
     }
 
     /// The long moves through the list, which ↑↓ would take a thousand presses to make.
@@ -957,22 +786,17 @@ struct QuickPanelView: View {
         }
     }
 
-    /// ⌘1–⌘9 pick a collection; anything else still reaches the field.
-    private func commandDigit(_ press: KeyPress) -> KeyPress.Result {
-        guard press.modifiers.contains(.command),
-            let digit = Int(press.characters), (1...9).contains(digit)
-        else { return .ignored }
-        return send(.category(number: digit))
-    }
-
     /// Sends a key to the controller, letting esc close an open menu before it closes the panel.
     private func relayKey(_ key: PanelKey) {
-        if key == .escape, openMenu != nil {
+        switch PanelKeyHandling.relayDecision(for: key, rowMenuOpen: openMenu != nil) {
+        case .closeMenu:
             openMenu = nil
-            return
+        case .key(let key), .keyAfterClosingMenu(let key):
+            openMenu = nil
+            onKey(key)
+        case .intent, .ignore:
+            break
         }
-        if openMenu != nil { openMenu = nil }
-        onKey(key)
     }
 
     private func perform(_ intent: PanelIntent) {
@@ -994,10 +818,211 @@ struct QuickPanelView: View {
     }
 }
 
+// MARK: - Row
+
+/// Claims right-clicks and ctrl-clicks in `hitTest` and lets every other click through to the row.
+private struct QuickPanelRow: View, @MainActor Equatable {
+    let row: PanelRow
+    let hasSelection: Bool
+    let isMenuOpen: Bool
+    let hint: String
+    /// Bumped on every open, so a hover left over from the last showing is dropped.
+    let openCount: Int
+    let onKey: (PanelKey) -> Void
+    let onAction: (PanelIntent) -> Void
+    let onMenu: (UUID?) -> Void
+
+    @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Compares what is drawn; the callbacks are the panel's own and stable across updates.
+    static func == (lhs: QuickPanelRow, rhs: QuickPanelRow) -> Bool {
+        lhs.row == rhs.row && lhs.hasSelection == rhs.hasSelection
+            && lhs.isMenuOpen == rhs.isMenuOpen && lhs.hint == rhs.hint
+            && lhs.openCount == rhs.openCount
+    }
+
+    /// B6 — ⌘-click is ⌘⏎ on the row under the pointer.
+    private func choose(_ row: PanelRow, plain: Bool) {
+        onKey(plain ? .choosePlain(row.id) : .choose(row.id))
+    }
+
+    var body: some View {
+        let look = QuickPanelRowAppearance.of(
+            row, hovered: isHovered ? row.id : nil, hasSelection: hasSelection)
+        return Button {
+            // Reads ⌘ at the click rather than tracking it as state; a modifier is not a mode.
+            choose(row, plain: NSEvent.modifierFlags.contains(.command))
+        } label: {
+            HStack(spacing: 9) {
+                mark(row)
+                if let file = row.imageFile { thumbnail(file) }
+                if let alias = row.alias { aliasChip(alias) }
+                if let language = row.language { languageChip(language) }
+                if let measurements = row.measurements {
+                    Text(measurements)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(
+                            row.isImageMissing ? Color.panelKey : Color.panelLabelSoft
+                        )
+                        .lineLimit(1)
+                        // Sized to content, or an empty summary takes half the row and truncates this.
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                Text(row.summary)
+                    .font(
+                        .system(
+                            size: row.isMasked ? 12 : 12.5,
+                            design: row.isMonospaced && !row.isMasked ? .monospaced : .default)
+                    )
+                    .foregroundStyle(row.isMasked ? Color.panelLabelDim : Color.panelLabel)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Shows the whole line as a tooltip; whether there is one is `PanelRow.tooltip`'s answer.
+                    .help(row.tooltip ?? "")
+                trailing(row, showsActions: look.showsActions)
+            }
+            // Tighter on the leading edge: the glyph sits in the gutter, the ⋯ wants the room on the right.
+            .padding(.leading, 6)
+            .padding(.trailing, 9)
+            .frame(height: QuickPanelMetrics.rowHeight)
+            .background(
+                look.isSelected
+                    // A wash of the accent under the ring; together they mark the row without shouting.
+                    ? AnyShapeStyle(Color.panelAccent.opacity(0.08))
+                    : AnyShapeStyle(look.isFilled ? Color.panelLift : .clear),
+                in: .rect(cornerRadius: 8)
+            )
+            // A faint ring, not a brighter fill, because hover fills too and only one row answers Return.
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(
+                        look.isSelected ? Color.panelAccent.opacity(0.38) : .clear,
+                        lineWidth: 1)
+            )
+            .opacity(look.isSubdued ? 0.55 : 1)
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableRow())
+        // In front of the row, not behind it: hit testing stops at the first view that claims the point.
+        .overlay(
+            RightClickWatch { onMenu(row.id) }
+        )
+        // `NSTrackingArea` rather than `.onHover`, which only reports while Uttrflow is the active app.
+        .background(
+            PointerWatch { isInside in isHovered = isInside }
+        )
+        .onChange(of: openCount) { isHovered = false }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: look)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(QuickPanelSpeech.label(for: row))
+        .accessibilityHint(hint)
+        .accessibilityAddTraits(look.isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityActions {
+            // The same actions the pointer gets, spoken; the ⋯ button is hidden from VoiceOver.
+            ForEach(row.actions) { action in
+                Button(action.title) { onAction(action.intent) }
+            }
+        }
+    }
+
+    @ViewBuilder private func mark(_ row: PanelRow) -> some View {
+        let glyph = Image(systemName: row.symbolName)
+        let colour = tint(for: row.kind)
+        if QuickPanelSpeech.hasTile(row.kind) {
+            glyph
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(colour)
+                .frame(width: 22, height: 22)
+                .background(colour.opacity(0.15), in: .rect(cornerRadius: 6))
+        } else {
+            // Small and dim: four rows in five carry this glyph, so it must read as texture, not signal.
+            glyph
+                .font(.system(size: 10, weight: .regular))
+                .foregroundStyle(colour.opacity(0.62))
+                .frame(width: 17)
+        }
+    }
+
+    /// The picture, decoded once at drawn size; a file that has gone shows the card colour.
+    private func thumbnail(_ file: URL) -> some View {
+        // Its own view, so a decode landing redraws this picture and not the whole panel; see `PanelThumbnails`.
+        PanelThumbnailView(file: file)
+            .frame(width: 34, height: 24)
+            .clipShape(.rect(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.panelLine, lineWidth: 1))
+            .accessibilityHidden(true)
+    }
+
+    /// Drawn only when the detector is confident, and quieter than the alias chip beside it.
+    private func languageChip(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(Color.panelCode)
+            .padding(.horizontal, 6)
+            .frame(height: 18)
+            .background(Color.panelCode.opacity(0.12), in: .rect(cornerRadius: 5))
+            .fixedSize()
+            .accessibilityLabel("\(text) code")
+    }
+
+    private func aliasChip(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundStyle(Color.panelKey)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(Color.panelKey.opacity(0.14), in: .rect(cornerRadius: 6))
+            .fixedSize()
+    }
+
+    /// The pin and the ⋯, anchored outside any hover swap so the far right of a row never moves.
+    @ViewBuilder private func trailing(_ row: PanelRow, showsActions: Bool) -> some View {
+        HStack(spacing: 6) {
+            // Only state that belongs to this clip: a pin. Time and actions live in the ⋯ menu.
+            if row.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.panelAccentBright)
+            }
+            Button {
+                onMenu(isMenuOpen ? nil : row.id)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11))
+                    // Ghost grey at rest, ordinary grey on the row being looked at: findable, not noticeable.
+                    .foregroundStyle(colourOfDots(for: row, showsActions: showsActions))
+                    .frame(width: 20, height: 22)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            // The row already speaks every action through its accessibility actions.
+            .accessibilityHidden(true)
+        }
+        .fixedSize()
+    }
+
+    private func colourOfDots(for row: PanelRow, showsActions: Bool) -> Color {
+        if isMenuOpen { return .panelAccentBright }
+        if showsActions || row.isSelected { return .panelLabelSoft }
+        return .panelGhost
+    }
+
+    private func tint(for kind: ClipKind) -> Color {
+        switch kind {
+        case .link: .panelLink
+        case .code: .panelCode
+        case .secret: .panelKey
+        case .text, .colour, .image, .filePath: .panelLabelDim
+        }
+    }
+}
+
 // MARK: - Sizes
 
 /// Claims right-clicks and ctrl-clicks in `hitTest` and lets every other click through to the row.
-struct RightClickWatch: NSViewRepresentable {
+\nstruct RightClickWatch: NSViewRepresentable {
     let clicked: () -> Void
 
     func makeNSView(context: Context) -> Catcher {

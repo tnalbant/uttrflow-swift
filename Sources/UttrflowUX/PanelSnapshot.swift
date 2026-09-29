@@ -117,6 +117,9 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var sheet: PanelSheet?
     /// Keeps the formatting sheet last drawn, shared by every copy of this snapshot so an update does not diff again.
     let formattingSheets = FormattingSheetMemo()
+
+    /// Hands the snapshot a sheet already drawn, so presenting it compares nothing on the caller's actor.
+    public func remember(_ prepared: PreparedFormattingSheet) { formattingSheets.remember(prepared) }
     /// Keeps the last list of rows found, shared by every copy of this snapshot so a keystroke searches the history once and an arrow key not at all.
     let searchMemo = PanelSearchMemo()
     /// Keeps the rows last drawn, shared by every copy of this snapshot so an arrow key rebuilds none of them.
@@ -148,6 +151,8 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var formattableLanguages: Set<CodeLanguage> = []
     /// Remembers which code clips can be re-indented, shared across opens so neither a keystroke nor a reopen asks again.
     let reindentOffers = ReindentOffers.shared
+    /// Remembers each clip's search-folded text, shared by every copy of this snapshot so a keystroke does not fold again.
+    let foldedTexts = FoldedTexts()
     /// The secrets the user has deliberately unmasked; a reveal never outlives the panel that asked.
     public var revealed: Set<Clip.ID>
     /// The clock the timestamps are measured against, injected so "2 minutes ago" is testable.

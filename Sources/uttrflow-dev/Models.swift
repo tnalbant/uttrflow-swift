@@ -14,8 +14,10 @@ struct Models: AsyncParsableCommand {
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Show what is available and installed.")
 
+        @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
         func run() async throws {
-            let store = FileSystemSpeechModelStore.whisperKit()
+            let store = try modelsDirectory.store()
             print("Models in \(store.root.path)\n")
             for model in SpeechModel.catalogue {
                 let installed = store.isInstalled(model)
@@ -31,12 +33,14 @@ struct Models: AsyncParsableCommand {
     struct Install: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Download a speech model.")
 
+        @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
         @Option(name: .shortAndLong, help: "Model variant. Defaults to the shipping model.")
         var model: String?
 
         func run() async throws {
             let model = try resolve(model)
-            let store = FileSystemSpeechModelStore.whisperKit()
+            let store = try modelsDirectory.store(creatingDirectory: true)
             if store.isInstalled(model) {
                 print("\(model.variant) is already installed.")
                 return
@@ -59,11 +63,13 @@ struct Models: AsyncParsableCommand {
     struct Remove: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Delete a downloaded model.")
 
+        @OptionGroup var modelsDirectory: ModelsDirectoryOptionGroup
+
         @Option(name: .shortAndLong) var model: String?
 
         func run() async throws {
             let model = try resolve(model)
-            let store = FileSystemSpeechModelStore.whisperKit()
+            let store = try modelsDirectory.store()
             guard store.isInstalled(model) else {
                 print("\(model.variant) is not installed.")
                 return

@@ -63,6 +63,13 @@ struct SampleAccumulatorTests {
         #expect(accumulator.peakLevel == 0.8)
     }
 
+    @Test("caps finite samples at full scale")
+    func capsFinitePeak() {
+        let accumulator = SampleAccumulator()
+        accumulator.append([1.5, -2, Float.greatestFiniteMagnitude])
+        #expect(accumulator.peakLevel == 1)
+    }
+
     @Test("keeps the highest peak once it has been seen")
     func peakDoesNotDecay() {
         let accumulator = SampleAccumulator()
@@ -202,6 +209,28 @@ struct MomentaryLevelTests {
         accumulator.append([.nan, .infinity, -.infinity, .nan])
 
         #expect(accumulator.momentaryLevel.isFinite)
+        #expect((0...1).contains(accumulator.momentaryLevel))
+        #expect((0...1).contains(accumulator.peakLevel))
+    }
+
+    @Test("clamps huge finite samples before squaring them")
+    func capsHugeFiniteMomentary() {
+        let accumulator = SampleAccumulator()
+
+        accumulator.append([Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude])
+
+        #expect(accumulator.peakLevel == 1)
+        #expect(accumulator.momentaryLevel == 1)
+    }
+
+    @Test("ignores non-finite samples and preserves the block-size divisor")
+    func ignoresNonFiniteInMomentary() {
+        let accumulator = SampleAccumulator()
+
+        accumulator.append([1, .nan, .infinity, -.infinity])
+
+        #expect(accumulator.peakLevel == 1)
+        #expect(abs(accumulator.momentaryLevel - 0.5) < 0.0001)
     }
 
     @Test("a finished recording cannot leak its level into the next one")

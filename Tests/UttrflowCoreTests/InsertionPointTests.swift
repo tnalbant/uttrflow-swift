@@ -48,6 +48,22 @@ struct InsertionPointTests {
         #expect(InsertionPoint.sentenceState(before: preceding) == .midSentence)
     }
 
+    @Test(
+        "known dotted abbreviations keep a caret mid-sentence",
+        arguments: [
+            "Bring snacks, e.g. ", "This is i.e. ", "Apples vs. ", "Fruit, etc. ", "Meet at 3 p.m. ",
+            "Call at 9 a.m. ",
+        ]
+    )
+    func abbreviationContinuesSentence(preceding: String) {
+        #expect(InsertionPoint.sentenceState(before: preceding) == .midSentence)
+    }
+
+    @Test("a normal terminal period still opens a sentence")
+    func normalPeriodStartsSentence() {
+        #expect(InsertionPoint.sentenceState(before: "Done. ") == .startOfSentence)
+    }
+
     /// A marker is typed but not written: the caret after one opens the line, whatever the marker is.
     @Test(
         "a caret after a list, quote or heading marker opens the line",
@@ -138,6 +154,22 @@ struct InsertionPointTests {
     func leadingSpaceAfterOpeningBracket() {
         let point = InsertionPoint(precedingText: "(", followingText: "stuff)")
         #expect(point.paddedBoundary(for: "world") == "world ")
+    }
+
+    @Test(
+        "a straight quote opens only at the start of text or after a boundary",
+        arguments: ["\"", "'", "say \"", "say '", "say (\"", "say ('"])
+    func leadingSpaceAfterOpeningStraightQuote(preceding: String) {
+        let point = InsertionPoint(precedingText: preceding, followingText: "")
+        #expect(point.paddedBoundary(for: "world") == "world")
+    }
+
+    @Test(
+        "a straight quote after a word closes the quote and separates the next word",
+        arguments: ["said \"hi\"", "said 'hi'", "it'"])
+    func leadingSpaceAfterClosingStraightQuote(preceding: String) {
+        let point = InsertionPoint(precedingText: preceding, followingText: "")
+        #expect(point.paddedBoundary(for: "world") == " world")
     }
 
     @Test("a word before another word is padded with one trailing space")

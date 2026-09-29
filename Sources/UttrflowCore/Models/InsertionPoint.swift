@@ -30,6 +30,14 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Derived from the preceding text, never read from the field.
     public var sentenceState: SentenceState { Self.sentenceState(before: precedingText) }
 
+    /// Whether the caret's line opens with a list marker, so added text stays an unfinished list item.
+    public var isOnListItemLine: Bool {
+        guard let precedingText else { return false }
+        let line =
+            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        return Self.listItemRemainder(in: line) != nil
+    }
+
     /// Reads the sentence state off the line the caret sits on, since a list marker is not a word.
     public static func sentenceState(before text: String?) -> SentenceState {
         guard let text else { return .unknown }
@@ -40,21 +48,45 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
             let isBlank = line.allSatisfy(\.isWhitespace)
             return isBlank && text.contains(where: \.isNewline) ? .startOfSentence : .startOfText
         }
-        return sentenceEnds.contains(last) ? .startOfSentence : .midSentence
+        if sentenceEnds.contains(last) {
+            let word = line.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
+            let normalizedWord = String(
+                word.lowercased().reversed()
+                    .drop(while: { ".!?…,:;\"'”’)]}".contains($0) })
+                    .reversed()
+                    .drop(while: { "\"'“(".contains($0) })
+            )
+            let isKnownAbbreviation =
+                sentenceAbbreviations.contains(normalizedWord)
+                || normalizedWord.split(separator: ".").count > 1
+            if !word.isEmpty, !isKnownAbbreviation {
+                return .startOfSentence
+            }
+        }
+        return .midSentence
     }
 
     /// The line without the one list, quote or heading marker it opens with, which is typed but not written.
     private static func withoutOpeningMarker(_ line: Substring) -> Substring {
+        if let list = listItemRemainder(in: line) { return list }
         let body = line.drop(while: \.isWhitespace)
         if let marker = openingMarkers.first(where: { body.hasPrefix($0) }) {
             // A run of the same mark is one marker: "## " is a heading, ">>" a quotation inside a quotation.
             return body.drop { String($0) == marker }
         }
-        // A numbered item: its digits, then the stop or bracket that closes the number.
+        return body
+    }
+
+    /// The text after the bullet or number that opens a list item.
+    private static func listItemRemainder(in line: Substring) -> Substring? {
+        let body = line.drop(while: \.isWhitespace)
+        if let marker = Draft.bulletTokens.sorted().first(where: { body.hasPrefix($0) }) {
+            return body.drop { String($0) == marker }
+        }
         let digits = body.prefix(while: \.isNumber)
-        let rest = body.dropFirst(digits.count)
-        guard !digits.isEmpty, rest.first.map({ ".)".contains($0) }) == true else { return body }
-        return rest.dropFirst()
+        let closingMark = body.dropFirst(digits.count)
+        guard !digits.isEmpty, closingMark.first.map({ ".)".contains($0) }) == true else { return nil }
+        return closingMark.dropFirst()
     }
 
     /// What a line may open with that is a marker rather than words: a list item, a quotation, a heading.
@@ -63,6 +95,9 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// The marks after which a new sentence begins.
     private static let sentenceEnds: Set<Character> = [".", "!", "?"]
+
+    /// Dotted forms that keep the current sentence open, shared with first-word casing.
+    public static let sentenceAbbreviations: Set<String> = ["e.g", "i.e", "vs", "etc", "p.m", "a.m"]
 
     /// Pads `text` with a space at each caret edge where it would otherwise join a neighbouring word.
     public func paddedBoundary(for text: String) -> String {
@@ -85,7 +120,7 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     private static func requiresLeadingSpace(in text: String, precedingText: String) -> Bool {
         // The dictated text already opens with its own whitespace, so the field is already joined.
         if text.first?.isWhitespace == true { return false }
-        // Punctuation and clitics attach to the preceding text instead of opening a new word.
+        // Punctuation and clitics attach to preceding text instead of opening a new word.
         if text.first.map(attachingPunctuation.contains) == true
             || attachingCliticPrefixes.contains(where: text.hasPrefix)
         {
@@ -94,7 +129,14 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         guard let previous = precedingText.last, !previous.isWhitespace, !previous.isNewline else {
             return false
         }
-        return !openingBracketOrQuote.contains(previous)
+        return !openingBracket.contains(previous) && !Self.isOpeningStraightQuote(previous, in: precedingText)
+    }
+
+    /// Whether a straight quote follows a boundary that opens a quoted span.
+    private static func isOpeningStraightQuote(_ quote: Character, in precedingText: String) -> Bool {
+        guard quote == "\"" || quote == "'" else { return false }
+        guard let beforeQuote = precedingText.dropLast().last else { return true }
+        return beforeQuote.isWhitespace || openingBracket.contains(beforeQuote)
     }
 
     /// Whether the dictated word needs a trailing space to read as separate from `followingText`.
@@ -105,10 +147,8 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         return next.isLetter || next.isNumber || next == "_"
     }
 
-    /// Brackets and quotes that open a context the dictated word belongs inside, so no space precedes it.
-    private static let openingBracketOrQuote: Set<Character> = [
-        "(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}",
-    ]
+    /// Brackets and curly opening quotes that start a context the dictated word belongs inside.
+    private static let openingBracket: Set<Character> = ["(", "[", "{", "\u{201C}", "\u{2018}"]
 
     /// Punctuation and clitics that attach to the text before the caret.
     private static let attachingPunctuation: Set<Character> = [

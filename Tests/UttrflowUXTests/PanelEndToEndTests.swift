@@ -43,6 +43,8 @@ struct PanelEndToEndTests {
                 _ = try await store.setAlias(alias, of: id, keeping: retention)
             case .setCategory(let id, let category):
                 _ = try await store.setCategory(category, of: id, keeping: retention)
+            case .setPinned(let id, let isPinned):
+                _ = try await store.setPinned(isPinned, of: id, keeping: retention)
             case .delete(let id):
                 _ = try await store.delete(id, keeping: retention)
             case .create(let text):
@@ -129,6 +131,20 @@ struct PanelEndToEndTests {
             }
             #expect(found.id == target.id, "“\(typed)” found the wrong clip")
         }
+    }
+
+    @Test("pinning and unpinning persist through a panel change")
+    func pinningAndUnpinning() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try await harness.seed(["keep this clip"])
+        let clip = try #require(await harness.clip("keep this clip"))
+
+        try await harness.carryOut(.setPinned(clip.id, true))
+        #expect(await harness.clip("keep this clip")?.isPinned == true)
+
+        try await harness.carryOut(.setPinned(clip.id, false))
+        #expect(await harness.clip("keep this clip")?.isPinned == false)
     }
 
     @Test("filing a clip, then renaming the collection, keeps the clip and its name")
