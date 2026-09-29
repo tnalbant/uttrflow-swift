@@ -254,13 +254,13 @@ extension FocusedFieldSnapshot {
     /// Whether the caret sits at the end of the line it is on, which completing presumes.
     public var caretAtLineEnd: Bool {
         guard let ahead = rowAhead else { return false }
-        return ahead.allSatisfy { $0 == " " || $0 == "\t" } || rightPromptGap != nil
+        return ahead.allSatisfy { $0 == " " || $0 == "\t" }
     }
 
-    /// The fewest padding spaces that set a terminal's right-hand prompt apart from text after the caret.
+    /// The fewest padding spaces that separate the caret from a terminal's right-side display text.
     static let rightPromptPadding = 4
 
-    /// How many padding spaces separate the caret from a terminal's right-hand prompt, or nothing when the row has none.
+    /// How many padding spaces separate the caret from a terminal's right-side display text, or nothing when the row has none.
     public var rightPromptGap: Int? {
         guard TerminalApplications.contains(bundleIdentifier), let ahead = rowAhead else { return nil }
         let gap = ahead.prefix { $0 == " " }.count
@@ -269,7 +269,7 @@ extension FocusedFieldSnapshot {
         return gap
     }
 
-    /// The field's rectangle, ended before a terminal's right-hand prompt so the ghost is not drawn over it.
+    /// The field's rectangle, ended before a padded terminal tail so the ghost does not draw over it.
     public var ghostField: CGRect? {
         guard let gap = rightPromptGap, let caret, let pointSize, let field else { return field }
         let edge = caret.maxX + CGFloat(gap - 1) * pointSize * Self.monospacedAdvance

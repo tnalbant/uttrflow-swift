@@ -67,6 +67,16 @@ struct SuggestionMomentTests {
         #expect(SuggestionMoment.context(of: listing, millisecondsSinceKeystroke: 0).showsOwnList)
     }
 
+    @Test("A command with spaced text after the caret is quieted as an interior caret.")
+    func aSpacedCommandTailDoesNotOfferACompletion() {
+        let value = "ls -la    # list"
+        let snapshot = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: value, selection: NSRange(location: "ls -la".utf16.count, length: 0))
+        let context = SuggestionMoment.context(of: snapshot, millisecondsSinceKeystroke: 250)
+        #expect(Quieting.reason(context) == .caretInsideText)
+    }
+
     @Test("The situation holds the preceding text, the screen around the field and the recent lines")
     func theSituationHoldsWhatTheSnapshotHolds() {
         let around = Surroundings(windowTitle: "Re: plans", text: "See you at the north gate")

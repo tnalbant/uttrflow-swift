@@ -115,16 +115,27 @@ struct FocusedFieldSnapshotTests {
         #expect(!snapshot(value: "ls  -la", selection: NSRange(location: 2, length: 0)).caretAtLineEnd)
     }
 
-    @Test(
-        "A terminal row's right-hand prompt, set apart by padding, leaves the caret at the end of the input.")
-    func rightHandPromptIsNotTextAfterTheCaret() {
+    @Test("Text after a terminal caret stays text even when a prompt-like tail follows padding.")
+    func paddedTerminalTailIsStillTextAfterTheCaret() {
         let row =
             "git c" + String(repeating: " ", count: 30) + "main 12:04\n" + String(repeating: " ", count: 45)
         let reading = snapshot(value: row, selection: NSRange(location: 5, length: 0))
-        #expect(reading.caretAtLineEnd)
+        #expect(!reading.caretAtLineEnd)
         #expect(reading.rightPromptGap == 30)
-        // A document has no right-hand prompt, so the same row is text after the caret.
+        // A document also treats the padded tail as text after the caret.
         #expect(!snapshot(bundleIdentifier: "com.apple.TextEdit", value: row).caretAtLineEnd)
+    }
+
+    @Test("Four spaces before command text do not turn an interior caret into the line end.")
+    func spacedCommandTextAfterTheCaretIsStillText() {
+        let value = "ls -la    # list"
+        let reading = snapshot(
+            bundleIdentifier: "com.apple.Terminal", value: value,
+            selection: NSRange(location: "ls -la".utf16.count, length: 0))
+        #expect(!reading.caretAtLineEnd)
+        #expect(reading.hasTextAfterCaret)
+        let context = PredictionContext(typed: reading.currentLine, caretAtLineEnd: reading.caretAtLineEnd)
+        #expect(Quieting.reason(context) == .caretInsideText)
     }
 
     @Test("Text directly after the caret, with no padding run, is still the caret inside the line.")
@@ -136,8 +147,8 @@ struct FocusedFieldSnapshotTests {
         #expect(reading.rightPromptGap == nil)
     }
 
-    @Test("The ghost's field ends before the right-hand prompt, and is the whole field otherwise.")
-    func ghostFieldStopsBeforeTheRightHandPrompt() throws {
+    @Test("The ghost's field ends before a padded terminal tail, and is the whole field otherwise.")
+    func ghostFieldStopsBeforePaddedTerminalText() throws {
         let field = CGRect(x: 0, y: 0, width: 800, height: 400)
         let row = "git c" + String(repeating: " ", count: 11) + "main"
         let reading = FocusedFieldSnapshot(
