@@ -74,6 +74,8 @@ final class SuggestionCoordinator {
     nonisolated static let generationDebounceInMilliseconds = 120
     /// How long typing must pause before a field snapshot may begin.
     nonisolated static let fieldReadDebounceInMilliseconds = 180
+    /// Lets the target application apply a drop before its field is read again.
+    nonisolated static let mouseUpReadDelayInMilliseconds = 80
 
     private var session = SuggestionSession()
     private var monitors: [Any] = []
@@ -271,13 +273,19 @@ final class SuggestionCoordinator {
             MainActor.assumeIsolated { self?.keyPressed(Key(keyCode: event.keyCode), typing: text) }
         }
         if let keys { monitors.append(keys) }
-        // A click moves the caret or the focus without a key, so it wakes a turn the way a pause does.
-        let clicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
+        // A mouse-up can finish a text drop, so withdraw then read after the target applies it.
+        let clicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) {
+            [weak self] event in
+            let delay = event.type == .leftMouseUp ? Self.mouseUpReadDelayInMilliseconds : 0
             FocusedFieldReader.focusMayHaveMoved()
             MainActor.assumeIsolated {
                 self?.noteActivity()
                 self?.withdraw()
-                self?.wake(.tick)
+                if delay > 0 {
+                    self?.wake(.tick, afterMilliseconds: delay)
+                } else {
+                    self?.wake(.tick)
+                }
             }
         }
         if let clicks { monitors.append(clicks) }
