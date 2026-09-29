@@ -55,14 +55,17 @@ enum SuggestionMoment {
     static func situation(
         of snapshot: FocusedFieldSnapshot, surroundings around: Surroundings?, recentLines recent: [String]
     ) -> GenerationSituation {
-        GenerationSituation(
+        let isTerminal = TerminalApplications.contains(snapshot.bundleIdentifier)
+        return GenerationSituation(
             application: snapshot.applicationName,
             field: snapshot.accessibilityDescription ?? snapshot.placeholder ?? snapshot.role,
             document: snapshot.document,
             preceding: snapshot.preceding(maxLength: precedingContextLength),
             windowTitle: around?.windowTitle, surroundings: around?.text, recentLines: recent,
             timedTurnLines: around?.timedTurnLines ?? 0,
-            isMultiline: snapshot.role == FocusedFieldSnapshot.proseRole
-                || snapshot.value?.contains(where: \.isNewline) == true)
+            isMultiline: !isTerminal
+                && (snapshot.role == FocusedFieldSnapshot.proseRole
+                    || snapshot.value?.contains(where: \.isNewline) == true)
+        )
     }
 }

@@ -82,6 +82,19 @@ struct SuggestionMomentTests {
         #expect(situation.isMultiline)
     }
 
+    @Test("Terminal scrollback does not make a shell command multiline")
+    func terminalScrollbackIsNotMultiline() {
+        let terminal = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: "previous command\ngit che")
+        let terminalSituation = SuggestionMoment.situation(of: terminal, surroundings: nil, recentLines: [])
+        let composerSituation = SuggestionMoment.situation(
+            of: composer(), surroundings: nil, recentLines: [])
+
+        #expect(!terminalSituation.isMultiline)
+        #expect(composerSituation.isMultiline)
+    }
+
     @Test("With nothing around it, a single-line field is named by its placeholder or its role")
     func aBareFieldIsNamedByWhatItHas() {
         let bare = FocusedFieldSnapshot(
