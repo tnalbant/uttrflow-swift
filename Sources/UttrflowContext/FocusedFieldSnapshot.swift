@@ -50,6 +50,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let readMicroseconds: Int
     /// The title of the window holding the field, which names the conversation, the note or the thread the field belongs to.
     public let windowTitle: String?
+    /// The window number holding the field, when Accessibility publishes one.
+    public let windowNumber: UInt32?
     /// The line the caret is on up to the caret, from a sentence start in prose too long to complete whole, less a terminal's shell prompt.
     public let currentLine: String
     /// Whether the caret's line ran past `lineReadLimit`, so `currentLine` is only its last stretch and too long to complete.
@@ -77,7 +79,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         markedText: MarkedText = .unanswered,
         showsOwnList: Bool = false,
         readMicroseconds: Int = 0,
-        windowTitle: String? = nil
+        windowTitle: String? = nil,
+        windowNumber: UInt32? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName
@@ -101,6 +104,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.showsOwnList = showsOwnList
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
+        self.windowNumber = windowNumber
         let prose = role == Self.proseRole && !TerminalApplications.contains(bundleIdentifier)
         let line = Self.caretLine(
             of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)

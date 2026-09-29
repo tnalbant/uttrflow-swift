@@ -1067,8 +1067,14 @@ final class SuggestionCoordinator {
     /// Puts the tail into the field and queues the taken line for capture, answering false when the field refused it unwritten.
     private func take(_ text: String, after typed: String, in reading: FieldReading?) async -> Bool {
         // What the gates left is a whole line, so taking it may replace characters as well as add.
+        guard let windowNumber = reading?.surface?.windowNumber else {
+            Self.log.error("the drawn field has no identifiable window; giving the key back")
+            return false
+        }
         var via = "nothing"
-        switch await acceptor.aim(.certain(text), after: typed) {
+        switch await acceptor.aim(
+            .certain(text), after: typed, expectedWindowNumber: windowNumber)
+        {
         case .refused(let reason):
             Self.log.error("\(SuggestionLog.refusedUnwritten(reason, typed: typed), privacy: .public)")
             return false
@@ -1076,7 +1082,7 @@ final class SuggestionCoordinator {
             break
         case .write(let edit):
             do throws(TextInsertionError) {
-                via = try await acceptor.write(edit)?.rawValue ?? via
+                via = try await acceptor.write(edit, expectedWindowNumber: windowNumber)?.rawValue ?? via
             } catch {
                 // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
                 Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")

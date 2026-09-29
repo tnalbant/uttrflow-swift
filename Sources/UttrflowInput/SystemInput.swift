@@ -307,6 +307,29 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
         return .text(tail)
     }
 
+    /// Reads the window and its text from one AX element, so matching text in another window cannot authorize a write.
+    public func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard count > 0, let element = focusedElement() else { return (nil, .unreadable) }
+        let number = Self.windowNumber(of: element)
+        guard let value = readableValue(of: element),
+            let range = rangeAttribute(kAXSelectedTextRangeAttribute, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: range.location, upTo: count)
+        else { return (number, .unreadable) }
+        return (number, .text(tail))
+    }
+
+    /// The window containing this focused field, or nothing when the system cannot identify it.
+    private static func windowNumber(of element: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(element, &number) == .success else { return nil }
+        return number
+    }
+
+    /// The window containing the field currently focused for insertion.
+    public func focusedWindowNumber() -> UInt32? {
+        focusedElement().flatMap(Self.windowNumber(of:))
+    }
+
     public func focusedTextField() -> (any FocusedTextField)? {
         guard let candidate = focusedElement() else { return nil }
 

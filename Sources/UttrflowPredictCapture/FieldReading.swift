@@ -20,6 +20,8 @@ public struct FieldReading: Sendable, Equatable {
     public let document: String?
     /// The title of the window holding the field, which names the conversation or note a composer belongs to.
     public let windowTitle: String?
+    /// The window number holding the field, when Accessibility publishes one.
+    public let windowNumber: UInt32?
     /// The application as the user knows it, which is how a window naming only the application is told from one naming a thread.
     public let applicationName: String?
     /// Whether whoever read the field found it secure by what it holds, such as a value shown as bullets.
@@ -29,7 +31,8 @@ public struct FieldReading: Sendable, Equatable {
     public init(
         bundleIdentifier: String, role: String, subrole: String? = nil, identifier: String? = nil,
         placeholder: String? = nil, accessibilityDescription: String? = nil, document: String? = nil,
-        windowTitle: String? = nil, applicationName: String? = nil, isKnownSecure: Bool = false
+        windowTitle: String? = nil, windowNumber: UInt32? = nil, applicationName: String? = nil,
+        isKnownSecure: Bool = false
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.role = role
@@ -39,6 +42,7 @@ public struct FieldReading: Sendable, Equatable {
         self.accessibilityDescription = accessibilityDescription
         self.document = document
         self.windowTitle = windowTitle
+        self.windowNumber = windowNumber
         self.applicationName = applicationName
         self.isKnownSecure = isKnownSecure
     }
@@ -59,7 +63,9 @@ extension FieldReading {
         guard let bundleIdentifier = Self.trimmed(bundleIdentifier), let role = Self.trimmed(role) else {
             return nil
         }
-        return Surface(bundleIdentifier: bundleIdentifier, role: role, locator: locator, scope: scope)
+        return Surface(
+            bundleIdentifier: bundleIdentifier, role: role, locator: locator, scope: scope,
+            windowNumber: windowNumber)
     }
 
     /// What tells this field from another of the same role, taking the first name it publishes.

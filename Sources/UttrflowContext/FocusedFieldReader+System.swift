@@ -321,8 +321,16 @@ public enum FocusedFieldReader {
             markedText: marked,
             showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
-            windowTitle: title
+            windowTitle: title,
+            windowNumber: windowNumber(of: field)
         )
+    }
+
+    /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
+    private static func windowNumber(of field: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(field, &number) == .success else { return nil }
+        return number
     }
 
     /// The caret's line read off an editor's rendered text, for the empty caret-sized input such an editor keeps focused.
