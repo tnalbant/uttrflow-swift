@@ -139,7 +139,7 @@ extension FieldReading {
         guard decoded.count > 1 else { return trimmed(decoded) }
         guard !decoded.hasSuffix("/") else { return trimmed(String(decoded.dropLast())) }
         // A terminal's document is its working directory, whatever its name looks like.
-        guard !isDirectory, !(decoded as NSString).pathExtension.isEmpty else { return trimmed(decoded) }
+        guard !isDirectory else { return trimmed(decoded) }
         return trimmed((decoded as NSString).deletingLastPathComponent)
     }
 

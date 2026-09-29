@@ -168,6 +168,15 @@ struct FieldReadingTests {
         #expect(scope("/notes.txt") == "/")
     }
 
+    @Test(
+        "An extensionless document is scoped to its containing directory.",
+        arguments: ["/Users/someone/work/Makefile", "/Users/someone/work/Dockerfile"])
+    func extensionlessDocumentScopeIsTheContainingDirectory(document: String) {
+        let reading = FieldReading(
+            bundleIdentifier: "com.example.editor", role: "AXTextArea", document: document)
+        #expect(reading.scope == "/Users/someone/work")
+    }
+
     @Test("A document that is neither an address nor a path scopes nothing, rather than guessing.")
     func unrecognisedDocumentIsNoScope() {
         func scope(_ document: String?) -> String? {
