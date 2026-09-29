@@ -125,7 +125,8 @@ public struct TerminalLineCheck: Sendable {
     func landing(of name: String, _ arguments: [ShellWord], from directory: String?) -> Landing? {
         let flags = Self.valueFlags[name] ?? []
         let operands = Self.operands(
-            of: arguments, valueFlags: flags, plusIsFlag: Self.editors.contains(name))
+            of: arguments, valueFlags: flags, plusIsFlag: Self.editors.contains(name),
+            dashModeIsOperand: name == "chmod")
         switch name {
         case "cd", "pushd":
             return changeDirectory(arguments, from: directory)
@@ -322,8 +323,10 @@ public struct TerminalLineCheck: Sendable {
     }
 
     /// The words that are not flags or a flag's value, everything after `--` included.
-    static func operands(of arguments: [ShellWord], valueFlags: Set<String>, plusIsFlag: Bool) -> [ShellWord]
-    {
+    static func operands(
+        of arguments: [ShellWord], valueFlags: Set<String>, plusIsFlag: Bool,
+        dashModeIsOperand: Bool = false
+    ) -> [ShellWord] {
         var operands: [ShellWord] = []
         var afterDashes = false
         var skipNext = false
@@ -334,13 +337,35 @@ public struct TerminalLineCheck: Sendable {
                 operands.append(word)
             } else if word.text == "--" {
                 afterDashes = true
-            } else if word.text.count > 1, word.text.hasPrefix("-") {
+            } else if word.text.count > 1, word.text.hasPrefix("-"),
+                !(dashModeIsOperand && operands.isEmpty && isSymbolicChmodMode(word.text))
+            {
                 skipNext = valueFlags.contains(word.text)
             } else if !(plusIsFlag && word.text.hasPrefix("+")) {
                 operands.append(word)
             }
         }
         return operands
+    }
+
+    /// Whether a leading dash-prefixed word is a symbolic chmod mode rather than an option.
+    static func isSymbolicChmodMode(_ text: String) -> Bool {
+        text.split(separator: ",", omittingEmptySubsequences: false).allSatisfy { clause in
+            let characters = Array(clause)
+            var operationIndex = 0
+            while operationIndex < characters.count, "ugoa".contains(characters[operationIndex]) {
+                operationIndex += 1
+            }
+            guard operationIndex < characters.count,
+                "+-=".contains(characters[operationIndex])
+            else {
+                return false
+            }
+            let operation = characters[operationIndex]
+            let permissions = characters.dropFirst(operationIndex + 1)
+            return permissions.allSatisfy { "rwxXstugo".contains($0) }
+                && (operation == "=" || !permissions.isEmpty)
+        }
     }
 
     /// Whether a word sets a variable for the command after it.

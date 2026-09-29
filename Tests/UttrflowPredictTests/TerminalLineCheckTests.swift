@@ -197,6 +197,15 @@ struct TerminalLineCheckTests {
         #expect(!check.allows(line, in: api), "\(line) names something that is not here")
     }
 
+    @Test("A leading symbolic chmod mode is not mistaken for an option.")
+    func chmodSymbolicModesCheckEveryPath() {
+        #expect(!check.allows("chmod -x missing.sh", in: api))
+        #expect(check.allows("chmod -x Package.swift", in: api))
+        #expect(check.allows("chmod -x,g+w Package.swift", in: api))
+        #expect(check.allows("chmod -R 755 docs", in: api))
+        #expect(!check.allows("chmod -R 755 missing-dir", in: api))
+    }
+
     @Test(
         "Search pattern files must exist before a terminal line is offered.",
         arguments: [
