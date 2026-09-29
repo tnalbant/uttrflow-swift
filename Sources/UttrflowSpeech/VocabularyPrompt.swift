@@ -31,9 +31,12 @@ enum VocabularyPrompt {
         for word in words {
             // Spaced rather than punctuated: the decoder copies a mark between two listed words into the transcript.
             let piece = ids(of: " " + word, using: tokenizer)
-            guard !piece.isEmpty,
-                opening.count + body.count + piece.count + closing.count <= maximumTokens
-            else { continue }
+            guard !piece.isEmpty else {
+                continue
+            }
+            guard opening.count + body.count + piece.count + closing.count <= maximumTokens else {
+                break
+            }
             body += piece
         }
         return body.isEmpty ? nil : opening + body + closing

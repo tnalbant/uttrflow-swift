@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import UttrflowCore
 import UttrflowPredict
 
 private import Synchronization
@@ -10,7 +11,7 @@ extension MacContextEngine {
     /// The engine as the app uses it.
     public convenience init() {
         self.init(
-            readFrontmostApplication: { await MainActor.run { MacContextEngine.frontmostApplication() } },
+            readFrontmostApplication: { MacContextEngine.frontmostApplication() },
             readFocusedWindow: { await MacContextEngine.focusedWindow(of: $0) },
             ownBundleIdentifier: Bundle.main.bundleIdentifier,
             ownProcessIdentifier: ProcessInfo.processInfo.processIdentifier,
@@ -41,8 +42,7 @@ extension MacContextEngine {
         let token: any NSObjectProtocol
     }
 
-    /// Identity, from NSWorkspace, on the main thread the one place it is safe to read.
-    @MainActor
+    /// Identity, from NSWorkspace, read off the main actor as `UttrflowInput` reads it. See `Docs/context-budget.md`.
     static func frontmostApplication() -> FrontmostApplication? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         return FrontmostApplication(
@@ -103,13 +103,12 @@ extension MacContextEngine {
         let selected = field.flatMap { SurfaceProbe.string($0, kAXSelectedTextAttribute) }
         guard isWanted() else { return FocusedWindow(title: title, selectedText: selected) }
         let caret = field.flatMap { field in
-            let textRange = resolvedSelection.flatMap { answer -> CFRange? in
+            let selection = resolvedSelection.flatMap { answer -> Range<Int>? in
                 guard case .range(let range) = answer else { return nil }
-                return range
-            }.flatMap { range in
-                AccessibilityRange.selection(location: range.location, length: range.length)
+                return AccessibilityRange.selection(location: range.location, length: range.length)
             }
-            return CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: textRange)
+            return bounded(field, selection: selection)
+                ?? CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: selection)
         }
         return FocusedWindow(
             title: title, selectedText: selected,
@@ -124,6 +123,39 @@ extension MacContextEngine {
             identifier: SurfaceProbe.string(field, kAXIdentifierAttribute),
             placeholder: SurfaceProbe.string(field, kAXPlaceholderValueAttribute),
             description: SurfaceProbe.string(field, kAXDescriptionAttribute),
-            value: { SurfaceProbe.string(field, kAXValueAttribute) })
+            value: {
+                CaretWindow.prefix(length: length(of: field), ranged: { text(field, in: $0) })
+                    ?? SurfaceProbe.string(field, kAXValueAttribute)
+            })
+    }
+
+    /// The text either side of the selection read by range, or `nil` where the field needs its whole value read.
+    private static func bounded(_ field: AXUIElement, selection: Range<Int>?) -> CaretText.Sides? {
+        guard let selection, let length = length(of: field), selection.upperBound <= length,
+            let before = CaretWindow.before(
+                selection.lowerBound, characters: InsertionPoint.precedingLimit,
+                ranged: { text(field, in: $0) }),
+            let after = CaretWindow.after(
+                selection.upperBound, characters: InsertionPoint.followingLimit, length: length,
+                ranged: { text(field, in: $0) })
+        else { return nil }
+        return CaretText.around(before + after, selection: before.utf16.count..<before.utf16.count)
+    }
+
+    /// The field's length in UTF-16 units, or `nil` when it will not say.
+    private static func length(of field: AXUIElement) -> Int? {
+        var value: AnyObject?
+        guard
+            AXUIElementCopyAttributeValue(field, kAXNumberOfCharactersAttribute as CFString, &value)
+                == .success
+        else { return nil }
+        return (value as? NSNumber)?.intValue
+    }
+
+    /// The text a UTF-16 range of the field covers, or `nil` when it will not read by range.
+    private static func text(_ field: AXUIElement, in range: Range<Int>) -> String? {
+        SurfaceProbe.parameterized(
+            field, kAXStringForRangeParameterizedAttribute,
+            CFRange(location: range.lowerBound, length: range.count)) as? String
     }
 }

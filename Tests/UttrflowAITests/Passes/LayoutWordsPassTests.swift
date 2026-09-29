@@ -112,11 +112,32 @@ struct LayoutWordsPassTests {
         arguments: [
             "her first new line was funny", "our best new line got a laugh",
             "his first new paragraph was long", "the very last new line matters",
+            "that final new paragraph needs work", "the opening new line got applause",
+            "her next new paragraph starts badly", "a great new line got a laugh",
+            "the funniest new line was hers", "our tallest new line got a laugh",
+            "the brightest new paragraph needs work",
             "her new line manager is kind", "every new line counts",
         ]
     )
     func leavesModifiedMentions(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("preserves every reported adjective mention and still follows a spoken line break command")
+    func preservesIssue2458AcceptanceCases() {
+        let mentions = [
+            "our best new line got a laugh",
+            "her last new line, honestly, flopped",
+            "that final new paragraph needs work",
+            "the opening new line got applause",
+            "her next new paragraph starts badly",
+            "a great new line got a laugh",
+            "the funniest new line was hers",
+        ]
+        for input in mentions {
+            #expect(cleaned(input, by: sut) == input)
+        }
+        #expect(cleaned("write the date new line then sign it", by: sut) == "write the date\nthen sign it")
     }
 
     @Test(
@@ -132,17 +153,10 @@ struct LayoutWordsPassTests {
     }
 
     @Test(
-        "leaves a layout phrase after every modifier in the table",
-        arguments: MentionGuard.modifiers.sorted())
-    func leavesEachModifier(modifier: String) {
-        let input = "the \(modifier) new line counts"
-        #expect(cleaned(input, by: sut) == input)
-    }
-
-    @Test(
-        "still lays out a phrase whose nearest opener heads a noun before it",
+        "still lays out commands and phrases whose nearest opener heads a noun before it",
         arguments: [
             ("we need eggs new line milk", "we need eggs\nmilk"),
+            ("write the date new line then sign it", "write the date\nthen sign it"),
             ("retry the request new line log the failure", "retry the request\nlog the failure"),
             (
                 "thanks for the update new paragraph the second issue",

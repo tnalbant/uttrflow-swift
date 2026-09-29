@@ -6,7 +6,7 @@ Hold the shortcut, let go, and the app stays listening. The menu bar stays lit, 
 shortcut does nothing from then on, and the only way out is to force-quit. Sometimes it
 happens on the first dictation after launch; sometimes after hours of working fine.
 
-## There are two causes, and they are unrelated
+## There are three causes, and they are unrelated
 
 ### 1. The release event never arrives
 

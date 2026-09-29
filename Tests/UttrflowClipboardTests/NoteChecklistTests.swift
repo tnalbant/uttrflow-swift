@@ -115,6 +115,21 @@ struct NoteChecklistTests {
         #expect(NoteChecklist.items(in: bare).map(\.isChecked) == [true])
     }
 
+    @Test("single-quoted and unquoted checkbox types are recognized, other inputs are not")
+    func recognizesCheckboxTypeSpellings() {
+        #expect(NoteChecklist.items(in: "<input type='checkbox'>").map(\.isChecked) == [false])
+        #expect(NoteChecklist.items(in: "<input type=checkbox checked/>").map(\.isChecked) == [true])
+        #expect(NoteChecklist.items(in: "<input type=\"text\" checked>").isEmpty)
+    }
+
+    @Test("an unclosed class quote does not create a checked item")
+    func unclosedClassQuoteIsNotACheckbox() {
+        let malformed = "<li class=\"checked"
+
+        #expect(NoteChecklist.items(in: malformed).isEmpty)
+        #expect(NoteChecklist.toggling(0, in: malformed) == nil)
+    }
+
     /// The attribute is `aria-checked`, and the box it describes is not ticked.
     @Test("an attribute merely ending in checked is not the checked attribute")
     func ariaCheckedIsNotChecked() {
@@ -129,6 +144,7 @@ struct NoteChecklistTests {
     func malformed() {
         #expect(NoteChecklist.items(in: "<input type=\"checkbox\"").isEmpty)
         #expect(NoteChecklist.toggling(0, in: "<li class=\"checked\"") == nil)
+        #expect(NoteChecklist.items(in: "<li class=\"checked").isEmpty)
         #expect(NoteChecklist.items(in: "").isEmpty)
     }
 }

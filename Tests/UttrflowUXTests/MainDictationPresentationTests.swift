@@ -46,7 +46,7 @@ extension HistoryFixture {
         return DictationPresenter.figures(
             today: today, earlier: earlier,
             dropped: HistoryPresenter.dropped(entries, days: days, now: now),
-            calendar: calendar, locale: locale)
+            calendar: calendar, now: now, locale: locale)
     }
 }
 
@@ -103,7 +103,7 @@ struct DictationFiguresTests {
         #expect(figure?.comment == "days in a row")
     }
 
-    /// Counted from the most recent day, not today, so a quiet morning does not break the streak.
+    /// Yesterday is still current when the user has not dictated yet today.
     @Test("a morning with nothing in it yet does not break the streak")
     func streakSurvivesAQuietMorning() {
         let figures = HistoryFixture.figures(entries: [
@@ -111,6 +111,16 @@ struct DictationFiguresTests {
             HistoryFixture.entry("the day before", daysAgo: 2),
         ])
         #expect(figures.first { $0.caption == "Day streak" }?.value == "2")
+    }
+
+    @Test("a run ending before yesterday is not shown as a current streak")
+    func staleStreakIsOmitted() {
+        let figures = HistoryFixture.figures(entries: [
+            HistoryFixture.entry("five days ago", daysAgo: 5),
+            HistoryFixture.entry("six days ago", daysAgo: 6),
+            HistoryFixture.entry("seven days ago", daysAgo: 7),
+        ])
+        #expect(!figures.contains { $0.caption == "Day streak" || $0.caption == "Day dictating" })
     }
 
     /// Running out of history is not deletion: a new user's short streak gets the plain caption.

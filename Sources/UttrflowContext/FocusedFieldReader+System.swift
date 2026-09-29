@@ -27,6 +27,10 @@ public enum FocusedFieldReader {
     /// Its own thread, because these calls block until the other application answers.
     private static let queue = LatestOnlyQueue(label: "com.uttrflow.focused-field", qos: .userInitiated)
 
+    /// Keeps armed-offer checks from replacing a full field read.
+    private static let selectionQueue = LatestOnlyQueue(
+        label: "com.uttrflow.focused-selection", qos: .utility)
+
     /// Holds the stable answers for one focused field and window only.
     private static let stableSnapshot = OneEntryCache<StableSnapshotKey, StableSnapshotValue>()
 
@@ -118,6 +122,24 @@ public enum FocusedFieldReader {
             return reading
         }
     }
+
+    /// Reads only the focused element and selection, for the short time a suggestion is armed.
+    public static func focusedSelection() async -> FocusedFieldSelection? {
+        guard let app = await frontmostApp() else { return nil }
+        return await selectionQueue.run(within: .milliseconds(250)) { isWanted in
+            guard isWanted(), AXIsProcessTrusted(),
+                let field = SurfaceProbe.focusedField(of: app.processIdentifier), isWanted()
+            else { return nil }
+            _ = AXUIElementSetMessagingTimeout(field, elementTimeoutInSeconds)
+            guard let range = SurfaceProbe.selectedRange(field), isWanted() else { return nil }
+            return FocusedFieldSelection(
+                processIdentifier: app.processIdentifier, elementHash: CFHash(field),
+                range: NSRange(location: range.location, length: range.length))
+        }
+    }
+
+    /// Cancels a selection poll when the offer is withdrawn.
+    public static func cancelFocusedSelectionRead() { selectionQueue.invalidate() }
 
     /// Stops the current field read after its in-flight message, so a canceled turn sends no further questions.
     public static func cancelRead() { queue.invalidate() }
@@ -285,6 +307,10 @@ public enum FocusedFieldReader {
         // A combobox field says when its own list is open, one flag on the field itself.
         let ownList = SurfaceProbe.integer(field, "AXExpanded") == 1
         guard goOn() else { return nil }
+        let isEnabled = SurfaceProbe.boolean(field, kAXEnabledAttribute)
+        guard goOn() else { return nil }
+        let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
+        guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
         let caretRect = caret(field, at: range, frame: fieldRect, pointSize: style?.size, while: goOn)
         guard goOn() else { return nil }
@@ -321,13 +347,23 @@ public enum FocusedFieldReader {
             fontFamily: style?.family,
             textColor: style?.color,
             isSecure: secure,
+            isEnabled: isEnabled,
+            isEditable: isEditable,
             isComposing: Composition.isComposing(
                 markedText: marked, inputSource: CompositionProbe.inputSourceKind()),
             markedText: marked,
             showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
-            windowTitle: title
+            windowTitle: title,
+            windowNumber: windowNumber(of: field)
         )
+    }
+
+    /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
+    private static func windowNumber(of field: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(field, &number) == .success else { return nil }
+        return number
     }
 
     /// The caret's line read off an editor's rendered text, for the empty caret-sized input such an editor keeps focused.
