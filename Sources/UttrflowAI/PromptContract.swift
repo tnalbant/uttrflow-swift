@@ -17,7 +17,7 @@ public enum PromptContract {
         - keep technical terms and units as spoken, but write an acronym in capitals: api → API, json → JSON
         - write Hindi in the Latin alphabet people type, never in \
         Devanagari — "kal office jaunga", not "कल ऑफिस जाऊंगा" and not "kal office jaoonga"; never translate a \
-        word already in English
+        Hindi into English or English into Hindi: "haan theek hai", not "Yes, okay"; keep every English word in English
         - never invent or change a name, number, date or amount
         - when unsure, keep the original wording
 
@@ -35,7 +35,7 @@ public enum PromptContract {
         never one not offered.
         """
 
-    /// The worked examples every destination is shown: general English, acronym casing, a slot restated, Hindi in the Latin alphabet, a spelling off the screen, prose kept as prose, and a continued sentence.
+    /// The worked examples every destination is shown: general English, acronym casing, a slot restated, Hindi romanised without translation, a spelling off the screen, prose kept as prose, and a continued sentence.
     public static let examples: [WorkedExample] = [
         WorkedExample(
             spoken: "when does the library close on sunday",
@@ -55,6 +55,9 @@ public enum PromptContract {
         WorkedExample(
             spoken: "मैं आज के standup में deployment के बारे में बात करूंगा",
             cleaned: "Main aaj ke standup mein deployment ke baare mein baat karunga."),
+        WorkedExample(
+            spoken: "हाँ ठीक है",
+            cleaned: "Haan theek hai."),
         WorkedExample(
             spoken: "कल मैं office नहीं आऊंगा I am working from home",
             cleaned: "Kal main office nahi aaunga, I am working from home."),
