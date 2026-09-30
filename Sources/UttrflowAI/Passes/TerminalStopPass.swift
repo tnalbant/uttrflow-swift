@@ -21,6 +21,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         var draft = draft
         if layout.contains(.singleLine) { Self.flatten(&draft) }
         if layout.contains(.paragraphs), policy != .never { Self.stopParagraphs(&draft) }
+        Self.separateLeadingQuestionOpener(&draft, layout: layout)
         Self.separateTrailingRequest(&draft, layout: layout)
         Self.separateTrailingRightTag(&draft, layout: layout)
         guard let last = draft.presentIndices.last, !draft.words[last].isLayoutMark else { return draft }
@@ -50,6 +51,22 @@ public struct TerminalStopPass: WholeTextCleaningPass {
             !shapes[start - 1].suffix.contains(where: { ".!?;,:".contains($0) })
         else { return }
         let index = live[start - 1]
+        draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
+    /// Sets off the address or multiword lead-in before a direct question.
+    private static func separateLeadingQuestionOpener(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices
+        let start = live.dropLast().lastIndex {
+            draft.words[$0].isLayoutMark || draft.shape(at: $0).endsSentence
+        }
+        let sentence = Array(live[(start.map { $0 + 1 } ?? 0)...])
+        let shapes = sentence.map { draft.shape(at: $0) }
+        guard let opener = QuestionShape.leadingQuestionOpenerIndex(in: shapes),
+            !shapes[opener].suffix.contains(where: { ".!?;,:".contains($0) })
+        else { return }
+        let index = sentence[opener]
         draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
     }
 

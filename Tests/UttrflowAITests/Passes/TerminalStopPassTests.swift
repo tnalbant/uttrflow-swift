@@ -24,6 +24,20 @@ struct TerminalStopPassTests {
         "finishes a sentence that asks a question with a question mark",
         arguments: [
             ("where did you put the keys", "where did you put the keys?"),
+            ("papa did you take your medicine", "papa, did you take your medicine?"),
+            (
+                "didi can you ask jiju if he's free on saturday",
+                "didi, can you ask jiju if he's free on saturday?"
+            ),
+            (
+                "hey quick question do we support ios sixteen or only seventeen and above",
+                "hey quick question, do we support ios sixteen or only seventeen and above?"
+            ),
+            ("papa did the shopping", "papa did the shopping."),
+            (
+                "papa did the shopping. where is my bag",
+                "papa did the shopping. where is my bag?"
+            ),
             ("did the tests pass should i merge it now", "did the tests pass should i merge it now?"),
             ("the printer is jammed again who used it last", "the printer is jammed again who used it last."),
             ("Done. can you review the PR", "Done. can you review the PR?"),

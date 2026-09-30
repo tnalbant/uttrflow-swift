@@ -18,6 +18,19 @@ public enum QuestionShape {
         return opensAQuestion(clause) && !runsOn(clause)
     }
 
+    /// The word that closes a leading address or question lead-in before an inverted clause.
+    public static func leadingQuestionOpenerIndex(in shapes: [WordShape]) -> Int? {
+        let spoken = shapes.indices.filter { !shapes[$0].key.isEmpty }
+        let words = spoken.map { shapes[$0].key.replacingOccurrences(of: "\u{2019}", with: "'") }
+        let afterOneWordOpeners = Array(words.drop(while: openers.contains))
+        let skipped = words.count - afterOneWordOpeners.count
+        if opensAfterAddress(afterOneWordOpeners) { return spoken[skipped] }
+        guard afterOneWordOpeners.starts(with: questionLeadIns) else { return nil }
+        let clause = clauseAfterOpeners(words)
+        guard opensAQuestion(clause), !runsOn(clause) else { return nil }
+        return spoken[skipped + questionLeadIns.count - 1]
+    }
+
     /// The start of a trailing question after a comma or an inverted request modal.
     static func trailingQuestionStart(in shapes: [WordShape]) -> Int? {
         if let comma = shapes.dropLast().lastIndex(where: { $0.suffix.contains(",") }) {
