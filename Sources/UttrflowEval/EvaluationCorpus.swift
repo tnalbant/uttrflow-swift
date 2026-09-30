@@ -173,6 +173,18 @@ public enum EvaluationCorpus {
             mustKeep: ["link", "doc"]
         ),
         .init(
+            id: "repeated-intensifier-chain", category: .everyday,
+            spoken: "it went on and on and on",
+            expected: "It went on and on and on.",
+            mustKeep: ["on and on and on"]
+        ),
+        .init(
+            id: "repeated-continuation-kept", category: .everyday,
+            spoken: "blah blah blah and so on and so on",
+            expected: "Blah blah blah and so on and so on.",
+            mustKeep: ["and so on and so on"]
+        ),
+        .init(
             id: "i-mean-correction", category: .everyday,
             spoken: "send the invoice on tuesday I mean on wednesday",
             expected: "Send the invoice on Wednesday.",
