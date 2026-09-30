@@ -121,6 +121,28 @@ struct SuggestionGeometryTests {
         #expect(anchor?.frame.maxX == field.maxX)
     }
 
+    @Test("An RTL ghost grows left from a caret near the field's right edge")
+    func rtlGhostNearRightEdge() throws {
+        let field = CGRect(x: 400, y: 490, width: 300, height: 30)
+        let atRight = CGRect(x: 680, y: 500, width: 0, height: 17)
+        let anchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: atRight, window: documentWindow, field: field,
+                screen: mainScreen, size: strip, direction: .rightToLeft))
+        #expect(anchor.frame.maxX == atRight.minX)
+        #expect(anchor.frame.minX == field.minX)
+    }
+
+    @Test("An RTL caret near the field's left edge has too little room and draws nothing")
+    func rtlGhostNearLeftEdgeHasNoRoom() {
+        let field = CGRect(x: 400, y: 490, width: 300, height: 30)
+        let atLeft = CGRect(x: 410, y: 500, width: 0, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: atLeft, window: documentWindow, field: field,
+                screen: mainScreen, size: strip, direction: .rightToLeft) == nil)
+    }
+
     @Test("A field frame that does not hold the caret falls to the window edge, not the screen")
     func anUntrustworthyFieldFallsToTheWindow() {
         let long = CGSize(width: 2_000, height: 24)

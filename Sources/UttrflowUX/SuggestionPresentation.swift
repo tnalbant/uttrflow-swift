@@ -1,6 +1,11 @@
 public import CoreGraphics
 public import UttrflowPredict
 
+public enum SuggestionWritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+}
+
 /// What the user's accessibility settings ask the suggestion surface to do differently.
 public struct SuggestionAppearance: Sendable, Equatable {
     /// Increase Contrast, under which grey text on the user's own line fails to read.
@@ -101,6 +106,8 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let prefersMonospaced: Bool
     /// The widest the surface may draw, the room from the caret to the field's or screen's edge, past which text ends in an ellipsis.
     public let maximumWidth: CGFloat?
+    /// The direction used to lay out the continuation.
+    public let direction: SuggestionWritingDirection
     /// The share of the line's colour the ghost is drawn at, raised to full under a contrast setting.
     public let opacity: Double
     /// Whether the ghost is underlined, which is what tells it from typed text once it is drawn at full strength.
@@ -121,7 +128,8 @@ public struct SuggestionPresentation: Sendable, Equatable {
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
         fieldTextColor: TextColor? = nil,
-        maximumWidth: CGFloat? = nil
+        maximumWidth: CGFloat? = nil,
+        direction: SuggestionWritingDirection = .leftToRight
     ) {
         self.acceptKey = acceptKey
         self.fontFamily = fontFamily
@@ -140,6 +148,7 @@ public struct SuggestionPresentation: Sendable, Equatable {
         // A field that reports neither size nor face is most often a terminal, where a monospaced default lines up.
         prefersMonospaced = fieldPointSize == nil && fontFamily == nil
         self.maximumWidth = maximumWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        self.direction = direction
         // Faint grey is the intent; a contrast setting keeps the text but drops the transparency.
         opacity = appearance.demandsOpaqueGhost ? Self.opaqueGhostOpacity : Self.ghostOpacity
         underlinesGhost = appearance.demandsOpaqueGhost

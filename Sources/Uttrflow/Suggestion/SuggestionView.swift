@@ -15,7 +15,10 @@ struct SuggestionView: View {
             } action: {
                 onDesiredSize($0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(
+                maxWidth: .infinity, maxHeight: .infinity,
+                alignment: presentation.direction == .rightToLeft ? .topTrailing : .topLeading
+            )
             .accessibilityElement(children: .combine)
             .accessibilityLabel(presentation.accessibilityLabel)
     }
@@ -60,10 +63,19 @@ struct SuggestionView: View {
 
     /// The continuation on the caret's own line, and the list of every candidate under it only once it is opened.
     private var ghost: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        HStack {
+            if presentation.direction == .rightToLeft { Spacer(minLength: 0) }
+            ghostContent
+            if presentation.direction == .leftToRight { Spacer(minLength: 0) }
+        }
+    }
+
+    private var ghostContent: some View {
+        VStack(alignment: presentation.direction == .rightToLeft ? .trailing : .leading, spacing: 0) {
             if let inline = presentation.inline { inlineLine(inline) }
             if presentation.isExpanded { list }
         }
+        .environment(\.layoutDirection, presentation.direction == .rightToLeft ? .rightToLeft : .leftToRight)
     }
 
     /// What the accept key will add, finishing the user's line, and nothing else: the grey, or its underline, is the hint.
@@ -74,7 +86,10 @@ struct SuggestionView: View {
 
     /// Every candidate as a whole line, the one Tab takes at ghost strength and the rest dimmer, then the keys.
     private var list: some View {
-        VStack(alignment: .leading, spacing: presentation.pointSize * 0.2) {
+        VStack(
+            alignment: presentation.direction == .rightToLeft ? .trailing : .leading,
+            spacing: presentation.pointSize * 0.2
+        ) {
             ForEach(Array(presentation.list.enumerated()), id: \.offset) { _, row in
                 listRow(row)
             }

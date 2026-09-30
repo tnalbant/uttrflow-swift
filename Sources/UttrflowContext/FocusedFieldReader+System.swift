@@ -313,7 +313,7 @@ public enum FocusedFieldReader {
         let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
         guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
-        let caretRect = caret(
+        let caretResult = caret(
             field, at: range, value: value, selection: read.selection, frame: fieldRect,
             pointSize: style?.size, while: goOn)
         guard goOn() else { return nil }
@@ -343,7 +343,8 @@ public enum FocusedFieldReader {
             document: stable.document,
             value: secure ? nil : hidden.map { $0.before + $0.after } ?? value,
             selection: hidden.map { NSRange(location: $0.before.utf16.count, length: 0) } ?? read.selection,
-            caret: (hidden?.caret ?? caretRect).map { flip($0, below: flipped) },
+            caret: (hidden?.caret ?? caretResult?.caret).map { flip($0, below: flipped) },
+            writingDirection: hidden == nil ? caretResult?.direction ?? .unknown : .unknown,
             window: windowRect.map { flip($0, below: flipped) },
             field: (hidden?.line ?? fieldRect).flatMap {
                 FocusedFieldSnapshot.isCaretShaped($0) ? nil : flip($0, below: flipped)
@@ -464,8 +465,8 @@ public enum FocusedFieldReader {
     private static func caret(
         _ field: AXUIElement, at range: CFRange?, value: String?, selection: NSRange?, frame: CGRect?,
         pointSize: CGFloat?, while goOn: () -> Bool
-    ) -> CGRect? {
-        CaretLocator.caret(
+    ) -> CaretLocator.Result? {
+        CaretLocator.result(
             at: range.map { (location: $0.location, length: $0.length) }, frame: frame,
             pointSize: pointSize, value: value, textSelectionLocation: selection?.location,
             bounds: { goOn() ? SurfaceProbe.bounds(field, at: CFRange(location: $0, length: $1)) : nil },

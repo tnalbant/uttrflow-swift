@@ -16,6 +16,7 @@ private struct SuggestionRequest: Equatable {
     /// What is already in the field, so the surface offers only what the suggestion adds.
     var typed: String = ""
     var placement: SuggestionPlacement = .inlineGhost
+    var direction: SuggestionDirection = .leftToRight
     var caret: CGRect?
     var window: CGRect?
     /// The field's own rectangle, whose right edge a long ghost is cut at.
@@ -60,6 +61,9 @@ final class SuggestionPanelController {
     private var measurer: NSHostingView<SuggestionGhostLine>?
     private var request = SuggestionRequest()
     private var panelSize = CGSize(width: 1, height: 1)
+    private var geometryDirection: WritingDirection {
+        request.direction == .rightToLeft ? .rightToLeft : .leftToRight
+    }
     private var appearanceObserver: (any NSObjectProtocol)?
     private var screenParametersObserver: (any NSObjectProtocol)?
     private var announcer = SuggestionAnnouncer()
@@ -95,6 +99,7 @@ final class SuggestionPanelController {
         _ suggestion: Suggestion,
         typed: String = "",
         placement: SuggestionPlacement,
+        direction: SuggestionDirection = .leftToRight,
         caret: CGRect? = nil,
         window: CGRect? = nil,
         field: CGRect? = nil,
@@ -105,7 +110,7 @@ final class SuggestionPanelController {
         textColor: TextColor? = nil
     ) -> Bool {
         let next = SuggestionRequest(
-            suggestion: suggestion, typed: typed, placement: placement, caret: caret,
+            suggestion: suggestion, typed: typed, placement: placement, direction: direction, caret: caret,
             window: window, field: field, fieldPointSize: fieldPointSize, selection: selection,
             acceptKey: acceptKey, fontFamily: fontFamily, textColor: textColor)
         // The same offer at the same caret is already on screen, so nothing is laid out, placed or fronted again.
@@ -200,13 +205,15 @@ final class SuggestionPanelController {
             ? nil
             : request.caret.flatMap {
                 SuggestionGeometry.availableWidth(
-                    caret: $0, field: request.field, window: request.window, screen: screenFrame)
+                    caret: $0, field: request.field, window: request.window, screen: screenFrame,
+                    direction: geometryDirection)
             }
         var presentation = SuggestionPresentation(
             request.suggestion, typed: request.typed, selection: request.selection,
             fieldPointSize: request.fieldPointSize, appearance: Self.appearance(),
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
-            fieldTextColor: request.textColor, maximumWidth: room)
+            fieldTextColor: request.textColor, maximumWidth: room,
+            direction: request.direction == .rightToLeft ? .rightToLeft : .leftToRight)
         // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.
         if let inline = presentation.inline, let room = presentation.maximumWidth,
             !SuggestionGeometry.fits(width(of: inline, in: presentation), in: room)
@@ -300,7 +307,7 @@ final class SuggestionPanelController {
         guard
             let anchor = SuggestionGeometry.anchor(
                 for: request.placement, caret: request.caret, window: request.window,
-                field: request.field, screen: screenFrame, size: panelSize,
+                field: request.field, screen: screenFrame, size: panelSize, direction: geometryDirection,
                 fontAscent: font.ascender, fontDescent: -font.descender)
         else { return false }
         guard anchor.frame != panel.frame else { return true }

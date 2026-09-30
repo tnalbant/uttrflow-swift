@@ -1197,6 +1197,7 @@ final class SuggestionCoordinator {
         }
         let shown = panel.show(
             update.suggestion, typed: session.typed, placement: .inlineGhost, caret: caret,
+            direction: snapshot.writingDirection == .rightToLeft ? .rightToLeft : .leftToRight,
             window: snapshot.window, field: snapshot.ghostField, fieldPointSize: snapshot.pointSize,
             selection: session.selection,
             acceptKey: preferences.acceptKeys.key(
