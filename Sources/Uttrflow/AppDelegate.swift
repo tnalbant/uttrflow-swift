@@ -812,7 +812,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             coordinator.onTapRestChanged = { [weak self] result in
                 guard let result else { self?.suggestionRuntime = .starting; return }
                 switch result {
-                case .success: self?.suggestionRuntime = .running
+                case .success:
+                    self?.suggestionRuntime =
+                        coordinator.secureInput.isBlocking ? .secureInputBlocked : .running
                 case .failure: self?.suggestionRuntime = .tapFailed
                 }
             }
