@@ -97,6 +97,16 @@ struct PieceJoinerListTests {
                 == "First, the milk and the eggs.\n\nSecond, the bread.")
     }
 
+    @Test("keeps ordinal subjects and decimal points in prose")
+    func ordinalAndDecimalSubjectsAreProse() {
+        #expect(
+            joined(["First place went to Sam.", "Second place went to Priya."], .document)
+                == "First place went to Sam.\n\nSecond place went to Priya.")
+        #expect(
+            joined(["Point one seconds of lag is fine.", "Point two seconds is not."], .document)
+                == "Point one seconds of lag is fine. Point two seconds is not.")
+    }
+
     /// "One person came" counts the people; a bare cardinal announces an item only where the speaker set it off, and an ordinal never counts.
     @Test("a bare cardinal counting what follows it is prose, however the pieces line up")
     func anAmountIsNotAnItem() {

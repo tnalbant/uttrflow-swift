@@ -226,10 +226,16 @@ enum PieceJoiner {
             length = 1
         }
         guard position + length < live.count else { return nil }
+        let prefix = length == 0 ? nil : draft.shape(at: live[position]).key
         let head = draft.shape(at: live[position + length])
-        if let value = Self.ordinals[head.key] { return (value, .ordinal, length + 1) }
+        if let value = Self.ordinals[head.key] {
+            guard prefix != nil || head.endsClause else { return nil }
+            return (value, .ordinal, length + 1)
+        }
         // A bare cardinal counts the words after it as readily as it announces an item — "one bug is still open" — so it needs the announcing word or the mark the speaker set it off with.
         guard length > 0 || head.endsClause else { return nil }
+        // A point-number needs a clause mark to distinguish a list item from a decimal.
+        guard prefix != "point" || head.endsClause else { return nil }
         if let value = Self.cardinals[head.key] { return (value, .cardinal, length + 1) }
         return nil
     }
