@@ -81,6 +81,12 @@ struct ScoredSpan: Equatable {
         return bytes.indices.filter { bytes[$0].count >= owed.count && bytes[$0].starts(with: owed) }
     }
 
+    /// Every token that writes the owed bytes first, read from the vocabulary's prebuilt prefix index.
+    static func continuing(_ owed: [UInt8], in vocabulary: TokenHealing.Vocabulary) -> [Int] {
+        guard !owed.isEmpty else { return [] }
+        return vocabulary.continuing(owed)
+    }
+
     /// The judged log-probabilities, the first read as P(token | typed remainder) by subtracting the log mass of every token that continues it.
     static func conditioned(_ taken: [Float], onMass mass: Float?) -> [Double] {
         guard let first = taken.first, let mass else { return taken.map(Double.init) }

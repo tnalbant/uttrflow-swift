@@ -56,6 +56,45 @@ struct CaretLocatorTests {
         #expect(field.caret(at: (location: 5, length: 0)) == CGRect(x: 48, y: 10, width: 0, height: 16))
     }
 
+    @Test("Adjacent right-to-left glyph bounds put the caret at the previous glyph's leading edge")
+    func rightToLeftCaretUsesLeadingEdge() throws {
+        let found = try #require(
+            CaretLocator.result(
+                at: (location: 1, length: 0), frame: nil, value: "אב",
+                bounds: { location, _ in
+                    location == 0
+                        ? CGRect(x: 100, y: 10, width: 9, height: 16)
+                        : CGRect(x: 82, y: 10, width: 9, height: 16)
+                }, markerBounds: { nil }))
+        #expect(found.caret == CGRect(x: 100, y: 10, width: 0, height: 16))
+        #expect(found.direction == .rightToLeft)
+    }
+
+    @Test("An RTL paragraph direction places an end-of-line caret at the previous glyph's leading edge")
+    func rightToLeftLineEndUsesParagraphDirection() throws {
+        let found = try #require(
+            CaretLocator.result(
+                at: (location: 2, length: 0), frame: nil, value: "אב",
+                paragraphDirection: .rightToLeft,
+                bounds: { location, _ in
+                    location == 1 ? CGRect(x: 82, y: 10, width: 9, height: 16) : nil
+                }, markerBounds: { nil }))
+        #expect(found.caret == CGRect(x: 82, y: 10, width: 0, height: 16))
+        #expect(found.direction == .rightToLeft)
+    }
+
+    @Test("Overlapping mixed-direction glyph bounds leave direction unknown")
+    func ambiguousCaretDirectionIsUnknown() {
+        let found = CaretLocator.result(
+            at: (location: 1, length: 0), frame: nil, value: "אa",
+            bounds: { location, _ in
+                location == 0
+                    ? CGRect(x: 100, y: 10, width: 12, height: 16)
+                    : CGRect(x: 106, y: 10, width: 12, height: 16)
+            }, markerBounds: { nil })
+        #expect(found?.direction == .unknown)
+    }
+
     @Test("A surrogate-pair emoji is queried as one character before the caret")
     func surrogateEmojiUsesItsFullRange() {
         var requested: (Int, Int)?
@@ -74,13 +113,28 @@ struct CaretLocatorTests {
         let family = "👨‍👩‍👧‍👦"
         var requested: (Int, Int)?
         let field = CaretLocator.caret(
-            at: (location: family.utf16.count, length: 0), frame: nil, value: family, textSelectionLocation: family.utf16.count,
+            at: (location: family.utf16.count, length: 0), frame: nil, value: family,
+            textSelectionLocation: family.utf16.count,
             bounds: { location, length in
                 requested = (location, length)
                 return CGRect(x: 40, y: 10, width: 72, height: 16)
             }, markerBounds: { nil })
         #expect(requested?.0 == 0 && requested?.1 == family.utf16.count)
         #expect(field == CGRect(x: 112, y: 10, width: 0, height: 16))
+    }
+
+    @Test("A selection gets its caret from the glyph at its start")
+    func selectionUsesStartGlyph() {
+        var requested: (Int, Int)?
+        let found = CaretLocator.caret(
+            at: (location: 12, length: 100_000_000), frame: nil, value: "abcdefghijklm",
+            textSelectionLocation: 12,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 30, y: 10, width: 8, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.1 == 1)
+        #expect(found == CGRect(x: 38, y: 10, width: 0, height: 16))
     }
 
     @Test("A bounded text window supplies its local selection while bounds use the field offset")

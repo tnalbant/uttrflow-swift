@@ -45,6 +45,8 @@ public struct RawTranscript: Sendable, Equatable {
     public let effort: DecodeEffort
     /// How many decoder positions the recogniser consumed, where it reports one — used to detect a decode stopped at the cap.
     public let tokensUsed: Int
+    /// Personal dictionary spellings that survived the recogniser's token budget.
+    public let vocabularyPrompt: [String]
 
     public init(
         text: String,
@@ -52,7 +54,8 @@ public struct RawTranscript: Sendable, Equatable {
         languageProbability: Double? = nil,
         segments: [RawSegment] = [],
         effort: DecodeEffort = .none,
-        tokensUsed: Int = 0
+        tokensUsed: Int = 0,
+        vocabularyPrompt: [String] = []
     ) {
         self.text = text
         self.languageIdentifier = languageIdentifier
@@ -60,6 +63,7 @@ public struct RawTranscript: Sendable, Equatable {
         self.segments = segments
         self.effort = effort
         self.tokensUsed = tokensUsed
+        self.vocabularyPrompt = vocabularyPrompt
     }
 }
 

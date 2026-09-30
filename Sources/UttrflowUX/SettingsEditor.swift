@@ -45,6 +45,11 @@ public enum SettingsEditor {
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
+        case .handsFreeDoubleTap(let milliseconds):
+            guard Settings.handsFreeDoubleTapChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hands-free interval.")
+            }
+            updated.handsFreeDoubleTapMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):
@@ -91,6 +96,7 @@ public enum SettingsEditor {
         case .minimisesWhileDictating: settings.minimisesWhileDictating = isOn
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts = isOn
         case .opensAtLogin: settings.opensAtLogin = isOn
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically = isOn
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically = isOn
         case .sharesUsageStatistics: settings.sharesUsageStatistics = isOn
         case .sendsCrashReports: settings.sendsCrashReports = isOn
@@ -131,6 +137,10 @@ public enum SettingsEditor {
             capabilities.canCheckForUpdates
                 ? nil
                 : "This build has no update feed, so there is nothing for it to install."
+        case .checksForUpdatesAutomatically:
+            capabilities.canCheckForUpdates
+                ? nil
+                : "This build has no update feed, so there is nothing to check."
         case .suggestionsEnabled, .sendsCrashReports:
             nil
         case .quietSuggestions:
@@ -165,7 +175,7 @@ public enum SettingsEditor {
 
     /// Said for ⌘, ⌥, ⌃ or ⇧ alone, naming Fn because it is the one key that can be held by itself.
     static let bareModifier =
-        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn."
+        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn after setting ‘Press 🌐 key to’ to Do Nothing in System Settings → Keyboard."
 
     /// Said for a held-modifier chord on an action Carbon registers, which cannot arm it. See `Docs/core-hotkeys.md`.
     static let heldChordNotClaimable =

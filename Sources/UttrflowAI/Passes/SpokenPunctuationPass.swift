@@ -43,6 +43,12 @@ public struct SpokenPunctuationPass: CleaningPass {
     /// Names that are everyday nouns too, so a mid-sentence one is a mark only on positive evidence. See `Docs/cleanup.md`.
     static let ordinaryNames: Set<[String]> = [["comma"], ["colon"], ["dash"]]
 
+    /// Romanised Hindi function words that can follow an explicitly spoken mark.
+    private static let romanisedHindiEvidence: Set<String> = [
+        "aur", "ya", "toh", "phir", "lekin", "par", "ki", "ke", "ka", "ko", "main", "hum", "tum",
+        "aap", "yeh", "woh",
+    ]
+
     public init() {}
 
     public func apply(_ draft: Draft) -> Draft {
@@ -63,7 +69,9 @@ public struct SpokenPunctuationPass: CleaningPass {
                     reach: MentionGuard.phraseReach, kind: found.kind),
                 !isVerb(found.words, at: position, in: live, of: draft),
                 isEvidenced(found.words, at: position, in: live, of: draft, repeated: repeated),
-                isPlaced(found.mark, before: position + found.words.count, in: live, of: draft),
+                isPlaced(
+                    found.mark, before: position + found.words.count, spanning: found.words.count,
+                    in: live, of: draft),
                 attach(
                     found.mark, kind: found.kind, at: position, spanning: found.words.count,
                     in: &live, of: &draft)
@@ -87,13 +95,13 @@ public struct SpokenPunctuationPass: CleaningPass {
 
     private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
         position + words.count <= live.count
-            && draft.sentenceRun(from: position, in: live).count >= words.count
+            && draft.sentenceContains(words.count, from: position, in: live)
             && zip(words, live[position..<position + words.count]).allSatisfy {
                 $0 == draft.shape(at: $1).key
             }
     }
 
-    /// Whether an ordinary name stands at a seam: the text closes, a mark precedes it, a small word follows, or it is said again.
+    /// Whether an ordinary name stands at a seam: it is sentence-final, follows punctuation, or has a continuation.
     private func isEvidenced(
         _ words: [String], at position: Int, in live: [Int], of draft: Draft, repeated: Set<Int>
     ) -> Bool {
@@ -101,7 +109,13 @@ public struct SpokenPunctuationPass: CleaningPass {
         let next = position + words.count
         if closes(at: next, in: live, of: draft) || repeated.contains(live[position]) { return true }
         if position > 0 && draft.shape(at: live[position - 1]).endsClause { return true }
-        return next < live.count && FunctionWords.holds(draft.shape(at: live[next]).key)
+        return next == live.count
+            || next < live.count
+                && isFunctionWordEvidence(draft.shape(at: live[next]).key)
+    }
+
+    private func isFunctionWordEvidence(_ word: String) -> Bool {
+        FunctionWords.holds(word) || Self.romanisedHindiEvidence.contains(word)
     }
 
     /// The word indices of ordinary names said more than once in one sentence, which is a list rather than a noun.
@@ -127,13 +141,26 @@ public struct SpokenPunctuationPass: CleaningPass {
         return Self.particles.contains(draft.shape(at: live[position + 1]).key)
     }
 
-    /// A full stop is used only where the text closes; a hyphen or dash is used only where it does not.
-    private func isPlaced(_ mark: String, before next: Int, in live: [Int], of draft: Draft) -> Bool {
+    /// A full stop is used where the text closes or commas bracket its name; a hyphen or dash is used only where it does not.
+    private func isPlaced(
+        _ mark: String, before next: Int, spanning length: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
         switch mark {
-        case ".": return closes(at: next, in: live, of: draft)
+        case ".":
+            return closes(at: next, in: live, of: draft)
+                || isCommaBracketed(before: next, spanning: length, in: live, of: draft)
         case "-", "\u{2014}": return !closes(at: next, in: live, of: draft)
         default: return true
         }
+    }
+
+    /// A model brackets a dictated full stop with commas when it writes both the mark and its name.
+    private func isCommaBracketed(
+        before next: Int, spanning length: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard next < live.count, next > length else { return false }
+        return draft.shape(at: live[next - length - 1]).suffix.hasSuffix(",")
+            && draft.shape(at: live[next - 1]).suffix.hasSuffix(",")
     }
 
     /// Whether the text ends at `next`, or a layout word, a layout mark or a closing quote stands there.
@@ -152,7 +179,11 @@ public struct SpokenPunctuationPass: CleaningPass {
         // An opening mark needs the word it goes on to stand after it; every other mark needs the one before.
         guard kind == .opening ? after < live.count : position > 0 else { return false }
         if kind == .opening {
-            draft.replace(at: live[after], with: mark + draft.words[live[after]].text, by: Self.id)
+            let following = draft.words[live[after]].text
+            let balanced =
+                mark == "\"" && following.hasSuffix("'")
+                ? String(following.dropLast()) + mark : following
+            draft.replace(at: live[after], with: mark + balanced, by: Self.id)
         } else if mark == "-" {
             let joined = draft.words[live[position - 1]].text + mark + draft.words[live[after]].text
             draft.replace(at: live[position - 1], with: joined, by: Self.id)

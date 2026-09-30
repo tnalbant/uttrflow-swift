@@ -24,6 +24,23 @@ struct PointSizeReadingTests {
         #expect(size == 17)
     }
 
+    @Test("The attributed paragraph style reports explicit right-to-left writing direction")
+    func readsParagraphWritingDirection() throws {
+        let string = try #require(CFAttributedStringCreateMutable(nil, 0))
+        CFAttributedStringReplaceString(string, CFRange(location: 0, length: 0), "אב" as CFString)
+        var direction = CTWritingDirection.rightToLeft
+        let style = withUnsafePointer(to: &direction) { directionPointer in
+            var setting = CTParagraphStyleSetting(
+                spec: .baseWritingDirection,
+                valueSize: MemoryLayout<CTWritingDirection>.size,
+                value: directionPointer)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
+        CFAttributedStringSetAttribute(
+            string, CFRange(location: 0, length: 2), kCTParagraphStyleAttributeName, style)
+        #expect(FocusedFieldReader.writingDirection(inAttributed: string) == .rightToLeft)
+    }
+
     @Test("An attributed string with no font at all yields nothing rather than a wrong size.")
     func withoutAFontYieldsNothing() throws {
         let string = try #require(CFAttributedStringCreateMutable(nil, 0))
@@ -45,12 +62,18 @@ struct PointSizeReadingTests {
     }
 
     /// The shape most applications answer with: no font object, only an `AXFont` dictionary describing one.
-    private func described(size: Double?, family: String?) throws -> CFAttributedString {
+    private func described(
+        size: Double?, family: String?, name: String? = nil, style: String? = nil
+    )
+        throws -> CFAttributedString
+    {
         let string = try #require(CFAttributedStringCreateMutable(nil, 0))
         CFAttributedStringReplaceString(string, CFRange(location: 0, length: 0), "abc" as CFString)
         var font: [String: Any] = [:]
         if let size { font["AXFontSize"] = size }
         if let family { font["AXFontFamily"] = family }
+        if let name { font["AXFontName"] = name }
+        if let style { font["AXFontStyle"] = style }
         CFAttributedStringSetAttribute(
             string, CFRange(location: 0, length: 3), "AXFont" as CFString, font as CFDictionary)
         return string
@@ -63,6 +86,19 @@ struct PointSizeReadingTests {
         #expect(style?.family == "Menlo")
         let size = FocusedFieldReader.pointSize(inAttributed: try described(size: 11, family: "Menlo"))
         #expect(size == 11)
+    }
+
+    @Test("Bold and italic AXFont names preserve their symbolic traits.")
+    func readsAccessibilityFontTraits() throws {
+        let bold = FocusedFieldReader.typeStyle(
+            inAttributed: try described(size: 11, family: "Helvetica", name: "Helvetica-Bold"))
+        #expect(bold?.isBold == true)
+        #expect(bold?.isItalic == false)
+
+        let italic = FocusedFieldReader.typeStyle(
+            inAttributed: try described(size: 11, family: "Helvetica", style: "Italic"))
+        #expect(italic?.isBold == false)
+        #expect(italic?.isItalic == true)
     }
 
     @Test("A dictionary missing one half still yields the other, and one with neither yields nothing.")

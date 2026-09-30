@@ -34,6 +34,30 @@ struct SuggestionGeometryTests {
         #expect(anchor?.frame.maxY == caret.maxY)
     }
 
+    @Test("The ghost baseline follows the field baseline when the caret includes extra line spacing")
+    func ghostBaselineFollowsTallCaret() throws {
+        let fontAscent: CGFloat = 10
+        let fontDescent: CGFloat = 3
+        let tallCaret = CGRect(x: 620, y: 500, width: 2, height: 34)
+        let tallAnchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: tallCaret, window: documentWindow, screen: mainScreen,
+                size: strip, fontAscent: fontAscent, fontDescent: fontDescent))
+        let tallGhostBaseline = tallAnchor.frame.maxY - fontAscent
+        let tallFieldBaseline = tallCaret.minY + fontDescent
+        #expect(abs(tallGhostBaseline - tallFieldBaseline) <= 1)
+
+        let singleLineCaret = CGRect(x: 620, y: 500, width: 2, height: fontAscent - fontDescent)
+        let singleLineAnchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: singleLineCaret, window: documentWindow, screen: mainScreen,
+                size: strip, fontAscent: fontAscent, fontDescent: fontDescent))
+        let singleLineGhostBaseline = singleLineAnchor.frame.maxY - fontAscent
+        let singleLineFieldBaseline = singleLineCaret.minY + fontDescent
+        #expect(abs(singleLineGhostBaseline - singleLineFieldBaseline) <= 1)
+        #expect(abs(singleLineAnchor.frame.maxY - singleLineCaret.maxY) <= 1)
+    }
+
     @Test(
         "A ghost that would run off the right of the screen is cut at the edge, never pulled back over the typed text"
     )
@@ -95,6 +119,28 @@ struct SuggestionGeometryTests {
             size: long)
         #expect(anchor?.frame.minX == caret.maxX)
         #expect(anchor?.frame.maxX == field.maxX)
+    }
+
+    @Test("An RTL ghost grows left from a caret near the field's right edge")
+    func rtlGhostNearRightEdge() throws {
+        let field = CGRect(x: 400, y: 490, width: 300, height: 30)
+        let atRight = CGRect(x: 680, y: 500, width: 0, height: 17)
+        let anchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: atRight, window: documentWindow, field: field,
+                screen: mainScreen, size: strip, direction: .rightToLeft))
+        #expect(anchor.frame.maxX == atRight.minX)
+        #expect(anchor.frame.minX == field.minX)
+    }
+
+    @Test("An RTL caret near the field's left edge has too little room and draws nothing")
+    func rtlGhostNearLeftEdgeHasNoRoom() {
+        let field = CGRect(x: 400, y: 490, width: 300, height: 30)
+        let atLeft = CGRect(x: 410, y: 500, width: 0, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: atLeft, window: documentWindow, field: field,
+                screen: mainScreen, size: strip, direction: .rightToLeft) == nil)
     }
 
     @Test("A field frame that does not hold the caret falls to the window edge, not the screen")

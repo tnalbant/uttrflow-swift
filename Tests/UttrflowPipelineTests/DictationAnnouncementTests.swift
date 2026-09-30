@@ -9,6 +9,15 @@ import Testing
 struct DictationAnnouncementTests {
     private static let words = "Right, so the plan for tomorrow is to finish the drafting."
 
+    @Test("announces the cap warning without interrupting VoiceOver")
+    func capWarningIsNonUrgent() {
+        #expect(
+            DictationPresenter.warningAnnouncement(for: .approaching(remaining: .seconds(60)))
+                == DictationAnnouncement(text: "Dictation ends soon. 1 min left.", isUrgent: false))
+        #expect(DictationPresenter.warningAnnouncement(for: .keepGoing) == nil)
+        #expect(DictationPresenter.warningAnnouncement(for: .finishNow) == nil)
+    }
+
     @Test("says nothing while resting or waiting, since the cues already cover the wait")
     func quietStates() {
         for state in [DictationState.idle, .transcribing, .tidying, .inserting] {

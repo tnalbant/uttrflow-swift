@@ -9,15 +9,18 @@ for it.
 
 Tab by default. The right arrow in terminals, because Tab there is the shell's own
 completion and taking it would break the thing the user is actually trying to do.
-Option-Tab in editors, because Tab there is indentation, native completion, or text
-navigation. This includes code editors, query editors, and document editors such as Word,
-Pages, and TextEdit. The user can override any application, and the override wins over the
-kind.
+Option-Tab in editors and spreadsheets, because Tab there is indentation, native
+completion, text navigation, or cell navigation. This includes code editors, query editors,
+document editors such as Word, Pages, and TextEdit, Numbers or Excel, and browser-based
+Google Sheets when its window title identifies it. The user can override any application,
+and the override wins over the kind.
 
-`AcceptKeys` recognises editors from a bundle-identifier prefix. Terminals are recognised
-by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell the right
-arrow, and `FocusedFieldSnapshot` in `UttrflowContext`, to keep a shell's `AXTextArea` out
-of the prose rule and to strip its prompt from the line. Until recently those were two
+`AcceptKeys` recognises editors from bundle-identifier prefixes and spreadsheets through the
+destination table, which can identify Google Sheets from its window title. Terminals are
+recognised by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell
+the right arrow, and `FocusedFieldSnapshot` in `UttrflowContext`, to keep a shell's
+`AXTextArea` out of the prose rule and to strip its prompt from the line. Until recently
+those were two
 tables — a prefix list in `UttrflowPredict` and an exact-match set in `UttrflowContext` —
 and they disagreed: the prefix list knew Hyper and Tabby, the set did not, and Warp matched
 under one and not the other. There is one table now: the terminal, code editor and query editor rows of
@@ -138,11 +141,11 @@ will not report or set its selection, `TypedTextInsertionEngine` presses Delete 
 character and then types — which works everywhere and costs what the next section says.
 
 The typed route reads before it deletes. A blind backspace could eat a shell prompt, so
-`TypedTextInsertionEngine.write` asks the focused field for the characters before the caret
-(`precedingText`) and, when the field answers with something other than what would be
-replaced, throws `.insertionRejected` and types nothing. A field that will not say what
-precedes the caret is not held up by the check: the deletions go ahead, since a Tab that
-does nothing is the worse failure.
+`TypedTextInsertionEngine.write` checks the suffix already read by suggestion acceptance and,
+when the field answers with something other than what would be replaced, throws
+`.insertionRejected` and types nothing. A direct typed write makes its own `precedingText`
+read. A field that will not say what precedes the caret is not held up by the check: the
+deletions go ahead, since a Tab that does nothing is the worse failure.
 
 The Accessibility route checks too. Before it widens the selection, `AXTextField` compares
 the characters that selection would cover with what the edit replaces

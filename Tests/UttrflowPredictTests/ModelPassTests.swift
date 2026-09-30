@@ -30,11 +30,32 @@ struct ModelPassTests {
     @Test("An earlier answer is reused while the line types on from it, without the typed line itself.")
     func reusesKept() {
         var pass = ModelPass()
-        pass.remember(["git status", "Git stash", "git"], for: query("g"), at: nil)
+        pass.remember(
+            ["git status", "Git stash", "git"], for: query("g"), at: nil,
+            scores: ["git status": -0.4, "Git stash": -0.6])
         #expect(pass.plan(for: query("git st"), at: nil) == .reuse(["git status", "Git stash"], listed: []))
         #expect(pass.plan(for: query("git"), at: nil) == .reuse(["git status", "Git stash"], listed: []))
+        #expect(pass.scores(for: ["git status", "Git stash"]) == ["git status": -0.4, "Git stash": -0.6])
         #expect(pass.plan(for: query("ls"), at: nil) == .ask)
         #expect(pass.plan(for: query("git", in: other), at: nil) == .ask)
+    }
+
+    @Test("Identical completions keep their own field's score on reuse.")
+    func scoresStayWithTheirField() {
+        var first = ModelPass()
+        var second = ModelPass()
+        first.remember(["Say yes."], for: query("Say"), at: "first", scores: ["Say yes.": -0.2])
+        second.remember(["Say yes."], for: query("Say"), at: "second", scores: ["Say yes.": -4.0])
+
+        #expect(first.plan(for: query("Say y"), at: "first") == .reuse(["Say yes."], listed: []))
+        #expect(second.plan(for: query("Say y"), at: "second") == .reuse(["Say yes."], listed: []))
+        let reused = first.scores(for: ["Say yes."])
+        #expect(reused == ["Say yes.": -0.2])
+        #expect(
+            SuggestionSession.generatedDecision(["Say yes."], typed: "Say y", scores: reused)
+                == .certain("Say yes."))
+        #expect(second.scores(for: ["Say yes."]) == ["Say yes.": -4.0])
+        #expect(first.plan(for: query("Say y", in: other), at: "second") == .ask)
     }
 
     @Test("A reused list remembers which lines were machine-listed, so the gate can skip them.")

@@ -4,6 +4,8 @@
 public enum PipelineStage: String, Sendable, Equatable, CaseIterable, Codable {
     /// The microphone opening: the graph built, the tap installed, the engine started.
     case microphoneOpen
+    /// From the shortcut going down until its first audio samples arrive.
+    case keyDownToAudio
     /// Microphone audio arriving.
     case capture
     /// Waiting for the piece that was already being transcribed when the key came up.
@@ -44,11 +46,17 @@ public protocol MetricsRecording: Sendable {
 
     /// Keeps what one piece cost the recogniser beyond a single decode.
     func recordDecoding(_ effort: DecodeEffort) async
+
+    /// Keeps the exact personal dictionary spellings in the last recogniser prompt, in memory only.
+    func recordVocabularyPrompt(_ words: [String]) async
 }
 
 extension MetricsRecording {
     /// Most recorders care only about timings, so reporting decode effort is optional.
     public func recordDecoding(_ effort: DecodeEffort) async {}
+
+    /// Most recorders do not expose personal prompt contents.
+    public func recordVocabularyPrompt(_ words: [String]) async {}
 }
 
 /// A recorder that discards everything, for callers that do not care about timings.
@@ -77,6 +85,11 @@ public struct MetricsFanOut: MetricsRecording {
     /// Passes the decode effort to every recorder.
     public func recordDecoding(_ effort: DecodeEffort) async {
         for recorder in recorders { await recorder.recordDecoding(effort) }
+    }
+
+    /// Passes the in-memory prompt words to the recorders that expose local diagnostics.
+    public func recordVocabularyPrompt(_ words: [String]) async {
+        for recorder in recorders { await recorder.recordVocabularyPrompt(words) }
     }
 }
 

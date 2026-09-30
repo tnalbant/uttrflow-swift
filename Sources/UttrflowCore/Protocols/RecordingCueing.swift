@@ -4,6 +4,8 @@ public protocol RecordingCueing: Sendable {
     func playStart()
     /// Plays the "stopped" cue.
     func playStop()
+    /// Plays the warning that the dictation is nearing its cap.
+    func playWarning()
 }
 
 /// Says nothing, which is what the user gets when they turn sounds off.
@@ -14,4 +16,6 @@ public struct SilentCue: RecordingCueing {
     public func playStart() {}
     /// Plays nothing.
     public func playStop() {}
+    /// Plays nothing.
+    public func playWarning() {}
 }

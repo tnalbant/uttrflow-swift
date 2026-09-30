@@ -208,7 +208,8 @@ struct Bakeoff: AsyncParsableCommand {
         let header =
             "candidate".padded(to: 17) + "version".padded(to: 11) + "params".padded(to: 8)
             + "quant".padded(to: 11) + "size".padded(to: 8) + "pass".padded(to: 7)
-            + "close".padded(to: 7) + "typical".padded(to: 9) + "slowest".padded(to: 9)
+            + "words".padded(to: 7) + "marks".padded(to: 7) + "case".padded(to: 7)
+            + "typical".padded(to: 9) + "slowest".padded(to: 9)
             + "declined".padded(to: 10) + "lost"
         print("\n" + header)
         print(String(repeating: "─", count: header.count + 4))
@@ -224,6 +225,8 @@ struct Bakeoff: AsyncParsableCommand {
                     + description.size.padded(to: 8)
                     + percent(report.passRate).padded(to: 7)
                     + percent(report.meanSimilarity).padded(to: 7)
+                    + (report.meanMarkAccuracy.map(percent) ?? "n/a").padded(to: 7)
+                    + (report.meanCaseAccuracy.map(percent) ?? "n/a").padded(to: 7)
                     + "\(seconds(report.medianDuration))s".padded(to: 9)
                     + "\(seconds(report.slowestDuration))s".padded(to: 9)
                     + "\(report.declinedCount)".padded(to: 10)
@@ -359,6 +362,10 @@ struct Measurement: Codable, Sendable {
 struct StoredReport: Codable, Sendable {
     let passRate: Double
     let meanSimilarity: Double
+    /// Absent from result files written before surface metrics were recorded.
+    let meanMarkAccuracy: Double?
+    /// Absent from result files written before surface metrics were recorded.
+    let meanCaseAccuracy: Double?
     let medianSeconds: Double
     let slowestSeconds: Double
     let declinedCount: Int
@@ -371,6 +378,10 @@ struct StoredReport: Codable, Sendable {
         /// Absent from results stored before the corpus named destinations.
         let destination: String?
         let similarity: Double
+        /// Absent from result files written before mark accuracy was recorded.
+        let markAccuracy: Double?
+        /// Absent from result files written before case accuracy was recorded.
+        let caseAccuracy: Double?
         let lost: [String]
         /// Absent from results stored before the reasons were kept, like `destination`, so an older file still decodes.
         let invented: [String]?
@@ -408,6 +419,8 @@ struct StoredReport: Codable, Sendable {
     init(_ report: EvaluationReport) {
         passRate = report.passRate
         meanSimilarity = report.meanSimilarity
+        meanMarkAccuracy = report.meanMarkAccuracy
+        meanCaseAccuracy = report.meanCaseAccuracy
         medianSeconds = Self.seconds(report.medianDuration)
         slowestSeconds = Self.seconds(report.slowestDuration)
         declinedCount = report.declinedCount
@@ -418,6 +431,7 @@ struct StoredReport: Codable, Sendable {
                 caseID: $0.caseID, category: corpus[$0.caseID]?.category.rawValue ?? "unknown",
                 destination: corpus[$0.caseID]?.destination.rawValue,
                 similarity: $0.similarity, lost: $0.lost, invented: $0.invented,
+                markAccuracy: $0.markAccuracy, caseAccuracy: $0.caseAccuracy,
                 brokeShape: $0.brokeShape, passed: $0.passed, declined: $0.declined)
         }
     }
@@ -432,6 +446,7 @@ struct StoredReport: Codable, Sendable {
         cases.filter { !$0.declined }.map {
             CaseScore(
                 caseID: $0.caseID, similarity: $0.similarity,
+                markAccuracy: $0.markAccuracy ?? 1, caseAccuracy: $0.caseAccuracy ?? 1,
                 keptEverythingRequired: $0.lost.isEmpty, lost: $0.lost, isExact: false,
                 declined: $0.declined, invented: $0.invented ?? [], brokeShape: $0.brokeShape ?? [])
         }

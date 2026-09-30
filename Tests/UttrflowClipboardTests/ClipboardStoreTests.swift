@@ -455,6 +455,49 @@ struct ClipboardStoreTests {
         #expect(noted[0].timesCopied == 3)
     }
 
+    @Test("rewriting a secret as ordinary text removes secret masking")
+    func rewritingSecretAsOrdinaryTextReclassifies() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = Clip(text: "api_key = ff00aa11ff00aa11ff00aa11", kind: .secret, copiedAt: noon)
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(
+            "Deployment notes for Friday", of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .text)
+        #expect(rewritten[0].id == subject.id)
+        #expect(rewritten[0].copiedAt == subject.copiedAt)
+    }
+
+    @Test("rewriting ordinary text as a secret classifies and masks it")
+    func rewritingOrdinaryTextAsSecretReclassifies() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = clip("Deployment notes for Friday")
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(
+            "api_key = ff00aa11ff00aa11ff00aa11", of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .secret)
+        #expect(rewritten[0].id == subject.id)
+        #expect(rewritten[0].copiedAt == subject.copiedAt)
+    }
+
+    @Test("rewriting text with the same content preserves its classification")
+    func rewritingUnchangedTextKeepsClassification() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = Clip(text: "https://example.com/docs", kind: .link, copiedAt: noon)
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(subject.text, of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .link)
+        #expect(rewritten[0].id == subject.id)
+    }
+
     /// The same rebuild one field along: a clip that lost its picture would be swept as an orphan.
     @Test("and keeps the picture it is a picture of")
     func editsKeepThePicture() async throws {

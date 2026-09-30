@@ -2,6 +2,8 @@
 
 import Foundation
 import UttrflowCore
+import UttrflowHistory
+import UttrflowInput
 import UttrflowPipeline
 import UttrflowUX
 import Testing
@@ -11,6 +13,15 @@ import Testing
 @MainActor
 @Suite("The last transcript is forgotten with the dictation it came from")
 struct LastTranscriptForgetTests {
+    private actor InsertionRecorder: TextInserting {
+        private(set) var inserted: [String] = []
+
+        func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
+            inserted.append(text)
+            return InsertionAttempt(.accessibility, arrival: .confirmed)
+        }
+    }
+
     private func dictated(_ text: String, in sandbox: borrowing Sandbox) -> AppDelegate {
         let app = AppDelegate(container: sandbox.root)
         app.render(.inserted(DictationOutcome(text: text, method: .accessibility, cleanedBy: .rules)))
@@ -26,6 +37,7 @@ struct LastTranscriptForgetTests {
         app.forget(after: .everything)
 
         #expect(app.lastTranscript == nil)
+        #expect(app.lastTranscriptID == nil)
     }
 
     @Test("deleting the dictation it came from forgets the last transcript")
@@ -48,5 +60,23 @@ struct LastTranscriptForgetTests {
         app.carryOut(.forgetDictation(UUID()))
 
         #expect(app.lastTranscript == "Sample words")
+    }
+
+    @Test("paste-last inserts the newest kept record after relaunch")
+    func relaunchThenPasteLast() async throws {
+        let sandbox = Sandbox()
+        let history = DictationHistoryStore(
+            file: DictationHistoryStore.defaultFile(in: sandbox.root))
+        let newest = DictationRecord(text: "Newest words", when: .now)
+        try await history.append(newest, keeping: Retention(days: 7, now: .now))
+
+        let app = AppDelegate(container: sandbox.root)
+        let insertion = InsertionRecorder()
+        app.clipInserter = insertion
+        await app.restoreLastTranscript()
+        await app.perform(.pasteLastTranscript)
+
+        #expect(await insertion.inserted == ["Newest words"])
+        #expect(app.lastTranscriptID == newest.id)
     }
 }

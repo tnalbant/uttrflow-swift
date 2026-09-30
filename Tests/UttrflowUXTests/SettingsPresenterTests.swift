@@ -1,6 +1,7 @@
 import Foundation
 import UttrflowAI
 import UttrflowCore
+import UttrflowPredict
 import UttrflowSettings
 import Testing
 
@@ -142,6 +143,59 @@ struct SettingsWindowTests {
     }
 }
 
+@Suite("Accept key guidance")
+struct SettingsAcceptKeyGuidanceTests {
+    @Test("warns only for a known category when Tab is selected")
+    func collisionCategoriesAndPlainText() throws {
+        var settings = Settings.default
+        settings.suggestions.set("com.apple.Terminal", isOn: true)
+        settings.suggestions.set("com.apple.dt.Xcode", isOn: true)
+        settings.suggestions.set("com.tinyapp.TablePlus", isOn: true)
+        settings.suggestions.set("com.microsoft.Excel", isOn: true)
+        settings.suggestions.set("com.apple.Notes", isOn: true)
+        settings.suggestions.set("com.example.unknown", isOn: true)
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.Terminal")
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.dt.Xcode")
+        settings.suggestions.setAcceptKey(.tab, in: "com.tinyapp.TablePlus")
+        settings.suggestions.setAcceptKey(.tab, in: "com.microsoft.Excel")
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.Notes")
+        settings.suggestions.setAcceptKey(.tab, in: "com.example.unknown")
+
+        let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
+        func explanation(_ bundleIdentifier: String) throws -> String? {
+            try #require(
+                pane.groups.flatMap(\.rows).first {
+                    $0.id == "suggestionAcceptKey.\(bundleIdentifier)"
+                }
+            ).explanation
+        }
+        #expect(try explanation("com.apple.Terminal") == "Tab also has a job in this app.")
+        #expect(try explanation("com.apple.dt.Xcode") == "Tab also has a job in this app.")
+        #expect(try explanation("com.tinyapp.TablePlus") == "Tab also has a job in this app.")
+        #expect(try explanation("com.microsoft.Excel") == "Tab also has a job in this app.")
+        #expect(try explanation("com.apple.Notes") == nil)
+        #expect(try explanation("com.example.unknown") == nil)
+    }
+
+    @Test("preserves the alternate key descriptions")
+    func alternateKeyDescriptionsRemain() throws {
+        var settings = Settings.default
+        settings.suggestions.set("com.apple.Terminal", isOn: true)
+        settings.suggestions.set("com.apple.dt.Xcode", isOn: true)
+        settings.suggestions.setAcceptKey(.rightArrow, in: "com.apple.Terminal")
+        settings.suggestions.setAcceptKey(.optionTab, in: "com.apple.dt.Xcode")
+
+        let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
+        let rows = Dictionary(uniqueKeysWithValues: pane.groups.flatMap(\.rows).map { ($0.id, $0) })
+        #expect(
+            rows["suggestionAcceptKey.com.apple.terminal"]?.explanation
+                == "Leaves Tab to the shell's own completion.")
+        #expect(
+            rows["suggestionAcceptKey.com.apple.dt.xcode"]?.explanation
+                == "Leaves Tab to indent, and to the editor's own completion.")
+    }
+}
+
 // MARK: - General
 
 @Suite("The General tab")
@@ -183,8 +237,19 @@ struct SettingsGeneralPaneTests {
 
         settings.hotkeyActivation = .pressToToggle
         let toggle = try #require(general(settings).row("shortcut.dictate")?.explanation)
-        #expect(toggle == "Press ⌃⌥ to start talking, and again to stop")
-        #expect(!toggle.contains("Double-tap"))
+        #expect(toggle == "Press ⌃⌥ once to start talking, and again to stop")
+        #expect(!toggle.lowercased().contains("double"))
+    }
+
+    @Test("keeps the Fn explanation ahead of the selected activation mode")
+    func functionHoldExplanationTakesPrecedence() throws {
+        var settings = Settings.default
+        settings.hotkey = .functionHold
+        settings.hotkeyActivation = .pressToToggle
+
+        let explanation = try #require(general(settings).row("shortcut.dictate")?.explanation)
+        #expect(explanation.contains("If pressing fn also opens Emoji"))
+        #expect(!explanation.contains("once to start talking"))
     }
 
     @Test("offers both ways of activating, with the stored one selected")
@@ -399,6 +464,36 @@ struct SettingsLanguagesPaneTests {
 }
 
 // MARK: - Dictation
+
+@Suite("Suggestion model failures in Settings")
+struct SettingsSuggestionModelFailureTests {
+    private func pane(for readiness: SuggestionModelReadiness) -> SettingsPane {
+        var settings = Settings.default
+        settings.suggestions.isEnabled = true
+        var capabilities = SettingsCapabilities.everything
+        capabilities.suggestionModel = readiness
+        return SettingsPresenter.pane(for: .suggestions, settings: settings, capabilities: capabilities)
+    }
+
+    @Test("names a failed fetch and offers connection advice")
+    func fetchFailure() {
+        let pane = pane(for: .fetchFailed)
+        #expect(pane.banner?.title == "The model could not be fetched")
+        #expect(pane.banner?.message.contains("Check your connection") == true)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be fetched")
+        #expect(pane.row("retrySuggestionModel")?.explanation?.contains("connection") == true)
+    }
+
+    @Test("names a failed disk load without connection advice")
+    func diskLoadFailure() {
+        let pane = pane(for: .loadFailed)
+        #expect(pane.banner?.title == "The model could not be loaded")
+        #expect(pane.banner?.message.contains("loading it again") == true)
+        #expect(pane.banner?.message.contains("connection") == false)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be loaded")
+        #expect(pane.row("retrySuggestionModel")?.explanation == "Try loading the model again.")
+    }
+}
 
 @Suite("The Dictation tab")
 struct SettingsDictationPaneTests {
@@ -657,20 +752,27 @@ struct SettingsUpdatesTests {
             .groups.first { $0.id == "updates" }
     }
 
-    @Test("shows the version, a way to check, and the automatic switch")
+    @Test("shows the version, a way to check, and both automatic preferences")
     func theWholeGroup() throws {
         let group = try #require(Self.general(.everything))
         #expect(group.title == "Updates")
-        #expect(group.rows.map(\.id) == ["version", "checkForUpdates", "installsUpdatesAutomatically"])
+        #expect(
+            group.rows.map(\.id) == [
+                "version", "checkForUpdates", "checksForUpdatesAutomatically",
+                "installsUpdatesAutomatically",
+            ])
 
         let version = try #require(group.rows.first { $0.id == "version" })
         #expect(version.control == .text("1.0.0 (1)"))
         #expect(version.unavailability == nil)
     }
 
-    @Test("the check button asks for a check and changes no setting")
+    @Test("Check Now remains available with automatic checks off")
     func checkingIsAnAction() throws {
-        let row = try #require(Self.general(.everything)?.rows.first { $0.id == "checkForUpdates" })
+        var settings = Settings.default
+        settings.checksForUpdatesAutomatically = false
+        let row = try #require(
+            Self.general(.everything, settings)?.rows.first { $0.id == "checkForUpdates" })
         #expect(row.control == .action(title: "Check Now", change: .checkForUpdatesNow))
         #expect(row.unavailability == nil)
     }
@@ -684,7 +786,7 @@ struct SettingsUpdatesTests {
         let group = try #require(Self.general(capabilities))
         #expect(group.rows.contains { $0.id == "version" })
 
-        for id in ["checkForUpdates", "installsUpdatesAutomatically"] {
+        for id in ["checkForUpdates", "checksForUpdatesAutomatically", "installsUpdatesAutomatically"] {
             let row = try #require(group.rows.first { $0.id == id })
             #expect(row.unavailability != nil, "\(id) should say why it cannot act")
         }
@@ -711,11 +813,31 @@ struct SettingsUpdatesTests {
             #expect(row.control == .toggle(field: .installsUpdatesAutomatically, isOn: isOn))
         }
     }
+
+    @Test("the automatic-check switch reads the saved setting")
+    func automaticCheckSwitchFollowsSetting() throws {
+        for isOn in [true, false] {
+            var settings = Settings.default
+            settings.checksForUpdatesAutomatically = isOn
+            let group = try #require(Self.general(.everything, settings))
+            let row = try #require(group.rows.first { $0.id == "checksForUpdatesAutomatically" })
+            #expect(row.control == .toggle(field: .checksForUpdatesAutomatically, isOn: isOn))
+        }
+    }
 }
 
 /// Applying the two update changes.
 @Suite("Updating, applied")
 struct SettingsUpdateEditingTests {
+    @Test("the automatic-check switch is written through")
+    func togglesAutomaticChecksThrough() throws {
+        var settings = Settings.default
+        settings.checksForUpdatesAutomatically = true
+        let updated = try SettingsEditor.apply(
+            .toggle(.checksForUpdatesAutomatically, isOn: false), to: settings)
+        #expect(!updated.checksForUpdatesAutomatically)
+    }
+
     @Test("the switch is written through")
     func togglesThrough() throws {
         var settings = Settings.default
@@ -769,6 +891,19 @@ struct UnarmedShortcutTests {
         #expect(shown.explanation == SettingsPresenter.unarmed)
     }
 
+    @Test("keeps the unarmed explanation ahead of the activation mode")
+    func unarmedDictateIsStillExplainedFirst() throws {
+        var settings = Settings.default
+        settings.hotkeyActivation = .pressToToggle
+        var capabilities = SettingsCapabilities.everything
+        capabilities.unarmedShortcuts = [.dictate]
+
+        let shown = try #require(
+            SettingsPresenter.pane(for: .general, settings: settings, capabilities: capabilities)
+                .groups.flatMap(\.rows).first { $0.id == "shortcut.dictate" })
+        #expect(shown.explanation == SettingsPresenter.unarmed)
+    }
+
     @Test("and every other row is left alone")
     func othersAreUntouched() throws {
         var capabilities = SettingsCapabilities.everything
@@ -796,6 +931,7 @@ struct ReturnedShortcutTests {
     func saysWhy() throws {
         var settings = Settings.default
         settings.shortcutsReturnedToDefault = [.dictate]
+        settings.hotkeyActivation = .pressToToggle
 
         let shown = try #require(row("shortcut.dictate", in: settings))
 

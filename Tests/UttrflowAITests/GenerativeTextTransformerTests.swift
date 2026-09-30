@@ -47,6 +47,16 @@ struct GenerativeTextTransformerTests {
         #expect(model.calls.first?.kind == .foundationModels)
     }
 
+    @Test("model cleanup applies search-field casing and stop policies")
+    func searchFieldModelPath() async throws {
+        let model = FakeCleanupModel { _ in "Lowercase query." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
+    }
+
     @Test("attributes the result to itself")
     func attributesResult() async throws {
         let model = FakeCleanupModel { _ in "Hello there." }
@@ -97,6 +107,83 @@ struct GenerativeTextTransformerTests {
         )
     }
 
+    @Test(
+        "removes spoken mark names the model echoed after writing their punctuation",
+        arguments: [
+            (
+                "send the report comma then call me",
+                "Send the report, comma, then call me.",
+                "Send the report, then call me."
+            ),
+            (
+                "yes comma no comma maybe",
+                "Yes, comma, no, comma, maybe.",
+                "Yes, no, maybe."
+            ),
+            (
+                "we ship on monday full stop no delays",
+                "We ship on Monday, full stop, no delays.",
+                "We ship on Monday. No delays."
+            ),
+            (
+                "the word open quote done close quote matters",
+                "The word \"open quote\" done' matters.",
+                "The word \"done\" matters."
+            ),
+        ]
+    )
+    func removesEchoedSpokenMarkNames(input: String, modelOutput: String, expected: String) async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in modelOutput })
+
+        #expect(try await sut.transform(request(input)).text == expected)
+    }
+
+    @Test("converts ordinary spoken punctuation names with content continuations and at dictation end")
+    func convertsOrdinaryMarkNamesWithoutFunctionWordEvidence() async throws {
+        let cases = [
+            ("call me tomorrow comma okay", "Call me tomorrow, okay."),
+            ("hi john comma how are you question mark", "Hi john, how are you?"),
+            ("here is the list colon apples and pears", "Here is the list: apples and pears."),
+            ("note colon bring snacks", "Note: bring snacks."),
+            ("meet at five colon thirty", "Meet at five: 30."),
+            ("the build passed period the tests passed period", "The build passed. The tests passed."),
+            ("i finished the draft period", "I finished the draft."),
+            ("that was amazing exclamation point", "That was amazing!"),
+        ]
+        for (input, expected) in cases {
+            let sut = GenerativeTextTransformer(
+                kind: .foundationModels, model: FakeCleanupModel { _ in input })
+            #expect(try await sut.transform(request(input)).text == expected)
+        }
+    }
+
+    @Test(
+        "keeps mark names the model uses as literal vocabulary",
+        arguments: [
+            ("the period of time", "The period of time matters."),
+            ("a dash of salt", "A dash of salt is enough."),
+            ("comma separated values", "Comma separated values are easy to read."),
+            ("an open quote begins the string", "An open quote begins the string."),
+            ("a close quote ends the string", "A close quote ends the string."),
+        ]
+    )
+    func keepsLiteralMarkNames(input: String, modelOutput: String) async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in modelOutput })
+
+        #expect(try await sut.transform(request(input)).text == modelOutput)
+    }
+
+    @Test("finishes proper name casing the model leaves lower-case")
+    func finishesProperNameCasing() async throws {
+        let model = FakeCleanupModel { _ in "we went to london and tokyo." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        #expect(
+            try await sut.transform(request("we went to london and tokyo")).text
+                == "We went to London and Tokyo.")
+    }
+
     /// The passes under the destination's own policies, which is what the model is handed.
     @Test("runs the pre-model passes under the destination the words are going to")
     func runsThePassesForTheDestination() async throws {
@@ -144,6 +231,35 @@ struct GenerativeTextTransformerTests {
 
         _ = try await sut.transform(request("um hello there"))
         #expect(model.calls.first?.text == "Spoken: \"um hello there\"")
+    }
+
+    @Test(
+        "the model preserves each switched-off spoken cleanup step",
+        arguments: [
+            (PassID.fillers, "um so I think we should ship it", "Um, so I think we should ship it."),
+            (PassID.stammers, "I I think we should ship it", "I, I think we should ship it."),
+            (PassID.repeatedPhrase, "we should ship it Friday Friday", "We should ship it Friday Friday."),
+            (
+                PassID.selfCorrection, "we should ship Monday no sorry Friday",
+                "We should ship Monday, no sorry, Friday."
+            ),
+        ]
+    )
+    func preservesWordsForSwitchedOffSpokenSteps(
+        step: PassID, spoken: String, modelAnswer: String
+    ) async throws {
+        let model = FakeCleanupModel { _ in modelAnswer }
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: model,
+            steps: CleaningSteps(switchedOff: [step]))
+
+        let result = try await sut.transform(request(spoken))
+
+        #expect(result.text == modelAnswer)
+        #expect(model.calls.first?.text.contains("preserve these words") == true)
+        #expect(model.calls.first?.text.contains(CleaningSteps.name(of: step)) == true)
+        #expect(result.cleaning?.switchedOff == [step])
+        #expect(result.cleaning?.changes.contains(where: { $0.step == step }) == false)
     }
 
     private func request(
@@ -274,6 +390,36 @@ struct GenerativeTextTransformerTests {
         await #expect(throws: TransformationError.self) {
             try await sut.transform(request("what is the capital of france"))
         }
+    }
+
+    @Test("refuses a long response that returns only the first half")
+    func refusesTruncatedLongResponse() async throws {
+        let topics = [
+            "budget", "hiring", "onboarding", "support", "staffing", "invoices", "contract",
+            "security", "privacy", "migration", "deployment", "tests", "launch", "metrics",
+            "revenue", "forecast", "customers", "refunds", "warranty", "latency", "reliability",
+            "backups", "database", "dashboard", "reports", "deadlines", "owners", "approvals",
+            "training", "documentation", "accessibility", "keyboard", "release", "rollback",
+            "incident", "alerting", "encryption", "permissions", "audit", "archive", "retention",
+            "compliance",
+        ]
+        let model = FakeCleanupModel { prompt in
+            let quoted = prompt.components(separatedBy: "Spoken: ").last ?? prompt
+            let words = quoted.split(whereSeparator: \.isWhitespace)
+            return words.prefix(words.count / 2).joined(separator: " ")
+        }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let router = TransformerRouter(
+            engines: [sut, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+        let longInput = topics.map {
+            "review the \($0) plan with the coordinator and confirm the owner before Friday"
+        }.joined(separator: ". ")
+        let result = try await router.transform(
+            request(longInput))
+
+        #expect(
+            result.cleaning?.refusals.contains { $0.kind == .lostWord || $0.kind == .tooShort } == true)
+        #expect(model.calls.count == 1)
     }
 
     @Test("refuses a model answer that moves not from telling to calling")
@@ -494,6 +640,23 @@ struct RuleBasedTransformerTests {
         #expect(try await sut.transform(request(input)).text == expected)
     }
 
+    @Test("capitalises the reported place, language and nationality names on the rules path")
+    func capitalisesProperNames() async throws {
+        let cases = [
+            ("we went to london and tokyo", "We went to London and Tokyo."),
+            ("she speaks french and spanish", "She speaks French and Spanish."),
+            ("she moved to india", "She moved to India."),
+            ("we speak hindi at home", "We speak Hindi at home."),
+            ("we drove through texas", "We drove through Texas."),
+            ("the germans won", "The Germans won."),
+            ("we flew to paris last june", "We flew to Paris last June."),
+            ("he lives in new york", "He lives in New York."),
+        ]
+        for (spoken, expected) in cases {
+            #expect(try await sut.transform(request(spoken)).text == expected)
+        }
+    }
+
     @Test("does not overflow while checking an Int.max designator")
     func handlesMaximumIntegerDesignator() async throws {
         #expect(
@@ -511,6 +674,14 @@ struct RuleBasedTransformerTests {
     @Test("attributes its work to itself")
     func attributesResult() async throws {
         #expect(try await sut.transform(request("hello")).producedBy == .rules)
+    }
+
+    @Test("rule passes keep search casing and remove terminal punctuation")
+    func searchFieldRules() async throws {
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
     }
 
     private func request(
@@ -564,6 +735,28 @@ struct RuleBasedTransformerTests {
     )
     func terminalStopByDestination(spoken: String, destination: Destination, expected: String) async throws {
         #expect(try await sut.transform(request(spoken, destination: destination)).text == expected)
+    }
+
+    @Test("removes stops from an email greeting and sign-off while keeping the body stop")
+    func emailGreetingAndSignOffStops() async throws {
+        let model = FakeCleanupModel {
+            _ in "Dear hiring manager.\n\nI am writing to ask about the role\n\nThanks, Sam."
+        }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let result = try await sut.transform(
+            request(
+                "dear hiring manager i am writing to ask about the role thanks sam",
+                destination: .email))
+        #expect(result.text == "Dear hiring manager\n\nI am writing to ask about the role.\n\nThanks, Sam")
+        #expect(model.calls.first?.instructions.contains("leave a greeting paragraph") == true)
+
+        let inlineGreeting = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in "Hi Priya, please send the deck" })
+        #expect(
+            try await inlineGreeting.transform(
+                request("hi priya please send the deck", destination: .email)
+            ).text
+                == "Hi Priya, please send the deck.")
     }
 
     @Test("cannot invent anything, whatever it is given, and writes Hindi in Latin letters")

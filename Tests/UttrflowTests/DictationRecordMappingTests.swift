@@ -85,9 +85,28 @@ struct DictationRecordMappingTests {
                 for: .failed(failure), when: Date(), id: UUID()) == nil)
     }
 
-    @Test("a non-final state creates no record")
-    func nonFinalStateMapsNothing() {
-        #expect(
-            DictationRecordMapping.record(for: .recording, when: Date(), id: UUID()) == nil)
+    @Test("every state before an outcome creates no record")
+    func inProgressStatesMapNothing() {
+        let states: [DictationState] = [.idle, .recording, .transcribing, .tidying, .inserting]
+
+        for state in states {
+            #expect(
+                DictationRecordMapping.record(for: state, when: Date(), id: UUID()) == nil,
+                "\(state) must not create a history record")
+        }
+    }
+
+    @Test("only inserted and failed states have ended")
+    func endedStatesAreExhaustive() {
+        let states: [(DictationState, Bool)] = [
+            (.idle, false), (.recording, false), (.transcribing, false), (.tidying, false),
+            (.inserting, false),
+            (.inserted(DictationOutcome(text: "Done", method: .accessibility, cleanedBy: .rules)), true),
+            (.failed(DictationFailure(message: "Failed", recovery: .retry, severity: .recoverable)), true),
+        ]
+
+        for (state, expected) in states {
+            #expect(state.hasEnded == expected, "Unexpected ended status for \(state)")
+        }
     }
 }

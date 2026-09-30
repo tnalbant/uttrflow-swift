@@ -70,6 +70,7 @@ final class SuggestionCoordinator {
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
 
     private let store: PredictStore
+    private let rejectedSuggestionRecorder: RejectedSuggestionRecorder
     let capture: CaptureSession
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
@@ -80,6 +81,8 @@ final class SuggestionCoordinator {
     private let processActivity: any SuggestionProcessActivityManaging
     /// What the user has decided on the Suggestions screen, which the app hands over as it changes.
     private var preferences: SuggestionPreferences
+    /// Whether a native menu currently owns keyboard gestures in the focused application.
+    private var nativeMenuIsOpen = false
     /// What exists on this machine right now, which the corpus cannot know. See `Docs/predict.md`.
     private let environment: EnvironmentSource
     /// The gates that decide whether a candidate is right, which is not what the ranking measures.
@@ -151,12 +154,16 @@ final class SuggestionCoordinator {
     private let acceptances = AcceptanceQueue()
     /// Set when a paste or a dictation put text in the field that capture has not yet been told was never typed.
     private var insertionPending = false
+    /// Printable keyboard input not yet checked against the next accessibility read.
+    private var pendingCaptureTyping: [String?] = []
     private var again: SuggestionReason?
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
     var onTurnedOffEverywhere: (() -> Void)?
     /// Tells the menu bar why suggestion input is paused.
     var onSecureInputBlockingChanged: ((Bool) -> Void)?
+    var onTapRestChanged: ((Result<Void, any Error>?) -> Void)?
+    var onSecureInputChanged: ((Bool) -> Void)?
 
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
@@ -176,6 +183,7 @@ final class SuggestionCoordinator {
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
+        rejectedSuggestionRecorder = RejectedSuggestionRecorder(store: store)
         // Lines learned before the credential rules last widened are removed once, off the typing path.
         Task.detached(priority: .utility) { _ = try? await CaptureGate.sweepSecrets(from: store) }
         // One index behind both, so asking the machine for a completion also warms what attests it.
@@ -236,25 +244,32 @@ final class SuggestionCoordinator {
     /// Forgets what one application taught, on disk and in every copy this loop holds.
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         await capture.forgetLearned(from: bundleIdentifier)
-        await forgetWhatThisLoopRemembers()
-        try await store.forget(bundleIdentifier: bundleIdentifier)
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forget(bundleIdentifier: bundleIdentifier)
+        })
     }
 
     /// Forgets every line and answer, on disk and in every copy this loop holds.
     func forgetEverySuggestion() async throws {
         try await capture.forgetEverythingLearned()
-        await forgetWhatThisLoopRemembers()
-        try await store.forgetEverything()
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forgetEverything()
+        })
     }
 
     /// Drops the verdicts and model answers this loop keeps, which may name a forgotten line.
-    private func forgetWhatThisLoopRemembers() async {
-        await verifier.forgetEverything()
+    private func forgetWhatThisLoopRemembers(
+        clearingCorpus: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await verifier.forgetEverything(then: clearingCorpus)
         modelPass.freshStart(surfaceChanged: true, lineIsEmpty: true)
     }
 
     /// Arms the tap and starts watching, or says why it cannot.
-    func start() {
+    @discardableResult
+    func start() -> Result<Void, any Error> {
         processActivity.begin()
         isStopped = false
         tapRest.cancel()
@@ -271,17 +286,22 @@ final class SuggestionCoordinator {
             }
         }
         checkSecureInput()
-        guard !secureInput.isBlocking else { return }
-        startInterceptor()
+        guard !secureInput.isBlocking else {
+            onSecureInputChanged?(true)
+            return .success(())
+        }
+        let result = startInterceptor()
+        if case .success = result { onTapRestChanged?(.success(())) }
+        return result
     }
 
     /// Starts the key tap and activity monitors after secure keyboard entry ends.
-    private func startInterceptor() {
+    private func startInterceptor() -> Result<Void, any Error> {
         do {
             try interceptor.start()
         } catch {
             Self.log.error("tab-to-complete is off: \(SuggestionLog.failure(error), privacy: .public)")
-            return
+            return .failure(error)
         }
         interceptor.arm([])
         // Before the first keystroke, because the reader's queue may not call AppKit or HIToolbox.
@@ -299,6 +319,7 @@ final class SuggestionCoordinator {
         } else {
             watchFocusedFieldValues()
         }
+        return .success(())
     }
 
     /// Withdraws suggestions while secure keyboard entry prevents reliable key capture.
@@ -307,14 +328,19 @@ final class SuggestionCoordinator {
         let now = secureInput.isBlocking ? "on" : "off"
         Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
         if secureInput.isBlocking {
+            onSecureInputChanged?(true)
             withdraw()
             focusedFieldValueObserver.stop()
             interceptor.stop()
             onSecureInputBlockingChanged?(true)
             panel.announce(SecureInputWatch.suggestionNotice)
         } else {
+            onSecureInputChanged?(false)
             onSecureInputBlockingChanged?(false)
-            startInterceptor()
+            switch startInterceptor() {
+            case .success: onTapRestChanged?(.success(()))
+            case .failure(let error): onTapRestChanged?(.failure(error))
+            }
         }
     }
 
@@ -322,6 +348,7 @@ final class SuggestionCoordinator {
     func stop() {
         processActivity.end()
         isStopped = true
+        nativeMenuIsOpen = false
         onSecureInputBlockingChanged?(false)
         tapRest.cancel()
         session.invalidate()
@@ -370,6 +397,15 @@ final class SuggestionCoordinator {
             // A key this app inserted must not wake another turn, or the feature types on its own.
             if let cgEvent = event.cgEvent, SyntheticEvent.isOurs(cgEvent) { return }
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
+            if !pastes, let self {
+                MainActor.assumeIsolated {
+                    if let text {
+                        self.pendingCaptureTyping.append(text)
+                    } else if Key(keyCode: event.keyCode) != .return {
+                        self.pendingCaptureTyping.append(nil)
+                    }
+                }
+            }
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
                 MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
@@ -415,7 +451,18 @@ final class SuggestionCoordinator {
     }
 
     func watchFocusedFieldValues() {
-        focusedFieldValueObserver.start { [weak self] in self?.accessibilityValueChanged() }
+        focusedFieldValueObserver.start(
+            onValueChanged: { [weak self] in self?.accessibilityValueChanged() },
+            onNativeMenuVisibilityChanged: { [weak self] isOpen in
+                guard let self else { return }
+                nativeMenuIsOpen = isOpen
+                interceptor.setNativeMenuIsOpen(isOpen)
+                if isOpen {
+                    withdraw()
+                } else if !isStopped, !secureInput.isBlocking {
+                    wake(.tick)
+                }
+            })
     }
 
     /// Withdraws an offer when the focused field changes without a corresponding key event.
@@ -450,10 +497,15 @@ final class SuggestionCoordinator {
 
     /// Withdraws the ghost and holds every turn while a dictation is under way, so its models have the GPU.
     func dictationChanged(isDictating: Bool) {
-        // A dictation that ends leaves its words in the field, and they are not this person's typing.
-        if self.isDictating, !isDictating { insertionPending = true }
+        guard self.isDictating != isDictating else { return }
         self.isDictating = isDictating
-        guard isDictating else { return }
+
+        // A dictation that ends leaves its words in the field, and they are not this person's typing.
+        guard isDictating else {
+            insertionPending = true
+            wake(.tick)
+            return
+        }
         again = nil
         turns.abandon()
         withdraw()
@@ -702,6 +754,7 @@ final class SuggestionCoordinator {
 
     /// Reads the field, asks the corpus and draws the answer, all off the keystroke path; a turn left behind touches nothing.
     private func turn(_ number: Int, because reason: SuggestionReason) async {
+        await rejectedSuggestionRecorder.retry()
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
         progress = (number, .read, front)
         // Taken before the read, since a key pressed while a slow field is being read is one the read may have missed.
@@ -745,11 +798,15 @@ final class SuggestionCoordinator {
 
         let turn = session.turn(
             in: reading.surface, at: context(of: snapshot, at: started),
-            acceptKey: preferences.acceptKeys.key(forBundleIdentifier: snapshot.bundleIdentifier),
+            acceptKey: preferences.acceptKeys.key(
+                for: AppContext(
+                    applicationName: snapshot.applicationName,
+                    bundleIdentifier: snapshot.bundleIdentifier,
+                    documentName: snapshot.windowTitle)),
             isQuiet: preferences.isQuiet, sawKeystrokes: keystrokesSeen)
         if let rejected = turn.rejected, let surface = reading.surface {
             entering(.reject, turn: number)
-            try? await store.recordRejected(rejected, in: surface)
+            await rejectedSuggestionRecorder.record(rejected, in: surface)
         }
 
         switch turn.step {
@@ -864,6 +921,7 @@ final class SuggestionCoordinator {
         var invented = false
         var reused = false
         var reusedListed: Set<String> = []
+        var reusedScores: [String: Double] = [:]
         let place = SuggestionMoment.place(of: snapshot)
         // A deletion, another line or changed text before it leaves the last answer describing a line that is gone.
         modelPass.follow(query, at: place)
@@ -874,6 +932,7 @@ final class SuggestionCoordinator {
             completions = await attested(kept, for: query)
             guard turns.isCurrent(number) else { return }
             reusedListed = listed
+            reusedScores = modelPass.scores(for: completions)
             reused = true
         case .skip:
             return
@@ -908,7 +967,6 @@ final class SuggestionCoordinator {
                 let standing = await attested(lines, for: query)
                 guard turns.isCurrent(number) else { return }
                 invented = !lines.isEmpty && standing.isEmpty
-                modelPass.remember(standing, for: query, at: place)
                 completions = standing
             }
         }
@@ -917,7 +975,13 @@ final class SuggestionCoordinator {
         )
         // Every generated line carries the score its own pass gave it, so a low or missing score leaves the turn quiet.
         entering(.score, turn: number)
-        let scores = await verifier.scoreCompletions(completions)
+        let scores: [String: Double]
+        if reused {
+            scores = reusedScores
+        } else {
+            scores = await verifier.scoreCompletions(completions)
+            modelPass.remember(completions, for: query, at: place, scores: scores)
+        }
         guard turns.isCurrent(number) else { return }
         guard
             let update = session.resolveGenerated(
@@ -932,6 +996,8 @@ final class SuggestionCoordinator {
         await drawFresh(update, for: snapshot, turn: number)
         // With the one line on screen, the others are fetched behind it, so Down has a list and the person never waited for it.
         guard completions.count == 1, let leader = completions.first, turns.isCurrent(number) else { return }
+        // Quiet keeps the one-line ghost and never spends a pass on alternatives.
+        guard !preferences.isQuiet else { return }
         // Where the machine gave the values, the other values are the alternatives, and no pass is spent on them.
         if case .values(let listed) = ModelPass.alternativesSource(
             typed: query.typed, choices: choices, leader: leader)
@@ -944,11 +1010,9 @@ final class SuggestionCoordinator {
                 let expanded = session.expandGenerated(others, for: query, scores: nil)
             else { return }
             modelPass.remember(
-                [leader] + others, for: query, at: place, listed: Set(others))
+                [leader] + others, for: query, at: place, listed: Set(others), scores: scores)
             return await drawFresh(expanded, for: snapshot, turn: number)
         }
-        // Quiet never shows the list, so no model pass is spent building one.
-        guard !preferences.isQuiet else { return }
         let more = Task { [generator, store, contextCache] in
             let situation = await Self.situation(
                 of: snapshot, for: query, store: store, cache: contextCache, turn: number)
@@ -974,7 +1038,9 @@ final class SuggestionCoordinator {
         guard turns.isCurrent(number), !standing.isEmpty,
             let expanded = session.expandGenerated(standing, for: query, scores: standingScores)
         else { return }
-        modelPass.remember([leader] + standing, for: query, at: place)
+        modelPass.remember(
+            [leader] + standing, for: query, at: place,
+            scores: scores.merging(standingScores) { _, new in new })
         Self.log.debug(
             "\(SuggestionLog.alternatives(typed: query.typed, got: others.count, elapsedMilliseconds: self.since(started)), privacy: .public)"
         )
@@ -1071,8 +1137,15 @@ final class SuggestionCoordinator {
     func candidates(for query: SuggestionQuery) async -> [Candidate] {
         let remembered =
             (try? await store.candidates(for: query.surface, matching: query.typed)) ?? []
-        guard remembered.isEmpty else { return remembered }
-        return await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        let candidates: [Candidate]
+        if remembered.isEmpty {
+            candidates = await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        } else {
+            candidates = remembered
+        }
+        return candidates.filter {
+            !rejectedSuggestionRecorder.suppresses($0.text, in: query.surface)
+        }
     }
 
     /// Tells capture what happened, and asks the user once about an application it has not met.
@@ -1082,7 +1155,13 @@ final class SuggestionCoordinator {
     ) async {
         // The acceptance is recorded off the key path, and capture still hears of it before this event.
         await acceptances.drained()
+        var typed = pendingCaptureTyping
+        pendingCaptureTyping = []
         if case .applicationChanged = reason, let leaving = lastReading, leaving != reading {
+            for input in typed {
+                _ = try? await capture.handle(.typed(input, at: moment), in: leaving)
+            }
+            typed = []
             _ = try? await capture.handle(.applicationDeactivated(at: moment), in: leaving)
         }
         let line = snapshot.learnableLine
@@ -1095,6 +1174,7 @@ final class SuggestionCoordinator {
             events = [reason.event(holding: line, at: moment)]
             if case .keystroke = events[0] { handed = (line, reading) }
         }
+        events.insert(contentsOf: typed.map { .typed($0, at: moment) }, at: 0)
         // Only a turn that read the line can tell capture the line holds inserted text.
         if insertionPending, reason != .tick {
             insertionPending = false
@@ -1112,7 +1192,9 @@ final class SuggestionCoordinator {
 
     /// Draws whatever a turn with no field behind it settled on, which is always nothing.
     private func draw(_ step: SuggestionStep) {
-        guard !isStopped, !isPointerGestureActive, case .settled(let update) = step else { return }
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen,
+            case .settled(let update) = step
+        else { return }
         stopWatchingSelection()
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
@@ -1123,7 +1205,7 @@ final class SuggestionCoordinator {
     /// Arms the tap first and draws second, so no key is claimed that nothing is offering.
     func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
         // A stopped loop, a held pointer gesture, or a stale read draws nothing and claims no key.
-        guard !isStopped, !isPointerGestureActive, session.isCurrent else {
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen, session.isCurrent else {
             stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
@@ -1143,10 +1225,16 @@ final class SuggestionCoordinator {
         }
         let shown = panel.show(
             update.suggestion, typed: session.typed, placement: .inlineGhost, caret: caret,
+            direction: snapshot.writingDirection == .rightToLeft ? .rightToLeft : .leftToRight,
             window: snapshot.window, field: snapshot.ghostField, fieldPointSize: snapshot.pointSize,
             selection: session.selection,
-            acceptKey: preferences.acceptKeys.key(forBundleIdentifier: snapshot.bundleIdentifier),
-            fontFamily: snapshot.fontFamily, textColor: snapshot.textColor)
+            acceptKey: preferences.acceptKeys.key(
+                for: AppContext(
+                    applicationName: snapshot.applicationName,
+                    bundleIdentifier: snapshot.bundleIdentifier,
+                    documentName: snapshot.windowTitle)),
+            fontFamily: snapshot.fontFamily, isBold: snapshot.isBold, isItalic: snapshot.isItalic,
+            textColor: snapshot.textColor)
         // An offer the panel could not show whole claims no key, so Tab never inserts what was not drawn.
         guard shown else {
             stopWatchingSelection()
@@ -1166,7 +1254,7 @@ final class SuggestionCoordinator {
 
     /// Draws what a move or a dismissal left where the ghost already stands, since no field was read for it and typing may have moved it.
     private func redraw(_ update: SuggestionUpdate) {
-        guard !isStopped, !isPointerGestureActive, session.isCurrent else {
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen, session.isCurrent else {
             stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
@@ -1244,6 +1332,7 @@ final class SuggestionCoordinator {
 
     /// Rests the tap and starts it again, since a disable is usually the system's doing and the feature need not die of it.
     private func restTap() {
+        onTapRestChanged?(nil)
         interceptor.arm([])
         interceptor.stop()
         panel.hide()
@@ -1252,8 +1341,10 @@ final class SuggestionCoordinator {
             do {
                 try interceptor.start()
                 Self.log.error("the tap is back after resting \(Self.tapRestSeconds)s")
+                onTapRestChanged?(.success(()))
             } catch {
                 Self.log.error("the tap could not restart: \(SuggestionLog.failure(error), privacy: .public)")
+                onTapRestChanged?(.failure(error))
             }
         }
     }
@@ -1282,22 +1373,13 @@ final class SuggestionCoordinator {
             return false
         }
         var via = "nothing"
-        switch await acceptor.aim(
-            .certain(text), after: typed, expectedWindowNumber: windowNumber)
-        {
-        case .refused(let reason):
-            Self.log.error("\(SuggestionLog.refusedUnwritten(reason, typed: typed), privacy: .public)")
+        do throws(TextInsertionError) {
+            via =
+                try await acceptor.accept(
+                    .certain(text), after: typed, expectedWindowNumber: windowNumber)?.rawValue ?? via
+        } catch {
+            Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
             return false
-        case .nothing:
-            break
-        case .write(let edit):
-            do throws(TextInsertionError) {
-                via = try await acceptor.write(edit, expectedWindowNumber: windowNumber)?.rawValue ?? via
-            } catch {
-                // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
-                Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
-                return false
-            }
         }
         Self.log.debug(
             "\(SuggestionLog.accept(text: text, typed: typed, via: via), privacy: .public)"

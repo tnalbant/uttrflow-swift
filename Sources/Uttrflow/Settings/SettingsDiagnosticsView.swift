@@ -22,9 +22,14 @@ struct SettingsDiagnosticsView: View {
                 }
             }
             section("This Mac") {
-                rows(presentation.system + presentation.permissions)
+                rows(presentation.system + presentation.permissions + presentation.availability)
             }
             timings
+            if !presentation.decoding.isEmpty {
+                section("Recognition effort") {
+                    rows(presentation.decoding)
+                }
+            }
             if !presentation.reliability.isEmpty {
                 section("How often each step worked") {
                     rows(
@@ -32,6 +37,9 @@ struct SettingsDiagnosticsView: View {
                             DiagnosticsRow(title: $0.caption, detail: $0.value, state: .good)
                         })
                 }
+            }
+            section("Recogniser prompt") {
+                rows([presentation.vocabularyPrompt])
             }
             section("Last dictation") {
                 SettingsCard {
@@ -84,6 +92,8 @@ struct SettingsDiagnosticsView: View {
         case "macOS": .symbol("macbook", .neutral)
         case "Microphone": .symbol("mic", .dictation)
         case "Accessibility": .symbol("hand.raised", .info)
+        case "Dictation shortcut": .symbol("keyboard", .dictation)
+        case "Input device": .symbol("mic", .dictation)
         default: nil
         }
     }
@@ -259,7 +269,7 @@ struct SettingsDiagnosticsView: View {
     /// Colours taken in the journey's order, so a stage cannot swap colours between the bar and the list.
     private func colour(for stage: DiagnosticsStageRow) -> Color {
         switch stage.stage {
-        case .microphoneOpen, .capture, .drain: PagePalette.dictation.opacity(0.45)
+        case .microphoneOpen, .keyDownToAudio, .capture, .drain: PagePalette.dictation.opacity(0.45)
         case .transcription: PagePalette.dictation
         case .correction: PagePalette.clipboard
         case .transformation: PagePalette.suggestion

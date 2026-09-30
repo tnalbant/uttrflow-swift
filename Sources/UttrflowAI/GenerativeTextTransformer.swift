@@ -5,6 +5,9 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     /// Which engine this stands for.
     public let kind: TransformerKind
 
+    /// The longest allowance this transformer may use; individual requests scale down with their word count.
+    public var budget: Duration { .seconds(15) }
+
     /// The model that rewrites.
     private let model: any CleanupModel
     private let prompts: PromptBuilder
@@ -45,6 +48,12 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         await warm(for: situation)
     }
 
+    /// Gives short requests a short turn and prevents oversized input from spending the full engine allowance.
+    public func budget(for request: TransformationRequest) -> Duration {
+        FoundationModelRequestBudget.allowance(
+            for: request.transcription.text.split(whereSeparator: \.isWhitespace).count)
+    }
+
     /// Rewrites, unwraps and tidies, then throws `outputRejected` when the meaning guard refuses.
     public func transform(
         _ request: TransformationRequest
@@ -58,7 +67,9 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
         let rewritten = try await model.rewrite(
-            prompts.userPrompt(for: request, spoken: spoken, doubtful: readings),
+            prompts.userPrompt(
+                for: request, spoken: spoken, doubtful: readings,
+                preserving: steps.switchedOff),
             instructions: prompts.instructions(for: request.situation.destination), kind: kind
         )
 

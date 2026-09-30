@@ -18,6 +18,36 @@ public enum EvaluationCorpus {
 
     static let everyday: [EvaluationCase] = [
         .init(
+            id: "np3", category: .everyday,
+            spoken: "We need the. Final version of the contract",
+            expected: "We need the final version of the contract."
+        ),
+        .init(
+            id: "sub1", category: .everyday,
+            spoken: "My manager. Wants the slides by noon",
+            expected: "My manager wants the slides by noon."
+        ),
+        .init(
+            id: "sub4", category: .everyday,
+            spoken: "the server. crashed twice last night",
+            expected: "The server crashed twice last night."
+        ),
+        .init(
+            id: "bec1", category: .everyday,
+            spoken: "I stayed home. Because it was raining",
+            expected: "I stayed home because it was raining."
+        ),
+        .init(
+            id: "and1", category: .everyday,
+            spoken: "I finished the report. And sent it to Maria",
+            expected: "I finished the report and sent it to Maria."
+        ),
+        .init(
+            id: "but1", category: .everyday,
+            spoken: "I wanted to come. But my train was cancelled",
+            expected: "I wanted to come, but my train was cancelled."
+        ),
+        .init(
             id: "weekday-and-month-casing", category: .everyday,
             spoken: "can we push the demo to thursday instead of wednesday in august",
             expected: "Can we push the demo to Thursday instead of Wednesday in August.",
@@ -34,6 +64,21 @@ public enum EvaluationCorpus {
                 because the deployment is still running.
                 """,
             mustKeep: ["John", "20"]
+        ),
+        .init(
+            id: "indian-grouping-lakh-transfer", category: .everyday,
+            spoken: "1,00,000 rupaye transfer kar do",
+            expected: "1,00,000 rupaye transfer kar do."
+        ),
+        .init(
+            id: "indian-grouping-quote", category: .everyday,
+            spoken: "Rs. 2,50,000 ka quote aaya",
+            expected: "Rs. 2,50,000 ka quote aaya."
+        ),
+        .init(
+            id: "indian-grouping-total-bill", category: .everyday,
+            spoken: "total bill 3,45,000 rupaye aaya",
+            expected: "Total bill 3,45,000 rupaye aaya."
         ),
         .init(
             id: "greeting-kept", category: .everyday,
@@ -57,6 +102,11 @@ public enum EvaluationCorpus {
             id: "filler-heavy", category: .everyday,
             spoken: "um so uh basically the the thing is we need more time",
             expected: "So basically the thing is, we need more time."
+        ),
+        .init(
+            id: "ellipsis-glued-fillers", category: .everyday,
+            spoken: "Ah...the...um...the invoice is...ah...overdue",
+            expected: "The invoice is overdue."
         ),
         .init(
             id: "filler-carrying-a-question-mark", category: .everyday,
@@ -144,10 +194,64 @@ public enum EvaluationCorpus {
             expected: "I think I'll take the earlier train."
         ),
         .init(
+            id: "initialisms-spelled-as-letter-names", category: .technical,
+            spoken: "the a p i is down",
+            expected: "The API is down."
+        ),
+        .init(
+            id: "article-before-spelled-letter", category: .everyday,
+            spoken: "we need a p",
+            expected: "We need a p."
+        ),
+        .init(
+            id: "spelled-eg", category: .technical,
+            spoken: "bring snacks e g chips",
+            expected: "Bring snacks e.g. chips."
+        ),
+        .init(
+            id: "spelled-asap", category: .technical,
+            spoken: "we need it a s a p",
+            expected: "We need it ASAP."
+        ),
+        .init(
+            id: "spelled-apr", category: .technical,
+            spoken: "open a p r for it",
+            expected: "Open APR for it."
+        ),
+        .init(
+            id: "standalone-pronoun-i", category: .everyday,
+            spoken: "so i think",
+            expected: "So I think."
+        ),
+        .init(
             id: "number-words", category: .everyday,
             spoken: "there were about fifteen people in the room",
             expected: "There were about 15 people in the room.",
             mustKeep: ["room"]
+        ),
+        .init(
+            id: "spoken-decade", category: .everyday,
+            spoken: "the nineteen nineties were fun",
+            expected: "The 1990s were fun.",
+            mustKeep: ["1990s"]
+        ),
+        .init(
+            id: "twenty-four-seven-idiom", category: .everyday,
+            spoken: "it's a twenty four seven service",
+            expected: "It's a twenty four seven service.",
+            mustKeep: ["twenty four seven"]
+        ),
+        .init(
+            id: "fifty-fifty-idiom", category: .everyday,
+            spoken: "it's fifty fifty",
+            expected: "It's fifty fifty.",
+            mustKeep: ["fifty fifty"]
+        ),
+        .init(
+            id: "page-fraction", category: .everyday,
+            spoken: "page two of three",
+            expected: "Page 2 of 3.",
+            mustKeep: ["2 of 3"]
         ),
         .init(
             id: "long-sentence", category: .everyday,
@@ -171,6 +275,18 @@ public enum EvaluationCorpus {
             spoken: "can you can you send me the link to the doc again",
             expected: "Can you send me the link to the doc again?",
             mustKeep: ["link", "doc"]
+        ),
+        .init(
+            id: "repeated-intensifier-chain", category: .everyday,
+            spoken: "it went on and on and on",
+            expected: "It went on and on and on.",
+            mustKeep: ["on and on and on"]
+        ),
+        .init(
+            id: "repeated-continuation-kept", category: .everyday,
+            spoken: "blah blah blah and so on and so on",
+            expected: "Blah blah blah and so on and so on.",
+            mustKeep: ["and so on and so on"]
         ),
         .init(
             id: "i-mean-correction", category: .everyday,
@@ -370,6 +486,18 @@ public enum EvaluationCorpus {
             expected: "We left early \u{2014} it was raining.",
             mustKeep: ["left early", "raining"], mustNotAdd: ["dash"]
         ),
+        .init(
+            id: "hinglish-spoken-comma-before-aur", category: .everyday,
+            spoken: "chai comma aur biscuit",
+            expected: "Chai, aur biscuit.",
+            mustKeep: ["chai", "aur", "biscuit"], mustNotAdd: ["comma"]
+        ),
+        .init(
+            id: "hinglish-spoken-colon-before-kal", category: .everyday,
+            spoken: "note colon kal chutti hai",
+            expected: "Note: kal chutti hai.",
+            mustKeep: ["note", "kal chutti hai"], mustNotAdd: ["colon"]
+        ),
         // Issue 237: the same bare names said as ordinary words, which must survive as words.
         .init(
             id: "colon-cancer-as-words", category: .everyday,
@@ -470,6 +598,13 @@ public enum EvaluationCorpus {
             mustNotAdd: ["period"]
         ),
         .init(
+            id: "demonstrative-subject-spoken-period", category: .everyday,
+            spoken: "that is it period",
+            expected: "That is it.",
+            mustKeep: ["that is it"],
+            mustNotAdd: ["period"]
+        ),
+        .init(
             id: "period-after-new-line", category: .everyday,
             spoken: "first line new line second line period",
             expected: "First line\nSecond line.",
@@ -530,11 +665,28 @@ public enum EvaluationCorpus {
             mustKeep: ["taxi", "5", "dollars"]
         ),
         .init(
+            id: "money-billion", category: .everyday,
+            spoken: "we raised two billion dollars",
+            expected: "We raised 2,000,000,000 dollars.",
+            mustKeep: ["raised", "2,000,000,000", "dollars"]
+        ),
+        .init(
             id: "dates", category: .everyday,
             spoken: "the twenty fifth of March",
-            expected: "The 25 March.",
-            mustKeep: ["25", "March"],
-            mustNotAdd: ["of"]
+            expected: "The 25th of March.",
+            mustKeep: ["25th", "of", "March"]
+        ),
+        .init(
+            id: "spoken-date-with-the", category: .everyday,
+            spoken: "the twenty first of march",
+            expected: "The 21st of March.",
+            mustKeep: ["21st", "of", "March"]
+        ),
+        .init(
+            id: "spoken-date-without-the", category: .everyday,
+            spoken: "twenty first of march",
+            expected: "21st of March.",
+            mustKeep: ["21st", "of", "March"]
         ),
         .init(
             id: "ordinal-not-date", category: .everyday,
@@ -542,6 +694,13 @@ public enum EvaluationCorpus {
             expected: "The twenty first may fail.",
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
+        ),
+        .init(
+            id: "compound-ordinal-above-one-hundred", category: .everyday,
+            spoken: "one hundred and twenty first",
+            expected: "One hundred and twenty first.",
+            mustKeep: ["one hundred and twenty first"],
+            mustNotAdd: ["120", "121"]
         ),
     ]
 
@@ -583,6 +742,14 @@ public enum EvaluationCorpus {
             expected: "The API returns a JSON payload over HTTPS."
         ),
         .init(
+            id: "acronym-whole-word", category: .technical,
+            spoken:
+                "check the api and json, deploy through ecs over https, call the rest api, and use aws for the rapid response",
+            expected:
+                "Check the API and JSON, deploy through ECS over HTTPS, call the REST API, and use AWS for the rapid response.",
+            mustKeep: ["API", "JSON", "ECS", "HTTPS", "REST", "AWS", "rapid"]
+        ),
+        .init(
             id: "port-number", category: .technical,
             spoken: "the gateway listens on port eight thousand eighty in staging",
             expected: "The gateway listens on port 8080 in staging.",
@@ -605,6 +772,66 @@ public enum EvaluationCorpus {
             spoken: "the test card number starts four two four two four two four two",
             expected: "The test card number starts 42424242.",
             mustKeep: ["42424242"]
+        ),
+        .init(
+            id: "spoken-phone-digit-run", category: .technical,
+            spoken: "call me on nine eight seven six five four three two one zero",
+            expected: "Call me on 9876543210.",
+            mustKeep: ["9876543210"]
+        ),
+        .init(
+            id: "spoken-code-digit-run", category: .technical,
+            spoken: "the code is one two three four",
+            expected: "The code is 1234.",
+            mustKeep: ["1234"]
+        ),
+        .init(
+            id: "spoken-emergency-digit-run", category: .technical,
+            spoken: "call nine one one",
+            expected: "Call 911.",
+            mustKeep: ["911"]
+        ),
+        .init(
+            id: "spoken-international-phone-digit-run", category: .technical,
+            spoken: "dial plus nine one nine eight seven six five four three two one zero",
+            expected: "Dial +919876543210.",
+            mustKeep: ["+919876543210"]
+        ),
+        .init(
+            id: "spoken-oh-and-zero-digit-run", category: .technical,
+            spoken: "the passcode is zero oh five",
+            expected: "The passcode is 005.",
+            mustKeep: ["005"]
+        ),
+        .init(
+            id: "spoken-leading-oh-digit-run", category: .technical,
+            spoken: "the passcode is oh five zero",
+            expected: "The passcode is 050.",
+            mustKeep: ["050"]
+        ),
+        .init(
+            id: "extension-is-digits-kept", category: .technical,
+            spoken: "my extension is 445",
+            expected: "My extension is 445.",
+            mustKeep: ["445"]
+        ),
+        .init(
+            id: "extension-is-spoken-digit-run", category: .technical,
+            spoken: "my extension is four four five",
+            expected: "My extension is 445.",
+            mustKeep: ["445"]
+        ),
+        .init(
+            id: "two-single-digits-kept", category: .technical,
+            spoken: "one or two",
+            expected: "One or two.",
+            mustKeep: ["one", "two"]
+        ),
+        .init(
+            id: "hyphenated-bedroom-count-kept", category: .technical,
+            spoken: "two three-bedroom flats",
+            expected: "Two three-bedroom flats.",
+            mustKeep: ["two", "three-bedroom", "flats"]
         ),
         .init(
             id: "spoken-email-address", category: .technical,
@@ -645,6 +872,63 @@ public enum EvaluationCorpus {
             expected: "We met at the office at five.",
             mustKeep: ["at the office at five"],
             mustNotAdd: ["@"]
+        ),
+        .init(
+            id: "spoken-web-address-and-path", category: .technical,
+            spoken: "visit example dot com slash docs",
+            expected: "Visit example.com/docs."
+        ),
+        .init(
+            id: "spoken-www-address", category: .technical,
+            spoken: "the site is www dot example dot com",
+            expected: "The site is www.example.com."
+        ),
+        .init(
+            id: "spoken-scheme-address", category: .technical,
+            spoken: "go to https colon slash slash example dot com",
+            expected: "Go to https://example.com."
+        ),
+        .init(
+            id: "spoken-domain-api-path", category: .technical,
+            spoken: "the docs live at docs dot example dot com slash api slash v two",
+            expected: "The docs live at docs.example.com/api/v2."
+        ),
+        .init(
+            id: "spoken-package-filename", category: .technical,
+            spoken: "open package dot json",
+            expected: "Open package.json."
+        ),
+        .init(
+            id: "spoken-dot-env-filename", category: .technical,
+            spoken: "edit the dot env file",
+            expected: "Edit the .env file."
+        ),
+        .init(
+            id: "spoken-absolute-path", category: .technical,
+            spoken: "the path is slash users slash sam slash notes",
+            expected: "The path is /users/sam/notes."
+        ),
+        .init(
+            id: "spoken-handle-and-underscore", category: .technical,
+            spoken: "my handle is at sam underscore dev",
+            expected: "My handle is @sam_dev."
+        ),
+        .init(
+            id: "spoken-identifier-underscore", category: .technical,
+            spoken: "the variable is user underscore id",
+            expected: "The variable is user_id."
+        ),
+        .init(
+            id: "ordinary-dot-word", category: .technical,
+            spoken: "a dot on the map",
+            expected: "A dot on the map.",
+            mustKeep: ["dot"]
+        ),
+        .init(
+            id: "ordinary-slash-word", category: .technical,
+            spoken: "a slash in prices",
+            expected: "A slash in prices.",
+            mustKeep: ["slash"]
         ),
     ]
 
@@ -1171,6 +1455,14 @@ public enum EvaluationCorpus {
             mustEndWith: "broken."
         ),
         .init(
+            id: "numbered-list-opens-the-dictation", category: .contextual,
+            spoken: "number one check logs number two restart the server",
+            expected: "1. Check logs\n2. Restart the server",
+            mustKeep: ["check logs", "restart the server"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "1. Check logs"
+        ),
+        .init(
             id: "document-sentence-not-a-list", category: .contextual,
             spoken: "bring a torch a map and the spare batteries",
             expected: "Bring a torch, a map and the spare batteries.",
@@ -1266,6 +1558,14 @@ public enum EvaluationCorpus {
             mustKeep: ["water the plants", "feed the cat"], context: numberedNotes,
             mustNotAdd: ["number"], destination: .document,
             mustBeginWith: "Reminders\n"
+        ),
+        .init(
+            id: "numbered-items-repeated-label", category: .contextual,
+            spoken: "reason number one it is cheap reason number two it is fast reason number three it works",
+            expected: "Reason 1: It is cheap\nReason 2: It is fast\nReason 3: It works",
+            mustKeep: ["reason", "cheap", "fast", "works"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "Reason 1: It is cheap"
         ),
         // Issue 238: a designator spoken mid-sentence, which must keep its word and its number.
         .init(
@@ -1786,12 +2086,12 @@ public enum EvaluationCorpus {
             spoken: "I have wrote the summary already",
             expected: "I have written the summary already.",
             mustKeep: ["summary", "already"],
-            mustNotAdd: ["wrote"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Meeting notes.pages"
             ),
+            mustNotAdd: ["wrote"],
             destination: .document,
             mustBeginWith: "I have written",
             mustEndWith: "already."
@@ -1801,12 +2101,12 @@ public enum EvaluationCorpus {
             spoken: "I had took the wrong turn",
             expected: "I had taken the wrong turn.",
             mustKeep: ["wrong", "turn"],
-            mustNotAdd: ["took"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Travel notes.pages"
             ),
+            mustNotAdd: ["took"],
             destination: .document,
             mustBeginWith: "I had taken",
             mustEndWith: "turn."
@@ -1816,12 +2116,12 @@ public enum EvaluationCorpus {
             spoken: "I should have ate before the call",
             expected: "I should have eaten before the call.",
             mustKeep: ["before", "call"],
-            mustNotAdd: ["ate"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Call notes.pages"
             ),
+            mustNotAdd: ["ate"],
             destination: .document,
             mustBeginWith: "I should have eaten",
             mustEndWith: "call."
@@ -1831,12 +2131,12 @@ public enum EvaluationCorpus {
             spoken: "It was wrote in the notes",
             expected: "It was written in the notes.",
             mustKeep: ["notes"],
-            mustNotAdd: ["wrote"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["wrote"],
             destination: .document,
             mustBeginWith: "It was written",
             mustEndWith: "notes."
@@ -1846,12 +2146,12 @@ public enum EvaluationCorpus {
             spoken: "The project has began already",
             expected: "The project has begun already.",
             mustKeep: ["project", "already"],
-            mustNotAdd: ["began"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["began"],
             destination: .document,
             mustBeginWith: "The project has begun",
             mustEndWith: "already."
@@ -1861,12 +2161,12 @@ public enum EvaluationCorpus {
             spoken: "I have spoke with them",
             expected: "I have spoken with them.",
             mustKeep: ["them"],
-            mustNotAdd: ["spoke"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["spoke"],
             destination: .document,
             mustBeginWith: "I have spoken",
             mustEndWith: "them."
@@ -1876,12 +2176,12 @@ public enum EvaluationCorpus {
             spoken: "The window was broke during transit",
             expected: "The window was broken during transit.",
             mustKeep: ["window", "transit"],
-            mustNotAdd: ["broke"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Delivery notes.pages"
             ),
+            mustNotAdd: ["broke"],
             destination: .document,
             mustBeginWith: "The window was broken",
             mustEndWith: "transit."
@@ -1891,12 +2191,12 @@ public enum EvaluationCorpus {
             spoken: "She has drove this route before",
             expected: "She has driven this route before.",
             mustKeep: ["route", "before"],
-            mustNotAdd: ["drove"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Travel notes.pages"
             ),
+            mustNotAdd: ["drove"],
             destination: .document,
             mustBeginWith: "She has driven",
             mustEndWith: "before."

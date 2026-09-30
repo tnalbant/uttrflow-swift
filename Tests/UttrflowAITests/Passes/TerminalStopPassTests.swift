@@ -8,10 +8,14 @@ struct TerminalStopPassTests {
     private let sut = TerminalStopPass()
     private let never = TerminalStopPass(policy: .never)
     private let short = TerminalStopPass(policy: .offForShortMessages(sentences: 2))
+    private let email = TerminalStopPass(destination: .email)
 
     @Test(
         "finishes a sentence that has no ending",
-        arguments: [("hello there", "hello there."), ("42", "42."), ("ship it", "ship it.")])
+        arguments: [
+            ("hello there", "hello there."), ("42", "42."), ("ship it", "ship it."),
+            ("मेरी उड़ान 15 अगस्त को सुबह 9 बजे है", "मेरी उड़ान 15 अगस्त को सुबह 9 बजे है."),
+        ])
     func addsStop(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
@@ -21,13 +25,71 @@ struct TerminalStopPassTests {
         "finishes a sentence that asks a question with a question mark",
         arguments: [
             ("where did you put the keys", "where did you put the keys?"),
+            ("papa did you take your medicine", "papa, did you take your medicine?"),
+            (
+                "didi can you ask jiju if he's free on saturday",
+                "didi, can you ask jiju if he's free on saturday?"
+            ),
+            (
+                "hey quick question do we support ios sixteen or only seventeen and above",
+                "hey quick question, do we support ios sixteen or only seventeen and above?"
+            ),
+            ("papa did the shopping", "papa did the shopping."),
+            (
+                "papa did the shopping. where is my bag",
+                "papa did the shopping. where is my bag?"
+            ),
+            ("did the tests pass should i merge it now", "did the tests pass should i merge it now?"),
+            ("the printer is jammed again who used it last", "the printer is jammed again who used it last."),
             ("Done. can you review the PR", "Done. can you review the PR?"),
+            (
+                "I'm blocked on the credentials for the sandbox account can someone help",
+                "I'm blocked on the credentials for the sandbox account, can someone help?"
+            ),
+            (
+                "I think this will break if the array is empty can you add a check.",
+                "I think this will break if the array is empty, can you add a check?"
+            ),
+            (
+                "This duplicates the logic in the helper class can we reuse that instead",
+                "This duplicates the logic in the helper class, can we reuse that instead?"
+            ),
+            (
+                "I don't have access to the production database can someone grant it",
+                "I don't have access to the production database, can someone grant it?"
+            ),
             ("it's late isn't it", "it's late isn't it?"),
+            ("the meeting is at three right", "the meeting is at three, right?"),
+            ("you sent the invoice right", "you sent the invoice, right?"),
+            ("the file is saved right", "the file is saved, right?"),
+            ("we leave at noon right", "we leave at noon, right?"),
+            ("is it okay if i leave at five", "is it okay if i leave at five?"),
+            ("is it fine if we start late", "is it fine if we start late?"),
+            ("is it okay when i call later", "is it okay when i call later?"),
             ("what we need is more time", "what we need is more time."),
+            ("I think we can do it", "I think we can do it."),
             ("Can you check? I think it's fine", "Can you check? I think it's fine."),
         ])
     func addsQuestionMark(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("leaves right as a command or confirmation instead of a question tag")
+    func rightWithoutAClauseIsNotATag() {
+        #expect(cleaned("turn right", by: sut) == "turn right.")
+        #expect(cleaned("that's right", by: sut) == "that's right.")
+        #expect(cleaned("everything is right", by: sut) == "everything is right.")
+        #expect(cleaned("you should turn right", by: sut) == "you should turn right.")
+        #expect(cleaned("it feels right", by: sut) == "it feels right.")
+        #expect(cleaned("I have no right", by: sut) == "I have no right.")
+        #expect(cleaned("you got the answer right", by: sut) == "you got the answer right.")
+        #expect(cleaned("I think it is right", by: sut) == "I think it is right.")
+    }
+
+    @Test("keeps an indirect if clause as a statement")
+    func indirectIfClauseIsNotAQuestion() {
+        #expect(
+            cleaned("I wonder if it is okay when I leave", by: sut) == "I wonder if it is okay when I leave.")
     }
 
     @Test("keeps a question's mark in a short chat message and adds none where the place never ends one")
@@ -43,7 +105,7 @@ struct TerminalStopPassTests {
         "leaves text that already ends, looks like code, or is empty",
         arguments: [
             "hello.", "hello!", "hello?", "hello…", "hello,", "\"hello\"", "get_user(id)",
-            "SELECT * FROM user;",
+            "SELECT * FROM user;", "मेरी उड़ान 15 अगस्त को सुबह 9 बजे है।", "वह घर गया॥",
             "let x = [1, 2, 3]", "func main() {}", "",
         ]
     )
@@ -122,6 +184,39 @@ struct TerminalStopPassTests {
         #expect(sut.apply(Draft(keepingLineBreaks: text)).text == expected)
     }
 
+    @Test(
+        "leaves short and long email greetings and sign-offs open",
+        arguments: [
+            ("Dear Sam", "Dear Sam"),
+            ("Dear hiring manager", "Dear hiring manager"),
+            ("Thanks, Sam", "Thanks, Sam"),
+            ("Best regards, Samantha Jones", "Best regards, Samantha Jones"),
+            ("The deck looks great. Thanks, Sam", "The deck looks great. Thanks, Sam"),
+            ("The deck looks great. Thanks, Sam. Go.", "The deck looks great. Thanks, Sam. Go."),
+            ("The deck looks great. Best regards\nAna", "The deck looks great. Best regards\nAna"),
+            ("The deck looks great. Cheers, Jo", "The deck looks great. Cheers, Jo"),
+        ])
+    func emailOpenersAndClosings(text: String, expected: String) {
+        #expect(email.apply(Draft(keepingLineBreaks: text)).text == expected)
+    }
+
+    @Test("leaves email greetings and signatures open while finishing body paragraphs")
+    func emailBodyStops() {
+        let text =
+            "Dear hiring manager for the product design team\n\nI am writing to ask about the role\n\nThanks, Sam"
+        #expect(
+            email.apply(Draft(keepingLineBreaks: text)).text
+                == "Dear hiring manager for the product design team\n\nI am writing to ask about the role.\n\nThanks, Sam"
+        )
+    }
+
+    @Test("keeps the stop when body text follows a greeting in the same paragraph")
+    func emailGreetingContinuesIntoBody() {
+        #expect(
+            email.apply(Draft(keepingLineBreaks: "Hi Priya, please send the deck")).text
+                == "Hi Priya, please send the deck.")
+    }
+
     @Test("gives a list item no stop, at the end or before a blank line")
     func listItems() {
         let list = Draft(keepingLineBreaks: "what's left to pack\n- the tent\n- the first aid kit")
@@ -191,7 +286,8 @@ struct TerminalStopPassTests {
         arguments: [
             ("", 0), ("   ", 0), ("one", 1), ("one.", 1), ("One. Two", 2), ("One. Two.", 2),
             ("Version 16.2 is out.", 1), ("Really?! Yes.", 2), ("One!  Two?  Three...", 3),
-            ("line one\nline two.", 1),
+            ("line one\nline two.", 1), ("वाक्य।", 1), ("वाक्य॥", 1),
+            ("पहला वाक्य। दूसरा वाक्य॥", 2),
         ]
     )
     func sentenceCount(text: String, expected: Int) {

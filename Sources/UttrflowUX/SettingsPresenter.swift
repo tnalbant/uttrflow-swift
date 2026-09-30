@@ -144,7 +144,7 @@ public enum SettingsPresenter {
     static func dictateExplanation(_ activation: HotkeyActivation, keys: String) -> String {
         switch activation {
         case .holdToTalk: "Hold \(keys) to talk, anywhere"
-        case .pressToToggle: "Press \(keys) to start talking, and again to stop"
+        case .pressToToggle: "Press \(keys) once to start talking, and again to stop"
         }
     }
 
@@ -214,6 +214,20 @@ public enum SettingsPresenter {
         var shortcuts = ShortcutRegistry.all.map { shortcutRow($0, settings, capabilities) }
         if let handsFree = handsFreeRow(settings) {
             shortcuts.insert(handsFree, at: 1)
+            shortcuts.insert(
+                SettingsRow(
+                    id: "handsFreeDoubleTapMilliseconds",
+                    label: "Double-tap speed",
+                    explanation: "Choose how far apart your taps can be.",
+                    control: .menu(
+                        options: [450, 600, 800].map { milliseconds in
+                            SettingsOption(
+                                id: String(milliseconds), title: "\(milliseconds) ms",
+                                change: .handsFreeDoubleTap(milliseconds: milliseconds))
+                        },
+                        selectedID: String(settings.handsFreeDoubleTapMilliseconds)),
+                    style: .inset),
+                at: 2)
         }
         shortcuts.append(
             SettingsRow(
@@ -334,10 +348,18 @@ public enum SettingsPresenter {
                 id: "checkForUpdates",
                 label: "Check for updates",
                 explanation: capabilities.canCheckForUpdates
-                    ? "Uttrflow also checks on its own every six hours." : nil,
+                    ? "Check now even when automatic checks are off." : nil,
                 control: .action(title: "Check Now", change: .checkForUpdatesNow),
                 unavailability: capabilities.canCheckForUpdates ? nil : noFeed,
                 icon: .symbol("arrow.triangle.2.circlepath", .info)))
+
+        rows.append(
+            toggleRow(
+                .checksForUpdatesAutomatically,
+                label: "Check for updates automatically",
+                explanation: "Checks the update feed every six hours.",
+                settings, capabilities
+            ).with(icon: .symbol("arrow.triangle.2.circlepath", .info)))
 
         rows.append(
             toggleRow(
@@ -585,10 +607,33 @@ public enum SettingsPresenter {
     static func suggestionModelBanner(
         _ settings: Settings, _ capabilities: SettingsCapabilities
     ) -> SettingsBanner? {
-        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
-        guard settings.suggestions.isEnabled, let title = capabilities.suggestionModel.headline else {
-            return nil
+        guard settings.suggestions.isEnabled else { return nil }
+        switch capabilities.suggestionRuntime {
+        case .starting:
+            return SettingsBanner(
+                symbolName: "clock", title: "Suggestions are paused briefly",
+                message: "The key tap is restarting. Suggestions will resume automatically.")
+        case .secureInputBlocked:
+            return SettingsBanner(
+                symbolName: "lock", title: "Suggestions are paused",
+                message: "A secure input field is active. Suggestions resume when you leave it.")
+        case .tapFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "Allow Uttrflow to monitor input in Privacy & Security, then turn suggestions off and on again."
+            )
+        case .corpusFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "The suggestion corpus could not be opened. Check its file access, then turn suggestions off and on again."
+            )
+        case .idle, .running:
+            break
         }
+        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
+        guard let title = capabilities.suggestionModel.headline else { return nil }
         switch capabilities.suggestionModel {
         case .ready, .notAsked, .downloading:
             return SettingsBanner(
@@ -609,22 +654,39 @@ public enum SettingsPresenter {
                 message:
                     "This Mac is short of memory, so the model that finishes your lines has been "
                     + "set aside. AI suggestions come back on their own once memory frees up.")
-        case .failed:
+        case .fetchFailed, .failed:
             return SettingsBanner(
                 symbolName: "exclamationmark.triangle",
                 title: title,
                 message: "AI suggestions cannot run without it. Check your connection, then try again.")
+        case .loadFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle",
+                title: title,
+                message: "AI suggestions cannot run without it. Try loading it again.")
         }
     }
 
-    /// Offers recovery only after a failed fetch.
+    /// Offers recovery only after a failed fetch or disk load.
     private static func retrySuggestionModelRow(
         _ settings: Settings, _ capabilities: SettingsCapabilities
     ) -> SettingsRow? {
-        guard settings.suggestions.isEnabled, capabilities.suggestionModel == .failed else { return nil }
+        guard settings.suggestions.isEnabled else { return nil }
+        let advice: String
+        switch capabilities.suggestionModel {
+        case .fetchFailed, .failed:
+            advice = "Check your connection, then fetch the model again."
+        case .loadFailed:
+            advice = "Try loading the model again."
+        default:
+            return nil
+        }
+        let label =
+            capabilities.suggestionModel == .loadFailed
+            ? "Suggestion model could not be loaded" : "Suggestion model could not be fetched"
         return SettingsRow(
-            id: "retrySuggestionModel", label: "Suggestion model could not be fetched",
-            explanation: "Check your connection, then fetch the model again.",
+            id: "retrySuggestionModel", label: label,
+            explanation: advice,
             control: .action(title: "Retry", change: .retrySuggestionModel),
             icon: .symbol("arrow.clockwise", .suggestion))
     }
@@ -757,10 +819,20 @@ public enum SettingsPresenter {
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
+        let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
+        let explanation: String? =
+            if key == .tab,
+                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
+                    || kind == .sqlEditor
+            {
+                "Tab also has a job in this app."
+            } else {
+                key.explanation
+            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: key.explanation,
+            explanation: explanation,
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(
@@ -1041,6 +1113,7 @@ public enum SettingsPresenter {
         case .minimisesWhileDictating: settings.minimisesWhileDictating
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts
         case .opensAtLogin: settings.opensAtLogin
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically
         case .sharesUsageStatistics: settings.sharesUsageStatistics
         case .sendsCrashReports: settings.sendsCrashReports

@@ -14,6 +14,32 @@ public enum CappedDecodeRetry {
     /// Silence between a collapsed segment's last word and its end past which words are taken to have been dropped.
     public static let collapsedGapSeconds = 1.0
 
+    /// Re-decodes an empty vocabulary-biased result once without vocabulary.
+    static func transcribeRecoveringEmptyPrompt(
+        samples: [Float],
+        sampleRate: Double = Double(AudioSamples.canonicalSampleRate),
+        languageHint: LanguageCode?,
+        vocabulary: [String],
+        using backend: any TranscriptionBackend
+    ) async throws(SpeechEngineError) -> RawTranscript {
+        let biased = try await transcribe(
+            samples: samples, sampleRate: sampleRate, languageHint: languageHint,
+            vocabulary: vocabulary, using: backend)
+        guard !vocabulary.isEmpty, biased.text.isEmpty else { return biased }
+
+        let retried = try await transcribe(
+            samples: samples, sampleRate: sampleRate, languageHint: languageHint,
+            vocabulary: [], using: backend)
+        return RawTranscript(
+            text: retried.text,
+            languageIdentifier: retried.languageIdentifier,
+            languageProbability: retried.languageProbability,
+            segments: retried.segments,
+            effort: biased.effort.addingRetry(retried.effort),
+            tokensUsed: retried.tokensUsed,
+            vocabularyPrompt: retried.vocabularyPrompt)
+    }
+
     /// Decodes `samples` with `backend`, retrying the tail when the decoder's token cap stops a decode early.
     public static func transcribe(
         samples: [Float],
@@ -28,6 +54,7 @@ public enum CappedDecodeRetry {
         var languageProbability: Double?
         var totalEffort = DecodeEffort.none
         var totalTokensUsed = 0
+        var vocabularyPrompt: [String] = []
         var remaining = samples
         var sliceStartSeconds = 0.0
         var stillCapped = false
@@ -41,6 +68,7 @@ public enum CappedDecodeRetry {
             languageProbability = result.languageProbability ?? languageProbability
             totalEffort = totalEffort.adding(result.effort)
             totalTokensUsed += result.tokensUsed
+            vocabularyPrompt = result.vocabularyPrompt
 
             let sliceDuration = Duration.seconds(Double(remaining.count) / sampleRate)
             let collapse = collapsedWindow(in: result.segments, sliceSeconds: sliceDuration.inSeconds)
@@ -108,7 +136,8 @@ public enum CappedDecodeRetry {
             languageProbability: languageProbability,
             segments: accumulatedSegments,
             effort: totalEffort,
-            tokensUsed: totalTokensUsed
+            tokensUsed: totalTokensUsed,
+            vocabularyPrompt: vocabularyPrompt
         )
     }
 

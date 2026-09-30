@@ -101,6 +101,16 @@ struct SoundPlayingRecordingCueTests {
         #expect(player.requested == [.start, .stop])
     }
 
+    @Test("plays the distinct warning sound when asked")
+    func playsWarning() {
+        let player = SpyPlayer()
+        let cue = SoundPlayingRecordingCue(player: player)
+
+        cue.playWarning()
+
+        #expect(player.requested == [.warning])
+    }
+
     @Test("says nothing when asked to stop what never started")
     func stopWithoutStartIsSilent() {
         let player = SpyPlayer()
@@ -162,14 +172,14 @@ struct SoundPlayingRecordingCueTests {
         #expect(player.requested == [frog, purr])
     }
 
-    @Test("warms both of its sounds before either is needed")
+    @Test("warms its sounds before any is needed")
     func prewarmsItsSounds() {
         let player = SpyPlayer()
         _ = SoundPlayingRecordingCue(
             player: player, startSound: frog, stopSound: purr
         )
 
-        #expect(player.prewarmed == [frog, purr])
+        #expect(player.prewarmed == [frog, purr, .warning])
         #expect(player.requested.isEmpty, "warming must not be audible")
     }
 
@@ -182,6 +192,7 @@ struct SoundPlayingRecordingCueTests {
 
         cue.playStart()
         cue.playStop()
+        cue.playWarning()
 
         #expect(player.requested.isEmpty)
     }
@@ -208,6 +219,7 @@ struct SoundPlayingRecordingCueTests {
         cue.playStart()
         setting.turn(on: false)
         cue.playStop()
+        cue.playWarning()
 
         #expect(player.requested == [.start])
     }
@@ -310,6 +322,7 @@ struct RecordingCueBoundaryTests {
 
         cue.playStart()
         cue.playStop()
-        #expect(player.playCount == 2)
+        cue.playWarning()
+        #expect(player.playCount == 3)
     }
 }

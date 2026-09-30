@@ -27,6 +27,14 @@ struct DestinationClassifierTests {
             ("com.microsoft.VSCode", .codeEditor),
             ("dev.zed.Zed", .codeEditor),
             ("com.jetbrains.pycharm", .codeEditor),
+            ("com.jetbrains.goland", .codeEditor),
+            ("com.jetbrains.rider", .codeEditor),
+            ("com.jetbrains.webstorm", .codeEditor),
+            ("com.jetbrains.phpstorm", .codeEditor),
+            ("com.jetbrains.rubymine", .codeEditor),
+            ("com.jetbrains.clion", .codeEditor),
+            ("com.jetbrains.appcode", .codeEditor),
+            ("com.jetbrains.mps", .codeEditor),
             ("com.apple.Terminal", .terminal),
             ("com.googlecode.iterm2", .terminal),
             ("com.tinyspeck.slackmacgap", .messaging),
@@ -55,6 +63,10 @@ struct DestinationClassifierTests {
             ("Quarterly plan - Google Docs", Destination.document),
             ("Budget - Google Sheets", .spreadsheet),
             ("Inbox (3) - Gmail", .email),
+            ("Compose Mail - Outlook", .email),
+            ("Mail - Jane Doe - Outlook", .email),
+            ("Draft - Spark", .email),
+            ("Inbox - Superhuman", .email),
             ("pgAdmin 4", .sqlEditor),
         ]
     )
@@ -62,9 +74,44 @@ struct DestinationClassifierTests {
         #expect(DestinationClassifier.classify(app("com.google.Chrome", title: title)) == expected)
     }
 
+    @Test(
+        "reads browser chat tabs as messaging by whole-word service title",
+        arguments: [
+            "general (Channel) - Acme - Slack",
+            "WhatsApp",
+            "Discord | #general",
+            "Telegram Web",
+            "Microsoft Teams",
+            "Signal",
+        ]
+    )
+    func classifiesChatByTitle(title: String) {
+        let browserTab = app("com.google.Chrome", title: title)
+        let situation = SituationResolver.resolve(from: browserTab)
+
+        #expect(situation.destination == .messaging)
+        #expect(
+            DestinationFormatter.standard(for: situation).terminalStop == .offForShortMessages(sentences: 2))
+    }
+
+    @Test("does not read a chat service name out of a longer title word")
+    func doesNotMatchChatServiceMidWord() {
+        #expect(DestinationClassifier.classify(app("com.google.Chrome", title: "Slackline launch")) == .plain)
+    }
+
+    @Test("does not read an email client name out of a longer title word")
+    func doesNotMatchEmailClientMidWord() {
+        #expect(DestinationClassifier.classify(app("com.google.Chrome", title: "Mailbox settings")) == .plain)
+        #expect(
+            DestinationClassifier.classify(app("com.google.Chrome", title: "Outlooked at the report"))
+                == .plain)
+    }
+
     @Test("is plain for an app the table does not name, and for no app at all")
     func plainByDefault() {
         #expect(DestinationClassifier.classify(app("com.example.Unknown", title: "Untitled")) == .plain)
+        #expect(DestinationClassifier.classify(app("com.jetbrains.toolbox")) == .plain)
+        #expect(DestinationClassifier.kind(for: app("com.jetbrains.toolbox")) == nil)
         #expect(DestinationClassifier.classify(.unknown) == .plain)
         #expect(DestinationClassifier.classify(app("", title: "")) == .plain)
     }

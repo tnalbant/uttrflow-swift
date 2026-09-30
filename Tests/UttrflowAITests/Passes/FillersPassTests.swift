@@ -24,6 +24,38 @@ struct FillersPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("removes fillers joined to neighboring words by an ellipsis")
+    func removesEllipsisJoinedFillers() {
+        #expect(
+            cleaned("Ah...the...um...the invoice is...ah...overdue", by: sut)
+                == "the...the invoice is...overdue")
+        #expect(cleaned("e.g. uh...hello", by: sut) == "e.g. hello")
+        #expect(
+            cleaned("https://example.com/uh...hello", by: sut)
+                == "https://example.com/uh...hello")
+    }
+
+    @Test(
+        "joins fixed assent and alarm replies",
+        arguments: [
+            ("uh huh", "Uh-huh"),
+            ("uh huh sounds good", "Uh-huh sounds good"),
+            ("uh oh", "Uh-oh"),
+            ("mm hmm", "Mm-hmm"),
+        ]
+    )
+    func joinsInterjections(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps hmm and mhm when they are the whole reply")
+    func keepsStandaloneReplies() {
+        #expect(cleaned("hmm", by: sut) == "hmm")
+        #expect(cleaned("mhm", by: sut) == "mhm")
+        #expect(cleaned("hello there hmm", by: sut) == "hello there")
+        #expect(cleaned("hello there mhm", by: sut) == "hello there")
+    }
+
     @Test(
         "keeps words that only sometimes act as filler",
         arguments: [
@@ -63,6 +95,30 @@ struct FillersPassTests {
     func removesAFillerWithNoDeterminer() {
         #expect(cleaned("Er, I think so", by: sut) == "I think so")
         #expect(cleaned("we waited er for hours", by: sut) == "we waited for hours")
+    }
+
+    @Test(
+        "removes um and uh after determiners while keeping a determiner-led er noun",
+        arguments: [
+            ("check the uh logs", "check the logs"),
+            ("the uh the database is down", "the database is down"),
+            ("the er ward is full", "the er ward is full"),
+        ]
+    )
+    func removesFillerSoundsAndKeepsErNoun(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps ER when it is a noun after a determiner or a common noun cue",
+        arguments: [
+            ("the ER is full", "the ER is full"),
+            ("take me to the ER now", "take me to the ER now"),
+            ("the er ward is full", "the er ward is full"),
+        ]
+    )
+    func keepsNounSpelledLikeFiller(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
     }
 
     @Test("records which pass removed the word")

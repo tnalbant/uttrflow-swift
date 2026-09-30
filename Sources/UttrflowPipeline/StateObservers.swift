@@ -26,6 +26,4 @@ final class StateObservers: Sendable {
         }
     }
 
-    /// Number of live watchers, so a test can prove a finished stream is let go of.
-    var observerCount: Int { continuations.withLock(\.count) }
 }

@@ -24,6 +24,8 @@ enum DiagnosticsFixture {
         availability: [TransformerKind: Bool] = [:],
         model: DiagnosticsModelPresence? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
+        dictationShortcutArmed: Bool? = true,
+        hasDefaultInputDevice: Bool? = true,
         measurements: [StageMeasurement] = [],
         cleaning: CleaningRecord? = nil,
         lastCleanedBy: TransformerKind? = nil
@@ -31,7 +33,9 @@ enum DiagnosticsFixture {
         DiagnosticsPresenter.page(
             for: DiagnosticsSnapshot(
                 engines: engines, transformerAvailability: availability, speechModel: model,
-                permissions: permissions, measurements: measurements, cleaning: cleaning,
+                permissions: permissions, dictationShortcutArmed: dictationShortcutArmed,
+                hasDefaultInputDevice: hasDefaultInputDevice,
+                measurements: measurements, cleaning: cleaning,
                 lastCleanedBy: lastCleanedBy),
             locale: locale)
     }
@@ -223,6 +227,20 @@ struct DiagnosticsLatencyTests {
     func stageRowIdentity() {
         let summaries = StageLatency.summarise([DiagnosticsFixture.timing(.insertion, 0.1)])
         #expect(DiagnosticsPresenter.stageRows(for: summaries).first?.id == .insertion)
+    }
+}
+
+@Suite("Diagnostics reports the local recogniser prompt")
+struct DiagnosticsVocabularyPromptTests {
+    @Test("shows the last prompt words locally and leaves them out of copied diagnostics")
+    func vocabularyPromptIsLocalOnly() {
+        let snapshot = DiagnosticsSnapshot(vocabularyPrompt: ["Maelis", "Yuvraaj"])
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.vocabularyPrompt.detail == "Maelis, Yuvraaj")
+        #expect(!report.contains("Maelis"))
+        #expect(!report.contains("Yuvraaj"))
     }
 }
 
@@ -517,6 +535,45 @@ struct DiagnosticsPermissionTests {
     }
 }
 
+@Suite("Diagnostics reports whether dictation can start")
+struct DiagnosticsAvailabilityTests {
+    @Test("a shortcut with no dictation listener is shown as unarmed and raises attention")
+    func unarmedShortcutNeedsAttention() {
+        let page = DiagnosticsFixture.page(dictationShortcutArmed: false)
+        let shortcut = page.availability.first
+
+        #expect(shortcut?.title == "Dictation shortcut")
+        #expect(shortcut?.detail == "Not armed")
+        #expect(shortcut?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Dictation shortcut: Not armed")
+    }
+
+    @Test("a missing default input device is shown and raises the attention summary")
+    func missingInputNeedsAttention() {
+        let page = DiagnosticsFixture.page(hasDefaultInputDevice: false)
+        let input = page.availability.last
+
+        #expect(input?.title == "Input device")
+        #expect(input?.detail == "No default input device")
+        #expect(input?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Input device: No default input device")
+    }
+
+    @Test("both availability rows appear in copied diagnostics")
+    func reportIncludesAvailability() {
+        let report = DiagnosticsPresenter.report(
+            for: DiagnosticsSnapshot(
+                dictationShortcutArmed: false, hasDefaultInputDevice: false),
+            locale: DiagnosticsFixture.locale)
+
+        #expect(
+            report.contains(
+                "Availability\n  Dictation shortcut: Not armed\n  Input device: No default input device"))
+    }
+}
+
 @Suite("Diagnostics reports what is on the disk")
 struct DiagnosticsStorageTests {
     @Test("an installed model reports its size and what it covers")
@@ -557,6 +614,23 @@ struct DiagnosticsStorageTests {
 
 @Suite("Diagnostics can be copied out")
 struct DiagnosticsReportTests {
+    @Test("the report counts pieces that needed extra decodes and empty-result retries")
+    func reportsRecordedDecodeEffort() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordDecoding(DecodeEffort(fallbacks: 2, encoderRuns: 3))
+        await recorder.recordDecoding(DecodeEffort(retriedWithoutPrompt: true))
+        await recorder.recordDecoding(.none)
+
+        let snapshot = DiagnosticsSnapshot(decoding: await recorder.decoding)
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.decoding.map(\.detail) == ["2 of 3 pieces", "1 retry"])
+        #expect(report.contains("Decode effort (3 pieces)"))
+        #expect(report.contains("Pieces needing more than one decode: 2 of 3 pieces"))
+        #expect(report.contains("Empty-result retries: 1 retry"))
+    }
+
     /// What is copied must not say something different from what was on screen.
     @Test("the report carries the same numbers the page shows")
     func reportMatchesThePage() {
@@ -647,6 +721,17 @@ struct DiagnosticsRecorderTests {
         #expect(value == 42)
         #expect(await recorder.recorded.map(\.stage) == [.transformation])
         #expect(await recorder.recorded.allSatisfy(\.succeeded))
+    }
+
+    @Test("keeps the latest recogniser prompt locally and clears it on reset")
+    func recordsAndForgetsVocabularyPrompt() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordVocabularyPrompt(["Maelis", "Yuvraaj"])
+        #expect(await recorder.vocabularyPrompt == ["Maelis", "Yuvraaj"])
+
+        await recorder.forget()
+
+        #expect(await recorder.vocabularyPrompt.isEmpty)
     }
 }
 

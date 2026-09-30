@@ -4,6 +4,12 @@ public import UttrflowPredict
 
 public import struct Foundation.NSRange
 
+public enum WritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+    case unknown
+}
+
 /// The focused Accessibility element and its selected text range, without reading its contents.
 public struct FocusedFieldSelection: Sendable, Equatable {
     /// The process that owns the focused element.
@@ -44,6 +50,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let selection: NSRange?
     /// The caret's rectangle, in AppKit screen coordinates, or nothing when it cannot be read.
     public let caret: CGRect?
+    /// The direction at the caret, or nothing when the Accessibility bounds cannot establish one.
+    public let writingDirection: WritingDirection
     /// The window's rectangle, in AppKit screen coordinates, which the strip stands on.
     public let window: CGRect?
     /// The field's own rectangle, in AppKit screen coordinates, which a long ghost must not run past.
@@ -52,6 +60,10 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let pointSize: CGFloat?
     /// The field's own font family, so the ghost is set in the face the line is.
     public let fontFamily: String?
+    /// Whether the field's face is bold, so the ghost keeps the run's weight.
+    public let isBold: Bool
+    /// Whether the field's face is italic, so the ghost keeps the run's slant.
+    public let isItalic: Bool
     /// The field's own text colour, so the ghost reads against the field and not against Uttrflow's appearance.
     public let textColor: TextColor?
     /// Whether the field hides what is typed into it.
@@ -89,10 +101,13 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         value: String? = nil,
         selection: NSRange? = nil,
         caret: CGRect? = nil,
+        writingDirection: WritingDirection = .unknown,
         window: CGRect? = nil,
         field: CGRect? = nil,
         pointSize: CGFloat? = nil,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         textColor: TextColor? = nil,
         isSecure: Bool = false,
         isEnabled: Bool? = nil,
@@ -115,10 +130,13 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.value = value
         self.selection = selection
         self.caret = caret
+        self.writingDirection = writingDirection
         self.window = window
         self.field = field
         self.pointSize = pointSize
         self.fontFamily = fontFamily
+        self.isBold = isBold
+        self.isItalic = isItalic
         self.textColor = textColor
         self.isSecure = isSecure
         self.isEnabled = isEnabled
@@ -151,13 +169,13 @@ extension FocusedFieldSnapshot {
             readMicroseconds: readMicroseconds)
     }
 
-    /// Whether any of the field's type can be matched — size, family or colour — since the ghost defaults the rest.
-    var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || textColor != nil }
+    /// Whether any of the field's type can be matched, since the ghost defaults the rest.
+    var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || isBold || isItalic || textColor != nil }
 
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
     public var placement: SuggestionPlacement? {
         isEnabled == false || isEditable == false || isHeldByFullScreenProgram
-            ? nil : capability.placement
+            || writingDirection == .unknown ? nil : capability.placement
     }
 
     /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.
@@ -169,8 +187,10 @@ extension FocusedFieldSnapshot {
     /// The line capture may learn, which is nothing when the line was too long to read whole or text follows the caret on it.
     public var learnableLine: String { isLineCut || hasTextAfterCaret ? "" : currentLine }
 
-    /// Whether the field shows text after the caret on its line, so the line up to the caret is a cut, not a finished value.
-    public var hasTextAfterCaret: Bool { rowAhead != nil && !caretAtLineEnd }
+    /// Whether non-padding text follows the caret on its line, so capture does not learn a cut value.
+    public var hasTextAfterCaret: Bool {
+        rowAhead?.contains(where: { $0 != " " && $0 != "\t" }) ?? false
+    }
 
     /// How many characters back from the caret its line is read; a prompt and a line to complete both fit well inside it.
     public static let lineReadLimit = ShellPrompt.searchLimit + SuggestionSession.maximumTypedLength + 1
@@ -283,11 +303,14 @@ extension FocusedFieldSnapshot {
         String(text.drop { $0 == " " || $0 == "\t" })
     }
 
-    /// Whether the caret sits at the end of the line it is on, which completing presumes.
+    /// Whether only padding and closing punctuation follow the caret, which completing presumes.
     public var caretAtLineEnd: Bool {
         guard let ahead = rowAhead else { return false }
-        return ahead.allSatisfy { $0 == " " || $0 == "\t" }
+        return ahead.allSatisfy { $0 == " " || $0 == "\t" || Self.closingPunctuation.contains($0) }
     }
+
+    /// Characters an editor may keep after the caret while it completes inside a pair.
+    private static let closingPunctuation: Set<Character> = [")", "]", "}", "'", "\"", "`"]
 
     /// The fewest padding spaces that separate the caret from a terminal's right-side display text.
     static let rightPromptPadding = 4

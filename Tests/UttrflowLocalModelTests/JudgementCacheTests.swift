@@ -77,6 +77,10 @@ struct JudgementCacheTests {
 private let scorerBytes: [[UInt8]] = [
     "<bos>", "p", "pl", "ple", "lease", " ", "send", " the", " report",
 ].map { Array($0.utf8) }
+private let scorerVocabulary = TokenHealing.Vocabulary(
+    bytes: [
+        "<bos>", "p", "pl", "ple", "lease", " ", "send", " the", " report",
+    ].map { Array($0.utf8) }, ending: [])
 
 @Suite("A cached line answers each new typed prefix from the same rows")
 struct JudgedLineTests {
@@ -106,9 +110,45 @@ struct JudgedLineTests {
         #expect(judged.count == tokens.count - 1)
     }
 
+    @Test("A cached mid-token judgement conditions on indexed rivals without changing its score")
+    func cachedCutUsesPrefixIndexedRivals() throws {
+        let tokens = [0, 3, 4]
+        let vocabularyBytes =
+            ["<bos>", "p", "pl", "please", "lease", "x"]
+            .map { Array($0.utf8) } + (0..<2_000).map { Array("unrelated-\($0)".utf8) }
+        var vocabulary = TokenHealing.Vocabulary(bytes: vocabularyBytes, ending: [])
+        let line = JudgedLine(
+            tokens: tokens,
+            rows: [
+                Array(repeating: -8, count: vocabularyBytes.count),
+                Array(repeating: -8, count: vocabularyBytes.count),
+                Array(repeating: -8, count: vocabularyBytes.count),
+            ],
+            texts: ["", "please", "lease"])
+        var cache = JudgementCache()
+        cache.remember(line, for: "please")
+
+        let recalled = try #require(cache.recall(candidate: "please"))
+        #expect(recalled == line)
+        #expect(ScoredSpan.continuing(Array("pl".utf8), in: vocabulary) == [2, 3])
+        vocabulary.resetExaminedEntries()
+        let judged = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &vocabulary)
+        #expect(vocabulary.examinedEntries == 3)
+        #expect(judged.count == 2)
+        #expect(abs(judged[0].logProbability + log(3)) < 1e-6)
+        #expect(judged[1].logProbability == -8)
+
+        var smallVocabulary = TokenHealing.Vocabulary(bytes: Array(vocabularyBytes.prefix(6)), ending: [])
+        smallVocabulary.resetExaminedEntries()
+        _ = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &smallVocabulary)
+        #expect(smallVocabulary.examinedEntries == 3)
+    }
+
     @Test("An empty cached line returns nothing rather than indexing out of bounds.")
     func emptyLineReturnsNothing() {
         let line = JudgedLine(tokens: [], rows: [], texts: [])
-        #expect(JudgedLine.judged(from: line, typedTokens: [], bytes: []) == [])
+        #expect(
+            JudgedLine.judged(
+                from: line, typedTokens: [], vocabulary: .init(bytes: [], ending: [])) == [])
     }
 }

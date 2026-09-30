@@ -2,7 +2,9 @@
 
 Uttrflow's claim is that hold-key → capture → transcribe → tidy → insert touches the
 network zero times once the speech model is on disk. This is the evidence for that
-claim and the things it does not prove.
+claim and the things it does not prove. Update checks are separate from dictation: the
+General tab can turn off scheduled checks, and **Check Now** makes a request only when
+asked. See `Docs/app-updates.md` for what an update request reveals.
 
 Re-run the static half with `./Scripts/offline_audit.sh`. It exits non-zero if a network
 call site appears anywhere under `Sources/` outside the files that are allowed one, or if

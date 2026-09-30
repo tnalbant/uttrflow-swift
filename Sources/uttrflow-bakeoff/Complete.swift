@@ -56,6 +56,12 @@ struct Complete: AsyncParsableCommand {
     )
     var secondOpinion = false
 
+    func validate() throws {
+        if let limit, limit < 1 {
+            throw ValidationError("--limit must be at least 1.")
+        }
+    }
+
     func run() async throws {
         let generator: any CandidateGenerating
         if model == "apple" {

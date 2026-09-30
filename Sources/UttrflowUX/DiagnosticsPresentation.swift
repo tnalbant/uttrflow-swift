@@ -182,8 +182,16 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let appleSpeechLoadFailure: SpeechEngineError?
     /// What macOS has granted, for every permission asked about.
     public let permissions: [PermissionKind: PermissionStatus]
+    /// Whether the dictation shortcut is armed; absent when its state has not been checked.
+    public let dictationShortcutArmed: Bool?
+    /// Whether macOS has a default input device; absent when its state has not been checked.
+    public let hasDefaultInputDevice: Bool?
     /// Every stage timing recorded since the app started.
     public let measurements: [StageMeasurement]
+    /// The words the active recogniser last kept in its prompt, from the local recorder.
+    public let vocabularyPrompt: [String]
+    /// The bounded per-piece decode effort recorded since the app started.
+    public let decoding: [DecodeEffort]
     /// What the clean-up steps did to the last dictation, absent until one has been tidied.
     public let cleaning: CleaningRecord?
     /// Which engine tidied the last inserted dictation, including `.untidied` when none did.
@@ -205,7 +213,11 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         appleSpeechStatus: DiagnosticsAppleSpeechStatus? = nil,
         appleSpeechLoadFailure: SpeechEngineError? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
+        dictationShortcutArmed: Bool? = nil,
+        hasDefaultInputDevice: Bool? = nil,
         measurements: [StageMeasurement] = [],
+        vocabularyPrompt: [String] = [],
+        decoding: [DecodeEffort] = [],
         cleaning: CleaningRecord? = nil,
         lastCleanedBy: TransformerKind? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
@@ -220,7 +232,11 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.appleSpeechStatus = appleSpeechStatus
         self.appleSpeechLoadFailure = appleSpeechLoadFailure
         self.permissions = permissions
+        self.dictationShortcutArmed = dictationShortcutArmed
+        self.hasDefaultInputDevice = hasDefaultInputDevice
         self.measurements = measurements
+        self.vocabularyPrompt = vocabularyPrompt
+        self.decoding = decoding
         self.cleaning = cleaning
         self.lastCleanedBy = lastCleanedBy
         self.suggestionModel = suggestionModel
@@ -260,12 +276,18 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
     public let latencyEmptyState: MainEmptyState?
     /// How often each measured stage worked. Empty until there is something to divide.
     public let reliability: [MainStatistic]
+    /// Aggregate counts of pieces that took extra decodes and empty-result retries.
+    public let decoding: [DiagnosticsRow]
     /// One row per speech and clean-up engine.
     public let engines: [DiagnosticsRow]
     /// What each clean-up step did to the last dictation, and which steps are switched off.
     public let cleanUp: [DiagnosticsRow]
+    /// The exact dictionary words included in the latest recogniser prompt.
+    public let vocabularyPrompt: DiagnosticsRow
     /// One row per permission, granted or not.
     public let permissions: [DiagnosticsRow]
+    /// Whether the shortcut and input device can start dictation.
+    public let availability: [DiagnosticsRow]
     /// What the speech model occupies on disk.
     public let storage: [DiagnosticsRow]
     /// The line under the page saying where the timings come from.
@@ -281,9 +303,12 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         latency: DiagnosticsLatency?,
         latencyEmptyState: MainEmptyState?,
         reliability: [MainStatistic],
+        decoding: [DiagnosticsRow],
         engines: [DiagnosticsRow],
         cleanUp: [DiagnosticsRow],
+        vocabularyPrompt: DiagnosticsRow,
         permissions: [DiagnosticsRow],
+        availability: [DiagnosticsRow],
         storage: [DiagnosticsRow],
         footnote: String,
         copyAction: MainAction
@@ -294,9 +319,12 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         self.latency = latency
         self.latencyEmptyState = latencyEmptyState
         self.reliability = reliability
+        self.decoding = decoding
         self.engines = engines
         self.cleanUp = cleanUp
+        self.vocabularyPrompt = vocabularyPrompt
         self.permissions = permissions
+        self.availability = availability
         self.storage = storage
         self.footnote = footnote
         self.copyAction = copyAction
@@ -320,18 +348,29 @@ public enum DiagnosticsPresenter {
         let missing = StageLatency.unmeasuredStages(in: snapshot.measurements)
         let engines = engineRows(for: snapshot)
         let permissions = permissionRows(for: snapshot)
+        let availability = availabilityRows(for: snapshot)
         let storage = storageRows(for: snapshot, locale: locale)
 
         return DiagnosticsPresentation(
-            summary: summary(engines: engines, permissions: permissions, storage: storage),
+            summary: summary(
+                engines: engines, permissions: permissions, availability: availability,
+                storage: storage),
             models: models(for: snapshot, locale: locale),
             system: systemRows(for: snapshot),
             latency: summaries.isEmpty ? nil : latency(for: summaries, missing: missing),
             latencyEmptyState: summaries.isEmpty ? noTimingsYet : nil,
             reliability: reliability(for: snapshot.measurements, locale: locale),
+            decoding: decodingRows(for: snapshot.decoding),
             engines: engines,
             cleanUp: cleanUpRows(for: snapshot.cleaning),
+            vocabularyPrompt: DiagnosticsRow(
+                title: "Words in recogniser prompt",
+                detail: snapshot.vocabularyPrompt.isEmpty
+                    ? "No dictionary words in the last prompt"
+                    : snapshot.vocabularyPrompt.joined(separator: ", "),
+                state: .unknown),
             permissions: permissions,
+            availability: availability,
             storage: storage,
             footnote: footnote,
             copyAction: MainAction(
@@ -488,7 +527,8 @@ public enum DiagnosticsPresenter {
             case .loading: ("Loading", .unknown)
             case .ready: ("Loaded", .good)
             case .releasedForMemory: ("Set aside for memory", .unknown)
-            case .failed: ("Could not be fetched", .attention)
+            case .fetchFailed, .failed: ("Could not be fetched", .attention)
+            case .loadFailed: ("Could not be loaded", .attention)
             }
         return DiagnosticsModelCard(
             title: "AI suggestions", symbolName: "sparkles", tint: .amber,
@@ -512,12 +552,13 @@ public enum DiagnosticsPresenter {
 
     // MARK: - The verdict
 
-    /// What to say above the table: the first thing wrong, in the order permissions, storage, engines.
+    /// What to say above the table: the first thing wrong, starting with anything that stops dictation.
     static func summary(
-        engines: [DiagnosticsRow], permissions: [DiagnosticsRow], storage: [DiagnosticsRow]
+        engines: [DiagnosticsRow], permissions: [DiagnosticsRow], availability: [DiagnosticsRow],
+        storage: [DiagnosticsRow]
     ) -> DiagnosticsSummary {
-        // Storage before engines, so a missing model is named by the row that offers the download.
-        let ordered = permissions + storage + engines
+        // The shortcut and input device are checked before models and engines, since without them no dictation can start.
+        let ordered = permissions + availability + storage + engines
         guard let problem = ordered.first(where: { $0.state == .attention }) else {
             // An unanswered check is not an all-clear, so the line names it without raising a warning.
             if let pending = ordered.first(where: { $0.state == .unknown }) {
@@ -538,6 +579,21 @@ public enum DiagnosticsPresenter {
         symbolName: "gauge.with.dots.needle.bottom.50percent",
         title: "No timings yet",
         message: "Dictate something and the times appear here. They stay on this Mac.")
+
+    /// Counts only aggregate decode outcomes, never the pieces or their words.
+    static func decodingRows(for decoding: [DecodeEffort]) -> [DiagnosticsRow] {
+        guard !decoding.isEmpty else { return [] }
+        let repeated = decoding.count { $0.fallbacks > 0 || $0.retriedWithoutPrompt }
+        let retried = decoding.count { $0.retriedWithoutPrompt }
+        return [
+            DiagnosticsRow(
+                title: "Pieces needing more than one decode",
+                detail: "\(repeated) of \(decoding.count) pieces", state: .good),
+            DiagnosticsRow(
+                title: "Empty-result retries",
+                detail: MainFormatting.count(retried, "retry", "retries"), state: .good),
+        ]
+    }
 
     // MARK: - Latency
 
@@ -596,6 +652,7 @@ public enum DiagnosticsPresenter {
     static func title(for stage: PipelineStage) -> String {
         switch stage {
         case .microphoneOpen: "Opening the microphone"
+        case .keyDownToAudio: "Shortcut to first audio"
         case .capture: "Recording"
         case .drain: "Finishing the piece already under way"
         case .transcription: "Transcribing"
@@ -788,6 +845,29 @@ public enum DiagnosticsPresenter {
         }
     }
 
+    /// Whether the two pieces of hardware/setup most likely to stop dictation are ready.
+    static func availabilityRows(for snapshot: DiagnosticsSnapshot) -> [DiagnosticsRow] {
+        let shortcut: DiagnosticsRow =
+            switch snapshot.dictationShortcutArmed {
+            case true:
+                DiagnosticsRow(title: "Dictation shortcut", detail: "Armed", state: .good)
+            case false:
+                DiagnosticsRow(title: "Dictation shortcut", detail: "Not armed", state: .attention)
+            case nil:
+                DiagnosticsRow(title: "Dictation shortcut", detail: "Not checked yet", state: .unknown)
+            }
+        let input: DiagnosticsRow =
+            switch snapshot.hasDefaultInputDevice {
+            case true:
+                DiagnosticsRow(title: "Input device", detail: "Available", state: .good)
+            case false:
+                DiagnosticsRow(title: "Input device", detail: "No default input device", state: .attention)
+            case nil:
+                DiagnosticsRow(title: "Input device", detail: "Not checked yet", state: .unknown)
+            }
+        return [shortcut, input]
+    }
+
     /// A recovery as a button, worded once in ``MainPresenter``.
     static func action(_ recovery: RecoveryAction) -> MainAction {
         MainAction(title: MainPresenter.title(for: recovery), intent: .recover(recovery))
@@ -861,6 +941,14 @@ public enum DiagnosticsPresenter {
             }
         }
 
+        if snapshot.decoding.isEmpty {
+            lines += ["", "Decode effort: none recorded yet"]
+        } else {
+            let decoding = decodingRows(for: snapshot.decoding)
+            lines += ["", "Decode effort (\(snapshot.decoding.count) pieces)"]
+            lines += decoding.map { "  \($0.title): \($0.detail)" }
+        }
+
         // Counted, never quoted: this string is pasted elsewhere, and dictated words are not a diagnostic.
         let counted = snapshot.cleaning.map(countedCleanUp) ?? []
         if !counted.isEmpty {
@@ -874,6 +962,7 @@ public enum DiagnosticsPresenter {
             ("Models", models),
             ("Engines", engineRows(for: snapshot)),
             ("Permissions", permissionRows(for: snapshot)),
+            ("Availability", availabilityRows(for: snapshot)),
             ("On disk", storageRows(for: snapshot, locale: locale)),
         ]
         for (heading, rows) in sections {

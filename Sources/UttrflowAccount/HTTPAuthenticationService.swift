@@ -21,6 +21,24 @@ public final class HTTPAuthenticationService: AuthenticationService {
     /// Each step of a sign-in and a session by status code and port alone; never a token, code or address.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "account")
 
+    private enum FailureReason: String {
+        case addressCouldNotBeBuilt
+        case responseUnreadable
+        case attemptMismatch
+        case abandoned
+        case codeExpired
+        case sessionEnded
+        case serverRefused
+        case sessionMalformed
+        case sessionCouldNotBeKept
+        case serverUnreachable
+    }
+
+    private struct SignInFailure: Error {
+        let reason: FailureReason
+        let accountError: AccountError
+    }
+
     /// Renews the access token this long before expiry, so no request carries a token that dies in flight.
     private static let renewalMargin: TimeInterval = 60
 
@@ -141,6 +159,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
         // Any attempt still waiting is abandoned here rather than left holding a port.
         await abandonPending()
 
+        Self.log.info("sign-in: started provider=\(provider.rawValue, privacy: .public)")
+
         let pkce = PKCEPair(randomBytes: randomBytes(32))
         let state = PKCEPair.base64URL(randomBytes(24))
 
@@ -151,9 +171,11 @@ public final class HTTPAuthenticationService: AuthenticationService {
         } catch {
             await listener.close()
             Self.log.notice("sign-in: no loopback port, signing in by code instead")
+            Self.log.info("sign-in: method=code")
             return try await beginDeviceSignIn(with: provider)
         }
         Self.log.notice("sign-in: waiting on loopback port \(redirectURI.port ?? 0, privacy: .public)")
+        Self.log.info("sign-in: method=browser")
 
         var components = URLComponents(url: url("v1/auth/authorize"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -167,7 +189,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
         ]
         guard let authorisationURL = components?.url else {
             await listener.close()
-            throw .providerRefused(description: "the sign-in address could not be built")
+            throw refusal(.addressCouldNotBeBuilt)
         }
 
         pending.withLock {
@@ -178,31 +200,39 @@ public final class HTTPAuthenticationService: AuthenticationService {
 
     /// Signs in by RFC 8628 device code, for a machine with nowhere for a browser to come back to.
     private func beginDeviceSignIn(
-        with provider: SignInProvider
+        with _: SignInProvider
     ) async throws(AccountError) -> SignInChallenge {
-        let response = try await send(post("v1/auth/device/code", DeviceCodeBody(clientID: clientID)))
+        try await beginDeviceSignInRequest()
+    }
 
-        guard response.isSuccess else { throw refusal(response) }
-        guard let started = decode(StartedDeviceSignIn.self, from: response.body),
-            let verificationURL = URL(string: started.verificationUriComplete ?? started.verificationUri),
-            Self.isOpenable(verificationURL)
-        else {
-            throw .providerRefused(description: "the server started a sign-in we could not read")
-        }
+    private func beginDeviceSignInRequest() async throws -> SignInChallenge {
+        do {
+            let response = try await send(post("v1/auth/device/code", DeviceCodeBody(clientID: clientID)))
 
-        let state = PKCEPair.base64URL(randomBytes(24))
-        pending.withLock {
-            $0 = .code(
+            guard response.isSuccess else { throw refusal(response) }
+            guard let started = decode(StartedDeviceSignIn.self, from: response.body),
+                let verificationURL = URL(string: started.verificationUriComplete ?? started.verificationUri),
+                Self.isOpenable(verificationURL)
+            else {
+                throw refusal(.responseUnreadable)
+            }
+
+            let state = PKCEPair.base64URL(randomBytes(24))
+            pending.withLock {
+                $0 = .code(
+                    state: state,
+                    deviceCode: started.deviceCode,
+                    interval: .seconds(max(1, started.interval)),
+                    expiresAt: now().addingTimeInterval(TimeInterval(started.expiresIn)))
+            }
+
+            return SignInChallenge(
+                authorisationURL: verificationURL,
                 state: state,
-                deviceCode: started.deviceCode,
-                interval: .seconds(max(1, started.interval)),
-                expiresAt: now().addingTimeInterval(TimeInterval(started.expiresIn)))
+                method: .code(userCode: started.userCode, verificationURL: verificationURL))
+        } catch {
+            throw error
         }
-
-        return SignInChallenge(
-            authorisationURL: verificationURL,
-            state: state,
-            method: .code(userCode: started.userCode, verificationURL: verificationURL))
     }
 
     /// Whether a server-supplied address is safe to hand to the system to open: `https` with a host.
@@ -219,15 +249,27 @@ public final class HTTPAuthenticationService: AuthenticationService {
         }
         // A stale challenge leaves the attempt that is pending in place, still able to finish.
         guard let attempt = matched else {
-            throw .providerRefused(description: "that sign-in does not answer this attempt")
+            throw refusal(.attemptMismatch)
         }
 
-        switch attempt {
-        case .code(_, let deviceCode, let interval, let expiresAt):
-            return try await awaitDeviceApproval(deviceCode, every: interval, until: expiresAt)
-        case .browser(_, let pkce, let redirectURI, let listener):
-            return try await awaitBrowser(
-                challenge, pkce: pkce, redirectURI: redirectURI, listener: listener)
+        do {
+            switch attempt {
+            case .code(_, let deviceCode, let interval, let expiresAt):
+                let profile = try await awaitDeviceApproval(deviceCode, every: interval, until: expiresAt)
+                Self.log.info("sign-in: completed")
+                return profile
+            case .browser(_, let pkce, let redirectURI, let listener):
+                let profile = try await awaitBrowser(
+                    challenge, pkce: pkce, redirectURI: redirectURI, listener: listener)
+                Self.log.info("sign-in: completed")
+                return profile
+            }
+        } catch let failure as SignInFailure {
+            Self.log.error("sign-in: failed reason=\(failure.reason.rawValue, privacy: .public)")
+            throw failure.accountError
+        } catch {
+            logSignInFailure(error)
+            throw error
         }
     }
 
@@ -239,29 +281,35 @@ public final class HTTPAuthenticationService: AuthenticationService {
         listener: any LoopbackListening
     ) async throws(AccountError) -> Profile {
         defer { Task { await listener.close() } }
+        do {
+            let callback = try await listener.awaitCallback()
+            Self.log.notice("sign-in: the browser came back, exchanging the code")
 
-        let callback = try await listener.awaitCallback()
-        Self.log.notice("sign-in: the browser came back, exchanging the code")
+            // Checked here as well as by the backend: an answer naming another attempt is not ours to spend.
+            guard callback.state == challenge.state else {
+                throw refusal(.attemptMismatch)
+            }
 
-        // Checked here as well as by the backend: an answer naming another attempt is not ours to spend.
-        guard callback.state == challenge.state else {
-            throw .providerRefused(description: "that sign-in does not answer this attempt")
+            let response = try await send(
+                post(
+                    "v1/auth/token",
+                    TokenBody(
+                        grantType: "authorization_code",
+                        clientID: clientID,
+                        code: callback.code,
+                        codeVerifier: pkce.verifier,
+                        redirectURI: redirectURI.absoluteString,
+                        device: device?.registration())))
+            Self.log.notice("sign-in: token exchange answered \(response.status, privacy: .public)")
+
+            guard response.isSuccess else { throw refusal(response) }
+            return try await beginSession(issuedBy: response)
+        } catch let failure as SignInFailure {
+            throw failure.accountError
+        } catch {
+            logSignInFailure(error)
+            throw error
         }
-
-        let response = try await send(
-            post(
-                "v1/auth/token",
-                TokenBody(
-                    grantType: "authorization_code",
-                    clientID: clientID,
-                    code: callback.code,
-                    codeVerifier: pkce.verifier,
-                    redirectURI: redirectURI.absoluteString,
-                    device: device?.registration())))
-        Self.log.notice("sign-in: token exchange answered \(response.status, privacy: .public)")
-
-        guard response.isSuccess else { throw refusal(response) }
-        return try await beginSession(issuedBy: response)
     }
 
     /// Polls until the code is approved or expires, waiting longer when the server says `slow_down`.
@@ -272,34 +320,41 @@ public final class HTTPAuthenticationService: AuthenticationService {
 
         while true {
             do {
-                try await sleep(wait)
+                do {
+                    try await sleep(wait)
+                } catch {
+                    // Cancellation: the person walked away, and the code expires on its own.
+                    throw refusal(.abandoned)
+                }
+
+                let response = try await send(
+                    post(
+                        "v1/auth/device/token",
+                        DeviceTokenBody(
+                            grantType: "urn:ietf:params:oauth:grant-type:device_code",
+                            clientID: clientID,
+                            deviceCode: deviceCode,
+                            device: device?.registration())))
+
+                if response.isSuccess { return try await beginSession(issuedBy: response) }
+
+                switch decode(ServerError.self, from: response.body)?.error {
+                case "authorization_pending":
+                    break
+                case "slow_down":
+                    wait += .seconds(5)
+                default:
+                    throw refusal(response)
+                }
+
+                guard now() < expiresAt else {
+                    throw refusal(.codeExpired)
+                }
+            } catch let failure as SignInFailure {
+                throw failure
             } catch {
-                // Cancellation: the person walked away, and the code expires on its own.
-                throw .providerRefused(description: "that sign-in was abandoned")
-            }
-
-            let response = try await send(
-                post(
-                    "v1/auth/device/token",
-                    DeviceTokenBody(
-                        grantType: "urn:ietf:params:oauth:grant-type:device_code",
-                        clientID: clientID,
-                        deviceCode: deviceCode,
-                        device: device?.registration())))
-
-            if response.isSuccess { return try await beginSession(issuedBy: response) }
-
-            switch decode(ServerError.self, from: response.body)?.error {
-            case "authorization_pending":
-                break
-            case "slow_down":
-                wait += .seconds(5)
-            default:
-                throw refusal(response)
-            }
-
-            guard now() < expiresAt else {
-                throw .providerRefused(description: "that code expired before it was used")
+                logSignInFailure(error)
+                throw error
             }
         }
     }
@@ -317,32 +372,50 @@ public final class HTTPAuthenticationService: AuthenticationService {
     public func currentProfile(ifChangedFrom cached: Profile?) async throws(AccountError) -> ProfileRefresh {
         guard tokens.refreshToken() != nil else { return .noCredential }
 
-        switch try await authorised() {
-        case .sessionOver: return .signedOut
-        case .noCredential: return .noCredential
-        case .token(let token):
-            let response = try await send(profileRequest(token, ifNoneMatch: cached?.validator))
-            Self.log.notice("session: profile answered \(response.status, privacy: .public)")
+        do {
+            switch try await authorised() {
+            case .sessionOver:
+                Self.log.info("session: profile refresh ended")
+                return .signedOut
+            case .noCredential: return .noCredential
+            case .token(let token):
+                let response = try await send(profileRequest(token, ifNoneMatch: cached?.validator))
+                Self.log.notice("session: profile answered \(response.status, privacy: .public)")
 
-            if response.status == 304 { return .unchanged }
-
-            // One retry only: a second 401 after a fresh token means the session is gone, not the token.
-            if response.status == 401 {
-                switch try await renew(replacing: token) {
-                case .sessionOver: return .signedOut
-                // Another caller met a 401 and cleared the credential; that caller acts on it, not this one.
-                case .noCredential: return .noCredential
-                case .token(let renewed):
-                    let retried = try await send(profileRequest(renewed, ifNoneMatch: cached?.validator))
-                    if retried.status == 304 { return .unchanged }
-                    if retried.status == 401 {
-                        endSession(ifStillHolding: renewed)
-                        return .signedOut
-                    }
-                    return .updated(try believe(retried))
+                if response.status == 304 {
+                    Self.log.info("session: profile refresh unchanged")
+                    return .unchanged
                 }
+
+                // One retry only: a second 401 after a fresh token means the session is gone, not the token.
+                if response.status == 401 {
+                    switch try await renew(replacing: token) {
+                    case .sessionOver:
+                        Self.log.info("session: profile refresh ended")
+                        return .signedOut
+                    // Another caller met a 401 and cleared the credential; that caller acts on it, not this one.
+                    case .noCredential: return .noCredential
+                    case .token(let renewed):
+                        let retried = try await send(profileRequest(renewed, ifNoneMatch: cached?.validator))
+                        if retried.status == 304 {
+                            Self.log.info("session: profile refresh unchanged")
+                            return .unchanged
+                        }
+                        if retried.status == 401 {
+                            endSession(ifStillHolding: renewed)
+                            Self.log.info("session: profile refresh ended")
+                            return .signedOut
+                        }
+                        Self.log.info("session: profile refresh changed")
+                        return .updated(try believe(retried))
+                    }
+                }
+                Self.log.info("session: profile refresh changed")
+                return .updated(try believe(response))
             }
-            return .updated(try believe(response))
+        } catch {
+            logAccountFailure("session: profile refresh unavailable", error)
+            throw error
         }
     }
 
@@ -402,9 +475,10 @@ public final class HTTPAuthenticationService: AuthenticationService {
 
     /// Signs out on this Mac first, whatever the network is doing, then tells the server without waiting.
     public func signOut() async {
+        Self.log.info("sign-out: started")
         let refreshToken = tokens.refreshToken()
         forgetSession()
-        Self.log.notice("session: signed out on this Mac")
+        Self.log.info("sign-out: completed")
 
         guard let refreshToken else { return }
         _ = try? await transport.perform(post("v1/auth/sign-out", SignOutBody(refreshToken: refreshToken)))
@@ -490,7 +564,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
                         device: device?.registration())
                 ))
         } catch {
-            Self.log.notice("session: refresh did not reach the server")
+            Self.log.error("session: refresh failed reason=serverUnreachable")
             if case .serverUnreachable = error {
                 session.withLock { state in
                     guard state.generation == generation else { return }
@@ -500,7 +574,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
             return .failure(error)
         }
 
-        Self.log.notice("session: refresh answered \(response.status, privacy: .public)")
+        Self.log.info("session: refresh answered status=\(response.status, privacy: .public)")
         let ambiguous = session.withLock { state in state.ambiguousRefresh == attempt }
         if response.status == 401 {
             if ambiguous {
@@ -515,9 +589,12 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 endSession(&state)
                 return true
             }
+            if current { Self.log.info("session: refresh ended") }
             return .success(current ? .sessionOver : .noCredential)
         }
         guard response.isSuccess, let issued = decode(IssuedSession.self, from: response.body) else {
+            Self.log.error(
+                "session: refresh failed reason=serverRefused status=\(response.status, privacy: .public)")
             return .failure(refusal(response))
         }
         do {
@@ -529,6 +606,9 @@ public final class HTTPAuthenticationService: AuthenticationService {
             }
             return .success(current ? .token(issued.accessToken) : .noCredential)
         } catch {
+            Self.log.error(
+                "session: refresh failed reason=\(FailureReason.sessionCouldNotBeKept.rawValue, privacy: .public)"
+            )
             return .failure(error)
         }
     }
@@ -546,8 +626,7 @@ public final class HTTPAuthenticationService: AuthenticationService {
     /// Keeps the session a sign-in was answered with, then reads the profile it unlocks.
     private func beginSession(issuedBy response: BackendResponse) async throws(AccountError) -> Profile {
         guard let issued = decode(IssuedSession.self, from: response.body) else {
-            Self.log.error("sign-in: the issued session could not be read")
-            throw .providerRefused(description: "the server issued a session we could not read")
+            throw refusal(.responseUnreadable)
         }
         do throws(AccountError) {
             try session.withLock { state throws(AccountError) in
@@ -557,7 +636,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 try adopt(issued)
             }
         } catch {
-            Self.log.error("sign-in: the Keychain refused the session")
+            Self.log.error(
+                "sign-in: failed reason=\(FailureReason.sessionCouldNotBeKept.rawValue, privacy: .public)")
             throw error
         }
         Self.log.notice("sign-in: session kept, reading the profile")
@@ -594,12 +674,18 @@ public final class HTTPAuthenticationService: AuthenticationService {
         switch try await authorised() {
         case .sessionOver, .noCredential:
             // The session ended between claim and read; a refusal reaches somebody, a cache would not.
-            throw .providerRefused(description: "that session was already over")
+            throw refusal(.sessionEnded)
         case .token(let token):
             let response = try await send(profileRequest(token, ifNoneMatch: validator))
             Self.log.notice("sign-in: profile answered \(response.status, privacy: .public)")
-            guard response.isSuccess else { throw refusal(response) }
-            return try believe(response)
+            guard response.isSuccess else {
+                throw SignInFailure(reason: .serverRefused).accountError
+            }
+            do {
+                return try believe(response)
+            } catch {
+                throw SignInFailure(reason: .sessionMalformed).accountError
+            }
         }
     }
 
@@ -650,11 +736,61 @@ public final class HTTPAuthenticationService: AuthenticationService {
         }
     }
 
-    /// Turns a refusal into the server's own sentence; a `5xx` is a server that failed, not one out of reach.
+    /// Turns a refusal into fixed wording; the server's message may contain text it did not write.
     private func refusal(_ response: BackendResponse) -> AccountError {
-        let answered = decode(ServerError.self, from: response.body)
-        let described = answered?.message ?? answered?.errorDescription
-        return .providerRefused(description: described ?? "the server refused that (\(response.status))")
+        Self.log.error(
+            "sign-in: failed reason=serverRefused status=\(response.status, privacy: .public)"
+        )
+        return .providerRefused(description: "the server refused sign-in")
+    }
+
+    private func refusal(_ failure: FailureReason) -> SignInFailure {
+        Self.log.error("sign-in: failed reason=\(failure.rawValue, privacy: .public)")
+        return SignInFailure(reason: failure, accountError: accountError(for: failure))
+    }
+
+    private func accountError(for failure: FailureReason) -> AccountError {
+        let description: String
+        switch failure {
+        case .addressCouldNotBeBuilt: description = "the sign-in address could not be built"
+        case .responseUnreadable: description = "the server response could not be read"
+        case .attemptMismatch: description = "that sign-in does not answer this attempt"
+        case .abandoned: description = "that sign-in was abandoned"
+        case .codeExpired: description = "that code expired before it was used"
+        case .sessionEnded: description = "that session was already over"
+        case .serverRefused: description = "the server refused sign-in"
+        case .sessionMalformed: description = "the session could not be verified"
+        case .sessionCouldNotBeKept: description = "the session could not be saved"
+        case .serverUnreachable: description = "the server could not be reached"
+        }
+        switch failure {
+        case .serverUnreachable: return .serverUnreachable
+        case .sessionMalformed: return .sessionMalformed
+        case .sessionCouldNotBeKept: return .sessionCouldNotBeKept
+        default: return .providerRefused(description: description)
+        }
+    }
+
+    private func logSignInFailure(_ error: AccountError) {
+        let reason: FailureReason
+        switch error {
+        case .serverUnreachable: reason = .serverUnreachable
+        case .providerRefused: reason = .serverRefused
+        case .sessionMalformed: reason = .sessionMalformed
+        case .sessionCouldNotBeKept: reason = .sessionCouldNotBeKept
+        }
+        Self.log.error("sign-in: failed reason=\(reason.rawValue, privacy: .public)")
+    }
+
+    private func logAccountFailure(_ prefix: String, _ error: AccountError) {
+        let reason: String
+        switch error {
+        case .serverUnreachable: reason = FailureReason.serverUnreachable.rawValue
+        case .providerRefused: reason = FailureReason.serverRefused.rawValue
+        case .sessionMalformed: reason = FailureReason.sessionMalformed.rawValue
+        case .sessionCouldNotBeKept: reason = FailureReason.sessionCouldNotBeKept.rawValue
+        }
+        Self.log.error("\(prefix, privacy: .public) reason=\(reason, privacy: .public)")
     }
 
     /// Decodes `data` as `type`, or `nil` when it is not that shape.

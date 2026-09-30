@@ -32,19 +32,19 @@ struct CompletionCaseTests {
     }
 
     @Test(
-        "A segment cut inside a word determines the rest of that word and of every sibling sharing the prefix."
+        "A segment cut inside a word keeps each full matching remainder and the siblings sharing the prefix."
     )
     func segmentAcceptable() {
         let siblings = ["git commit -m 'fix'", "git clone", "svn checkout"]
         let got = CompletionExpectation.acceptable(
             for: line, typed: "git c", determinacy: .word, among: siblings)
-        #expect(got == ["heckout", "ommit", "lone"])
+        #expect(got == ["heckout main", "ommit -m 'fix'", "lone"])
         let none = CompletionExpectation.acceptable(
             for: line, typed: "git ", determinacy: .word, among: siblings)
         #expect(none.isEmpty)
         let path = CompletionExpectation.acceptable(
             for: "cd ~/projects/web", typed: "cd ~/pr", determinacy: .segment(until: [" ", "/"]), among: [])
-        #expect(path == ["ojects"])
+        #expect(path == ["ojects/web"])
         let boundary = CompletionExpectation.acceptable(
             for: "localhost:3000/dashboard", typed: "localhost:3000", determinacy: .segment(until: ["/"]),
             among: [])
@@ -65,15 +65,31 @@ struct CompletionCaseTests {
     }
 
     @Test(
-        "A hit is any completion whose continuation opens with an acceptable, or any at all when none is named."
+        "A named hit ends within an acceptable continuation, or any continuation hits when none is named."
     )
     func hits() {
         let named = CompletionExpectation(acceptable: ["heckout", "ommit"], band: 1...40)
-        #expect(named.hits(["git Commit -m", "git clone"], typed: "git c"))
+        #expect(named.hits(["git Commit"], typed: "git c"))
+        #expect(!named.hits(["git Commit -m"], typed: "git c"))
         #expect(!named.hits(["git clone"], typed: "git c"))
         let open = CompletionExpectation(band: 1...40)
         #expect(open.hits(["git clone"], typed: "git c"))
         #expect(!open.hits([], typed: "git c"))
+    }
+
+    @Test("A SQL segment hit may stop at SET or continue only along the intended line.")
+    func sqlSegmentHits() {
+        let line = "UPDATE orders SET status = 'shipped' WHERE id = 1042;"
+        let typed = "UPDATE orders S"
+        let expectation = CompletionExpectation(
+            acceptable: CompletionExpectation.acceptable(
+                for: line, typed: typed, determinacy: .segment(until: [" ", ",", ";", "(", ")"]),
+                among: []),
+            band: 1...100)
+
+        #expect(expectation.hits(["UPDATE orders SET"], typed: typed))
+        #expect(expectation.hits([line], typed: typed))
+        #expect(!expectation.hits(["UPDATE orders SET status = 'shipped' WHERE id = 1;"], typed: typed))
     }
 
     @Test("Only a named answer or silence judges a hit; taking any continuation judges nothing.")

@@ -32,7 +32,7 @@ public struct CompletionExpectation: Sendable, Equatable {
         if expectsNothing { return completions.isEmpty }
         let continuations = completions.map { String($0.dropFirst(typed.count)).lowercased() }
         guard !acceptable.isEmpty else { return !continuations.isEmpty }
-        return continuations.contains { got in acceptable.contains { got.hasPrefix($0.lowercased()) } }
+        return continuations.contains { got in acceptable.contains { $0.lowercased().hasPrefix(got) } }
     }
 
     /// Whether the first completion keeps to the register, or there is none where none is expected.
@@ -70,15 +70,15 @@ public struct CompletionExpectation: Sendable, Equatable {
         1...max(floor, 2 * (lines.map(\.count).max() ?? 0))
     }
 
-    /// What each line sharing the typed text goes on with, cut down by the piece rule, once each and never empty.
+    /// The full remainder of each matching line whose segment continues, once each and never empty.
     private static func rests(
         of lines: [String], past typed: String, piece: (String) -> String
     ) -> [String] {
         var seen: Set<String> = []
         return lines.compactMap { candidate in
             guard candidate.hasPrefix(typed) else { return nil }
-            let rest = piece(String(candidate.dropFirst(typed.count)))
-            guard !rest.isEmpty, seen.insert(rest.lowercased()).inserted else { return nil }
+            let rest = String(candidate.dropFirst(typed.count))
+            guard !piece(rest).isEmpty, seen.insert(rest.lowercased()).inserted else { return nil }
             return rest
         }
     }

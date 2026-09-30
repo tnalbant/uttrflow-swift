@@ -16,6 +16,7 @@ private struct SuggestionRequest: Equatable {
     /// What is already in the field, so the surface offers only what the suggestion adds.
     var typed: String = ""
     var placement: SuggestionPlacement = .inlineGhost
+    var direction: SuggestionDirection = .leftToRight
     var caret: CGRect?
     var window: CGRect?
     /// The field's own rectangle, whose right edge a long ghost is cut at.
@@ -27,6 +28,8 @@ private struct SuggestionRequest: Equatable {
     var acceptKey: AcceptKey = .tab
     /// The field's own font family, so the ghost is set in the face the line is.
     var fontFamily: String?
+    var isBold = false
+    var isItalic = false
     /// The field's own text colour, so the ghost reads against the field and not against Uttrflow's appearance.
     var textColor: TextColor?
 
@@ -60,9 +63,20 @@ final class SuggestionPanelController {
     private var measurer: NSHostingView<SuggestionGhostLine>?
     private var request = SuggestionRequest()
     private var panelSize = CGSize(width: 1, height: 1)
+    private var geometryDirection: WritingDirection {
+        request.direction == .rightToLeft ? .rightToLeft : .leftToRight
+    }
     private var appearanceObserver: (any NSObjectProtocol)?
     private var screenParametersObserver: (any NSObjectProtocol)?
     private var announcer = SuggestionAnnouncer()
+    var announcementCoalescer = SuggestionAnnouncementCoalescer()
+    private var announcementTask: Task<Void, Never>?
+    private let announcementClock = ContinuousClock()
+    private let announcementStartedAt = ContinuousClock().now
+    var announcementNow: (@MainActor () -> Duration)?
+    var announcementSleep: @MainActor (Duration) async -> Void = { duration in
+        try? await Task.sleep(for: duration)
+    }
     /// Reads an announcement aloud to VoiceOver; a test swaps it to hear what would be said.
     var announce: @MainActor (String) -> Void = SuggestionPanelController.post
     private var isActuallyShowing = false
@@ -95,6 +109,7 @@ final class SuggestionPanelController {
         _ suggestion: Suggestion,
         typed: String = "",
         placement: SuggestionPlacement,
+        direction: SuggestionDirection = .leftToRight,
         caret: CGRect? = nil,
         window: CGRect? = nil,
         field: CGRect? = nil,
@@ -102,12 +117,15 @@ final class SuggestionPanelController {
         selection: SuggestionSelection = .untouched,
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         textColor: TextColor? = nil
     ) -> Bool {
         let next = SuggestionRequest(
-            suggestion: suggestion, typed: typed, placement: placement, caret: caret,
+            suggestion: suggestion, typed: typed, placement: placement, direction: direction, caret: caret,
             window: window, field: field, fieldPointSize: fieldPointSize, selection: selection,
-            acceptKey: acceptKey, fontFamily: fontFamily, textColor: textColor)
+            acceptKey: acceptKey, fontFamily: fontFamily, isBold: isBold, isItalic: isItalic,
+            textColor: textColor)
         // The same offer at the same caret is already on screen, so nothing is laid out, placed or fronted again.
         if isActuallyShowing, next.draws(sameAs: request) { return true }
         request = next
@@ -137,6 +155,7 @@ final class SuggestionPanelController {
         let after = SuggestionPresentation(
             suggestion, typed: typed, selection: next.selection, fieldPointSize: next.fieldPointSize,
             appearance: Self.appearance(), acceptKey: next.acceptKey, fontFamily: next.fontFamily,
+            isBold: next.isBold, isItalic: next.isItalic,
             fieldTextColor: next.textColor)
         guard let remaining = after.inline else { return false }
         // The caret moves by exactly the width the typed characters took off the ghost, so the rest does not shift.
@@ -186,6 +205,9 @@ final class SuggestionPanelController {
     /// Takes the panel off screen, and says so to VoiceOver.
     private func withdraw() {
         announcer.surfaceWithdrawn()
+        announcementTask?.cancel()
+        announcementTask = nil
+        announcementCoalescer.reset()
         isActuallyShowing = false
         withdrawals += 1
         panel.orderOut(nil)
@@ -200,13 +222,16 @@ final class SuggestionPanelController {
             ? nil
             : request.caret.flatMap {
                 SuggestionGeometry.availableWidth(
-                    caret: $0, field: request.field, window: request.window, screen: screenFrame)
+                    caret: $0, field: request.field, window: request.window, screen: screenFrame,
+                    direction: geometryDirection)
             }
         var presentation = SuggestionPresentation(
             request.suggestion, typed: request.typed, selection: request.selection,
             fieldPointSize: request.fieldPointSize, appearance: Self.appearance(),
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
-            fieldTextColor: request.textColor, maximumWidth: room)
+            isBold: request.isBold, isItalic: request.isItalic,
+            fieldTextColor: request.textColor, maximumWidth: room,
+            direction: request.direction == .rightToLeft ? .rightToLeft : .leftToRight)
         // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.
         if let inline = presentation.inline, let room = presentation.maximumWidth,
             !SuggestionGeometry.fits(width(of: inline, in: presentation), in: room)
@@ -233,8 +258,35 @@ final class SuggestionPanelController {
         if !isActuallyShowing || !panel.isVisible { panel.orderFrontRegardless() }
         isActuallyShowing = true
         // The panel is out of VoiceOver's reach, so the offer and its accept key are spoken once as it appears.
-        if let text = announcer.announcement(for: presentation) { announce(text) }
+        scheduleAnnouncement(announcer.announcement(for: presentation))
         return true
+    }
+
+    /// Coalesces changing offers while keeping a quiet offer prompt and a changing stream bounded.
+    private func scheduleAnnouncement(_ text: String?) {
+        guard let text else { return }
+        let instant = announcementNow?() ?? announcementStartedAt.duration(to: announcementClock.now)
+        if let ready = announcementCoalescer.offer(text, at: instant) { announce(ready); return }
+        guard announcementTask == nil else { return }
+        scheduleAnnouncementFlush(after: SuggestionAnnouncer.coalescingInterval)
+    }
+
+    /// Waits for quiet, then flushes the latest pending label.
+    private func scheduleAnnouncementFlush(after interval: Duration) {
+        announcementTask = Task { @MainActor [weak self] in
+            await self?.announcementSleep(interval)
+            guard let self, !Task.isCancelled else { return }
+            let now =
+                self.announcementNow?() ?? self.announcementStartedAt.duration(to: self.announcementClock.now)
+            if let ready = self.announcementCoalescer.flushIfReady(at: now) {
+                self.announce(ready)
+            } else {
+                let remaining = self.announcementCoalescer.remainingQuietInterval(at: now) ?? .zero
+                self.scheduleAnnouncementFlush(after: remaining)
+                return
+            }
+            self.announcementTask = nil
+        }
     }
 
     /// Asks VoiceOver to speak at low priority, so the echo of the user's own typing is not cut off.
@@ -296,15 +348,30 @@ final class SuggestionPanelController {
     /// Places the panel at the caret, or reports that there is nowhere on the line to draw it.
     @discardableResult
     private func reposition() -> Bool {
+        let font = baselineFont
         guard
             let anchor = SuggestionGeometry.anchor(
                 for: request.placement, caret: request.caret, window: request.window,
-                field: request.field, screen: screenFrame, size: panelSize)
+                field: request.field, screen: screenFrame, size: panelSize, direction: geometryDirection,
+                fontAscent: font.ascender, fontDescent: -font.descender)
         else { return false }
         guard anchor.frame != panel.frame else { return true }
         placements += 1
         panel.setFrame(anchor.frame, display: true)
         return true
+    }
+
+    /// The font metrics for the same face and size the ghost line uses.
+    private var baselineFont: NSFont {
+        let size = drawn.pointSize
+        let fallback =
+            drawn.prefersMonospaced
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            : NSFont.systemFont(ofSize: size)
+        guard let family = request.fontFamily else { return fallback }
+        return NSFont(name: family, size: size)
+            ?? NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size)
+            ?? fallback
     }
 
     /// The screen the caret is on, so a field on another display is drawn there and not against the panel's last screen.

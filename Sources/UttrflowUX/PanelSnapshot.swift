@@ -124,6 +124,8 @@ public struct PanelSnapshot: Sendable, Equatable {
     let searchMemo = PanelSearchMemo()
     /// Keeps the rows last drawn, shared by every copy of this snapshot so an arrow key rebuilds none of them.
     let rowMemo = PanelRowMemo()
+    /// Keeps note counts across copies of this snapshot, so typing does not parse formatted notes again.
+    let checklistProgresses = ChecklistProgresses()
 
     /// Whether a delete can still be taken back; set by the app, which alone still holds the clip.
     public var canUndoDelete: Bool = false
@@ -159,7 +161,7 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var revealed: Set<Clip.ID>
     /// The clock the timestamps are measured against, injected so "2 minutes ago" is testable.
     public var now: Date
-    /// Carried in the state because alias matching folds case and accents by it.
+    /// Carried in the state because alias matching folds case, accents and width by it.
     public var locale: Locale
 
     /// Builds a panel over these clips; the scope starts on History.
@@ -233,6 +235,7 @@ extension PanelSnapshot {
         now: Date
     ) {
         self.clips = clips
+        checklistProgresses.prune(to: Set(clips.map(\.id)))
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
         reindentOffers.prune(to: Set(clips.map(\.id)))

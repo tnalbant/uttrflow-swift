@@ -1,4 +1,5 @@
 import Testing
+import UttrflowCore
 
 @testable import UttrflowPredict
 
@@ -134,6 +135,7 @@ struct RegisterTests {
         #expect(Register.namesAddressField("Address and search bar"))
         #expect(Register.namesAddressField("Search or enter address"))
         #expect(Register.namesAddressField("URL"))
+        #expect(!Register.namesAddressField("Message #curling"))
         #expect(!Register.namesAddressField("Address line 1"))
         #expect(!Register.namesAddressField("Email address"))
         #expect(!Register.namesAddressField(nil))
@@ -153,6 +155,18 @@ struct RegisterTests {
         #expect(Register.infer(from: essay, typed: "We").kind == "line")
         let addressBar = GenerationSituation(application: "Browser", field: "Address and search bar")
         #expect(Register.infer(from: addressBar, typed: "git").kind.hasPrefix("web address, a host and path"))
+    }
+
+    @Test("A known SQL destination names the line as code before any history exists.")
+    func knownSqlDestinationNamesTheKindWithoutHistory() {
+        let destination = DestinationClassifier.classify(AppContext(applicationName: "DBeaver"))
+        let sqlEditor = GenerationSituation(
+            application: "DBeaver", isCodeDestination: destination.rawValue == "sqlEditor")
+        let register = Register.infer(from: sqlEditor, typed: "SELECT id, name FROM")
+        #expect(sqlEditor.recentLines.isEmpty)
+        #expect(destination.rawValue == "sqlEditor")
+        #expect(register.kind == "command, query or line of code")
+        #expect(register.hints.contains("the text here is commands, code or queries rather than prose"))
     }
 
     @Test("The token budget is half the typical length, held between the shortest and longest pass allowed.")
@@ -222,6 +236,10 @@ struct HistoryOnlyRegisterTests {
         for name in ["Search", "Search products", "Find in page", "Search this Mac"] {
             #expect(register(field: name).answersFromHistoryAlone, "\(name)")
         }
+        for name in ["Message #research", "Message #findings", "Message #user-research", "Reply to Kathurl"] {
+            #expect(!Register.namesSearchField(name), "\(name)")
+            #expect(!register(field: name).answersFromHistoryAlone, "\(name)")
+        }
     }
 
     @Test(
@@ -237,6 +255,7 @@ struct HistoryOnlyRegisterTests {
     @Test("An address bar answers from history too, whether it names addresses or the person writes them.")
     func addressBarsAnswerFromHistory() {
         #expect(register(field: "Address and search bar").answersFromHistoryAlone)
+        #expect(Register.namesAddressField("Address and search bar"))
         let ownAddresses = Register.infer(
             from: GenerationSituation(
                 application: "Browser", field: "Location",

@@ -14,6 +14,15 @@ struct LayoutWordsPassTests {
             ("thanks new paragraph the second issue", "thanks\n\nthe second issue"),
             ("thanks blank line the second issue", "thanks\n\nthe second issue"),
             ("we need bullet point milk bullet point eggs", "we need\n- milk\n- eggs"),
+            (
+                "Shopping list, bullet point milk, bullet point eggs, bullet point bread.",
+                "Shopping list\n- milk\n- eggs\n- bread."
+            ),
+            ("milk, new line eggs", "milk\neggs"),
+            ("milk; next point eggs", "milk\n- eggs"),
+            ("milk,\" bullet point eggs", "milk\"\n- eggs"),
+            ("milk... bullet point eggs", "milk...\n- eggs"),
+            ("milk, bullet point eggs?", "milk\n- eggs?"),
             ("first next point second", "first\n- second"),
         ]
     )
@@ -24,6 +33,7 @@ struct LayoutWordsPassTests {
     @Test(
         "numbers the items a spoken number opens",
         arguments: [
+            ("number one call mom number two pay rent", "\n1. call mom\n2. pay rent"),
             ("we need number one milk number two eggs", "we need\n1. milk\n2. eggs"),
             ("we need number twenty one milk number twenty two eggs", "we need\n21. milk\n22. eggs"),
             (
@@ -31,10 +41,49 @@ struct LayoutWordsPassTests {
                 "then\n2. call the landlord\n3. pay the rent"
             ),
             ("we need number 1 milk number 2 eggs", "we need\n1. milk\n2. eggs"),
+            (
+                "agenda number one budget number two hiring number three offsite",
+                "agenda\n1. budget\n2. hiring\n3. offsite"
+            ),
+            (
+                "the steps are number one gather the files number two check the names",
+                "the steps are\n1. gather the files\n2. check the names"
+            ),
+            ("number one budget number two hiring", "1. budget\n2. hiring"),
         ]
     )
     func numbersItems(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps a repeated label with each numbered item")
+    func keepsRepeatedLabelsWithNumberedItems() {
+        #expect(
+            cleaned(
+                "reason number one it is cheap reason number two it is fast reason number three it works",
+                by: sut)
+                == "\nReason 1: it is cheap\nReason 2: it is fast\nReason 3: it works")
+    }
+
+    @Test("does not turn repeated numbered labels into lists where lists are unavailable")
+    func leavesRepeatedLabelsAsProseWithoutListLayout() {
+        let input = "reason number one it is cheap reason number two it is fast"
+        #expect(cleaned(input, by: LayoutWordsPass(layout: .paragraphs)) == input)
+    }
+
+    @Test(
+        "keeps connected number words in a sentence when an item ends in a conjunction",
+        arguments: [
+            "the list includes number one speed number two cost and number three quality all of which matter",
+            "we ranked number one on speed number two on price and number three on support last year",
+            "we ranked number one on speed number two on price number three on support last year",
+            "she said number one was the plan and number two was the backup which we never used",
+            "they named number one Ada and number two Lin before the vote closed",
+            "we need number one milk number two eggs or number three bread",
+        ]
+    )
+    func keepsConjoinedNumbersInSentences(input: String) {
+        #expect(cleaned(input, by: sut) == input)
     }
 
     /// Issue 254: with no lookback to ask, a phrase opening its sentence is an item only if the speaker set it off.
@@ -44,6 +93,8 @@ struct LayoutWordsPassTests {
             ("the build failed. number one is broken", "the build failed. number one is broken"),
             ("here is the plan. number one, fix the build", "here is the plan.\n1. fix the build"),
             ("number one, fix the build", "1. fix the build"),
+            ("number one check logs number two restart the server", "\n1. check logs\n2. restart the server"),
+            ("number one is broken", "number one is broken"),
             ("bullet point, the milk", "- the milk"),
             ("we shipped. bullet point, the milk", "we shipped.\n- the milk"),
             // A break at the head of the text has nothing to break from, so the words stay.

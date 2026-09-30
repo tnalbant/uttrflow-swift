@@ -100,22 +100,10 @@ public actor WhisperKitBackend: TranscriptionBackend {
         let backend = RetryBackend(kit: kit)
 
         do {
-            let biased = try await CappedDecodeRetry.transcribe(
+            let transcript = try await CappedDecodeRetry.transcribeRecoveringEmptyPrompt(
                 samples: samples, languageHint: languageHint, vocabulary: vocabulary, using: backend)
-            guard !vocabulary.isEmpty, biased.text.isEmpty else {
-                Self.report(biased.effort)
-                return biased
-            }
-
-            // The net: a prompt that decodes to nothing costs a second decode, never the words.
-            let retried = try await CappedDecodeRetry.transcribe(
-                samples: samples, languageHint: languageHint, vocabulary: [], using: backend)
-            let effort = biased.effort.addingRetry(retried.effort)
-            Self.report(effort)
-            return RawTranscript(
-                text: retried.text, languageIdentifier: retried.languageIdentifier,
-                languageProbability: retried.languageProbability, segments: retried.segments,
-                effort: effort, tokensUsed: retried.tokensUsed)
+            Self.report(transcript.effort)
+            return transcript
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -134,28 +122,29 @@ public actor WhisperKitBackend: TranscriptionBackend {
 }
 
 /// Flattens WhisperKit's per-window results into one transcript.
-fileprivate func rawTranscript(from results: [TranscriptionResult]) -> RawTranscript {
-    let flatSegments = results.flatMap(\.segments)
-    let totalTokens = flatSegments.reduce(0) { $0 + $1.tokens.count }
-    return RawTranscript(
-        text: results.map(\.text).joined(separator: " "),
-        languageIdentifier: results.first?.language,
-        // WhisperKit surfaces a verdict but not a probability from `transcribe`.
-        languageProbability: nil,
-        segments: flatSegments.map {
-            RawSegment(
-                text: $0.text, start: Double($0.start), end: Double($0.end),
-                words: $0.words.map { words in
-                    words.map {
-                        RawWord(
-                            text: $0.word, start: Double($0.start), end: Double($0.end),
-                            probability: Double($0.probability))
-                    }
-                })
-        },
-        effort: effort(of: results),
-        tokensUsed: totalTokens
-    )
+fileprivate func rawTranscript(
+    from results: [TranscriptionResult], vocabularyPrompt: [String] = []
+) -> RawTranscript {
+    TranscriptAssembly.whisper(
+        results.map { result in
+            WhisperTranscriptWindow(
+                text: result.text,
+                languageIdentifier: result.language,
+                segments: result.segments.map {
+                    RawSegment(
+                        text: $0.text, start: Double($0.start), end: Double($0.end),
+                        words: $0.words.map { words in
+                            words.map {
+                                RawWord(
+                                    text: $0.word, start: Double($0.start), end: Double($0.end),
+                                    probability: Double($0.probability))
+                            }
+                        })
+                },
+                effort: effort(of: [result]),
+                tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
+                vocabularyPrompt: vocabularyPrompt)
+        })
 }
 
 /// What WhisperKit's own timings say this piece cost beyond one decode.
@@ -184,9 +173,9 @@ private struct RetryBackend: TranscriptionBackend {
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
     ) async throws(SpeechEngineError) -> RawTranscript {
         do {
-            let results = try await kit.transcribe(
+            let decoded = try await kit.transcribe(
                 samples, languageHint: languageHint, biasedTowards: vocabulary)
-            return rawTranscript(from: results)
+            return rawTranscript(from: decoded.results, vocabularyPrompt: decoded.vocabularyPrompt)
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -221,19 +210,24 @@ private final class LoadedKit: @unchecked Sendable {
 
     func transcribe(
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
-    ) async throws -> [TranscriptionResult] {
+    ) async throws -> (results: [TranscriptionResult], vocabularyPrompt: [String]) {
         // Passed through optional, so a half-loaded kit gives an unbiased dictation, not a crash.
         let tokenizer = kit.tokenizer
+        let promptTokenizer = tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
+        let packing = promptTokenizer.map { VocabularyPrompt.packing(for: vocabulary, using: $0) }
         let options = VocabularyPrompt.decodingOptions(
             languageHint: languageHint,
             vocabulary: vocabulary,
-            tokenizer: tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
+            tokenizer: promptTokenizer
         )
         // Reassigned on every call, including to nothing, so a rule never outlives the prompt it was measured for.
         kit.textDecoder.logitsFilters = Self.rules(for: options, tokenizer: tokenizer)
         // Reassigned with the rules, so word timings always read the rows this call's prompt left them.
         kit.segmentSeeker = Self.seeker(for: options, tokenizer: tokenizer)
-        return try await kit.transcribe(audioArray: samples, decodeOptions: options)
+        return (
+            try await kit.transcribe(audioArray: samples, decodeOptions: options),
+            packing?.words ?? []
+        )
     }
 
     /// The segment seeker for this call, lined up past the prompt that precedes the transcript in the alignment weights.

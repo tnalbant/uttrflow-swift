@@ -26,6 +26,57 @@ private struct QuietCleaner: TranscriptCleaning {
     }
 }
 
+/// Holds recognition so another hands-free dictation can arrive while the first is transcribing.
+private final class GatedSpeechEngine: SpeechEngine {
+    private struct State {
+        var calls = 0
+        var held: CheckedContinuation<Void, Never>?
+        var released = false
+    }
+
+    private let state = Mutex(State())
+
+    var kind: SpeechEngineKind { .whisperKit }
+    func prepare() async throws(SpeechEngineError) {}
+    func warm() async {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        await withCheckedContinuation { continuation in
+            let resumeNow = state.withLock { state -> Bool in
+                state.calls += 1
+                guard state.calls == 1, !state.released else { return true }
+                state.held = continuation
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+        return Transcription(text: "a long dictation")
+    }
+
+    var isHolding: Bool { state.withLock { $0.held != nil } }
+    func release() {
+        let held = state.withLock { state -> CheckedContinuation<Void, Never>? in
+            state.released = true
+            defer { state.held = nil }
+            return state.held
+        }
+        held?.resume()
+    }
+}
+
+/// Records each cue the cap timer asks the recording controller to play.
+private final class LimitCue: RecordingCueing {
+    private let warnings = Mutex(0)
+
+    func playStart() {}
+    func playStop() {}
+    func playWarning() { warnings.withLock { $0 += 1 } }
+
+    var warningCount: Int { warnings.withLock { $0 } }
+}
+
 /// A ``TextInserting`` that records what reached the screen, holding every insertion while it is shut.
 private final class QuietInserter: TextInserting, Sendable {
     private struct State {
@@ -106,8 +157,9 @@ struct DictationLimitWiringTests {
     private static let limit = DictationLimit(warnAfter: .seconds(180), stopAfter: .seconds(240))
 
     private func makeController(
-        clock: ManualClock, inserter: QuietInserter,
-        advice: @escaping @Sendable (DictationAdvice) -> Void
+        clock: ManualClock, inserter: QuietInserter, cue: any RecordingCueing = SilentCue(),
+        advice: @escaping @Sendable (DictationAdvice) -> Void = { _ in },
+        warning: @escaping @Sendable (DictationAdvice) -> Void = { _ in }
     ) -> DictationController<ManualClock> {
         DictationController(
             pipeline: DictationPipeline(
@@ -120,10 +172,29 @@ struct DictationLimitWiringTests {
                 // A real clock here, so the manual one carries only the cap's own sleepers.
                 clock: ContinuousClock()),
             monitor: SilentMonitor(),
+            cue: cue,
             activation: .holdToTalk,
             clock: clock,
             limit: Self.limit,
-            onAdvice: advice)
+            onAdvice: advice,
+            onWarning: warning)
+    }
+
+    private func makeGatedHandsFreeController(
+        clock: ManualClock, inserter: QuietInserter, speech: GatedSpeechEngine
+    ) -> DictationController<ManualClock> {
+        DictationController(
+            pipeline: DictationPipeline(
+                capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 200))),
+                speech: speech,
+                cleaner: QuietCleaner(),
+                context: FakeContextEngine(),
+                inserter: inserter,
+                clock: ContinuousClock()),
+            monitor: SilentMonitor(),
+            activation: .holdToTalk,
+            clock: clock,
+            limit: Self.limit)
     }
 
     /// Lets the clock reach `deadline`, once something is actually waiting for it.
@@ -134,16 +205,50 @@ struct DictationLimitWiringTests {
     @Test("warns a minute before the cap rather than cutting the speaker off")
     func warnsBeforeTheCap() async throws {
         let clock = ManualClock()
+        let cue = LimitCue()
+        let announcements = Mutex<[DictationAnnouncement]>([])
         let heard = Mutex<[DictationAdvice]>([])
-        let controller = makeController(clock: clock, inserter: QuietInserter()) { advice in
-            heard.withLock { $0.append(advice) }
+        let reporter = DictationWarningReporter(cue: cue) { announcement in
+            announcements.withLock { $0.append(announcement) }
         }
+        let controller = makeController(
+            clock: clock, inserter: QuietInserter(), cue: cue,
+            advice: { advice in heard.withLock { $0.append(advice) } },
+            warning: reporter.report)
 
         await controller.handle(.pressed)
+        #expect(cue.warningCount == 0)
+        #expect(announcements.withLock { $0 }.isEmpty)
         await advance(clock, to: Self.limit.warnAfter)
         try await eventually { !heard.withLock { $0.isEmpty } }
 
         #expect(heard.withLock { $0.first } == .approaching(remaining: .seconds(60)))
+        #expect(cue.warningCount == 1)
+        #expect(
+            announcements.withLock { $0 }
+                == [DictationAnnouncement(text: "Dictation ends soon. 1 min left.", isUrgent: false)])
+    }
+
+    @Test("plays one warning cue and announces it once at warnAfter")
+    func warningCueAndAnnouncementHappenOnce() async throws {
+        let clock = ManualClock()
+        let cue = LimitCue()
+        let announcements = Mutex<[DictationAnnouncement]>([])
+        let reporter = DictationWarningReporter(cue: cue) { announcement in
+            announcements.withLock { $0.append(announcement) }
+        }
+        let controller = makeController(
+            clock: clock, inserter: QuietInserter(), cue: cue, warning: reporter.report)
+
+        await controller.handle(.pressed)
+        await advance(clock, to: Self.limit.warnAfter)
+        try await eventually { cue.warningCount == 1 && !announcements.withLock { $0.isEmpty } }
+        await advance(clock, to: .seconds(30))
+
+        #expect(cue.warningCount == 1)
+        #expect(
+            announcements.withLock { $0 }
+                == [DictationAnnouncement(text: "Dictation ends soon. 1 min left.", isUrgent: false)])
     }
 
     @Test("finishes the dictation at the cap, keeping every word of it")
@@ -240,23 +345,31 @@ struct DictationLimitWiringTests {
         #expect(inserter.inserted == ["a long dictation", "a long dictation"])
     }
 
-    @Test("a double-tap dictation finished at the cap leaves the double tap working")
-    func doubleTapWorksAfterHandsFreeReachesTheCap() async {
+    @Test("a double tap during capped transcription starts another dictation")
+    func doubleTapDuringCappedTranscriptionStartsAnotherDictation() async throws {
         let clock = ManualClock()
         let inserter = QuietInserter()
-        let heard = Mutex<[DictationAdvice]>([])
-        let controller = makeController(clock: clock, inserter: inserter) { advice in
-            heard.withLock { $0.append(advice) }
-        }
-        await runHandsFreeToTheCap(controller, clock: clock) {
-            heard.withLock { Self.capFinished($0) }
-        }
-
+        let speech = GatedSpeechEngine()
+        let controller = makeGatedHandsFreeController(clock: clock, inserter: inserter, speech: speech)
         await doubleTap(controller, clock: clock)
+        await advance(clock, to: Self.limit.warnAfter)
+        await advance(clock, to: Self.limit.stopAfter - Self.limit.warnAfter)
+        try await eventually { speech.isHolding }
+
+        for _ in 0..<2 {
+            controller.submit(.pressed)
+            clock.advance(by: DictationController<ManualClock>.minimumHold - .milliseconds(1))
+            controller.submit(.released)
+        }
+        await controller.drained()
+        #expect(await controller.currentStopGesture == .pressAgainHandsFree)
+
+        speech.release()
         clock.advance(by: .seconds(2))
         await doubleTap(controller, clock: clock)
 
-        #expect(inserter.inserted == ["a long dictation", "a long dictation"], "opened and closed again")
+        try await eventually { inserter.inserted.count == 2 }
+        #expect(inserter.inserted == ["a long dictation", "a long dictation"])
     }
 
     /// A press-to-toggle controller whose first dictation is held in its learning step until released.

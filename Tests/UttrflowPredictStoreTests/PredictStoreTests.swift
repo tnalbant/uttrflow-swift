@@ -425,6 +425,23 @@ struct ForgettingTests {
         #expect(try await store.candidates(for: terminal, matching: "git p").map(\.text) == ["git pull"])
     }
 
+    @Test("Forgetting a borrowed entry retires it in this scope and leaves the other scope intact.")
+    func borrowedEntryStaysForgottenInScope() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let folderOne = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/one")
+        let folderTwo = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/two")
+        try await store.record("git push origin main", in: folderOne, at: moment)
+        try await store.record("git push origin main", in: folderTwo, at: moment + 1)
+
+        try await store.forget("git push origin main", in: folderOne)
+
+        #expect(try await store.candidates(for: folderOne, matching: "git p").isEmpty)
+        #expect(try await store.recent(in: folderOne, limit: 5).isEmpty)
+        let remaining = try await store.candidates(for: folderTwo, matching: "git p")
+        #expect(remaining.map(\.text) == ["git push origin main"])
+    }
+
     @Test("Everything learned in one application goes together, and other applications stay.")
     func oneApplication() async throws {
         let corpus = Corpus()
@@ -546,7 +563,7 @@ struct RetentionTests {
         }
         try await store.record("git comit", in: folderOne, at: moment + 10)
         try await store.supersede("deploy prod", with: "deploy staging", in: folderOne)
-        await store.recordRejection(of: "git comit", in: folderOne)
+        try await store.recordRejection(of: "git comit", in: folderOne)
         #expect(try await store.candidates(for: folderOne, matching: "dep").isEmpty)
         for index in 0..<5 {
             try await store.record("another \(index) end", in: folderOne, at: moment + 20)
@@ -826,7 +843,7 @@ struct StoreSupersessionTests {
         let store = try store(corpus)
         try await store.record("git comit", in: terminal, at: moment)
         let recording: any SupersessionRecording = store
-        await recording.recordSupersession(of: "git comit", by: "git commit", in: terminal)
+        try await recording.recordSupersession(of: "git comit", by: "git commit", in: terminal)
         #expect(try await store.candidates(for: terminal, matching: "git c").isEmpty)
     }
 
@@ -836,7 +853,7 @@ struct StoreSupersessionTests {
         let store = try store(corpus)
         try await store.record("git zqxjw", in: terminal, at: moment)
         let recording: any SupersessionRecording = store
-        await recording.recordRejection(of: "git zqxjw", in: terminal)
+        try await recording.recordRejection(of: "git zqxjw", in: terminal)
         #expect(try await store.candidates(for: terminal, matching: "git z").isEmpty)
     }
 }
@@ -914,7 +931,7 @@ struct BorrowedFeedbackTests {
         let corpus = Corpus()
         let store = try store(corpus)
         try await store.record("git status", in: folderOne, at: moment)
-        await store.recordRejection(of: "git status", in: folderTwo)
+        try await store.recordRejection(of: "git status", in: folderTwo)
         #expect(try await store.candidates(for: folderTwo, matching: "git s").isEmpty)
         #expect(try await store.candidates(for: folderTwo, matching: "gti s").isEmpty)
         #expect(try await store.recent(in: folderTwo, limit: 5).isEmpty)
@@ -957,7 +974,7 @@ struct BorrowedFeedbackTests {
         let store = try store(corpus)
         try await store.record("git status", in: folderOne, at: moment)
         try await store.record("git status", in: folderTwo, at: moment)
-        await store.recordRejection(of: "git status", in: folderTwo)
+        try await store.recordRejection(of: "git status", in: folderTwo)
         #expect(try await store.candidates(for: folderTwo, matching: "git s").isEmpty)
         #expect(try await store.candidates(for: folderOne, matching: "git s").count == 1)
     }

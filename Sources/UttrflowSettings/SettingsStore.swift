@@ -25,6 +25,9 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Whether double-tapping the held Dictate keys keeps the microphone open until they are tapped again.
     public var handsFreeEnabled: Bool
 
+    /// How long two Dictate taps may be apart to start or stop hands-free dictation.
+    public var handsFreeDoubleTapMilliseconds: Int
+
     /// Shortcuts that were a modifier held alone and are back to their defaults, until the user chooses again.
     public var shortcutsReturnedToDefault: Set<ShortcutAction>
 
@@ -67,6 +70,9 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Whether macOS launches Uttrflow when the user logs in.
     public var opensAtLogin: Bool
 
+    /// Whether Sparkle checks for releases on its own.
+    public var checksForUpdatesAutomatically: Bool
+
     /// Whether a found update installs itself or waits to be asked; `UpdateGate` picks the moment.
     public var installsUpdatesAutomatically: Bool
 
@@ -96,6 +102,7 @@ public struct Settings: Sendable, Equatable, Codable {
         shortcuts: ShortcutSet = .default,
         hotkeyActivation: HotkeyActivation = .holdToTalk,
         handsFreeEnabled: Bool = true,
+        handsFreeDoubleTapMilliseconds: Int = 450,
         shortcutsReturnedToDefault: Set<ShortcutAction> = [],
         dictationEnabled: Bool = true,
         clipboardEnabled: Bool = true,
@@ -105,6 +112,7 @@ public struct Settings: Sendable, Equatable, Codable {
         minimisesWhileDictating: Bool = true,
         playsSoundWhenRecordingStarts: Bool = true,
         opensAtLogin: Bool = true,
+        checksForUpdatesAutomatically: Bool = true,
         installsUpdatesAutomatically: Bool = true,
         sharesUsageStatistics: Bool = true,
         sendsCrashReports: Bool = false,
@@ -120,6 +128,8 @@ public struct Settings: Sendable, Equatable, Codable {
         self.shortcuts = shortcuts
         self.hotkeyActivation = hotkeyActivation
         self.handsFreeEnabled = handsFreeEnabled
+        self.handsFreeDoubleTapMilliseconds = Self.validDoubleTapMilliseconds(
+            handsFreeDoubleTapMilliseconds)
         self.shortcutsReturnedToDefault = shortcutsReturnedToDefault
         self.dictationEnabled = dictationEnabled
         self.clipboardEnabled = clipboardEnabled
@@ -129,6 +139,7 @@ public struct Settings: Sendable, Equatable, Codable {
         self.minimisesWhileDictating = minimisesWhileDictating
         self.playsSoundWhenRecordingStarts = playsSoundWhenRecordingStarts
         self.opensAtLogin = opensAtLogin
+        self.checksForUpdatesAutomatically = checksForUpdatesAutomatically
         self.installsUpdatesAutomatically = installsUpdatesAutomatically
         self.sharesUsageStatistics = sharesUsageStatistics
         self.sendsCrashReports = sendsCrashReports
@@ -149,6 +160,14 @@ public struct Settings: Sendable, Equatable, Codable {
 
     /// Transcripts stay until the user deletes them or chooses a shorter period.
     public static let defaultTranscriptRetentionDays = keepAlwaysDays
+
+    /// Accepted hands-free intervals, including the existing default.
+    public static let handsFreeDoubleTapChoices = [450, 600, 800]
+
+    /// Keeps decoded timing choices within the values the Settings UI offers.
+    public static func validDoubleTapMilliseconds(_ value: Int) -> Int {
+        handsFreeDoubleTapChoices.contains(value) ? value : 450
+    }
 
     /// What a user gets before they configure anything.
     public static let `default` = Settings()
@@ -174,6 +193,7 @@ extension Settings {
         case shortcuts
         case hotkeyActivation
         case handsFreeEnabled
+        case handsFreeDoubleTapMilliseconds
         case shortcutsReturnedToDefault
         case dictationEnabled
         case clipboardEnabled
@@ -183,6 +203,7 @@ extension Settings {
         case minimisesWhileDictating
         case playsSoundWhenRecordingStarts
         case opensAtLogin
+        case checksForUpdatesAutomatically
         case installsUpdatesAutomatically
         case sharesUsageStatistics
         case sendsCrashReports
@@ -211,6 +232,9 @@ extension Settings {
             ),
             handsFreeEnabled: container.value(
                 forKey: .handsFreeEnabled, default: fallback.handsFreeEnabled),
+            handsFreeDoubleTapMilliseconds: container.value(
+                forKey: .handsFreeDoubleTapMilliseconds,
+                default: fallback.handsFreeDoubleTapMilliseconds),
             shortcutsReturnedToDefault: container.value(
                 forKey: .shortcutsReturnedToDefault, default: fallback.shortcutsReturnedToDefault
             ).union(Settings.shortcutsReturned(from: decoder)),
@@ -235,6 +259,10 @@ extension Settings {
                 default: fallback.playsSoundWhenRecordingStarts
             ),
             opensAtLogin: container.value(forKey: .opensAtLogin, default: fallback.opensAtLogin),
+            checksForUpdatesAutomatically: container.value(
+                forKey: .checksForUpdatesAutomatically,
+                default: fallback.checksForUpdatesAutomatically
+            ),
             installsUpdatesAutomatically: container.value(
                 forKey: .installsUpdatesAutomatically,
                 default: fallback.installsUpdatesAutomatically

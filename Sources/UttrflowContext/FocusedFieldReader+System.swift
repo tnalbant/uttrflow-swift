@@ -108,6 +108,7 @@ public enum FocusedFieldReader {
 
     /// One reading, off the main thread, or `nil` when nothing usable is focused.
     public static func read() async -> FocusedFieldSnapshot? {
+        let fullTreeGeneration = fullTree.generation
         // Identity is taken on the main actor first, because the blocking read below may not touch `NSWorkspace`.
         guard let app = await frontmostApp() else { return nil }
         // A field that stops answering costs the turn half a second at most, and no later turn waits behind it.
@@ -117,7 +118,7 @@ public enum FocusedFieldReader {
             if FullTreeSwitch.isNeeded(in: app.bundleIdentifier, after: reading) {
                 fullTree.switchOn(
                     processIdentifier: app.processIdentifier, bundleIdentifier: app.bundleIdentifier,
-                    host: fullTreeHost(app.processIdentifier))
+                    host: fullTreeHost(app.processIdentifier), generation: fullTreeGeneration)
             }
             return reading
         }
@@ -299,7 +300,8 @@ public enum FocusedFieldReader {
         let secure = declaredSecure || (value.map(SecureField.looksMasked) ?? false)
         guard goOn() else { return nil }
         // The attributed string carries the characters, so a secure field is never asked for its style.
-        let style = secure ? nil : range.flatMap { typeStyle(field, at: $0) }
+        let styleRange = range.flatMap { boundedStyleRange($0) }
+        let style = secure ? nil : styleRange.flatMap { typeStyle(field, at: $0) }
         guard goOn() else { return nil }
         let flipped = cachedPrimaryScreenMaxY.withLock { $0 }
         let marked = CompositionProbe.markedText(of: field)
@@ -312,9 +314,23 @@ public enum FocusedFieldReader {
         let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
         guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
-        let caretRect = caret(
+        let paragraphDirection: WritingDirection
+        if let range, range.length == 0, range.location > 0,
+            read.selection?.length == 0, read.selection?.location == value?.utf16.count,
+            !secure, goOn(),
+            let attributed = SurfaceProbe.parameterized(
+                field, kAXAttributedStringForRangeParameterizedAttribute,
+                CFRange(location: range.location - 1, length: 1)),
+            CFGetTypeID(attributed) == CFAttributedStringGetTypeID()
+        {
+            paragraphDirection = Self.writingDirection(
+                inAttributed: unsafeDowncast(attributed, to: CFAttributedString.self))
+        } else {
+            paragraphDirection = .unknown
+        }
+        let caretResult = caret(
             field, at: range, value: value, selection: read.selection, frame: fieldRect,
-            pointSize: style?.size, while: goOn)
+            pointSize: style?.size, paragraphDirection: paragraphDirection, while: goOn)
         guard goOn() else { return nil }
         let windowRect = stable.windowFrame
         let appPickerOpen =
@@ -328,6 +344,8 @@ public enum FocusedFieldReader {
         // An editor that draws its own text keeps an empty input at the caret, so its line is read off the rendered text.
         let hidden =
             secure ? nil : hiddenInputLine(field, role: role, value: value, frame: fieldRect, while: goOn)
+        let number = windowNumber(while: goOn) { windowNumber(of: field) }
+        guard goOn() else { return nil }
 
         return FocusedFieldSnapshot(
             bundleIdentifier: app.bundleIdentifier,
@@ -340,13 +358,16 @@ public enum FocusedFieldReader {
             document: stable.document,
             value: secure ? nil : hidden.map { $0.before + $0.after } ?? value,
             selection: hidden.map { NSRange(location: $0.before.utf16.count, length: 0) } ?? read.selection,
-            caret: (hidden?.caret ?? caretRect).map { flip($0, below: flipped) },
+            caret: (hidden?.caret ?? caretResult?.caret).map { flip($0, below: flipped) },
+            writingDirection: hidden == nil ? caretResult?.direction ?? .unknown : .unknown,
             window: windowRect.map { flip($0, below: flipped) },
             field: (hidden?.line ?? fieldRect).flatMap {
                 FocusedFieldSnapshot.isCaretShaped($0) ? nil : flip($0, below: flipped)
             },
             pointSize: style?.size,
             fontFamily: style?.family,
+            isBold: style?.isBold ?? false,
+            isItalic: style?.isItalic ?? false,
             textColor: style?.color,
             isSecure: secure,
             isEnabled: isEnabled,
@@ -357,8 +378,16 @@ public enum FocusedFieldReader {
             showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
             windowTitle: title,
-            windowNumber: windowNumber(of: field)
+            windowNumber: number
         )
+    }
+
+    /// Reads a window number only while this field snapshot is still wanted.
+    static func windowNumber(while isWanted: () -> Bool, read: () -> UInt32?) -> UInt32? {
+        guard isWanted() else { return nil }
+        let number = read()
+        guard isWanted() else { return nil }
+        return number
     }
 
     /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
@@ -426,6 +455,11 @@ public enum FocusedFieldReader {
             })
     }
 
+    /// Bounds an attributed style read at the start of a selection.
+    private static func boundedStyleRange(_ range: CFRange) -> CFRange {
+        CFRange(location: range.location, length: min(range.length, ValueWindow.selectionLimit))
+    }
+
     /// Accessibility measures from the top of the primary screen; AppKit measures from the bottom.
     private static func flip(_ rect: CGRect, below primaryScreenMaxY: CGFloat) -> CGRect {
         SuggestionGeometry.fromAccessibility(rect, primaryScreenMaxY: primaryScreenMaxY)
@@ -447,11 +481,12 @@ public enum FocusedFieldReader {
     /// The caret's screen rectangle, from the selection where the field answers it and from the text marker where it does not; `frame` is the field's own, already read.
     private static func caret(
         _ field: AXUIElement, at range: CFRange?, value: String?, selection: NSRange?, frame: CGRect?,
-        pointSize: CGFloat?, while goOn: () -> Bool
-    ) -> CGRect? {
-        CaretLocator.caret(
+        pointSize: CGFloat?, paragraphDirection: WritingDirection, while goOn: () -> Bool
+    ) -> CaretLocator.Result? {
+        CaretLocator.result(
             at: range.map { (location: $0.location, length: $0.length) }, frame: frame,
             pointSize: pointSize, value: value, textSelectionLocation: selection?.location,
+            paragraphDirection: paragraphDirection,
             bounds: { goOn() ? SurfaceProbe.bounds(field, at: CFRange(location: $0, length: $1)) : nil },
             markerBounds: { goOn() ? markerBounds(field) : nil })
     }
@@ -462,6 +497,10 @@ public enum FocusedFieldReader {
         let size: CGFloat?
         /// The font family, so the ghost is set in the face the line is.
         let family: String?
+        /// Whether the face is bold, so the ghost keeps the run's weight.
+        let isBold: Bool
+        /// Whether the face is italic or oblique, so the ghost keeps the run's slant.
+        let isItalic: Bool
         /// The text colour, so the ghost reads against the field rather than against Uttrflow's appearance.
         var color: TextColor?
     }
@@ -526,6 +565,7 @@ public enum FocusedFieldReader {
         }
 
         var role: String? { self[kAXRoleAttribute] as? String }
+        var subrole: String? { self[kAXSubroleAttribute] as? String }
         var title: String? { self[kAXTitleAttribute] as? String }
 
         /// Whether the element declares itself secure by role or subrole, or as a field by name, asked of the answers already fetched.
@@ -558,20 +598,21 @@ public enum FocusedFieldReader {
             return read
         }
 
-        /// The end of an element's value by range where it is long, else the whole value, which is short or of unknown length.
+        /// The end of an element's value by range where it is long; unknown lengths and failed ranges are skipped.
         private static func tail(of element: AXUIElement) -> String? {
             var length: AnyObject?
-            if AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
-                == .success,
-                let count = (length as? NSNumber)?.intValue, count > valueReadLimit
-            {
+            guard
+                AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
+                    == .success, let count = (length as? NSNumber)?.intValue, count >= 0
+            else { return nil }
+            if count > valueReadLimit {
                 let range = CFRange(location: count - valueReadLimit, length: valueReadLimit)
-                if let tail = SurfaceProbe.parameterized(
-                    element, kAXStringForRangeParameterizedAttribute, range)
-                    as? String
-                {
-                    return tail
-                }
+                guard
+                    let tail = SurfaceProbe.parameterized(
+                        element, kAXStringForRangeParameterizedAttribute, range)
+                        as? String, tail.utf16.count == valueReadLimit
+                else { return nil }
+                return tail
             }
             var value: AnyObject?
             guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success
@@ -591,6 +632,16 @@ public enum FocusedFieldReader {
 
         var children: [AXUIElement] { self[kAXChildrenAttribute] as? [AXUIElement] ?? [] }
 
+        /// Whether a sibling list contains links, which identify other navigable conversations.
+        var isConversationLinkList: Bool {
+            guard role == "AXList" else { return false }
+            return children.contains { child in
+                let child = Answers(child)
+                return child.role == "AXLink"
+                    || child.children.contains { Answers($0).role == "AXLink" }
+            }
+        }
+
         var isHidden: Bool { (self[kAXHiddenAttribute] as? NSNumber)?.boolValue ?? false }
 
         var parent: AXUIElement? {
@@ -605,6 +656,8 @@ public enum FocusedFieldReader {
     /// The other application's window as the surroundings collector walks it, one Accessibility message per element.
     struct AXElementTree: ElementTree {
         func role(of node: AXNode) -> String? { node.answers.role }
+        func subrole(of node: AXNode) -> String? { node.answers.subrole }
+        func isConversationLinkList(_ node: AXNode) -> Bool { node.answers.isConversationLinkList }
         func isHidden(_ node: AXNode) -> Bool { node.answers.isHidden }
         func isSecure(_ node: AXNode) -> Bool { node.answers.isSecure }
         func text(of node: AXNode) -> String? { node.answers.text }
@@ -637,6 +690,25 @@ public enum FocusedFieldReader {
         typeStyle(inAttributed: attributed)?.size
     }
 
+    static func writingDirection(inAttributed attributed: CFAttributedString) -> WritingDirection {
+        guard CFAttributedStringGetLength(attributed) > 0,
+            let attribute = CFAttributedStringGetAttribute(
+                attributed, 0, kCTParagraphStyleAttributeName, nil),
+            CFGetTypeID(attribute) == CTParagraphStyleGetTypeID()
+        else { return .unknown }
+        let style = unsafeDowncast(attribute, to: CTParagraphStyle.self)
+        var direction = CTWritingDirection.natural
+        guard
+            CTParagraphStyleGetValueForSpecifier(
+                style, .baseWritingDirection, MemoryLayout<CTWritingDirection>.size, &direction)
+        else { return .unknown }
+        switch direction {
+        case .leftToRight: .leftToRight
+        case .rightToLeft: .rightToLeft
+        default: .unknown
+        }
+    }
+
     /// The font in an attributed string: a Core Text font where AppKit put one, else the `AXFont` dictionary most applications answer with.
     static func typeStyle(inAttributed attributed: CFAttributedString) -> TypeStyle? {
         guard CFAttributedStringGetLength(attributed) > 0 else { return nil }
@@ -646,11 +718,15 @@ public enum FocusedFieldReader {
         {
             // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
             let font = unsafeDowncast(font, to: CTFont.self)
+            let traits = CTFontGetSymbolicTraits(font)
             return TypeStyle(
-                size: CTFontGetSize(font), family: CTFontCopyFamilyName(font) as String, color: color)
+                size: CTFontGetSize(font), family: CTFontCopyFamilyName(font) as String,
+                isBold: traits.contains(.traitBold), isItalic: traits.contains(.traitItalic), color: color)
         }
         var size: CGFloat?
         var family: String?
+        var isBold = false
+        var isItalic = false
         if let described = CFAttributedStringGetAttribute(attributed, 0, Self.axFontKey as CFString, nil),
             CFGetTypeID(described) == CFDictionaryGetTypeID()
         {
@@ -658,9 +734,19 @@ public enum FocusedFieldReader {
             let font = unsafeDowncast(described, to: CFDictionary.self) as NSDictionary
             size = (font[Self.axFontSizeKey] as? NSNumber).map { CGFloat($0.doubleValue) }
             family = font[Self.axFontFamilyKey] as? String
+            let name = font[Self.axFontNameKey] as? String
+            let style = font[Self.axFontStyleKey] as? String
+            let nameTraits = name.map {
+                CTFontGetSymbolicTraits(CTFontCreateWithName($0 as CFString, size ?? 12, nil))
+            }
+            let styleName = style?.lowercased() ?? ""
+            isBold = nameTraits?.contains(.traitBold) == true || styleName.contains("bold")
+            isItalic =
+                nameTraits?.contains(.traitItalic) == true
+                || styleName.contains("italic") || styleName.contains("oblique")
         }
-        guard size != nil || family != nil || color != nil else { return nil }
-        return TypeStyle(size: size, family: family, color: color)
+        guard size != nil || family != nil || isBold || isItalic || color != nil else { return nil }
+        return TypeStyle(size: size, family: family, isBold: isBold, isItalic: isItalic, color: color)
     }
 
     /// The text colour at the start of an attributed string, from the Accessibility key or the Core Text one.
@@ -689,6 +775,8 @@ public enum FocusedFieldReader {
     private static let axFontKey = "AXFont"
     private static let axFontSizeKey = "AXFontSize"
     private static let axFontFamilyKey = "AXFontFamily"
+    private static let axFontNameKey = "AXFontName"
+    private static let axFontStyleKey = "AXFontStyle"
     private static let axForegroundColorKey = "AXForegroundColor"
 
     /// The selection as a character range, measured in text markers from the field's start, for a field that refuses `AXSelectedTextRange`.

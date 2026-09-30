@@ -24,6 +24,15 @@ public actor FakeRecordingKeeper: RecordingKeeper {
 
     public func current() -> KeptRecording? { currentRecording }
 
+    public func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) {
+        if let currentRecording, currentRecording.id == id {
+            self.currentRecording = Self.recording(currentRecording, with: destination, fieldKind: fieldKind)
+        }
+        waitingRecordings = waitingRecordings.map {
+            $0.id == id ? Self.recording($0, with: destination, fieldKind: fieldKind) : $0
+        }
+    }
+
     public func discard(_ id: UUID) {
         discarded.append(id)
         waitingRecordings.removeAll { $0.id == id }
@@ -44,5 +53,13 @@ public actor FakeRecordingKeeper: RecordingKeeper {
 
     public func setCurrent(_ recording: KeptRecording?) {
         currentRecording = recording
+    }
+
+    private static func recording(
+        _ recording: KeptRecording, with destination: AppContext, fieldKind: Destination
+    ) -> KeptRecording {
+        KeptRecording(
+            id: recording.id, when: recording.when, duration: recording.duration,
+            destination: destination, fieldKind: fieldKind)
     }
 }

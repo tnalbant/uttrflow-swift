@@ -1,6 +1,11 @@
 public import CoreGraphics
 public import UttrflowPredict
 
+public enum SuggestionWritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+}
+
 /// What the user's accessibility settings ask the suggestion surface to do differently.
 public struct SuggestionAppearance: Sendable, Equatable {
     /// Increase Contrast, under which grey text on the user's own line fails to read.
@@ -75,8 +80,11 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The backing behind a ghost whose field would not say its text colour is drawn at this share of the window colour.
     public static let backingOpacity = 0.9
 
-    /// An unselected row of the list, and the footer, are drawn at this share of the ghost's own strength.
-    public static let dimmedShare = 0.55
+    /// Unselected rows and the footer must remain readable against the field in the default appearance.
+    public static let standardListOpacity = 0.72
+
+    /// Unselected rows and the footer stay readable when an accessibility display setting is enabled.
+    public static let accessibleListOpacity = 0.9
 
     /// What opens each row of the list, so it reads as a branch off the caret's line.
     public static let listPrefix = "↳"
@@ -101,14 +109,22 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let prefersMonospaced: Bool
     /// The widest the surface may draw, the room from the caret to the field's or screen's edge, past which text ends in an ellipsis.
     public let maximumWidth: CGFloat?
+    /// The direction used to lay out the continuation.
+    public let direction: SuggestionWritingDirection
     /// The share of the line's colour the ghost is drawn at, raised to full under a contrast setting.
     public let opacity: Double
+    /// The direct opacity for unselected list rows and the footer, independent of the inline ghost.
+    public let unselectedListOpacity: Double
     /// Whether the ghost is underlined, which is what tells it from typed text once it is drawn at full strength.
     public let underlinesGhost: Bool
     /// The key that takes the suggestion in this field, which the hint after the ghost must name truthfully.
     public let acceptKey: AcceptKey
     /// The field's own font family, so the ghost is set in the face the line is, or nothing when it will not say.
     public let fontFamily: String?
+    /// Whether to set the ghost in bold to match the field's face.
+    public let isBold: Bool
+    /// Whether to set the ghost in italics to match the field's face.
+    public let isItalic: Bool
     /// The colour the ghost is drawn in, and whether it needs a backing to be read at all.
     public let ink: Ink
 
@@ -120,11 +136,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
         appearance: SuggestionAppearance = .standard,
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         fieldTextColor: TextColor? = nil,
-        maximumWidth: CGFloat? = nil
+        maximumWidth: CGFloat? = nil,
+        direction: SuggestionWritingDirection = .leftToRight
     ) {
         self.acceptKey = acceptKey
         self.fontFamily = fontFamily
+        self.isBold = isBold
+        self.isItalic = isItalic
         ink = fieldTextColor.map(Ink.field) ?? .backed
         let offered = Self.rows(of: suggestion, after: typed, selected: selection.index)
         style =
@@ -140,8 +161,13 @@ public struct SuggestionPresentation: Sendable, Equatable {
         // A field that reports neither size nor face is most often a terminal, where a monospaced default lines up.
         prefersMonospaced = fieldPointSize == nil && fontFamily == nil
         self.maximumWidth = maximumWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        self.direction = direction
         // Faint grey is the intent; a contrast setting keeps the text but drops the transparency.
         opacity = appearance.demandsOpaqueGhost ? Self.opaqueGhostOpacity : Self.ghostOpacity
+        unselectedListOpacity =
+            appearance.demandsOpaqueGhost
+            ? Self.accessibleListOpacity
+            : Self.standardListOpacity
         underlinesGhost = appearance.demandsOpaqueGhost
     }
 
@@ -151,11 +177,13 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The rows listed under the caret's line, which is every candidate once the list is open and none before.
     public var list: [Row] { isExpanded ? rows : [] }
 
-    /// The accept key as a glyph, which opens the list's footer so a terminal reads →, not ⇥; the ghost line carries none.
-    public var acceptGlyph: String { acceptKey.glyph }
-
     /// The keys that work the open list, drawn under it in the dimmed style.
     public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
+
+    /// The selected candidate keeps full strength; other rows use the contrast-safe list opacity.
+    public func listOpacity(for row: Row) -> Double {
+        row.isSelected ? 1 : unselectedListOpacity
+    }
 
     /// What VoiceOver hears automatically when the offer changes, without exposing unselected candidates.
     var announcementLabel: String {

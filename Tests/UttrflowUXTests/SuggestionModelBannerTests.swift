@@ -7,7 +7,7 @@ import UttrflowSettings
 
 @testable import UttrflowUX
 
-@Suite("What the Suggestions screen says while the model is not ready")
+@Suite("What the Suggestions screen says about model readiness and tap startup")
 struct SuggestionModelBannerTests {
     /// Settings with tab-to-complete in one state and nothing else said.
     private func settings(suggesting: Bool) -> Settings {
@@ -28,9 +28,44 @@ struct SuggestionModelBannerTests {
             settings(suggesting: suggesting), capabilities(readiness))
     }
 
+    private func bannerForRuntime(_ runtime: SuggestionRuntimeStatus) -> SettingsBanner? {
+        var capabilities = capabilities(.ready)
+        capabilities.suggestionRuntime = runtime
+        return SettingsPresenter.suggestionModelBanner(settings(suggesting: true), capabilities)
+    }
+
     @Test("a ready model says nothing, because there is nothing to explain")
     func readySaysNothing() {
         #expect(bannerFor(.ready) == nil)
+    }
+
+    @Test("a failed tap names the cause and permission fix with a ready model")
+    func tapFailureWhileReady() throws {
+        let shown = try #require(bannerForRuntime(.tapFailed))
+        #expect(shown.title.contains("could not start"))
+        #expect(shown.message.contains("Privacy & Security"))
+    }
+
+    @Test("a failed corpus names the cause and recovery with a ready model")
+    func corpusFailureWhileReady() throws {
+        let shown = try #require(bannerForRuntime(.corpusFailed))
+        #expect(shown.title.contains("could not start"))
+        #expect(shown.message.contains("corpus"))
+        #expect(shown.message.contains("file access"))
+    }
+
+    @Test("tap setup in progress says suggestions are paused briefly")
+    func tapStarting() throws {
+        let shown = try #require(bannerForRuntime(.starting))
+        #expect(shown.title == "Suggestions are paused briefly")
+        #expect(shown.message.contains("resume automatically"))
+    }
+
+    @Test("secure input does not report suggestions running with a ready model")
+    func secureInputIsReported() throws {
+        let shown = try #require(bannerForRuntime(.secureInputBlocked))
+        #expect(shown.title == "Suggestions are paused")
+        #expect(shown.message.contains("secure input"))
     }
 
     @Test("nor does a Mac that never asked for the feature")

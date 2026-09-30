@@ -104,6 +104,34 @@ struct PanelProductLoopTests {
         #expect(response.state.sheet == nil)
     }
 
+    @Test("row actions leave an alias draft open and unchanged")
+    func aliasSheetIgnoresRowActions() {
+        let clip = PanelFixture.clips[0]
+        var panel = PanelFixture.panel().applying(.alias(clip.id)).state
+        panel = panel.applying(.draft("typedalias")).state
+
+        for key in [PanelKey.choose(clip.id), .delete(clip.id), .move(clip.id), .alias(clip.id)] {
+            let response = panel.applying(key)
+            #expect(response.outcome == .open)
+            #expect(response.state.sheet == .aliasing(clip.id, draft: "typedalias"))
+        }
+        #expect(panel.applying(.return).outcome == .change(.setAlias(clip.id, "typedalias")))
+    }
+
+    @Test("row actions leave a move draft open and unchanged")
+    func moveSheetIgnoresRowActions() {
+        let clip = PanelFixture.clips[0]
+        var panel = PanelFixture.panel().applying(.move(clip.id)).state
+        panel = panel.applying(.draft("New collection")).state
+
+        for key in [PanelKey.choose(clip.id), .delete(clip.id), .move(clip.id), .alias(clip.id)] {
+            let response = panel.applying(key)
+            #expect(response.outcome == .open)
+            #expect(response.state.sheet == .moving(clip.id, draft: "New collection"))
+        }
+        #expect(panel.applying(.return).outcome == .change(.setCategory(clip.id, "New collection")))
+    }
+
     /// A panel that has closed cannot be typed into, so a run of keys stops where it stopped for the user.
     @Test("keys after the panel closes are not applied")
     func afterClosing() {

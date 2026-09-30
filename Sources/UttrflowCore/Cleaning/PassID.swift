@@ -34,6 +34,7 @@ extension PassID {
     public static let contractions: PassID = "contractions"
     /// Spaces around the marks the other passes put in.
     public static let spacing: PassID = "spacing"
+    public static let spelledInitialism: PassID = "spelledInitialism"
     /// The case of the first word, which the formatter decides.
     public static let firstWord: PassID = "firstWord"
     /// The last mark, which the formatter decides.

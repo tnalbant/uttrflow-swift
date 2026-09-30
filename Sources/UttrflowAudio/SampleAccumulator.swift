@@ -80,12 +80,32 @@ public final class SampleAccumulator: Sendable {
     public var count: Int { state.withLock(\.count) }
 
     /// A copy of everything collected so far, leaving the capture thread's own block uniquely its own.
-    public var snapshot: [Float] {
-        let (sealed, open, total) = state.withLock { state in
+    public var snapshot: [Float] { snapshot(from: 0) }
+
+    /// A copy of what was collected from sample `offset` on, touching only the blocks that hold it.
+    public func snapshot(from offset: Int) -> [Float] {
+        let first = Swift.max(0, offset) / Self.blockSize
+        let (sealed, open, total) = state.withLock { state -> (ArraySlice<[Float]>, [Float], Int) in
+            let from = Swift.min(first, state.sealed.count)
             // Copied out rather than referenced, so the capture thread keeps sole ownership of it.
-            (state.sealed, state.open.withUnsafeBufferPointer { [Float]($0) }, state.count)
+            return (state.sealed[from...], state.open.withUnsafeBufferPointer { [Float]($0) }, state.count)
         }
-        return Self.joined(sealed, open, total)
+        let start = Swift.max(0, offset)
+        guard start < total else { return [] }
+        var samples = [Float]()
+        samples.reserveCapacity(total - start)
+        // Every sealed block holds exactly `blockSize` samples, so the first kept block starts at `first * blockSize`.
+        var skip = start - first * Self.blockSize
+        for block in sealed {
+            if skip >= block.count {
+                skip -= block.count
+                continue
+            }
+            samples.append(contentsOf: block[skip...])
+            skip = 0
+        }
+        samples.append(contentsOf: open[Swift.min(skip, open.count)...])
+        return samples
     }
 
     /// A copy of the samples from `start` onwards, which copies no block that lies wholly before it.

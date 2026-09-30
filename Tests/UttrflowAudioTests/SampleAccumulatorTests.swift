@@ -280,6 +280,21 @@ struct SampleAccumulatorSnapshotTests {
         #expect(snapshot == (0..<total).map { Float($0) / Float(total) })
     }
 
+    @Test(
+        "reads from any offset exactly what the whole snapshot holds from there",
+        arguments: [0, 1, 4095, 4096, 4097, 8192, 12_000, 12_295, 12_296, 20_000])
+    func snapshotFromOffset(offset: Int) {
+        let accumulator = SampleAccumulator()
+        let total = SampleAccumulator.blockSize * 3 + 7
+        for start in stride(from: 0, to: total, by: 1000) {
+            let end = Swift.min(start + 1000, total)
+            accumulator.append((start..<end).map { Float($0) })
+        }
+
+        let whole = accumulator.snapshot
+        #expect(accumulator.snapshot(from: offset) == Array(whole[Swift.min(offset, whole.count)...]))
+    }
+
     @Test("takes a block-spanning recording whole and leaves nothing behind")
     func takeSpansBlocks() {
         let accumulator = SampleAccumulator()

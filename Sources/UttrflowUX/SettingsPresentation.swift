@@ -341,6 +341,7 @@ public enum SettingsToggleField: String, Sendable, Equatable, CaseIterable {
     case minimisesWhileDictating
     case playsSoundWhenRecordingStarts
     case opensAtLogin
+    case checksForUpdatesAutomatically
     case installsUpdatesAutomatically
     case sharesUsageStatistics
     case sendsCrashReports
@@ -359,6 +360,7 @@ public enum SettingsChange: Sendable, Equatable {
     case spokenLanguage(LanguageCode, isSpoken: Bool)
     case retention(days: Int)
     case appearance(AppAppearance)
+    case handsFreeDoubleTap(milliseconds: Int)
 
     /// Switch one clean-up step on or off; a step nobody offers is refused.
     case cleaningStep(PassID, isOn: Bool)

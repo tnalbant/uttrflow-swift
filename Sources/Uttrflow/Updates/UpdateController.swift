@@ -4,6 +4,36 @@ import AppKit
 import Sparkle
 import UttrflowUX
 
+/// The Sparkle settings that come from the two independent update preferences.
+@MainActor
+protocol UpdateSettingsTarget: AnyObject {
+    var automaticallyChecksForUpdates: Bool { get set }
+    var automaticallyDownloadsUpdates: Bool { get set }
+}
+
+extension SPUUpdater: UpdateSettingsTarget {}
+
+/// Applies the saved choices through the same mapping at launch and in focused tests.
+@MainActor
+enum UpdateSettingsMapping {
+    static func configure(
+        checksAutomatically: Bool,
+        installsAutomatically: Bool,
+        to updater: any UpdateSettingsTarget
+    ) {
+        updater.automaticallyChecksForUpdates = checksAutomatically
+        updater.automaticallyDownloadsUpdates = installsAutomatically
+    }
+
+    static func setChecksAutomatically(_ isOn: Bool, on updater: any UpdateSettingsTarget) {
+        updater.automaticallyChecksForUpdates = isOn
+    }
+
+    static func setInstallsAutomatically(_ isOn: Bool, on updater: any UpdateSettingsTarget) {
+        updater.automaticallyDownloadsUpdates = isOn
+    }
+}
+
 /// Decides when Sparkle may check (`UpdateStartupGate`) and replace the bundle (`UpdateGate`). See Docs/app-updates.md.
 @MainActor
 final class UpdateController: NSObject {
@@ -63,11 +93,13 @@ final class UpdateController: NSObject {
     }
 
     /// Configures Sparkle; an automatic check itself waits for ``modelLoadingSettled()``.
-    func begin(automatically: Bool) {
+    func begin(checksAutomatically: Bool, installsAutomatically: Bool) {
         guard Self.isConfigured, !startupGate.isConfigured else { return }
         startupGate.configure()
-        updater.automaticallyChecksForUpdates = true
-        updater.automaticallyDownloadsUpdates = automatically
+        UpdateSettingsMapping.configure(
+            checksAutomatically: checksAutomatically,
+            installsAutomatically: installsAutomatically,
+            to: updater)
         if startupGate.mayStartAutomatically() { controller.startUpdater() }
     }
 
@@ -80,7 +112,13 @@ final class UpdateController: NSObject {
     /// The user changed the switch in Settings.
     func setInstallsAutomatically(_ isOn: Bool) {
         guard startupGate.isConfigured else { return }
-        updater.automaticallyDownloadsUpdates = isOn
+        UpdateSettingsMapping.setInstallsAutomatically(isOn, on: updater)
+    }
+
+    /// The user changed the automatic-check switch in Settings.
+    func setChecksAutomatically(_ isOn: Bool) {
+        guard startupGate.isConfigured else { return }
+        UpdateSettingsMapping.setChecksAutomatically(isOn, on: updater)
     }
 
     /// Re-reads what the app is doing and acts on it; called on every redraw and from the wake-up.
@@ -133,7 +171,9 @@ final class UpdateController: NSObject {
     /// Settings' "Check Now"; bypasses the startup grace period and puts a window in front.
     func checkForUpdates() {
         guard Self.isConfigured else { return }
-        begin(automatically: updater.automaticallyDownloadsUpdates)
+        begin(
+            checksAutomatically: updater.automaticallyChecksForUpdates,
+            installsAutomatically: updater.automaticallyDownloadsUpdates)
         if startupGate.mayStartManually() { controller.startUpdater() }
         // Only a check the user asked for says so; see `MenuBarPresenter.updateLine`.
         progress = .checking

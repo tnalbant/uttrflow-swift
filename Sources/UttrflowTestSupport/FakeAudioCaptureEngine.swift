@@ -67,4 +67,10 @@ public actor FakeAudioCaptureEngine: AudioCaptureEngine {
     public func setCaptured(_ audio: AudioSamples) {
         captured = audio
     }
+
+    /// Adds audio delivered while a test keeps the fake microphone open.
+    public func appendCaptured(_ audio: AudioSamples) {
+        guard currentState == .recording, audio.sampleRate == captured.sampleRate else { return }
+        captured = .canonical(captured.samples + audio.samples)
+    }
 }

@@ -171,11 +171,12 @@ used the earlier `Tink` start cue, not the shaped one.
 
 ## Changing the cue sounds
 
-Both cues are one line each in `Sources/UttrflowAudio/CueSounds.swift`:
+The three cues are one line each in `Sources/UttrflowAudio/CueSounds.swift`:
 
 ```swift
 public static let start = CueSound("Pop", semitones: -3, lowPassHz: 3000, volume: 0.7)
 public static let stop = CueSound("Tink", semitones: -9, lowPassHz: 2200, volume: 0.7)
+public static let warning = CueSound("Glass", semitones: -3, lowPassHz: 3000, volume: 0.7)
 ```
 
 - The name is any sound in `/System/Library/Sounds` (or `~/Library/Sounds`), without its extension.

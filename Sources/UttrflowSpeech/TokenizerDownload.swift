@@ -92,8 +92,8 @@ private func verified(file: URL, expected: SpeechModelFile) throws -> Bool {
 
 typealias SpeechAssetDownloader =
     @Sendable (
-        URL, @escaping @Sendable (Int64) -> Void
-    ) async throws -> (URL, URLResponse)
+        URLRequest, URL, Int64, @escaping @Sendable (Int64) -> Void
+    ) async throws -> URLResponse
 
 func fetchPinnedFile(
     repository: String,
@@ -108,78 +108,133 @@ func fetchPinnedFile(
         throw SpeechModelFetchFailure(reason: "\(repository) is not an address")
     }
 
-    let (downloaded, response) = try await (downloader ?? downloadSpeechAsset)(url, onProgress)
-    defer { try? FileManager.default.removeItem(at: downloaded) }
-    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        throw SpeechModelFetchFailure(reason: "\(repository) answered \(status) for \(path)")
-    }
-
-    let values = try downloaded.resourceValues(forKeys: [.fileSizeKey])
-    let received = Int64(values.fileSize ?? -1)
-    guard received == expected.bytes else {
-        throw SpeechModelFetchFailure(reason: "\(path) was \(received) bytes, not \(expected.bytes)")
-    }
-    let found = try sha256(of: downloaded)
-    guard found == expected.sha256 else {
-        throw SpeechModelFetchFailure(reason: "\(path) hashed \(found), not \(expected.sha256)")
-    }
-
     let fileManager = FileManager.default
     let parent = destination.deletingLastPathComponent()
     try PrivateFile.makeDirectory(at: parent)
-    let temporary = parent.appending(path: ".\(destination.lastPathComponent).\(UUID().uuidString).download")
-    if fileManager.fileExists(atPath: temporary.path) {
-        try fileManager.removeItem(at: temporary)
+    let partial = parent.appending(path: ".\(destination.lastPathComponent).partial")
+    let fetch = downloader ?? downloadSpeechAsset
+    var offset = try partialSize(partial, expected: expected)
+    if fileManager.fileExists(atPath: partial.path) { try PrivateFile.tighten(at: partial) }
+
+    for attempt in 0...1 {
+        if offset == expected.bytes, try matches(partial, expected: expected) {
+            break
+        }
+        let response = try await fetch(
+            speechAssetRequest(from: url, startingAt: offset), partial, offset, onProgress)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 206 else {
+            if offset > 0, attempt == 0 {
+                try? fileManager.removeItem(at: partial)
+                offset = 0
+                continue
+            }
+            throw SpeechModelFetchFailure(reason: "\(repository) answered \(status) for \(path)")
+        }
+
+        if try matches(partial, expected: expected) { break }
+        if attempt == 0, offset > 0 {
+            try? fileManager.removeItem(at: partial)
+            offset = 0
+            continue
+        }
+        let received = (try? partial.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+        let found = (try? sha256(of: partial)) ?? "unavailable"
+        try? fileManager.removeItem(at: partial)
+        throw SpeechModelFetchFailure(
+            reason:
+                "\(path) was \(received) bytes with SHA-256 \(found), expected \(expected.bytes) bytes and \(expected.sha256)"
+        )
     }
-    defer { try? fileManager.removeItem(at: temporary) }
-    try fileManager.moveItem(at: downloaded, to: temporary)
-    try PrivateFile.tighten(at: temporary)
+
+    guard try matches(partial, expected: expected) else {
+        throw SpeechModelFetchFailure(reason: "\(path) could not be verified after download")
+    }
+    try PrivateFile.tighten(at: partial)
 
     if fileManager.fileExists(atPath: destination.path) {
         try fileManager.removeItem(at: destination)
     }
-    try fileManager.moveItem(at: temporary, to: destination)
+    try fileManager.moveItem(at: partial, to: destination)
     try PrivateFile.tighten(at: destination)
     onProgress(expected.bytes)
 }
 
+private func partialSize(_ file: URL, expected: SpeechModelFile) throws -> Int64 {
+    let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    guard size > 0, size <= expected.bytes else { return 0 }
+    return size
+}
+
+private func matches(_ file: URL, expected: SpeechModelFile) throws -> Bool {
+    let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1)
+    guard size == expected.bytes else { return false }
+    return try sha256(of: file) == expected.sha256
+}
+
+func speechAssetRequest(from url: URL, startingAt offset: Int64) -> URLRequest {
+    var request = URLRequest(url: url)
+    if offset > 0 { request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range") }
+    return request
+}
+
+func openSpeechAssetOutput(at partial: URL, statusCode: Int, requestedOffset: Int64) throws -> FileHandle {
+    if statusCode == 206, requestedOffset > 0 {
+        let output = try FileHandle(forWritingTo: partial)
+        try output.seekToEnd()
+        return output
+    }
+    _ = FileManager.default.createFile(atPath: partial.path, contents: nil)
+    try PrivateFile.tighten(at: partial)
+    let output = try FileHandle(forWritingTo: partial)
+    try output.truncate(atOffset: 0)
+    return output
+}
+
 private func downloadSpeechAsset(
-    from url: URL, onProgress: @escaping @Sendable (Int64) -> Void
-) async throws -> (URL, URLResponse) {
-    let download = SpeechAssetURLSessionDownload(onProgress: onProgress)
+    _ request: URLRequest, to partial: URL, startingAt offset: Int64,
+    onProgress: @escaping @Sendable (Int64) -> Void
+) async throws -> URLResponse {
+    let download = SpeechAssetURLSessionDownload(
+        partial: partial, requestedOffset: offset, onProgress: onProgress)
     return try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { continuation in
-            download.start(from: url, continuation: continuation)
+            download.start(request, continuation: continuation)
         }
     } onCancel: {
         download.cancel()
     }
 }
 
-private final class SpeechAssetURLSessionDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+private final class SpeechAssetURLSessionDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private struct SessionState: Sendable {
         var session: URLSession?
-        var task: URLSessionDownloadTask?
+        var task: URLSessionTask?
         var cancelled = false
     }
 
     private let onProgress: @Sendable (Int64) -> Void
+    private let partial: URL
+    private let requestedOffset: Int64
     private let state = Mutex(SessionState())
-    private var continuation: CheckedContinuation<(URL, URLResponse), any Error>?
-    private var temporaryURL: URL?
-    private var moveError: (any Error)?
+    private var continuation: CheckedContinuation<URLResponse, any Error>?
+    private var output: FileHandle?
+    private var response: URLResponse?
+    private var received: Int64 = 0
+    private var writeError: (any Error)?
 
-    init(onProgress: @escaping @Sendable (Int64) -> Void) {
+    init(partial: URL, requestedOffset: Int64, onProgress: @escaping @Sendable (Int64) -> Void) {
+        self.partial = partial
+        self.requestedOffset = requestedOffset
         self.onProgress = onProgress
     }
 
     func start(
-        from url: URL, continuation: CheckedContinuation<(URL, URLResponse), any Error>
+        _ request: URLRequest, continuation: CheckedContinuation<URLResponse, any Error>
     ) {
         self.continuation = continuation
         let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
-        let task = session.downloadTask(with: url)
+        let task = session.dataTask(with: request)
         state.withLock { state in
             state.session = session
             state.task = task
@@ -198,26 +253,37 @@ private final class SpeechAssetURLSessionDownload: NSObject, URLSessionDownloadD
     }
 
     func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
+        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
-        guard totalBytesWritten > 0 else { return }
-        onProgress(totalBytesWritten)
+        self.response = response
+        guard let http = response as? HTTPURLResponse else {
+            completionHandler(.allow)
+            return
+        }
+        guard http.statusCode == 200 || http.statusCode == 206 else {
+            completionHandler(.allow)
+            return
+        }
+        do {
+            output = try openSpeechAssetOutput(
+                at: partial, statusCode: http.statusCode, requestedOffset: requestedOffset)
+            completionHandler(.allow)
+        } catch {
+            writeError = error
+            completionHandler(.cancel)
+        }
     }
 
-    func urlSession(
-        _ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL
-    ) {
-        let temporary = FileManager.default.temporaryDirectory
-            .appending(path: "uttrflow-speech-\(UUID().uuidString).download")
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         do {
-            try FileManager.default.moveItem(at: location, to: temporary)
-            temporaryURL = temporary
+            try output?.write(contentsOf: data)
+            received += Int64(data.count)
+            onProgress(
+                (response as? HTTPURLResponse)?.statusCode == 206 ? requestedOffset + received : received)
         } catch {
-            moveError = error
+            writeError = error
+            dataTask.cancel()
         }
     }
 
@@ -231,14 +297,16 @@ private final class SpeechAssetURLSessionDownload: NSObject, URLSessionDownloadD
                 $0.task = nil
             }
         }
+        try? output?.close()
+        output = nil
         guard let continuation else { return }
         self.continuation = nil
         if let error {
             continuation.resume(throwing: error)
-        } else if let moveError {
-            continuation.resume(throwing: moveError)
-        } else if let temporaryURL, let response = task.response {
-            continuation.resume(returning: (temporaryURL, response))
+        } else if let writeError {
+            continuation.resume(throwing: writeError)
+        } else if let response {
+            continuation.resume(returning: response)
         } else {
             continuation.resume(throwing: URLError(.badServerResponse))
         }

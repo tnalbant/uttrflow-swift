@@ -46,6 +46,43 @@ struct SnippetExpanderTests {
         #expect(standardExpander().expand(transcript).text == expected)
     }
 
+    @Test("carries sentence-start casing into the expansion and preserves its saved text")
+    func sentenceStartExpansion() {
+        let expander = SnippetExpander(snippets: [
+            makeSnippet(trigger: "brb", expansion: "be right back"),
+            makeSnippet(trigger: "ok", expansion: "Okay, sounds good."),
+            makeSnippet(trigger: "idk", expansion: "123 ready\nnext line"),
+            makeSnippet(trigger: "dollar", expansion: "$12 ready"),
+        ])
+
+        #expect(expander.expand("Brb.").text == "Be right back.")
+        #expect(expander.expand("Before. Brb.").text == "Before. Be right back.")
+        #expect(expander.expand("Ok.").text == "Okay, sounds good.")
+        #expect(expander.expand("Idk.").text == "123 ready\nnext line.")
+        #expect(expander.expand("Dollar.").text == "$12 ready.")
+    }
+
+    @Test(
+        "drops only an adjacent tidy mark already present at the expansion end",
+        arguments: [
+            ("ok.", "Okay, sounds good."),
+            ("ok?", "Okay, sounds good?"),
+            ("ok!", "Okay, sounds good!"),
+            ("ok:", "Okay, sounds good:"),
+            ("ok,", "Okay, sounds good,"),
+            ("agenda.", "Agenda:"),
+            ("ok? next", "Okay, sounds good? next"),
+            ("ok. next", "Okay, sounds good. next"),
+        ]
+    )
+    func avoidsDuplicateTerminalPunctuation(transcript: String, expected: String) {
+        let trigger = transcript.hasPrefix("agenda") ? "agenda" : "ok"
+        let expansion = trigger == "agenda" ? "Agenda:" : "Okay, sounds good."
+        let expander = SnippetExpander(snippets: [makeSnippet(trigger: trigger, expansion: expansion)])
+
+        #expect(expander.expand(transcript).text == expected)
+    }
+
     @Test(
         "matches trigger words joined by written joiners or spaces",
         arguments: [

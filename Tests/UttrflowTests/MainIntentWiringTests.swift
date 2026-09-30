@@ -580,6 +580,39 @@ struct MainIntentWiringTests {
 
     // MARK: Copy and clipboard-only outcomes
 
+    @Test("a retry refused while dictation is busy explains how to continue")
+    func refusedRetryExplainsBusyDictation() async throws {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+        app.drawsWindows = false
+        app.render(.recording)
+
+        app.carryOut(.retryRecording(UUID()))
+        await app.retryWork?.value
+
+        #expect(app.actionNotice?.message == "Finish the current dictation first.")
+    }
+
+    @Test("a concurrent retry cannot take the active retry badge")
+    func concurrentRetryKeepsBadgeOwner() async {
+        let firstID = UUID()
+        let secondID = UUID()
+        let ownership = RetryBadgeOwnership()
+        let first = Task { @MainActor in ownership.begin(firstID) }
+        let second = Task { @MainActor in ownership.begin(secondID) }
+        let firstStarted = await first.value
+        let secondStarted = await second.value
+
+        #expect(firstStarted != secondStarted)
+        let owner = firstStarted ? firstID : secondID
+        let refused = firstStarted ? secondID : firstID
+        #expect(ownership.recording == owner)
+        #expect(!ownership.finish(refused))
+        #expect(ownership.recording == owner)
+        #expect(ownership.finish(owner))
+        #expect(ownership.recording == nil)
+    }
+
     /// A copy that lands on the clipboard is shown on the page so the user knows the words are waiting.
     @Test("a copy from the row says where the words went")
     func copyShowsANotice() async throws {

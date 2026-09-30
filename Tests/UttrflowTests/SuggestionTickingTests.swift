@@ -192,6 +192,19 @@ struct SuggestionCoordinatorClockTests {
         #expect(text.contains("wake(.tick)"))
     }
 
+    @Test("wakes once when dictation ends, including a canceled dictation")
+    func dictationEndWakesOnlyOnTransition() throws {
+        let text = try source
+        let handler = try #require(
+            text.components(separatedBy: "func dictationChanged(isDictating: Bool) {").last)
+        let body = try #require(handler.components(separatedBy: "\n    }").first)
+
+        #expect(body.contains("guard self.isDictating != isDictating else { return }"))
+        #expect(body.contains("guard isDictating else {"))
+        #expect(body.contains("insertionPending = true"))
+        #expect(body.contains("wake(.tick)"))
+    }
+
     @Test("watches scrolls only once a ghost is drawn, and stops when none is")
     func scrollsWatchedOnlyWithAGhost() throws {
         let text = try source
@@ -232,5 +245,39 @@ struct SuggestionCoordinatorPointerGestureTests {
         #expect(text.contains("NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp])"))
         #expect(text.contains("isPointerGestureActive = false"))
         #expect(text.components(separatedBy: "guard !isStopped, !isPointerGestureActive").count - 1 == 3)
+    }
+}
+
+/// Quiet mode keeps the drawn line and skips every alternatives path.
+@Suite("Quiet suggestion alternative wiring")
+struct QuietSuggestionAlternativeWiringTests {
+    private var source: String {
+        get throws {
+            let file = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appending(path: "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift")
+            return try String(contentsOf: file, encoding: .utf8)
+        }
+    }
+
+    @Test("returns from Quiet mode before machine values are attested")
+    func quietReturnsBeforeAttestingAlternatives() throws {
+        let text = try source
+        let drawnLine = try #require(text.range(of: "await drawFresh(update, for: snapshot, turn: number)"))
+        let quietGuard = try #require(
+            text.range(
+                of: "guard !preferences.isQuiet else { return }", range: drawnLine.upperBound..<text.endIndex)
+        )
+        let machineValues = try #require(
+            text.range(of: "ModelPass.alternativesSource(", range: drawnLine.upperBound..<text.endIndex))
+        let alternativesAttestation = try #require(
+            text.range(
+                of: "let others = await attested(listed, for: query)",
+                range: drawnLine.upperBound..<text.endIndex))
+
+        #expect(quietGuard.lowerBound < machineValues.lowerBound)
+        #expect(quietGuard.lowerBound < alternativesAttestation.lowerBound)
     }
 }

@@ -20,6 +20,34 @@ struct MeaningPreservationGuardTests {
         #expect(sut.verdict(original: original, rewritten: rewritten).isAccepted, hint)
     }
 
+    @Test("refuses a dropped spoken dash and a quote style swap")
+    func preservesSpokenPunctuationMarks() {
+        let dash = SpokenPunctuationPass().apply(
+            Draft(text: "the plan dash if it works dash is simple"))
+        let quotes = SpokenPunctuationPass().apply(
+            Draft(text: "he said open quote ship it close quote and left"))
+
+        #expect(dash.text.contains("—"))
+        #expect(quotes.text.contains("\"ship") && quotes.text.contains("it\""))
+        #expect(sut.verdict(draft: dash, rewritten: "The plan — if it works — is simple.").isAccepted)
+        #expect(sut.verdict(draft: quotes, rewritten: "He said \"ship it\" and left.").isAccepted)
+        let droppedDash = "The plan if it works is simple."
+        let swappedQuotes = "He said 'ship it' and left."
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: dash, rewritten: droppedDash)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: quotes, rewritten: swappedQuotes)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(!sut.verdict(draft: dash, rewritten: droppedDash).isAccepted)
+        #expect(!sut.verdict(draft: quotes, rewritten: swappedQuotes).isAccepted)
+    }
+
+    @Test("does not constrain punctuation the spoken punctuation pass did not write")
+    func allowsUnrelatedPunctuationChanges() {
+        #expect(sut.verdict(draft: Draft(text: "hello, friend"), rewritten: "Hello; friend.").isAccepted)
+    }
+
     @Test("accepts an ordinary tidy-up")
     func acceptsOrdinaryTidying() {
         accepted(
@@ -32,6 +60,19 @@ struct MeaningPreservationGuardTests {
     func acceptsShortUtterance() {
         accepted("um yes", "Yes.")
         accepted("uh okay sure", "Okay, sure.")
+    }
+
+    @Test("rejects moved function words while keeping allowed cleanup edits")
+    func rejectsMovedFunctionWords() {
+        rejected(
+            "Leeds a city in the north is where I grew up",
+            "Leeds is a city in the north where I grew up.")
+        rejected("we can ship it", "can we ship it.")
+
+        accepted("um, we can go", "We can go.")
+        accepted("I I can go", "I can go.")
+        accepted("a apple is ready", "An apple is ready.")
+        accepted("I will ship it", "I'll ship it.")
     }
 
     @Test("rejects an empty rewrite of real speech")
@@ -133,6 +174,34 @@ struct MeaningPreservationGuardTests {
     )
     func acceptsSeparators(original: String, rewritten: String) {
         accepted(original, rewritten)
+    }
+
+    @Test(
+        "refuses changes to Indian grouping while allowing the same amount to keep its written form",
+        arguments: [
+            ("1,00,000 rupaye transfer kar do", "100000 rupaye transfer kar do."),
+            ("Rs. 2,50,000 ka quote aaya", "Rs. 250,000 ka quote aaya."),
+            ("total bill 3,45,000 rupaye aaya", "Total bill 345000 rupaye aaya."),
+        ]
+    )
+    func refusesChangedIndianGrouping(original: String, rewritten: String) {
+        rejected(original, rewritten)
+        accepted(original, original + ".")
+    }
+
+    @Test("only locks valid Indian group shapes")
+    func indianGroupingShape() {
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,00,000", rewritten: "100000")
+                == "1,00,000")
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(
+                original: "12,00,00,000", rewritten: "12,00,00,000") == nil)
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,234,567", rewritten: "1234567") == nil
+        )
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,2,000", rewritten: "12000") == nil)
     }
 
     @Test("still refuses a different number behind a separator, and keeps a list of digits apart")
@@ -491,6 +560,23 @@ struct GrammarGuardTests {
         #expect(!verdict(kept, rewritten).isAccepted)
     }
 
+    /// Subject pronouns and their auxiliaries change who acted, even though both are function words.
+    @Test(
+        "rejects a rewrite that invents a dropped subject",
+        arguments: [
+            ("going home", "I am going home."),
+            ("will call later", "I will call later."),
+            ("finished the draft", "We finished the draft."),
+            ("need a break", "I need a break."),
+            ("sent it yesterday", "She sent it yesterday."),
+            ("think so", "I think so."),
+            ("running late", "They are running late."),
+        ]
+    )
+    func rejectsInventedDroppedSubject(kept: String, rewritten: String) {
+        #expect(!verdict(kept, rewritten).isAccepted)
+    }
+
     /// The echo is the field's text before the caret, so its negators have no kept-side counterpart by construction.
     @Test("accepts a faithful rewrite when the caret echo carries a negation the speaker did not say")
     func acceptsANegationFromTheCaretEcho() {
@@ -552,6 +638,45 @@ struct GrammarGuardTests {
         #expect(verdict("she dont want the early slot", "She doesn't want the early slot.").isAccepted)
     }
 
+    @Test("rejects rewrites that remove meaning-bearing apostrophes")
+    func rejectsRemovedApostrophes() {
+        let apostropheRemovedYalls = ["Y'all", "s car is blocking mine."].joined()
+        for (kept, rewritten) in [
+            ("it's sorta like a cafe", "Its sorta like a cafe."),
+            ("me myself i don't like it", "Me myself I dont like it."),
+            ("y'all's car is blocking mine", apostropheRemovedYalls),
+        ] {
+            #expect(!verdict(kept, rewritten).isAccepted, "\(kept) -> \(rewritten)")
+        }
+    }
+
+    @Test("treats straight and curly apostrophes as the same spelling")
+    func acceptsApostropheStyleChanges() {
+        #expect(verdict("it's a cafe", "It’s a cafe.").isAccepted)
+        #expect(verdict("don't do that", "Don’t do that.").isAccepted)
+        #expect(verdict("y’all’s car is here", "Y'all's car is here.").isAccepted)
+    }
+
+    @Test("rejects quotation pairs the speaker did not say")
+    func rejectsInventedQuotationPairs() {
+        #expect(
+            verdict("she yelled get out", "She yelled \"Get out.\"")
+                == .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation))
+        rejected("he whispered quote not now unquote", "He whispered \"quote not now unquote.\"")
+        rejected("he whispered \"not now\"", "He whispered \"quote not now unquote.\"")
+        rejected("we should ship this", "We should ‘ship this.’")
+    }
+
+    @Test("keeps quotation pairs the speaker said")
+    func keepsSpokenQuotationPairs() {
+        accepted("\"we should ship this\"", "\"We should ship this.\"")
+    }
+
+    @Test("does not treat word apostrophes or decade elisions as quotation pairs")
+    func acceptsApostrophesAndDecadeElisions() {
+        accepted("I'll call in the '90s", "I’ll call in the ’90s.")
+    }
+
     @Test("leaves Devanagari to the base checks, so romanising is not a lost word")
     func skipsDevanagari() {
         #expect(verdict("मैं कल office नहीं आऊंगा", "Main kal office nahi aaunga.").isAccepted)
@@ -585,6 +710,40 @@ struct GrammarGuardTests {
 
     private func draft(_ text: String) -> Draft {
         Draft(words: text.split(separator: " ").map { Draft.Word(String($0)) }, confidencesAreReal: true)
+    }
+
+    @Test("refuses a sound-alike replacement of a high-confidence word")
+    func refusesConfidentHomophoneReplacement() {
+        let their = Draft(
+            words: "put it over their".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+        let hear = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+
+        #expect(
+            sut.verdict(draft: their, rewritten: "Put it over there.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'their' with a sound-alike",
+                    kind: .lostWord))
+        #expect(
+            sut.verdict(draft: hear, rewritten: "I can here you.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'hear' with a sound-alike",
+                    kind: .lostWord))
+    }
+
+    @Test("allows an offered homophone for a low-confidence word")
+    func allowsOfferedLowConfidenceHomophone() {
+        let draft = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
     }
 
     @Test("accepts a doubtful word written as one of the readings it was offered")
@@ -1040,6 +1199,16 @@ struct GuardMatchStrengthTests {
         #expect(!survives("confirm", as: "confuse"))
     }
 
+    @Test("accepts a dotted clock time rewritten with a colon")
+    func acceptsDottedClockNormalization() {
+        #expect(
+            verdict("meeting moved to 4.30 p.m. on June 2", "Meeting moved to 4:30 p.m. on June 2?")
+                .isAccepted)
+        #expect(!survives("2.4.1", as: "2:4:1"))
+        #expect(!survives("12.5%", as: "12:5%"))
+        #expect(!survives("3.50", as: "3:50"))
+    }
+
     /// Changing a name is Tier 3, and two names can begin alike.
     @Test("refuses a name replaced by one that begins the same way")
     func refusesNearName() {
@@ -1158,9 +1327,12 @@ struct GuardMatchStrengthTests {
         "counts a word carrying a stop inside itself as ending no sentence",
         arguments: [
             ("Call me at 5 p.m. tomorrow.", 1), ("We use JSON, e.g. for the config.", 1),
+            ("We brought snacks, etc. and drinks.", 1),
+            ("We brought snacks, etc. And then left.", 2),
+            ("Apples vs. oranges.", 1),
             ("Ship it.", 1), ("One. Two. Three.", 3), ("No mark at all", 1),
-            // A title is not an interior stop, and this rule says nothing about one.
-            ("Dr. Chen is here.", 2),
+            ("Dr. Chen is here.", 1),
+            ("We met Dr. Lee. Then we left.", 2),
         ]
     )
     func countsSentences(text: String, expected: Int) {
