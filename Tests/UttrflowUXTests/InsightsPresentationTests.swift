@@ -525,6 +525,22 @@ struct InsightsWaitingTests {
                 .hasPrefix("Charts appear on "))
     }
 
+    @Test("the remaining-day estimate follows the calendar across spring DST")
+    func springDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        let locale = Locale(identifier: "en_US")
+        calendar.locale = locale
+        calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 7, hour: 23, minute: 30)))
+        let expectedDate = try #require(calendar.date(byAdding: .day, value: 1, to: now))
+        let expectedWeekday = expectedDate.formatted(.dateTime.weekday(.wide).locale(locale))
+
+        #expect(
+            InsightsPresenter.remaining(spoken: 6, now: now, calendar: calendar, locale: locale)
+                == "Charts appear on \(expectedWeekday)")
+    }
+
     /// The two numbers that are already true are given rather than withheld.
     @Test("the figures that are honest on day two are given")
     func chips() {
