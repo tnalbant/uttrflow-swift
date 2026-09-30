@@ -160,6 +160,11 @@ struct ReportBreakdownTests {
         let everything = report(scores).topFindings(100)
         #expect(everything.shown.count == 30)
         #expect(everything.hidden == 0)
+
+        let none = report(scores).topFindings(0)
+        #expect(none.shown.isEmpty)
+        #expect(none.hidden == 30)
+        #expect(none.hiddenOccurrences == 30)
     }
 
     /// `--summarise` reads banked results, so a decoder refusing an older file would force a re-measure.

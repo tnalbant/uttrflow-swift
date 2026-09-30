@@ -66,6 +66,12 @@ struct TranscribeCorpus: AsyncParsableCommand {
     var tolerance = 0.5
 
     func validate() throws {
+        if findings < 0 {
+            throw ValidationError("--findings must be zero or greater.")
+        }
+        if passageLimit < 0 {
+            throw ValidationError("--passage-limit must be zero or greater.")
+        }
         if saveBaseline || failOnRegression, baseline == nil {
             throw ValidationError("--save-baseline and --fail-on-regression need --baseline <path>.")
         }
@@ -450,7 +456,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
             print("  \(score.caseID.padded(to: 20)) \(score.failure?.detail ?? "")")
         }
         if failed.count > passageLimit {
-            print("  and \(failed.count - passageLimit) more — raise --passages to see them.")
+            print("  and \(failed.count - passageLimit) more — raise --passage-limit to see them.")
         }
     }
 
@@ -479,7 +485,9 @@ struct TranscribeCorpus: AsyncParsableCommand {
                     + notes.joined(separator: ", "))
         }
         if worst.count > shown.count {
-            print("  \(worst.count - shown.count) more, better than these — raise --passages to see them.")
+            print(
+                "  \(worst.count - shown.count) more, better than these — "
+                    + "raise --passage-limit to see them.")
         }
         guard verbose else { return }
         for score in shown {
