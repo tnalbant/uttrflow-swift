@@ -258,6 +258,25 @@ struct HTTPAuthenticationServiceTests {
         }
     }
 
+    @Test("refuses a sign-in whose issued session cannot be decoded")
+    func anUnreadableIssuedSessionIsRefused() async throws {
+        let tokens = InMemoryTokenStore()
+        let transport = StubTransport { request, _ in
+            request.url.path().hasSuffix("/token")
+                ? BackendResponse(status: 200, body: Data("{}".utf8))
+                : nil
+        }
+        let backend = service(transport: transport, tokens: tokens, listener: answering())
+        let challenge = try await backend.beginSignIn(with: .google)
+
+        await #expect(
+            throws: AccountError.providerRefused(description: "the server issued a session we could not read")
+        ) {
+            try await backend.completeSignIn(challenge)
+        }
+        #expect(tokens.refreshToken() == nil)
+    }
+
     /// A profile that cannot be believed fails the sign-in that produced it, where somebody is told.
     @Test("refuses a profile this build cannot verify")
     func aForgedProfileFailsTheSignIn() async throws {
@@ -309,6 +328,31 @@ struct HTTPAuthenticationServiceTests {
 
         let read = try #require(transport.requests(to: "/me").first)
         #expect(read.headers["If-None-Match"] == "\"v9\"")
+    }
+
+    @Test("reports unchanged when a retried profile read answers 304")
+    func aRetriedConditionalFetchCanBeUnchanged() async throws {
+        let refreshes = Mutex(0)
+        let transport = StubTransport { request, attempt in
+            if request.url.path().hasSuffix("/me") {
+                return attempt == 1 ? BackendResponse(status: 401) : BackendResponse(status: 304)
+            }
+            if request.url.path().hasSuffix("/refresh") {
+                let count = refreshes.withLock { value -> Int in
+                    value += 1
+                    return value
+                }
+                return Stub.json(Stub.IssuedSession(accessToken: count == 1 ? "first" : "renewed"))
+            }
+            return nil
+        }
+        let cached = Fixture.profile(for: Fixture.entitlement(expiring: 86_400), validator: "\"v9\"")
+        let service = service(transport: transport, tokens: InMemoryTokenStore(refreshToken: "r"))
+
+        #expect(try await service.currentProfile(ifChangedFrom: cached) == .unchanged)
+        #expect(transport.requests(to: "/me").count == 2)
+        #expect(transport.requests(to: "/refresh").count == 2)
+        #expect(transport.requests(to: "/me").last?.headers["If-None-Match"] == "\"v9\"")
     }
 
     @Test("asks unconditionally when it has nothing cached")
@@ -398,6 +442,61 @@ struct HTTPAuthenticationServiceTests {
         let refreshes = transport.requests(to: "/refresh").count
         #expect(try await service.currentProfile(ifChangedFrom: nil) == .noCredential)
         #expect(transport.requests(to: "/refresh").count == refreshes)
+    }
+
+    @Test("clears the credential when refresh rejects after a profile 401")
+    func refreshRejectionAfterProfile401SignsOut() async throws {
+        let refreshes = Mutex(0)
+        let tokens = InMemoryTokenStore(refreshToken: "r")
+        let transport = StubTransport { request, _ in
+            if request.url.path().hasSuffix("/me") {
+                return BackendResponse(status: 401)
+            }
+            if request.url.path().hasSuffix("/refresh") {
+                let count = refreshes.withLock { value -> Int in
+                    value += 1
+                    return value
+                }
+                return count == 1 ? Stub.json(Stub.IssuedSession()) : BackendResponse(status: 401)
+            }
+            return nil
+        }
+        let service = service(transport: transport, tokens: tokens)
+
+        #expect(try await service.currentProfile(ifChangedFrom: nil) == .signedOut)
+        #expect(transport.requests(to: "/me").count == 1)
+        #expect(refreshes.withLock { $0 } == 2)
+        #expect(tokens.refreshToken() == nil)
+    }
+
+    @Test("keeps the credential when refresh returns a server failure")
+    func aFailedRefreshPreservesTheCredential() async throws {
+        let tokens = InMemoryTokenStore(refreshToken: "still-good")
+        let transport = StubTransport { request, _ in
+            guard request.url.path().hasSuffix("/refresh") else { return nil }
+            return BackendResponse(status: 500)
+        }
+        let service = service(transport: transport, tokens: tokens)
+
+        await #expect(throws: AccountError.self) {
+            try await service.currentProfile(ifChangedFrom: nil)
+        }
+        #expect(tokens.refreshToken() == "still-good")
+    }
+
+    @Test("keeps the credential when refresh returns an unreadable session")
+    func anUnreadableRefreshPreservesTheCredential() async throws {
+        let tokens = InMemoryTokenStore(refreshToken: "still-good")
+        let transport = StubTransport { request, _ in
+            guard request.url.path().hasSuffix("/refresh") else { return nil }
+            return BackendResponse(status: 200, body: Data("{}".utf8))
+        }
+        let service = service(transport: transport, tokens: tokens)
+
+        await #expect(throws: AccountError.self) {
+            try await service.currentProfile(ifChangedFrom: nil)
+        }
+        #expect(tokens.refreshToken() == "still-good")
     }
 
     /// A refresh token the server rejects is dead; keeping it means asking the same question for ever.
