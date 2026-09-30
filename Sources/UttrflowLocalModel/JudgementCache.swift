@@ -15,8 +15,9 @@ struct JudgedLine: Sendable, Equatable {
 
     /// The per-token log-probability the model gave the candidate at each position past its typed opening, with the cut case conditioned by `span`.
     static func judged(
-        from line: JudgedLine, typedTokens: [Int], bytes: [[UInt8]]
+        from line: JudgedLine, typedTokens: [Int], vocabulary: inout TokenHealing.Vocabulary
     ) -> [JudgedToken] {
+        let bytes = vocabulary.bytes
         guard !line.tokens.isEmpty,
             let span = ScoredSpan(whole: line.tokens, typed: typedTokens, bytes: bytes),
             span.start < line.tokens.count
@@ -27,7 +28,7 @@ struct JudgedLine: Sendable, Equatable {
         for i in start..<line.tokens.count {
             taken.append(line.rows[i - 1][line.tokens[i]])
         }
-        let continuing = ScoredSpan.continuing(span.owed, in: bytes)
+        let continuing = ScoredSpan.continuing(span.owed, in: vocabulary)
         let mass: Float? =
             continuing.isEmpty
             ? nil

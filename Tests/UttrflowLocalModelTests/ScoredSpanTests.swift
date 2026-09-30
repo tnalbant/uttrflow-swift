@@ -93,6 +93,9 @@ struct ScoredSpanTests {
     func continuingTokens() {
         #expect(ScoredSpan.continuing(Array("gi".utf8), in: bytes) == [2, 3, 4])
         #expect(ScoredSpan.continuing([], in: bytes).isEmpty)
+        let vocabulary = TokenHealing.Vocabulary(bytes: bytes, ending: [])
+        #expect(ScoredSpan.continuing(Array("gi".utf8), in: vocabulary) == [2, 3, 4])
+        #expect(ScoredSpan.continuing(Array("absent".utf8), in: vocabulary).isEmpty)
     }
 
     @Test(

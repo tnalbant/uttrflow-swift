@@ -20,6 +20,19 @@ struct TokenHealingTests {
         let allowed = vocabulary.allowed(owing: Array(" l".utf8), wordComplete: false)
         // The lone space is the start of the owed word, so it may be spelt on its own.
         #expect(allowed == [true, true, false, false, false, false, false, true])
+        #expect(vocabulary.allowedIDs(owing: Array(" l".utf8), wordComplete: false) == [0, 1, 7])
+        #expect(vocabulary.allowedIDs(owing: Array(" l".utf8), wordComplete: true) == [0, 7])
+    }
+
+    @Test("The indexed allowed ids match the full predicate for every mask state")
+    func indexedAllowedIdsMatchReferencePredicate() {
+        for owed in [Array(" l".utf8), Array("log".utf8), Array("x".utf8), []] {
+            for wordComplete in [false, true] {
+                let reference = vocabulary.allowed(owing: owed, wordComplete: wordComplete)
+                    .enumerated().compactMap { $0.element ? $0.offset : nil }
+                #expect(vocabulary.allowedIDs(owing: owed, wordComplete: wordComplete) == reference)
+            }
+        }
     }
 
     @Test(

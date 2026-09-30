@@ -521,10 +521,11 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
             guard let container else { return [] }
-            let bytes = vocabulary?.bytes ?? []
+            guard var vocabulary = self.vocabulary else { return [] }
             let judged = await container.perform { loaded in
                 Self.judgedFromCache(
-                    line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
+                    line, candidate: candidate, context: context, vocabulary: vocabulary,
+                    tokenizer: loaded.tokenizer)
             }
             return generation == forgetGeneration ? judged : []
         }
@@ -537,11 +538,12 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         }
         beginPass()
         defer { endPass() }
-        let bytes = vocabulary?.bytes ?? []
+        guard var scoringVocabulary = self.vocabulary else { return [] }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
             let line = Self.judge(candidate, with: loaded)
             let judged = Self.judgedFromCache(
-                line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)
+                line, candidate: candidate, context: context, vocabulary: scoringVocabulary,
+                tokenizer: loaded.tokenizer)
             return (line, judged)
         }
         guard generation == forgetGeneration else { return [] }
@@ -575,13 +577,13 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// The judged tokens for a typed prefix, cut from the cached line so a re-typed keystroke skips the forward pass.
     private static func judgedFromCache(
-        _ line: JudgedLine, candidate: String, context: String, bytes: [[UInt8]],
+        _ line: JudgedLine, candidate: String, context: String, vocabulary: inout TokenHealing.Vocabulary,
         tokenizer: any MLXLMCommon.Tokenizer
     ) -> [JudgedToken] {
         guard !line.isEmpty else { return [] }
         let typed = tokenizer.encode(
             text: leadIn + CompletionText.typedPart(of: candidate, following: context))
-        return JudgedLine.judged(from: line, typedTokens: typed, bytes: bytes)
+        return JudgedLine.judged(from: line, typedTokens: typed, vocabulary: &vocabulary)
     }
 }
 
