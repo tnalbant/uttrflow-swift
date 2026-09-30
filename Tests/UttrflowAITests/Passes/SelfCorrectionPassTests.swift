@@ -28,6 +28,8 @@ struct SelfCorrectionPassTests {
             ("let's meet at four no sorry at five on tuesday", "let's meet at five on tuesday"),
             ("send it on tuesday I mean on wednesday", "send it on wednesday"),
             ("the red one scratch that the blue one", "the blue one"),
+            ("the blue sorry green", "the green"),
+            ("meet on Friday scratch that Thursday", "meet on Thursday"),
             ("at four never mind at five", "at five"),
             ("at four wait sorry at five", "at five"),
             ("at four no wait at five", "at five"),

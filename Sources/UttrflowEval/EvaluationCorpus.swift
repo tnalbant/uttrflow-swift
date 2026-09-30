@@ -99,6 +99,13 @@ public enum EvaluationCorpus {
             mustKeep: ["five", "Tuesday"]
         ),
         .init(
+            id: "single-word-self-correction", category: .everyday,
+            spoken: "the blue sorry green",
+            expected: "The green.",
+            mustKeep: ["green"],
+            mustNotAdd: ["blue"]
+        ),
+        .init(
             id: "filler-heavy", category: .everyday,
             spoken: "um so uh basically the the thing is we need more time",
             expected: "So basically the thing is, we need more time."

@@ -73,6 +73,9 @@ public enum Restatement {
             return start
         }
         guard !weakAnchors.contains(firstAfter) else { return nil }
+        if replacesSingleWord(before: trigger, after: restart, in: live, of: draft) {
+            return trigger - 1
+        }
         for candidate in stride(from: trigger - 1, through: earliest, by: -1) {
             if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
@@ -85,6 +88,19 @@ public enum Restatement {
             }
         }
         return nil
+    }
+
+    /// Whether a trigger sits between two content words in one sentence, replacing the word directly before it.
+    private static func replacesSingleWord(
+        before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard trigger > 0, restart < live.count,
+            !endsSentence(trigger - 1, in: live, of: draft),
+            FunctionWords.isContent(draft.shape(at: live[trigger - 1]).key),
+            FunctionWords.isContent(draft.shape(at: live[restart]).key),
+            !coordinates(trigger - 1, before: trigger, in: live, of: draft)
+        else { return false }
+        return true
     }
 
     /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.
