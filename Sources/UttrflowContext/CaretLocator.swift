@@ -12,6 +12,7 @@ enum CaretLocator {
     static func caret(
         at selection: (location: Int, length: Int)?, frame: CGRect?, pointSize: CGFloat? = nil,
         value: String? = nil, textSelectionLocation: Int? = nil,
+        paragraphDirection: WritingDirection = .unknown,
         bounds: (_ location: Int, _ length: Int) -> CGRect?, markerBounds: () -> CGRect?
     ) -> CGRect? {
         result(
@@ -28,7 +29,8 @@ enum CaretLocator {
         if let selection,
             let result = caret(
                 inRange: selection, value: value,
-                textSelectionLocation: textSelectionLocation ?? selection.location, bounds: bounds)
+                textSelectionLocation: textSelectionLocation ?? selection.location,
+                paragraphDirection: paragraphDirection, bounds: bounds)
         {
             return result
         }
@@ -69,7 +71,8 @@ enum CaretLocator {
     /// The caret read off the glyph beside it, because a zero-length range's own bounds lies.
     private static func caret(
         inRange selection: (location: Int, length: Int), value: String?,
-        textSelectionLocation: Int, bounds: (_ location: Int, _ length: Int) -> CGRect?
+        textSelectionLocation: Int, paragraphDirection: WritingDirection,
+        bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> Result? {
         if selection.length > 0 {
             guard let rect = bounds(selection.location, 1), rect.height > 0 else { return nil }
@@ -80,12 +83,14 @@ enum CaretLocator {
         let location = selection.location
         // A line break's bounds belong to the line it ends, so use the first glyph on the next line.
         return glyph(
-            at: location, value: value, textSelectionLocation: textSelectionLocation, bounds: bounds)
+            at: location, value: value, textSelectionLocation: textSelectionLocation,
+            paragraphDirection: paragraphDirection, bounds: bounds)
     }
 
     /// The caret edge beside a single glyph at the selection start.
     private static func glyph(
         at location: Int, value: String? = nil, textSelectionLocation: Int? = nil,
+        paragraphDirection: WritingDirection = .unknown,
         bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> Result? {
         let textLocation = textSelectionLocation ?? location
@@ -121,9 +126,10 @@ enum CaretLocator {
                 direction: .unknown)
         }
         if let before, before.height > 0 {
+            let x = paragraphDirection == .rightToLeft ? before.minX : before.maxX
             return Result(
-                caret: CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height),
-                direction: .unknown)
+                caret: CGRect(x: x, y: before.minY, width: 0, height: before.height),
+                direction: paragraphDirection)
         }
         return nil
     }

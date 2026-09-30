@@ -70,6 +70,19 @@ struct CaretLocatorTests {
         #expect(found.direction == .rightToLeft)
     }
 
+    @Test("An RTL paragraph direction places an end-of-line caret at the previous glyph's leading edge")
+    func rightToLeftLineEndUsesParagraphDirection() throws {
+        let found = try #require(
+            CaretLocator.result(
+                at: (location: 2, length: 0), frame: nil, value: "אב",
+                paragraphDirection: .rightToLeft,
+                bounds: { location, _ in
+                    location == 1 ? CGRect(x: 82, y: 10, width: 9, height: 16) : nil
+                }, markerBounds: { nil }))
+        #expect(found.caret == CGRect(x: 82, y: 10, width: 0, height: 16))
+        #expect(found.direction == .rightToLeft)
+    }
+
     @Test("Overlapping mixed-direction glyph bounds leave direction unknown")
     func ambiguousCaretDirectionIsUnknown() {
         let found = CaretLocator.result(

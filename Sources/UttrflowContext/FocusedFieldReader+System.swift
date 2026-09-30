@@ -313,9 +313,23 @@ public enum FocusedFieldReader {
         let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
         guard goOn() else { return nil }
         let fieldRect = stable.fieldFrame
+        let paragraphDirection: WritingDirection
+        if let range, range.length == 0, range.location > 0,
+            read.selection?.length == 0, read.selection?.location == value?.utf16.count,
+            !secure, goOn(),
+            let attributed = SurfaceProbe.parameterized(
+                field, kAXAttributedStringForRangeParameterizedAttribute,
+                CFRange(location: range.location - 1, length: 1)),
+            CFGetTypeID(attributed) == CFAttributedStringGetTypeID()
+        {
+            paragraphDirection = Self.writingDirection(
+                inAttributed: unsafeDowncast(attributed, to: CFAttributedString.self))
+        } else {
+            paragraphDirection = .unknown
+        }
         let caretResult = caret(
             field, at: range, value: value, selection: read.selection, frame: fieldRect,
-            pointSize: style?.size, while: goOn)
+            pointSize: style?.size, paragraphDirection: paragraphDirection, while: goOn)
         guard goOn() else { return nil }
         let windowRect = stable.windowFrame
         let appPickerOpen =
@@ -464,11 +478,12 @@ public enum FocusedFieldReader {
     /// The caret's screen rectangle, from the selection where the field answers it and from the text marker where it does not; `frame` is the field's own, already read.
     private static func caret(
         _ field: AXUIElement, at range: CFRange?, value: String?, selection: NSRange?, frame: CGRect?,
-        pointSize: CGFloat?, while goOn: () -> Bool
+        pointSize: CGFloat?, paragraphDirection: WritingDirection, while goOn: () -> Bool
     ) -> CaretLocator.Result? {
         CaretLocator.result(
             at: range.map { (location: $0.location, length: $0.length) }, frame: frame,
             pointSize: pointSize, value: value, textSelectionLocation: selection?.location,
+            paragraphDirection: paragraphDirection,
             bounds: { goOn() ? SurfaceProbe.bounds(field, at: CFRange(location: $0, length: $1)) : nil },
             markerBounds: { goOn() ? markerBounds(field) : nil })
     }
@@ -653,6 +668,25 @@ public enum FocusedFieldReader {
     /// The font size in an attributed string, from whichever form the application answered in.
     static func pointSize(inAttributed attributed: CFAttributedString) -> CGFloat? {
         typeStyle(inAttributed: attributed)?.size
+    }
+
+    static func writingDirection(inAttributed attributed: CFAttributedString) -> WritingDirection {
+        guard CFAttributedStringGetLength(attributed) > 0,
+            let attribute = CFAttributedStringGetAttribute(
+                attributed, 0, kCTParagraphStyleAttributeName, nil),
+            CFGetTypeID(attribute) == CTParagraphStyleGetTypeID()
+        else { return .unknown }
+        let style = unsafeDowncast(attribute, to: CTParagraphStyle.self)
+        var direction = CTWritingDirection.natural
+        guard
+            CTParagraphStyleGetValueForSpecifier(
+                style, .baseWritingDirection, MemoryLayout<CTWritingDirection>.size, &direction)
+        else { return .unknown }
+        switch direction {
+        case .leftToRight: .leftToRight
+        case .rightToLeft: .rightToLeft
+        default: .unknown
+        }
     }
 
     /// The font in an attributed string: a Core Text font where AppKit put one, else the `AXFont` dictionary most applications answer with.
