@@ -96,12 +96,6 @@ final class MenuBarController: NSObject {
         onCommand?(.open(.onboarding))
     }
 
-    /// Gives the slot back. Without it the item lingers until the process dies.
-    func removeFromMenuBar() {
-        closePopover()
-        NSStatusBar.system.removeStatusItem(statusItem)
-    }
-
     // MARK: - Rendering
 
     private func apply() {

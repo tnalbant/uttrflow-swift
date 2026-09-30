@@ -35,7 +35,6 @@ struct MenuBarPanelTests {
     func emptyWhileClosed() {
         let loading = MenuBarPresenter.present(MenuBarState(speechModel: .loading))
         let bar = MenuBarController(initial: loading)
-        defer { bar.removeFromMenuBar() }
         #expect(!bar.isPopoverContentHosted)
         bar.openMenu()
         #expect(bar.isPopoverShown)

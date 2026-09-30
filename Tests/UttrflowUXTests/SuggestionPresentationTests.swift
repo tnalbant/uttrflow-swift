@@ -131,7 +131,6 @@ struct SuggestionPresentationTests {
     func theListTextIsTheDesigns() {
         let presentation = SuggestionPresentation(.certain("Sydney"))
         #expect(SuggestionPresentation.listPrefix == "↳")
-        #expect(presentation.acceptGlyph == "⇥")
         #expect(presentation.footer == "⇥ take   ⌥↓ next   ⎋ dismiss")
         #expect(SuggestionPresentation.dimmedShare > 0 && SuggestionPresentation.dimmedShare < 1)
     }
@@ -150,11 +149,9 @@ struct SuggestionPresentationTests {
     @Test("The hint names the key that actually accepts: → in a terminal, ⌥⇥ in an editor, never a lie")
     func theHintFollowsTheAcceptKey() {
         let terminal = SuggestionPresentation(.certain("ls -l"), typed: "ls ", acceptKey: .rightArrow)
-        #expect(terminal.acceptGlyph == "→")
         #expect(terminal.footer == "→ take   ⌥↓ next   ⎋ dismiss")
         #expect(terminal.accessibilityLabel == "AI suggestion: ls -l. Right Arrow to accept.")
         let editor = SuggestionPresentation(.certain("Sydney"), acceptKey: .optionTab)
-        #expect(editor.acceptGlyph == "⌥⇥")
         #expect(editor.accessibilityLabel == "AI suggestion: Sydney. Option-Tab to accept.")
         #expect(SuggestionPresentation(.certain("Sydney")).acceptKey == .tab)
     }

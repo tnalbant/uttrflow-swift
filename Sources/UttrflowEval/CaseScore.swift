@@ -102,11 +102,6 @@ public struct EvaluationReport: Sendable, Equatable {
         attempted.filter { !$0.keptEverythingRequired }
     }
 
-    /// Cases where the engine added something the speaker never said.
-    public var casesInventingWords: [CaseScore] {
-        attempted.filter { !$0.invented.isEmpty }
-    }
-
     /// The middle latency, which describes the usual wait better than a mean does.
     public var medianDuration: Duration {
         guard !durations.isEmpty else { return .zero }
