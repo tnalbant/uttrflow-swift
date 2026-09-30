@@ -117,6 +117,8 @@ lets a speaker end their own sentence rather than have it ended for them.
 
 The limits are `DictationLimit.default` and nothing reads them from settings yet.
 
+A press-to-toggle or double-tap dictation also ends when the screen locks, the active user session changes, or the Mac sleeps. Uttrflow finishes the recording through the normal stop path, preserving captured words for transcription. Because sleep ends capture before suspension, no active cap remains to fire on wake. CoreAudio delivery across sleep still depends on hardware; capture ends before sleep rather than relying on an audio-engine interruption.
+
 ## Testing a timeout without hanging the whole suite
 
 The tests that drive `StageTimeout` hold a `ManualClock` and have to move it at exactly

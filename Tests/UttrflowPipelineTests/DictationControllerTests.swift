@@ -202,6 +202,29 @@ private let justOverTheMinimum = DictationController<ManualClock>.minimumHold + 
 @Suite("Dictation controller: turning key presses into dictations")
 struct DictationControllerTests {
 
+    @Test("session loss finishes a toggle dictation and preserves its words")
+    func sessionLossFinishesToggle() async {
+        let harness = makeHarness(activation: .pressToToggle)
+        await harness.controller.handle(.pressed)
+        #expect(await harness.pipeline.currentState.isListening)
+
+        await harness.controller.endForSessionEnding()
+
+        #expect(!(await harness.pipeline.currentState.isListening))
+        #expect(harness.inserter.received == [controllerTidied])
+        #expect(await harness.controller.currentStopGesture == .pressAgain)
+    }
+
+    @Test("sleep finishes a toggle dictation before the session is suspended")
+    func sleepFinishesToggle() async {
+        let harness = makeHarness(activation: .pressToToggle)
+        await harness.controller.handle(.pressed)
+        await harness.controller.endForSessionEnding()
+
+        #expect(!(await harness.pipeline.currentState.isListening))
+        #expect(harness.inserter.received == [controllerTidied])
+    }
+
     // MARK: Watching for the shortcut
 
     @Test("starts watching for exactly the binding it was given")

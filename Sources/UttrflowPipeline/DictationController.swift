@@ -61,6 +61,8 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         case drained(CheckedContinuation<Void, Never>)
         /// The cap started for this generation of dictation has been reached.
         case limitReached(Int)
+        /// The active session is ending, so an open dictation finishes before control leaves the user.
+        case sessionEnding(CheckedContinuation<Void, Never>)
         /// Answered once the queue reaches it, whatever is still being processed.
         case reached(CheckedContinuation<Void, Never>)
     }
@@ -102,7 +104,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                     // A caller still waiting is answered, so it is not left suspended forever.
                     switch gesture {
                     case .control(let handled), .drained(let handled), .reached(let handled),
-                        .activation(_, let handled), .handsFree(_, let handled):
+                        .activation(_, let handled), .handsFree(_, let handled), .sessionEnding(let handled):
                         handled.resume()
                     case .key, .settled, .limitReached: break
                     }
@@ -128,6 +130,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                     handled.resume()
                 case .limitReached(let generation):
                     await finishAtTheLimit(generation)
+                case .sessionEnding(let handled):
+                    await finishForSessionEnding()
+                    await answer(handled)
                 }
             }
         }
@@ -454,6 +459,27 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 return
             }
         }
+    }
+
+    /// Queues the normal stop path for sleep, lock, or a user switch.
+    public nonisolated func endForSessionEnding() async {
+        await withCheckedContinuation { handled in
+            guard case .enqueued = gestureSink.yield(.sessionEnding(handled)) else {
+                handled.resume()
+                return
+            }
+        }
+    }
+
+    private func finishForSessionEnding() async {
+        guard await pipeline.currentState.isListening else { return }
+        forgetUnsettledPress()
+        pressedAt = nil
+        lastTapEndedAt = nil
+        pressOpenedTheMicrophone = false
+        setHandsFree(false)
+        stopWatchingTheLimit()
+        await finishListening()
     }
 
     /// Finishes the dictation under way, or begins one.

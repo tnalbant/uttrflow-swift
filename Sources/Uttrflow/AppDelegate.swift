@@ -46,6 +46,24 @@ struct DismissalCountdown {
     }
 }
 
+enum DictationSessionEndObserver {
+    static let notices = [
+        NSWorkspace.sessionDidResignActiveNotification,
+        NSWorkspace.screensDidSleepNotification,
+        NSWorkspace.willSleepNotification,
+    ]
+
+    static func observe(
+        in center: NotificationCenter, onEnd: @escaping @Sendable () -> Void
+    )
+        -> [any NSObjectProtocol]
+    {
+        notices.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in onEnd() }
+        }
+    }
+}
+
 /// Assembles the product and relays between it and the interface, deciding nothing itself.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -91,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Whether secure keyboard entry is hiding the shortcut, checked on app switches and menu opens rather than on a timer.
     private let secureInput = SecureInputWatch()
     private var secureInputObserver: (any NSObjectProtocol)?
+    private var dictationSessionObservers: [any NSObjectProtocol] = []
 
     /// Whether the recogniser can dictate, which is not whether its files are on disk.
     private var speechReadiness: SpeechModelReadiness = .notInstalled
@@ -670,10 +689,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         startCompletingWhatIsTyped()
         showTheFloatingButtonIfWanted()
         refreshMenuBar()
+        observeDictationSessionEnd()
     }
 
     /// Closes every window and panel, stops listening, and leaves sign-in as the one thing on screen.
     private func closeForSignedOut() {
+        removeDictationSessionObservers()
         startWatchingForTheShortcut()
         startWatchingForClaimedShortcuts()
         followTheClipboardSwitch()
@@ -827,6 +848,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dismissalTask?.cancel()
         completions?.stop()
         pressureSource.stop()
+        removeDictationSessionObservers()
+    }
+
+    private func observeDictationSessionEnd() {
+        guard dictationSessionObservers.isEmpty else { return }
+        dictationSessionObservers = DictationSessionEndObserver.observe(
+            in: NSWorkspace.shared.notificationCenter
+        ) { [weak self] in
+            Task { @MainActor in await self?.queueDictationSessionEnd() }
+        }
+    }
+
+    private func removeDictationSessionObservers() {
+        for observer in dictationSessionObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        dictationSessionObservers.removeAll()
+    }
+
+    private func queueDictationSessionEnd() async {
+        await controller?.endForSessionEnding()
     }
 
     /// Builds tab-to-complete, or leaves it unbuilt, which is what everybody who has not asked for it gets.
