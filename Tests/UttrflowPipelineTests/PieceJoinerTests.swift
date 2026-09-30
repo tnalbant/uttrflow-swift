@@ -385,12 +385,30 @@ struct PieceJoinerSeamTests {
         #expect(whole.cleaned.text == expected)
     }
 
+    @Test("attaches adjacent standalone trailing marks in spoken order")
+    func adjacentTrailingMarksAttachInOrder() {
+        let whole = PieceJoiner.join(
+            [piece("We shipped it"), piece("comma"), piece("full stop")],
+            under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text == "We shipped it.")
+    }
+
     @Test("attaches a standalone opening quote to the following piece")
     func standaloneOpeningQuoteAttachesToFollowing() {
         let whole = PieceJoiner.join(
             [piece("open quote"), piece("hello there")], under: .standard(for: .messaging))
 
         #expect(whole.cleaned.text == "\"hello there\"")
+    }
+
+    @Test("does not carry a mark mention across a sentence boundary")
+    func markMentionStopsAtSentenceBoundary() {
+        let whole = PieceJoiner.join(
+            [piece("we shipped it."), piece("the word"), piece("full stop")],
+            under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text == "We shipped it. The word full stop")
     }
 
     @Test("keeps a spoken mark name when it is mentioned across a piece boundary")

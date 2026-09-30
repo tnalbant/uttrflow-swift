@@ -80,37 +80,37 @@ enum PieceJoiner {
         }
     }
 
-    /// Attaches a standalone spoken mark to the adjacent word across a seam.
+    /// Attaches standalone spoken marks to adjacent words across piece boundaries.
     private static func joiningSpokenMarksAcrossSeams(_ pieces: [String]) -> [String] {
         guard pieces.count > 1 else { return pieces }
         var joined = pieces
         for index in joined.indices {
             let words = joined[index].split(whereSeparator: \.isWhitespace)
-            guard let mark = spokenMark(in: words) else { continue }
-            let startsPiece = words.prefix(mark.words.count).map { WordShape(String($0)).key } == mark.words
-            let endsPiece = words.suffix(mark.words.count).map { WordShape(String($0)).key } == mark.words
-            if mark.opening, startsPiece {
-                guard
-                    let following = joined[(index + 1)...].indices.first(where: {
-                        !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
-                    })
-                else { continue }
-                let nextWords = joined[following].split(whereSeparator: \.isWhitespace)
-                guard let first = nextWords.first else { continue }
-                let rest = nextWords.dropFirst().joined(separator: " ")
-                joined[following] = mark.symbol + String(first) + (rest.isEmpty ? "" : " " + rest)
-                joined[index] = ""
-            } else if !mark.opening, startsPiece, endsPiece,
-                !isMentionedSpokenMark(preceding: joined[..<index])
+            guard !words.isEmpty else { continue }
+            if let leading = spokenMark(at: words, fromStart: true), leading.opening,
+                words.count == leading.words.count,
+                let following = joined[(index + 1)...].indices.first(where: {
+                    !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                })
             {
-                guard
-                    let previous = joined[..<index].indices.reversed().first(where: {
-                        !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
-                    })
-                else { continue }
-                joined[previous] = WordShape.marked(joined[previous], with: mark.symbol)
-                joined[index] = ""
+                let nextWords = joined[following].split(whereSeparator: \.isWhitespace)
+                if let first = nextWords.first {
+                    let rest = nextWords.dropFirst().joined(separator: " ")
+                    joined[following] = leading.symbol + String(first) + (rest.isEmpty ? "" : " " + rest)
+                    joined[index] = ""
+                }
             }
+            guard let trailing = spokenMark(at: words, fromStart: false), !trailing.opening,
+                words.count == trailing.words.count,
+                !isMentionedSpokenMark(preceding: joined[..<index])
+            else { continue }
+            guard
+                let previous = joined[..<index].indices.reversed().first(where: {
+                    !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                })
+            else { continue }
+            joined[previous] = WordShape.marked(joined[previous], with: trailing.symbol)
+            joined[index] = ""
         }
         return joined
     }
@@ -126,13 +126,17 @@ enum PieceJoiner {
         {
             return true
         }
+        if let lastSentenceEnd = prior.lastIndex(where: { [".", "?", "!"].contains($0) }) {
+            return lastSentenceEnd == prior.index(before: prior.endIndex)
+        }
         return prior.suffix(2).first == "word"
             && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
     }
 
     /// Finds a spoken mark at the start or end of a piece.
-    private static func spokenMark(in words: [Substring]) -> (words: [String], symbol: String, opening: Bool)?
-    {
+    private static func spokenMark(
+        at words: [Substring], fromStart: Bool
+    ) -> (words: [String], symbol: String, opening: Bool)? {
         let names: [([String], String, Bool)] = [
             (["open", "quote"], "\"", true), (["close", "quote"], "\"", false),
             (["full", "stop"], ".", false), (["question", "mark"], "?", false),
@@ -141,7 +145,7 @@ enum PieceJoiner {
             (["colon"], ":", false), (["semicolon"], ";", false),
         ]
         for (name, symbol, opening) in names where words.count >= name.count {
-            let candidate = opening ? words.prefix(name.count) : words.suffix(name.count)
+            let candidate = fromStart ? words.prefix(name.count) : words.suffix(name.count)
             if candidate.map({ WordShape(String($0)).key }) == name { return (name, symbol, opening) }
         }
         return nil
