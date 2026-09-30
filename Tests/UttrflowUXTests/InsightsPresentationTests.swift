@@ -69,12 +69,20 @@ struct InsightsCalendarBucketingTests {
                 entries: HistoryFixture.aWeek(), settings: HistoryFixture.keeping(30)
             ).calendar)
         #expect(month.days.count == 30)
+        #expect(Set(month.days.map(\.id)).count == 30)
+        #expect(month.days.first?.number == "17")
+        #expect(month.days.last?.number == "15")
 
         let quarter = try #require(
             HistoryFixture.insights(
                 entries: HistoryFixture.aWeek(), settings: HistoryFixture.keeping(90), range: .quarter
             ).calendar)
         #expect(quarter.days.count == 90)
+        #expect(Set(quarter.days.map(\.id)).count == 90)
+        #expect(
+            quarter.days.map(\.number).contains { number in
+                quarter.days.filter { $0.number == number }.count > 1
+            })
     }
 
     @Test("an oversized saved retention cannot expand the Insights calendar")
@@ -268,6 +276,50 @@ struct InsightsCalendarWeekTests {
         #expect(calendar.days.first?.number == "17")
         #expect(calendar.weeks == 5)
         #expect(calendar.title == "May – June")
+        #expect(
+            HistoryFixture.insights(
+                entries: HistoryFixture.aWeek(), settings: HistoryFixture.keeping(30)
+            ).chartCaption == "70 words · 17 May – 15 June")
+    }
+
+    @Test("the chart span keeps its short same-month form")
+    func sameMonth() throws {
+        let first = try HistoryFixture.date(year: 2025, month: 6, day: 2)
+        let last = try HistoryFixture.date(year: 2025, month: 6, day: 15)
+        #expect(
+            InsightsPresenter.caption(
+                words: 70, from: first, to: last, calendar: HistoryFixture.calendar,
+                locale: HistoryFixture.locale) == "70 words · 2 – 15 June")
+    }
+
+    @Test("the chart span names both months in the fixture locale")
+    func crossMonth() throws {
+        let first = try HistoryFixture.date(year: 2025, month: 5, day: 17)
+        let last = try HistoryFixture.date(year: 2025, month: 6, day: 15)
+        #expect(
+            InsightsPresenter.caption(
+                words: 70, from: first, to: last, calendar: HistoryFixture.calendar,
+                locale: HistoryFixture.locale) == "70 words · 17 May – 15 June")
+    }
+
+    @Test("the chart span includes the year at both ends across New Year")
+    func crossYear() throws {
+        let first = try HistoryFixture.date(year: 2024, month: 12, day: 17)
+        let last = try HistoryFixture.date(year: 2025, month: 1, day: 15)
+        #expect(
+            InsightsPresenter.caption(
+                words: 70, from: first, to: last, calendar: HistoryFixture.calendar,
+                locale: HistoryFixture.locale) == "70 words · 17 December 2024 – 15 January 2025")
+    }
+
+    @Test("the chart span follows the requested locale's date order")
+    func localeAware() throws {
+        let first = try HistoryFixture.date(year: 2025, month: 5, day: 17)
+        let last = try HistoryFixture.date(year: 2025, month: 6, day: 15)
+        #expect(
+            InsightsPresenter.caption(
+                words: 70, from: first, to: last, calendar: HistoryFixture.calendar,
+                locale: Locale(identifier: "en_US")) == "70 words · May 17 – June 15")
     }
 
     @Test("a quarter names its first and last months and runs to thirteen weeks")

@@ -8,6 +8,10 @@ public protocol ElementTree {
 
     /// The element's Accessibility role, or nothing when it will not say.
     func role(of element: Element) -> String?
+    /// The element's semantic Accessibility subrole, or nothing when it will not say.
+    func subrole(of element: Element) -> String?
+    /// Whether this element is a list of links to other conversations.
+    func isConversationLinkList(_ element: Element) -> Bool
     /// Whether the element hides what is typed into it, judged without reading its text.
     func isSecure(_ element: Element) -> Bool
     /// The text a person reads on the element: its value, or its title where it has no value.
@@ -23,6 +27,10 @@ public protocol ElementTree {
 }
 
 extension ElementTree {
+    /// A tree without subroles has no landmark boundary to apply.
+    public func subrole(of element: Element) -> String? { nil }
+    /// A tree without link semantics has no conversation list to prune.
+    public func isConversationLinkList(_ element: Element) -> Bool { false }
     /// A tree that has no hidden-state signal treats its elements as visible.
     public func isHidden(_ element: Element) -> Bool { false }
 }
@@ -74,6 +82,11 @@ public struct Surroundings: Sendable, Equatable {
 
     /// The roles that hold a web page, beyond which a browser's own tab strip, toolbar and infobars sit.
     static let pageRoles: Set<String> = ["AXWebArea"]
+
+    /// The page landmarks whose text is outside the conversation that owns the focused field.
+    static let unrelatedLandmarkSubroles: Set<String> = [
+        "AXLandmarkNavigation", "AXLandmarkComplementary", "AXLandmarkBanner",
+    ]
 
     /// Collects the text around the focused element, nearest first, within the budget and the caps.
     public static func collect<Tree: ElementTree>(
@@ -186,7 +199,10 @@ public struct Surroundings: Sendable, Equatable {
             visited += 1
             guard isOnScreen(element) else { return }
             let role = tree.role(of: element) ?? ""
-            guard !skippedRoles.contains(role) else { return }
+            guard !skippedRoles.contains(role),
+                !unrelatedLandmarkSubroles.contains(tree.subrole(of: element) ?? ""),
+                !tree.isConversationLinkList(element)
+            else { return }
             // A secure field is passed over whole, its text never asked for and its children never walked.
             guard !tree.isSecure(element) else { return }
             let raw = tree.text(of: element)

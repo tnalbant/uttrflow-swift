@@ -197,7 +197,7 @@ struct MarkerWordListTests {
         #expect(transcription.segments.first?.words.isEmpty == true)
     }
 
-    @Test("removes a cough marker from the words without losing the spoken words' confidences")
+    @Test("removes a long asterisk span and keeps its surrounding words aligned")
     func removesAsteriskMarkerFromWordList() {
         let raw = RawTranscript(
             text: "review the ******* Kubernetes",
@@ -215,9 +215,72 @@ struct MarkerWordListTests {
         let transcription = raw.transcription(audioDuration: .seconds(2))
         let draft = Draft(transcription: transcription)
 
+        #expect(transcription.text == "review the Kubernetes")
         #expect(transcription.segments.first?.text == "review the Kubernetes")
         #expect(transcription.segments.first?.words.map(\.text) == ["review", "the", "Kubernetes"])
         #expect(draft.confidencesAreReal)
+    }
+
+    @Test("removes bounded Whisper descriptions from text and words")
+    func removesWhisperDescriptionsFromWords() {
+        for marker in ["pain", "thud"] {
+            let raw = RawTranscript(
+                text: "before *\(marker)* after",
+                segments: [
+                    RawSegment(
+                        text: "before *\(marker)* after", start: 0, end: 2,
+                        words: [
+                            RawWord(text: " before", start: 0, end: 0.3, probability: 0.9),
+                            RawWord(text: " *\(marker)*", start: 0.3, end: 0.6, probability: 0.1),
+                            RawWord(text: " after", start: 0.6, end: 1, probability: 0.9),
+                        ])
+                ])
+
+            let transcription = raw.transcription(audioDuration: .seconds(2))
+
+            #expect(transcription.text == "before after")
+            #expect(transcription.segments.first?.text == "before after")
+            #expect(transcription.segments.first?.words.map(\.text) == ["before", "after"])
+        }
+    }
+
+    @Test("keeps punctuation attached to a removed Whisper description in the word list")
+    func keepsPunctuationAfterWhisperDescription() {
+        let raw = RawTranscript(
+            text: "before *pain*. after",
+            segments: [
+                RawSegment(
+                    text: "before *pain*. after", start: 0, end: 2,
+                    words: [
+                        RawWord(text: " before", start: 0, end: 0.3, probability: 0.9),
+                        RawWord(text: " *pain*.", start: 0.3, end: 0.6, probability: 0.1),
+                        RawWord(text: " after", start: 0.6, end: 1, probability: 0.9),
+                    ])
+            ])
+
+        let segment = raw.transcription(audioDuration: .seconds(2)).segments.first
+
+        #expect(segment?.text == "before . after")
+        #expect(segment?.words.map(\.text) == ["before", ".", "after"])
+    }
+
+    @Test("refuses insertion when the mapped transcript contains only Whisper markers")
+    func whisperMarkerOnlyIsBlank() {
+        for marker in ["pain", "thud"] {
+            let raw = RawTranscript(
+                text: "*\(marker)*",
+                segments: [
+                    RawSegment(
+                        text: "*\(marker)*", start: 0, end: 1,
+                        words: [RawWord(text: " *\(marker)*", start: 0, end: 1, probability: 0.1)])
+                ])
+
+            let transcription = raw.transcription(audioDuration: .seconds(1))
+
+            #expect(transcription.isBlank)
+            #expect(transcription.segments.first?.text == "")
+            #expect(transcription.segments.first?.words.isEmpty == true)
+        }
     }
 
     @Test("keeps dictated asterisk emphasis in both text and words")

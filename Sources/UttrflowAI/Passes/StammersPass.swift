@@ -16,7 +16,8 @@ public struct StammersPass: CleaningPass {
         var previous: String?
         for (i, index) in live.enumerated() {
             let word = draft.words[index].text.lowercased()
-            if word == previous, !FunctionWords.isContent(word),
+            if word == previous,
+                (!FunctionWords.isContent(word) || MeaningPreservationGuard.isGrammarWord(word)),
                 !Self.legitimateDoubles.contains(word)
             {
                 // A doubled function word is a stammer.

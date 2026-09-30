@@ -43,6 +43,12 @@ public struct SpokenPunctuationPass: CleaningPass {
     /// Names that are everyday nouns too, so a mid-sentence one is a mark only on positive evidence. See `Docs/cleanup.md`.
     static let ordinaryNames: Set<[String]> = [["comma"], ["colon"], ["dash"]]
 
+    /// Romanised Hindi function words that can follow an explicitly spoken mark.
+    private static let romanisedHindiEvidence: Set<String> = [
+        "aur", "ya", "toh", "phir", "lekin", "par", "ki", "ke", "ka", "ko", "main", "hum", "tum",
+        "aap", "yeh", "woh",
+    ]
+
     public init() {}
 
     public func apply(_ draft: Draft) -> Draft {
@@ -105,7 +111,11 @@ public struct SpokenPunctuationPass: CleaningPass {
         if position > 0 && draft.shape(at: live[position - 1]).endsClause { return true }
         return next == live.count
             || next < live.count
-                && FunctionWords.holds(draft.shape(at: live[next]).key)
+                && isFunctionWordEvidence(draft.shape(at: live[next]).key)
+    }
+
+    private func isFunctionWordEvidence(_ word: String) -> Bool {
+        FunctionWords.holds(word) || Self.romanisedHindiEvidence.contains(word)
     }
 
     /// The word indices of ordinary names said more than once in one sentence, which is a list rather than a noun.

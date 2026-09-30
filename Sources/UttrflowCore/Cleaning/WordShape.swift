@@ -25,7 +25,7 @@ public struct WordShape: Equatable, Sendable {
     public var endsClause: Bool { suffix.contains(where: { ",.;:!?".contains($0) }) }
 
     /// Whether the word closes a sentence.
-    public var endsSentence: Bool { suffix.contains(where: { ".!?".contains($0) }) }
+    public var endsSentence: Bool { suffix.contains(where: { ".!?।॥".contains($0) }) }
 
     /// Whether marks after a word are an ellipsis with no question or exclamation mark, which is a pause rather than a stop.
     public static func trailsOff(_ marks: String) -> Bool {
@@ -64,7 +64,9 @@ public struct WordShape: Equatable, Sendable {
     }
 
     /// Marks that end a text already: a clause mark, an ellipsis, or a bracket the words closed themselves.
-    static let finishers: Set<Character> = [",", ".", ";", ":", "!", "?", "\u{2026}", ")", "]", "}"]
+    static let finishers: Set<Character> = [
+        ",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥", ")", "]", "}",
+    ]
 
     /// Quotes that open a quotation, read on the word's own prefix.
     static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]

@@ -1,3 +1,4 @@
+import Foundation
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
@@ -17,6 +18,7 @@ public struct NumberFormsPass: CleaningPass {
     ]
     static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
+    static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
         "july": 31, "august": 31, "september": 30, "october": 31, "november": 30, "december": 31,
@@ -54,6 +56,10 @@ public struct NumberFormsPass: CleaningPass {
         let keys = shapes.map(\.key)
         var position = 0
         while position < live.count {
+            if let count = Self.unchangedIdiomCount(at: position, keys: keys, shapes: shapes) {
+                position += count
+                continue
+            }
             if let time = Self.dottedTime(at: position, keys: keys, shapes: shapes) {
                 let last = position + 1
                 draft.replace(
@@ -104,6 +110,16 @@ public struct NumberFormsPass: CleaningPass {
     ) -> Phrase? {
         let keys = shapes.map(\.key)
 
+        if keys[position] == "plus", joined(position + 1, shapes),
+            let run = spokenDigitRun(at: position + 1, keys: keys, shapes: shapes)
+        {
+            return Phrase(text: "+" + run.text, count: run.count + 1)
+        }
+        if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
+        if let decade = decade(at: position, keys: keys, shapes: shapes) {
+            return decade
+        }
+
         if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes) {
             if let numeral = NumberWords.digits(keys[position + 1]) {
                 return Phrase(text: "-" + numeral, count: 2)
@@ -134,7 +150,11 @@ public struct NumberFormsPass: CleaningPass {
                 return nil
             }
             guard policy == .always || ordinal.value >= 10 else { return nil }
-            return Phrase(text: String(ordinal.value), count: end - position)
+            let month = WordShape.capitalised(keys[end])
+            let preposition = hasOf ? " of" : ""
+            return Phrase(
+                text: "\(ordinal.value)\(ordinalSuffix(ordinal.value))\(preposition) \(month)",
+                count: end - position + 1)
         }
         guard let item = item(at: position, keys: keys, shapes: shapes) else { return nil }
         let contextPosition =
@@ -180,26 +200,20 @@ public struct NumberFormsPass: CleaningPass {
             }
         }
         if !isPhrase, inContext, item.spoken {
-            while joined(end, shapes),
-                let group = NumberWords.cardinal(unbroken(from: end, keys: keys, shapes: shapes))
+            if joined(end, shapes), keys[end] == "of",
+                let following = NumberWords.cardinal(unbroken(from: end + 1, keys: keys, shapes: shapes))
             {
-                text += String(group.value)
-                end += group.count
+                text += " of " + NumberWords.render(following.value, grouped: false)
+                end += following.count + 1
                 isPhrase = true
-            }
-        }
-        // Three or more single digits spoken in a row are a digit string, even outside any context word.
-        if !isPhrase, item.spoken, let value = item.value, value < 10 {
-            var run = String(value)
-            var p = end
-            while p < keys.count, joined(p, shapes), let digit = singleDigit(keys[p]) {
-                run.append(digit)
-                p += 1
-            }
-            if run.count >= 3 {
-                text = run
-                end = p
-                isPhrase = true
+            } else {
+                while joined(end, shapes),
+                    let group = NumberWords.cardinal(unbroken(from: end, keys: keys, shapes: shapes))
+                {
+                    text += String(group.value)
+                    end += group.count
+                    isPhrase = true
+                }
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
@@ -213,24 +227,18 @@ public struct NumberFormsPass: CleaningPass {
         return Phrase(text: text, count: end - position)
     }
 
-    /// True when a clock time's minute reads as two single digits without a time cue around the time, so the run is a digit string.
+    /// Requires temporal evidence when the hour and minute form one phrase.
     private static func timeAcceptable(
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
-        guard minuteEnd - minuteStart == 2,
-            keys[minuteStart] == "oh" || keys[minuteStart] == "zero",
-            NumberWords.units[keys[minuteStart + 1]] != nil
-        else { return true }
-        if position > 0, !startsASentence(position, shapes), keys[position - 1] == "at" {
-            return true
-        }
-        if minuteEnd < shapes.count, joined(minuteEnd, shapes),
-            meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock"
-        {
-            return true
-        }
-        return false
+        let hasBeforeCue =
+            position > 0 && !startsASentence(position, shapes)
+            && ["at", "by", "until", "from"].contains(keys[position - 1])
+        let hasAfterCue =
+            minuteEnd < shapes.count && joined(minuteEnd, shapes)
+            && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
+        return hasBeforeCue || hasAfterCue
     }
 
     /// Whether the words here finish a scale the parser could not read whole, as in "a hundred and fifty".
@@ -307,6 +315,30 @@ public struct NumberFormsPass: CleaningPass {
         return NumberWords.units[key].map(String.init)
     }
 
+    /// A run starts with any digit word, including "oh", and only joins three or more.
+    private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let first = singleDigit(keys[start]) else { return nil }
+        var text = first
+        var end = start + 1
+        while joined(end, shapes), let digit = singleDigit(keys[end]) {
+            text.append(digit)
+            end += 1
+        }
+        guard text.count >= 3 else { return nil }
+        return Phrase(text: text, count: end - start)
+    }
+
+    private static func ordinalSuffix(_ value: Int) -> String {
+        let remainder = value % 100
+        if (11...13).contains(remainder) { return "th" }
+        switch value % 10 {
+        case 1: return "st"
+        case 2: return "nd"
+        case 3: return "rd"
+        default: return "th"
+        }
+    }
+
     /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.
     private static func year(
         after century: Int, at start: Int, keys: [String], shapes: [WordShape]
@@ -316,6 +348,29 @@ public struct NumberFormsPass: CleaningPass {
             (10...99).contains(rest.value), rest.count <= 2
         else { return nil }
         return Phrase(text: String(century * 100 + rest.value), count: rest.count)
+    }
+
+    /// Reads a plural decade such as "nineteen nineties" as one year range.
+    private static func decade(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let century = NumberWords.teens[keys[position]] ?? NumberWords.tens[keys[position]],
+            [19, 20].contains(century),
+            joined(position + 1, shapes),
+            let decade = NumberWords.tens.first(where: {
+                $0.value >= 20 && $0.value <= 90
+                    && ($0.key.hasSuffix("y") ? String($0.key.dropLast()) + "ies" : $0.key + "s")
+                        == keys[position + 1]
+            })?.value
+        else { return nil }
+        return Phrase(text: "\(century * 100 + decade)s", count: 2)
+    }
+
+    /// Keeps fixed spoken idioms intact so their number words are not partially rewritten.
+    private static func unchangedIdiomCount(at position: Int, keys: [String], shapes: [WordShape]) -> Int? {
+        idioms.first { idiom in
+            position + idiom.count <= keys.count
+                && Array(keys[position..<(position + idiom.count)]) == idiom
+                && (position + 1..<position + idiom.count).allSatisfy { joined($0, shapes) }
+        }?.count
     }
 
     /// "two thirty", "two thirty pm", "two oh five pm", "ten am", "five o'clock"; am and pm stay separate.

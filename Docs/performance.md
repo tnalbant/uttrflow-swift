@@ -1355,6 +1355,10 @@ Each clip run all at once, with the shipping router.
 | `TranscriptionCorpus`, Hinglish | 6 | 33.9% | 33.9% |
 | Hinglish read in the Latin alphabet | 3 | 169.8% | 62.8% |
 
+The Hindi word-error figures above were scored before the Python benchmark preserved
+Devanagari combining marks. They remain historical results and are not comparable with
+runs scored after that normalization fix.
+
 | voice | clips | raw | final |
 |---|---|---|---|
 | US English | 31 | 2.1% | 2.2% |

@@ -102,6 +102,7 @@ struct RecordingStoreTests {
             AppContext(
                 applicationName: "Editor", bundleIdentifier: "com.example.editor",
                 documentName: "private.swift", precedingText: "secret"),
+            fieldKind: .codeEditor,
             for: recording.id)
 
         let reloaded = RecordingStore(directory: sandbox.directory)
@@ -111,6 +112,26 @@ struct RecordingStoreTests {
             restored.destination
                 == AppContext(
                     applicationName: "Editor", bundleIdentifier: "com.example.editor"))
+        #expect(restored.fieldKind == .codeEditor)
+    }
+
+    @Test("an app-only sidecar from before field kinds were recorded still loads")
+    func legacyDestinationSidecarLoads() async throws {
+        let sandbox = Sandbox()
+        let store = RecordingStore(directory: sandbox.directory)
+        let writer = try #require(await store.begin(at: now))
+        writer.append(Array(repeating: 0.3, count: 1_600))
+        let recording = await store.finish(writer)
+        let legacy = AppContext(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let data = try PropertyListEncoder().encode(legacy)
+        try data.write(
+            to: sandbox.directory.appending(path: "\(recording.id.uuidString).context"),
+            options: .atomic)
+
+        let restored = try #require(
+            await RecordingStore(directory: sandbox.directory).waiting(now: now).first)
+        #expect(restored.destination == legacy)
+        #expect(restored.fieldKind == nil)
     }
 
     @Test("the recordings directory and its wavs are kept out of backups")

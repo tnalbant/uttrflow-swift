@@ -266,10 +266,11 @@ struct DictationPipelineRecordingTests {
     @Test("retry cleans and recognises with the recording destination")
     func retryUsesRecordingDestination() async throws {
         let destination = AppContext(
-            applicationName: "Editor", bundleIdentifier: "com.example.editor",
+            applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
             documentName: "private.swift", precedingText: "secret text")
         let recording = KeptRecording(
-            id: UUID(), when: Date(), duration: .seconds(2), destination: destination)
+            id: UUID(), when: Date(), duration: .seconds(2), destination: destination,
+            fieldKind: .codeEditor)
         let recordings = FakeRecordingKeeper(waiting: [recording])
         let cleaner = ContextRecordingCleaner()
         let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
@@ -277,22 +278,23 @@ struct DictationPipelineRecordingTests {
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(), speech: speech, cleaner: cleaner,
             context: FakeContextEngine(
-                context: .fixture(
-                    applicationName: "Frontmost", bundleIdentifier: "com.example.frontmost")),
+                context: .fixture(applicationName: "Mail", bundleIdentifier: "com.apple.mail")),
             inserter: RecordingFakeInserter(),
             speechWords: { context in
                 words.withLock { $0.append(context) }
                 return ["DestinationName"]
             },
+            destinationOverrides: DestinationOverrides().setting(
+                .email, for: "com.apple.dt.Xcode", named: "Xcode"),
             recordings: recordings,
             clipboard: RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard))))
 
         #expect(await pipeline.retry(recording.id))
 
         let request = try #require(cleaner.requests.first)
-        #expect(request.context.bundleIdentifier == "com.example.editor")
-        #expect(request.situation.destination == .plain)
-        #expect(words.withLock { $0.first?.bundleIdentifier } == "com.example.editor")
+        #expect(request.context.bundleIdentifier == "com.apple.dt.Xcode")
+        #expect(request.situation.destination == .codeEditor)
+        #expect(words.withLock { $0.first?.bundleIdentifier } == "com.apple.dt.Xcode")
         #expect(request.context.documentName == nil)
         #expect(request.context.precedingText == nil)
     }
@@ -376,15 +378,19 @@ struct DictationPipelineRecordingTests {
         #expect(await recordings.discarded.isEmpty)
     }
 
-    @Test("a recording that cannot be read is not offered again")
-    func unreadableRecordingIsDropped() async {
-        let recordings = FakeRecordingKeeper(
-            waiting: [recording], audioOutcome: .failure(.engineFailed(description: "gone")))
+    @Test(arguments: [
+        AudioCaptureError.engineFailed(description: "gone"), .unsupportedInputFormat,
+    ])
+    func unreadableRecordingIsDroppedWithoutOfferingRetry(_ error: AudioCaptureError) async {
+        let recordings = FakeRecordingKeeper(waiting: [recording], audioOutcome: .failure(error))
         let pipeline = makePipeline(recordings: recordings)
 
         await pipeline.retry(recording.id)
 
-        #expect(await pipeline.currentState.failure != nil)
+        let failure = await pipeline.currentState.failure
+        #expect(failure?.message == "That recording couldn't be read, so it can't be retried.")
+        #expect(failure?.recovery == nil)
+        #expect(failure?.severity != .blocking)
         #expect(await recordings.discarded == [recording.id])
     }
 

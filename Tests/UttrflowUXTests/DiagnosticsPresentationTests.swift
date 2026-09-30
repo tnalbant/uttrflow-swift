@@ -600,6 +600,23 @@ struct DiagnosticsStorageTests {
 
 @Suite("Diagnostics can be copied out")
 struct DiagnosticsReportTests {
+    @Test("the report counts pieces that needed extra decodes and empty-result retries")
+    func reportsRecordedDecodeEffort() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordDecoding(DecodeEffort(fallbacks: 2, encoderRuns: 3))
+        await recorder.recordDecoding(DecodeEffort(retriedWithoutPrompt: true))
+        await recorder.recordDecoding(.none)
+
+        let snapshot = DiagnosticsSnapshot(decoding: await recorder.decoding)
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.decoding.map(\.detail) == ["2 of 3 pieces", "1 retry"])
+        #expect(report.contains("Decode effort (3 pieces)"))
+        #expect(report.contains("Pieces needing more than one decode: 2 of 3 pieces"))
+        #expect(report.contains("Empty-result retries: 1 retry"))
+    }
+
     /// What is copied must not say something different from what was on screen.
     @Test("the report carries the same numbers the page shows")
     func reportMatchesThePage() {

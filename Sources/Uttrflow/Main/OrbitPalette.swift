@@ -12,11 +12,15 @@ extension Color {
     /// Hairlines. Low enough to separate without ruling the page into boxes.
     static let mainSeparator = Color(nsColor: .orbit(BrandPalette.Line.separator))
     /// The row under the pointer.
-    static let mainHover = Color(nsColor: .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.05))
+    static let mainHover = Color(
+        nsColor: .orbitAlpha(
+            BrandPalette.Surface.wash, alpha: 0.05, highContrastAlpha: 0.14))
     /// The rail: a step darker than the page in both appearances, so it reads as the edge of the window.
     static let railGround = Color(nsColor: .orbit(BrandPalette.Surface.rail))
     /// The lit rail icon's tile.
-    static let railSelection = Color(nsColor: .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07))
+    static let railSelection = Color(
+        nsColor: .orbitAlpha(
+            BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18))
     static let railIcon = Color.secondary
 
     /// The three text tones, set once at the root so every label under it resolves to the design's greys.
@@ -37,35 +41,59 @@ struct MainDivider: View {
 
 extension NSColor {
     /// One colour per appearance, resolved when drawn; in code, because this package has no asset catalogue.
-    static func orbit(dark: UInt32, light: UInt32) -> NSColor {
+    static func orbit(
+        dark: UInt32, light: UInt32, highContrastDark: UInt32? = nil, highContrastLight: UInt32? = nil
+    ) -> NSColor {
         NSColor(name: nil) { appearance in
-            NSColor(rgb: appearance.isDark ? dark : light)
+            NSColor(
+                rgb: appearance.highContrastValue(dark: highContrastDark, light: highContrastLight)
+                    ?? (appearance.isDark ? dark : light))
         }
     }
 
     /// The same, for the two places the design asks for a wash rather than a colour.
-    static func orbitAlpha(dark: UInt32, light: UInt32, alpha: CGFloat) -> NSColor {
+    static func orbitAlpha(
+        dark: UInt32, light: UInt32, highContrastDark: UInt32? = nil, highContrastLight: UInt32? = nil,
+        alpha: CGFloat, highContrastAlpha: CGFloat? = nil
+    ) -> NSColor {
         NSColor(name: nil) { appearance in
-            NSColor(rgb: appearance.isDark ? dark : light).withAlphaComponent(alpha)
+            let resolvedAlpha =
+                appearance.highContrastValue(
+                    dark: highContrastAlpha, light: highContrastAlpha) ?? alpha
+            NSColor(
+                rgb: appearance.highContrastValue(dark: highContrastDark, light: highContrastLight)
+                    ?? (appearance.isDark ? dark : light)
+            ).withAlphaComponent(resolvedAlpha)
         }
     }
 
     /// A palette tone, resolved per appearance.
     static func orbit(_ tone: BrandTone) -> NSColor {
-        orbit(dark: tone.dark, light: tone.light)
+        orbit(
+            dark: tone.dark, light: tone.light,
+            highContrastDark: tone.highContrastDark, highContrastLight: tone.highContrastLight)
     }
 
     /// A palette tone as a wash.
-    static func orbitAlpha(_ tone: BrandTone, alpha: CGFloat) -> NSColor {
-        orbitAlpha(dark: tone.dark, light: tone.light, alpha: alpha)
+    static func orbitAlpha(_ tone: BrandTone, alpha: CGFloat, highContrastAlpha: CGFloat? = nil) -> NSColor {
+        orbitAlpha(
+            dark: tone.dark, light: tone.light,
+            highContrastDark: tone.highContrastDark, highContrastLight: tone.highContrastLight,
+            alpha: alpha, highContrastAlpha: highContrastAlpha)
     }
 
     /// A palette layer, resolved per appearance at that appearance's own opacity.
     static func orbit(_ layer: BrandLayer) -> NSColor {
         NSColor(name: nil) { appearance in
+            let highContrastTone = appearance.highContrastValue(
+                dark: layer.tone.highContrastDark, light: layer.tone.highContrastLight)
+            let highContrastOpacity = appearance.highContrastValue(
+                dark: layer.highContrastDarkOpacity, light: layer.highContrastLightOpacity)
             appearance.isDark
-                ? NSColor(rgb: layer.tone.dark).withAlphaComponent(layer.darkOpacity)
-                : NSColor(rgb: layer.tone.light).withAlphaComponent(layer.lightOpacity)
+                ? NSColor(rgb: highContrastTone ?? layer.tone.dark)
+                    .withAlphaComponent(highContrastOpacity ?? layer.darkOpacity)
+                : NSColor(rgb: highContrastTone ?? layer.tone.light)
+                    .withAlphaComponent(highContrastOpacity ?? layer.lightOpacity)
         }
     }
 
@@ -94,6 +122,26 @@ extension NSColor {
 }
 
 extension NSAppearance {
+    func highContrastValue(dark: UInt32?, light: UInt32?) -> UInt32? {
+        switch bestMatch(from: [
+            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
+        ]) {
+        case .accessibilityHighContrastAqua: light
+        case .accessibilityHighContrastDarkAqua: dark
+        default: nil
+        }
+    }
+
+    func highContrastValue(dark: Double?, light: Double?) -> Double? {
+        switch bestMatch(from: [
+            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
+        ]) {
+        case .accessibilityHighContrastAqua: light
+        case .accessibilityHighContrastDarkAqua: dark
+        default: nil
+        }
+    }
+
     /// Whether this appearance is dark, including the accessibility variants `name == .darkAqua` misses.
     var isDark: Bool {
         bestMatch(from: [.aqua, .darkAqua]) == .darkAqua

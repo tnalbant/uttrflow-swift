@@ -39,6 +39,11 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
+            draft: draft, rewritten: rewritten)
+        {
+            return .rejected(reason: reason, kind: kind)
+        }
         if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
@@ -64,6 +69,26 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token))
+    }
+
+    /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
+    static func spokenPunctuationVerdict(draft: Draft, rewritten: String) -> GuardVerdict {
+        let marks = Set(SpokenPunctuationPass.marks.flatMap { Array($0.mark) } + Array("()[]{}"))
+        var required: [Character: Int] = [:]
+        for word in draft.words {
+            for edit in word.edits where edit.by == .spokenPunctuation && edit.kind == .replaced {
+                guard !edit.to.contains("@") else { continue }
+                for mark in marks {
+                    let added = edit.to.filter { $0 == mark }.count - edit.from.filter { $0 == mark }.count
+                    if added > 0 { required[mark, default: 0] += added }
+                }
+            }
+        }
+        for (mark, count) in required where rewritten.filter({ $0 == mark }).count < count {
+            return .rejected(
+                reason: "the rewrite dropped a spoken punctuation mark", kind: .layout)
+        }
+        return .accepted
     }
 
     /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
@@ -300,7 +325,64 @@ public struct MeaningPreservationGuard: Sendable {
             return .rejected(
                 reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
         }
+        if Self.addsQuotationPair(original: original, rewritten: rewritten) {
+            return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
+        }
         return .accepted
+    }
+
+    /// Whether the rewrite adds a quoted word span that has no counterpart in the draft.
+    private static func addsQuotationPair(original: String, rewritten: String) -> Bool {
+        var originalSpans = quotationSpans(in: original)
+        for span in quotationSpans(in: rewritten) {
+            guard let match = originalSpans.firstIndex(of: span) else { return true }
+            originalSpans.remove(at: match)
+        }
+        return false
+    }
+
+    /// The word spans held by straight and curly quotation pairs.
+    private static func quotationSpans(in text: String) -> [String] {
+        let characters = Array(text)
+        let pairs: [(Character, Character)] = [
+            ("\"", "\""), ("\u{201C}", "\u{201D}"), ("\u{2018}", "\u{2019}"),
+            ("'", "'"),
+        ]
+        return pairs.flatMap { open, close in
+            let openings = characters.indices.filter { characters[$0] == open }
+                .filter { !isApostropheDelimiter(at: $0, in: characters) }
+            let closings = characters.indices.filter { characters[$0] == close }
+                .filter { !isApostropheDelimiter(at: $0, in: characters) }
+            var unmatched = openings
+            var spans: [String] = []
+            for closing in closings {
+                guard let index = unmatched.firstIndex(where: { $0 < closing }) else { continue }
+                let opening = unmatched.remove(at: index)
+                let content = String(characters[(opening + 1)..<closing])
+                spans.append(grammarTokens(content).map(\.matching).joined(separator: " "))
+            }
+            return spans
+        }
+    }
+
+    /// Whether a single quote mark is an apostrophe or a decade elision rather than a delimiter.
+    private static func isApostropheDelimiter(at index: Int, in characters: [Character]) -> Bool {
+        (characters[index] == "'" || characters[index] == "\u{2019}")
+            && (isWordApostrophe(at: index, in: characters) || isDecadeElision(at: index, in: characters))
+    }
+
+    /// Whether an apostrophe stands between two letters in one word.
+    private static func isWordApostrophe(at index: Int, in characters: [Character]) -> Bool {
+        index > 0 && index + 1 < characters.count
+            && characters[index - 1].isLetter && characters[index + 1].isLetter
+    }
+
+    /// Whether an apostrophe abbreviates the leading digits of a decade such as ’90s.
+    private static func isDecadeElision(at index: Int, in characters: [Character]) -> Bool {
+        guard index + 2 < characters.count, characters[index + 1].isNumber,
+            characters[index + 2].isNumber
+        else { return false }
+        return index + 3 == characters.count || !characters[index + 3].isNumber
     }
 
     // MARK: Grammar
@@ -356,6 +438,9 @@ public struct MeaningPreservationGuard: Sendable {
             let token = keptTokens[index]
             return token.isPlain && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup))
                 && !composed.contains(index) && !excused.contains(index)
+        }
+        if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
+            return .rejected(reason: reason, kind: kind)
         }
         if case .rejected(let reason, let kind) = survivalVerdict(carried.map { keptTokens[$0] }, in: written)
         {
@@ -642,6 +727,34 @@ public struct MeaningPreservationGuard: Sendable {
         return !FunctionWords.holds(token.lookup)
     }
 
+    /// Refuses a word the model moved, using the shared word alignment while leaving edits to the other guard checks.
+    static func wordOrderVerdict(kept: [GrammarToken], written: [GrammarToken]) -> GuardVerdict {
+        let alignment = WordErrorRate.measure(
+            reference: kept.filter(\.isPlain).map(\.matching),
+            hypothesis: written.filter(\.isPlain).map(\.matching))
+        var deleted: Set<String> = []
+        var inserted: Set<String> = []
+        var substitutedFrom: Set<String> = []
+        var substitutedTo: Set<String> = []
+        for operation in alignment.alignment {
+            switch operation {
+            case .match:
+                break
+            case .deletion(let word):
+                deleted.insert(word)
+            case .insertion(let word):
+                inserted.insert(word)
+            case .substitution(let reference, let hypothesis):
+                substitutedFrom.insert(reference)
+                substitutedTo.insert(hypothesis)
+            }
+        }
+        guard deleted.isDisjoint(with: inserted), substitutedFrom.isDisjoint(with: substitutedTo) else {
+            return .rejected(reason: "the rewrite moved a word", kind: .movedWord)
+        }
+        return .accepted
+    }
+
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
     static func survivalVerdict(_ kept: [GrammarToken], in written: [GrammarToken]) -> GuardVerdict {
         var reached = 0
@@ -794,6 +907,11 @@ public struct MeaningPreservationGuard: Sendable {
             || sameIrregularVerbForm(word, other)
     }
 
+    /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
+    static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
+        sameForm(fragment, word) || (whenCutOff && spelledInto(fragment, word, atCutOff: true))
+    }
+
     /// Whether both words belong to the same listed English verb paradigm.
     private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
         guard let group = irregularVerbFormGroups[word] else { return false }
@@ -886,6 +1004,12 @@ public struct MeaningPreservationGuard: Sendable {
         }
     }
 
+    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
+    private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
+        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
+        return word.lowercased().hasPrefix(fragment.lowercased())
+    }
+
     /// How many words in `tokens` turn a sentence's meaning around.
     static func negators(in tokens: [GrammarToken]) -> Int {
         tokens.filter { negatingWords.contains($0.matching) }.count
@@ -924,9 +1048,10 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Sentences in the rewrite, counted by closing marks followed by space or end, never below one.
     static func sentenceCount(_ text: String) -> Int {
-        // A word carrying a stop inside itself — "p.m.", "e.g." — ends no sentence, as FirstWordPass reads it.
-        let count = text.split(whereSeparator: \.isWhitespace)
-            .count { FirstWordPass.endsSentence(String($0)) }
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let count = words.indices.count { index in
+            FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
+        }
         return max(1, count)
     }
 

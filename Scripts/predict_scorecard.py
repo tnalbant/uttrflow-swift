@@ -40,7 +40,8 @@ def summarise(results):
     errors = sum(1 for f in firsts if isinstance(f, str) and f.startswith("error:"))
     wrong = len(firsts) - nothing - errors
     invented = sum(1 for r in results if r.get("invented"))
-    shown = [r for r in results if r.get("first") and not str(r.get("first")).startswith("error:")]
+    shown = [r for r in results if r.get("judged", False) and r.get("first")
+             and not str(r.get("first")).startswith("error:")]
     right = sum(1 for r in shown if r["hit"])
     return dict(total=total, hit=hit, conforms=conforms, p50=percentile(lat, 0.5), p95=percentile(lat, 0.95),
                 failures=len(firsts), nothing=nothing, errors=errors, wrong=wrong, invented=invented,
