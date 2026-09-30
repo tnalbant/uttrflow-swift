@@ -55,6 +55,7 @@ final class DockPanelController {
     var onToggle: (() -> Void)?
     /// The button offered alongside a failure was clicked.
     var onRecoveryAction: ((RecoveryAction) -> Void)?
+    var onAttentionChange: ((Bool) -> Void)?
 
     /// Where the microphone's level is pulled from on the main actor, keeping redraws off the audio thread.
     private var levelSource: (@Sendable () -> Float)?
@@ -103,9 +104,15 @@ final class DockPanelController {
             onPressEnded: { [weak self] in self?.onPressEnded?() },
             onToggle: { [weak self] in self?.onToggle?() },
             onRecovery: { [weak self] action in self?.onRecoveryAction?(action) },
+            onAttentionChange: { [weak self] _ in
+                guard let self else { return }
+                self.onAttentionChange?(self.model.isEngaged)
+            },
             onDesiredSize: { [weak self] size in self?.resize(to: size) })
         hostingView.onHoverChange = { [weak self] isHovering in
-            self?.model.isHovering = isHovering
+            guard let self else { return }
+            self.model.isHovering = isHovering
+            self.onAttentionChange?(self.model.isEngaged)
         }
 
         observeAppearance()

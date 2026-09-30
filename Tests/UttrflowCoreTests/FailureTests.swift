@@ -89,7 +89,8 @@ struct FailurePresentationTests {
         #expect(SpeechEngineError.audioTooShort.recovery == nil)
         #expect(SpeechEngineError.transcriptionFailed(description: "x").recovery == .retry)
 
-        #expect(TextInsertionError.noFocusedTextField.recovery == .retry)
+        #expect(TextInsertionError.noFocusedTextField.recovery == .showRecentDictations)
+        #expect(TextInsertionError.noFocusedTextField.userMessage.contains("Recent"))
         #expect(TextInsertionError.accessibilityDenied.recovery == .openSystemSettings(.accessibility))
         #expect(TextInsertionError.insertionTimedOut.recovery == .showRecentDictations)
         #expect(TextInsertionError.insertionRejected(description: "x").recovery == .pasteManually)

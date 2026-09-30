@@ -26,6 +26,8 @@ public struct SystemSettingsOpener: Sendable {
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             case .appleIntelligence:
                 "x-apple.systempreferences:com.apple.Siri-Settings.extension"
+            case .keyboard:
+                "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
             }
         return URL(string: address)
     }

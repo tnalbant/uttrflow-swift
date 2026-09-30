@@ -1,4 +1,5 @@
 import Testing
+import UttrflowCore
 
 @testable import UttrflowPredict
 
@@ -154,6 +155,18 @@ struct RegisterTests {
         #expect(Register.infer(from: essay, typed: "We").kind == "line")
         let addressBar = GenerationSituation(application: "Browser", field: "Address and search bar")
         #expect(Register.infer(from: addressBar, typed: "git").kind.hasPrefix("web address, a host and path"))
+    }
+
+    @Test("A known SQL destination names the line as code before any history exists.")
+    func knownSqlDestinationNamesTheKindWithoutHistory() {
+        let destination = DestinationClassifier.classify(AppContext(applicationName: "DBeaver"))
+        let sqlEditor = GenerationSituation(
+            application: "DBeaver", isCodeDestination: destination.rawValue == "sqlEditor")
+        let register = Register.infer(from: sqlEditor, typed: "SELECT id, name FROM")
+        #expect(sqlEditor.recentLines.isEmpty)
+        #expect(destination.rawValue == "sqlEditor")
+        #expect(register.kind == "command, query or line of code")
+        #expect(register.hints.contains("the text here is commands, code or queries rather than prose"))
     }
 
     @Test("The token budget is half the typical length, held between the shortest and longest pass allowed.")

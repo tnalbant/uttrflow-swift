@@ -1327,9 +1327,12 @@ struct GuardMatchStrengthTests {
         "counts a word carrying a stop inside itself as ending no sentence",
         arguments: [
             ("Call me at 5 p.m. tomorrow.", 1), ("We use JSON, e.g. for the config.", 1),
+            ("We brought snacks, etc. and drinks.", 1),
+            ("We brought snacks, etc. And then left.", 2),
+            ("Apples vs. oranges.", 1),
             ("Ship it.", 1), ("One. Two. Three.", 3), ("No mark at all", 1),
-            // A title is not an interior stop, and this rule says nothing about one.
-            ("Dr. Chen is here.", 2),
+            ("Dr. Chen is here.", 1),
+            ("We met Dr. Lee. Then we left.", 2),
         ]
     )
     func countsSentences(text: String, expected: Int) {

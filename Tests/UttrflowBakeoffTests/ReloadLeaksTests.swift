@@ -5,6 +5,46 @@ import Testing
 @testable import UttrflowEval
 
 struct ReloadLeaksTests {
+    @Test("scorecard and fixture report use judged shown rows for category precision")
+    func scorecardMatchesFixtureReportPrecision() throws {
+        let results = [
+            FixtureResult(
+                name: "chat/right", category: "chat", typed: "hello", hit: true, judged: true,
+                conforms: true, elapsedMs: 10, first: "hello", raw: nil, invented: false),
+            FixtureResult(
+                name: "chat/wrong", category: "chat", typed: "world", hit: false, judged: true,
+                conforms: true, elapsedMs: 12, first: "wrong", raw: nil, invented: false),
+            FixtureResult(
+                name: "chat/unjudged", category: "chat", typed: "continuation", hit: true, judged: false,
+                conforms: true, elapsedMs: 14, first: "continuation", raw: nil, invented: false),
+        ]
+        let report = FixtureReport(results: results)
+        let category = try #require(report.summary.categories.first)
+        #expect(category.shown == 2)
+        #expect(category.right == 1)
+
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try report.write(to: directory.appending(path: "fixture.json").path)
+        let script = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Scripts/predict_scorecard.py")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", script.path, directory.appending(path: "fixture.json").path]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+        #expect(text.contains("precision 50.00 % (1/2 judged shown, 1 wrong"))
+        #expect(
+            text.contains(
+                "chat       n=   3 hit  67 %  register 100 %  p50   12  precision   50.0%  wrong   1")
+        )
+    }
+
     @Test("stored bake-off results retain surface metrics and old files still decode")
     func storedSurfaceMetricsRemainBackwardCompatible() throws {
         let legacy = Data(

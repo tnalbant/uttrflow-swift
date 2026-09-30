@@ -7,6 +7,48 @@ import UttrflowPredict
 
 @Suite("Suggestion announcer")
 struct SuggestionAnnouncerTests {
+    @Test("Rapid offer changes coalesce to the latest label after a short quiet period")
+    func rapidChangesCoalesce() {
+        var coalescer = SuggestionAnnouncementCoalescer()
+        #expect(coalescer.offer("first", at: .zero) == nil)
+        #expect(coalescer.offer("second", at: .milliseconds(50)) == nil)
+        #expect(coalescer.offer("latest", at: .milliseconds(100)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(249)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(250)) == "latest")
+    }
+
+    @Test("An update just before a timer wakes shortens the next wait to the quiet deadline")
+    func updateJustBeforeTimerWakeUsesRemainingQuietInterval() {
+        var coalescer = SuggestionAnnouncementCoalescer()
+        #expect(coalescer.offer("first", at: .zero) == nil)
+        #expect(coalescer.offer("latest", at: .milliseconds(149)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(150)) == nil)
+        #expect(coalescer.remainingQuietInterval(at: .milliseconds(150)) == .milliseconds(149))
+        #expect(coalescer.flushIfReady(at: .milliseconds(298)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(299)) == "latest")
+    }
+
+    @Test("A stable offer is announced promptly after the coalescing interval")
+    func stableOfferIsPrompt() {
+        var coalescer = SuggestionAnnouncementCoalescer()
+        #expect(coalescer.offer("stable", at: .zero) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(149)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(150)) == "stable")
+    }
+
+    @Test("Unchanged offers remain deduplicated and do not replace pending speech")
+    func unchangedOffersStayDeduplicated() {
+        var announcer = SuggestionAnnouncer()
+        var coalescer = SuggestionAnnouncementCoalescer()
+        let offer = SuggestionPresentation(.certain("Sydney"))
+        let first = announcer.announcement(for: offer)
+        #expect(coalescer.offer(first, at: .zero) == nil)
+        let unchanged = announcer.announcement(for: offer)
+        #expect(unchanged == nil)
+        #expect(coalescer.offer(unchanged, at: .milliseconds(50)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(150)) == first)
+    }
+
     @Test("A single completion is announced with its accept key")
     func aCompletionIsAnnounced() {
         var announcer = SuggestionAnnouncer()

@@ -378,15 +378,19 @@ struct DictationPipelineRecordingTests {
         #expect(await recordings.discarded.isEmpty)
     }
 
-    @Test("a recording that cannot be read is not offered again")
-    func unreadableRecordingIsDropped() async {
-        let recordings = FakeRecordingKeeper(
-            waiting: [recording], audioOutcome: .failure(.engineFailed(description: "gone")))
+    @Test(arguments: [
+        AudioCaptureError.engineFailed(description: "gone"), .unsupportedInputFormat,
+    ])
+    func unreadableRecordingIsDroppedWithoutOfferingRetry(_ error: AudioCaptureError) async {
+        let recordings = FakeRecordingKeeper(waiting: [recording], audioOutcome: .failure(error))
         let pipeline = makePipeline(recordings: recordings)
 
         await pipeline.retry(recording.id)
 
-        #expect(await pipeline.currentState.failure != nil)
+        let failure = await pipeline.currentState.failure
+        #expect(failure?.message == "That recording couldn't be read, so it can't be retried.")
+        #expect(failure?.recovery == nil)
+        #expect(failure?.severity != .blocking)
         #expect(await recordings.discarded == [recording.id])
     }
 

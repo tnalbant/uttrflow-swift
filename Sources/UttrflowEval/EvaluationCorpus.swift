@@ -18,6 +18,36 @@ public enum EvaluationCorpus {
 
     static let everyday: [EvaluationCase] = [
         .init(
+            id: "np3", category: .everyday,
+            spoken: "We need the. Final version of the contract",
+            expected: "We need the final version of the contract."
+        ),
+        .init(
+            id: "sub1", category: .everyday,
+            spoken: "My manager. Wants the slides by noon",
+            expected: "My manager wants the slides by noon."
+        ),
+        .init(
+            id: "sub4", category: .everyday,
+            spoken: "the server. crashed twice last night",
+            expected: "The server crashed twice last night."
+        ),
+        .init(
+            id: "bec1", category: .everyday,
+            spoken: "I stayed home. Because it was raining",
+            expected: "I stayed home because it was raining."
+        ),
+        .init(
+            id: "and1", category: .everyday,
+            spoken: "I finished the report. And sent it to Maria",
+            expected: "I finished the report and sent it to Maria."
+        ),
+        .init(
+            id: "but1", category: .everyday,
+            spoken: "I wanted to come. But my train was cancelled",
+            expected: "I wanted to come, but my train was cancelled."
+        ),
+        .init(
             id: "weekday-and-month-casing", category: .everyday,
             spoken: "can we push the demo to thursday instead of wednesday in august",
             expected: "Can we push the demo to Thursday instead of Wednesday in August.",
@@ -682,6 +712,14 @@ public enum EvaluationCorpus {
             expected: "The API returns a JSON payload over HTTPS."
         ),
         .init(
+            id: "acronym-whole-word", category: .technical,
+            spoken:
+                "check the api and json, deploy through ecs over https, call the rest api, and use aws for the rapid response",
+            expected:
+                "Check the API and JSON, deploy through ECS over HTTPS, call the REST API, and use AWS for the rapid response.",
+            mustKeep: ["API", "JSON", "ECS", "HTTPS", "REST", "AWS", "rapid"]
+        ),
+        .init(
             id: "port-number", category: .technical,
             spoken: "the gateway listens on port eight thousand eighty in staging",
             expected: "The gateway listens on port 8080 in staging.",
@@ -744,6 +782,63 @@ public enum EvaluationCorpus {
             expected: "We met at the office at five.",
             mustKeep: ["at the office at five"],
             mustNotAdd: ["@"]
+        ),
+        .init(
+            id: "spoken-web-address-and-path", category: .technical,
+            spoken: "visit example dot com slash docs",
+            expected: "Visit example.com/docs."
+        ),
+        .init(
+            id: "spoken-www-address", category: .technical,
+            spoken: "the site is www dot example dot com",
+            expected: "The site is www.example.com."
+        ),
+        .init(
+            id: "spoken-scheme-address", category: .technical,
+            spoken: "go to https colon slash slash example dot com",
+            expected: "Go to https://example.com."
+        ),
+        .init(
+            id: "spoken-domain-api-path", category: .technical,
+            spoken: "the docs live at docs dot example dot com slash api slash v two",
+            expected: "The docs live at docs.example.com/api/v2."
+        ),
+        .init(
+            id: "spoken-package-filename", category: .technical,
+            spoken: "open package dot json",
+            expected: "Open package.json."
+        ),
+        .init(
+            id: "spoken-dot-env-filename", category: .technical,
+            spoken: "edit the dot env file",
+            expected: "Edit the .env file."
+        ),
+        .init(
+            id: "spoken-absolute-path", category: .technical,
+            spoken: "the path is slash users slash sam slash notes",
+            expected: "The path is /users/sam/notes."
+        ),
+        .init(
+            id: "spoken-handle-and-underscore", category: .technical,
+            spoken: "my handle is at sam underscore dev",
+            expected: "My handle is @sam_dev."
+        ),
+        .init(
+            id: "spoken-identifier-underscore", category: .technical,
+            spoken: "the variable is user underscore id",
+            expected: "The variable is user_id."
+        ),
+        .init(
+            id: "ordinary-dot-word", category: .technical,
+            spoken: "a dot on the map",
+            expected: "A dot on the map.",
+            mustKeep: ["dot"]
+        ),
+        .init(
+            id: "ordinary-slash-word", category: .technical,
+            spoken: "a slash in prices",
+            expected: "A slash in prices.",
+            mustKeep: ["slash"]
         ),
     ]
 
@@ -1268,6 +1363,14 @@ public enum EvaluationCorpus {
             destination: .document,
             mustBeginWith: "The build failed. Number",
             mustEndWith: "broken."
+        ),
+        .init(
+            id: "numbered-list-opens-the-dictation", category: .contextual,
+            spoken: "number one check logs number two restart the server",
+            expected: "1. Check logs\n2. Restart the server",
+            mustKeep: ["check logs", "restart the server"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "1. Check logs"
         ),
         .init(
             id: "document-sentence-not-a-list", category: .contextual,

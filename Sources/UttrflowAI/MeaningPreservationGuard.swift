@@ -907,6 +907,11 @@ public struct MeaningPreservationGuard: Sendable {
             || sameIrregularVerbForm(word, other)
     }
 
+    /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
+    static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
+        sameForm(fragment, word) || (whenCutOff && spelledInto(fragment, word, atCutOff: true))
+    }
+
     /// Whether both words belong to the same listed English verb paradigm.
     private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
         guard let group = irregularVerbFormGroups[word] else { return false }
@@ -999,6 +1004,12 @@ public struct MeaningPreservationGuard: Sendable {
         }
     }
 
+    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
+    private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
+        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
+        return word.lowercased().hasPrefix(fragment.lowercased())
+    }
+
     /// How many words in `tokens` turn a sentence's meaning around.
     static func negators(in tokens: [GrammarToken]) -> Int {
         tokens.filter { negatingWords.contains($0.matching) }.count
@@ -1037,9 +1048,10 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Sentences in the rewrite, counted by closing marks followed by space or end, never below one.
     static func sentenceCount(_ text: String) -> Int {
-        // A word carrying a stop inside itself — "p.m.", "e.g." — ends no sentence, as FirstWordPass reads it.
-        let count = text.split(whereSeparator: \.isWhitespace)
-            .count { FirstWordPass.endsSentence(String($0)) }
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let count = words.indices.count { index in
+            FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
+        }
         return max(1, count)
     }
 

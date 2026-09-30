@@ -44,6 +44,8 @@ enum PictureFlavour {
             let size = pixelSize(of: source)
         else { return .unreadable }
         guard fits(size, within: budget) else { return .refused(width: size.width, height: size.height) }
+        let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+        guard CGImageSourceCreateImageAtIndex(source, 0, options) != nil else { return .unreadable }
         return .kept((data, size.width, size.height))
     }
 

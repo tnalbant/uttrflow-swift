@@ -1,4 +1,4 @@
-/// A checklist inside a note and the one operation that changes it; everything unrecognised is left as is.
+/// Checklist boxes in a note.
 public enum NoteChecklist {
     /// One box, and whether it is ticked.
     public struct Item: Sendable, Equatable {
@@ -21,23 +21,12 @@ public enum NoteChecklist {
         return (found.count { $0.isChecked }, found.count)
     }
 
-    /// The same note with one box flipped and nothing else changed, or `nil` when there is no such box.
-    public static func toggling(_ index: Int, in html: String) -> String? {
-        let found = marks(in: html)
-        guard index >= 0, index < found.count else { return nil }
-        let mark = found[index]
-        var edited = html
-        edited.replaceSubrange(mark.range, with: mark.flipped)
-        return edited
-    }
-
     // MARK: - Finding the boxes
 
-    /// Where a box is written, and what it would be written as if flipped.
+    /// Where a box is written and whether it is checked.
     private struct Mark {
         let range: Range<String.Index>
         let isChecked: Bool
-        let flipped: String
     }
 
     /// The three spellings real pasteboards use, matched on whole tokens, as `unchecked` contains `checked`.
@@ -59,22 +48,18 @@ public enum NoteChecklist {
     private static func mark(of tag: String, at range: Range<String.Index>) -> Mark? {
         let lower = tag.lowercased()
         let box = lower.hasPrefix("<input") ? inputBox(tag, lower) : listItemBox(tag, lower)
-        return box.map { Mark(range: range, isChecked: $0.isChecked, flipped: $0.flipped) }
+        return box.map { Mark(range: range, isChecked: $0.isChecked) }
     }
 
     /// A real `<input type="checkbox">`, as GitHub writes one.
-    private static func inputBox(_ tag: String, _ lower: String) -> (isChecked: Bool, flipped: String)? {
+    private static func inputBox(_ tag: String, _ lower: String) -> (isChecked: Bool)? {
         guard
             lower.contains("type=\"checkbox\"") || lower.contains("type='checkbox'")
                 || lower.contains("type=checkbox")
         else { return nil }
         // A bare `checked` is the HTML spelling; `checked="checked"` is the XHTML one.
         let isChecked = hasAttribute("checked", in: lower)
-        let flipped =
-            isChecked
-            ? withoutCheckedAttribute(tag)
-            : tag.replacingOccurrences(of: ">", with: " checked>", options: .backwards)
-        return (isChecked, flipped)
+        return (isChecked)
     }
 
     /// Whether the tag carries this attribute in its own right, so `aria-checked` is not read as `checked`.
@@ -92,28 +77,15 @@ public enum NoteChecklist {
     }
 
     /// Apple Notes and TipTap mark the item rather than writing an input.
-    private static func listItemBox(_ tag: String, _ lower: String) -> (isChecked: Bool, flipped: String)? {
+    private static func listItemBox(_ tag: String, _ lower: String) -> (isChecked: Bool)? {
         guard lower.hasPrefix("<li") else { return nil }
         let classes = tokens(of: "class", in: lower)
         let isChecked = classes.contains("checked") || lower.contains("data-checked=\"true\"")
 
-        if classes.contains("checked") {
-            return (isChecked, replacingToken("checked", with: "unchecked", in: tag))
-        }
-        if classes.contains("unchecked") {
-            return (isChecked, replacingToken("unchecked", with: "checked", in: tag))
-        }
-        if lower.contains("data-checked=\"true\"") {
-            return (isChecked, swappingDataChecked(tag, from: "true", to: "false"))
-        }
-        if lower.contains("data-checked=\"false\"") {
-            return (isChecked, swappingDataChecked(tag, from: "false", to: "true"))
-        }
-        return nil
-    }
-
-    private static func swappingDataChecked(_ tag: String, from old: String, to new: String) -> String {
-        tag.replacingOccurrences(of: "data-checked=\"\(old)\"", with: "data-checked=\"\(new)\"")
+        return classes.contains("checked") || classes.contains("unchecked")
+            || lower.contains("data-checked=\"true\"") || lower.contains("data-checked=\"false\"")
+            ? (isChecked)
+            : nil
     }
 
     /// The values of one attribute, split into whole words.
@@ -124,31 +96,6 @@ public enum NoteChecklist {
         return rest[..<end].split(separator: " ").map(String.init)
     }
 
-    private static func replacingToken(
-        _ token: String, with replacement: String, in tag: String
-    )
-        -> String
-    {
-        // Bounded by a quote or a space on each side, so `unchecked` is never hit.
-        for boundary in ["\"\(token)\"", "\"\(token) ", " \(token)\"", " \(token) "] {
-            if let found = tag.range(of: boundary, options: .caseInsensitive) {
-                let swapped = boundary.replacingOccurrences(of: token, with: replacement)
-                return tag.replacingCharacters(in: found, with: swapped)
-            }
-        }
-        return tag
-    }
-
-    private static func withoutCheckedAttribute(_ tag: String) -> String {
-        var edited = tag
-        for spelling in [" checked=\"checked\"", " checked='checked'", " checked=\"\"", " checked"] {
-            if let found = edited.range(of: spelling, options: .caseInsensitive) {
-                edited.removeSubrange(found)
-                return edited
-            }
-        }
-        return edited
-    }
 }
 
 /// E6 — turning a plain clip into a note.

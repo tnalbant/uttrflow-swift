@@ -41,6 +41,22 @@ private func refusal(
 
 @Suite("The shortcut cannot be saved undeliverable")
 struct SettingsShortcutValidationTests {
+    @Test("warns for every Globe-key action except Do Nothing when hold-Fn is selected")
+    func holdFnWarnsForEveryAssignedGlobeAction() {
+        for (rawValue, title) in [
+            (1, "Change Input Source"), (2, "Show Emoji & Symbols"), (3, "Start Dictation"),
+        ] {
+            var capabilities = SettingsCapabilities.everything
+            capabilities.globeKeyAction = GlobeKeyAction(rawValue: rawValue)
+
+            #expect(capabilities.globeKeyWarning(for: .functionHold)?.contains(title) == true)
+            #expect(capabilities.globeKeyWarning(for: .controlOptionHold) == nil)
+        }
+        var noAction = SettingsCapabilities.everything
+        noAction.globeKeyAction = GlobeKeyAction(rawValue: 0)
+        #expect(noAction.globeKeyWarning(for: .functionHold) == nil)
+    }
+
     @Test("saves a shortcut macOS would deliver")
     func acceptsDeliverable() throws {
         let binding = HotkeyBinding(keyCode: 40, modifiers: [.command, .shift])
@@ -110,7 +126,7 @@ struct SettingsShortcutValidationTests {
     }
 
     /// Issue 342: ⌘C, ⌥→ and ⌥A all fired a bare-modifier binding, so the sentence has to say why and what to do.
-    @Test("refuses ⌘, ⌥, ⌃ or ⇧ held on its own, and says to add a key or hold fn")
+    @Test("refuses ⌘, ⌥, ⌃ or ⇧ held on its own and caveats its Fn suggestion")
     func refusesABareModifier() {
         for binding in [
             HotkeyBinding(keyCode: 55, modifiers: [.command]),
@@ -120,6 +136,7 @@ struct SettingsShortcutValidationTests {
         ] {
             #expect(refusal(.shortcut(.dictate, binding)) == SettingsEditor.bareModifier, "\(binding)")
         }
+        #expect(SettingsEditor.bareModifier.contains("Do Nothing"))
     }
 
     @Test("choosing a shortcut again clears the note that it was returned to its default")
