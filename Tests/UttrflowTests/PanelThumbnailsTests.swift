@@ -153,6 +153,25 @@ struct PanelThumbnailsTests {
         #expect(PanelThumbnails.maxPixel <= 96, "a 34-point square on a Retina screen")
     }
 
+    @Test("a completed miss is not decoded again after its task handle is registered")
+    func completedMissIsNotDecodedAgain() async {
+        let counter = Counter()
+        let source = PanelThumbnailSource { file, maxPixel in
+            counter.record(file, maxPixel: maxPixel)
+            Thread.sleep(forTimeInterval: 0.001)
+            return nil
+        }
+        let thumbnails = PanelThumbnails(source: source, retryAfter: .seconds(3600))
+
+        for _ in 0..<100 {
+            thumbnails.prepare(file)
+            await thumbnails.waitForIdle(file: file)
+            _ = thumbnails.thumbnail(for: file)
+        }
+
+        #expect(counter.calls == 1)
+    }
+
     @Test("keeps different pictures apart")
     func separateFiles() async {
         let other = URL(fileURLWithPath: "/tmp/uttrflow-other.png")

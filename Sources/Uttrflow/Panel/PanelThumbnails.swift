@@ -35,6 +35,8 @@ final class PanelThumbnails {
     private var clock = 0
     /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
     private var inflight: [URL: Task<Void, Never>] = [:]
+    /// Decodes that finished before their detached task handle was registered.
+    private var completedBeforeRegistration: Set<URL> = []
     /// When each failed decode was recorded, so a file restored later is decoded again.
     private var missedAt: [URL: ContinuousClock.Instant] = [:]
     /// How long a failed decode is trusted before the file is read again.
@@ -79,11 +81,15 @@ final class PanelThumbnails {
         forgetStaleMiss(file)
         if known[file] != nil { return }
         if inflight[file] != nil { return }
+        completedBeforeRegistration.remove(file)
         let source = self.source
         let maxPixel = Self.maxPixel
         inflight[file] = Task.detached(priority: .userInitiated) { [weak self] in
             let image = source.load(file, maxPixel)
             await self?.record(file, bytes: Loaded(image: image))
+        }
+        if completedBeforeRegistration.remove(file) != nil {
+            inflight[file] = nil
         }
     }
 
@@ -107,7 +113,11 @@ final class PanelThumbnails {
     /// Stored on `known` once the decode completes, even if the file is gone so the answer can be remembered.
     @MainActor
     private func record(_ file: URL, bytes: Loaded) {
-        inflight[file] = nil
+        if inflight[file] == nil {
+            completedBeforeRegistration.insert(file)
+        } else {
+            inflight[file] = nil
+        }
         let result = bytes.image
         let cost = Self.bytes(of: result)
         known[file] = result
