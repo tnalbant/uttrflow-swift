@@ -46,6 +46,7 @@ struct WordShapeTests {
             ("today", "?", "today?"),
             ("today,", "?", "today?"),
             ("today.", "!", "today!"),
+            ("example.com.", "?", "example.com?"),
             ("p.m.", "?", "p.m.?"),
             ("p.m.", ",", "p.m.,"),
             ("p.m.", "!", "p.m.!"),
