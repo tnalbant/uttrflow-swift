@@ -8,8 +8,19 @@ public enum DictationActivity: Sendable, Equatable, CaseIterable {
     case idle
     case listening
     case working
-    /// Text has just gone into another app. Resting, but with something to say.
-    case finished
+    /// Text was confirmed in the target app.
+    case inserted
+    /// The target did not confirm the text, which remains on the clipboard.
+    case unconfirmed
+    /// Text remains on the clipboard for the user to paste.
+    case copied
+
+    /// Carries the insertion outcome through the menu without claiming text arrived when it did not.
+    public static func completion(method: TextInsertionMethod, arrival: InsertionArrival) -> Self {
+        if method == .clipboard { return .copied }
+        if arrival == .unconfirmed { return .unconfirmed }
+        return .inserted
+    }
 }
 
 /// How far the speech model has got. Nothing can be dictated until it is ready.
@@ -455,14 +466,16 @@ public enum MenuBarPresenter {
 
     // MARK: The icon
 
-    /// Four states that differ at a glance, so the bar alone says whether the microphone is live.
+    /// States differ at a glance, so the bar alone says whether the microphone is live or text arrived.
     static func icon(for activity: DictationActivity, needsAttention: Bool) -> MenuBarIcon {
         guard !needsAttention else { return .symbol("exclamationmark.triangle.fill") }
         return switch activity {
         case .idle: .mark
         case .listening: .symbol("mic.fill")
         case .working: .symbol("sparkles")
-        case .finished: .symbol("checkmark")
+        case .inserted: .symbol("checkmark")
+        case .unconfirmed: .symbol("questionmark.circle")
+        case .copied: .symbol("doc.on.clipboard")
         }
     }
 
@@ -492,7 +505,9 @@ public enum MenuBarPresenter {
             case .idle: "Ready"
             case .listening: listeningLine(for: state.recordingAdvice)
             case .working: "Tidying up…"
-            case .finished: "Inserted"
+            case .inserted: "Inserted"
+            case .unconfirmed: "Inserted — not confirmed"
+            case .copied: "Copied — press ⌘V"
             }
         }
     }
@@ -614,7 +629,7 @@ public enum MenuBarPresenter {
         guard state.failure?.severity != .blocking else { return false }
         guard state.speechModel == .ready else { return false }
         return switch state.activity {
-        case .idle, .finished: true
+        case .idle, .inserted, .unconfirmed, .copied: true
         case .listening, .working: false
         }
     }
@@ -628,7 +643,7 @@ public enum MenuBarPresenter {
     static func isBusy(_ activity: DictationActivity) -> Bool {
         switch activity {
         case .listening, .working: true
-        case .idle, .finished: false
+        case .idle, .inserted, .unconfirmed, .copied: false
         }
     }
 

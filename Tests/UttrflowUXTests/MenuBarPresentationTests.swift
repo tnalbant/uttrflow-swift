@@ -47,6 +47,7 @@ struct MenuBarIconTests {
         #expect(
             icons == [
                 .mark, .symbol("mic.fill"), .symbol("sparkles"), .symbol("checkmark"),
+                .symbol("questionmark.circle"), .symbol("doc.on.clipboard"),
             ])
         #expect(Set(icons).count == DictationActivity.allCases.count)
     }
@@ -91,11 +92,28 @@ struct MenuBarIconTests {
         #expect(shown.statusLine == clipboardFallback.headline)
     }
 
+    @Test("shows copied, unconfirmed and inserted outcomes as different icons")
+    func completionIconsFollowInsertionOutcome() {
+        let copied = MenuBarPresenter.present(MenuBarState(activity: .copied))
+        let unconfirmed = MenuBarPresenter.present(MenuBarState(activity: .unconfirmed))
+        let inserted = MenuBarPresenter.present(MenuBarState(activity: .inserted))
+        #expect(copied.icon == .symbol("doc.on.clipboard"))
+        #expect(unconfirmed.icon == .symbol("questionmark.circle"))
+        #expect(inserted.icon == .symbol("checkmark"))
+    }
+
+    @Test("classifies clipboard and unconfirmed insertion outcomes")
+    func completionCarriesOutcome() {
+        #expect(DictationActivity.completion(method: .clipboard, arrival: .notReported) == .copied)
+        #expect(DictationActivity.completion(method: .typed, arrival: .unconfirmed) == .unconfirmed)
+        #expect(DictationActivity.completion(method: .typed, arrival: .confirmed) == .inserted)
+    }
+
     @Test("marks a live microphone even with nothing wrong")
     func listeningIsItsOwnEmphasis() {
         #expect(MenuBarPresenter.present(MenuBarState(activity: .listening)).emphasis == .live)
         #expect(MenuBarPresenter.present(MenuBarState(activity: .idle)).emphasis == .normal)
-        #expect(MenuBarPresenter.present(MenuBarState(activity: .finished)).emphasis == .normal)
+        #expect(MenuBarPresenter.present(MenuBarState(activity: .inserted)).emphasis == .normal)
     }
 }
 
@@ -108,7 +126,20 @@ struct MenuBarStatusTests {
         let lines = DictationActivity.allCases.map {
             MenuBarPresenter.present(MenuBarState(activity: $0)).statusLine
         }
-        #expect(lines == ["Ready", "Listening…", "Tidying up…", "Inserted"])
+        #expect(
+            lines == [
+                "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — not confirmed",
+                "Copied — press ⌘V",
+            ])
+        for (activity, line) in [
+            (DictationActivity.copied, "Copied — press ⌘V"),
+            (.unconfirmed, "Inserted — not confirmed"),
+            (.inserted, "Inserted"),
+        ] {
+            let shown = MenuBarPresenter.present(MenuBarState(activity: activity))
+            #expect(shown.statusLine == line)
+            #expect(shown.accessibilityLabel == "Uttrflow. \(line).")
+        }
     }
 
     /// "Ready" over an undownloaded model is found out by pressing the shortcut and getting nothing.
@@ -360,7 +391,7 @@ struct MenuBarHeaderTests {
 
     @Test("keeps the hint once the words have gone in")
     func hintAfterInsertion() {
-        let shown = MenuBarPresenter.present(MenuBarState(activity: .finished))
+        let shown = MenuBarPresenter.present(MenuBarState(activity: .inserted))
         guard case .hint = shown.header else {
             Issue.record("a finished dictation replaced the hint")
             return
@@ -516,7 +547,7 @@ struct MenuBarEnablementTests {
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {
         #expect(MenuBarPresenter.canStartDictation(in: MenuBarState()))
-        #expect(MenuBarPresenter.canStartDictation(in: MenuBarState(activity: .finished)))
+        #expect(MenuBarPresenter.canStartDictation(in: MenuBarState(activity: .inserted)))
 
         // Already dictating.
         #expect(!MenuBarPresenter.canStartDictation(in: MenuBarState(activity: .listening)))
@@ -606,7 +637,7 @@ struct MenuBarEnablementTests {
             #expect(shown.command(.copyRecent(index: 0))?.isEnabled == false)
             #expect(shown.command(.insertClip(index: 0))?.isEnabled == false)
         }
-        for activity in [DictationActivity.idle, .finished] {
+        for activity in [DictationActivity.idle, .inserted, .unconfirmed, .copied] {
             let shown = MenuBarPresenter.present(
                 MenuBarState(activity: activity, recents: twoRecents, clips: clips))
             #expect(shown.command(.insertRecent(index: 0))?.isEnabled == true)
