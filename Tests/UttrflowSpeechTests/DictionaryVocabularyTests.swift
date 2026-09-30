@@ -18,6 +18,22 @@ private struct WhisperDictionaryPromptTokenizer: PromptTokenizer {
     func encode(text: String) -> [Int] { tokenizer.encode(text: text) }
 }
 
+private actor MutableDictionaryReading {
+    private var entries: [DictionaryEntry]
+
+    init(entries: [DictionaryEntry]) {
+        self.entries = entries
+    }
+
+    func replace(with entries: [DictionaryEntry]) {
+        self.entries = entries
+    }
+
+    func snapshot(now: Date) -> (entries: [DictionaryEntry], now: Date) {
+        (entries, now)
+    }
+}
+
 @Suite("DictionaryVocabulary")
 struct DictionaryVocabularyTests {
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -100,5 +116,22 @@ struct DictionaryVocabularyTests {
         #expect(packing.words.first == "Maelis")
         #expect(packing.tokens?.count ?? 0 <= VocabularyPrompt.maximumTokens)
         #expect(packing.words.count < words.count)
+    }
+
+    @Test("reads additions, renames and removals on the next vocabulary request")
+    func refreshesDictionaryForEachRequest() async {
+        let reading = MutableDictionaryReading(entries: [entry("OldName")])
+        let source = DictionaryVocabulary(limit: 96) {
+            await reading.snapshot(now: Self.now)
+        }
+
+        #expect(await source.vocabulary(favouring: .unknown) == ["OldName"])
+
+        await reading.replace(with: [entry("Renamed"), entry("NewWord")])
+        let afterEdit = await source.vocabulary(favouring: .unknown)
+        #expect(Set(afterEdit) == ["Renamed", "NewWord"])
+
+        await reading.replace(with: [entry("NewWord")])
+        #expect(await source.vocabulary(favouring: .unknown) == ["NewWord"])
     }
 }
