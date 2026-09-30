@@ -1,5 +1,6 @@
 public import Foundation
 public import UttrflowCore
+import OSLog
 
 // Where speech models live on disk, and how they get there one component at a time.
 /// One separately fetchable part of a model, since the two go missing independently.
@@ -41,22 +42,33 @@ public protocol SpeechModelStore: Sendable {
 
 /// What a model's compiled weights consist of; WhisperKit cannot load a directory missing any of them.
 public enum WeightsAssets {
+    /// The file that records which pinned weights revision an install contains.
+    static let revisionFileName = ".weights-revision"
+
     /// The files a load reads for `model`, relative to its directory, in a fixed order.
     public static func fileNames(of model: SpeechModel) -> [String] {
         model.weightFiles.keys.sorted()
     }
 
-    /// Whether every file `model` pins sits in `folder` and holds at least one byte.
+    /// Whether every file `model` pins sits in `folder` at its pinned byte count.
     public static func arePresent(for model: SpeechModel, in folder: URL) -> Bool {
         missing(for: model, in: folder).isEmpty
     }
 
-    /// The files `model` pins that are absent or empty in `folder`.
+    /// The files `model` pins that are absent or have the wrong byte count in `folder`.
     public static func missing(for model: SpeechModel, in folder: URL) -> [String] {
         fileNames(of: model).filter { name in
             let size = try? folder.appending(path: name).resourceValues(forKeys: [.fileSizeKey]).fileSize
-            return (size ?? 0) <= 0
+            return Int64(size ?? -1) != model.weightFiles[name]?.bytes
         }
+    }
+
+    /// Whether `folder` records the revision whose files `model` pins.
+    static func hasRevision(_ model: SpeechModel, in folder: URL) -> Bool {
+        guard
+            let revision = try? String(contentsOf: folder.appending(path: revisionFileName), encoding: .utf8)
+        else { return false }
+        return revision == model.weightsRevision
     }
 }
 
@@ -79,6 +91,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
     private let download: Downloader
     /// How much the disk can take, checked before a download starts.
     private let availableCapacity: CapacityReader
+    private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "speech-model-store")
 
     /// Puts models under `root` and fetches them with `download`, once `availableCapacity` says they fit.
     public init(
@@ -128,7 +141,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
 
     /// Whether the weights *and* the tokenizer are on disk. See `Docs/speech-model-install.md`.
     public func isInstalled(_ model: SpeechModel) -> Bool {
-        missingComponents(of: model).isEmpty
+        WeightsAssets.hasRevision(model, in: location(of: model)) && missingComponents(of: model).isEmpty
     }
 
     /// Whether the model's folder is there but lacks a file it needs, so it must be downloaded again.
@@ -142,7 +155,8 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         return ModelComponent.allCases.filter { component in
             switch component {
             case .weights:
-                !WeightsAssets.arePresent(for: model, in: folder)
+                !WeightsAssets.hasRevision(model, in: folder)
+                    || !WeightsAssets.arePresent(for: model, in: folder)
             case .tokenizer:
                 !TokenizerAssets.arePresent(in: folder)
             }
@@ -190,6 +204,10 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
             }
         }
 
+        if model.variant == SpeechModel.default.variant {
+            removeSupersededModels(keeping: model)
+        }
+
         onProgress(1)
         return destination
     }
@@ -207,6 +225,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         do {
             try PrivateFile.makeDirectory(at: stagingRoot)
             try PrivateFile.makeDirectory(at: staging)
+            try seedUnchangedWeights(of: model, from: destination, into: staging)
             // Staging is kept on failure, so asking again resumes from the files already fetched.
             try await download(model, .weights, staging, onProgress)
         } catch {
@@ -221,9 +240,56 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
         }
 
         do {
+            try Data(model.weightsRevision.utf8).write(
+                to: staging.appending(path: WeightsAssets.revisionFileName), options: .atomic)
+        } catch {
+            throw Self.failure(error, needing: needed)
+        }
+
+        do {
             try commit(staging, into: destination)
         } catch {
             throw Self.failure(error, needing: needed)
+        }
+    }
+
+    /// Copies correctly sized installed files into staging for the pinned downloader to verify and reuse.
+    private func seedUnchangedWeights(of model: SpeechModel, from source: URL, into staging: URL) throws {
+        for name in WeightsAssets.fileNames(of: model) {
+            let installed = source.appending(path: name)
+            let staged = staging.appending(path: name)
+            let size = try? installed.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard Int64(size ?? -1) == model.weightFiles[name]?.bytes,
+                !fileManager.fileExists(atPath: staged.path)
+            else { continue }
+            try PrivateFile.makeDirectory(at: staged.deletingLastPathComponent())
+            try fileManager.copyItem(at: installed, to: staged)
+        }
+    }
+
+    /// Removes model directories not in use except the default after its install succeeds.
+    private func removeSupersededModels(keeping model: SpeechModel) {
+        guard
+            let folders = try? fileManager.contentsOfDirectory(
+                at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+        else { return }
+        var freed: Int64 = 0
+        for folder in folders where folder.lastPathComponent != model.variant {
+            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                continue
+            }
+            let removedBytes = try? ModelDirectoryUseLease.withExclusiveLock(for: folder) {
+                let folderBytes = files(in: folder).reduce(Int64(0)) { total, file in
+                    total + Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                }
+                try fileManager.removeItem(at: folder)
+                return folderBytes
+            }
+            if let removedBytes { freed += removedBytes }
+        }
+        if freed > 0 {
+            Self.log.info(
+                "removed superseded speech model files, freeing \(freed) bytes")
         }
     }
 

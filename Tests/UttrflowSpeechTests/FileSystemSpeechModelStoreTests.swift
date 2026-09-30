@@ -16,20 +16,34 @@ private func writeTokenizer(into destination: URL) throws {
 /// Every file the base model's folder holds, written as the files the store checks for.
 private let weightFiles = WeightsAssets.fileNames(of: .base)
 
-/// Writes the listed weight files under `destination`, `bytesEach` bytes apiece.
+/// Writes manifest-sized weight files unless the test requests another size.
 private func writeWeights(
-    into destination: URL, files: [String] = weightFiles, bytesEach: Int = 16
+    into destination: URL, model: SpeechModel = .base, files: [String]? = nil, bytesEach: Int? = nil
 ) throws {
-    for name in files {
+    for name in files ?? WeightsAssets.fileNames(of: model) {
         let url = destination.appending(path: name)
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(repeating: 7, count: bytesEach).write(to: url)
+        let bytes = bytesEach.map(Int64.init) ?? model.weightFiles[name]?.bytes ?? 1
+        FileManager.default.createFile(atPath: url.path, contents: Data([7]))
+        try FileHandle(forWritingTo: url).truncate(atOffset: UInt64(bytes))
     }
 }
 
 /// The bytes ``writeTokenizer(into:)`` adds to a model's directory.
 private let tokenizerBytes = Int64(TokenizerAssets.fileNames.count)
+
+private func fixtureModel(variant: String, revision: String, changed: String) -> SpeechModel {
+    SpeechModel(
+        variant: variant, downloadBytes: 7, isMultilingual: true,
+        weightsRepository: "example/model", weightsRevision: revision,
+        weightFiles: [
+            "changed.bin": .init(bytes: 3, sha256: changed),
+            "unchanged.bin": .init(bytes: 4, sha256: "unchanged"),
+        ],
+        tokenizerRepository: "example/tokenizer", tokenizerRevision: "tokenizer",
+        tokenizerDigests: [:])
+}
 
 private func isExcludedFromBackup(_ url: URL) throws -> Bool {
     let values = try url.resourceValues(forKeys: [.isExcludedFromBackupKey])
@@ -50,14 +64,14 @@ struct FileSystemSpeechModelStoreTests {
 
     /// A downloader that writes a plausible install with progress, and a one-byte-per-file tokenizer.
     private func writingDownloader(
-        bytesEach: Int = 16, progressSteps: [Double] = [0.5]
+        bytesEach: Int? = nil, progressSteps: [Double] = [0.5]
     ) -> FileSystemSpeechModelStore.Downloader {
         { model, component, destination, onProgress in
             switch component {
             case .weights:
                 for step in progressSteps { onProgress(step) }
                 try writeWeights(
-                    into: destination, files: WeightsAssets.fileNames(of: model), bytesEach: bytesEach)
+                    into: destination, model: model, bytesEach: bytesEach)
             case .tokenizer:
                 try writeTokenizer(into: destination)
             }
@@ -112,7 +126,10 @@ struct FileSystemSpeechModelStoreTests {
         #expect(url == store.location(of: .base))
         #expect(store.isInstalled(.base))
         #expect(store.installedModels() == [.base])
-        #expect(store.bytesOnDisk(.base) == Int64(weightFiles.count * 16) + tokenizerBytes)
+        #expect(
+            store.bytesOnDisk(.base)
+                == SpeechModel.base.weightFiles.values.reduce(tokenizerBytes) { $0 + $1.bytes }
+                + Int64(SpeechModel.base.weightsRevision.utf8.count))
     }
 
     @Test("installed models are kept out of backups")
@@ -159,6 +176,89 @@ struct FileSystemSpeechModelStoreTests {
         #expect(
             fetched.withLock { $0 } == [.weights, .tokenizer],
             "a complete install must fetch nothing at all")
+    }
+
+    @Test("a pinned revision change refreshes weights and preserves unchanged files through staging")
+    func revisionBumpRefreshesWeights() async throws {
+        let sandbox = Sandbox()
+        let old = fixtureModel(variant: "revision-fixture", revision: "old", changed: "old-hash")
+        let new = fixtureModel(variant: "revision-fixture", revision: "new", changed: "new-hash")
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { model, component, destination, _ in
+            switch component {
+            case .weights:
+                if model.weightsRevision == "old" {
+                    try Data("same".utf8).write(to: destination.appending(path: "unchanged.bin"))
+                    try Data("old".utf8).write(to: destination.appending(path: "changed.bin"))
+                } else {
+                    #expect(
+                        FileManager.default.fileExists(
+                            atPath: destination.appending(path: "unchanged.bin").path))
+                    try Data("new".utf8).write(to: destination.appending(path: "changed.bin"))
+                }
+            case .tokenizer:
+                try writeTokenizer(into: destination)
+            }
+        }
+
+        try await store.install(old) { _ in }
+        #expect(store.isInstalled(old))
+        #expect(!store.isInstalled(new))
+
+        try await store.install(new) { _ in }
+
+        #expect(store.isInstalled(new))
+        #expect(
+            try Data(contentsOf: store.location(of: new).appending(path: "unchanged.bin"))
+                == Data("same".utf8))
+        #expect(
+            try Data(contentsOf: store.location(of: new).appending(path: "changed.bin")) == Data("new".utf8))
+    }
+
+    @Test("a weight file with the wrong pinned byte count is not installed")
+    func wrongWeightSizeIsNotInstalled() throws {
+        let sandbox = Sandbox()
+        let store = FileSystemSpeechModelStore(root: sandbox.root, download: writingDownloader())
+        let folder = store.location(of: .base)
+        try writeWeights(into: folder)
+        try writeTokenizer(into: folder)
+        try Data(SpeechModel.base.weightsRevision.utf8).write(
+            to: folder.appending(path: WeightsAssets.revisionFileName))
+        try Data([1]).write(to: folder.appending(path: weightFiles[3]))
+
+        #expect(WeightsAssets.missing(for: .base, in: folder).contains(weightFiles[3]))
+        #expect(!store.isInstalled(.base))
+    }
+
+    @Test("a default install removes unused model folders and keeps a model in use")
+    func removesSupersededVariantFolders() async throws {
+        let sandbox = Sandbox()
+        let defaultModel = fixtureModel(
+            variant: SpeechModel.default.variant, revision: "default", changed: "default-hash")
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, destination, _ in
+            switch component {
+            case .weights:
+                try Data("new".utf8).write(to: destination.appending(path: "changed.bin"))
+                try Data("same".utf8).write(to: destination.appending(path: "unchanged.bin"))
+            case .tokenizer:
+                try writeTokenizer(into: destination)
+            }
+        }
+        let oldVariant = sandbox.root.appending(path: "removed-variant", directoryHint: .isDirectory)
+        let knownVariant = sandbox.root.appending(path: SpeechModel.base.variant, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: oldVariant, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: knownVariant, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: oldVariant.appending(path: "old.bin"))
+        var lease = ModelDirectoryUseLease.acquireShared(for: knownVariant)
+        #expect(lease != nil)
+
+        try await store.install(defaultModel) { _ in }
+
+        #expect(!FileManager.default.fileExists(atPath: oldVariant.path))
+        #expect(FileManager.default.fileExists(atPath: knownVariant.path))
+
+        lease = nil
+        try await store.install(defaultModel) { _ in }
+        #expect(!FileManager.default.fileExists(atPath: knownVariant.path))
     }
 
     /// A weights-only install reads as incomplete and is repaired without a second 600 MB download.
@@ -337,7 +437,7 @@ struct FileSystemSpeechModelStoreTests {
         let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, destination, _ in
             switch component {
             case .weights:
-                try writeWeights(into: destination, bytesEach: 16)
+                try writeWeights(into: destination)
                 // Locked only on the first attempt, so a retry after this test unlocks it can finish.
                 let wasLocked = hasLockedRootOnce.withLock { locked -> Bool in
                     defer { locked = true }

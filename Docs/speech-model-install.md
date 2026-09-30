@@ -26,15 +26,15 @@ Weights are detected by the model's manifest (`SpeechModel.weightFiles`, read th
 `WeightsAssets`): every file in the model's folder at the pinned commit — each `.mlmodelc` bundle's
 `coremldata.bin`, `model.mil`, `metadata.json`, `analytics/coremldata.bin` and
 `weights/weight.bin`, the optional `TextDecoderContextPrefill.mlmodelc`, `config.json` and
-`generation_config.json` — each at least one byte. A bundle without its `model.mil` fails to load
+`generation_config.json` — each at its pinned byte count. A bundle without its `model.mil` fails to load
 with "Failed to parse ML Program", so a folder missing any listed file is not installed.
 `isIncomplete(_:)` names that case: the folder is there and a file is not, so the app offers to
 download it again rather than to load it. The manifest adds up to `downloadBytes`, and a test holds
 it there, so a manifest that forgets a file fails before it ships.
 
-The size check is presence and non-empty, not the recorded size or digest: the store answers on
-every menu draw, and hashing 600 MB there is not affordable. Every file is hashed before it is moved
-into staging, and staging below is what keeps a half-fetched one out of the model's directory.
+The store checks pinned byte counts and a recorded weights revision on every menu draw; hashing
+600 MB there is not affordable. The downloader hashes each staged file before reusing it, so a
+revision bump fetches only changed files while the complete replacement stays in staging.
 
 ## Missing components are ordered weights-first
 
@@ -43,17 +43,17 @@ starts moving straight away.
 
 ## Installing fetches only what is missing
 
-That is what keeps an install made by an earlier build cheap to repair: those have the weights
-and no tokenizer, and re-downloading six hundred megabytes to add three would be a poor way to
-apologise.
+The downloader reuses files whose size and digest still match the new pin, so a revision bump
+does not re-fetch unchanged weights. A tokenizer-only repair likewise leaves the weights alone.
 
 A download that reports success and produces nothing is checked for on the spot, rather than
 being discovered a launch later as a model that will not load.
 
 ## Weights are staged, then moved in whole
 
-The weights download into `<root>/.partial/<variant>/`, never into the model's directory. Only
-when every weight file is there are they moved in: a tokenizer already in the model's directory is
+The weights download into `<root>/.partial/<variant>/`, never into the model's directory. The
+installed files are seeded into staging and verified against the new pin. Only when every weight
+file and the revision record are there are they moved in: a tokenizer already in the model's directory is
 copied into staging, not moved, so the model's directory keeps its own tokenizer until staging
 replaces the whole directory in one `replaceItemAt`. A process killed at any point before that —
 including between the copy and the swap — leaves the model's directory as it was, so nothing
@@ -62,6 +62,9 @@ half-fetched is ever mistaken for a model.
 The model root, staging folders, installed model folders and tokenizer files are marked
 `isExcludedFromBackup`. They are public downloaded data and can be fetched again, so backup tools
 that honour Finder's exclusion flag should not spend space carrying them.
+
+After a successful default install, unused non-default model folders are removed and their freed
+bytes are logged. Active recognisers hold a shared lock associated with their model folder until unload.
 
 ## Unwinding a failed fetch, in proportion
 

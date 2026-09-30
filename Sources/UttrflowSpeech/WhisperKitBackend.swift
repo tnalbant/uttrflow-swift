@@ -11,6 +11,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
     /// On: only prewarm holds the first compile's peak down, and that peak is still unread (#481).
     private let prewarm: Bool
     private var kit: LoadedKit?
+    private var modelUseLease: ModelDirectoryUseLease?
 
     public init(model: SpeechModel, modelFolder: URL, prewarm: Bool = true) {
         self.model = model
@@ -29,10 +30,18 @@ public actor WhisperKitBackend: TranscriptionBackend {
     public func load() async throws(SpeechEngineError) {
         guard kit == nil else { return }
         let started = ContinuousClock.now
+        guard FileManager.default.fileExists(atPath: modelFolder.deletingLastPathComponent().path) else {
+            throw .modelNotInstalled
+        }
+        guard let lease = ModelDirectoryUseLease.acquireShared(for: modelFolder) else {
+            throw .modelLoadFailed(description: "the speech model is being removed")
+        }
+        modelUseLease = lease
         // A missing tokenizer is "not installed", or WhisperKit visits Hugging Face instead of failing.
         guard FileManager.default.fileExists(atPath: modelFolder.path),
             TokenizerAssets.arePresent(in: modelFolder)
         else {
+            modelUseLease = nil
             throw .modelNotInstalled
         }
 
@@ -56,6 +65,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
                 wrapping: whisper.textDecoder, languages: LanguageCode.transcribed)
             kit = LoadedKit(whisper)
         } catch {
+            modelUseLease = nil
             throw .modelLoadFailed(description: error.localizedDescription)
         }
         report(started.duration(to: ContinuousClock.now))
@@ -65,6 +75,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
     public func unload() async {
         guard kit != nil else { return }
         kit = nil
+        modelUseLease = nil
         Self.log.info("speech model let go after sitting idle")
     }
 
