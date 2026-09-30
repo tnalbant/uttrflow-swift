@@ -92,7 +92,7 @@ public actor Verifier {
         let generation = forgetGeneration
         let key = VerdictCache.Key(
             candidate: candidate.text, context: Self.context(of: surface, typed: typed))
-        if let remembered = cache.verdict(for: key, now: now) { return remembered }
+        if let remembered = cache.verdict(for: key) { return remembered }
         guard let token = CompletionToken(candidate.text) else { return .plausible }
 
         // Each lookup asks about its own word among its own kinds, so a path's name is not sought among whole paths.
@@ -100,7 +100,7 @@ public actor Verifier {
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
             guard let known = await known(of: lookup.kinds, in: surface, now: now) else { continue }
             guard !Verification.attests(lookup.word, known) else {
-                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
+                if generation == forgetGeneration { cache.remember(.attested, for: key) }
                 return .attested
             }
             if judged == nil { judged = (lookup.word, lookup.prefix, known) }
@@ -117,7 +117,7 @@ public actor Verifier {
                 modelObjects: Verification.objects(to: plausibility)),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
             forGood: judged != nil && Verification.isClosedVocabulary(for: token))
-        if generation == forgetGeneration { cache.remember(verdict, for: key, now: now) }
+        if generation == forgetGeneration { cache.remember(verdict, for: key) }
         return verdict
     }
 
