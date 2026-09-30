@@ -1,8 +1,8 @@
-// The one search rule every list page uses: trimmed, case- and accent-insensitive, blank keeps all.
+// The one search rule every list page uses: trimmed, case-, accent- and width-insensitive, blank keeps all.
 import Foundation
 
 extension StringProtocol {
-    /// Whether `needle` occurs here ignoring case, accents, curly quotes, dash kinds and whitespace runs.
+    /// Whether `needle` occurs here ignoring case, accents, width, curly quotes, dash kinds and whitespace runs.
     func contains(_ needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Bool {
         SearchFolding.contains(
             SearchFolding.folded(needle) ?? needle,
@@ -13,7 +13,7 @@ extension StringProtocol {
     func equals(_ needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Bool {
         let haystack = SearchFolding.folded(self) ?? String(self)
         let needle = SearchFolding.folded(needle) ?? needle
-        return haystack.compare(needle, options: [.caseInsensitive, .diacriticInsensitive], locale: locale)
+        return haystack.compare(needle, options: SearchFolding.comparisonOptions, locale: locale)
             == .orderedSame
     }
 }
@@ -21,7 +21,7 @@ extension StringProtocol {
 extension String {
     /// Where `needle` first occurs under the search folding, as a range of this unfolded text.
     func range(of needle: String, ignoringCaseAndAccentsIn locale: Locale) -> Range<String.Index>? {
-        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let options = SearchFolding.comparisonOptions
         let needle = SearchFolding.folded(needle) ?? needle
         guard let folded = SearchFolding.foldedWithOrigins(self) else {
             return range(of: needle, options: options, range: nil, locale: locale)
@@ -37,16 +37,19 @@ extension String {
 
 /// Typographic punctuation and whitespace, reduced to what a keyboard types.
 enum SearchFolding {
+    static let comparisonOptions: String.CompareOptions = [
+        .caseInsensitive, .diacriticInsensitive, .widthInsensitive,
+    ]
     private static let apostrophes: Set<Unicode.Scalar> = ["\u{2018}", "\u{2019}", "\u{201B}", "\u{2032}"]
     private static let quotes: Set<Unicode.Scalar> = ["\u{201C}", "\u{201D}", "\u{201E}", "\u{2033}"]
     private static let dashes: Set<Unicode.Scalar> = [
         "\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}", "\u{2014}", "\u{2212}",
     ]
 
-    /// Whether an already-folded needle occurs in an already-folded haystack, ignoring case and accents.
+    /// Whether an already-folded needle occurs in an already-folded haystack, ignoring case, accents and width.
     static func contains(_ needle: String, inFolded haystack: String, locale: Locale) -> Bool {
         haystack.range(
-            of: needle, options: [.caseInsensitive, .diacriticInsensitive], range: nil,
+            of: needle, options: comparisonOptions, range: nil,
             locale: locale
         ) != nil
     }

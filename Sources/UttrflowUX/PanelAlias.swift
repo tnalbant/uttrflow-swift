@@ -24,14 +24,19 @@ public struct AliasProposal: Sendable, Equatable {
 
 /// The one place that decides what an alias is, so creation and matching cannot disagree.
 public enum PanelAlias {
-    /// An alias reduced to what identifies it: no leading slash, no whitespace, case and accents folded.
+    /// An alias reduced to what identifies it: no leading slash, no whitespace, case, accents and width folded.
     public static func handle(_ text: String, locale: Locale) -> String {
         String(
             text
                 .filter { !$0.isWhitespace }
                 .drop { $0 == "/" }
         )
-        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: locale)
+        .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: locale)
+    }
+
+    /// Whether two reduced aliases spell the same name under the search comparison.
+    static func matches(_ first: String, _ second: String, locale: Locale) -> Bool {
+        handle(first, locale: locale).equals(handle(second, locale: locale), ignoringCaseAndAccentsIn: locale)
     }
 
     /// What saving `typed` as `clip`'s alias would do; the clip itself is not a conflict with itself.
@@ -42,7 +47,7 @@ public enum PanelAlias {
         // Compared against the typed text minus its slash, so dropping the slash is not a correction.
         let asTyped = String(typed.drop { $0 == "/" })
         let holder = clips.first {
-            $0.id != clip && $0.alias.map { handle($0, locale: locale) } == corrected
+            $0.id != clip && $0.alias.map { matches($0, typed, locale: locale) } == true
         }
         return AliasProposal(
             corrected: corrected,
