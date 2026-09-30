@@ -1009,6 +1009,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             enabled: settings.playsSoundWhenRecordingStarts)
         recordingSounds = sounds
         let cue = sounds.cue
+        let reportWarning = DictationWarningReporter(cue: cue) { [weak self] announcement in
+            Task { @MainActor in self?.announce(announcement) }
+        }
 
         // Held so the floating button's meter reads the level without queueing behind a `stop()`.
         let microphone = AVAudioCaptureEngine(
@@ -1051,11 +1054,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
             },
-            onWarning: { [weak self] advice in
-                Task { @MainActor in
-                    self?.announce(DictationPresenter.warningAnnouncement(for: advice))
-                }
-            },
+            onWarning: reportWarning.report,
             onStopGestureChange: { [weak self] gesture in
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }

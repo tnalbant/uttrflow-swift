@@ -486,14 +486,13 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         limitTask?.cancel()
         limitGeneration += 1
         let generation = limitGeneration
-        limitTask = Task { [clock, limit, cue, onAdvice, onWarning, gestureSink] in
+        limitTask = Task { [clock, limit, onAdvice, onWarning, gestureSink] in
             let start = clock.now
             do {
                 // Deadlines from the start, so a late wake-up cannot push the cap back.
                 for elapsed in limit.countdown {
                     try await clock.sleep(until: start.advanced(by: elapsed), tolerance: nil)
                     if elapsed == limit.warnAfter {
-                        cue.playWarning()
                         onWarning(limit.advice(at: elapsed))
                     }
                     onAdvice(limit.advice(at: elapsed))

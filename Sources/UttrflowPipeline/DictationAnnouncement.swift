@@ -61,6 +61,27 @@ extension DictationPresenter {
     }
 }
 
+/// Plays and announces the single warning event, keeping both user cues on the same production path.
+public struct DictationWarningReporter: Sendable {
+    private let cue: any RecordingCueing
+    private let announce: @Sendable (DictationAnnouncement) -> Void
+
+    public init(
+        cue: any RecordingCueing,
+        announce: @escaping @Sendable (DictationAnnouncement) -> Void
+    ) {
+        self.cue = cue
+        self.announce = announce
+    }
+
+    /// Plays the distinct warning cue and announces the remaining time without interrupting VoiceOver.
+    public func report(_ advice: DictationAdvice) {
+        guard let announcement = DictationPresenter.warningAnnouncement(for: advice) else { return }
+        cue.playWarning()
+        announce(announcement)
+    }
+}
+
 private extension RecoveryAction {
     /// Where VoiceOver users can reach the recovery offered on the floating button.
     var instruction: String {

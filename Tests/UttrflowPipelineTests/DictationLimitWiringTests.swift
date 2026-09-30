@@ -208,13 +208,13 @@ struct DictationLimitWiringTests {
         let cue = LimitCue()
         let announcements = Mutex<[DictationAnnouncement]>([])
         let heard = Mutex<[DictationAdvice]>([])
-        let controller = makeController(clock: clock, inserter: QuietInserter(), cue: cue) { advice in
-            heard.withLock { $0.append(advice) }
-        } warning: { advice in
-            if let announcement = DictationPresenter.warningAnnouncement(for: advice) {
-                announcements.withLock { $0.append(announcement) }
-            }
+        let reporter = DictationWarningReporter(cue: cue) { announcement in
+            announcements.withLock { $0.append(announcement) }
         }
+        let controller = makeController(
+            clock: clock, inserter: QuietInserter(), cue: cue,
+            advice: { advice in heard.withLock { $0.append(advice) } },
+            warning: reporter.report)
 
         await controller.handle(.pressed)
         #expect(cue.warningCount == 0)
@@ -234,12 +234,11 @@ struct DictationLimitWiringTests {
         let clock = ManualClock()
         let cue = LimitCue()
         let announcements = Mutex<[DictationAnnouncement]>([])
-        let controller = makeController(clock: clock, inserter: QuietInserter(), cue: cue) { _ in
-        } warning: { advice in
-            if let announcement = DictationPresenter.warningAnnouncement(for: advice) {
-                announcements.withLock { $0.append(announcement) }
-            }
+        let reporter = DictationWarningReporter(cue: cue) { announcement in
+            announcements.withLock { $0.append(announcement) }
         }
+        let controller = makeController(
+            clock: clock, inserter: QuietInserter(), cue: cue, warning: reporter.report)
 
         await controller.handle(.pressed)
         await advance(clock, to: Self.limit.warnAfter)
