@@ -27,23 +27,26 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     private let model: LocalModel
     private let maximumTokens: Int
     private var container: ModelContainer?
-    private let bufferCache: BufferCacheControl
+    private let bufferCachePasses: BufferCachePasses
 
     /// Where a pass reports its timing and its failures: numbers and error text only, never the prompt.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
 
     public init(model: LocalModel, maximumTokens: Int = 128) {
-        self.init(model: model, maximumTokens: maximumTokens, bufferCache: .mlx)
+        self.init(
+            model: model, maximumTokens: maximumTokens, bufferCache: .mlx,
+            bufferCachePasses: .processWide)
     }
 
     init(
         model: LocalModel, maximumTokens: Int, bufferCache: BufferCacheControl,
         cache: URL = HubCache.default.cacheDirectory, loading: WeightLoading<ModelContainer> = .mlx,
+        bufferCachePasses: BufferCachePasses? = nil,
         initialConfidenceMemory: ConfidenceMemory = ConfidenceMemory()
     ) {
         self.model = model
         self.maximumTokens = maximumTokens
-        self.bufferCache = bufferCache
+        self.bufferCachePasses = bufferCachePasses ?? BufferCachePasses(control: bufferCache)
         self.cache = cache
         self.weights = ReloadableWeights(loading: loading)
         self.confidenceMemory = initialConfidenceMemory
@@ -92,9 +95,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         downloader: (@Sendable () -> any MLXLMCommon.Downloader)?,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
-        // The instruction warm-up is a pass like any other, so it is held to the cap and leaves nothing cached.
-        bufferCache.hold()
-        defer { bufferCache.clear() }
+        // Loading and the instruction warm-up share ownership with every other model pass.
+        beginPass()
+        defer { endPass() }
         let directory = try await model.weightsDirectory(
             cache: cache, downloader: downloader, onProgress: onProgress)
         // A load stopped during the fetch reads no weights, and one stopped during the read keeps none for the warm-up.
@@ -104,8 +107,6 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         container = loaded
         // Lines judged with no model loaded are empty, so they are dropped once there is one.
         judgementCache.forgetEverything()
-        beginPass()
-        defer { endPass() }
         warm = await warmInstructions()
         prompt = await promptTokens(
             addedTokens: AddedToken.read(fromTokenizerFile: directory.appending(path: "tokenizer.json")))
@@ -125,8 +126,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         loadInFlight = nil
         forgetReadings()
         await passesEnded()
+        bufferCachePasses.begin()
         await weights.unload()
-        bufferCache.clear()
+        bufferCachePasses.end()
     }
 
     /// Builds the model's modules from placeholders and reads its weights, so even the first load leaves no quantize graph.
@@ -175,11 +177,15 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     public private(set) var judgementCacheMisses = 0
 
     /// Marks a pass as using the model.
-    private func beginPass() { passesRunning += 1 }
+    func beginPass() {
+        bufferCachePasses.begin()
+        passesRunning += 1
+    }
 
     /// Marks a pass as done, resuming a release that was waiting for the last one.
-    private func endPass() {
+    func endPass() {
         passesRunning -= 1
+        bufferCachePasses.end()
         guard passesRunning == 0 else { return }
         let waiting = waitingForPasses
         waitingForPasses = []
@@ -362,9 +368,6 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     private func run(
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
-        // Every pass is held to the cache's cap and leaves nothing in it, however it ends. See `Docs/performance.md`.
-        bufferCache.hold()
-        defer { bufferCache.clear() }
         let forgetGeneration = self.forgetGeneration
         guard let container, !Task.isCancelled, LatinScript.writes(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
@@ -515,8 +518,6 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
         let generation = forgetGeneration
-        bufferCache.hold()
-        defer { bufferCache.clear() }
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
