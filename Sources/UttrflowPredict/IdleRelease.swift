@@ -41,6 +41,8 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private let idleAfter: Duration
     /// Whether the caller wants the model, which only ``prepare(onProgress:)`` and ``release()`` change.
     private var isWanted = false
+    /// Whether an idle reload has failed and needs an explicit prepare before retrying.
+    private var reloadFailedUntilPrepare = false
     /// Whether the weights are loaded or loading, so a query does not start a second load.
     private var isHeld = false
     /// The latest prepare, release or reload; a step that finishes under an older one changes nothing.
@@ -69,6 +71,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
 
     public func prepare(onProgress: @escaping @Sendable (Double) -> Void) async throws {
         isWanted = true
+        reloadFailedUntilPrepare = false
         isHeld = true
         lastAsked = .now
         let asked = advance()
@@ -108,6 +111,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
 
     public func release() async {
         isWanted = false
+        reloadFailedUntilPrepare = false
         isHeld = false
         advance()
         watch?.cancel()
@@ -128,6 +132,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     public func allowReloadAfterRelease() {
         guard !isHeld else { return }
         isWanted = true
+        reloadFailedUntilPrepare = false
     }
 
     /// Whether the model can answer now, loading it again in the background when an idle release let it go.
@@ -135,7 +140,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         get async {
             lastAsked = .now
             if await model.isReady { return true }
-            if isWanted, !isHeld { reloadInBackground() }
+            if isWanted, !isHeld, !reloadFailedUntilPrepare { reloadInBackground() }
             return false
         }
     }
@@ -213,6 +218,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     /// Settles a reload that failed and says so, unless something newer was asked for since.
     private func reloadFailed(_ asked: Int) async {
         guard isCurrent(asked) else { return }
+        reloadFailedUntilPrepare = true
         onReloadFailed()
         await settle(asked)
         guard isCurrent(asked) else { return }
