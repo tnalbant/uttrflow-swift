@@ -8,14 +8,13 @@ It is also step 1 of 7, and carries the same row of dots the rest of onboarding
 does — drawn from the shared `dots()` helper, because a screen that counted the
 steps for itself is how the row got stuck at five.
 
-Two of the three provider buttons are drawn to their owner's published rules and
-the third cannot be. Google publishes the button's own chrome — fill, 1px inside
-stroke and label colour, per theme — and those exact values are set below. What
-is *not* right on this artboard is the Google and GitHub marks themselves: both
-are stand-ins, and both providers require their own supplied file rather than a
-redrawing. See `google_mark` / `github_mark` in `_gen_shell.py`.
+The provider stack comes from `SignInProvider.offered`, so the artboards show
+only choices deployed by the app. Each offered provider keeps its button title,
+mark and treatment; Google publishes its own chrome — fill, 1px inside stroke
+and label colour, per theme — and those exact values are set below.
 """
 from _gen_shell import *
+from _signin_contract import offered_providers
 
 # Taller than it was by the height of the dots and the air around them. The
 # offline screen is what sets this: it carries the banner, three inert buttons
@@ -74,11 +73,23 @@ SIGNIN_CSS = """
 
 def buttons(disabled):
     dim = ' style="opacity: 0.38"' if disabled else ""
-    return f"""<div class="stack">
-        <div class="provbtn google"{dim}>{google_mark(18)}<span>Continue with Google</span></div>
-        <div class="provbtn"{dim}>{github_mark(17)}<span>Continue with GitHub</span></div>
-        <div class="provbtn apple"{dim}>{apple_mark(17)}<span>Sign in with Apple</span></div>
-      </div>"""
+    rendered = []
+    for provider, title in offered_providers():
+        # Keep each provider's current artboard treatment; adding a provider to
+        # the deployed list cannot silently fall back to an invented mark.
+        if provider == "google":
+            style, mark = " google", google_mark(18)
+        elif provider == "gitHub":
+            style, mark = "", github_mark(17)
+        elif provider == "apple":
+            style, mark = " apple", apple_mark(17)
+        else:
+            raise RuntimeError(f"no sign-in artboard treatment for offered provider {provider!r}")
+        rendered.append(
+            f'<div class="provbtn{style}" data-provider="{provider}"{dim}>'
+            f'{mark}<span>{title}</span></div>'
+        )
+    return '<div class="stack">\n        ' + "\n        ".join(rendered) + "\n      </div>"
 
 
 def screen(dark, offline):
@@ -93,7 +104,7 @@ def screen(dark, offline):
         {buttons(True)}
         <div style="margin-top: 16px"><button class="btn primary">Try Again</button></div>"""
         caption = ("Offline, the screen says exactly which step needs the network and does not "
-                   "pretend a way through. The three buttons stay visible but inert, so it is "
+                   "pretend a way through. The Google button stays visible but inert, so it is "
                    "obvious what will happen the moment the connection returns.")
     else:
         middle = f"""{buttons(False)}
@@ -107,8 +118,8 @@ def screen(dark, offline):
                    "without an account&rdquo;: signing in is required, and nothing on this "
                    "screen hints otherwise. What the screen owes the user in exchange is the "
                    "plain statement that this is the only moment Uttrflow needs a network. "
-                   "The Google and GitHub marks here are stand-ins &mdash; both providers "
-                   "require their own supplied file, and the shipped buttons must carry it.")
+                   "The Google mark here is a stand-in and must be replaced by its supplied "
+                   "file in a shipped button.")
 
     html = page(
         "Sign in to Uttrflow", STAGE_W, STAGE_H,
