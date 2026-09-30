@@ -193,7 +193,9 @@ public enum InsightsPresenter {
     ) -> InsightsPresentation {
         let retention = snapshot.settings.transcriptRetentionDays
         let kept = HistoryPresenter.retained(snapshot.entries, days: retention, now: snapshot.now)
-        let spoken = daysSpokenOn(kept, calendar: calendar)
+        let range = chosen(snapshot.range, retention: retention)
+        let inRange = within(range, kept, now: snapshot.now, calendar: calendar)
+        let spoken = daysSpokenOn(inRange, calendar: calendar)
         let chrome = MainPageChrome(
             title: "Insights",
             caption: "Where the words went, and how fast they arrived. Measured on this Mac.")
@@ -207,12 +209,10 @@ public enum InsightsPresenter {
             return InsightsPresentation(
                 chrome: chrome, ranges: [], calendar: nil, figures: [],
                 emptyState: emptyState(
-                    for: kept, daysSpokenOn: spoken.count, now: snapshot.now, calendar: calendar,
+                    for: inRange, daysSpokenOn: spoken.count, now: snapshot.now, calendar: calendar,
                     locale: locale))
         }
 
-        let range = chosen(snapshot.range, retention: retention)
-        let inRange = within(range, kept, now: snapshot.now, calendar: calendar)
         return InsightsPresentation(
             chrome: chrome,
             ranges: options(selected: range, retention: retention),

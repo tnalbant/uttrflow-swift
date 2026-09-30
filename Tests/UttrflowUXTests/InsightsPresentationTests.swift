@@ -435,6 +435,19 @@ struct InsightsWaitingTests {
         #expect(HistoryFixture.insights(entries: manyInOneDay).emptyState != nil)
     }
 
+    @Test("a day before the chart range does not complete its seven spoken days")
+    func priorDayDoesNotCompleteChartingThreshold() {
+        let first = InsightsPresenter.firstDay(
+            of: .week, now: HistoryFixture.now, calendar: HistoryFixture.mondayFirst)
+        let prior = HistoryFixture.entry("outside", when: first.addingTimeInterval(-1))
+        let entries = HistoryFixture.aWeek(days: 6) + [prior]
+        let page = HistoryFixture.insights(
+            entries: entries, settings: HistoryFixture.keeping(30), range: .week)
+
+        #expect(page.calendar == nil)
+        #expect(page.emptyState?.progress?.leading == "6 of 7 days")
+    }
+
     @Test("the progress bar says how far along it is and when it finishes")
     func progress() {
         let empty = HistoryFixture.insights(entries: HistoryFixture.aWeek(days: 2)).emptyState
