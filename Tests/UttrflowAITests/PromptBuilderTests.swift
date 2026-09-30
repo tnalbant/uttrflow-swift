@@ -82,10 +82,10 @@ struct PromptBuilderTests {
             email.examples == [
                 WorkedExample(
                     spoken: "good morning all the standup is cancelled today thanks kofi",
-                    cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi."),
+                    cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi"),
                 WorkedExample(
                     spoken: "thanks for the update cheers tom",
-                    cleaned: "Thanks for the update.\n\nCheers,\nTom."),
+                    cleaned: "Thanks for the update.\n\nCheers,\nTom"),
             ])
         #expect(!builder.workedExamples(for: .messaging).contains("Thanks,\nKofi."))
         #expect(!builder.workedExamples(for: .plain).contains("Cheers,\nTom."))

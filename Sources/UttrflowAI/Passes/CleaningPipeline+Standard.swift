@@ -74,7 +74,7 @@ extension CleaningPipeline {
                     && formatter.destination != .codeEditor),
             TerminalStopPass(
                 policy: terminalStop(formatter, in: situation), layout: formatter.layout,
-                insertionPoint: situation.insertion),
+                insertionPoint: situation.insertion, destination: formatter.destination),
         ])
     }
 

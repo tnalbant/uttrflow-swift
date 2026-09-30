@@ -7,23 +7,31 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     public let policy: TerminalStopPolicy
     public let layout: LayoutPolicy
     public let insertionPoint: InsertionPoint
+    public let destination: Destination?
 
     public init(
         policy: TerminalStopPolicy = .always, layout: LayoutPolicy = .paragraphs,
-        insertionPoint: InsertionPoint = .unknown
+        insertionPoint: InsertionPoint = .unknown, destination: Destination? = nil
     ) {
         self.policy = policy
         self.layout = layout
         self.insertionPoint = insertionPoint
+        self.destination = destination
     }
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
         if layout.contains(.singleLine) { Self.flatten(&draft) }
-        if layout.contains(.paragraphs), policy != .never { Self.stopParagraphs(&draft) }
+        if layout.contains(.paragraphs), policy != .never {
+            Self.stopParagraphs(&draft, destination: destination)
+        }
         Self.separateTrailingRequest(&draft, layout: layout)
         guard let last = draft.presentIndices.last, !draft.words[last].isLayoutMark else { return draft }
         let word = draft.words[last].text
+        if destination == .email, Self.isEmailGreetingOrSignOff(draft) {
+            draft.replace(at: last, with: WordShape.withoutTrailingStop(word), by: Self.id)
+            return draft
+        }
         let finished: String
         switch policy {
         case .always:
@@ -92,7 +100,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     }
 
     /// Ends each paragraph of three or more words before a blank line with a full stop; a list item gets none.
-    private static func stopParagraphs(_ draft: inout Draft) {
+    private static func stopParagraphs(_ draft: inout Draft, destination: Destination?) {
         var opening: Draft.Word?
         var paragraph: [Int] = []
         for index in draft.presentIndices {
@@ -102,7 +110,8 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 continue
             }
             if word.text.hasPrefix("\n\n"), let last = paragraph.last, paragraph.count >= 3,
-                !(opening?.isListMark ?? false)
+                !(opening?.isListMark ?? false),
+                !(destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft))
             {
                 draft.replace(at: last, with: WordShape.finished(draft.words[last].text), by: id)
             }
@@ -111,6 +120,81 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 paragraph = []
             }
         }
+    }
+
+    /// Whether a paragraph is an email opener or a final closing with a name.
+    private static func isEmailGreetingOrSignOff(_ draft: Draft) -> Bool {
+        let paragraphs = paragraphWords(in: draft)
+        guard let last = paragraphs.last else { return false }
+        return isEmailSignOff(draft) || paragraphs.count == 1 && isEmailGreeting(last, in: draft)
+    }
+
+    /// Whether a final paragraph contains a supported email closing and a name.
+    private static func isEmailSignOff(_ draft: Draft) -> Bool {
+        let live = draft.presentIndices
+        for (position, index) in live.enumerated() where !draft.words[index].isLayoutMark {
+            if position > 0 {
+                let previous = live[position - 1]
+                guard draft.words[previous].isLayoutMark || draft.shape(at: previous).endsSentence else {
+                    continue
+                }
+            }
+            let suffix = live[position...].filter { !draft.words[$0].isLayoutMark }
+            guard let first = suffix.first else { continue }
+            let opening = firstWord(draft.words[first].text)
+            let closingWords =
+                opening == "best"
+                    && suffix.dropFirst().first.map { firstWord(draft.words[$0].text) == "regards" } == true
+                ? 2
+                : 1
+            guard ["thanks", "regards", "cheers", "best", "sincerely"].contains(opening),
+                suffix.count > closingWords
+            else { continue }
+            let nameCount = suffix.count - closingWords
+            guard (1...2).contains(nameCount) else { continue }
+            if draft.words[first].text.hasSuffix(",") || closingWords == 2 || nameCount == 1 { return true }
+        }
+        return false
+    }
+
+    /// The words in a draft split at paragraph marks, ignoring layout marks.
+    private static func paragraphWords(in draft: Draft) -> [[Int]] {
+        var paragraphs: [[Int]] = [[]]
+        for index in draft.presentIndices {
+            let word = draft.words[index]
+            if word.isLayoutMark {
+                if word.text.hasPrefix("\n\n"), !paragraphs[paragraphs.count - 1].isEmpty {
+                    paragraphs.append([])
+                }
+            } else {
+                paragraphs[paragraphs.count - 1].append(index)
+            }
+        }
+        return paragraphs.filter { !$0.isEmpty }
+    }
+
+    /// Whether these words begin the first paragraph with a conventional email greeting.
+    private static func isEmailGreeting(_ indices: [Int], in draft: Draft) -> Bool {
+        guard let first = indices.first, paragraphWords(in: draft).first == indices else { return false }
+        let openingWords = ["dear", "hello", "hi", "good morning", "good afternoon", "good evening"]
+        return openingWords.contains { prefix in
+            let words = prefix.split(separator: " ").map(String.init)
+            return indices.count >= words.count
+                && zip(words, indices).allSatisfy { pair in
+                    firstWord(draft.words[pair.1].text) == pair.0
+                }
+        }
+    }
+
+    /// Whether this is the email's first greeting paragraph or final closing paragraph.
+    private static func isEmailGreetingOrSignOff(_ paragraph: [Int], in draft: Draft) -> Bool {
+        let paragraphs = paragraphWords(in: draft)
+        return paragraphs.last == paragraph && isEmailSignOff(draft)
+            || paragraphs.first == paragraph && isEmailGreeting(paragraph, in: draft)
+    }
+
+    private static func firstWord(_ text: String) -> String {
+        String(text.lowercased().prefix(while: \.isLetter))
     }
 
     /// How many sentences the text holds; the joiner asks the same question of a whole dictation.

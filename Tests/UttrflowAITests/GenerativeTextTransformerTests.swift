@@ -689,6 +689,20 @@ struct RuleBasedTransformerTests {
         #expect(try await sut.transform(request(spoken, destination: destination)).text == expected)
     }
 
+    @Test("removes stops from an email greeting and sign-off while keeping the body stop")
+    func emailGreetingAndSignOffStops() async throws {
+        let model = FakeCleanupModel {
+            _ in "Dear hiring manager.\n\nI am writing to ask about the role\n\nThanks, Sam."
+        }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let result = try await sut.transform(
+            request(
+                "dear hiring manager i am writing to ask about the role thanks sam",
+                destination: .email))
+        #expect(result.text == "Dear hiring manager\n\nI am writing to ask about the role.\n\nThanks, Sam")
+        #expect(model.calls.first?.instructions.contains("leave a greeting paragraph") == true)
+    }
+
     @Test("cannot invent anything, whatever it is given, and writes Hindi in Latin letters")
     func neverInvents() async throws {
         let result = try await sut.transform(request("नमस्ते मैं आज आऊंगा"))

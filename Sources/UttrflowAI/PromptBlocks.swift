@@ -149,7 +149,7 @@ public enum PromptBlocks {
         id: "email",
         rules: """
             In an email:
-            - full sentences and paragraphs; keep the greeting and every break as given, except format a recognized closing and name at the end
+            - full stops for body paragraphs; leave a greeting paragraph and a closing followed by a name open, keeping a spoken comma
             - at the end only, put a spoken closing followed only by a name on its own lines: blank line, closing, name; use only thanks, best regards, regards, cheers or best, and keep every word in order
             - fix a grammar slip: "the documents is ready" → "the documents are ready", \
             "we have ate" → "we have eaten", "there is three" → "there are three", \
@@ -160,10 +160,10 @@ public enum PromptBlocks {
         examples: [
             WorkedExample(
                 spoken: "good morning all the standup is cancelled today thanks kofi",
-                cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi."),
+                cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi"),
             WorkedExample(
                 spoken: "thanks for the update cheers tom",
-                cleaned: "Thanks for the update.\n\nCheers,\nTom."),
+                cleaned: "Thanks for the update.\n\nCheers,\nTom"),
         ])
 
     static let plain = PromptBlock(
