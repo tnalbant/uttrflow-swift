@@ -82,6 +82,16 @@ struct CompletionParsingTests {
             ).isEmpty)
     }
 
+    @Test("A completion cannot end a number the person may still be typing")
+    func incompleteNumbersAreNotClosedByTheSuggestion() {
+        #expect(CompletionText.parse("LIMIT 10 OFFSET 0", typed: "LIMIT 10").isEmpty)
+        #expect(CompletionText.parse("LIMIT 5 OFFSET 0", typed: "LIMIT 5").isEmpty)
+        #expect(CompletionText.parse("LIMIT 100;", typed: "LIMIT 10") == ["LIMIT 100;"])
+        #expect(CompletionText.parse("LIMIT 50;", typed: "LIMIT 5") == ["LIMIT 50;"])
+        #expect(CompletionText.parse("LIMIT 10.5;", typed: "LIMIT 10") == ["LIMIT 10.5;"])
+        #expect(CompletionText.parse("LIMIT 10e3;", typed: "LIMIT 10") == ["LIMIT 10e3;"])
+    }
+
     @Test("Unsafe control, format, and replacement scalars reject the whole continuation.")
     func unsafeScalarsAreRejected() {
         for scalar in ["\t", "\u{1B}", "\u{200B}", "\u{202E}", "\u{2066}", "\u{FFFD}"] {
