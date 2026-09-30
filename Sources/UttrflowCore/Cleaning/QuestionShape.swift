@@ -43,7 +43,11 @@ public enum QuestionShape {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
             for word in clause.dropFirst().prefix(3) {
                 if subjects.contains(word) { return false }
-                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) { return true }
+                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word)
+                    || lexicalQuestionVerbs.contains(word)
+                {
+                    return true
+                }
             }
             return false
         }
@@ -105,6 +109,18 @@ public enum QuestionShape {
 
     /// Verbs that also start a command, so they ask only before a pronoun: "do you", not "do the dishes".
     static let pronounVerbs: Set<String> = ["do", "have", "don't", "haven't"]
+
+    /// Common present and past lexical verbs that can follow a question word directly.
+    private static let lexicalQuestionVerbs: Set<String> = [
+        "happens", "happen", "happened", "changed", "change", "changes", "works", "work", "worked",
+        "fails", "fail", "failed", "comes", "come", "came", "goes", "go", "went", "looks", "look",
+        "looked", "means", "mean", "meant", "costs", "cost", "costed", "matters", "matter", "mattered",
+        "causes", "cause", "caused", "starts", "start", "started", "ends", "end", "ended", "breaks",
+        "break", "broke", "broken", "shows", "show", "showed", "shown", "runs", "run", "ran", "says",
+        "say", "said", "takes", "take", "took", "taken", "makes", "make", "made", "gets", "get", "got",
+        "gives", "give", "gave", "given", "finds", "find", "found", "keeps", "keep", "kept", "leaves",
+        "leave", "left", "happening",
+    ]
 
     /// Negative verbs, which with a pronoun after them close a sentence as a tag: "isn't it", "don't you".
     static let negativeVerbs: Set<String> = [
