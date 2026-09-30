@@ -21,6 +21,8 @@ struct SettingsControlView: View {
         case .action, .removal:
             // A button names itself, so the row it acts on is the hint: "Resume, button. Pause for a while".
             view(for: control).accessibilityHint(label)
+        case .text(let value):
+            view(for: control).accessibilityLabel(label).accessibilityValue(value)
         default:
             view(for: control).accessibilityLabel(label)
         }
