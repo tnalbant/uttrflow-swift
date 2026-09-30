@@ -1,3 +1,5 @@
+import Foundation
+
 /// The measurable facts about where a line is written, computed the same way in every application and never from its name. See `Docs/predict-context.md`.
 public struct Register: Sendable, Equatable {
     /// Whether the field holds many lines, where paragraphs are written rather than commands or searches.
