@@ -123,6 +123,7 @@ struct FirstWordPassTests {
         #expect(fromCaret("Friday is good", state: .midSentence) == "Friday is good")
         #expect(fromCaret("March is busy", state: .midSentence) == "March is busy")
         #expect(fromCaret("May is busy", state: .midSentence) == "may is busy")
+    }
 
     @Test("calendar casing follows prose destinations and leaves terminal and code case spoken")
     func calendarWordsRespectDestination() {
