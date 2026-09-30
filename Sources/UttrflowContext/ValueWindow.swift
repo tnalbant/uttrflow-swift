@@ -11,14 +11,18 @@ public enum ValueWindow {
     /// UTF-16 units read after the caret, which is where the end of its line is looked for.
     public static let unitsAfter = 1024
 
+    /// UTF-16 units of a selection retained around its start.
+    public static let selectionLimit = 1024
+
     /// The range to ask for, or `nil` when the whole value is no longer than the window and is read whole.
     public static func range(count: Int, selection: NSRange) -> NSRange? {
-        guard count > unitsBefore + unitsAfter, selection.location >= 0, selection.length >= 0 else {
-            return nil
-        }
-        let caret = min(selection.location, count)
+        guard count > unitsBefore + unitsAfter, selection.location >= 0, selection.length >= 0,
+            selection.location <= count
+        else { return nil }
+        let caret = selection.location
         let start = max(0, caret - unitsBefore)
-        let end = min(count, caret + selection.length + unitsAfter)
+        let selectedLength = min(selection.length, selectionLimit)
+        let end = min(count, caret + min(selectedLength + unitsAfter, count - caret))
         return NSRange(location: start, length: max(0, end - start))
     }
 
@@ -26,10 +30,18 @@ public enum ValueWindow {
     public static func read(
         count: Int?, selection: NSRange?, whole: () -> String?, part: (NSRange) -> String?
     ) -> (value: String?, selection: NSRange?) {
-        guard let count, let selection, let window = range(count: count, selection: selection),
-            let text = part(window), text.utf16.count == window.length
-        else { return (whole(), selection) }
-        let shifted = NSRange(location: selection.location - window.location, length: selection.length)
+        guard let count, let selection else { return (whole(), selection) }
+        guard selection.length > 0 else {
+            guard let window = range(count: count, selection: selection), let text = part(window),
+                text.utf16.count == window.length
+            else { return (whole(), selection) }
+            return (text, NSRange(location: selection.location - window.location, length: 0))
+        }
+        guard let window = range(count: count, selection: selection), let text = part(window),
+            text.utf16.count == window.length
+        else { return (nil, selection) }
+        let shifted = NSRange(
+            location: selection.location - window.location, length: min(selection.length, selectionLimit))
         return (text, shifted)
     }
 }

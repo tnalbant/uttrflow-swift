@@ -50,6 +50,19 @@ struct RepeatedPhrasePassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "keeps deliberate intensifier and continuation chains",
+        arguments: [
+            "it went on and on and on",
+            "again and again and again",
+            "more and more and more",
+            "blah blah blah and so on and so on",
+        ]
+    )
+    func keepsDeliberateChains(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
     @Test("drops the first copy and keeps the second")
     func provenance() {
         let draft = sut.apply(Draft(text: "so I was I was thinking"))

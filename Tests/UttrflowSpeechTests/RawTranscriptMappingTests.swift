@@ -22,9 +22,23 @@ struct RawTranscriptMappingTests {
             ("[BLANK_AUDIO]", ""),
             ("(silence)", ""),
             ("[ Music ]", ""),
+            ("[Music]", ""),
+            ("(applause)", ""),
+            ("[SOUND]", ""),
             ("[BLANK_AUDIO] hello there", "hello there"),
             ("hello [inaudible] there", "hello there"),
             ("(upbeat music) let's begin", "let's begin"),
+            ("[door slams]", ""),
+            ("(phone ringing)", ""),
+            ("[clears throat]", ""),
+            ("(sneezes)", ""),
+            ("[inaudible 00:02]", ""),
+            ("(speaking in foreign language)", ""),
+            ("[ Background Conversations ]", ""),
+            ("♪♪", ""),
+            ("♪ la la la ♪", ""),
+            ("[♪♪♪]", ""),
+            (">> Hello there.", "Hello there."),
         ]
     )
     func stripsNonSpeechMarkers(input: String, expected: String) {
@@ -55,6 +69,10 @@ struct RawTranscriptMappingTests {
             "we shipped it (finally) last night",
             "call the office (not the mobile) tomorrow",
             "the release (v3) is out",
+            "(see the attached file)",
+            "[TODO]",
+            "[whirring]",
+            "[door music]",
         ])
     func keepsSpokenParentheticals(text: String) {
         #expect(RawTranscript(text: text).transcription(audioDuration: .zero).text == text)
@@ -124,6 +142,32 @@ struct RawTranscriptMappingTests {
     @Test("reports a transcript of nothing but markers as blank")
     func markersOnlyIsBlank() {
         #expect(RawTranscript(text: "[BLANK_AUDIO]").transcription(audioDuration: .zero).isBlank)
+    }
+
+    @Test("removes issue 2372 caption, speaker, and music markers from the word list")
+    func stripsCaptionMarkersFromWords() {
+        let raw = RawTranscript(
+            text: ">> ♪ la la la ♪ hello [phone ringing]",
+            segments: [
+                RawSegment(
+                    text: ">> ♪ la la la ♪ hello [phone ringing]", start: 0, end: 2,
+                    words: [
+                        RawWord(text: " >>", start: 0, end: 0.1, probability: 0.99),
+                        RawWord(text: " ♪", start: 0.1, end: 0.2, probability: 0.99),
+                        RawWord(text: " la", start: 0.2, end: 0.3, probability: 0.99),
+                        RawWord(text: " la", start: 0.3, end: 0.4, probability: 0.99),
+                        RawWord(text: " la", start: 0.4, end: 0.5, probability: 0.99),
+                        RawWord(text: " ♪", start: 0.5, end: 0.6, probability: 0.99),
+                        RawWord(text: " hello", start: 0.6, end: 1, probability: 0.5),
+                        RawWord(text: " [phone", start: 1, end: 1.1, probability: 0.99),
+                        RawWord(text: " ringing]", start: 1.1, end: 1.2, probability: 0.99),
+                    ])
+            ])
+
+        let segment = raw.transcription(audioDuration: .seconds(2)).segments[0]
+
+        #expect(segment.text == "hello")
+        #expect(segment.words == [TranscribedWord(text: "hello", confidence: 0.5)])
     }
 }
 

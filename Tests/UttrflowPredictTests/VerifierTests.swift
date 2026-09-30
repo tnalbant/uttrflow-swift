@@ -506,10 +506,56 @@ struct VerifiedCandidateTests {
 
 @Suite("A difference only of case is not a typo")
 struct VerifierCaseTests {
+    @Test("A git subcommand that differs only in case is corrected to git's spelling.")
+    func gitSubcommandsAreCaseSensitive() async {
+        let verdict = await decided(
+            "git Status", typed: "git S", machine: [.subcommand(of: "git"): ["status"]])
+        #expect(verdict == .corrected("git status"))
+    }
+
+    @Test("A git alias that differs only in case is corrected to its configured spelling.")
+    func gitAliasesAreCaseSensitive() async {
+        let verdict = await decided(
+            "git CM", typed: "git C", machine: [.gitAlias: ["cm"]])
+        #expect(verdict == .corrected("git cm"))
+    }
+
+    @Test("A branch that differs only in case is corrected to the branch name.")
+    func branchesAreCaseSensitive() async {
+        let verdict = await decided(
+            "git switch Main", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main"]])
+        #expect(verdict == .corrected("git switch main"))
+    }
+
+    @Test("An exact branch spelling is attested even when a case-folded variant also exists.")
+    func exactBranchSpellingWinsOverVariants() async {
+        let verdict = await decided(
+            "git switch Main", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .attested)
+    }
+
+    @Test("An ambiguous case-only branch mismatch is rejected instead of choosing arbitrarily.")
+    func ambiguousBranchCaseMismatchIsRejected() async {
+        let verdict = await decided(
+            "git switch MAIN", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .rejected)
+    }
+
     @Test("A filename that differs from disk only in case is attested, not corrected.")
     func caseOnlyIsAttested() async {
         let verdict = await decided(
-            "cat readme.md", typed: "cat r", machine: [.file: ["README.md"]])
+            "cat Readme.md", typed: "cat R", machine: [.file: ["README.md"]])
+        #expect(verdict == .attested)
+    }
+
+    @Test("A filesystem name stays case-insensitive when git also checks for a branch.")
+    func filesystemAttestationSurvivesMixedLookup() async {
+        let verdict = await decided(
+            "git log Readme.md", typed: "git log R",
+            machine: [.branch: [], .file: ["README.md"]])
         #expect(verdict == .attested)
     }
 

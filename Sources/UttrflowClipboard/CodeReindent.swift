@@ -173,11 +173,24 @@ public enum CodeReindent {
 
     /// Whether this is a makefile, where a leading tab is grammar; walks back past comment and blank lines to the rule header.
     private static func looksLikeMakefile(_ lines: [String]) -> Bool {
-        var lastMeaningful: String?
+        var interveningDirectivesAreAllowed = true
         for line in lines {
-            defer { if !isBlankOrComment(line) { lastMeaningful = line } }
-            guard line.hasPrefix("\t"), let target = lastMeaningful else { continue }
-            if target.wholeMatch(of: ruleHeader) != nil { return true }
+            if isBlankOrComment(line) { continue }
+            if line.hasPrefix("\t") {
+                if interveningDirectivesAreAllowed { return true }
+                continue
+            }
+
+            if line.wholeMatch(of: ruleHeader) != nil {
+                interveningDirectivesAreAllowed = true
+            } else if interveningDirectivesAreAllowed,
+                line.wholeMatch(of: conditionalDirective) != nil
+                    || line.wholeMatch(of: defineDirective) != nil
+            {
+                continue
+            } else {
+                interveningDirectivesAreAllowed = false
+            }
         }
         return false
     }
@@ -191,6 +204,13 @@ public enum CodeReindent {
     /// A rule at column zero: names, a colon that is not `:=`, then the rest of the line.
     nonisolated(unsafe) private static let ruleHeader =
         #/[^\s:#=]+(?:[ \t]+[^\s:#=]+)*[ \t]*:(?:[^=\r].*)?\r?/#
+
+    /// Directives can appear between a rule header and its recipe.
+    nonisolated(unsafe) private static let conditionalDirective =
+        #/(?:ifeq|ifneq|ifdef|ifndef|else|endif)(?:[ \t].*)?\r?/#
+
+    /// A define block may contain recipe-shaped lines belonging to an active rule.
+    nonisolated(unsafe) private static let defineDirective = #/define(?:[ \t].*)?\r?/#
 }
 
 extension Character {

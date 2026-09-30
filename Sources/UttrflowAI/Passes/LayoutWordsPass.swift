@@ -1,3 +1,4 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
@@ -123,8 +124,52 @@ public struct LayoutWordsPass: CleaningPass {
         guard position > 0, !draft.shape(at: live[position - 1]).endsSentence,
             let value = itemValue(at: position, in: live, of: draft)
         else { return true }
-        return (value > 1 && numbered.contains(value - 1))
-            || (value < Int.max && numbered.contains(value + 1))
+        guard
+            (value > 1 && numbered.contains(value - 1))
+                || (value < Int.max && numbered.contains(value + 1))
+        else { return false }
+        return isEligibleNumberedRun(at: value, in: live, of: draft, among: numbered)
+    }
+
+    /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
+    private func isEligibleNumberedRun(
+        at value: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
+    ) -> Bool {
+        let positionsByValue = Dictionary(
+            numbered.compactMap { position -> (Int, Int)? in
+                guard let item = itemValue(at: position, in: live, of: draft) else { return nil }
+                return (item, position)
+            }, uniquingKeysWith: { first, _ in first },
+        )
+        var first = value
+        while first > 1, positionsByValue[first - 1] != nil { first -= 1 }
+        var item = first
+        var firstMarker: Int?
+        var hasJoiningWord = false
+        while let marker = positionsByValue[item] {
+            if firstMarker == nil { firstMarker = marker }
+            if marker > 0 {
+                let previous = draft.shape(at: live[marker - 1]).key
+                hasJoiningWord = hasJoiningWord || previous == "and" || previous == "or"
+            }
+            guard item < Int.max else { return false }
+            item += 1
+        }
+        guard let firstMarker else { return false }
+        return !hasJoiningWord && isLeadInBefore(firstMarker, in: live, of: draft)
+    }
+
+    /// A mid-sentence list starts after a lead-in, not after a running clause.
+    private func isLeadInBefore(_ marker: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard marker > 0, !draft.shape(at: live[marker - 1]).endsSentence else { return true }
+        let previous = draft.shape(at: live[marker - 1])
+        guard !["and", "or"].contains(previous.key) else { return false }
+        if ["need", "are", "check"].contains(previous.key) { return true }
+        let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = context
+        guard let range = context.range(of: previous.core, options: .backwards) else { return false }
+        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.

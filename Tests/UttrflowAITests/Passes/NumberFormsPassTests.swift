@@ -296,6 +296,7 @@ struct NumberFormsPassTests {
             "twenty fifth", "twenty-fifth", "twenty fifth, March", "tenth of, April",
             "tenth of \"April\"", "twenty fifth place", "twenty--fifth of March",
             "twenty-tenth of March", "first", "a hundred and twentieth of June",
+            "one hundred and twenty first", "the one hundred and first",
         ]
     )
     func preservesOrdinals(input: String) {

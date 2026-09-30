@@ -135,6 +135,34 @@ struct MeaningPreservationGuardTests {
         accepted(original, rewritten)
     }
 
+    @Test(
+        "refuses changes to Indian grouping while allowing the same amount to keep its written form",
+        arguments: [
+            ("1,00,000 rupaye transfer kar do", "100000 rupaye transfer kar do."),
+            ("Rs. 2,50,000 ka quote aaya", "Rs. 250,000 ka quote aaya."),
+            ("total bill 3,45,000 rupaye aaya", "Total bill 345000 rupaye aaya."),
+        ]
+    )
+    func refusesChangedIndianGrouping(original: String, rewritten: String) {
+        rejected(original, rewritten)
+        accepted(original, original + ".")
+    }
+
+    @Test("only locks valid Indian group shapes")
+    func indianGroupingShape() {
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,00,000", rewritten: "100000")
+                == "1,00,000")
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(
+                original: "12,00,00,000", rewritten: "12,00,00,000") == nil)
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,234,567", rewritten: "1234567") == nil
+        )
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,2,000", rewritten: "12000") == nil)
+    }
+
     @Test("still refuses a different number behind a separator, and keeps a list of digits apart")
     func separatorsHideNothing() {
         rejected("the spend is 12,000", "The spend is 12,500.")

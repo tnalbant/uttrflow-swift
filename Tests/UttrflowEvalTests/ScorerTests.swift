@@ -24,7 +24,7 @@ struct ScorerTests {
             mustBeginWith: begin, mustEndWith: end)
     }
 
-    /// Case and a final mark are what the destination cases are about, so they are looked at literally.
+    /// Case and a final mark are measured separately from word agreement.
     @Test("checks a required beginning and ending exactly, case included")
     func checksShape() {
         let reference = shaped(expected: "the report is attached.", begin: "the report", end: ".")
@@ -54,7 +54,35 @@ struct ScorerTests {
         #expect(score.passed)
     }
 
-    /// Several phrasings of a sentence are correct; punctuation and case are not measured.
+    @Test("reports word, mark, and case accuracy independently")
+    func scoresSurfaceMetrics() {
+        let score = Scorer.score("i know the answer", against: reference(expected: "I know the answer."))
+        #expect(score.similarity == 1)
+        #expect(score.markAccuracy == 0)
+        #expect(score.caseAccuracy < 1)
+        #expect(!score.isExact)
+    }
+
+    @Test("exactness preserves punctuation and case but normalises whitespace")
+    func exactnessNormalisesOnlyWhitespace() {
+        #expect(Scorer.score("Hello   there.\n", against: reference(expected: "Hello there.")).isExact)
+        #expect(!Scorer.score("hello there.", against: reference(expected: "Hello there.")).isExact)
+        #expect(!Scorer.score("Hello there", against: reference(expected: "Hello there.")).isExact)
+    }
+
+    @Test("mark accuracy detects misplaced commas and extra sentence endings")
+    func markAccuracyFindsPunctuationRegressions() {
+        #expect(Scorer.score("Wait, now.", against: reference(expected: "Wait now.")).markAccuracy < 1)
+        #expect(Scorer.score("400. And $20.", against: reference(expected: "400 And $20.")).markAccuracy < 1)
+    }
+
+    @Test("case accuracy catches altered word casing")
+    func caseAccuracyFindsCaseRegression() {
+        #expect(
+            Scorer.score("YOY increased.", against: reference(expected: "YoY increased.")).caseAccuracy < 1)
+    }
+
+    /// Several phrasings of a sentence can keep full word similarity while surface scores differ.
     @Test(
         "ignores case and punctuation",
         arguments: ["hello there", "HELLO THERE!", "Hello, there.", "  hello   there  "]

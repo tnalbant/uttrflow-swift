@@ -145,22 +145,35 @@ public struct Draft: Sendable, Equatable {
 
     private static func split(_ text: String, confidence: Double) -> [Word] {
         text.split(whereSeparator: \.isWhitespace).flatMap { token in
-            let value = String(token)
-            guard !value.contains("://"), !value.contains("www."), !value.contains("@") else {
-                return [Word(value, confidence: confidence)]
-            }
-            let normalized = value.replacingOccurrences(of: "…", with: "...")
-            let runs = normalized.components(separatedBy: "...")
-            guard runs.count > 1 else { return [Word(value, confidence: confidence)] }
-            let cores = runs.filter { !$0.isEmpty }
-            guard cores.count > 1,
-                cores.contains(where: { FillersPass.fillerWords.contains(WordShape($0).key) })
-            else { return [Word(value, confidence: confidence)] }
-            return cores.enumerated().map { index, core in
-                let pause = index < cores.count - 1 ? "..." : ""
-                return Word(core + pause, confidence: confidence)
-            }
+            splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence) }
         }
+    }
+
+    /// Splits a pause ellipsis between words while keeping URL punctuation inside its token.
+    private static func splitPauseEllipses(in token: String) -> [String] {
+        let normalized = token.replacingOccurrences(of: "…", with: "...")
+        let lowercased = normalized.lowercased()
+        guard !lowercased.contains("://"), !lowercased.hasPrefix("www."), !lowercased.contains("@")
+        else { return [token] }
+
+        let characters = Array(normalized)
+        var parts = [""]
+        var index = 0
+        while index < characters.count {
+            if index > 0, index + 3 < characters.count,
+                characters[index] == ".", characters[index + 1] == ".", characters[index + 2] == ".",
+                characters[index + 3] != ".",
+                characters[index - 1].isLetter || characters[index - 1].isNumber,
+                characters[index + 3].isLetter || characters[index + 3].isNumber
+            {
+                parts.append("")
+                index += 3
+                continue
+            }
+            parts[parts.count - 1].append(characters[index])
+            index += 1
+        }
+        return parts
     }
 
     /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.

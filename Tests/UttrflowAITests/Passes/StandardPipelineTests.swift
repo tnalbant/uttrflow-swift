@@ -129,7 +129,7 @@ struct StandardPipelineTests {
     func afterModel() {
         let cell = CleaningPipeline.afterModel(
             for: .standard(for: .spreadsheet), situation: .unknown, heard: "uh total revenue")
-        #expect(cell.ids == ["caretEcho", "firstWord", "terminalStop"])
+        #expect(cell.ids == ["spokenPunctuation", "caretEcho", "firstWord", "terminalStop"])
         #expect(cell.run(Draft(text: "Total revenue.")).text == "total revenue")
 
         let app = AppContext(documentName: "Chat with John", precedingText: "because ")
@@ -161,6 +161,15 @@ struct StandardPipelineTests {
     )
     func endToEnd(input: String, expected: String) {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("splits fillers glued to their neighbours by pause ellipses")
+    func splitsGluedFillers() {
+        #expect(
+            CleaningPipeline.standard.run(
+                Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+            ).text == "The invoice is overdue."
+        )
     }
 
     @Test("keeps the record of every pass that touched a word")

@@ -144,7 +144,7 @@ public enum SettingsPresenter {
     static func dictateExplanation(_ activation: HotkeyActivation, keys: String) -> String {
         switch activation {
         case .holdToTalk: "Hold \(keys) to talk, anywhere"
-        case .pressToToggle: "Press \(keys) to start talking, and again to stop"
+        case .pressToToggle: "Press \(keys) once to start talking, and again to stop"
         }
     }
 

@@ -36,6 +36,27 @@ struct FillersPassTests {
     }
 
     @Test(
+        "joins fixed assent and alarm replies",
+        arguments: [
+            ("uh huh", "Uh-huh"),
+            ("uh huh sounds good", "Uh-huh sounds good"),
+            ("uh oh", "Uh-oh"),
+            ("mm hmm", "Mm-hmm"),
+        ]
+    )
+    func joinsInterjections(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps hmm and mhm when they are the whole reply")
+    func keepsStandaloneReplies() {
+        #expect(cleaned("hmm", by: sut) == "hmm")
+        #expect(cleaned("mhm", by: sut) == "mhm")
+        #expect(cleaned("hello there hmm", by: sut) == "hello there")
+        #expect(cleaned("hello there mhm", by: sut) == "hello there")
+    }
+
+    @Test(
         "keeps words that only sometimes act as filler",
         arguments: [
             "I would like a coffee",

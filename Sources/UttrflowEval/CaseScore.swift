@@ -5,6 +5,10 @@ public struct CaseScore: Sendable, Equatable {
     public let caseID: String
     /// Word-level agreement with the reference, `0...1`.
     public let similarity: Double
+    /// Agreement on comma and sentence-end placement.
+    public let markAccuracy: Double
+    /// Agreement on the case of words shared with the reference.
+    public let caseAccuracy: Double
     /// Whether every word that had to survive did.
     public let keptEverythingRequired: Bool
     /// Words that should have survived and did not.
@@ -13,18 +17,21 @@ public struct CaseScore: Sendable, Equatable {
     public let invented: [String]
     /// The exact beginning or ending the case required and the rewrite did not have.
     public let brokeShape: [String]
-    /// Whether the rewrite matched the reference exactly, ignoring case and spacing.
+    /// Whether the rewrite matched the reference exactly after whitespace is collapsed.
     public let isExact: Bool
     /// Whether the engine declined the case; kept apart from failure so a refusal is not a mistake.
     public let declined: Bool
 
     public init(
-        caseID: String, similarity: Double, keptEverythingRequired: Bool,
+        caseID: String, similarity: Double, markAccuracy: Double = 1, caseAccuracy: Double = 1,
+        keptEverythingRequired: Bool,
         lost: [String], isExact: Bool, declined: Bool = false, invented: [String] = [],
         brokeShape: [String] = []
     ) {
         self.caseID = caseID
         self.similarity = similarity
+        self.markAccuracy = markAccuracy
+        self.caseAccuracy = caseAccuracy
         self.keptEverythingRequired = keptEverythingRequired
         self.lost = lost
         self.isExact = isExact
@@ -74,6 +81,20 @@ public struct EvaluationReport: Sendable, Equatable {
         let attempted = attempted
         guard !attempted.isEmpty else { return 0 }
         return attempted.map(\.similarity).reduce(0, +) / Double(attempted.count)
+    }
+
+    public var meanMarkAccuracy: Double {
+        mean(of: \CaseScore.markAccuracy)
+    }
+
+    public var meanCaseAccuracy: Double {
+        mean(of: \CaseScore.caseAccuracy)
+    }
+
+    private func mean(of metric: (CaseScore) -> Double) -> Double {
+        let attempted = attempted
+        guard !attempted.isEmpty else { return 0 }
+        return attempted.map(metric).reduce(0, +) / Double(attempted.count)
     }
 
     /// Cases that lost a word which had to survive, the most serious failure a dictation tool has.
