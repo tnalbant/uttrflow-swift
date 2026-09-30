@@ -691,7 +691,7 @@ struct SuggestionRoutingTests {
         #expect(session.route(KeyStroke(.return)) == .accept("git checkout"))
     }
 
-    @Test("Escape minimises to the dot, which still answers a second escape.")
+    @Test("Escape minimises to the dot and leaves later Escape presses to the application.")
     func escapeMinimises() throws {
         var session = SuggestionSession()
         _ = try draw(&session, typing: "git c")
@@ -701,7 +701,7 @@ struct SuggestionRoutingTests {
         }
         #expect(update.suggestion == .minimised)
         #expect(update.silence == .minimised)
-        #expect(update.armed.contains(.escape))
+        #expect(!update.armed.contains(.escape))
     }
 
     @Test("A minimised field stays minimised while its own value keeps growing.")
@@ -724,21 +724,26 @@ struct SuggestionRoutingTests {
         #expect(try draw(&session, typing: "git c")?.suggestion == .certain("git commit -m"))
     }
 
-    @Test("A second escape silences the field for the rest of its life.")
-    func secondEscapeSilencesTheField() throws {
+    @Test("Escape after minimising passes through without silencing the field.")
+    func escapeAfterMinimisingPassesThrough() throws {
         var session = SuggestionSession()
-        _ = try draw(&session, typing: "git c")
-        _ = session.route(KeyStroke(.escape))
-        #expect(session.route(KeyStroke(.escape)) == .redraw(.quiet(because: .turnedOffHere)))
-        #expect(session.isSilencedHere)
-        #expect(try draw(&session, typing: "git c") == .quiet(because: .turnedOffHere))
+        let initial = try draw(&session, typing: "git c")
+        #expect(initial?.suggestion == .certain("git commit -m"))
+        guard case .redraw(let minimised) = session.route(KeyStroke(.escape)) else {
+            Issue.record("the first Escape should minimise the suggestion")
+            return
+        }
+        #expect(minimised.suggestion == .minimised)
+        #expect(minimised.armed == [.optionEscape])
+        #expect(session.route(KeyStroke(.escape)) == .giveBack(KeyStroke(.escape)))
+        #expect(!session.isSilencedHere)
+        #expect(try draw(&session, typing: "git c")?.suggestion == .minimised)
     }
 
     @Test("Leaving the field lifts the silence, since it belonged to the field.")
     func silenceDoesNotFollowTheUser() throws {
         var session = SuggestionSession()
         _ = try draw(&session, typing: "git c")
-        _ = session.route(KeyStroke(.escape))
         _ = session.route(KeyStroke(.escape))
         _ = session.turn(in: other, at: PredictionContext(typed: ""))
         #expect(!session.isSilencedHere)

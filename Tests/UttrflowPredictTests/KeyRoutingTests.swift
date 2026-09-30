@@ -215,9 +215,9 @@ struct DismissKeyRoutingTests {
         #expect(decide(KeyStroke(.escape), showing: several) == .dismiss(.minimise))
     }
 
-    @Test("Escape again, with only the dot left, silences the field.")
-    func escapeTwiceSilencesTheField() {
-        #expect(decide(KeyStroke(.escape), showing: .minimised) == .dismiss(.silenceField))
+    @Test("Escape with only the dot left passes through to the application.")
+    func escapeWithDotPassesThrough() {
+        #expect(decide(KeyStroke(.escape), showing: .minimised) == .passThrough)
     }
 
     @Test("Option-Escape turns the whole feature off, from either rung.")
@@ -253,18 +253,18 @@ struct DismissKeyRoutingTests {
         #expect(decide(stroke, showing: .minimised, acceptKey: .rightArrow) == .dismiss(.turnOff))
     }
 
-    @Test("With only the dot left there is nothing to accept or walk.")
+    @Test("With only the dot left only Option-Escape is claimed.")
     func minimisedClaimsOnlyEscape() {
         #expect(decide(KeyStroke(.tab), showing: .minimised) == .passThrough)
         #expect(decide(KeyStroke(.downArrow, modifiers: .option), showing: .minimised) == .passThrough)
         #expect(decide(KeyStroke(.return), showing: .minimised) == .passThrough)
-        #expect(KeyRouting.arming(showing: .minimised) == [.escape, .optionEscape])
+        #expect(KeyRouting.arming(showing: .minimised) == [.optionEscape])
     }
 }
 
 @Suite("What the tap is armed with")
 struct ArmingTests {
-    @Test("One suggestion claims its accept key and the escape ladder, and nothing else.")
+    @Test("One suggestion claims its accept key and Escape, and nothing else.")
     func aLoneSuggestion() {
         #expect(KeyRouting.arming(showing: one) == [.tab, .escape, .optionEscape])
     }

@@ -52,8 +52,7 @@ public enum KeyRouting {
             return .passThrough
         case .minimised:
             if stroke == Self.turnOffStroke { return .dismiss(.turnOff) }
-            guard stroke == KeyStroke(.escape), claimsEscape(acceptKey) else { return .passThrough }
-            return .dismiss(.silenceField)
+            return .passThrough
         case .certain(let text):
             return decision(for: stroke, over: [text], selection: selection, acceptKey: acceptKey)
         case .choice(let leader, let others):

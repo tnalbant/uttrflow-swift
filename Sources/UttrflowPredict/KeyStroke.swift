@@ -24,7 +24,7 @@ public enum Key: Sendable, Equatable, CaseIterable {
     case tab
     /// Return, which runs the command and sends the message.
     case `return`
-    /// Escape, which is the whole dismissal ladder.
+    /// Escape, which minimises the suggestion and then reaches the application.
     case escape
     /// The right arrow, which accepts in a terminal.
     case rightArrow
@@ -100,7 +100,7 @@ public struct ArmedKeys: OptionSet, Sendable, Equatable {
     public static let rightArrow = ArmedKeys(rawValue: 1 << 2)
     /// Return, claimed only while a list is being walked.
     public static let `return` = ArmedKeys(rawValue: 1 << 3)
-    /// Escape, which minimises and then silences.
+    /// Escape, which minimises a suggestion and then passes through.
     public static let escape = ArmedKeys(rawValue: 1 << 4)
     /// ⌥Escape, which turns the feature off everywhere.
     public static let optionEscape = ArmedKeys(rawValue: 1 << 5)
