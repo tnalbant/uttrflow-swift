@@ -1,8 +1,9 @@
 # The key events this app posts, and what the system does with them
 
 `CGEventKeystrokeSender` presses ⌘V and `CGEventTypist` types characters and presses
-Delete. Both post events into the same stream the user's own keyboard feeds, which is
-what makes them work everywhere and what makes each of the rules below necessary.
+Delete. Both post events into the same stream the user's own keyboard feeds. An event can
+carry both a Unicode string and a physical key code, and the receiving application decides
+which representation it uses.
 `Docs/insertion.md` covers where the events are posted; this page covers what is in them.
 
 There are no per-application results on this page and there should not be: a posted event carries
@@ -21,19 +22,22 @@ and both readers drop anything carrying it. The value is deliberately not zero: 
 that never had the field set reads as zero, so zero would make every ordinary keystroke
 look like ours.
 
-## Sixteen UTF-16 units per event
+## Typed text uses one mapped key per character
 
-`keyboardSetUnicodeString` takes a longer string without complaint and the window server
-delivers a truncated one — no error, no short return, just missing characters at the end
-of a dictation. `CGEventTypist` therefore chunks the text at 16 units and posts a pair of
-events per chunk. Chunking is in UTF-16 units rather than characters because that is what
-the API counts — but the *boundary* is a character boundary, not a unit boundary. A blind
-stride of 16 splits a surrogate pair that straddles the cut, so an emoji arrives as a lone
-high surrogate in one event and a lone low surrogate in the next, and the line reads with
-one corrupted symbol in the middle of correct text. `UTF16Chunking.chunks(of:limit:)` walks
-unicode scalars and keeps each one whole, which is the rule `BackwardSelection` already
-applies on the read side. It is a pure function, so it is tested at every offset an emoji
-can sit at rather than asserted here.
+`CGEventTypist` posts one key pair per Unicode scalar. Each event carries that scalar as
+its Unicode string and uses the current layout's physical key code for the same character;
+when the layout produces it with Shift, the event carries Shift as well. This lets a field
+that reads the Unicode string receive the character and gives a field that reads physical
+keys a matching key and modifier instead of key code 0. Text is resolved in full before
+any event is posted. If a scalar has no single physical key on the selected layout, typing
+refuses the whole string. Completion checks that condition before deleting the text it
+would replace.
+
+The event format alone does not establish which representation a particular application
+uses. The `Completion` column in [compatibility.md](compatibility.md) records observed
+results by application; it does not identify whether a successful field read the Unicode
+string or the physical key. Terminal emulators, cross-platform editors, remote desktops,
+virtual machines and games still need measurements that separate those two behaviors.
 
 ## Flags are cleared on every event
 

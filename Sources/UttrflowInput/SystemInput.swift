@@ -142,6 +142,7 @@ enum PasteKeyLayout {
 
     /// The last resolved key code, readable from any thread without a Text Input Sources call.
     private static let cachedKeyCode = Mutex<CGKeyCode>(fallbackVKeyCode)
+    private static let cachedLayout = Mutex<Data?>(nil)
 
     /// Whether the change notification is already being watched, so starting twice still observes once.
     @MainActor private static var observing = false
@@ -170,6 +171,9 @@ enum PasteKeyLayout {
     @MainActor
     @discardableResult
     static func refresh() -> CGKeyCode {
+        let selected = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+        let selectedData = selected.flatMap(unicodeLayoutData(of:))
+        cachedLayout.withLock { $0 = selectedData }
         let code = readVKeyCode()
         cachedKeyCode.withLock { $0 = code }
         return code
@@ -191,6 +195,12 @@ enum PasteKeyLayout {
             return code
         }
         return fallbackVKeyCode
+    }
+
+    /// The selected layout table cached by `refresh()`, which lets posted text use matching physical keys.
+    static func stroke(for character: UniChar) -> LayoutKeyCode.Stroke? {
+        guard let data = cachedLayout.withLock({ $0 }) else { return nil }
+        return LayoutKeyCode.stroke(for: character, in: data)
     }
 
     /// The raw layout table Text Input Sources holds for `source`, absent for input methods and the like.
@@ -220,15 +230,14 @@ public struct CGEventKeystrokeSender: KeystrokeSender {
     }
 }
 
-/// Types characters by posting key events that carry them, which no test can assert anything about.
+/// Types characters with layout-mapped key events that also carry their Unicode strings.
 public struct CGEventTypist: KeystrokeTyping {
-    /// How many UTF-16 units one event may carry; the system truncates a longer string in silence.
-    private static let unitsPerEvent = 16
-
     /// Virtual key code for Delete, positional and so correct on any keyboard layout.
     private static let deleteKeyCode: CGKeyCode = 51
 
     public init() {}
+
+    public func canType(_ text: String) -> Bool { preparedStrokes(for: text) != nil }
 
     /// One press per character, because there is no bulk delete a synthetic keyboard can reach for.
     public func deleteBackwards(_ count: Int) throws(TextInsertionError) {
@@ -244,17 +253,33 @@ public struct CGEventTypist: KeystrokeTyping {
     }
 
     public func type(_ text: String) throws(TextInsertionError) {
+        guard let strokes = preparedStrokes(for: text) else {
+            throw .insertionRejected(description: "the current keyboard layout cannot type every character")
+        }
         guard AXIsProcessTrusted() else { throw .accessibilityDenied }
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for chunk in UTF16Chunking.chunks(of: text, limit: Self.unitsPerEvent) {
-            try postTaggedKeyPair(from: source, keyCode: 0) { event in
-                // Flags cleared so a modifier the user is still holding cannot make this a shortcut.
-                event.flags = []
-                event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+        for (character, stroke) in strokes {
+            try postTaggedKeyPair(from: source, keyCode: stroke.code) { event in
+                // Only layout modifiers are set, so held user modifiers cannot change the character.
+                event.flags = stroke.flags
+                var unit = character
+                event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
             }
         }
+    }
+
+    /// Resolves every scalar before posting any event, so unsupported text never becomes partial input.
+    private func preparedStrokes(for text: String) -> [(UniChar, LayoutKeyCode.Stroke)]? {
+        var strokes: [(UniChar, LayoutKeyCode.Stroke)] = []
+        for scalar in text.unicodeScalars {
+            guard scalar.value <= UInt32(UInt16.max) else { return nil }
+            let character = UniChar(scalar.value)
+            guard let stroke = PasteKeyLayout.stroke(for: character) else { return nil }
+            strokes.append((character, stroke))
+        }
+        return strokes
     }
 }
 

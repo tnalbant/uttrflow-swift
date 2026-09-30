@@ -28,6 +28,12 @@ struct LayoutKeyCodeTests {
     func qwerty() throws {
         let data = try layoutData(id: "com.apple.keylayout.US")
         #expect(LayoutKeyCode.code(for: vCharacter, in: data) == 9)
+        #expect(
+            LayoutKeyCode.stroke(for: UniChar(UnicodeScalar("A").value), in: data)
+                == LayoutKeyCode.Stroke(code: 0, flags: .maskShift))
+        #expect(
+            LayoutKeyCode.stroke(for: UniChar(UnicodeScalar("!").value), in: data)
+                == LayoutKeyCode.Stroke(code: 18, flags: .maskShift))
     }
 
     @Test("AZERTY: V still sits at key code 9, the position is shared with QWERTY")
@@ -74,5 +80,6 @@ struct LayoutKeyCodeTests {
         let data = try layoutData(id: "com.apple.keylayout.US")
         let controlCharacter = UniChar(0)
         #expect(LayoutKeyCode.code(for: controlCharacter, in: data) == nil)
+        #expect(LayoutKeyCode.stroke(for: controlCharacter, in: data) == nil)
     }
 }
