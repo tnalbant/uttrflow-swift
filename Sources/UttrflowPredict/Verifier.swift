@@ -191,6 +191,10 @@ public actor Verifier {
     private func retryPendingSupersessions() async {
         guard let supersession, !isRetryingSupersessions else { return }
         await beginSupersessionOperation()
+        guard !isRetryingSupersessions else {
+            endSupersessionOperation()
+            return
+        }
         isRetryingSupersessions = true
         defer {
             isRetryingSupersessions = false
