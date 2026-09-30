@@ -659,6 +659,66 @@ public enum EvaluationCorpus {
             mustKeep: ["42424242"]
         ),
         .init(
+            id: "spoken-phone-digit-run", category: .technical,
+            spoken: "call me on nine eight seven six five four three two one zero",
+            expected: "Call me on 9876543210.",
+            mustKeep: ["9876543210"]
+        ),
+        .init(
+            id: "spoken-code-digit-run", category: .technical,
+            spoken: "the code is one two three four",
+            expected: "The code is 1234.",
+            mustKeep: ["1234"]
+        ),
+        .init(
+            id: "spoken-emergency-digit-run", category: .technical,
+            spoken: "call nine one one",
+            expected: "Call 911.",
+            mustKeep: ["911"]
+        ),
+        .init(
+            id: "spoken-international-phone-digit-run", category: .technical,
+            spoken: "dial plus nine one nine eight seven six five four three two one zero",
+            expected: "Dial +919876543210.",
+            mustKeep: ["+919876543210"]
+        ),
+        .init(
+            id: "spoken-oh-and-zero-digit-run", category: .technical,
+            spoken: "the passcode is zero oh five",
+            expected: "The passcode is 005.",
+            mustKeep: ["005"]
+        ),
+        .init(
+            id: "spoken-leading-oh-digit-run", category: .technical,
+            spoken: "the passcode is oh five zero",
+            expected: "The passcode is 050.",
+            mustKeep: ["050"]
+        ),
+        .init(
+            id: "extension-is-digits-kept", category: .technical,
+            spoken: "my extension is 445",
+            expected: "My extension is 445.",
+            mustKeep: ["445"]
+        ),
+        .init(
+            id: "extension-is-spoken-digit-run", category: .technical,
+            spoken: "my extension is four four five",
+            expected: "My extension is 445.",
+            mustKeep: ["445"]
+        ),
+        .init(
+            id: "two-single-digits-kept", category: .technical,
+            spoken: "one or two",
+            expected: "One or two.",
+            mustKeep: ["one", "two"]
+        ),
+        .init(
+            id: "hyphenated-bedroom-count-kept", category: .technical,
+            spoken: "two three-bedroom flats",
+            expected: "Two three-bedroom flats.",
+            mustKeep: ["two", "three-bedroom", "flats"]
+        ),
+        .init(
             id: "spoken-email-address", category: .technical,
             spoken: "forward the logs to support at example dot com",
             expected: "Forward the logs to support@example.com.",

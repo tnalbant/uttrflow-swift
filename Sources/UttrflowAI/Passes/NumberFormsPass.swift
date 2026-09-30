@@ -1,3 +1,4 @@
+import Foundation
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
@@ -104,6 +105,13 @@ public struct NumberFormsPass: CleaningPass {
     ) -> Phrase? {
         let keys = shapes.map(\.key)
 
+        if keys[position] == "plus", joined(position + 1, shapes),
+            let run = spokenDigitRun(at: position + 1, keys: keys, shapes: shapes)
+        {
+            return Phrase(text: "+" + run.text, count: run.count + 1)
+        }
+        if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
+
         if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes) {
             if let numeral = NumberWords.digits(keys[position + 1]) {
                 return Phrase(text: "-" + numeral, count: 2)
@@ -185,20 +193,6 @@ public struct NumberFormsPass: CleaningPass {
             {
                 text += String(group.value)
                 end += group.count
-                isPhrase = true
-            }
-        }
-        // Three or more single digits spoken in a row are a digit string, even outside any context word.
-        if !isPhrase, item.spoken, let value = item.value, value < 10 {
-            var run = String(value)
-            var p = end
-            while p < keys.count, joined(p, shapes), let digit = singleDigit(keys[p]) {
-                run.append(digit)
-                p += 1
-            }
-            if run.count >= 3 {
-                text = run
-                end = p
                 isPhrase = true
             }
         }
@@ -305,6 +299,19 @@ public struct NumberFormsPass: CleaningPass {
     private static func singleDigit(_ key: String) -> String? {
         if key == "oh" { return "0" }
         return NumberWords.units[key].map(String.init)
+    }
+
+    /// A run starts with any digit word, including "oh", and only joins three or more.
+    private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let first = singleDigit(keys[start]) else { return nil }
+        var text = first
+        var end = start + 1
+        while joined(end, shapes), let digit = singleDigit(keys[end]) {
+            text.append(digit)
+            end += 1
+        }
+        guard text.count >= 3 else { return nil }
+        return Phrase(text: text, count: end - start)
     }
 
     /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.

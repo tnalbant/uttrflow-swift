@@ -122,6 +122,37 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes three or more spoken single digits as one digit string",
+        arguments: [
+            ("call me on nine eight seven six five four three two one zero", "call me on 9876543210"),
+            ("the code is one two three four", "the code is 1234"),
+            ("call nine one one", "call 911"),
+            ("dial plus nine one nine eight seven six five four three two one zero", "dial +919876543210"),
+            ("the passcode is zero oh five", "the passcode is 005"),
+            ("the passcode is oh five zero", "the passcode is 050"),
+        ]
+    )
+    func writesSpokenDigitRuns(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps two single digits and number words in a hyphenated count",
+        arguments: [
+            "one or two",
+            "two three-bedroom flats",
+        ]
+    )
+    func keepsDigitAndCountContrasts(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("keeps a digit string after an intervening is")
+    func keepsExtensionDigitsAfterIs() {
+        #expect(cleaned("my extension is 445", by: sut) == "my extension is 445")
+    }
+
+    @Test(
         "writes decimals, percentages and versions",
         arguments: [
             ("sixteen point two", "16.2"),
