@@ -420,7 +420,11 @@ public actor DictationPipeline {
             hasTurn = false
             // A cancel during the read leaves the pipeline at rest, so no failure is published over it.
             guard !wasCancelled(mine) else { return false }
-            transition(to: .failed(DictationFailure(error)))
+            transition(
+                to: .failed(
+                    DictationFailure(
+                        message: "That recording couldn't be read, so it can't be retried.",
+                        recovery: nil, severity: .recoverable)))
             return true
         }
         hasTurn = false
