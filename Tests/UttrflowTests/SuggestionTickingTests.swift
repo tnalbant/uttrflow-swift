@@ -192,6 +192,19 @@ struct SuggestionCoordinatorClockTests {
         #expect(text.contains("wake(.tick)"))
     }
 
+    @Test("wakes once when dictation ends, including a canceled dictation")
+    func dictationEndWakesOnlyOnTransition() throws {
+        let text = try source
+        let handler = try #require(
+            text.components(separatedBy: "func dictationChanged(isDictating: Bool) {").last)
+        let body = try #require(handler.components(separatedBy: "\n    }").first)
+
+        #expect(body.contains("guard self.isDictating != isDictating else { return }"))
+        #expect(body.contains("guard isDictating else {"))
+        #expect(body.contains("insertionPending = true"))
+        #expect(body.contains("wake(.tick)"))
+    }
+
     @Test("watches scrolls only once a ghost is drawn, and stops when none is")
     func scrollsWatchedOnlyWithAGhost() throws {
         let text = try source

@@ -497,10 +497,15 @@ final class SuggestionCoordinator {
 
     /// Withdraws the ghost and holds every turn while a dictation is under way, so its models have the GPU.
     func dictationChanged(isDictating: Bool) {
-        // A dictation that ends leaves its words in the field, and they are not this person's typing.
-        if self.isDictating, !isDictating { insertionPending = true }
+        guard self.isDictating != isDictating else { return }
         self.isDictating = isDictating
-        guard isDictating else { return }
+
+        // A dictation that ends leaves its words in the field, and they are not this person's typing.
+        guard isDictating else {
+            insertionPending = true
+            wake(.tick)
+            return
+        }
         again = nil
         turns.abandon()
         withdraw()
