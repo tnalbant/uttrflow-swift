@@ -26,20 +26,16 @@ public enum ValueWindow {
         return NSRange(location: start, length: max(0, end - start))
     }
 
-    /// The value and selection a turn works from, fetching only the window where the field can answer for a range.
+    /// The value and selection a turn works from, never fetching a long or unknown value whole.
     public static func read(
         count: Int?, selection: NSRange?, whole: () -> String?, part: (NSRange) -> String?
     ) -> (value: String?, selection: NSRange?) {
-        guard let count, let selection else { return (whole(), selection) }
-        guard selection.length > 0 else {
-            guard let window = range(count: count, selection: selection), let text = part(window),
-                text.utf16.count == window.length
-            else { return (whole(), selection) }
-            return (text, NSRange(location: selection.location - window.location, length: 0))
+        guard let count else { return (nil, selection) }
+        guard count > unitsBefore + unitsAfter else { return (whole(), selection) }
+        guard let selection, let window = range(count: count, selection: selection) else {
+            return (nil, selection)
         }
-        guard let window = range(count: count, selection: selection), let text = part(window),
-            text.utf16.count == window.length
-        else { return (nil, selection) }
+        guard let text = part(window), text.utf16.count == window.length else { return (nil, selection) }
         let shifted = NSRange(
             location: selection.location - window.location, length: min(selection.length, selectionLimit))
         return (text, shifted)

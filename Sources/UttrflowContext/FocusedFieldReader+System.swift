@@ -564,20 +564,21 @@ public enum FocusedFieldReader {
             return read
         }
 
-        /// The end of an element's value by range where it is long, else the whole value, which is short or of unknown length.
+        /// The end of an element's value by range where it is long; unknown lengths and failed ranges are skipped.
         private static func tail(of element: AXUIElement) -> String? {
             var length: AnyObject?
-            if AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
-                == .success,
-                let count = (length as? NSNumber)?.intValue, count > valueReadLimit
-            {
+            guard
+                AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
+                    == .success, let count = (length as? NSNumber)?.intValue, count >= 0
+            else { return nil }
+            if count > valueReadLimit {
                 let range = CFRange(location: count - valueReadLimit, length: valueReadLimit)
-                if let tail = SurfaceProbe.parameterized(
-                    element, kAXStringForRangeParameterizedAttribute, range)
-                    as? String
-                {
-                    return tail
-                }
+                guard
+                    let tail = SurfaceProbe.parameterized(
+                        element, kAXStringForRangeParameterizedAttribute, range)
+                        as? String, tail.utf16.count == valueReadLimit
+                else { return nil }
+                return tail
             }
             var value: AnyObject?
             guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success
