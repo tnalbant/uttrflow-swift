@@ -108,6 +108,7 @@ public enum FocusedFieldReader {
 
     /// One reading, off the main thread, or `nil` when nothing usable is focused.
     public static func read() async -> FocusedFieldSnapshot? {
+        let fullTreeGeneration = fullTree.generation
         // Identity is taken on the main actor first, because the blocking read below may not touch `NSWorkspace`.
         guard let app = await frontmostApp() else { return nil }
         // A field that stops answering costs the turn half a second at most, and no later turn waits behind it.
@@ -117,7 +118,7 @@ public enum FocusedFieldReader {
             if FullTreeSwitch.isNeeded(in: app.bundleIdentifier, after: reading) {
                 fullTree.switchOn(
                     processIdentifier: app.processIdentifier, bundleIdentifier: app.bundleIdentifier,
-                    host: fullTreeHost(app.processIdentifier))
+                    host: fullTreeHost(app.processIdentifier), generation: fullTreeGeneration)
             }
             return reading
         }

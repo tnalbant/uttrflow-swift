@@ -29,6 +29,8 @@ public final class FullTreeSwitch: Sendable {
     static let mostAttempts = 4
 
     private struct State {
+        /// Invalidates field reads that began before the last stop.
+        var generation: UInt64 = 0
         /// How many attempts each process has had and when the last began, in uptime nanoseconds.
         var attempts: [Int32: (count: Int, at: UInt64)] = [:]
         /// The processes whose switch is settled, on by this switch or by something else, which are never asked again.
@@ -40,6 +42,7 @@ public final class FullTreeSwitch: Sendable {
     }
 
     private let state = Mutex(State())
+    private let operations = Mutex(())
 
     public init() {}
 
@@ -53,10 +56,15 @@ public final class FullTreeSwitch: Sendable {
     /// The processes whose tree this switch turned on and has not turned off.
     var switchedOn: [Int32: String] { state.withLock { $0.switched } }
 
+    /// The current run, captured before a field read starts and invalidated when the loop stops.
+    var generation: UInt64 { state.withLock { $0.generation } }
+
     /// Whether this process may be asked now: not settled, attempts left, and the last one long enough ago; asking counts as an attempt.
-    private func mayAsk(_ processIdentifier: Int32, at now: UInt64) -> Bool {
+    private func mayAsk(_ processIdentifier: Int32, generation: UInt64, at now: UInt64) -> Bool {
         state.withLock { state in
-            guard !state.settled.contains(processIdentifier) else { return false }
+            guard state.generation == generation,
+                !state.settled.contains(processIdentifier)
+            else { return false }
             let last = state.attempts[processIdentifier]
             if let last {
                 guard last.count < Self.mostAttempts, now >= last.at + Self.retryInNanoseconds else {
@@ -71,30 +79,39 @@ public final class FullTreeSwitch: Sendable {
     /// Turns the full tree on in one application; an attempt with no answer is tried again later, a few times at most.
     func switchOn(
         processIdentifier: Int32, bundleIdentifier: String, host: Host,
+        generation requestedGeneration: UInt64? = nil,
         at now: UInt64 = DispatchTime.now().uptimeNanoseconds
     ) {
-        guard mayAsk(processIdentifier, at: now) else { return }
-        var attributes = [Self.manualAttribute]
-        if Self.isChromiumBrowser(bundleIdentifier) { attributes.append(Self.enhancedAttribute) }
-        for attribute in attributes {
-            let wrote = state.withLock { $0.written[processIdentifier]?.contains(attribute) ?? false }
-            if host.read(attribute) == true {
-                // On after this switch's own write is this switch's to turn off; on before it is left alone.
-                state.withLock { state in
-                    state.settled.insert(processIdentifier)
-                    if wrote { state.switched[processIdentifier] = attribute }
+        operations.withLock { _ in
+            let generation = requestedGeneration ?? self.generation
+            guard mayAsk(processIdentifier, generation: generation, at: now) else { return }
+            var attributes = [Self.manualAttribute]
+            if Self.isChromiumBrowser(bundleIdentifier) { attributes.append(Self.enhancedAttribute) }
+            for attribute in attributes {
+                let wrote = state.withLock { $0.written[processIdentifier]?.contains(attribute) ?? false }
+                if host.read(attribute) == true {
+                    // On after this switch's own write is this switch's to turn off; on before it is left alone.
+                    state.withLock { state in
+                        state.settled.insert(processIdentifier)
+                        if wrote { state.switched[processIdentifier] = attribute }
+                    }
+                    return
                 }
-                return
-            }
-            // The write is recorded before its answer, since one that times out may still take.
-            _ = state.withLock { $0.written[processIdentifier, default: []].insert(attribute) }
-            // Chrome answers a write it has applied as not implemented, so the value read back decides.
-            if host.write(attribute, true) || host.read(attribute) == true {
-                state.withLock { state in
-                    state.settled.insert(processIdentifier)
-                    state.switched[processIdentifier] = attribute
+                let recorded = state.withLock { state -> Bool in
+                    guard state.generation == generation else { return false }
+                    // The write is recorded before its answer, since one that times out may still take.
+                    _ = state.written[processIdentifier, default: []].insert(attribute)
+                    return true
                 }
-                return
+                guard recorded else { return }
+                // Chrome answers a write it has applied as not implemented, so the value read back decides.
+                if host.write(attribute, true) || host.read(attribute) == true {
+                    state.withLock { state in
+                        state.settled.insert(processIdentifier)
+                        state.switched[processIdentifier] = attribute
+                    }
+                    return
+                }
             }
         }
     }
@@ -105,14 +122,18 @@ public final class FullTreeSwitch: Sendable {
 
     /// Turns off every attribute this switch wrote that is not known to be off, and forgets every process, so the next start asks again.
     func switchOffEverything(host: (Int32) -> Host) {
-        let written = state.withLock { state in
-            defer { state = State() }
-            return state.written
-        }
-        for (processIdentifier, attributes) in written {
-            let application = host(processIdentifier)
-            for attribute in attributes.sorted() where application.read(attribute) != false {
-                _ = application.write(attribute, false)
+        operations.withLock { _ in
+            let written = state.withLock { state in
+                state.generation += 1
+                let written = state.written
+                state = State(generation: state.generation)
+                return written
+            }
+            for (processIdentifier, attributes) in written {
+                let application = host(processIdentifier)
+                for attribute in attributes.sorted() where application.read(attribute) != false {
+                    _ = application.write(attribute, false)
+                }
             }
         }
     }

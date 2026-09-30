@@ -101,6 +101,25 @@ struct FullTreeSwitchTests {
         #expect(chrome.values[FullTreeSwitch.enhancedAttribute] == true)
     }
 
+    @Test("A field read finishing after stop cannot turn Chrome's full tree back on")
+    func lateFieldReadCannotTurnTreeBackOnAfterStop() {
+        let tree = FullTreeSwitch()
+        let chrome = FakeApplication(
+            values: [FullTreeSwitch.enhancedAttribute: false],
+            supported: [FullTreeSwitch.enhancedAttribute])
+        let readGeneration = tree.generation
+
+        tree.switchOffEverything { _ in chrome.host }
+        let writesAfterStop = chrome.writes.count
+        tree.switchOn(
+            processIdentifier: 9, bundleIdentifier: "com.google.Chrome", host: chrome.host,
+            generation: readGeneration)
+
+        #expect(chrome.values[FullTreeSwitch.enhancedAttribute] == false)
+        #expect(chrome.writes.count == writesAfterStop)
+        #expect(tree.switchedOn.isEmpty)
+    }
+
     @Test(
         "A Chromium browser is switched on whatever the read found, and elsewhere only a caretless text field is."
     )
