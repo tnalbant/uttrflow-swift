@@ -254,10 +254,8 @@ struct PageEditorField<Field: View>: View {
                 Text(label)
                     .font(.system(size: 12))
                     .foregroundStyle(PagePalette.text.opacity(0.6))
-                    .accessibilityHidden(true)
             }
             field()
-                .accessibilityLabel(label)
                 .font(.system(size: 13.5))
                 .foregroundStyle(PagePalette.text)
                 .padding(.horizontal, 12)
