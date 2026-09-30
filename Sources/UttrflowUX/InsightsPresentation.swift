@@ -157,6 +157,8 @@ public struct InsightsPresentation: Sendable, Equatable {
     public let chrome: MainPageChrome
     /// The range switch. Empty when ``emptyState`` is set or the history is still being read.
     public let ranges: [InsightsRangeOption]
+    /// The words and locale-formatted date span covered by the chart.
+    public let chartCaption: String?
     /// The calendar. Absent when ``emptyState`` is set or the history is still being read.
     public let calendar: InsightsCalendar?
     /// Words, dictations, words per minute and the streak, in that order.
@@ -168,12 +170,14 @@ public struct InsightsPresentation: Sendable, Equatable {
     public init(
         chrome: MainPageChrome,
         ranges: [InsightsRangeOption],
+        chartCaption: String? = nil,
         calendar: InsightsCalendar?,
         figures: [MainStatistic],
         emptyState: MainEmptyState?
     ) {
         self.chrome = chrome
         self.ranges = ranges
+        self.chartCaption = chartCaption
         self.calendar = calendar
         self.figures = figures
         self.emptyState = emptyState
@@ -216,6 +220,10 @@ public enum InsightsPresenter {
         return InsightsPresentation(
             chrome: chrome,
             ranges: options(selected: range, retention: retention),
+            chartCaption: caption(
+                words: inRange.totalWords,
+                from: firstDay(of: range, now: snapshot.now, calendar: calendar),
+                to: calendar.startOfDay(for: snapshot.now), calendar: calendar, locale: locale),
             calendar: self.calendar(
                 for: inRange, range: range, now: snapshot.now, calendar: calendar, locale: locale),
             figures: figures(inRange: inRange, range: range, calendar: calendar, locale: locale),
@@ -320,6 +328,21 @@ public enum InsightsPresenter {
         let from = first.formatted(style.month(.wide))
         let to = last.formatted(style.month(.wide))
         return from == to ? to : "\(from) – \(to)"
+    }
+
+    /// The chart's word total and date span, formatted for the user's locale.
+    static func caption(
+        words: Int, from first: Date, to last: Date, calendar: Calendar, locale: Locale
+    ) -> String {
+        let crossesYear =
+            calendar.component(.year, from: first) != calendar.component(.year, from: last)
+        let formatter = DateIntervalFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateTemplate = crossesYear ? "dMMMMy" : "dMMMM"
+        let interval = formatter.string(from: first, to: last)
+        return "\(words.formatted(.number.locale(locale))) words · \(interval)"
     }
 
     /// The weekday initials, turned so the calendar's first weekday leads.
