@@ -231,12 +231,16 @@ struct NumberFormsPassTests {
         arguments: [
             ("third of June", "third of June"),
             ("the third of June", "the third of June"),
-            ("twenty fifth of March", "25 March"),
-            ("twenty first of May", "21 May"),
+            ("twenty fifth of March", "25th of March"),
+            ("the twenty first of march", "the 21st of March"),
+            ("twenty first of march", "21st of March"),
+            ("eleventh of May", "11th of May"),
+            ("twelfth of May", "12th of May"),
+            ("thirteenth of May", "13th of May"),
             ("first of January", "first of January"),
-            ("thirty first of December", "31 December"),
-            ("twenty fifth March", "25 March"),
-            ("tenth of April", "10 April"),
+            ("thirty first of December", "31st of December"),
+            ("twenty fifth March", "25th March"),
+            ("tenth of April", "10th of April"),
         ]
     )
     func dates(input: String, expected: String) {
@@ -246,9 +250,9 @@ struct NumberFormsPassTests {
     @Test(
         "writes dates from ordinals before months under always policy",
         arguments: [
-            ("third of June", "3 June"),
-            ("the third of June", "the 3 June"),
-            ("first of January", "1 January"),
+            ("third of June", "3rd of June"),
+            ("the third of June", "the 3rd of June"),
+            ("first of January", "1st of January"),
         ]
     )
     func datesAlwaysPolicy(input: String, expected: String) {
@@ -259,7 +263,7 @@ struct NumberFormsPassTests {
         "writes dates with the month before the ordinal",
         arguments: [
             ("March third", "March 3"),
-            ("the third of March", "the 3 March"),
+            ("the third of March", "the 3rd of March"),
             ("let's meet May fifth", "let's meet May 5"),
             ("March third twenty twenty five", "March 3 2025"),
         ]
@@ -281,14 +285,14 @@ struct NumberFormsPassTests {
     @Test(
         "recognises hyphenated dates and preserves their surrounding punctuation",
         arguments: [
-            ("twenty-fifth of March", "25 March"),
-            ("TWENTY FIRST OF MAY", "21 MAY"),
-            ("twentieth june", "20 june"),
-            ("thirtieth September", "30 September"),
-            ("twenty ninth of February", "29 February"),
-            ("twenty fifth May", "25 May"),
-            ("\"twenty fifth of March.\"", "\"25 March.\""),
-            ("twenty-fifth June, twenty sixth July", "25 June, 26 July"),
+            ("twenty-fifth of March", "25th of March"),
+            ("TWENTY FIRST OF MAY", "21st of May"),
+            ("twentieth june", "20th June"),
+            ("thirtieth September", "30th September"),
+            ("twenty ninth of February", "29th of February"),
+            ("twenty fifth May", "25th May"),
+            ("\"twenty fifth of March.\"", "\"25th of March.\""),
+            ("twenty-fifth June, twenty sixth July", "25th June, 26th July"),
         ]
     )
     func dateForms(input: String, expected: String) {

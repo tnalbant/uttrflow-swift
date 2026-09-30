@@ -577,9 +577,20 @@ public enum EvaluationCorpus {
         .init(
             id: "dates", category: .everyday,
             spoken: "the twenty fifth of March",
-            expected: "The 25 March.",
-            mustKeep: ["25", "March"],
-            mustNotAdd: ["of"]
+            expected: "The 25th of March.",
+            mustKeep: ["25th", "of", "March"]
+        ),
+        .init(
+            id: "spoken-date-with-the", category: .everyday,
+            spoken: "the twenty first of march",
+            expected: "The 21st of March.",
+            mustKeep: ["21st", "of", "March"]
+        ),
+        .init(
+            id: "spoken-date-without-the", category: .everyday,
+            spoken: "twenty first of march",
+            expected: "21st of March.",
+            mustKeep: ["21st", "of", "March"]
         ),
         .init(
             id: "ordinal-not-date", category: .everyday,
