@@ -68,7 +68,7 @@ struct PanelEndToEndTests {
                     _ = try await store.delete(clip.id, keeping: retention)
                 }
             case .restore(let clip):
-                _ = try await store.record(clip, keeping: retention)
+                _ = try await store.restore(clip, keeping: retention)
             }
         }
 
@@ -187,6 +187,33 @@ struct PanelEndToEndTests {
         let back = try #require(await harness.clip("keep me"))
         #expect(back.alias == "keeper")
         #expect(back.category == "Work")
+    }
+
+    @Test("undo restores the deleted clip after the same text is copied again")
+    func deleteRecopyThenUndo() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try await harness.seed(["pg prod"])
+        var target = try #require(await harness.clip("pg prod"))
+        try await harness.perform([.alias(target.id), .draft("pgprod"), .return])
+        try await harness.perform([.move(target.id), .draft("Database"), .return])
+        _ = try await harness.store.setPinned(true, of: target.id, keeping: harness.retention)
+        target = try #require(await harness.clip("pg prod"))
+
+        try await harness.carryOut(.delete(target.id))
+        try await harness.store.record(
+            Clip(text: target.text, kind: target.kind, copiedAt: Date()), keeping: harness.retention)
+        let newerID = try #require(await harness.clip("pg prod")).id
+
+        try await harness.carryOut(.restore(target))
+
+        let clips = await harness.store.clips(keeping: harness.retention)
+        #expect(clips.count == 1)
+        #expect(clips[0].id == target.id)
+        #expect(clips[0].id != newerID)
+        #expect(clips[0].alias == "pgprod")
+        #expect(clips[0].category == "Database")
+        #expect(clips[0].isPinned)
     }
 
     /// G6 — the clips are moved out, not orphaned and not destroyed.

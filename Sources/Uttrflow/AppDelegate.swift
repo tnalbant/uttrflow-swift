@@ -1623,7 +1623,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     throw error
                 }
             }
-            _ = try await clipboard.record(clip, keeping: retention)
+            _ = try await clipboard.restore(clip, keeping: retention)
             await clipboard.forgetHeldPictures()
             panel?.canUndoDelete = false
         }

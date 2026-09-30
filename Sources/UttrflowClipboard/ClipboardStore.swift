@@ -137,6 +137,18 @@ public actor ClipboardStore {
         return try settled(updated, keeping: retention)
     }
 
+    /// Restores a deleted clip as it was, replacing any newer copy of the same content.
+    @discardableResult
+    public func restore(
+        _ clip: Clip, keeping retention: ClipRetention
+    ) throws(ClipboardStoreError) -> [Clip] {
+        let existing = loaded()
+        let matching = Self.previous(for: clip, in: existing)
+        let displaced = Set([clip.id, matching?.id].compactMap { $0 })
+        let updated = [clip] + existing.filter { !displaced.contains($0.id) }
+        return try settled(updated, keeping: retention)
+    }
+
     /// Notes that a clip has just been reached for, in memory; the disk hears of it with the next write.
     @discardableResult
     public func markUsed(
