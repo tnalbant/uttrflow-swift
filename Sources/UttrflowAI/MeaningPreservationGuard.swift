@@ -271,6 +271,10 @@ public struct MeaningPreservationGuard: Sendable {
         if let changed = Self.changedQuantity(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
+        if let changed = Self.changedIndianGrouping(original: original, rewritten: rewritten) {
+            return .rejected(
+                reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
+        }
         return .accepted
     }
 
@@ -912,6 +916,53 @@ public struct MeaningPreservationGuard: Sendable {
             }
         }
         return written.count < spoken.count ? spoken[written.count].written : nil
+    }
+
+    /// Refuses a rewrite that changes an amount already written with Indian digit grouping.
+    static func changedIndianGrouping(original: String, rewritten: String) -> String? {
+        let spoken = numericSpellings(in: original)
+        let written = numericSpellings(in: rewritten)
+        for (index, spelling) in spoken.enumerated() where isIndianGrouped(spelling) {
+            guard written.indices.contains(index), written[index] == spelling else { return spelling }
+        }
+        return nil
+    }
+
+    /// The digit runs and comma separators as they appear, kept in text order.
+    private static func numericSpellings(in text: String) -> [String] {
+        let characters = Array(text)
+        var spellings: [String] = []
+        var index = 0
+        while index < characters.count {
+            guard characters[index].isNumber else {
+                index += 1
+                continue
+            }
+            let start = index
+            index += 1
+            while index < characters.count {
+                if characters[index].isNumber {
+                    index += 1
+                } else if characters[index] == ",", index + 1 < characters.count,
+                    characters[index + 1].isNumber
+                {
+                    index += 1
+                } else {
+                    break
+                }
+            }
+            spellings.append(String(characters[start..<index]))
+        }
+        return spellings
+    }
+
+    /// Indian grouping has a one or two digit leading group, two digit middle groups, and a three digit final group.
+    private static func isIndianGrouped(_ spelling: String) -> Bool {
+        let groups = spelling.split(separator: ",")
+        guard groups.count >= 3, (1...2).contains(groups[0].count), groups.last?.count == 3 else {
+            return false
+        }
+        return groups.dropFirst().dropLast().allSatisfy { $0.count == 2 }
     }
 
     /// The numbers a text states, in order and with repeats kept, each number word read through `table` and every run of them composed after it.

@@ -36,6 +36,21 @@ public enum EvaluationCorpus {
             mustKeep: ["John", "20"]
         ),
         .init(
+            id: "indian-grouping-lakh-transfer", category: .everyday,
+            spoken: "1,00,000 rupaye transfer kar do",
+            expected: "1,00,000 rupaye transfer kar do."
+        ),
+        .init(
+            id: "indian-grouping-quote", category: .everyday,
+            spoken: "Rs. 2,50,000 ka quote aaya",
+            expected: "Rs. 2,50,000 ka quote aaya."
+        ),
+        .init(
+            id: "indian-grouping-total-bill", category: .everyday,
+            spoken: "total bill 3,45,000 rupaye aaya",
+            expected: "Total bill 3,45,000 rupaye aaya."
+        ),
+        .init(
             id: "greeting-kept", category: .everyday,
             spoken: "hey sarah just checking in on the the design review",
             expected: "Hey Sarah, just checking in on the design review.",
