@@ -4,10 +4,14 @@
 struct BrandTone: Sendable, Equatable {
     let dark: UInt32
     let light: UInt32
+    let highContrastDark: UInt32?
+    let highContrastLight: UInt32?
 
-    init(dark: UInt32, light: UInt32) {
+    init(dark: UInt32, light: UInt32, highContrastDark: UInt32? = nil, highContrastLight: UInt32? = nil) {
         self.dark = dark
         self.light = light
+        self.highContrastDark = highContrastDark
+        self.highContrastLight = highContrastLight
     }
 
     /// A colour that does not change with the appearance.
@@ -21,6 +25,19 @@ struct BrandLayer: Sendable, Equatable {
     let tone: BrandTone
     let darkOpacity: Double
     let lightOpacity: Double
+    let highContrastDarkOpacity: Double?
+    let highContrastLightOpacity: Double?
+
+    init(
+        tone: BrandTone, darkOpacity: Double, lightOpacity: Double,
+        highContrastDarkOpacity: Double? = nil, highContrastLightOpacity: Double? = nil
+    ) {
+        self.tone = tone
+        self.darkOpacity = darkOpacity
+        self.lightOpacity = lightOpacity
+        self.highContrastDarkOpacity = highContrastDarkOpacity
+        self.highContrastLightOpacity = highContrastLightOpacity
+    }
 }
 
 /// The single source of truth for colour. See `Docs/app-main-window.md`.
@@ -79,20 +96,24 @@ enum BrandPalette {
         /// The rail beside the page, a step darker than it.
         static let rail = BrandTone(dark: 0x08_090C, light: 0xEA_E9F0)
         /// The base of a hover or selection wash, applied with an alpha.
-        static let wash = BrandTone(dark: 0xFF_FFFF, light: 0x00_0000)
+        static let wash = BrandTone(
+            dark: 0xFF_FFFF, light: 0x00_0000, highContrastDark: 0xFF_FFFF, highContrastLight: 0x00_0000)
     }
 
     /// Hairlines.
     enum Line {
-        static let separator = BrandTone(dark: 0x1E_212A, light: 0xE2_E0EA)
+        static let separator = BrandTone(
+            dark: 0x1E_212A, light: 0xE2_E0EA, highContrastDark: 0x76_7C8C, highContrastLight: 0x76_6B8D)
     }
 
     /// The text tones, strongest first.
     enum Text {
         static let primary = BrandTone(dark: 0xF4_F4F6, light: 0x17_1320)
-        static let muted = BrandTone(dark: 0x8B_90A0, light: 0x64_5B76)
+        static let muted = BrandTone(
+            dark: 0x8B_90A0, light: 0x64_5B76, highContrastDark: 0xC1_C4CE, highContrastLight: 0x4D_445F)
         /// The dimmest tone words may use; 4.5:1 on the rail leaves it close to `muted` in the light.
-        static let dim = BrandTone(dark: 0x7A_7F8E, light: 0x6D_6481)
+        static let dim = BrandTone(
+            dark: 0x7A_7F8E, light: 0x6D_6481, highContrastDark: 0xB0_B4C0, highContrastLight: 0x54_4A69)
         /// Below the dimmest text tone, for glyphs that lift when looked at; a mark's floor is 3:1.
         static let ghost: UInt32 = 0x65_6E80
     }
@@ -199,9 +220,19 @@ enum BrandPalette {
         /// The hero's mono waveform: white in the dark, ink in the light.
         static let waveformInk = BrandLayer(tone: textStrong, darkOpacity: 0.88, lightOpacity: 0.79)
         /// A quiet control's fill: a View button, a ⋯ button.
-        static let controlFill = BrandLayer(tone: textStrong, darkOpacity: 0.06, lightOpacity: 0.04)
+        static let controlFill = BrandLayer(
+            tone: BrandTone(
+                dark: textStrong.dark, light: textStrong.light,
+                highContrastDark: 0xFF_FFFF, highContrastLight: 0xD8_D5E0),
+            darkOpacity: 0.06, lightOpacity: 0.04,
+            highContrastDarkOpacity: 0.28, highContrastLightOpacity: 0.28)
         /// A quiet control's edge.
-        static let controlEdge = BrandLayer(tone: textStrong, darkOpacity: 0.14, lightOpacity: 0.14)
+        static let controlEdge = BrandLayer(
+            tone: BrandTone(
+                dark: textStrong.dark, light: textStrong.light,
+                highContrastDark: 0x9B_A1B2, highContrastLight: 0x6A_607E),
+            darkOpacity: 0.14, lightOpacity: 0.14,
+            highContrastDarkOpacity: 1, highContrastLightOpacity: 1)
         /// The unfilled track of a stat tile's ring.
         static let ringTrack = BrandLayer(tone: textStrong, darkOpacity: 0.1, lightOpacity: 0.1)
         /// The faint rim of a home card or row when dark; none when light, where white on the page is enough.

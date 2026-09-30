@@ -86,6 +86,7 @@ public actor DictationPipeline {
     /// Spans the early loop reached while the key was held, and where the audio it consumed ends. See `Docs/early-transcription.md`.
     private var earlySpans: [Span] = []
     private var earlyCut = 0
+    private var earlyLastWindowStart: Int?
     private var earlyWork: Task<Void, Never>?
     /// A tidy the early loop started but has not yet folded into `earlySpans`, picked up by the release pass at key-up.
     private var earlyTidyTask: Task<Piece, Never>?
@@ -461,6 +462,7 @@ public actor DictationPipeline {
         earlyTidyTask = nil
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         pieceInFlight = false
         earlyContext = nil
         await capture.cancel()
@@ -486,6 +488,7 @@ public actor DictationPipeline {
     private func beginWorkingAhead(_ mine: Int) {
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         earlyTidyTask = nil
         earlyContext = nil
         recordingFieldKind = nil
@@ -530,6 +533,7 @@ public actor DictationPipeline {
                 let cut = windowing.nextCut(
                     in: audio.samples, sampleRate: audio.sampleRate, from: lead)
             else { continue }
+            let start = earlyCut
             let end = earlyCut - lead + cut
 
             // A leftover tidy is folded in only once there is a next piece to recognise.
@@ -563,6 +567,7 @@ public actor DictationPipeline {
             guard generation == mine, !wasCancelled(mine) else { return }
             // Cut here, before the tidy, so a key-up mid-tidy still knows what audio is left to recognise.
             earlyCut = end
+            earlyLastWindowStart = start
             if let heard {
                 let correctionContext = await readContext()
                 let tidy = Task {
@@ -659,9 +664,11 @@ public actor DictationPipeline {
         pieceInFlight = false
         var spans = earlySpans
         var cut = earlyCut
+        let previousWindowStart = earlyLastWindowStart
         let earlyContext = self.earlyContext
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         self.earlyContext = nil
         // A tidy still running when the key came up is not waited on here; it joins the release pass below.
         if let earlyTidyTask {
@@ -675,7 +682,13 @@ public actor DictationPipeline {
             cleaningRecords = []
         }
 
-        var remainder = windowing.windows(in: audio.samples, sampleRate: audio.sampleRate, from: cut)
+        var remainder = windowing.windows(
+            in: audio.samples, sampleRate: audio.sampleRate, from: cut,
+            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil)
+        if let first = remainder.first, first.lowerBound < cut {
+            if !spans.isEmpty { spans.removeLast() }
+            self.earlyTidyTask = nil
+        }
         // Nothing at all still goes to the recogniser, whose refusal names the reason.
         if spans.isEmpty, remainder.isEmpty { remainder = [cut..<audio.samples.count] }
 

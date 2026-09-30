@@ -403,6 +403,25 @@ struct DictationPipelineEarlyWorkTests {
         #expect(cleaner.warmed.count <= 3, "at key-down, then at most once per piece tidied while recording")
     }
 
+    @Test("a short final phrase after a long pause joins the previous real-time window")
+    func shortFinalPhraseJoinsPreviousWindow() async throws {
+        let take = AudioSamples.canonical(
+            Take.tone(1.2) + Take.silence(4) + Take.tone(0.35) + Take.silence(10))
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
+        await capture.setCaptured(take)
+        let speech = NumberingSpeechEngine()
+        let pipeline = makePipeline(capture: capture, speech: speech)
+
+        await pipeline.startRecording()
+        try await waitForCalls(1, on: speech)
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.text == "W1 X. W2 X")
+        #expect(await speech.calls == 2)
+        let counts = await speech.sampleCounts
+        #expect(counts[1] > 4 * Take.rate, "the final phrase is decoded with the preceding window")
+    }
+
     @Test("a dictation of one piece warms the tidier once, at key-down, and not again after its answer")
     func onePieceWarmsOnce() async throws {
         let take = AudioSamples.canonical(Take.tone(0.8))

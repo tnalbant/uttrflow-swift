@@ -61,6 +61,33 @@ struct PieceJoinerListTests {
                 == "First, we need to fix the build. Second, we should review the PR.")
     }
 
+    @Test("ordinal paragraph layout is independent of where pieces are cut")
+    func ordinalParagraphsIgnorePieceCuts() {
+        let layouts = [
+            ["We need a plan. First, finish onboarding. Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding. Second, fix login.", "Third, review design."],
+            ["We need a plan.", "First, finish onboarding. Second, fix login. Third, review design."],
+        ].map { joined($0, .messaging) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(
+            layouts[0]
+                == "We need a plan. First, finish onboarding.\n\nSecond, fix login.\n\nThird, review design.")
+    }
+
+    @Test("ordinal list layout is independent of where pieces are cut")
+    func ordinalListsIgnorePieceCuts() {
+        let layouts = [
+            ["First, finish onboarding. Second, fix login. Third, review design."],
+            ["First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["First, finish onboarding. Second, fix login.", "Third, review design."],
+        ].map { joined($0, .document) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(layouts[0] == "- Finish onboarding\n- Fix login\n- Review design")
+    }
+
     @Test("keeps the prose a list is introduced with, above the items")
     func leadInStaysProse() {
         let text = joined(
@@ -456,6 +483,29 @@ struct PieceJoinerSeamTests {
             ["the room was taken", "in the morning we moved it"], under: .standard(for: .document))
 
         #expect(seamed.first == "the room was taken.")
+    }
+
+    @Test(
+        "joins a dependent clause opening to its main clause across a seam",
+        arguments: ["When", "If", "Because", "Although"])
+    func dependentClauseAtASeamRunsOn(subordinator: String) {
+        let seamed = PieceJoiner.seamed(
+            [
+                "\(subordinator) the light was finally automated.",
+                "The logbook was given to the town museum.",
+            ],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "\(subordinator) the light was finally automated")
+    }
+
+    @Test("still stops after a statement that starts with a wh-word")
+    func whWordStatementAtASeamStillStops() {
+        let seamed = PieceJoiner.seamed(
+            ["What it showed was surprising.", "The board approved the report."],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "What it showed was surprising.")
     }
 
     /// A hard cut falls where the speaker never paused, which is most often inside a phrase.

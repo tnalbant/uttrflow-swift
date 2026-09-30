@@ -745,6 +745,63 @@ public enum EvaluationCorpus {
             mustKeep: ["at the office at five"],
             mustNotAdd: ["@"]
         ),
+        .init(
+            id: "spoken-web-address-and-path", category: .technical,
+            spoken: "visit example dot com slash docs",
+            expected: "Visit example.com/docs."
+        ),
+        .init(
+            id: "spoken-www-address", category: .technical,
+            spoken: "the site is www dot example dot com",
+            expected: "The site is www.example.com."
+        ),
+        .init(
+            id: "spoken-scheme-address", category: .technical,
+            spoken: "go to https colon slash slash example dot com",
+            expected: "Go to https://example.com."
+        ),
+        .init(
+            id: "spoken-domain-api-path", category: .technical,
+            spoken: "the docs live at docs dot example dot com slash api slash v two",
+            expected: "The docs live at docs.example.com/api/v2."
+        ),
+        .init(
+            id: "spoken-package-filename", category: .technical,
+            spoken: "open package dot json",
+            expected: "Open package.json."
+        ),
+        .init(
+            id: "spoken-dot-env-filename", category: .technical,
+            spoken: "edit the dot env file",
+            expected: "Edit the .env file."
+        ),
+        .init(
+            id: "spoken-absolute-path", category: .technical,
+            spoken: "the path is slash users slash sam slash notes",
+            expected: "The path is /users/sam/notes."
+        ),
+        .init(
+            id: "spoken-handle-and-underscore", category: .technical,
+            spoken: "my handle is at sam underscore dev",
+            expected: "My handle is @sam_dev."
+        ),
+        .init(
+            id: "spoken-identifier-underscore", category: .technical,
+            spoken: "the variable is user underscore id",
+            expected: "The variable is user_id."
+        ),
+        .init(
+            id: "ordinary-dot-word", category: .technical,
+            spoken: "a dot on the map",
+            expected: "A dot on the map.",
+            mustKeep: ["dot"]
+        ),
+        .init(
+            id: "ordinary-slash-word", category: .technical,
+            spoken: "a slash in prices",
+            expected: "A slash in prices.",
+            mustKeep: ["slash"]
+        ),
     ]
 
     // MARK: Utterances that are not addressed to the model

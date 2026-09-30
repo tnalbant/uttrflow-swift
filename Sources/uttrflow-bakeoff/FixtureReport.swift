@@ -79,6 +79,8 @@ struct FixtureSummary: Encodable {
         let total: Int
         let hits: Int
         let conforming: Int
+        let shown: Int
+        let right: Int
     }
 
     let total: Int
@@ -123,7 +125,9 @@ struct FixtureSummary: Encodable {
             let inCategory = results.filter { $0.category == category }
             return Category(
                 name: category, total: inCategory.count, hits: inCategory.filter(\.hit).count,
-                conforming: inCategory.filter(\.conforms).count)
+                conforming: inCategory.filter(\.conforms).count,
+                shown: inCategory.filter { $0.shown && $0.judged }.count,
+                right: inCategory.filter { $0.shown && $0.judged && $0.hit }.count)
         }
     }
 }
@@ -150,7 +154,9 @@ struct FixtureReport: Encodable {
         for category in summary.categories {
             print(
                 "\(category.name.leftPadded(to: 10))  hit \(category.hits)/\(category.total)  "
-                    + "in register \(category.conforming)/\(category.total)")
+                    + "in register \(category.conforming)/\(category.total)  precision "
+                    + "\(Self.rate(category.right, of: category.shown)) (\(category.right)/\(category.shown) judged shown, "
+                    + "\(category.shown - category.right) wrong)")
         }
         guard summary.total > 0 else { return }
         print(
