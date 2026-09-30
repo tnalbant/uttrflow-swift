@@ -9,8 +9,10 @@ import re
 from pathlib import Path
 
 PNG_REFERENCE = re.compile(
-    r'''(?:src\s*=\s*|url\(\s*)["']?(?P<path>(?:\./)?[^"'()\s?#]+\.png)(?:[?#][^"')\s]*)?["']?''',
-    re.IGNORECASE,
+    r'''(?:src\s*=\s*|url\(\s*)["']?
+        (?P<path>(?:\./)?(?!/)(?!\.\./)(?![a-z][a-z0-9+.-]*:)[^"'()\s?#]+?\.png)
+        (?P<suffix>[?#][^"')\s]*)?["']?''',
+    re.IGNORECASE | re.VERBOSE,
 )
 
 
@@ -56,10 +58,12 @@ def preview_html(name, design_dir, image=None):
         embedded[asset] = "data:image/png;base64," + base64.b64encode(
             buffer.getvalue()
         ).decode()
+
     def inline(match):
         reference = match.group("path")
         uri = embedded[reference.removeprefix("./")]
-        return match.group(0).replace(reference, uri, 1)
+        full_reference = reference + (match.group("suffix") or "")
+        return match.group(0).replace(full_reference, uri, 1)
 
     return PNG_REFERENCE.sub(inline, html)
 

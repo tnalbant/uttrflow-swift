@@ -75,13 +75,20 @@ class PreviewGeneratorTests(unittest.TestCase):
     def test_referenced_png_is_inlined_and_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            markup = artboard('<img src="./logo.png"><div style="background:url(logo.png)"></div>')
+            markup = artboard(
+                '<img src="./logo.png?v=1">'
+                '<div style="background:url(logo.png#hash)"></div>'
+                '<img src="https://cdn.example.test/remote.png?v=2">'
+            )
             (root / "Identity.dc.html").write_text(markup)
             (root / "logo.png").write_bytes(b"PNG fixture")
             image = FakeImage()
             html = PREVIEW.preview_html("Identity", root, image=image)
             expected_uri = "data:image/png;base64,dGh1bWJuYWlsLWJ5dGVz"
             self.assertEqual(html.count(expected_uri), 2)
+            self.assertNotIn("?v=1", html)
+            self.assertNotIn("#hash", html)
+            self.assertIn('src="https://cdn.example.test/remote.png?v=2"', html)
             self.assertEqual(image.opened_path, root / "./logo.png")
             self.assertEqual(image.open_count, 1)
             self.assertEqual(image.thumbnail_size, (256, 256))
@@ -101,6 +108,24 @@ class PreviewGeneratorTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("python3 -m pip install Pillow", result.stderr)
             self.assertIn("artboard references a PNG", result.stderr)
+
+    def test_remote_png_reference_stays_external_without_pillow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote = 'https://cdn.example.test/logo.png?v=1#preview'
+            (root / "Identity.dc.html").write_text(
+                artboard(f'<img src="{remote}">')
+            )
+            result = subprocess.run(
+                [sys.executable, "-S", str(PREVIEW_SCRIPT), "Identity"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = (root / "_preview.html").read_text()
+            self.assertIn(f'src="{remote}"', output)
+            self.assertNotIn("data:image/png", output)
 
 
 if __name__ == "__main__":
