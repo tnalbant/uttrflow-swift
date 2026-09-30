@@ -1,7 +1,10 @@
 import CoreGraphics
+import CoreText
+import Foundation
 import Testing
 import UttrflowPredict
 
+@testable import UttrflowContext
 @testable import UttrflowUX
 
 /// Increase Contrast on its own, which is one of the two settings that forbid grey text.
@@ -144,6 +147,30 @@ struct SuggestionPresentationTests {
         #expect(!faceOnly.prefersMonospaced)
         #expect(SuggestionPresentation(.certain("Sydney")).prefersMonospaced)
         #expect(SuggestionPresentation(.certain("Sydney")).fontFamily == nil)
+    }
+
+    @Test("Bold and italic Core Text runs carry their traits into the suggestion presentation.")
+    func fontTraitsReachPresentation() throws {
+        func presentation(for trait: CTFontSymbolicTraits) throws -> SuggestionPresentation {
+            let regular = CTFontCreateWithName("Helvetica" as CFString, 17, nil)
+            let font = try #require(CTFontCreateCopyWithSymbolicTraits(regular, 17, nil, trait, trait))
+            let attributed = try #require(CFAttributedStringCreateMutable(nil, 0))
+            CFAttributedStringReplaceString(attributed, CFRange(location: 0, length: 0), "abc" as CFString)
+            CFAttributedStringSetAttribute(
+                attributed, CFRange(location: 0, length: 3), kCTFontAttributeName, font)
+            let style = try #require(FocusedFieldReader.typeStyle(inAttributed: attributed))
+            return SuggestionPresentation(
+                .certain("Sydney"), fieldPointSize: style.size, fontFamily: style.family,
+                isBold: style.isBold, isItalic: style.isItalic)
+        }
+
+        let bold = try presentation(for: .traitBold)
+        #expect(bold.isBold)
+        #expect(!bold.isItalic)
+
+        let italic = try presentation(for: .traitItalic)
+        #expect(!italic.isBold)
+        #expect(italic.isItalic)
     }
 
     @Test("The hint names the key that actually accepts: → in a terminal, ⌥⇥ in an editor, never a lie")

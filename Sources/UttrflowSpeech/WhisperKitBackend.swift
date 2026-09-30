@@ -100,22 +100,10 @@ public actor WhisperKitBackend: TranscriptionBackend {
         let backend = RetryBackend(kit: kit)
 
         do {
-            let biased = try await CappedDecodeRetry.transcribe(
+            let transcript = try await CappedDecodeRetry.transcribeRecoveringEmptyPrompt(
                 samples: samples, languageHint: languageHint, vocabulary: vocabulary, using: backend)
-            guard !vocabulary.isEmpty, biased.text.isEmpty else {
-                Self.report(biased.effort)
-                return biased
-            }
-
-            // The net: a prompt that decodes to nothing costs a second decode, never the words.
-            let retried = try await CappedDecodeRetry.transcribe(
-                samples: samples, languageHint: languageHint, vocabulary: [], using: backend)
-            let effort = biased.effort.addingRetry(retried.effort)
-            Self.report(effort)
-            return RawTranscript(
-                text: retried.text, languageIdentifier: retried.languageIdentifier,
-                languageProbability: retried.languageProbability, segments: retried.segments,
-                effort: effort, tokensUsed: retried.tokensUsed)
+            Self.report(transcript.effort)
+            return transcript
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -137,28 +125,26 @@ public actor WhisperKitBackend: TranscriptionBackend {
 fileprivate func rawTranscript(
     from results: [TranscriptionResult], vocabularyPrompt: [String] = []
 ) -> RawTranscript {
-    let flatSegments = results.flatMap(\.segments)
-    let totalTokens = flatSegments.reduce(0) { $0 + $1.tokens.count }
-    return RawTranscript(
-        text: results.map(\.text).joined(separator: " "),
-        languageIdentifier: results.first?.language,
-        // WhisperKit surfaces a verdict but not a probability from `transcribe`.
-        languageProbability: nil,
-        segments: flatSegments.map {
-            RawSegment(
-                text: $0.text, start: Double($0.start), end: Double($0.end),
-                words: $0.words.map { words in
-                    words.map {
-                        RawWord(
-                            text: $0.word, start: Double($0.start), end: Double($0.end),
-                            probability: Double($0.probability))
-                    }
-                })
-        },
-        effort: effort(of: results),
-        tokensUsed: totalTokens,
-        vocabularyPrompt: vocabularyPrompt
-    )
+    TranscriptAssembly.whisper(
+        results.map { result in
+            WhisperTranscriptWindow(
+                text: result.text,
+                languageIdentifier: result.language,
+                segments: result.segments.map {
+                    RawSegment(
+                        text: $0.text, start: Double($0.start), end: Double($0.end),
+                        words: $0.words.map { words in
+                            words.map {
+                                RawWord(
+                                    text: $0.word, start: Double($0.start), end: Double($0.end),
+                                    probability: Double($0.probability))
+                            }
+                        })
+                },
+                effort: effort(of: [result]),
+                tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
+                vocabularyPrompt: vocabularyPrompt)
+        })
 }
 
 /// What WhisperKit's own timings say this piece cost beyond one decode.

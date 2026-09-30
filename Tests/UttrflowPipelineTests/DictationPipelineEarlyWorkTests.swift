@@ -679,7 +679,7 @@ struct DictationPipelineEarlyWorkTests {
             waiting: [recording], audioOutcome: .success(Take.threePieces))
         let cleaner = ShoutingCleaner()
         let context = FakeContextEngine(
-            context: .fixture(applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal"))
+            context: .fixture(applicationName: "Keychain Access", isSecure: true))
         let pipeline = makePipeline(
             capture: FakeAudioCaptureEngine(), cleaner: cleaner, context: context, recordings: recordings)
 
@@ -690,6 +690,29 @@ struct DictationPipelineEarlyWorkTests {
 
         #expect(!cleaner.contexts.isEmpty)
         #expect(cleaner.contexts.allSatisfy { $0 == AppContext() })
+        #expect(await pipeline.currentState.outcome?.intoSecureField == false)
+    }
+
+    @Test("a new start after cancel reads its own screen")
+    func startAfterCancelReadsFreshContext() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.onePiece))
+        await capture.setCaptured(Take.onePiece)
+        let context = FakeContextEngine(
+            context: .fixture(applicationName: "Keychain Access", isSecure: true))
+        let pipeline = makePipeline(capture: capture, context: context, earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        try await eventually { await pipeline.earlyReadsSettled == 1 }
+        await pipeline.cancel()
+
+        await context.setContext(.fixture(applicationName: "Notes"))
+        await capture.setCaptured(Take.onePiece)
+        await pipeline.startRecording()
+        try await eventually { await pipeline.earlyReadsSettled == 2 }
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.insertedInto == "Notes")
+        #expect(await pipeline.currentState.outcome?.intoSecureField == false)
     }
 
     @Test("a piece that fails while recording is left for the end, where its failure is reported")

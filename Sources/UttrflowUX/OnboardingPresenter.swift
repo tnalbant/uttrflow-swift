@@ -22,7 +22,7 @@ public enum OnboardingPresenter {
 
     /// What Uttrflow is for, said on the page that asks who you are.
     static let pitch = """
-        Hold one key, say what you mean, and Uttrflow writes it into whatever app you’re in — \
+        Use a shortcut, say what you mean, and Uttrflow writes it into whatever app you’re in — \
         punctuated, tidied, and without the “um”s. Sign in once, and after that it runs \
         entirely on this Mac.
         """
@@ -239,8 +239,8 @@ public enum OnboardingPresenter {
                 explanation: "Try it now. Uttrflow lives in your menu bar whenever you need it.")
             page.subtitle =
                 holds
-                ? "Hold \(named), say anything, then let go."
-                : "Press \(named), say anything, then press again."
+                ? "Click a text field in another app, then hold \(named), say anything, then let go."
+                : "Click a text field in another app, then press \(named), say anything, then press again."
             page.action = skip
         case .listening:
             page = self.page(

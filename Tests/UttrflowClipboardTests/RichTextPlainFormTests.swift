@@ -518,6 +518,57 @@ struct RichTextPlainFormTests {
         #expect(RichTextPlainForm.plainText(fromHTML: "<?xml version=\"1.0\"?><p>Visible</p>") == "Visible")
     }
 
+    @Test("reads attributes with whitespace around the equals sign")
+    func attributeWhitespaceAroundEquals() {
+        let html = #"<a href = "https://example.com">site</a>"#
+        #expect(RichTextPlainForm.plainText(fromHTML: html) == "site (https://example.com)")
+    }
+
+    @Test(
+        "closes raw-text elements without regard to end-tag case",
+        arguments: [
+            ("<style>p{}</STYLE><p>kept</p>", "kept"),
+            ("<script>hidden</SCRIPT><p>kept</p>", "kept"),
+        ])
+    func rawTextEndTagCase(_ html: String, _ expected: String) {
+        #expect(RichTextPlainForm.plainText(fromHTML: html) == expected)
+    }
+
+    @Test(
+        "does not stop raw text at a longer element name",
+        arguments: [
+            ("script", "</scripture><p>Hidden</p>"),
+            ("style", "</stylesheet><p>Hidden</p>"),
+            ("title", "</titlecard><p>Hidden</p>"),
+        ])
+    func rawTextEndTagPrefix(_ element: String, _ content: String) {
+        let html = "<\(element)>\(content)</\(element)><p>Visible</p>"
+        #expect(RichTextPlainForm.plainText(fromHTML: html) == "Visible")
+    }
+
+    @Test("ends safely when a raw-text end tag stops at end of input")
+    func partialRawTextEndTag() {
+        #expect(RichTextPlainForm.plainText(fromHTML: "<script>hidden</script") == "")
+    }
+
+    @Test("keeps an empty link's destination when its content decodes to nothing")
+    func linkWithEmptyDecodedText() {
+        #expect(
+            RichTextPlainForm.plainText(fromHTML: #"<a href="https://example.com">&shy;</a>"#)
+                == "https://example.com")
+        #expect(
+            RichTextPlainForm.plainText(fromHTML: #"<a href="https://example.com"><code>&shy;</code></a>"#)
+                == "https://example.com")
+        #expect(
+            RichTextPlainForm.plainText(fromHTML: #"<a href="https://example.com"> </a>"#)
+                == "https://example.com")
+    }
+
+    @Test("does not treat a colon at the start of an href as a scheme")
+    func hrefWithEmptyScheme() {
+        #expect(RichTextPlainForm.plainText(fromHTML: #"<a href=":nothing">x</a>"#) == "x")
+    }
+
     // MARK: - Malformed input
 
     /// Unclosed tags, stray brackets, tags that close nothing: none may crash or swallow the words after it.

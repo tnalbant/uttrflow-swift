@@ -119,6 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recordingStopGesture: StopGesture = .letGo
 
     private var pipeline: DictationPipeline?
+    /// Lets the app wiring test wait for a refused retry to finish without timing guesses.
+    private(set) var retryWork: Task<Void, Never>?
     /// The pipeline's recogniser, held so memory pressure can let it go between dictations.
     private var speechEngine: BackedSpeechEngine?
     private var controller: DictationController<ContinuousClock>?
@@ -1980,7 +1982,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
-        if state.hasEnded { retryingRecording = nil }
+        if state.hasEnded { retryBadge.clear() }
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
         if state.hasEnded { sweepExpired() }
 
@@ -2502,7 +2504,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Recordings whose words were lost, as of the last refresh.
     private var knownRecordings: [KeptRecording] = []
     /// The recording the pipeline is running again, so its row can say so.
-    private var retryingRecording: UUID?
+    private var retryBadge = RetryBadgeOwnership()
+    private var retryingRecording: UUID? { retryBadge.recording }
     /// The kept recording History is playing back, one at a time.
     private lazy var playback: RecordingPlayback = {
         let playback = RecordingPlayback()
@@ -2512,9 +2515,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Clears the "Retrying…" badge of a retry the pipeline refused or abandoned.
     private func dropRetryingBadge(_ id: UUID) {
-        guard retryingRecording == id else { return }
-        retryingRecording = nil
+        guard retryBadge.finish(id) else { return }
         redrawMainWindow()
+    }
+
+    /// Says why a retry did not start, where the person just pressed Retry.
+    private func reportRetryBusy() {
+        let notice = MainNotice(
+            message: "Finish the current dictation first.",
+            symbolName: "arrow.clockwise", tone: .warning)
+        actionNotice = notice
+        announce(notice.message, urgently: true)
+        refreshMainWindow()
     }
 
     /// The last answer each gate gave; absent means unchecked, which the pages draw as silence.
@@ -2571,12 +2583,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .change(let change): apply(change)
 
         case .retryRecording(let id):
+            guard retryBadge.begin(id) else {
+                reportRetryBusy()
+                return
+            }
             if playback.playing == id { playback.stop() }
-            retryingRecording = id
             redrawMainWindow()
-            Task { [weak self] in
+            retryWork = Task { [weak self] in
                 guard let self, await self.pipeline?.retry(id) != true else { return }
                 self.dropRetryingBadge(id)
+                self.reportRetryBusy()
             }
         case .forgetRecording(let id):
             if playback.playing == id { playback.stop() }
@@ -3044,6 +3060,29 @@ private struct StoredSnippets: SnippetExpanding {
                     snippetID: $0.snippetID, matched: $0.matched, expansion: $0.expansion)
             })
     }
+}
+
+/// Gives one retry exclusive ownership of the history badge until it finishes.
+@MainActor
+final class RetryBadgeOwnership {
+    private(set) var recording: UUID?
+
+    /// Refuses to transfer an in-flight retry's badge to a later click.
+    func begin(_ id: UUID) -> Bool {
+        guard recording == nil else { return false }
+        recording = id
+        return true
+    }
+
+    /// Finishes only the retry that currently owns the badge.
+    @discardableResult
+    func finish(_ id: UUID) -> Bool {
+        guard recording == id else { return false }
+        recording = nil
+        return true
+    }
+
+    func clear() { recording = nil }
 }
 
 /// Counts a finished dictation back into the two stores it drew on.

@@ -28,6 +28,8 @@ private struct SuggestionRequest: Equatable {
     var acceptKey: AcceptKey = .tab
     /// The field's own font family, so the ghost is set in the face the line is.
     var fontFamily: String?
+    var isBold = false
+    var isItalic = false
     /// The field's own text colour, so the ghost reads against the field and not against Uttrflow's appearance.
     var textColor: TextColor?
 
@@ -115,12 +117,15 @@ final class SuggestionPanelController {
         selection: SuggestionSelection = .untouched,
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         textColor: TextColor? = nil
     ) -> Bool {
         let next = SuggestionRequest(
             suggestion: suggestion, typed: typed, placement: placement, direction: direction, caret: caret,
             window: window, field: field, fieldPointSize: fieldPointSize, selection: selection,
-            acceptKey: acceptKey, fontFamily: fontFamily, textColor: textColor)
+            acceptKey: acceptKey, fontFamily: fontFamily, isBold: isBold, isItalic: isItalic,
+            textColor: textColor)
         // The same offer at the same caret is already on screen, so nothing is laid out, placed or fronted again.
         if isActuallyShowing, next.draws(sameAs: request) { return true }
         request = next
@@ -150,6 +155,7 @@ final class SuggestionPanelController {
         let after = SuggestionPresentation(
             suggestion, typed: typed, selection: next.selection, fieldPointSize: next.fieldPointSize,
             appearance: Self.appearance(), acceptKey: next.acceptKey, fontFamily: next.fontFamily,
+            isBold: next.isBold, isItalic: next.isItalic,
             fieldTextColor: next.textColor)
         guard let remaining = after.inline else { return false }
         // The caret moves by exactly the width the typed characters took off the ghost, so the rest does not shift.
@@ -223,6 +229,7 @@ final class SuggestionPanelController {
             request.suggestion, typed: request.typed, selection: request.selection,
             fieldPointSize: request.fieldPointSize, appearance: Self.appearance(),
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
+            isBold: request.isBold, isItalic: request.isItalic,
             fieldTextColor: request.textColor, maximumWidth: room,
             direction: request.direction == .rightToLeft ? .rightToLeft : .leftToRight)
         // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.

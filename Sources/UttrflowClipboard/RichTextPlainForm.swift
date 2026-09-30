@@ -211,7 +211,18 @@ private struct HTMLTokenizer {
     /// Runs to the end tag of a raw-text element, or to the end of the input if it never closes.
     private mutating func skipToEndTag(of name: String) {
         let target = Array("</\(name)".unicodeScalars)
-        index = position(of: target, from: index, ignoringCase: true) ?? count
+        var searchFrom = index
+        while let candidate = position(of: target, from: searchFrom, ignoringCase: true) {
+            let afterName = candidate + target.count
+            if afterName == count || isSpace(scalars[afterName]) || scalars[afterName] == "/"
+                || scalars[afterName] == ">"
+            {
+                index = candidate
+                return
+            }
+            searchFrom = candidate + 1
+        }
+        index = count
     }
 
     /// Where `target` next begins at or after `start`, or `nil` when it never does.

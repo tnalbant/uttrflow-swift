@@ -62,12 +62,18 @@ struct PointSizeReadingTests {
     }
 
     /// The shape most applications answer with: no font object, only an `AXFont` dictionary describing one.
-    private func described(size: Double?, family: String?) throws -> CFAttributedString {
+    private func described(
+        size: Double?, family: String?, name: String? = nil, style: String? = nil
+    )
+        throws -> CFAttributedString
+    {
         let string = try #require(CFAttributedStringCreateMutable(nil, 0))
         CFAttributedStringReplaceString(string, CFRange(location: 0, length: 0), "abc" as CFString)
         var font: [String: Any] = [:]
         if let size { font["AXFontSize"] = size }
         if let family { font["AXFontFamily"] = family }
+        if let name { font["AXFontName"] = name }
+        if let style { font["AXFontStyle"] = style }
         CFAttributedStringSetAttribute(
             string, CFRange(location: 0, length: 3), "AXFont" as CFString, font as CFDictionary)
         return string
@@ -80,6 +86,19 @@ struct PointSizeReadingTests {
         #expect(style?.family == "Menlo")
         let size = FocusedFieldReader.pointSize(inAttributed: try described(size: 11, family: "Menlo"))
         #expect(size == 11)
+    }
+
+    @Test("Bold and italic AXFont names preserve their symbolic traits.")
+    func readsAccessibilityFontTraits() throws {
+        let bold = FocusedFieldReader.typeStyle(
+            inAttributed: try described(size: 11, family: "Helvetica", name: "Helvetica-Bold"))
+        #expect(bold?.isBold == true)
+        #expect(bold?.isItalic == false)
+
+        let italic = FocusedFieldReader.typeStyle(
+            inAttributed: try described(size: 11, family: "Helvetica", style: "Italic"))
+        #expect(italic?.isBold == false)
+        #expect(italic?.isItalic == true)
     }
 
     @Test("A dictionary missing one half still yields the other, and one with neither yields nothing.")

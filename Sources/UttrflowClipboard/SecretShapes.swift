@@ -184,6 +184,7 @@ public enum SecretShapes {
 
     static func looksGenerated(_ token: String) -> Bool {
         guard !isPathLike(token) else { return false }
+        guard !isUUID(token) else { return false }
 
         // Hex has a sixteen-symbol alphabet and can never reach the general floor.
         if token.count >= hexTokenLength, token.allSatisfy({ $0.isHexDigit && $0.isASCII }) { return true }
@@ -194,6 +195,15 @@ public enum SecretShapes {
             token.contains(where: \.isLetter)
         else { return false }
         return entropy(of: token) >= entropyFloor && !isJoinedWords(token)
+    }
+
+    /// Whether a token has the canonical 8-4-4-4-12 hexadecimal UUID shape.
+    private static func isUUID(_ token: String) -> Bool {
+        let groups = token.split(separator: "-", omittingEmptySubsequences: false)
+        return groups.count == 5
+            && zip(groups, [8, 4, 4, 4, 12]).allSatisfy { group, length in
+                group.count == length && group.allSatisfy { $0.isHexDigit && $0.isASCII }
+            }
     }
 
     /// Whether a token is words joined by `-`, `_`, `/` or `.`, like a branch, slug, or bundle id.

@@ -200,18 +200,10 @@ public actor AppleSpeechBackend: TranscriptionBackend {
     private static func collect(
         _ results: some AsyncSequence<SpeechTranscriber.Result, any Error> & Sendable
     ) async throws -> String {
-        var pieces: [String] = []
-        for try await result in results where result.isFinal {
-            pieces.append(String(result.text.characters))
+        var pieces: [FinalTranscriptPiece] = []
+        for try await result in results {
+            pieces.append(FinalTranscriptPiece(text: String(result.text.characters), isFinal: result.isFinal))
         }
-        return pieces.joined(separator: " ")
-    }
-}
-
-extension Array {
-    /// Splits into consecutive slices of at most `size` elements.
-    fileprivate func chunked(into size: Int) -> [[Element]] {
-        guard size > 0 else { return [self] }
-        return stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
+        return TranscriptAssembly.finalText(from: pieces)
     }
 }

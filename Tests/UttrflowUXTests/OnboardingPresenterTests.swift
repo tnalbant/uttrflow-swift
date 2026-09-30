@@ -200,6 +200,8 @@ struct OnboardingPresenterTests {
         #expect(offering.title == "Just talk.")
         #expect(offering.picture == .waveform(.talking, badge: nil))
         #expect(offering.explanation == OnboardingPresenter.pitch)
+        #expect(offering.explanation?.contains("Use a shortcut") == true)
+        #expect(offering.explanation?.contains("one key") == false)
         #expect(offering.providers.first?.label == "Google")
         #expect(offering.providers.first?.title == "Continue with Google")
     }
@@ -392,7 +394,10 @@ struct OnboardingPresenterTests {
     func theFirstTry() {
         let trying = page(OnboardingState(step: .ready, detail: .finishing(.ready)))
         #expect(trying.title == "Try it now.")
-        #expect(trying.subtitle == "Hold control and option, say anything, then let go.")
+        #expect(
+            trying.subtitle
+                == "Click a text field in another app, then hold control and option, say anything, then let go."
+        )
         #expect(
             trying.picture
                 == .keyboard(
@@ -410,7 +415,10 @@ struct OnboardingPresenterTests {
 
         let pressed = page(
             OnboardingState(step: .ready, detail: .finishing(.ready)), activation: .pressToToggle)
-        #expect(pressed.subtitle == "Press control and option, say anything, then press again.")
+        #expect(
+            pressed.subtitle
+                == "Click a text field in another app, then press control and option, say anything, then press again."
+        )
         guard case .keyboard(let pressedKeys) = pressed.picture else {
             Issue.record("the try draws \(pressed.picture)")
             return
@@ -419,7 +427,10 @@ struct OnboardingPresenterTests {
 
         let earlier = page(
             OnboardingState(step: .ready, detail: .finishing(.ready)), hotkey: Settings.earlierInstall.hotkey)
-        #expect(earlier.subtitle == "Hold option and Space, say anything, then let go.")
+        #expect(
+            earlier.subtitle
+                == "Click a text field in another app, then hold option and Space, say anything, then let go."
+        )
         guard case .keyboard(let earlierKeys) = earlier.picture else {
             Issue.record("the try draws \(earlier.picture)")
             return
@@ -496,8 +507,20 @@ struct OnboardingPresenterTests {
 
     @Test("says that words will be copied when Accessibility is missing")
     func copyingIsSaid() {
-        let copying = page(OnboardingState(step: .ready, detail: .finishing(.pastesManually)))
+        let state = OnboardingState(step: .ready, detail: .finishing(.pastesManually))
+        let copying = page(state)
         #expect(copying.hint?.contains("copied") == true)
+        #expect(
+            copying.subtitle
+                == "Click a text field in another app, then hold control and option, say anything, then let go."
+        )
+
+        let pressed = page(state, activation: .pressToToggle)
+        #expect(
+            pressed.subtitle
+                == "Click a text field in another app, then press control and option, say anything, then press again."
+        )
+        #expect(!pressed.subtitle.contains("let go"))
     }
 
     @Test("offers the way to put right an ending that cannot be tried")

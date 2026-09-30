@@ -2,7 +2,7 @@
 public struct ModelPass: Sendable {
     /// What the model does on this turn for a line.
     public enum Plan: Sendable, Equatable {
-        /// An earlier answer still begun by the line is drawn without a pass; listed values are the subset that arrived from the machine rather than a pass.
+        /// An earlier answer still begun by the line is drawn without a pass; listed values came from the machine.
         case reuse([String], listed: Set<String>)
         /// The model's last word on this exact line was nothing, so no pass is run.
         case skip
@@ -18,9 +18,10 @@ public struct ModelPass: Sendable {
         case model
     }
 
-    /// The last answer that stood, with the field, the line, the text before the line it was asked on, and which completions were machine-listed.
+    /// The last answer that stood, with the field, its line, place, and machine-listed completions.
     public private(set) var lastGenerated:
         (surface: Surface, typed: String, place: String?, completions: [String], listed: Set<String>)?
+    private var generatedScores: [String: Double] = [:]
     /// The last line whose pass came back empty or failed, and the text before it.
     public private(set) var lastEmpty: (surface: Surface, typed: String, place: String?)?
 
@@ -51,6 +52,7 @@ public struct ModelPass: Sendable {
     public mutating func freshStart(surfaceChanged: Bool, lineIsEmpty: Bool) {
         guard surfaceChanged || lineIsEmpty else { return }
         lastGenerated = nil
+        generatedScores = [:]
         lastEmpty = nil
     }
 
@@ -58,6 +60,7 @@ public struct ModelPass: Sendable {
     public mutating func follow(_ query: SuggestionQuery, at place: String?) {
         guard let last = lastGenerated, !Self.typesOn(query, at: place, from: last) else { return }
         lastGenerated = nil
+        generatedScores = [:]
     }
 
     /// What to do for this query: reuse an answer the line types on from, skip a line known empty here, or ask.
@@ -96,14 +99,22 @@ public struct ModelPass: Sendable {
         lastEmpty = (query.surface, query.typed, place)
     }
 
-    /// Remembers what stood of an answer, or the line as empty when nothing did; listed marks which entries arrived from the machine, not a pass.
+    /// Scores only lines in the last answer, so a caller cannot read scores from another field.
+    public func scores(for completions: [String]) -> [String: Double] {
+        let requested = Set(completions)
+        return generatedScores.filter { requested.contains($0.key) }
+    }
+
+    /// Remembers what stood of an answer and its scores, or the line as empty when nothing did.
     public mutating func remember(
-        _ standing: [String], for query: SuggestionQuery, at place: String?, listed: Set<String> = []
+        _ standing: [String], for query: SuggestionQuery, at place: String?, listed: Set<String> = [],
+        scores: [String: Double] = [:]
     ) {
         if standing.isEmpty {
             rememberEmpty(query, at: place)
         } else {
             lastGenerated = (query.surface, query.typed, place, standing, listed)
+            generatedScores = scores.filter { standing.contains($0.key) }
         }
     }
 }

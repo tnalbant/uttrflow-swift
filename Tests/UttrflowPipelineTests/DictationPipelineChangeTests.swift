@@ -10,6 +10,19 @@ import Testing
 
 // MARK: - Doubles
 
+private actor LatePasteSpeech: SpeechEngine {
+    let kind = SpeechEngineKind.whisperKit
+    private var lines = ["we moved the review", "to the next slot"]
+
+    func prepare() async throws(SpeechEngineError) {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        Transcription(text: lines.removeFirst(), audioDuration: audio.duration)
+    }
+}
+
 /// A ``WordCorrecting`` that proposes whatever the test scripts, and can be caught in the act.
 private final class FakeCorrector: WordCorrecting, Sendable {
     private struct State: Sendable {
@@ -209,6 +222,41 @@ private func dictate(with pipeline: DictationPipeline) async {
     await pipeline.finishRecording()
 }
 
+private actor LatePasteContext: ContextEngine {
+    private var context = AppContext.fixture(precedingText: "")
+    private var held: CheckedContinuation<Void, Never>?
+    private var released = false
+    private(set) var reads = 0
+    let secondReadBegan = Signal()
+
+    func currentContext() async -> AppContext {
+        reads += 1
+        if reads > 1, !released {
+            await withCheckedContinuation {
+                held = $0
+                secondReadBegan.fire()
+            }
+        }
+        return context
+    }
+
+    func landFirstPaste() {
+        context = .fixture(precedingText: "we moved the review")
+        released = true
+        held?.resume()
+        held = nil
+    }
+}
+
+private actor LatePasteInserter: TextInserting {
+    private(set) var received: [String] = []
+
+    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
+        received.append(text)
+        return InsertionAttempt(.pasteboard, arrival: .unconfirmed)
+    }
+}
+
 extension DictationPipeline {
     /// The finished dictation, or `nil` if this one did not finish.
     fileprivate var outcome: DictationOutcome? {
@@ -221,6 +269,27 @@ extension DictationPipeline {
 
 @Suite("Dictation pipeline: the user's own words")
 struct DictationPipelineCorrectionTests {
+    @Test("the next dictation reads the caret after an unconfirmed paste lands")
+    func nextDictationWaitsForThePreviousPaste() async {
+        let context = LatePasteContext()
+        let inserter = LatePasteInserter()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(),
+            speech: LatePasteSpeech(),
+            cleaner: FakeCleaner(), context: context, inserter: inserter)
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+        await pipeline.startRecording()
+        let second = Task { await pipeline.finishRecording() }
+        try? await arrival(of: context.secondReadBegan.fired)
+        #expect(await inserter.received == ["We moved the review"])
+        await context.landFirstPaste()
+        await second.value
+
+        #expect(await inserter.received == ["We moved the review", " we moved the review to the next slot"])
+    }
+
     /// A correction is argued from the sentence as heard, and the tidier's job is to rewrite it.
     @Test("Corrects the transcript before the tidier sees it")
     func correctsBeforeTidying() async {

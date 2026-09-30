@@ -66,18 +66,18 @@ struct SettingsPageView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: asked)
-        .task(id: model.session.settings.suggestions.pausedUntil) { await followThePause() }
-    }
-
-    /// Ticks until a running pause has lifted, then stops; nothing runs while there is no pause.
-    private func followThePause() async {
-        while let until = model.session.settings.suggestions.pausedUntil, until > Date() {
-            let wait = min(60, until.timeIntervalSinceNow) + 0.5
-            try? await Task.sleep(for: .seconds(wait))
-            guard !Task.isCancelled else { return }
-            pauseTick &+= 1
+        .task(id: pauseDeadline) {
+            guard let pauseDeadline else { return }
+            await SettingsPauseCountdown.follow(
+                until: pauseDeadline,
+                clock: ContinuousClock(),
+                now: { Date() },
+                onTick: { pauseTick &+= 1 })
         }
     }
+
+    /// The active pane's pause deadline, so SwiftUI cancels the ticker off that pane.
+    private var pauseDeadline: Date? { SettingsPauseCountdown.deadline(in: model.session) }
 
     /// What is being asked, if anything; the session knows which button was pressed.
     private var asked: SettingsRemoval? { model.session.pendingRemoval }

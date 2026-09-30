@@ -140,6 +140,11 @@ final class PanelThumbnails {
         }
     }
 
+    /// Waits before a visible row asks `prepare(_:)` to retry a remembered miss.
+    func waitBeforeRetry() async throws {
+        try await Task.sleep(for: retryAfter)
+    }
+
     /// Stored on `known` once the decode completes, even if the file is gone so the answer can be remembered.
     @MainActor
     private func record(_ file: URL, bytes: Loaded) {
@@ -232,13 +237,15 @@ struct Loaded: @unchecked Sendable {
 struct PanelThumbnailView: View {
     let file: URL
     let isSelected: Bool
+    private let thumbnails: PanelThumbnails
     @State private var picture: NSImage?
 
     /// Starts from what the cache already holds, so a row scrolled back into view draws at once.
-    init(file: URL, isSelected: Bool = false) {
+    init(file: URL, isSelected: Bool = false, thumbnails: PanelThumbnails = .shared) {
         self.file = file
         self.isSelected = isSelected
-        _picture = State(initialValue: PanelThumbnails.shared.cached(file))
+        self.thumbnails = thumbnails
+        _picture = State(initialValue: thumbnails.cached(file))
     }
 
     var body: some View {
@@ -253,17 +260,25 @@ struct PanelThumbnailView: View {
         }
         // Decoded off the main actor; a row reused for a different file starts over.
         .task(id: file) {
-            picture = PanelThumbnails.shared.cached(file)
-            PanelThumbnails.shared.prepare(file, selected: isSelected)
-            await PanelThumbnails.shared.waitForIdle(file: file)
-            guard !Task.isCancelled else { return }
-            picture = PanelThumbnails.shared.cached(file)
+            while !Task.isCancelled {
+                picture = thumbnails.cached(file)
+                thumbnails.prepare(file, selected: isSelected)
+                await thumbnails.waitForIdle(file: file)
+                guard !Task.isCancelled else { return }
+                picture = thumbnails.cached(file)
+                guard picture == nil else { return }
+                do {
+                    try await thumbnails.waitBeforeRetry()
+                } catch {
+                    return
+                }
+            }
         }
         .onChange(of: isSelected) { _, selected in
-            PanelThumbnails.shared.prepare(file, selected: selected)
+            thumbnails.prepare(file, selected: selected)
         }
         .onDisappear {
-            PanelThumbnails.shared.cancel(file)
+            thumbnails.cancel(file)
         }
     }
 }

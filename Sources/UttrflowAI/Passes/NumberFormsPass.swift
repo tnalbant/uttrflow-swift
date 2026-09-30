@@ -139,6 +139,12 @@ public struct NumberFormsPass: CleaningPass {
             return Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
         }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
+            if ordinal.value >= 21,
+                !isDateShapedOrdinal(at: position, ordinal: ordinal, keys: keys)
+            {
+                return Phrase(
+                    text: "\(ordinal.value)\(ordinalSuffix(ordinal.value))", count: ordinal.count)
+            }
             var end = position + ordinal.count
             guard joined(end, shapes) else { return nil }
             let hasOf = keys[end] == "of"
@@ -426,5 +432,14 @@ public struct NumberFormsPass: CleaningPass {
             }
         }
         return ordinalUnits[keys[position]].map { ($0, 1) }
+    }
+
+    /// Keeps date-like and interrupted date forms intact for the existing date parser to handle.
+    private static func isDateShapedOrdinal(
+        at position: Int, ordinal: (value: Int, count: Int), keys: [String]
+    ) -> Bool {
+        let end = position + ordinal.count
+        guard end < keys.count else { return false }
+        return keys[end] == "of" || monthDays[keys[end]] != nil
     }
 }

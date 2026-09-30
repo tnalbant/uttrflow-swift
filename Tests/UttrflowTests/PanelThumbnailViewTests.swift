@@ -1,6 +1,7 @@
 // Tests that a picture clip's thumbnail draws from the cache at once, and the card colour until it has one.
 
 import AppKit
+import Synchronization
 import SwiftUI
 import Testing
 
@@ -9,6 +10,18 @@ import Testing
 @MainActor
 @Suite("A picture clip's thumbnail")
 struct PanelThumbnailViewTests {
+    private final class RetrySourceState: @unchecked Sendable {
+        private let state = Mutex((calls: 0, restored: false))
+        var calls: Int { state.withLock { $0.calls } }
+        func restore() { state.withLock { $0.restored = true } }
+        func load() -> NSImage? {
+            state.withLock { state in
+                state.calls += 1
+                return state.restored ? NSImage(size: NSSize(width: 4, height: 4)) : nil
+            }
+        }
+    }
+
     /// The colour at the middle of `view` drawn at the row's size.
     private func middle(of view: some View) -> NSColor? {
         let renderer = ImageRenderer(content: view.frame(width: 34, height: 34))
@@ -51,5 +64,29 @@ struct PanelThumbnailViewTests {
         let card = try #require(middle(of: Color.panelCard))
         #expect(drawn == card)
         #expect(drawn.alphaComponent > 0)
+    }
+
+    @Test("a visible row retries a stale miss through its task")
+    func aVisibleRowRetriesAMiss() async throws {
+        let file = URL(fileURLWithPath: "/tmp/uttrflow-retry-\(UUID().uuidString).png")
+        let state = RetrySourceState()
+        let thumbnails = PanelThumbnails(
+            source: PanelThumbnailSource { _, _ in state.load() }, retryAfter: .milliseconds(20))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: .borderless,
+            backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: PanelThumbnailView(file: file, thumbnails: thumbnails))
+        window.orderFrontRegardless()
+        defer { window.close() }
+
+        for _ in 0..<1_000 where state.calls == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        #expect(state.calls == 1)
+        state.restore()
+        for _ in 0..<1_000 where thumbnails.cached(file) == nil {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(state.calls == 2)
+        #expect(thumbnails.cached(file) != nil)
     }
 }

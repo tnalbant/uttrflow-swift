@@ -108,6 +108,7 @@ public enum FocusedFieldReader {
 
     /// One reading, off the main thread, or `nil` when nothing usable is focused.
     public static func read() async -> FocusedFieldSnapshot? {
+        let fullTreeGeneration = fullTree.generation
         // Identity is taken on the main actor first, because the blocking read below may not touch `NSWorkspace`.
         guard let app = await frontmostApp() else { return nil }
         // A field that stops answering costs the turn half a second at most, and no later turn waits behind it.
@@ -117,7 +118,7 @@ public enum FocusedFieldReader {
             if FullTreeSwitch.isNeeded(in: app.bundleIdentifier, after: reading) {
                 fullTree.switchOn(
                     processIdentifier: app.processIdentifier, bundleIdentifier: app.bundleIdentifier,
-                    host: fullTreeHost(app.processIdentifier))
+                    host: fullTreeHost(app.processIdentifier), generation: fullTreeGeneration)
             }
             return reading
         }
@@ -365,6 +366,8 @@ public enum FocusedFieldReader {
             },
             pointSize: style?.size,
             fontFamily: style?.family,
+            isBold: style?.isBold ?? false,
+            isItalic: style?.isItalic ?? false,
             textColor: style?.color,
             isSecure: secure,
             isEnabled: isEnabled,
@@ -494,6 +497,10 @@ public enum FocusedFieldReader {
         let size: CGFloat?
         /// The font family, so the ghost is set in the face the line is.
         let family: String?
+        /// Whether the face is bold, so the ghost keeps the run's weight.
+        let isBold: Bool
+        /// Whether the face is italic or oblique, so the ghost keeps the run's slant.
+        let isItalic: Bool
         /// The text colour, so the ghost reads against the field rather than against Uttrflow's appearance.
         var color: TextColor?
     }
@@ -711,11 +718,15 @@ public enum FocusedFieldReader {
         {
             // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
             let font = unsafeDowncast(font, to: CTFont.self)
+            let traits = CTFontGetSymbolicTraits(font)
             return TypeStyle(
-                size: CTFontGetSize(font), family: CTFontCopyFamilyName(font) as String, color: color)
+                size: CTFontGetSize(font), family: CTFontCopyFamilyName(font) as String,
+                isBold: traits.contains(.traitBold), isItalic: traits.contains(.traitItalic), color: color)
         }
         var size: CGFloat?
         var family: String?
+        var isBold = false
+        var isItalic = false
         if let described = CFAttributedStringGetAttribute(attributed, 0, Self.axFontKey as CFString, nil),
             CFGetTypeID(described) == CFDictionaryGetTypeID()
         {
@@ -723,9 +734,19 @@ public enum FocusedFieldReader {
             let font = unsafeDowncast(described, to: CFDictionary.self) as NSDictionary
             size = (font[Self.axFontSizeKey] as? NSNumber).map { CGFloat($0.doubleValue) }
             family = font[Self.axFontFamilyKey] as? String
+            let name = font[Self.axFontNameKey] as? String
+            let style = font[Self.axFontStyleKey] as? String
+            let nameTraits = name.map {
+                CTFontGetSymbolicTraits(CTFontCreateWithName($0 as CFString, size ?? 12, nil))
+            }
+            let styleName = style?.lowercased() ?? ""
+            isBold = nameTraits?.contains(.traitBold) == true || styleName.contains("bold")
+            isItalic =
+                nameTraits?.contains(.traitItalic) == true
+                || styleName.contains("italic") || styleName.contains("oblique")
         }
-        guard size != nil || family != nil || color != nil else { return nil }
-        return TypeStyle(size: size, family: family, color: color)
+        guard size != nil || family != nil || isBold || isItalic || color != nil else { return nil }
+        return TypeStyle(size: size, family: family, isBold: isBold, isItalic: isItalic, color: color)
     }
 
     /// The text colour at the start of an attributed string, from the Accessibility key or the Core Text one.
@@ -754,6 +775,8 @@ public enum FocusedFieldReader {
     private static let axFontKey = "AXFont"
     private static let axFontSizeKey = "AXFontSize"
     private static let axFontFamilyKey = "AXFontFamily"
+    private static let axFontNameKey = "AXFontName"
+    private static let axFontStyleKey = "AXFontStyle"
     private static let axForegroundColorKey = "AXForegroundColor"
 
     /// The selection as a character range, measured in text markers from the field's start, for a field that refuses `AXSelectedTextRange`.
