@@ -30,6 +30,15 @@ final class ChecklistProgresses: Sendable, Equatable {
         return progress
     }
 
+    /// Drops formatted content for clips no longer held by the panel snapshot.
+    func prune(to clipIDs: Set<Clip.ID>) {
+        entries.withLock { cached in
+            for id in cached.keys.filter({ !clipIDs.contains($0) }) {
+                cached.removeValue(forKey: id)
+            }
+        }
+    }
+
     /// Compares equal to any other memo, because a cache is not part of what the panel shows.
     static func == (lhs: ChecklistProgresses, rhs: ChecklistProgresses) -> Bool { true }
 }

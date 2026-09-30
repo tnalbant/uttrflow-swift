@@ -50,4 +50,28 @@ struct ChecklistProgressesTests {
 
         #expect(PanelPresenter.present(snapshot).rows[0].checklist == "0 of 1")
     }
+
+    @Test("prunes formatted HTML for clips evicted from the panel")
+    func prunesEvictedClipHTML() {
+        let parses = Mutex(0)
+        let memo = ChecklistProgresses { html in
+            parses.withLock { $0 += 1 }
+            return NoteChecklist.progress(in: html)
+        }
+        let copiedAt = PanelFixture.now
+        let retained = Clip(
+            id: UUID(), text: "Keep", kind: .text, copiedAt: copiedAt,
+            richText: "<ul><li class=\"checked\">Keep</li></ul>")
+        let evicted = Clip(
+            id: UUID(), text: "Evict", kind: .text, copiedAt: copiedAt,
+            richText: "<ul><li class=\"unchecked\">Evict</li></ul>")
+
+        _ = memo.progress(of: retained)
+        _ = memo.progress(of: evicted)
+        memo.prune(to: [retained.id])
+
+        #expect(memo.progress(of: retained)?.total == 1)
+        #expect(memo.progress(of: evicted)?.total == 1)
+        #expect(parses.withLock { $0 } == 3)
+    }
 }

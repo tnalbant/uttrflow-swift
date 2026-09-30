@@ -235,6 +235,7 @@ extension PanelSnapshot {
         now: Date
     ) {
         self.clips = clips
+        checklistProgresses.prune(to: Set(clips.map(\.id)))
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
         reindentOffers.prune(to: Set(clips.map(\.id)))
