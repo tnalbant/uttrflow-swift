@@ -109,6 +109,17 @@ struct OrbitPaletteTests {
         #expect(dark == light, "the stage stays dark in Light appearance, so its warning ink must not move")
     }
 
+    @Test("unselected Settings tabs clear 4.5:1 on the rail's top teal")
+    func unselectedSettingsTabContrast() {
+        let ink = blend(
+            0xFF_FFFF, over: BrandPalette.Teal.railTop, share: SettingsMetrics.unselectedTabOpacity)
+        let ratio = contrastRatio(ink, BrandPalette.Teal.railTop)
+
+        #expect(SettingsMetrics.unselectedTabOpacity == 0.62)
+        #expect(ratio >= 4.5)
+        #expect(abs(ratio - 4.68) < 0.01)
+    }
+
     @Test("a layer takes each appearance's own tone and opacity")
     func layerResolvesPerAppearance() {
         let layer = BrandLayer(

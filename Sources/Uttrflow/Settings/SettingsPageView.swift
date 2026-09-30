@@ -182,7 +182,12 @@ struct SettingsTabStrip: View {
                     }
                     // Room either side of the words, so the chosen tab's fill never touches them.
                     .padding(.horizontal, 8)
-                    .foregroundStyle(isSelected ? SettingsPalette.inverseInk : SettingsPalette.ink(0.62))
+                    .foregroundStyle(
+                        isSelected
+                            ? SettingsPalette.inverseInk
+                            : SettingsPalette.ink(
+                                SettingsMetrics.unselectedTabOpacity)
+                    )
                     .frame(maxWidth: .infinity)
                     .frame(height: 32)
                     .background {
@@ -214,4 +219,6 @@ enum SettingsMetrics {
     static let columnWidth: CGFloat = 640
     /// The room above the title, under the window's traffic lights.
     static let topInset: CGFloat = 44
+    /// White at this opacity reaches 4.68:1 against the rail's top teal.
+    static let unselectedTabOpacity = 0.62
 }
