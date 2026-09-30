@@ -227,14 +227,23 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     }
 
     /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance.md`.
-    private struct KeptPrefix: @unchecked Sendable {
+    struct KeptPrefix<Cache>: @unchecked Sendable {
         // Held by one pass at a time, which is what makes writing to it safe.
         let tokens: [Int]
-        let cache: [KVCache]
+        let cache: Cache
     }
 
     /// What the last pass read, or nothing while a pass holds it and until a pass has read something.
-    private var kept: KeptPrefix?
+    private var kept: KeptPrefix<[KVCache]>?
+
+    /// Restores a prefix a pass took only while no newer pass has left one and the model remains loaded.
+    static func restoring<Cache>(
+        current: KeptPrefix<Cache>?, taken: KeptPrefix<Cache>?, weightsLoaded: Bool
+    )
+        -> KeptPrefix<Cache>?
+    {
+        current ?? (weightsLoaded ? taken : nil)
+    }
 
     /// How many opening tokens two prompts share, the last one always left to be read again so the model has a token to answer from, or nothing when that is no more than the warmed instructions hold.
     static func sharedPrefix(of read: [Int], and all: [Int], beating warmed: Int) -> Int? {
@@ -245,7 +254,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     }
 
     /// How many of `all`'s opening tokens the kept cache holds once the rest is trimmed off it, or nothing when it shares too little or cannot be trimmed.
-    private static func trimmed(_ kept: KeptPrefix, to all: [Int], beating warmed: Int) -> Int? {
+    private static func trimmed(_ kept: KeptPrefix<[KVCache]>, to all: [Int], beating warmed: Int) -> Int? {
         // Every layer's cache has to have counted the same tokens for one trim to leave them all at the shared prefix.
         guard let shared = sharedPrefix(of: kept.tokens, and: all, beating: warmed),
             canTrimPromptCache(kept.cache), let offset = kept.cache.first?.offset,
@@ -388,12 +397,13 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         // Taken out for this pass, so two passes that overlap never write one cache.
         let kept = self.kept
         self.kept = nil
+        let keptCopy = kept.map { KeptPrefix(tokens: $0.tokens, cache: $0.cache.map { $0.copy() }) }
         let vocabulary = self.vocabulary
         let perLine = register.maxTokens
         let cap = maximumTokens
         let stream: AsyncStream<Generation>
         let generation: Task<Void, Never>
-        let read: KeptPrefix?
+        let read: KeptPrefix<[KVCache]>?
         let ledger = SampleLedger()
         do {
             (stream, generation, read) = try await container.perform { loaded in
@@ -418,9 +428,11 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                 var feed = LMInput(text: LMInput.Text(tokens: MLXArray(all.map(Int32.init))))
                 var cache: [KVCache]?
                 // The tokens this prompt shares with the last one are already read, so the pass pays only for the rest.
-                if let kept, let shared = Self.trimmed(kept, to: all, beating: warm?.tokens.count ?? 0) {
+                if let keptCopy,
+                    let shared = Self.trimmed(keptCopy, to: all, beating: warm?.tokens.count ?? 0)
+                {
                     feed = LMInput(text: LMInput.Text(tokens: MLXArray(all[shared...].map(Int32.init))))
-                    cache = kept.cache
+                    cache = keptCopy.cache
                 } else if let warm, all.count > warm.tokens.count,
                     Array(all[..<warm.tokens.count]) == warm.tokens
                 {
@@ -464,8 +476,12 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
                 return (stream, generation, cache.map { KeptPrefix(tokens: all, cache: $0) })
             }
         } catch is CancellationError {
+            self.kept = Self.restoring(current: self.kept, taken: kept, weightsLoaded: self.container != nil)
             // A cancelled pass answers a line that is gone, and nothing is drawn for it either way.
             return nil
+        } catch {
+            self.kept = Self.restoring(current: self.kept, taken: kept, weightsLoaded: self.container != nil)
+            throw error
         }
         var text = ""
         var info: GenerateCompletionInfo?
