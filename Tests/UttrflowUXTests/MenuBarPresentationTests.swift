@@ -60,6 +60,16 @@ struct MenuBarIconTests {
         }
     }
 
+    @Test("carries clipboard capture state into the status item presentation")
+    func clipboardCaptureStateIsPresented() {
+        let enabled = MenuBarPresenter.present(MenuBarState(features: MenuBarFeatures(clipboard: true)))
+        let disabled = MenuBarPresenter.present(MenuBarState(features: MenuBarFeatures(clipboard: false)))
+
+        #expect(enabled.clipboardCaptureEnabled)
+        #expect(!disabled.clipboardCaptureEnabled)
+        #expect(enabled.icon == disabled.icon)
+    }
+
     @Test("overrides every activity when something needs fixing")
     func attentionOutranksActivity() {
         for activity in DictationActivity.allCases {

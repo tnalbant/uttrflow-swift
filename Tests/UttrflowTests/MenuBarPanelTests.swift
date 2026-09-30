@@ -55,4 +55,17 @@ struct MenuBarPanelTests {
         #expect(title.string == "Dev")
         #expect(title.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .systemBlue)
     }
+
+    @Test("shows clipboard capture state in the status item badge")
+    func clipboardCaptureBadgeTracksPresentation() {
+        let enabled = MenuBarPresenter.present(MenuBarState())
+        let disabled = MenuBarPresenter.present(MenuBarState(features: MenuBarFeatures(clipboard: false)))
+        let enabledIcon = MenuBarController.icon(for: enabled)
+        let disabledIcon = MenuBarController.icon(for: disabled)
+
+        #expect(enabledIcon?.accessibilityDescription == "Clipboard capture on")
+        #expect(disabledIcon?.accessibilityDescription == "Clipboard capture off")
+        #expect(enabledIcon?.isTemplate == false)
+        #expect(disabledIcon?.isTemplate == false)
+    }
 }

@@ -378,6 +378,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
     public let emphasis: MenuBarEmphasis
     /// Read aloud by VoiceOver, for whom the icon is often the only part of Uttrflow on screen.
     public let accessibilityLabel: String
+    /// Whether the status item marks clipboard capture as available.
+    public let clipboardCaptureEnabled: Bool
     /// The popover's top line: the talk hint at rest, or what is happening instead.
     public let header: MenuBarHeader
     /// The popover's round buttons, left to right.
@@ -391,13 +393,15 @@ public struct MenuBarPresentation: Sendable, Equatable {
 
     public init(
         icon: MenuBarIcon, statusLine: String, emphasis: MenuBarEmphasis,
-        accessibilityLabel: String, header: MenuBarHeader, buttons: [MenuBarButton],
+        accessibilityLabel: String, clipboardCaptureEnabled: Bool = true,
+        header: MenuBarHeader, buttons: [MenuBarButton],
         lastDictation: MenuBarRow?, clips: [MenuBarRow], items: [MenuBarItem]
     ) {
         self.icon = icon
         self.statusLine = statusLine
         self.emphasis = emphasis
         self.accessibilityLabel = accessibilityLabel
+        self.clipboardCaptureEnabled = clipboardCaptureEnabled
         self.header = header
         self.buttons = buttons
         self.lastDictation = lastDictation
@@ -440,6 +444,7 @@ public enum MenuBarPresenter {
             statusLine: statusLine,
             emphasis: emphasis,
             accessibilityLabel: spokenForm(of: statusLine),
+            clipboardCaptureEnabled: state.features.clipboard,
             header: header(for: state, statusLine: statusLine),
             buttons: buttons(for: state),
             lastDictation: lastDictation(for: state),
