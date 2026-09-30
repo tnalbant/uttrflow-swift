@@ -67,6 +67,7 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(passes: [
+            SentenceBoundaryPass(),
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
                 onScreen: situation.app.textOnScreen, heard: heard,

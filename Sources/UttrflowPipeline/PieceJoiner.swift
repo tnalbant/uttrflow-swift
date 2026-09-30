@@ -134,41 +134,7 @@ enum PieceJoiner {
 
     /// Whether the words across a seam show the sentence carried on, which is the one reason not to end it there.
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
-        endsUnfinished(text) || opensWithAPhrase(next) || completesFinalPhrase(text, with: next)
-    }
-
-    /// Whether a piece ends on a word no sentence ends on, so the pause the cut fell at was inside a phrase.
-    private static func endsUnfinished(_ text: String) -> Bool {
-        guard let last = text.spokenWords.last else { return false }
-        return Self.neverLast.contains(WordShape(String(last)).key)
-    }
-
-    /// Whether a piece opens on a phrase that continues the clause before it: a preposition, then a name or a determiner.
-    private static func opensWithAPhrase(_ text: String) -> Bool {
-        let words = text.spokenWords
-        guard words.count > 1 else { return false }
-        let first = WordShape(String(words[0]))
-        guard Self.neverFronted.contains(first.key) || Self.seamPrepositions.contains(first.key) else {
-            return false
-        }
-        let following = WordShape(String(words[1]))
-        // "to be honest" opens a sentence as readily as it continues one, so only a phrase counts as evidence.
-        return Self.determiners.contains(following.key) || following.core.first?.isUppercase == true
-    }
-
-    /// Whether the next piece supplies an object for a final verb or particle phrase.
-    private static func completesFinalPhrase(_ text: String, with next: String) -> Bool {
-        let previous = text.spokenWords.map { WordShape(String($0)).key }
-        let following = next.spokenWords
-        guard let last = previous.last, let first = following.first else { return false }
-        let completesReportedVerb = Self.seamObjectEndings.contains { ending in
-            previous.suffix(ending.count) == ending
-        }
-        let startsObject =
-            Self.determiners.contains(WordShape(String(first)).key)
-            || (following.count > 1 && WordShape(String(first)).core.first?.isUppercase == true)
-        if Self.seamPrepositions.contains(last) { return startsObject }
-        return completesReportedVerb && (startsObject || following.count > 1)
+        SentenceBoundaryEvidence.sentenceRunsOn(text, into: next)
     }
 
     /// The cleaned pieces as one text: a spoken list, a paragraph at a topic, a restatement across the seam, else a space.
@@ -385,36 +351,6 @@ enum PieceJoiner {
         "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
         "nine": 9, "ten": 10, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
         "9": 9, "10": 10,
-    ]
-
-    /// The determiners: what follows one names a thing rather than says something about it.
-    private static let determiners: Set<String> = [
-        "a", "an", "the", "my", "your", "his", "her", "its", "their", "our", "this", "that",
-        "these", "those", "some", "any",
-    ]
-
-    /// Words no sentence ends on, each one closed-class and none of them also a pronoun or a particle.
-    private static let neverLast: Set<String> = [
-        "a", "an", "the", "my", "your", "its", "our", "their",
-        "of", "to", "at", "for", "with", "from", "by", "into", "onto", "upon", "between",
-        "during", "against", "within", "without", "among", "than",
-        "and", "or", "but", "because", "although", "while", "if", "whether", "nor",
-        "very",
-    ]
-
-    /// Prepositions a speaker does not front a sentence with, so one opening a piece continues the piece before.
-    private static let neverFronted: Set<String> = [
-        "to", "of", "at", "with", "from", "by", "into", "onto", "upon", "between", "among",
-        "toward", "towards", "against", "without", "within", "beside", "behind", "beyond",
-        "near", "past",
-    ]
-
-    /// Prepositions and particles that can also close a complete sentence, so their seam evidence needs an object.
-    private static let seamPrepositions: Set<String> = ["on", "in", "up", "around"]
-
-    /// Reported verb phrases whose object continues in the next piece.
-    private static let seamObjectEndings: [[String]] = [
-        ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
     ]
 
     /// The phrases a speaker opens a new topic with after a pause.

@@ -18,6 +18,36 @@ public enum EvaluationCorpus {
 
     static let everyday: [EvaluationCase] = [
         .init(
+            id: "np3", category: .everyday,
+            spoken: "We need the. Final version of the contract",
+            expected: "We need the final version of the contract."
+        ),
+        .init(
+            id: "sub1", category: .everyday,
+            spoken: "My manager. Wants the slides by noon",
+            expected: "My manager wants the slides by noon."
+        ),
+        .init(
+            id: "sub4", category: .everyday,
+            spoken: "the server. crashed twice last night",
+            expected: "The server crashed twice last night."
+        ),
+        .init(
+            id: "bec1", category: .everyday,
+            spoken: "I stayed home. Because it was raining",
+            expected: "I stayed home because it was raining."
+        ),
+        .init(
+            id: "and1", category: .everyday,
+            spoken: "I finished the report. And sent it to Maria",
+            expected: "I finished the report and sent it to Maria."
+        ),
+        .init(
+            id: "but1", category: .everyday,
+            spoken: "I wanted to come. But my train was cancelled",
+            expected: "I wanted to come, but my train was cancelled."
+        ),
+        .init(
             id: "weekday-and-month-casing", category: .everyday,
             spoken: "can we push the demo to thursday instead of wednesday in august",
             expected: "Can we push the demo to Thursday instead of Wednesday in August.",
