@@ -47,6 +47,16 @@ struct GenerativeTextTransformerTests {
         #expect(model.calls.first?.kind == .foundationModels)
     }
 
+    @Test("model cleanup applies search-field casing and stop policies")
+    func searchFieldModelPath() async throws {
+        let model = FakeCleanupModel { _ in "Lowercase query." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
+    }
+
     @Test("attributes the result to itself")
     func attributesResult() async throws {
         let model = FakeCleanupModel { _ in "Hello there." }
@@ -382,6 +392,36 @@ struct GenerativeTextTransformerTests {
         }
     }
 
+    @Test("refuses a long response that returns only the first half")
+    func refusesTruncatedLongResponse() async throws {
+        let topics = [
+            "budget", "hiring", "onboarding", "support", "staffing", "invoices", "contract",
+            "security", "privacy", "migration", "deployment", "tests", "launch", "metrics",
+            "revenue", "forecast", "customers", "refunds", "warranty", "latency", "reliability",
+            "backups", "database", "dashboard", "reports", "deadlines", "owners", "approvals",
+            "training", "documentation", "accessibility", "keyboard", "release", "rollback",
+            "incident", "alerting", "encryption", "permissions", "audit", "archive", "retention",
+            "compliance",
+        ]
+        let model = FakeCleanupModel { prompt in
+            let quoted = prompt.components(separatedBy: "Spoken: ").last ?? prompt
+            let words = quoted.split(whereSeparator: \.isWhitespace)
+            return words.prefix(words.count / 2).joined(separator: " ")
+        }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let router = TransformerRouter(
+            engines: [sut, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+        let longInput = topics.map {
+            "review the \($0) plan with the coordinator and confirm the owner before Friday"
+        }.joined(separator: ". ")
+        let result = try await router.transform(
+            request(longInput))
+
+        #expect(
+            result.cleaning?.refusals.contains { $0.kind == .lostWord || $0.kind == .tooShort } == true)
+        #expect(model.calls.count == 1)
+    }
+
     @Test("refuses a model answer that moves not from telling to calling")
     func refusesMovedNegation() async {
         let model = FakeCleanupModel { _ in "I did tell Mary not to call John." }
@@ -634,6 +674,14 @@ struct RuleBasedTransformerTests {
     @Test("attributes its work to itself")
     func attributesResult() async throws {
         #expect(try await sut.transform(request("hello")).producedBy == .rules)
+    }
+
+    @Test("rule passes keep search casing and remove terminal punctuation")
+    func searchFieldRules() async throws {
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
     }
 
     private func request(

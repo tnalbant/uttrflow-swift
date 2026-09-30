@@ -3,15 +3,30 @@ import Testing
 
 @testable import UttrflowContext
 
-/// A chat window: a sidebar of other conversations, a thread, and the compose box the caret is in.
+/// A chat window: page landmarks, a conversation list and the thread containing the compose box.
 private let compose = Node(id: 1, role: "AXTextArea", text: "on my w")
 private let chatWindow = Node(
     id: 0, role: "AXWindow",
     children: [
-        Node(id: 10, children: [label(11, "Priya"), label(12, "Design team"), label(13, "Mum")]),
+        Node(
+            id: 10, subrole: "AXLandmarkNavigation",
+            children: [
+                Node(
+                    id: 11, role: "AXList",
+                    children: [
+                        Node(id: 12, role: "AXLink", text: "Priya: call after lunch"),
+                        Node(id: 13, role: "AXLink", text: "Design team: review due"),
+                        Node(id: 14, role: "AXLink", text: "Mum: dinner at seven"),
+                    ])
+            ]),
         Node(
             id: 20,
             children: [
+                Node(
+                    id: 19, role: "AXList",
+                    children: [Node(id: 27, role: "AXLink", text: "Another chat: call at noon")]),
+                Node(id: 15, subrole: "AXLandmarkBanner", children: [label(16, "Sponsored")]),
+                Node(id: 17, subrole: "AXLandmarkComplementary", children: [label(18, "Related threads")]),
                 Node(
                     id: 21,
                     children: [
@@ -36,21 +51,25 @@ private func lines(_ read: Surroundings) -> [String] {
 
 @Suite("What is on screen around the field")
 struct SurroundingsTests {
-    @Test(
-        "The thread beside the compose box comes last, the sidebar first, and the field itself is left out.")
-    func nearestTextComesLast() {
+    @Test("Only the thread containing the compose box reaches the prompt.")
+    func onlyTheFocusedConversationIsRead() {
         let read = Surroundings.collect(
             around: compose, in: FakeTree(root: chatWindow), windowTitle: "Priya", deadline: unhurried)
         #expect(read.windowTitle == "Priya")
         let lines = lines(read)
-        #expect(lines.first == "Priya")
         #expect(lines.last == "Priya: are you coming tonight?")
+        #expect(
+            lines == [
+                "Priya: where did the notarisation log go?", "Me: in dist/, one sec",
+                "Priya: found it, thanks!", "Priya: are you coming tonight?",
+            ])
+        #expect(!lines.contains(where: { $0.contains("Sponsored") || $0.contains("Related") }))
+        #expect(
+            !lines.contains(where: {
+                $0.contains("call after lunch") || $0.contains("review due") || $0.contains("call at noon")
+            }))
         #expect(!lines.contains("on my w"))
         #expect(!lines.contains("Send"))
-        #expect(lines.firstIndex(of: "Mum")! < lines.firstIndex(of: "Priya: found it, thanks!")!)
-        #expect(
-            lines.firstIndex(of: "Priya: where did the notarisation log go?")!
-                < lines.firstIndex(of: "Me: in dist/, one sec")!)
     }
 
     @Test("The focused field's value never reaches the prompt as a line of text.")

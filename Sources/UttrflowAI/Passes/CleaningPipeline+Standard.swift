@@ -22,6 +22,7 @@ extension CleaningPipeline {
                 numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
                 steps: steps
             ).passes
+                + [SpelledInitialismPass()]
                 + message(for: formatter, situation: situation).passes)
     }
 
@@ -34,7 +35,7 @@ extension CleaningPipeline {
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
             SpokenPunctuationPass(), LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
-            ContractionsPass(), SpacingPass(),
+            ContractionsPass(), SpelledInitialismPass(), SpacingPass(),
         ]
         return CleaningPipeline(passes: cleanings.filter { steps.runs($0.id) })
     }
@@ -46,6 +47,7 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
+                + [SpelledInitialismPass()]
                 + message(for: formatter, situation: situation, heard: heard).passes)
     }
 
@@ -67,6 +69,7 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(passes: [
+            SentenceBoundaryPass(),
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
                 onScreen: situation.app.textOnScreen, heard: heard,

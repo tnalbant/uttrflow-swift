@@ -171,6 +171,28 @@ struct ShellPromptTests {
             ShellPrompt.input(in: "[root@host ~]# ssh user@host # jump box") == "ssh user@host # jump box")
     }
 
+    @Test("An unclosed command substitution cannot supply root-prompt evidence.")
+    func anUnclosedSubstitutionIsNotARootPrompt() {
+        let line = "echo $(printf user@host# apt update"
+        #expect(ShellPrompt.input(in: line) == line)
+        #expect(
+            ShellPrompt.input(in: "echo $(printf user@host# apt update) # note")
+                == "echo $(printf user@host# apt update) # note")
+    }
+
+    @Test("Nested and quoted command substitutions do not supply root-prompt evidence.")
+    func nestedSubstitutionsAreNotRootPrompts() {
+        let nested = "echo $(printf $(printf user@host# apt update)"
+        #expect(ShellPrompt.input(in: nested) == nested)
+        let quoted = #"echo "$(printf user@host# apt update)" # note"#
+        #expect(ShellPrompt.input(in: quoted) == quoted)
+    }
+
+    @Test("A genuine root prompt after a closed substitution still ends the prompt.")
+    func rootPromptAfterClosedSubstitution() {
+        #expect(ShellPrompt.input(in: "echo $(printf ready) root@host# apt update") == "apt update")
+    }
+
     @Test("An escaped quote does not open one, so a later prompt character is still seen.")
     func anEscapedQuoteOpensNothing() {
         #expect(ShellPrompt.input(in: #"user\@host:~/dir$ ls"#) == "ls")

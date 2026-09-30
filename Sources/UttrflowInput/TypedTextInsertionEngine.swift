@@ -44,6 +44,12 @@ extension TypedTextInsertionEngine: CompletionWriting {
 
     /// Backspaces then types, which the target's undo sees as several edits. See `Docs/predict-accept.md`.
     public func write(_ text: String, replacing replaced: String) async throws(TextInsertionError) {
+        try await write(text, replacing: replaced, confirmedPreceding: nil)
+    }
+
+    public func write(
+        _ text: String, replacing replaced: String, confirmedPreceding: String?
+    ) async throws(TextInsertionError) {
         guard let write = writeState.begin() else {
             throw .insertionRejected(description: "the application is terminating")
         }
@@ -51,8 +57,13 @@ extension TypedTextInsertionEngine: CompletionWriting {
         let count = replaced.count
         if count > 0 {
             // A blind backspace could eat a shell prompt, so what is there is checked when the field will say.
-            let focus = focus
-            let preceding = await AccessibilityThread.run(orElse: nil) { focus.precedingText(count) }
+            let preceding: String?
+            if let confirmedPreceding {
+                preceding = confirmedPreceding
+            } else {
+                let focus = focus
+                preceding = await AccessibilityThread.run(orElse: nil) { focus.precedingText(count) }
+            }
             if let preceding, preceding != replaced {
                 throw .insertionRejected(
                     description: "the text before the caret is not what would be replaced")

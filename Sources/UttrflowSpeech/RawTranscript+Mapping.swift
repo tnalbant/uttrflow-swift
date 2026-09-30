@@ -148,11 +148,12 @@ extension RawTranscript {
         var index = withoutSpeaker.startIndex
 
         while index < withoutSpeaker.endIndex {
-            if withoutSpeaker[index].text.allSatisfy({ $0 == "*" }), withoutSpeaker[index].text.count >= 3 {
+            let token = withoutSpeaker[index].text
+            if token.allSatisfy({ $0 == "*" }), token.count >= 3 {
                 index += 1
                 continue
             }
-            let opener = withoutSpeaker[index].text.first
+            let opener = token.first
             guard opener == "[" || opener == "(" || opener == "*" else {
                 kept.append(withoutSpeaker[index])
                 index += 1
@@ -161,17 +162,37 @@ extension RawTranscript {
             let closer: Character = opener == "[" ? "]" : opener == "(" ? ")" : "*"
             guard
                 let close = withoutSpeaker[index...].firstIndex(where: {
-                    $0.text.hasSuffix(String(closer))
+                    guard let closing = $0.text.lastIndex(of: closer) else { return false }
+                    return $0.text[$0.text.index(after: closing)...].allSatisfy(\.isPunctuation)
                 })
             else {
                 kept.append(withoutSpeaker[index])
                 index += 1
                 continue
             }
-            let inside = withoutSpeaker[index...close].map(\.text).joined(separator: " ").dropFirst()
-                .dropLast()
-            if !isMarker(inside) && !isMusicMarker(inside) {
+            let closeText = withoutSpeaker[close].text
+            guard let closingMarker = closeText.lastIndex(of: closer) else {
                 kept.append(contentsOf: withoutSpeaker[index...close])
+                index = withoutSpeaker.index(after: close)
+                continue
+            }
+            let markerWords = withoutSpeaker[index...close].map(\.text)
+            let inside = markerWords.enumerated().map { offset, word in
+                if offset == 0 && close == index {
+                    return String(word.dropFirst().prefix(upTo: closingMarker))
+                }
+                if offset == 0 { return String(word.dropFirst()) }
+                if offset == markerWords.count - 1 { return String(word[..<closingMarker]) }
+                return word
+            }.joined(separator: " ")
+            let openingToken = token.drop(while: \.isWhitespace)
+            let punctuation = closeText[closeText.index(after: closingMarker)...]
+            let standsAlone = openingToken.first == opener && punctuation.allSatisfy(\.isPunctuation)
+            if !standsAlone || (!isMarker(inside[...]) && !isMusicMarker(inside[...])) {
+                kept.append(contentsOf: withoutSpeaker[index...close])
+            } else if !punctuation.isEmpty {
+                kept.append(
+                    TranscribedWord(text: String(punctuation), confidence: withoutSpeaker[close].confidence))
             }
             index = withoutSpeaker.index(after: close)
         }

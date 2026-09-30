@@ -124,6 +124,10 @@ struct PromptBuilderTests {
     func restraintWording() {
         #expect(PromptContract.text.contains("- when unsure, keep the original wording"))
         #expect(PromptContract.text.contains("- never invent or change a name, number, date or amount"))
+        #expect(PromptContract.text.contains("write an acronym in capitals: api → API, json → JSON"))
+        #expect(
+            PromptContract.examples.contains(
+                WorkedExample(spoken: "send the fbi a copy", cleaned: "Send the FBI a copy.")))
         #expect(!PromptContract.text.contains("Never shorten"))
         #expect(!PromptContract.text.contains("never finish an unfinished thought"))
     }

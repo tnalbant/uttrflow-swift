@@ -1,6 +1,7 @@
 import Foundation
 import UttrflowAI
 import UttrflowCore
+import UttrflowPredict
 import UttrflowSettings
 import Testing
 
@@ -139,6 +140,59 @@ struct SettingsWindowTests {
                 }
             }
         }
+    }
+}
+
+@Suite("Accept key guidance")
+struct SettingsAcceptKeyGuidanceTests {
+    @Test("warns only for a known category when Tab is selected")
+    func collisionCategoriesAndPlainText() throws {
+        var settings = Settings.default
+        settings.suggestions.set("com.apple.Terminal", isOn: true)
+        settings.suggestions.set("com.apple.dt.Xcode", isOn: true)
+        settings.suggestions.set("com.tinyapp.TablePlus", isOn: true)
+        settings.suggestions.set("com.microsoft.Excel", isOn: true)
+        settings.suggestions.set("com.apple.Notes", isOn: true)
+        settings.suggestions.set("com.example.unknown", isOn: true)
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.Terminal")
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.dt.Xcode")
+        settings.suggestions.setAcceptKey(.tab, in: "com.tinyapp.TablePlus")
+        settings.suggestions.setAcceptKey(.tab, in: "com.microsoft.Excel")
+        settings.suggestions.setAcceptKey(.tab, in: "com.apple.Notes")
+        settings.suggestions.setAcceptKey(.tab, in: "com.example.unknown")
+
+        let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
+        func explanation(_ bundleIdentifier: String) throws -> String? {
+            try #require(
+                pane.groups.flatMap(\.rows).first {
+                    $0.id == "suggestionAcceptKey.\(bundleIdentifier)"
+                }
+            ).explanation
+        }
+        #expect(try explanation("com.apple.Terminal") == "Tab also has a job in this app.")
+        #expect(try explanation("com.apple.dt.Xcode") == "Tab also has a job in this app.")
+        #expect(try explanation("com.tinyapp.TablePlus") == "Tab also has a job in this app.")
+        #expect(try explanation("com.microsoft.Excel") == "Tab also has a job in this app.")
+        #expect(try explanation("com.apple.Notes") == nil)
+        #expect(try explanation("com.example.unknown") == nil)
+    }
+
+    @Test("preserves the alternate key descriptions")
+    func alternateKeyDescriptionsRemain() throws {
+        var settings = Settings.default
+        settings.suggestions.set("com.apple.Terminal", isOn: true)
+        settings.suggestions.set("com.apple.dt.Xcode", isOn: true)
+        settings.suggestions.setAcceptKey(.rightArrow, in: "com.apple.Terminal")
+        settings.suggestions.setAcceptKey(.optionTab, in: "com.apple.dt.Xcode")
+
+        let pane = SettingsPresenter.pane(for: .suggestions, settings: settings)
+        let rows = Dictionary(uniqueKeysWithValues: pane.groups.flatMap(\.rows).map { ($0.id, $0) })
+        #expect(
+            rows["suggestionAcceptKey.com.apple.terminal"]?.explanation
+                == "Leaves Tab to the shell's own completion.")
+        #expect(
+            rows["suggestionAcceptKey.com.apple.dt.xcode"]?.explanation
+                == "Leaves Tab to indent, and to the editor's own completion.")
     }
 }
 

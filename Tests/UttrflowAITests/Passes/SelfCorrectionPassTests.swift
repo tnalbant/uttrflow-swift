@@ -8,6 +8,21 @@ struct SelfCorrectionPassTests {
     private let sut = SelfCorrectionPass()
 
     @Test(
+        "removes only a bare-hyphen cut-off when the next word completes it",
+        arguments: [
+            ("th- the build passed", "the build passed"),
+            ("w- we are late", "we are late"),
+            ("I was go- I went to the store", "I was I went to the store"),
+            ("a well-known bug", "a well-known bug"),
+            ("send an e-mail and re-run it", "send an e-mail and re-run it"),
+            ("say dash and keep going", "say dash and keep going"),
+        ]
+    )
+    func removesBareHyphenCutOff(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "replaces a restated phrase with its restatement",
         arguments: [
             ("let's meet at four no sorry at five on tuesday", "let's meet at five on tuesday"),

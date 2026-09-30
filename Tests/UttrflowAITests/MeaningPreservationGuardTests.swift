@@ -20,6 +20,34 @@ struct MeaningPreservationGuardTests {
         #expect(sut.verdict(original: original, rewritten: rewritten).isAccepted, hint)
     }
 
+    @Test("refuses a dropped spoken dash and a quote style swap")
+    func preservesSpokenPunctuationMarks() {
+        let dash = SpokenPunctuationPass().apply(
+            Draft(text: "the plan dash if it works dash is simple"))
+        let quotes = SpokenPunctuationPass().apply(
+            Draft(text: "he said open quote ship it close quote and left"))
+
+        #expect(dash.text.contains("—"))
+        #expect(quotes.text.contains("\"ship") && quotes.text.contains("it\""))
+        #expect(sut.verdict(draft: dash, rewritten: "The plan — if it works — is simple.").isAccepted)
+        #expect(sut.verdict(draft: quotes, rewritten: "He said \"ship it\" and left.").isAccepted)
+        let droppedDash = "The plan if it works is simple."
+        let swappedQuotes = "He said 'ship it' and left."
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: dash, rewritten: droppedDash)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: quotes, rewritten: swappedQuotes)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(!sut.verdict(draft: dash, rewritten: droppedDash).isAccepted)
+        #expect(!sut.verdict(draft: quotes, rewritten: swappedQuotes).isAccepted)
+    }
+
+    @Test("does not constrain punctuation the spoken punctuation pass did not write")
+    func allowsUnrelatedPunctuationChanges() {
+        #expect(sut.verdict(draft: Draft(text: "hello, friend"), rewritten: "Hello; friend.").isAccepted)
+    }
+
     @Test("accepts an ordinary tidy-up")
     func acceptsOrdinaryTidying() {
         accepted(
@@ -32,6 +60,19 @@ struct MeaningPreservationGuardTests {
     func acceptsShortUtterance() {
         accepted("um yes", "Yes.")
         accepted("uh okay sure", "Okay, sure.")
+    }
+
+    @Test("rejects moved function words while keeping allowed cleanup edits")
+    func rejectsMovedFunctionWords() {
+        rejected(
+            "Leeds a city in the north is where I grew up",
+            "Leeds is a city in the north where I grew up.")
+        rejected("we can ship it", "can we ship it.")
+
+        accepted("um, we can go", "We can go.")
+        accepted("I I can go", "I can go.")
+        accepted("a apple is ready", "An apple is ready.")
+        accepted("I will ship it", "I'll ship it.")
     }
 
     @Test("rejects an empty rewrite of real speech")
@@ -614,6 +655,26 @@ struct GrammarGuardTests {
         #expect(verdict("it's a cafe", "It’s a cafe.").isAccepted)
         #expect(verdict("don't do that", "Don’t do that.").isAccepted)
         #expect(verdict("y’all’s car is here", "Y'all's car is here.").isAccepted)
+    }
+
+    @Test("rejects quotation pairs the speaker did not say")
+    func rejectsInventedQuotationPairs() {
+        #expect(
+            verdict("she yelled get out", "She yelled \"Get out.\"")
+                == .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation))
+        rejected("he whispered quote not now unquote", "He whispered \"quote not now unquote.\"")
+        rejected("he whispered \"not now\"", "He whispered \"quote not now unquote.\"")
+        rejected("we should ship this", "We should ‘ship this.’")
+    }
+
+    @Test("keeps quotation pairs the speaker said")
+    func keepsSpokenQuotationPairs() {
+        accepted("\"we should ship this\"", "\"We should ship this.\"")
+    }
+
+    @Test("does not treat word apostrophes or decade elisions as quotation pairs")
+    func acceptsApostrophesAndDecadeElisions() {
+        accepted("I'll call in the '90s", "I’ll call in the ’90s.")
     }
 
     @Test("leaves Devanagari to the base checks, so romanising is not a lost word")
@@ -1266,9 +1327,12 @@ struct GuardMatchStrengthTests {
         "counts a word carrying a stop inside itself as ending no sentence",
         arguments: [
             ("Call me at 5 p.m. tomorrow.", 1), ("We use JSON, e.g. for the config.", 1),
+            ("We brought snacks, etc. and drinks.", 1),
+            ("We brought snacks, etc. And then left.", 2),
+            ("Apples vs. oranges.", 1),
             ("Ship it.", 1), ("One. Two. Three.", 3), ("No mark at all", 1),
-            // A title is not an interior stop, and this rule says nothing about one.
-            ("Dr. Chen is here.", 2),
+            ("Dr. Chen is here.", 1),
+            ("We met Dr. Lee. Then we left.", 2),
         ]
     )
     func countsSentences(text: String, expected: Int) {

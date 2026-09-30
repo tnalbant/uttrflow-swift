@@ -84,6 +84,27 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.kind == .negationMoved)
     }
 
+    @Test("spoken punctuation survives a model rewrite through the rules fallback")
+    func spokenPunctuationFallsBackFaithfully() async throws {
+        let cases = [
+            ("the plan dash if it works dash is simple", "The plan if it works is simple.", "—"),
+            ("he said open quote ship it close quote and left", "He said 'ship it' and left.", "\""),
+        ]
+        for (spoken, modelAnswer, mark) in cases {
+            let model = GenerativeTextTransformer(
+                kind: .foundationModels, model: FakeCleanupModel { _ in modelAnswer })
+            let router = TransformerRouter(
+                engines: [model, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+
+            let result = try await router.transform(
+                TransformationRequest(transcription: .fixture(text: spoken, language: .english)))
+
+            #expect(result.producedBy == .rules)
+            #expect(result.text.contains(mark))
+            #expect(result.cleaning?.refusals.isEmpty == false)
+        }
+    }
+
     @Test("refuses regrouped Indian amounts and falls back to the rules")
     func regroupedIndianAmountFallsBack() async throws {
         let model = FakeCleanupModel { _ in "100000 rupaye transfer kar do." }

@@ -425,6 +425,23 @@ struct ForgettingTests {
         #expect(try await store.candidates(for: terminal, matching: "git p").map(\.text) == ["git pull"])
     }
 
+    @Test("Forgetting a borrowed entry retires it in this scope and leaves the other scope intact.")
+    func borrowedEntryStaysForgottenInScope() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let folderOne = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/one")
+        let folderTwo = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/two")
+        try await store.record("git push origin main", in: folderOne, at: moment)
+        try await store.record("git push origin main", in: folderTwo, at: moment + 1)
+
+        try await store.forget("git push origin main", in: folderOne)
+
+        #expect(try await store.candidates(for: folderOne, matching: "git p").isEmpty)
+        #expect(try await store.recent(in: folderOne, limit: 5).isEmpty)
+        let remaining = try await store.candidates(for: folderTwo, matching: "git p")
+        #expect(remaining.map(\.text) == ["git push origin main"])
+    }
+
     @Test("Everything learned in one application goes together, and other applications stay.")
     func oneApplication() async throws {
         let corpus = Corpus()

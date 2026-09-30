@@ -225,6 +225,15 @@ struct DictationPipelineSeamTests {
         #expect(text == "I left the office. The traffic is bad. I will be late.")
     }
 
+    @Test("joins a dependent clause spoken as one piece to its main clause in the next")
+    func dependentClauseContinuesAcrossARecognizerPiece() async {
+        let text = await dictate(
+            ["When the light was finally automated.", "The logbook was given to the town museum."],
+            seeing: Self.document)
+
+        #expect(text == "When the light was finally automated the logbook was given to the town museum.")
+    }
+
     @Test("a terminal takes no stop at a seam or at the end, even one the recogniser wrote")
     func terminalTakesNoStops() async {
         let text = await dictate(["git status.", "git diff."], seeing: Self.terminal)

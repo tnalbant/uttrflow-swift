@@ -188,6 +188,8 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
     public let hasDefaultInputDevice: Bool?
     /// Every stage timing recorded since the app started.
     public let measurements: [StageMeasurement]
+    /// The bounded per-piece decode effort recorded since the app started.
+    public let decoding: [DecodeEffort]
     /// What the clean-up steps did to the last dictation, absent until one has been tidied.
     public let cleaning: CleaningRecord?
     /// Which engine tidied the last inserted dictation, including `.untidied` when none did.
@@ -212,6 +214,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         dictationShortcutArmed: Bool? = nil,
         hasDefaultInputDevice: Bool? = nil,
         measurements: [StageMeasurement] = [],
+        decoding: [DecodeEffort] = [],
         cleaning: CleaningRecord? = nil,
         lastCleanedBy: TransformerKind? = nil,
         suggestionModel: SuggestionModelReadiness = .notAsked,
@@ -229,6 +232,7 @@ public struct DiagnosticsSnapshot: Sendable, Equatable {
         self.dictationShortcutArmed = dictationShortcutArmed
         self.hasDefaultInputDevice = hasDefaultInputDevice
         self.measurements = measurements
+        self.decoding = decoding
         self.cleaning = cleaning
         self.lastCleanedBy = lastCleanedBy
         self.suggestionModel = suggestionModel
@@ -268,6 +272,8 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
     public let latencyEmptyState: MainEmptyState?
     /// How often each measured stage worked. Empty until there is something to divide.
     public let reliability: [MainStatistic]
+    /// Aggregate counts of pieces that took extra decodes and empty-result retries.
+    public let decoding: [DiagnosticsRow]
     /// One row per speech and clean-up engine.
     public let engines: [DiagnosticsRow]
     /// What each clean-up step did to the last dictation, and which steps are switched off.
@@ -291,6 +297,7 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         latency: DiagnosticsLatency?,
         latencyEmptyState: MainEmptyState?,
         reliability: [MainStatistic],
+        decoding: [DiagnosticsRow],
         engines: [DiagnosticsRow],
         cleanUp: [DiagnosticsRow],
         permissions: [DiagnosticsRow],
@@ -305,6 +312,7 @@ public struct DiagnosticsPresentation: Sendable, Equatable {
         self.latency = latency
         self.latencyEmptyState = latencyEmptyState
         self.reliability = reliability
+        self.decoding = decoding
         self.engines = engines
         self.cleanUp = cleanUp
         self.permissions = permissions
@@ -344,6 +352,7 @@ public enum DiagnosticsPresenter {
             latency: summaries.isEmpty ? nil : latency(for: summaries, missing: missing),
             latencyEmptyState: summaries.isEmpty ? noTimingsYet : nil,
             reliability: reliability(for: snapshot.measurements, locale: locale),
+            decoding: decodingRows(for: snapshot.decoding),
             engines: engines,
             cleanUp: cleanUpRows(for: snapshot.cleaning),
             permissions: permissions,
@@ -556,6 +565,21 @@ public enum DiagnosticsPresenter {
         symbolName: "gauge.with.dots.needle.bottom.50percent",
         title: "No timings yet",
         message: "Dictate something and the times appear here. They stay on this Mac.")
+
+    /// Counts only aggregate decode outcomes, never the pieces or their words.
+    static func decodingRows(for decoding: [DecodeEffort]) -> [DiagnosticsRow] {
+        guard !decoding.isEmpty else { return [] }
+        let repeated = decoding.count { $0.fallbacks > 0 || $0.retriedWithoutPrompt }
+        let retried = decoding.count { $0.retriedWithoutPrompt }
+        return [
+            DiagnosticsRow(
+                title: "Pieces needing more than one decode",
+                detail: "\(repeated) of \(decoding.count) pieces", state: .good),
+            DiagnosticsRow(
+                title: "Empty-result retries",
+                detail: MainFormatting.count(retried, "retry", "retries"), state: .good),
+        ]
+    }
 
     // MARK: - Latency
 
@@ -901,6 +925,14 @@ public enum DiagnosticsPresenter {
             lines += StageLatency.unmeasuredStages(in: snapshot.measurements).map {
                 "  \(title(for: $0)): never run"
             }
+        }
+
+        if snapshot.decoding.isEmpty {
+            lines += ["", "Decode effort: none recorded yet"]
+        } else {
+            let decoding = decodingRows(for: snapshot.decoding)
+            lines += ["", "Decode effort (\(snapshot.decoding.count) pieces)"]
+            lines += decoding.map { "  \($0.title): \($0.detail)" }
         }
 
         // Counted, never quoted: this string is pasted elsewhere, and dictated words are not a diagnostic.

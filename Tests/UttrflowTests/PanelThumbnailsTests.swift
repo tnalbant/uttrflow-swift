@@ -117,6 +117,31 @@ struct PanelThumbnailsTests {
         #expect(counter.files.count == 1)
     }
 
+    @Test("a thumbnail read neither expires a miss nor schedules another decode")
+    func thumbnailReadIsPureForAMiss() async {
+        let (thumbnails, counter) = thumbnails(retryAfter: .zero)
+
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        let observedBefore = thumbnails.known.count
+        for _ in 0..<100 { #expect(thumbnails.thumbnail(for: file) == nil) }
+
+        #expect(counter.calls == 1)
+        #expect(thumbnails.known.count == observedBefore)
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        #expect(counter.calls == 2)
+    }
+
+    @Test("repeated cache hits keep constant time LRU bookkeeping")
+    func repeatedHitsTouchLinkedLRU() async {
+        let (thumbnails, _) = thumbnails([file: Self.bitmap()])
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        for _ in 0..<10_000 { #expect(thumbnails.thumbnail(for: file) != nil) }
+        #expect(thumbnails.cached(file) != nil)
+    }
+
     /// A picture file restored after a failed decode is decoded again once the miss is stale.
     @Test("decodes a restored picture after remembering it was gone")
     func decodesARestoredPicture() async {
@@ -151,6 +176,28 @@ struct PanelThumbnailsTests {
 
         #expect(counter.sizes == [PanelThumbnails.maxPixel])
         #expect(PanelThumbnails.maxPixel <= 96, "a 34-point square on a Retina screen")
+    }
+
+    @Test("waits until a prepared thumbnail is committed before returning")
+    func waitForIdleIncludesCacheCommit() async {
+        let decoding = DecodeHold()
+        let image = Self.bitmap()
+        let source = PanelThumbnailSource { _, _ in
+            decoding.hold()
+            return image
+        }
+        let thumbnails = PanelThumbnails(source: source, retryAfter: .seconds(3600))
+
+        thumbnails.prepare(file)
+        while decoding.calls == 0 { await Task.yield() }
+        let waiting = Task { await thumbnails.waitForIdle(file: file) }
+        await Task.yield()
+        decoding.release()
+        await waiting.value
+
+        #expect(thumbnails.cached(file) === image)
+        #expect(thumbnails.thumbnail(for: file) === image)
+        #expect(decoding.calls == 1)
     }
 
     @Test("keeps different pictures apart")

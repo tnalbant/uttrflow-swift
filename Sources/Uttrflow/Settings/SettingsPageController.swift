@@ -11,6 +11,7 @@ final class SettingsPageController {
     let model: SettingsViewModel
     /// What the suggestion model is doing, kept so a capability refresh cannot drop it.
     private var suggestionModel: SuggestionModelReadiness = .notAsked
+    private var suggestionRuntime: SuggestionRuntimeStatus = .idle
     /// Which shortcuts the window server refused, kept for the same reason.
     private var unarmedShortcuts: Set<ShortcutAction> = []
     /// Asks this Mac which clean-up engines are ready for a profile; injected so a test can order the answers.
@@ -29,6 +30,7 @@ final class SettingsPageController {
         onRequest: @escaping (SettingsChange) -> Void = { _ in },
         onReset: @escaping (SettingsReset) -> Void = { _ in },
         onShortcutRecording: @escaping (Bool) -> Void = { _ in },
+        readGlobeKeyAction: @escaping () -> GlobeKeyAction = { GlobeKeySettings.action },
         probe: @escaping @Sendable (UserProfile) async -> SettingsCapabilities = {
             await SettingsCapabilities.refreshed(for: $0)
         }
@@ -37,7 +39,7 @@ final class SettingsPageController {
         model = SettingsViewModel(
             store: store, personalisation: personalisation, capabilities: capabilities,
             onChange: onChange, onRequest: onRequest, onReset: onReset,
-            onShortcutRecording: onShortcutRecording)
+            onShortcutRecording: onShortcutRecording, readGlobeKeyAction: readGlobeKeyAction)
     }
 
     /// The tab the page is on, which the sidebar lights its Settings row for.
@@ -67,6 +69,7 @@ final class SettingsPageController {
             guard let self, !Task.isCancelled, generation == probeGeneration else { return }
             // Re-applied, because the probe asks this Mac and only the app knows about the fetch.
             refreshed.suggestionModel = suggestionModel
+            refreshed.suggestionRuntime = suggestionRuntime
             refreshed.unarmedShortcuts = unarmedShortcuts
             model.session.capabilities = refreshed
         }
@@ -81,6 +84,12 @@ final class SettingsPageController {
     func setSuggestionModel(_ readiness: SuggestionModelReadiness) {
         suggestionModel = readiness
         model.session.capabilities.suggestionModel = readiness
+    }
+
+    /// Tells the Suggestions screen whether its key tap can receive keystrokes.
+    func setSuggestionRuntime(_ status: SuggestionRuntimeStatus) {
+        suggestionRuntime = status
+        model.session.capabilities.suggestionRuntime = status
     }
 
     /// Told by the app when a shortcut could not be claimed, so its row stops advertising a dead key.

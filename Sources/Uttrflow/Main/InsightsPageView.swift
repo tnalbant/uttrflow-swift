@@ -20,7 +20,7 @@ struct InsightsPageView: View {
                 ScrollView {
                     HStack(alignment: .top, spacing: 18) {
                         if let calendar = presentation.calendar {
-                            InsightsCalendarCard(calendar: calendar)
+                            InsightsCalendarCard(calendar: calendar, caption: presentation.chartCaption)
                         }
                         VStack(spacing: 12) {
                             ForEach(presentation.figures) { InsightsFigureTile(figure: $0) }
@@ -118,6 +118,7 @@ struct InsightsRangeSwitch: View {
 /// The range as weeks of tiles, a legend from less to more above them.
 struct InsightsCalendarCard: View {
     let calendar: InsightsCalendar
+    let caption: String?
 
     /// Past this many weeks a square tile would push the grid off the window, so tiles flatten.
     private static let squareWeeks = 6
@@ -125,7 +126,7 @@ struct InsightsCalendarCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(calendar.title.uppercased())
+                Text((caption ?? calendar.title).uppercased())
                     .font(.system(size: 10.5, weight: .semibold))
                     .tracking(0.84)
                     .foregroundStyle(PagePalette.faint)

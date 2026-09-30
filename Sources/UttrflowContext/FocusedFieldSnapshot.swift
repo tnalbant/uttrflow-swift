@@ -4,6 +4,12 @@ public import UttrflowPredict
 
 public import struct Foundation.NSRange
 
+public enum WritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+    case unknown
+}
+
 /// The focused Accessibility element and its selected text range, without reading its contents.
 public struct FocusedFieldSelection: Sendable, Equatable {
     /// The process that owns the focused element.
@@ -44,6 +50,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let selection: NSRange?
     /// The caret's rectangle, in AppKit screen coordinates, or nothing when it cannot be read.
     public let caret: CGRect?
+    /// The direction at the caret, or nothing when the Accessibility bounds cannot establish one.
+    public let writingDirection: WritingDirection
     /// The window's rectangle, in AppKit screen coordinates, which the strip stands on.
     public let window: CGRect?
     /// The field's own rectangle, in AppKit screen coordinates, which a long ghost must not run past.
@@ -89,6 +97,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         value: String? = nil,
         selection: NSRange? = nil,
         caret: CGRect? = nil,
+        writingDirection: WritingDirection = .unknown,
         window: CGRect? = nil,
         field: CGRect? = nil,
         pointSize: CGFloat? = nil,
@@ -115,6 +124,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.value = value
         self.selection = selection
         self.caret = caret
+        self.writingDirection = writingDirection
         self.window = window
         self.field = field
         self.pointSize = pointSize
@@ -157,7 +167,7 @@ extension FocusedFieldSnapshot {
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
     public var placement: SuggestionPlacement? {
         isEnabled == false || isEditable == false || isHeldByFullScreenProgram
-            ? nil : capability.placement
+            || writingDirection == .unknown ? nil : capability.placement
     }
 
     /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.

@@ -69,7 +69,11 @@ a missing speech model, keeps that fix and the recording both.
 through `AudioFileReader`, so the samples arrive in the same shape the microphone
 delivers, and runs the same stages with two differences: no screen context is read
 (Uttrflow's own window is in front), and the words are delivered to the clipboard rather
-than typed, because the field they were meant for is gone. The outcome carries
+than typed, because the field they were meant for is gone. The sidecar keeps the app's
+name, bundle identifier and formatter destination from the original field, so retry uses
+that situation even if the frontmost app or destination overrides have since changed.
+Older app-only sidecars still resolve their formatter destination from the saved app identity.
+The outcome carries
 `fromRecording`, so the floating button says "Copied" without blaming Accessibility.
 
 ## Retention

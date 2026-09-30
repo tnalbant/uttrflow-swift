@@ -2,6 +2,7 @@
 
 import AppKit
 import Foundation
+import Observation
 import SwiftUI
 import UttrflowClipboard
 
@@ -30,23 +31,17 @@ final class PanelThumbnails {
     private let budget: Int
     /// The decoded (or absent) thumbnail for a file that has been asked for; absent entries means a decode is in flight.
     private(set) var known: [URL: NSImage?] = [:]
-    /// What each answer is costing, so the total is kept without measuring the whole cache.
-    private var cost: [URL: Int] = [:]
-    private var held = 0
-    /// When each file was last asked for, so touching one is constant time.
-    private var lastUse: [URL: Int] = [:]
-    private var clock = 0
-    /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
-    private var inflight: [URL: Task<Void, Never>] = [:]
-    /// Rows waiting for a decode. Selected rows sort ahead of other visible rows.
-    private var queued: [URL: (selected: Bool, order: Int)] = [:]
-    /// In-flight results for rows that disappeared are discarded on completion.
-    private var abandoned: Set<URL> = []
-    private var queueOrder = 0
-    /// When each failed decode was recorded, so a file restored later is decoded again.
-    private var missedAt: [URL: ContinuousClock.Instant] = [:]
-    /// How long a failed decode is trusted before the file is read again.
-    private let retryAfter: Duration
+    @ObservationIgnored private var cost: [URL: Int] = [:]
+    @ObservationIgnored private var held = 0
+    @ObservationIgnored private var lruNodes: [URL: LRUNode] = [:]
+    @ObservationIgnored private var oldest: LRUNode?
+    @ObservationIgnored private var newest: LRUNode?
+    @ObservationIgnored private var inflight: [URL: Task<Void, Never>] = [:]
+    @ObservationIgnored private var queued: [URL: (selected: Bool, order: Int)] = [:]
+    @ObservationIgnored private var abandoned: Set<URL> = []
+    @ObservationIgnored private var queueOrder = 0
+    @ObservationIgnored private var missedAt: [URL: ContinuousClock.Instant] = [:]
+    @ObservationIgnored private let retryAfter: Duration
 
     init(
         source: PanelThumbnailSource = .system, budget: Int = PanelThumbnails.defaultBudget,
@@ -71,21 +66,15 @@ final class PanelThumbnails {
         }
     }
 
-    /// The cached thumbnail for `file`, or `nil` while a miss is being decoded off the main actor.
+    /// The cached thumbnail for `file`, or `nil` when no image is cached.
     func thumbnail(for file: URL) -> NSImage? {
-        forgetStaleMiss(file)
-        if let remembered = known[file] {
-            touch(file)
-            return remembered
-        }
-        prepare(file)
-        return nil
+        known[file] ?? nil
     }
 
     /// Requests an off-main decode for a visible row; selected rows are scheduled first.
     func prepare(_ file: URL, selected: Bool = false) {
         forgetStaleMiss(file)
-        if known[file] != nil { return }
+        if known[file] != nil { touch(file); return }
         abandoned.remove(file)
         if let queuedRequest = queued[file] {
             queued[file] = (selected: selected, order: queuedRequest.order)
@@ -118,10 +107,11 @@ final class PanelThumbnails {
             queued.removeValue(forKey: next)
             let source = self.source
             let maxPixel = Self.maxPixel
-            inflight[next] = Task.detached(priority: .utility) { [weak self] in
+            let task = Task.detached(priority: .utility) { [weak self] in
                 let image = source.load(next, maxPixel)
                 await self?.record(next, bytes: Loaded(image: image))
             }
+            inflight[next] = task
         }
     }
 
@@ -132,7 +122,8 @@ final class PanelThumbnails {
 
     /// The thumbnail for `file`, awaiting an off-main decode when it is not yet known.
     func picture(for file: URL) async -> NSImage? {
-        if let remembered = thumbnail(for: file) { return remembered }
+        if let remembered = cached(file) { return remembered }
+        prepare(file)
         await waitForIdle(file: file)
         return cached(file)
     }
@@ -142,6 +133,7 @@ final class PanelThumbnails {
         while queued[file] != nil || inflight[file] != nil {
             if let task = inflight[file] {
                 await task.value
+                if inflight[file] != nil { await Task.yield() }
             } else {
                 await Task.yield()
             }
@@ -173,29 +165,62 @@ final class PanelThumbnails {
         missedAt[file] = nil
         known.removeValue(forKey: file)
         cost.removeValue(forKey: file)
-        lastUse.removeValue(forKey: file)
+        removeFromLRU(file)
     }
 
     /// Moves a file to the end of the queue, so it is the last thing forgotten.
     private func touch(_ file: URL) {
-        clock += 1
-        lastUse[file] = clock
+        if let node = lruNodes[file] {
+            unlink(node)
+            append(node)
+        } else {
+            append(LRUNode(file))
+        }
     }
 
     /// Drops the least recently used thumbnails until the cache fits; the newest stays even over budget.
     private func forgetTheLeastRecent() {
-        while held > budget, lastUse.count > 1,
-            let oldest = lastUse.min(by: { $0.value < $1.value })?.key
-        {
-            lastUse.removeValue(forKey: oldest)
-            held -= cost.removeValue(forKey: oldest) ?? 0
-            known.removeValue(forKey: oldest)
-            missedAt.removeValue(forKey: oldest)
+        while held > budget, lruNodes.count > 1, let node = oldest {
+            let file = node.file
+            removeFromLRU(file)
+            held -= cost.removeValue(forKey: file) ?? 0
+            known.removeValue(forKey: file)
+            missedAt.removeValue(forKey: file)
         }
+    }
+
+    private func append(_ node: LRUNode) {
+        node.previous = newest
+        node.next = nil
+        newest?.next = node
+        newest = node
+        oldest = oldest ?? node
+        lruNodes[node.file] = node
+    }
+
+    private func unlink(_ node: LRUNode) {
+        node.previous?.next = node.next
+        node.next?.previous = node.previous
+        if oldest === node { oldest = node.next }
+        if newest === node { newest = node.previous }
+        node.previous = nil
+        node.next = nil
+    }
+
+    private func removeFromLRU(_ file: URL) {
+        guard let node = lruNodes.removeValue(forKey: file) else { return }
+        unlink(node)
     }
 
     /// What the cache is holding, in bytes. Read by the tests that prove the bound.
     var bytesHeld: Int { held }
+}
+
+private final class LRUNode {
+    let file: URL
+    var previous: LRUNode?
+    var next: LRUNode?
+    init(_ file: URL) { self.file = file }
 }
 
 /// A wrapper that carries an `NSImage` between actors without `Sendable` conformance.

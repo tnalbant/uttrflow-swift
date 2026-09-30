@@ -91,6 +91,12 @@ empty → `startOfText`; preceding text ending in `. ! ?` or a newline (whitespa
 **How the destination is decided.** A `DestinationClassifier` reads one table and
 nothing else:
 
+The focused Accessibility role and multiline capability travel with the situation. An
+`AXSearchField` keeps the first word's heard casing, removes a terminal stop, and turns
+line breaks into spaces. An `AXTextField`, or any field Accessibility reports as
+single-line, also turns line breaks into spaces. Multiline fields retain the destination's
+paragraph policy.
+
 ```swift
 struct DestinationRule: Sendable, Codable {
     let bundlePrefixes: [String]        // "com.microsoft.Word", "com.apple.iWork.Pages"

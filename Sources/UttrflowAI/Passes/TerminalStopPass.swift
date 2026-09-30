@@ -25,7 +25,9 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if layout.contains(.paragraphs), policy != .never {
             Self.stopParagraphs(&draft, destination: destination)
         }
+        Self.separateLeadingQuestionOpener(&draft, layout: layout)
         Self.separateTrailingRequest(&draft, layout: layout)
+        Self.separateTrailingRightTag(&draft, layout: layout)
         guard let last = draft.presentIndices.last, !draft.words[last].isLayoutMark else { return draft }
         let word = draft.words[last].text
         if destination == .email, Self.isEmailGreetingOrSignOff(draft) {
@@ -55,6 +57,34 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         guard let start = QuestionShape.trailingRequestStart(in: shapes), start > 0,
             !draft.words[live[start - 1]].isLayoutMark,
             !shapes[start - 1].suffix.contains(where: { ".!?;,:".contains($0) })
+        else { return }
+        let index = live[start - 1]
+        draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
+    /// Sets off the address or multiword lead-in before a direct question.
+    private static func separateLeadingQuestionOpener(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices
+        let start = live.dropLast().lastIndex {
+            draft.words[$0].isLayoutMark || draft.shape(at: $0).endsSentence
+        }
+        let sentence = Array(live[(start.map { $0 + 1 } ?? 0)...])
+        let shapes = sentence.map { draft.shape(at: $0) }
+        guard let opener = QuestionShape.leadingQuestionOpenerIndex(in: shapes),
+            !shapes[opener].suffix.contains(where: { ".!?;,:".contains($0) })
+        else { return }
+        let index = sentence[opener]
+        draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
+    /// Separates a closing "right" tag from the clause it asks about.
+    private static func separateTrailingRightTag(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices
+        let shapes = live.map { draft.shape(at: $0) }
+        guard let start = QuestionShape.trailingRightTagStart(in: shapes), start > 0,
+            !shapes[start - 1].suffix.contains(",")
         else { return }
         let index = live[start - 1]
         draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
