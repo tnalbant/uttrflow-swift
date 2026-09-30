@@ -116,10 +116,11 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   sentence said twice does not compress anywhere near 2.4, so the compression check above cannot
   catch this.
 - `RecognitionLoop.undone`, run on every piece `BackedSpeechEngine` transcribes, keeps one copy
-  only when all of these hold: the piece is an even run of at least six words; its two halves
-  differ by no more than 20% word error rate; and the words come faster than 4.5 a second of
-  speech. A piece that fails any one of these is left exactly as the recogniser wrote it. So a
-  sentence really said twice, in a piece long enough to hold both copies, keeps both.
+  of a repeated run when at least three copies of three or more words differ by no more than 20%
+  word error rate and the words come faster than 4.5 a second of speech. A matching trailing
+  partial copy is removed with the run. The existing two-copy check still applies when there are
+  exactly two copies. A piece that fails the speech-rate or copy-match check is left as heard. So
+  a sentence really said twice at a speaking rate keeps both.
 - 4.5 words a second is set above the corpus recorder's own "this take was cut off" line (a
   passage read faster than 2.5 / 0.6, about 4.2 words a second) and below the 5.1 of the looped
   clip. It is not yet measured against recorded speech. Measure it with the eval corpus before
