@@ -170,6 +170,30 @@ public enum EvaluationCorpus {
             mustKeep: ["room"]
         ),
         .init(
+            id: "spoken-decade", category: .everyday,
+            spoken: "the nineteen nineties were fun",
+            expected: "The 1990s were fun.",
+            mustKeep: ["1990s"]
+        ),
+        .init(
+            id: "twenty-four-seven-idiom", category: .everyday,
+            spoken: "it's a twenty four seven service",
+            expected: "It's a twenty four seven service.",
+            mustKeep: ["twenty four seven"]
+        ),
+        .init(
+            id: "fifty-fifty-idiom", category: .everyday,
+            spoken: "it's fifty fifty",
+            expected: "It's fifty fifty.",
+            mustKeep: ["fifty fifty"]
+        ),
+        .init(
+            id: "page-fraction", category: .everyday,
+            spoken: "page two of three",
+            expected: "Page 2 of 3.",
+            mustKeep: ["2 of 3"]
+        ),
+        .init(
             id: "long-sentence", category: .everyday,
             spoken: """
                 can you let the team know that the release is delayed until next week \

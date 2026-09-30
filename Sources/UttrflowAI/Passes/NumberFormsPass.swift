@@ -1,3 +1,4 @@
+import Foundation
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
@@ -17,6 +18,7 @@ public struct NumberFormsPass: CleaningPass {
     ]
     static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
+    static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
         "july": 31, "august": 31, "september": 30, "october": 31, "november": 30, "december": 31,
@@ -54,6 +56,10 @@ public struct NumberFormsPass: CleaningPass {
         let keys = shapes.map(\.key)
         var position = 0
         while position < live.count {
+            if let count = Self.unchangedIdiomCount(at: position, keys: keys, shapes: shapes) {
+                position += count
+                continue
+            }
             if let time = Self.dottedTime(at: position, keys: keys, shapes: shapes) {
                 let last = position + 1
                 draft.replace(
@@ -103,6 +109,10 @@ public struct NumberFormsPass: CleaningPass {
         digits: DigitGrouping = .thousands
     ) -> Phrase? {
         let keys = shapes.map(\.key)
+
+        if let decade = decade(at: position, keys: keys, shapes: shapes) {
+            return decade
+        }
 
         if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes) {
             if let numeral = NumberWords.digits(keys[position + 1]) {
@@ -180,12 +190,20 @@ public struct NumberFormsPass: CleaningPass {
             }
         }
         if !isPhrase, inContext, item.spoken {
-            while joined(end, shapes),
-                let group = NumberWords.cardinal(unbroken(from: end, keys: keys, shapes: shapes))
+            if joined(end, shapes), keys[end] == "of",
+                let following = NumberWords.cardinal(unbroken(from: end + 1, keys: keys, shapes: shapes))
             {
-                text += String(group.value)
-                end += group.count
+                text += " of " + NumberWords.render(following.value, grouped: false)
+                end += following.count + 1
                 isPhrase = true
+            } else {
+                while joined(end, shapes),
+                    let group = NumberWords.cardinal(unbroken(from: end, keys: keys, shapes: shapes))
+                {
+                    text += String(group.value)
+                    end += group.count
+                    isPhrase = true
+                }
             }
         }
         // Three or more single digits spoken in a row are a digit string, even outside any context word.
@@ -316,6 +334,29 @@ public struct NumberFormsPass: CleaningPass {
             (10...99).contains(rest.value), rest.count <= 2
         else { return nil }
         return Phrase(text: String(century * 100 + rest.value), count: rest.count)
+    }
+
+    /// Reads a plural decade such as "nineteen nineties" as one year range.
+    private static func decade(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let century = NumberWords.teens[keys[position]] ?? NumberWords.tens[keys[position]],
+            [19, 20].contains(century),
+            joined(position + 1, shapes),
+            let decade = NumberWords.tens.first(where: {
+                $0.value >= 20 && $0.value <= 90
+                    && ($0.key.hasSuffix("y") ? String($0.key.dropLast()) + "ies" : $0.key + "s")
+                        == keys[position + 1]
+            })?.value
+        else { return nil }
+        return Phrase(text: "\(century * 100 + decade)s", count: 2)
+    }
+
+    /// Keeps fixed spoken idioms intact so their number words are not partially rewritten.
+    private static func unchangedIdiomCount(at position: Int, keys: [String], shapes: [WordShape]) -> Int? {
+        idioms.first { idiom in
+            position + idiom.count <= keys.count
+                && Array(keys[position..<(position + idiom.count)]) == idiom
+                && (position + 1..<position + idiom.count).allSatisfy { joined($0, shapes) }
+        }?.count
     }
 
     /// "two thirty", "two thirty pm", "two oh five pm", "ten am", "five o'clock"; am and pm stay separate.

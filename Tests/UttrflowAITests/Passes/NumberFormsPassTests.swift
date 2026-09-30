@@ -21,6 +21,9 @@ struct NumberFormsPassTests {
             ("two million dollars", "2,000,000 dollars"),
             ("nineteen hundred", "1900"),
             ("two thousand and five", "2005"),
+            ("the nineteen nineties were fun", "the 1990s were fun"),
+            ("it's a twenty four seven service", "it's a twenty four seven service"),
+            ("it's fifty fifty", "it's fifty fifty"),
             ("fifteen,", "15,"),
             ("\"twenty\"", "\"20\""),
             ("twenty, one", "20, one"),
@@ -110,6 +113,7 @@ struct NumberFormsPassTests {
             ("port fifty thousand", "port 50000"),
             ("version two point four point one", "version 2.4.1"),
             ("page two", "page 2"),
+            ("page two of three", "page 2 of 3"),
             ("step three", "step 3"),
             ("chapter one", "chapter 1"),
             ("extension four five six", "extension 456"),
@@ -119,6 +123,11 @@ struct NumberFormsPassTests {
     )
     func labelledNumbers(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("ordinary cardinal conversion stays intact beside protected expressions")
+    func ordinaryNumbersRemainUnchanged() {
+        #expect(cleaned("twenty four people and fifty users", by: sut) == "24 people and 50 users")
     }
 
     @Test(
