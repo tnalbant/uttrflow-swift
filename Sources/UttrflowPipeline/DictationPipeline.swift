@@ -820,9 +820,7 @@ public actor DictationPipeline {
         if delivery == .insert {
             insertionContext = await insertionContextForWrite(matching: appContext)
             guard !wasCancelled(mine) else { return }
-            let situation = SituationResolver.resolve(
-                app: appContext ?? .unknown, insertion: insertionContext.insertionPoint,
-                overrides: runningOverrides)
+            let situation = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides)
             let formatter = DestinationFormatter.standard(for: situation)
             output =
                 FirstWordPass(

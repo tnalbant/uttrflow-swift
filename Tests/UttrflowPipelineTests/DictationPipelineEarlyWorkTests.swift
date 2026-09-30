@@ -548,7 +548,7 @@ struct DictationPipelineEarlyWorkTests {
         await capture.setCaptured(Take.firstPieceOnly)
         let context = FakeContextEngine(
             context: .fixture(
-                applicationName: "TextEdit", bundleIdentifier: "com.apple.TextEdit",
+                applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal",
                 precedingText: "Hello"))
         let cleaner = HeldCleaner()
         let inserter = CollectingInserter()
