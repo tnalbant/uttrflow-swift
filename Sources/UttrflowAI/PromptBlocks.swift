@@ -133,7 +133,7 @@ public enum PromptBlocks {
             In a chat message:
             - commas and capitals, but no full stop after a message of one or two sentences
             - a question still ends with a question mark
-            - keep the greeting, the name and the tone exactly as spoken
+            - keep the greeting, the name and the tone exactly as spoken; keep closings inline and add no line breaks
             """,
         examples: [
             WorkedExample(
@@ -148,13 +148,21 @@ public enum PromptBlocks {
         id: "email",
         rules: """
             In an email:
-            - full sentences and paragraphs; keep the greeting, the sign-off and every break as given
+            - full sentences and paragraphs; keep the greeting and every break as given
+            - at the end only, put a spoken closing followed only by a name on its own lines: blank line, closing, name; use only thanks, best regards, regards, cheers or best, and keep every word in order
             - fix a grammar slip: "there is three" → "there are three", "have went" → \
             "have gone", "a apple" → "an apple", a drifting tense
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
-        examples: [])
+        examples: [
+            WorkedExample(
+                spoken: "good morning all the standup is cancelled today thanks kofi",
+                cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi."),
+            WorkedExample(
+                spoken: "thanks for the update cheers tom",
+                cleaned: "Thanks for the update.\n\nCheers,\nTom."),
+        ])
 
     static let plain = PromptBlock(
         id: "plain",
