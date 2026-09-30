@@ -3,7 +3,7 @@ import UttrflowCore
 
 @testable import UttrflowAI
 
-@Suite("A spoken email address")
+@Suite("A spoken address")
 struct SpokenAddressTests {
     private let sut = SpokenPunctuationPass()
 
@@ -100,6 +100,40 @@ struct SpokenAddressTests {
         ]
     )
     func leavesAnUnknownEnding(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "writes dictated web addresses paths filenames and identifiers",
+        arguments: [
+            ("visit example dot com slash docs", "visit example.com/docs"),
+            ("the site is www dot example dot com", "the site is www.example.com"),
+            ("go to https colon slash slash example dot com", "go to https://example.com"),
+            (
+                "the docs live at docs dot example dot com slash api slash v two",
+                "the docs live at docs.example.com/api/v2"
+            ),
+            ("open package dot json", "open package.json"),
+            ("edit the dot env file", "edit the .env file"),
+            ("the path is slash users slash sam slash notes", "the path is /users/sam/notes"),
+            ("my handle is at sam underscore dev", "my handle is @sam_dev"),
+            ("the variable is user underscore id", "the variable is user_id"),
+        ]
+    )
+    func writesSpokenAddresses(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps ordinary dot and slash words",
+        arguments: [
+            "a dot on the map",
+            "a slash in prices",
+            "put a dot on the map",
+            "there is a slash in prices",
+        ]
+    )
+    func keepsOrdinaryWords(input: String) {
         #expect(cleaned(input, by: sut) == input)
     }
 
