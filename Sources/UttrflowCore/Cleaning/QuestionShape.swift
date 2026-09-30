@@ -7,13 +7,14 @@ public enum QuestionShape {
         guard !words.isEmpty else { return false }
         if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
         // The last clause is where "I sent it, did you see it" asks.
-        let openingClause = Array(words.drop(while: openers.contains))
+        let openingClause = clauseAfterOpeners(words)
         if opensAQuestion(openingClause) {
             return !runsOn(openingClause) || questionWords.contains(openingClause[0])
                 || hasInvertedQuestionAfterOpening(openingClause)
         }
+        if opensAfterAddress(openingClause) { return true }
         guard let start = trailingQuestionStart(in: shapes) else { return false }
-        let clause = Array(words[start...].drop(while: openers.contains))
+        let clause = clauseAfterOpeners(Array(words[start...]))
         return opensAQuestion(clause) && !runsOn(clause)
     }
 
@@ -67,9 +68,37 @@ public enum QuestionShape {
             guard index + 1 < words.count, requestModals.contains(words[index]),
                 requestSubjects.contains(words[index + 1])
             else { return false }
-            let clause = Array(words[index...].drop(while: openers.contains))
+            let clause = clauseAfterOpeners(Array(words[index...]))
             return opensAQuestion(clause) && !runsOn(clause)
         }
+    }
+
+    /// Removes known one-word and multiword lead-ins before reading the inverted clause.
+    private static func clauseAfterOpeners(_ words: [String]) -> [String] {
+        var clause = words.drop(while: openers.contains)
+        if clause.starts(with: questionLeadIns) {
+            clause = clause.dropFirst(questionLeadIns.count)
+        }
+        return Array(clause)
+    }
+
+    /// An address can precede an inversion when the clause itself contains an unambiguous subject.
+    private static func opensAfterAddress(_ clause: [String]) -> Bool {
+        guard clause.count >= 3, let opener = clause.first, !isQuestionVerb(opener) else { return false }
+        let question = Array(clause.dropFirst())
+        guard let verb = question.first, let subject = question.dropFirst().first else { return false }
+        if pronounVerbs.contains(verb) { return subjects.contains(subject) && !runsOn(question) }
+        guard verbsBeforeSubject.contains(verb) else { return false }
+        if subjects.contains(subject) { return !runsOn(question) }
+        // A determiner needs a predicate after its noun, so "papa did the shopping" stays a statement.
+        return determiners.contains(subject) && question.count >= 4 && !runsOn(question)
+    }
+
+    /// A verb cannot serve as a person's name when it precedes the inverted clause.
+    private static func isQuestionVerb(_ word: String) -> Bool {
+        verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) || questionWords.contains(word)
+            || contractedQuestionWords.contains(word) || lexicalQuestionVerbs.contains(word)
+            || hindiQuestionWords.contains(word) || hindiVerbs.contains(word)
     }
 
     /// Whether a clause opens the way a question does: a question word before its verb, or a verb before its subject.
@@ -114,7 +143,7 @@ public enum QuestionShape {
 
     /// Whether a subject starts a dependent or reported clause inside the question.
     private static func isDependentOrReportedSubject(at index: Int, in clause: [String]) -> Bool {
-        if index > 0, ["if", "when"].contains(clause[index - 1]) { return true }
+        if index > 0, subordinateWords.contains(clause[index - 1]) { return true }
         if index > 0, reportedVerbs.contains(clause[index - 1]) { return true }
         return index > 1 && ["tell", "tells", "told"].contains(clause[index - 2]) && clause[index - 1] == "me"
     }
@@ -141,6 +170,14 @@ public enum QuestionShape {
     static let openers: Set<String> = [
         "so", "and", "but", "okay", "ok", "oh", "well", "also", "then", "hey", "now", "anyway",
     ]
+
+    /// Words that make a following subject part of the question clause instead of a new sentence.
+    private static let subordinateWords: Set<String> = [
+        "if", "because", "when", "since", "that", "unless", "whether",
+    ]
+
+    /// Multiword lead-ins that introduce the question which follows them.
+    private static let questionLeadIns = ["quick", "question"]
 
     /// English question words.
     static let questionWords: Set<String> = [
