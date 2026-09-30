@@ -74,7 +74,7 @@ public enum DestinationRules {
             bundlePrefixes: [
                 "com.apple.mail", "com.microsoft.Outlook", "com.superhuman", "com.readdle.smartemail",
             ],
-            titleContains: ["Gmail"],
+            titleContains: ["Gmail", "Mail", "Outlook", "Spark", "Superhuman"],
             nameWords: ["mail", "outlook", "spark", "superhuman"],
             kind: .email
         ),

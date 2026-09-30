@@ -55,6 +55,10 @@ struct DestinationClassifierTests {
             ("Quarterly plan - Google Docs", Destination.document),
             ("Budget - Google Sheets", .spreadsheet),
             ("Inbox (3) - Gmail", .email),
+            ("Compose Mail - Outlook", .email),
+            ("Mail - Jane Doe - Outlook", .email),
+            ("Draft - Spark", .email),
+            ("Inbox - Superhuman", .email),
             ("pgAdmin 4", .sqlEditor),
         ]
     )
@@ -85,6 +89,14 @@ struct DestinationClassifierTests {
     @Test("does not read a chat service name out of a longer title word")
     func doesNotMatchChatServiceMidWord() {
         #expect(DestinationClassifier.classify(app("com.google.Chrome", title: "Slackline launch")) == .plain)
+    }
+
+    @Test("does not read an email client name out of a longer title word")
+    func doesNotMatchEmailClientMidWord() {
+        #expect(DestinationClassifier.classify(app("com.google.Chrome", title: "Mailbox settings")) == .plain)
+        #expect(
+            DestinationClassifier.classify(app("com.google.Chrome", title: "Outlooked at the report"))
+                == .plain)
     }
 
     @Test("is plain for an app the table does not name, and for no app at all")
