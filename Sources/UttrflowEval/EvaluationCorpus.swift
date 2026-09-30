@@ -530,6 +530,12 @@ public enum EvaluationCorpus {
             mustKeep: ["taxi", "5", "dollars"]
         ),
         .init(
+            id: "money-billion", category: .everyday,
+            spoken: "we raised two billion dollars",
+            expected: "We raised 2,000,000,000 dollars.",
+            mustKeep: ["raised", "2,000,000,000", "dollars"]
+        ),
+        .init(
             id: "dates", category: .everyday,
             spoken: "the twenty fifth of March",
             expected: "The 25 March.",

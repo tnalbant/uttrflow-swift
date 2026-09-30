@@ -10,7 +10,7 @@ struct RulesCorpusTests {
     /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
     static let rulesMustPass: Set<String> = [
         "false-start", "self-correction", "filler-heavy", "noun-spelled-like-a-filler",
-        "pronoun-i", "number-words", "short-yes",
+        "pronoun-i", "number-words", "money-billion", "short-yes",
         "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
         "filler-between-commas",
         "repeated-phrase", "i-mean-correction", "correction-between-commas", "actually-between-numbers",

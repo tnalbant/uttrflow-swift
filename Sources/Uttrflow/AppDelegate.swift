@@ -830,7 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 guard self?.modelAsk == ask else { return }
                 // Cleared, so turning the feature off and on tries again rather than staying dead all launch.
                 self?.isModelPreparing = false
-                self?.suggestionModel = .failed
+                self?.suggestionModel = self?.suggestionModel == .loading ? .loadFailed : .fetchFailed
             }
         }
     }
@@ -840,12 +840,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard settings.suggestions.isEnabled, isModelPreparing else { return }
         // Cleared, so turning the switch off and on fetches them, as it does after any failed fetch.
         isModelPreparing = false
-        suggestionModel = .failed
+        suggestionModel = .fetchFailed
     }
 
     /// Lets the weights go once the feature is off, stopping any load still in flight. See `Docs/performance.md`.
     private func releaseTheModel() {
-        guard isModelPreparing || suggestionModel == .failed else { return }
+        guard isModelPreparing || suggestionModel == .fetchFailed || suggestionModel == .loadFailed
+        else { return }
         isModelPreparing = false
         modelAsk += 1
         suggestionModel = .notAsked
@@ -902,7 +903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .failed where suggestionModel == .loading:
             // Cleared so that turning the feature off and on loads the model again.
             isModelPreparing = false
-            suggestionModel = .failed
+            suggestionModel = .loadFailed
         case .started, .finished, .failed:
             break
         }
@@ -1886,11 +1887,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
-        if case .inserted = state { retryingRecording = nil }
-        if case .failed = state { retryingRecording = nil }
+        if state.hasEnded { retryingRecording = nil }
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
-        if case .inserted = state { sweepExpired() }
-        if case .failed = state { sweepExpired() }
+        if state.hasEnded { sweepExpired() }
 
         // Kept here, where every change already arrives, so the updater need not ask the pipeline.
         lastDictationState = state
@@ -2559,7 +2558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
             case .retrySuggestionModel:
-                guard settings.suggestions.isEnabled, suggestionModel == .failed else { return }
+                guard settings.suggestions.isEnabled,
+                    suggestionModel == .fetchFailed || suggestionModel == .loadFailed
+                else { return }
                 prepareTheModelIfNeeded()
             case .openPage(let page): show(.main(page))
             default: break

@@ -40,16 +40,47 @@ public struct SnippetExpander: Sendable {
             let last = position + hit.words.count - 1
             let span = runs[position].range.lowerBound..<runs[last].range.upperBound
             text += transcript[copiedUpTo..<span.lowerBound]
-            text += hit.snippet.expansion
+            let prefix = transcript[copiedUpTo..<span.lowerBound]
+            let sentenceStart =
+                prefix.reversed().first(where: { !$0.isWhitespace }).map {
+                    ".!?\n\r".contains($0)
+                } ?? true
+            text += Self.expansion(hit.snippet.expansion, sentenceStart: sentenceStart)
             applied.append(
                 AppliedSnippet(
                     snippetID: hit.snippet.id, matched: String(transcript[span]),
                     expansion: hit.snippet.expansion))
-            copiedUpTo = span.upperBound
+            var after = span.upperBound
+            if let next = transcript[after...].first,
+                let terminal = Self.terminalMark(in: hit.snippet.expansion),
+                Self.sameTerminalClass(next, terminal)
+            {
+                after = transcript.index(after: after)
+            }
+            copiedUpTo = after
             position += hit.words.count
         }
         text += transcript[copiedUpTo...]
         return SnippetExpansion(original: transcript, text: text, applied: applied)
+    }
+
+    /// Carries sentence-start casing into a replacement while leaving every other saved character alone.
+    private static func expansion(_ expansion: String, sentenceStart: Bool) -> String {
+        guard sentenceStart, let first = expansion.first, first.isLetter, first.isLowercase else {
+            return expansion
+        }
+        return WordShape.capitalised(expansion)
+    }
+
+    /// The last punctuation mark that can be duplicated by tidying immediately after a trigger.
+    private static func terminalMark(in expansion: String) -> Character? {
+        expansion.last(where: { ".!?;:,".contains($0) })
+    }
+
+    /// Whether an adjacent tidy mark is already represented by the expansion's ending punctuation class.
+    private static func sameTerminalClass(_ first: Character, _ second: Character) -> Bool {
+        let terminalMarks: Set<Character> = [".", "!", "?", ";", ":", ","]
+        return terminalMarks.contains(first) && terminalMarks.contains(second)
     }
 
     // MARK: - Whether a trigger really was said

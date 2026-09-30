@@ -70,6 +70,7 @@ final class SuggestionCoordinator {
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
 
     private let store: PredictStore
+    private let rejectedSuggestionRecorder: RejectedSuggestionRecorder
     let capture: CaptureSession
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
@@ -176,6 +177,7 @@ final class SuggestionCoordinator {
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
+        rejectedSuggestionRecorder = RejectedSuggestionRecorder(store: store)
         // Lines learned before the credential rules last widened are removed once, off the typing path.
         Task.detached(priority: .utility) { _ = try? await CaptureGate.sweepSecrets(from: store) }
         // One index behind both, so asking the machine for a completion also warms what attests it.
@@ -236,20 +238,26 @@ final class SuggestionCoordinator {
     /// Forgets what one application taught, on disk and in every copy this loop holds.
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         await capture.forgetLearned(from: bundleIdentifier)
-        await forgetWhatThisLoopRemembers()
-        try await store.forget(bundleIdentifier: bundleIdentifier)
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forget(bundleIdentifier: bundleIdentifier)
+        })
     }
 
     /// Forgets every line and answer, on disk and in every copy this loop holds.
     func forgetEverySuggestion() async throws {
         try await capture.forgetEverythingLearned()
-        await forgetWhatThisLoopRemembers()
-        try await store.forgetEverything()
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forgetEverything()
+        })
     }
 
     /// Drops the verdicts and model answers this loop keeps, which may name a forgotten line.
-    private func forgetWhatThisLoopRemembers() async {
-        await verifier.forgetEverything()
+    private func forgetWhatThisLoopRemembers(
+        clearingCorpus: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await verifier.forgetEverything(then: clearingCorpus)
         modelPass.freshStart(surfaceChanged: true, lineIsEmpty: true)
     }
 
@@ -702,6 +710,7 @@ final class SuggestionCoordinator {
 
     /// Reads the field, asks the corpus and draws the answer, all off the keystroke path; a turn left behind touches nothing.
     private func turn(_ number: Int, because reason: SuggestionReason) async {
+        await rejectedSuggestionRecorder.retry()
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
         progress = (number, .read, front)
         // Taken before the read, since a key pressed while a slow field is being read is one the read may have missed.
@@ -749,7 +758,7 @@ final class SuggestionCoordinator {
             isQuiet: preferences.isQuiet, sawKeystrokes: keystrokesSeen)
         if let rejected = turn.rejected, let surface = reading.surface {
             entering(.reject, turn: number)
-            try? await store.recordRejected(rejected, in: surface)
+            await rejectedSuggestionRecorder.record(rejected, in: surface)
         }
 
         switch turn.step {
@@ -1071,8 +1080,15 @@ final class SuggestionCoordinator {
     func candidates(for query: SuggestionQuery) async -> [Candidate] {
         let remembered =
             (try? await store.candidates(for: query.surface, matching: query.typed)) ?? []
-        guard remembered.isEmpty else { return remembered }
-        return await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        let candidates: [Candidate]
+        if remembered.isEmpty {
+            candidates = await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        } else {
+            candidates = remembered
+        }
+        return candidates.filter {
+            !rejectedSuggestionRecorder.suppresses($0.text, in: query.surface)
+        }
     }
 
     /// Tells capture what happened, and asks the user once about an application it has not met.

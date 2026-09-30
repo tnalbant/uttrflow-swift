@@ -34,10 +34,10 @@ public extension CandidateScoring {
 /// Marks a candidate wrong wherever it is remembered, so it stops accruing weight.
 public protocol SupersessionRecording: Sendable {
     /// Records that one text is replaced by another, which is what stops it being proposed again.
-    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async throws
 
     /// Records that one text is wrong with nothing on this machine to put in its place.
-    func recordRejection(of text: String, in surface: Surface) async
+    func recordRejection(of text: String, in surface: Surface) async throws
 }
 
 /// What the model managed to say about a candidate inside the budget.

@@ -58,7 +58,9 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
         let rewritten = try await model.rewrite(
-            prompts.userPrompt(for: request, spoken: spoken, doubtful: readings),
+            prompts.userPrompt(
+                for: request, spoken: spoken, doubtful: readings,
+                preserving: steps.switchedOff),
             instructions: prompts.instructions(for: request.situation.destination), kind: kind
         )
 
