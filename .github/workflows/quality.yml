@@ -16,24 +16,21 @@
 #   workflows  `actionlint`, which type-checks the `${{ }}` expressions and runs
 #              shellcheck over every `run:` block. Zero findings today, so it can be
 #              required from the start
-#   links      `lychee`. Five links in the tree are genuinely dead, four of them because
-#              CHANGELOG.md documents v0.2.2, v0.3.0 and v0.4.0 and no such tag has ever
-#              been pushed. A gate cannot demand the operator cut three releases, so this
-#              reports and does not block. Promote it once those tags exist.
+#   links      `lychee`. Resolution depends on the network and external sites, so failures
+#              are reported without blocking a merge.
 #
 # Tools are pinned release binaries checked against their published SHA-256, for the same
 # reason as `security.yml`: an action is somebody else's code running in this repository.
 name: Quality
 
 on:
-  # Only pull requests into `main`. Work batched on an integration branch is verified
-  # locally with `make verify` and gated once, when that branch is proposed for `main`.
+  # Pull requests into `main`, pushes to `main` and the weekly schedule run these checks.
   pull_request:
     branches: [main]
   push:
     branches: [main]
-  # External links rot with nobody touching the repository, so the link check has to run
-  # on a clock rather than only when somebody opens a pull request.
+  # The weekly run catches links that rot between changes; pull requests and main pushes
+  # also run the link check.
   schedule:
     - cron: "0 9 * * 3"
 
@@ -182,8 +179,8 @@ jobs:
     name: Links still resolve
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Reports, does not block, until CHANGELOG.md's three untagged releases exist. The
-    # job going red is still visible on the pull request; it just cannot stop a merge.
+    # Link resolution depends on the network and external sites, so failures stay visible
+    # without blocking a merge.
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

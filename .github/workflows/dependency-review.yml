@@ -8,8 +8,7 @@
 name: Dependency review
 
 on:
-  # Only pull requests into `main`. Work batched on an integration branch is verified
-  # locally with `make verify` and gated once, when that branch is proposed for `main`.
+  # Dependency review runs on pull requests into `main` before the change is merged.
   pull_request:
     branches: [main]
 
