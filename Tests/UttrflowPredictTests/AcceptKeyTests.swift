@@ -75,6 +75,13 @@ struct AcceptKeyTests {
     }
 
     @Test(
+        "A launcher gets Tab because it is not an editor.",
+        arguments: ["com.jetbrains.toolbox"])
+    func nonEditorsGetTab(bundleIdentifier: String) {
+        #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .tab)
+    }
+
+    @Test(
         "A query editor gets Option-Tab too, since its Tab indents or completes SQL.",
         arguments: ["com.jetbrains.datagrip", "com.tinyapp.TablePlus", "org.jkiss.dbeaver.core.product"])
     func queryEditorsGetOptionTab(bundleIdentifier: String) {

@@ -49,7 +49,11 @@ public enum DestinationRules {
         DestinationRule(
             bundlePrefixes: [
                 "com.apple.dt.Xcode", "com.todesktop.230313mzl4w4u92", "com.microsoft.VSCode",
-                "dev.zed.Zed", "com.jetbrains.", "com.sublimetext", "com.panic.Nova",
+                "dev.zed.Zed", "com.jetbrains.intellij", "com.jetbrains.pycharm",
+                "com.jetbrains.goland", "com.jetbrains.rider", "com.jetbrains.webstorm",
+                "com.jetbrains.phpstorm", "com.jetbrains.rubymine", "com.jetbrains.clion",
+                "com.jetbrains.datagrip", "com.jetbrains.appcode", "com.jetbrains.mps",
+                "com.sublimetext", "com.panic.Nova",
                 "com.visualstudio.code", "org.vim.MacVim",
             ],
             nameWords: [

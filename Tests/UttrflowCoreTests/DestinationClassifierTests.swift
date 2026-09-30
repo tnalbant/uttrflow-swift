@@ -27,6 +27,14 @@ struct DestinationClassifierTests {
             ("com.microsoft.VSCode", .codeEditor),
             ("dev.zed.Zed", .codeEditor),
             ("com.jetbrains.pycharm", .codeEditor),
+            ("com.jetbrains.goland", .codeEditor),
+            ("com.jetbrains.rider", .codeEditor),
+            ("com.jetbrains.webstorm", .codeEditor),
+            ("com.jetbrains.phpstorm", .codeEditor),
+            ("com.jetbrains.rubymine", .codeEditor),
+            ("com.jetbrains.clion", .codeEditor),
+            ("com.jetbrains.appcode", .codeEditor),
+            ("com.jetbrains.mps", .codeEditor),
             ("com.apple.Terminal", .terminal),
             ("com.googlecode.iterm2", .terminal),
             ("com.tinyspeck.slackmacgap", .messaging),
@@ -90,6 +98,8 @@ struct DestinationClassifierTests {
     @Test("is plain for an app the table does not name, and for no app at all")
     func plainByDefault() {
         #expect(DestinationClassifier.classify(app("com.example.Unknown", title: "Untitled")) == .plain)
+        #expect(DestinationClassifier.classify(app("com.jetbrains.toolbox")) == .plain)
+        #expect(DestinationClassifier.kind(for: app("com.jetbrains.toolbox")) == nil)
         #expect(DestinationClassifier.classify(.unknown) == .plain)
         #expect(DestinationClassifier.classify(app("", title: "")) == .plain)
     }
