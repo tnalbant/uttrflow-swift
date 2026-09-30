@@ -70,6 +70,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return Self.matchingHeardCase(word, heard: heard)
         case .fromInsertionPoint:
             guard state == .midSentence, !Self.keepsCapital(word),
+                !(capitaliseCalendarWords && Self.isCalendarWord(word)),
                 !Self.isProperName(word, in: text),
                 !Self.looksLikeName(word, in: [text] + onScreen)
             else { return WordShape.capitalised(word) }
@@ -106,8 +107,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Gives unambiguous weekday and month names their conventional case without guessing at May or March.
     static func calendarWordCapitalised(_ text: String) -> String {
         let shape = WordShape(text)
-        let key = shape.key.lowercased()
-        guard calendarWords.contains(key) else { return text }
+        guard isCalendarWord(text) else { return text }
         return shape.replacingCore(with: WordShape.capitalised(shape.core))
     }
 
@@ -148,6 +148,11 @@ public struct FirstWordPass: WholeTextCleaningPass {
             ]
         ).subtracting(["china", "turkey"])
     }()
+
+    /// Whether a word names a weekday or an unambiguous month.
+    static func isCalendarWord(_ text: String) -> Bool {
+        calendarWords.contains(WordShape(text).key.lowercased())
+    }
 
     private static let calendarWords: Set<String> = [
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",

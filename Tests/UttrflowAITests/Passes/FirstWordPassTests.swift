@@ -118,6 +118,12 @@ struct FirstWordPassTests {
         #expect(fromCaret("new york is crowded", state: .midSentence) == "New York is crowded")
     }
 
+    @Test("keeps weekdays and unambiguous months capitalised at a mid-sentence caret")
+    func calendarWordsAtMidSentenceCaret() {
+        #expect(fromCaret("Friday is good", state: .midSentence) == "Friday is good")
+        #expect(fromCaret("March is busy", state: .midSentence) == "March is busy")
+        #expect(fromCaret("May is busy", state: .midSentence) == "may is busy")
+
     @Test("calendar casing follows prose destinations and leaves terminal and code case spoken")
     func calendarWordsRespectDestination() {
         let situation = Situation.unknown
