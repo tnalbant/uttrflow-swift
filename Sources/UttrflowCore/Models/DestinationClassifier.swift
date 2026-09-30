@@ -9,28 +9,32 @@ public struct DestinationRule: Sendable, Equatable, Codable {
     /// The sort of app this row names, or nil for a row built from a destination alone.
     public let kind: AppKind?
     public let destination: Destination
+    /// A stop policy this app needs in addition to its destination's other formatting rules.
+    public let terminalStop: TerminalStopPolicy?
 
     public init(
         bundlePrefixes: [String] = [], titleContains: [String] = [], nameWords: [String] = [],
-        destination: Destination
+        destination: Destination, terminalStop: TerminalStopPolicy? = nil
     ) {
         self.bundlePrefixes = bundlePrefixes
         self.titleContains = titleContains
         self.nameWords = nameWords
         self.kind = nil
         self.destination = destination
+        self.terminalStop = terminalStop
     }
 
     /// A row built from the sort of app it names, so its destination cannot disagree with its caption.
     public init(
         bundlePrefixes: [String] = [], titleContains: [String] = [], nameWords: [String] = [],
-        kind: AppKind
+        kind: AppKind, terminalStop: TerminalStopPolicy? = nil
     ) {
         self.bundlePrefixes = bundlePrefixes
         self.titleContains = titleContains
         self.nameWords = nameWords
         self.kind = kind
         self.destination = kind.destination
+        self.terminalStop = terminalStop
     }
 
     /// Whether the app's bundle identifier, window title or name falls under this row.

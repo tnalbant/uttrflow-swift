@@ -34,6 +34,21 @@ struct DestinationCorpusTests {
         #expect(situation.insertion.sentenceState == .midSentence)
     }
 
+    @Test("Reminders and Calendar use document capitalization with title stops removed")
+    func titleAppsKeepDocumentCapitalizationWithoutFullStops() {
+        let document = DestinationFormatter.standard(for: .document)
+        for bundle in ["com.apple.reminders", "com.apple.iCal"] {
+            let app = AppContext(bundleIdentifier: bundle)
+            let situation = SituationResolver.resolve(from: app)
+            let formatter = DestinationFormatter.standard(for: situation)
+            #expect(DestinationClassifier.classify(app) == .document)
+            #expect(formatter.firstWord == document.firstWord)
+            #expect(formatter.terminalStop == .never)
+            #expect(formatter.layout == document.layout)
+            #expect(formatter.grammar == document.grammar)
+        }
+    }
+
     @Test("builds the request the bake-off hands an engine")
     func buildsTheRequest() {
         let request = shaped.transformationRequest()
