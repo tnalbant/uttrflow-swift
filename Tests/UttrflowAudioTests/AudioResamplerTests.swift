@@ -156,6 +156,38 @@ struct AudioResamplerTests {
         #expect(samples.allSatisfy { abs($0 - 0.25) < 0.001 })
     }
 
+    @Test(
+        "replaces non-finite canonical-rate samples with silence",
+        arguments: [Float.nan, .infinity, -.infinity])
+    func canonicalInputReplacesNonFiniteSamples(sample: Float) throws {
+        let format = try #require(AudioResampler.canonicalFormat)
+        let resampler = try #require(AudioResampler(inputFormat: format))
+        let buffer = try #require(SyntheticAudio.constant(0.1, frames: 1_600, format: format))
+        try #require(buffer.floatChannelData).pointee[800] = sample
+
+        let samples = try resampler.resample(buffer)
+
+        #expect(samples.count == 1_600)
+        #expect(samples.allSatisfy { $0.isFinite })
+        #expect(samples[800] == 0)
+    }
+
+    @Test(
+        "replaces non-finite downsampled samples before conversion",
+        arguments: [Float.nan, .infinity, -.infinity])
+    func downsampledInputReplacesNonFiniteSamples(sample: Float) throws {
+        let format = try #require(SyntheticAudio.format(sampleRate: 48_000, channels: 1))
+        let resampler = try #require(AudioResampler(inputFormat: format))
+        let buffer = try #require(SyntheticAudio.constant(0.1, frames: 4_800, format: format))
+        try #require(buffer.floatChannelData).pointee[2_400] = sample
+
+        let samples = try resampler.resample(buffer)
+
+        #expect(!samples.isEmpty)
+        #expect(samples.allSatisfy { $0.isFinite })
+        #expect(samples[800] > 0.05)
+    }
+
     @Test("returns nothing for an empty buffer instead of failing")
     func emptyBuffer() throws {
         let format = try #require(SyntheticAudio.format(sampleRate: 48_000, channels: 1))

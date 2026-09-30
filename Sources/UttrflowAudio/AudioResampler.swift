@@ -132,6 +132,11 @@ public final class AudioResampler: Sendable {
         }
 
         guard let channel = output.floatChannelData?.pointee else { return [] }
+        // Filtering can overshoot, so downstream consumers receive bounded, finite samples.
+        for index in 0..<Int(output.frameLength) {
+            let sample = channel[index]
+            channel[index] = sample.isFinite ? min(max(sample, -1), 1) : 0
+        }
         return Array(UnsafeBufferPointer(start: channel, count: Int(output.frameLength)))
     }
 
@@ -208,6 +213,7 @@ public final class AudioResampler: Sendable {
                 byteCount: Int(frames) * bytesPerFrame
             )
         }
+        sanitizeNonFiniteSamples(in: destination)
         return true
     }
 
@@ -232,7 +238,39 @@ public final class AudioResampler: Sendable {
                 byteCount: Int(frames) * bytesPerFrame
             )
         }
+        sanitizeNonFiniteSamples(in: output)
         return output
+    }
+
+    private static func sanitizeNonFiniteSamples(in buffer: AVAudioPCMBuffer) {
+        switch buffer.format.commonFormat {
+        case .pcmFormatFloat32:
+            sanitizeNonFiniteSamples(in: buffer, as: Float.self)
+        case .pcmFormatFloat64:
+            sanitizeNonFiniteSamples(in: buffer, as: Double.self)
+        default:
+            break
+        }
+    }
+
+    private static func sanitizeNonFiniteSamples<Sample: BinaryFloatingPoint>(
+        in buffer: AVAudioPCMBuffer, as sampleType: Sample.Type
+    ) {
+        let buffers = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+        let channelsPerBuffer = buffer.format.isInterleaved ? Int(buffer.format.channelCount) : 1
+        let expectedCount = Int(buffer.frameLength) * channelsPerBuffer
+
+        for audioBuffer in buffers {
+            guard let data = audioBuffer.mData else { continue }
+            let availableCount = Int(audioBuffer.mDataByteSize) / MemoryLayout<Sample>.size
+            let samples = UnsafeMutableBufferPointer(
+                start: data.assumingMemoryBound(to: Sample.self),
+                count: min(expectedCount, availableCount)
+            )
+            for index in samples.indices where !samples[index].isFinite {
+                samples[index] = 0
+            }
+        }
     }
 }
 
