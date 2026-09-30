@@ -49,7 +49,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     public func transform(
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
-        let formatter = DestinationFormatter.standard(for: request.situation.destination)
+        let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
             for: formatter, situation: request.situation, steps: steps)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
