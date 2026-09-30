@@ -125,6 +125,28 @@ struct SettingsShortcutValidationTests {
         }
     }
 
+    @Test("refuses another action's shortcut by name without changing settings")
+    func refusesDuplicateShortcut() throws {
+        let settings = Settings.default
+        let before = settings
+        let clipboardBinding = try #require(settings.clipboardHotkey)
+
+        #expect(throws: SettingsRejection(reason: "That is already the clipboard shortcut.")) {
+            try SettingsEditor.apply(.shortcut(.dictate, clipboardBinding), to: settings)
+        }
+
+        #expect(settings == before)
+    }
+
+    @Test("refuses an incoherent binding with the registration reason")
+    func refusesIncoherentBinding() {
+        let binding = HotkeyBinding(keyCode: 58, modifiers: [.control])
+        #expect(!binding.isCoherent)
+        #expect(
+            refusal(.shortcut(.dictate, binding))
+                == "That combination did not register cleanly. Press and hold it again.")
+    }
+
     /// Issue 342: ⌘C, ⌥→ and ⌥A all fired a bare-modifier binding, so the sentence has to say why and what to do.
     @Test("refuses ⌘, ⌥, ⌃ or ⇧ held on its own and caveats its Fn suggestion")
     func refusesABareModifier() {
