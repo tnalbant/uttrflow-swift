@@ -36,16 +36,7 @@ public final class CarbonHotkeyMonitor: HotkeyMonitoring {
     }
 
     deinit {
-        // Not `stop()`, which hops to a main thread this may never come back from.
-        reconciliation.withLock { timer in
-            timer?.setEventHandler(handler: nil)
-            timer?.cancel()
-            timer = nil
-        }
-        if let live = registration.withLock({ $0 }) {
-            hotkeySinks.withLock { $0[live.identifier] = nil }
-            _ = UnregisterEventHotKey(live.hotKey)
-        }
+        stop()
     }
 
     /// The one handler this process installs, never removed, dispatching every shortcut by id.
@@ -78,9 +69,16 @@ public final class CarbonHotkeyMonitor: HotkeyMonitoring {
 
     /// Callable from anywhere; off the main thread the key is still unregistered before anything registers again.
     public func stop() {
-        guard let live = release() else { return }
-        guard Thread.isMainThread else { return deferUnregistering(live) }
-        _ = UnregisterEventHotKey(live.hotKey)
+        let deferred = hotkeyLifecycle.withLock { pending -> Bool in
+            guard let live = release() else { return false }
+            guard Thread.isMainThread else {
+                pending.append(live)
+                return true
+            }
+            _ = UnregisterEventHotKey(live.hotKey)
+            return false
+        }
+        if deferred { DispatchQueue.main.async { unregisterDeferred() } }
     }
 
     // MARK: Carbon
@@ -88,11 +86,16 @@ public final class CarbonHotkeyMonitor: HotkeyMonitoring {
     /// Main-actor isolated: Carbon delivers on the run loop of the registering thread.
     @MainActor
     private func register(_ hotkey: CarbonHotkey) throws(HotkeyError) {
-        // A second start rebinds rather than leaking the first registration.
-        if let live = release() { _ = UnregisterEventHotKey(live.hotKey) }
-        // A key stopped off the main thread goes back to Carbon first, or it refuses this with -9878.
-        unregisterDeferred()
+        try hotkeyLifecycle.withLock { pending in
+            // A second start rebinds rather than leaking the first registration.
+            if let live = release() { _ = UnregisterEventHotKey(live.hotKey) }
+            unregisterDeferred(&pending)
+            try registerNew(hotkey)
+        }
+    }
 
+    @MainActor
+    private func registerNew(_ hotkey: CarbonHotkey) throws(HotkeyError) {
         let identifier = nextHotkeyIdentifier()
         hotkeySinks.withLock { sinks in
             sinks[identifier] = { [weak self] in self?.deliver($0, keyCode: hotkey.keyCode) }
@@ -228,20 +231,16 @@ private let carbonHotkeyHandler: EventHandlerUPP = { _, event, _ -> OSStatus in
     return OSStatus(noErr)
 }
 
-/// Registrations stopped off the main thread, each handed back to Carbon exactly once on it.
-private let deferredUnregistrations = Mutex<[CarbonRegistration]>([])
+/// Serializes registration changes and owns registrations waiting for the main thread.
+private let hotkeyLifecycle = Mutex<[CarbonRegistration]>([])
 
-/// Queues a stopped registration for the main thread, which Carbon wants and `stop()` cannot promise.
-private func deferUnregistering(_ live: CarbonRegistration) {
-    deferredUnregistrations.withLock { $0.append(live) }
-    DispatchQueue.main.async { unregisterDeferred() }
+/// Unregisters queued registrations before a new registration can start.
+private func unregisterDeferred() {
+    hotkeyLifecycle.withLock { unregisterDeferred(&$0) }
 }
 
-/// Unregisters every queued registration; whichever of the hop and the next registration runs first does it.
-private func unregisterDeferred() {
-    let pending = deferredUnregistrations.withLock { queued -> [CarbonRegistration] in
-        defer { queued = [] }
-        return queued
-    }
+private func unregisterDeferred(_ queued: inout [CarbonRegistration]) {
+    let pending = queued
+    queued.removeAll()
     for live in pending { _ = UnregisterEventHotKey(live.hotKey) }
 }
