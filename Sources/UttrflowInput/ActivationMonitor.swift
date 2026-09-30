@@ -74,6 +74,11 @@ public final class ActivationMonitor: HotkeyMonitoring {
             try source.start(
                 { [weak self] stroke in
                     guard let self else { return }
+                    if stroke.keyCode == 53, stroke.phase == .down, stroke.isEmptyHold {
+                        _ = recogniser.withLock { _ in continuation.yield(.escapePressed) }
+                        strokeLeftLock()
+                        return
+                    }
                     // Yield under the lock, so a stop's owed release cannot overtake the press it ends.
                     let happened = recogniser.withLock { current -> HotkeyEvent? in
                         let happened = current?.receive(stroke)
@@ -83,7 +88,7 @@ public final class ActivationMonitor: HotkeyMonitoring {
                     if let happened {
                         switch happened {
                         case .pressed: startReconciling(binding)
-                        case .released, .cancelled: stopReconciling()
+                        case .released, .cancelled, .escapePressed: stopReconciling()
                         }
                     }
                     strokeLeftLock()
@@ -94,7 +99,9 @@ public final class ActivationMonitor: HotkeyMonitoring {
     }
 
     public func stop() {
-        rebuild.withLock { $0?.cancel(); $0 = nil }
+        rebuild.withLock {
+            $0?.cancel(); $0 = nil
+        }
         TeardownGuard.once(for: self) {
             let began = recogniser.withLock { _ in generation.load(ordering: .relaxed) }
             source.stop()

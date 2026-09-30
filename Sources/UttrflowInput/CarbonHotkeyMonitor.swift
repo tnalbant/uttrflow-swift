@@ -138,7 +138,7 @@ public final class CarbonHotkeyMonitor: HotkeyMonitoring {
         // Only while a key is down, so an idle app never wakes and no timer outlives one.
         switch happened {
         case .pressed: startReconciling(keyCode)
-        case .released, .cancelled: stopReconciling()
+        case .released, .cancelled, .escapePressed: stopReconciling()
         }
         continuation.yield(happened)
     }
