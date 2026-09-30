@@ -67,7 +67,8 @@ public enum SettingsEditor {
         case .pauseSuggestions(let isOn):
             try requireSuggestionsAreOn(in: settings)
             updated.suggestions.setPaused(isOn, at: moment)
-        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel, .openPage:
+        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel,
+            .openSystemSettings, .openPage:
             // Named rather than left to a `default`, which would swallow the next case added.
             break
         }
@@ -264,6 +265,9 @@ public enum SettingsEditor {
         given capabilities: SettingsCapabilities
     ) -> String? {
         guard level == .standard, !capabilities.canTidyBeyondTheFloor else { return nil }
+        if case .unavailable(let reason) = capabilities.foundationModelAvailability {
+            return reason.diagnosticDescription + ". Uttrflow will still apply its rules."
+        }
         return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
     }
 

@@ -63,7 +63,7 @@ struct TransformerAvailabilityTests {
     func isAvailable() {
         #expect(TransformerAvailability.available.isAvailable)
         #expect(!TransformerAvailability.unsupportedLanguage(.hindi).isAvailable)
-        #expect(!TransformerAvailability.unavailable(reason: "no model").isAvailable)
+        #expect(!TransformerAvailability.unavailable(reason: .other("no model")).isAvailable)
     }
 
     @Test("distinguishes which language is unsupported")

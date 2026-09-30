@@ -31,6 +31,34 @@ extension MainNotice {
     /// What an error nobody foresaw says, so a type name never reaches the screen.
     public static let unforeseenMessage = "Something went wrong. Please try again."
 
+    /// Explains a first rules-only dictation caused by Apple Intelligence readiness.
+    public static func appleIntelligenceUnavailable(_ reason: TransformerUnavailableReason) -> MainNotice {
+        let message: String
+        let action: MainAction?
+        switch reason {
+        case .appleIntelligenceDisabled:
+            message = "Apple Intelligence is switched off. Uttrflow used built-in rules for this dictation."
+            action = MainAction(
+                title: MainPresenter.title(for: .openSystemSettings(.appleIntelligence)),
+                intent: .recover(.openSystemSettings(.appleIntelligence)))
+        case .modelNotReady:
+            message =
+                "Apple Intelligence is downloading its model. Uttrflow used built-in rules for this dictation."
+            action = nil
+        case .deviceNotEligible:
+            message =
+                "This Mac cannot run Apple Intelligence. Uttrflow used built-in rules for this dictation."
+            action = nil
+        case .other(let detail):
+            message =
+                "Apple Intelligence is unavailable (\(detail)). Uttrflow used built-in rules for this dictation."
+            action = nil
+        }
+        let drawing = Self.drawing(for: .degraded)
+        return MainNotice(
+            message: message, symbolName: drawing.symbolName, tone: drawing.tone, action: action)
+    }
+
     /// The notice for a refused change, from the failure's own sentence and what it cost the user.
     public init(refusing error: any Error) {
         let failure = error as? any UttrflowFailure

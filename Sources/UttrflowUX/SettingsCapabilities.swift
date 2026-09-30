@@ -60,6 +60,12 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// The clean-up engines above the floor that are usable now; the floor itself is always ready.
     public var readyTransformers: Set<TransformerKind>
 
+    /// Apple's typed availability, so the tidying setting can distinguish a fix from a wait or a limit.
+    public var foundationModelAvailability: TransformerAvailability?
+
+    /// Typed answers retained from the same probe that builds ``readyTransformers``.
+    public var transformerAvailability: [TransformerKind: TransformerAvailability]
+
     /// How far along the model tab-to-complete needs is, so the screen can say why it is silent.
     public var suggestionModel: SuggestionModelReadiness
 
@@ -80,6 +86,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
         versionDescription: String? = nil,
         readySpeechEngines: Set<SpeechEngineKind>,
         readyTransformers: Set<TransformerKind>,
+        foundationModelAvailability: TransformerAvailability? = nil,
+        transformerAvailability: [TransformerKind: TransformerAvailability] = [:],
         suggestionModel: SuggestionModelReadiness = .notAsked,
         suggestionRuntime: SuggestionRuntimeStatus = .idle,
         unarmedShortcuts: Set<ShortcutAction> = [],
@@ -91,6 +99,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
         self.versionDescription = versionDescription
         self.readySpeechEngines = readySpeechEngines
         self.readyTransformers = readyTransformers
+        self.foundationModelAvailability = foundationModelAvailability
+        self.transformerAvailability = transformerAvailability
         self.suggestionModel = suggestionModel
         self.suggestionRuntime = suggestionRuntime
         self.unarmedShortcuts = unarmedShortcuts

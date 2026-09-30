@@ -457,6 +457,34 @@ struct SettingsLanguagesPaneTests {
                 == "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules.")
     }
 
+    @Test("shows the Apple Intelligence cause and offers Settings only when switched off")
+    func explainsAppleIntelligenceAvailability() {
+        func pane(_ reason: TransformerUnavailableReason) -> SettingsPane {
+            var capabilities = SettingsCapabilities.everything
+            capabilities.readyTransformers = [.rules]
+            capabilities.foundationModelAvailability = .unavailable(reason: reason)
+            return SettingsPresenter.pane(
+                for: .languages, settings: .default, capabilities: capabilities)
+        }
+
+        let switchedOff = pane(.appleIntelligenceDisabled)
+        let offRow = switchedOff.row("foundationModelAvailability")
+        #expect(offRow?.label == "Apple Intelligence is switched off")
+        #expect(offRow?.explanation?.contains("System Settings") == true)
+        #expect(
+            offRow?.control
+                == .action(
+                    title: "Open System Settings", change: .openSystemSettings(.appleIntelligence)))
+
+        let downloading = pane(.modelNotReady).row("foundationModelAvailability")
+        #expect(downloading?.label == "Apple Intelligence model is downloading")
+        #expect(downloading?.control == .status("Downloading"))
+
+        let ineligible = pane(.deviceNotEligible).row("foundationModelAvailability")
+        #expect(ineligible?.label == "This Mac cannot run Apple Intelligence")
+        #expect(ineligible?.control == .status("Unavailable"))
+    }
+
     @Test("explains what mixing languages does")
     func carriesTheMixedLanguageNote() {
         #expect(languages().callout?.message.contains("Hindi") == true)

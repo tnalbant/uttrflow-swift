@@ -59,22 +59,41 @@ public struct CleaningRecord: Sendable, Equatable {
         }
     }
 
+    /// An engine the router skipped before choosing the one that handled this dictation.
+    public struct UnavailableEngine: Sendable, Equatable {
+        public let engine: String
+        public let reason: TransformerUnavailableReason
+
+        public init(engine: String, reason: TransformerUnavailableReason) {
+            self.engine = engine
+            self.reason = reason
+        }
+    }
+
     /// One entry per step that changed something, ordered by the first word each touched.
     public let changes: [Change]
     /// The steps that were not in the pipeline that ran, in the order they would have run.
     public let switchedOff: [PassID]
     /// Answers refused before the one that was kept, which is why a dictation can come out plainer than the last.
     public let refusals: [Refusal]
+    /// Engines skipped before the recorded engine because they were unavailable.
+    public let unavailableEngines: [UnavailableEngine]
 
-    public init(changes: [Change], switchedOff: [PassID] = [], refusals: [Refusal] = []) {
+    public init(
+        changes: [Change], switchedOff: [PassID] = [], refusals: [Refusal] = [],
+        unavailableEngines: [UnavailableEngine] = []
+    ) {
         self.changes = changes
         self.switchedOff = switchedOff
         self.refusals = refusals
+        self.unavailableEngines = unavailableEngines
     }
 
     /// The same record, saying which answers were refused before the one it describes.
     public func refused(_ refusals: [Refusal]) -> CleaningRecord {
-        CleaningRecord(changes: changes, switchedOff: switchedOff, refusals: refusals)
+        CleaningRecord(
+            changes: changes, switchedOff: switchedOff, refusals: refusals,
+            unavailableEngines: unavailableEngines)
     }
 
     /// At most this many words are listed per step; the counts are exact either way.
@@ -88,7 +107,9 @@ public struct CleaningRecord: Sendable, Equatable {
     }
 
     /// Whether anything at all is worth showing.
-    public var isEmpty: Bool { changes.isEmpty && switchedOff.isEmpty && refusals.isEmpty }
+    public var isEmpty: Bool {
+        changes.isEmpty && switchedOff.isEmpty && refusals.isEmpty && unavailableEngines.isEmpty
+    }
 
     /// One record for a dictation done in pieces, keeping each step's words in the order they were said.
     public static func merging(_ records: [CleaningRecord]) -> CleaningRecord {
@@ -115,10 +136,14 @@ public struct CleaningRecord: Sendable, Equatable {
         for refusal in records.flatMap(\.refusals) where !refusals.contains(refusal) {
             refusals.append(refusal)
         }
+        var unavailableEngines: [UnavailableEngine] = []
+        for engine in records.flatMap(\.unavailableEngines) where !unavailableEngines.contains(engine) {
+            unavailableEngines.append(engine)
+        }
         return CleaningRecord(
             changes: order.compactMap { merged[$0] },
             switchedOff: CleaningSteps.offered.map(\.id).filter(off.contains),
-            refusals: refusals)
+            refusals: refusals, unavailableEngines: unavailableEngines)
     }
 
     /// Every word a step touched, grouped by the step and ordered by the first word it reached.

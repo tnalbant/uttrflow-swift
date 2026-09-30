@@ -36,9 +36,14 @@ public struct AppleFoundationCleanupModel: CleanupModel {
         case .available:
             break
         case .unavailable(let reason):
-            return .unavailable(reason: String(describing: reason))
+            switch reason {
+            case .appleIntelligenceNotEnabled: return .unavailable(reason: .appleIntelligenceDisabled)
+            case .modelNotReady: return .unavailable(reason: .modelNotReady)
+            case .deviceNotEligible: return .unavailable(reason: .deviceNotEligible)
+            @unknown default: return .unavailable(reason: .other(String(describing: reason)))
+            }
         @unknown default:
-            return .unavailable(reason: "unrecognised availability")
+            return .unavailable(reason: .other("unrecognised availability"))
         }
 
         guard let language else { return .available }

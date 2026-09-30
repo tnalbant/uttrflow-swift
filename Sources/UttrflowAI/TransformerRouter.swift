@@ -77,8 +77,14 @@ public struct TransformerRouter: TranscriptCleaning {
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
         let route = candidates(for: request)
+        var unavailableEngines: [CleaningRecord.UnavailableEngine] = []
         let outcome = await FallbackRunner.firstSuccess(among: route) { [clock] engine in
-            guard await engine.availability(for: request).isAvailable else {
+            let availability = await engine.availability(for: request)
+            guard availability.isAvailable else {
+                if case .unavailable(let reason) = availability {
+                    unavailableEngines.append(
+                        .init(engine: engine.kind.rawValue, reason: reason))
+                }
                 throw TransformationError.noCapableTransformer
             }
             // Its own allowance, so an engine that hangs spends nothing but its own turn.
@@ -97,8 +103,13 @@ public struct TransformerRouter: TranscriptCleaning {
         case .succeeded(let result, let refused):
             // Carried on the record the Diagnostics page renders, so a plainer dictation has a reason.
             let refusals = Self.refusals(in: refused, on: route.map(\.kind))
-            guard !refusals.isEmpty else { return result }
-            return result.recording((result.cleaning ?? CleaningRecord(changes: [])).refused(refusals))
+            guard !refusals.isEmpty || !unavailableEngines.isEmpty else { return result }
+            var record = result.cleaning ?? CleaningRecord(changes: [])
+            if !refusals.isEmpty { record = record.refused(refusals) }
+            return result.recording(
+                CleaningRecord(
+                    changes: record.changes, switchedOff: record.switchedOff,
+                    refusals: record.refusals, unavailableEngines: unavailableEngines))
         case .exhausted:
             throw .noCapableTransformer
         }

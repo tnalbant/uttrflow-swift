@@ -390,13 +390,17 @@ public enum SettingsChange: Sendable, Equatable {
     /// Fetches the suggestion model again after a failed attempt.
     case retrySuggestionModel
 
+    /// Opens a System Settings pane to resolve an Apple Intelligence availability notice.
+    case openSystemSettings(SystemSettingsPane)
+
     /// Opens a page of the main window that has no row in its sidebar.
     case openPage(MainTab)
 
     /// Whether this asks for something to happen now rather than for something to be stored.
     public var isRequestToAct: Bool {
         switch self {
-        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel, .openPage:
+        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel,
+            .openSystemSettings, .openPage:
             true
         default: false
         }

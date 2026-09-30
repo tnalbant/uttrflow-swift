@@ -25,8 +25,26 @@ extension SettingsCapabilities {
     /// The same answers with the clean-up engines that answered they could run for `profile`'s language.
     static func refreshed(for profile: UserProfile) async -> SettingsCapabilities {
         var capabilities = thisMac()
-        capabilities.readyTransformers = await readyTransformers(for: profile)
+        let availability = await transformerAvailability(for: profile)
+        capabilities.transformerAvailability = availability
+        capabilities.readyTransformers = Set(
+            availability.compactMap { kind, value in
+                value.isAvailable ? kind : nil
+            }
+        ).union([SettingsEngines.floor])
+        capabilities.foundationModelAvailability = availability[.foundationModels]
         return capabilities
+    }
+
+    private static func transformerAvailability(
+        for profile: UserProfile
+    ) async -> [TransformerKind: TransformerAvailability] {
+        let probe = TransformationRequest(transcription: Transcription(text: ""), profile: profile)
+        var availability: [TransformerKind: TransformerAvailability] = [:]
+        for engine in TextTransformers.all() {
+            availability[engine.kind] = await engine.availability(for: probe)
+        }
+        return availability
     }
 
     /// What this build calls itself, as "short (build)", since two builds of one release differ.
@@ -41,20 +59,6 @@ extension SettingsCapabilities {
         var ready: Set<SpeechEngineKind> = [.appleSpeech]
         if FileSystemSpeechModelStore.whisperKit().isInstalled(.default) {
             ready.insert(.whisperKit)
-        }
-        return ready
-    }
-
-    /// Which clean-up engines could run for the user's own first language, asked of the engines themselves.
-    private static func readyTransformers(
-        for profile: UserProfile
-    ) async -> Set<TransformerKind> {
-        let probe = TransformationRequest(
-            transcription: Transcription(text: ""), profile: profile)
-        var ready: Set<TransformerKind> = [SettingsEngines.floor]
-        for engine in TextTransformers.all() {
-            guard await engine.availability(for: probe).isAvailable else { continue }
-            ready.insert(engine.kind)
         }
         return ready
     }

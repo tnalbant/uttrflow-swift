@@ -69,6 +69,23 @@ struct MainNoticeTests {
         #expect(MainNotice.action(for: nil) == nil)
     }
 
+    @Test(
+        "Apple model availability has distinct explanations and only the switched-off state offers Settings")
+    func explainsAppleIntelligenceAvailability() {
+        let switchedOff = MainNotice.appleIntelligenceUnavailable(.appleIntelligenceDisabled)
+        #expect(switchedOff.message.contains("switched off"))
+        #expect(switchedOff.action?.intent == .recover(.openSystemSettings(.appleIntelligence)))
+        #expect(switchedOff.tone == .critical)
+
+        let downloading = MainNotice.appleIntelligenceUnavailable(.modelNotReady)
+        #expect(downloading.message.contains("downloading"))
+        #expect(downloading.action == nil)
+
+        let ineligible = MainNotice.appleIntelligenceUnavailable(.deviceNotEligible)
+        #expect(ineligible.message.contains("cannot run Apple Intelligence"))
+        #expect(ineligible.action == nil)
+    }
+
     @Test("a notice built from its parts keeps them")
     func keepsItsParts() {
         let notice = MainNotice(message: "No.", symbolName: "xmark", tone: .good)

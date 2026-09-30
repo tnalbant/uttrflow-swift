@@ -44,7 +44,7 @@ struct TransformerRouterTests {
     @Test("steps around an engine that cannot run at all")
     func routesAroundUnavailableEngine() async throws {
         let broken = StubTransformer(
-            kind: .foundationModels, availability: .unavailable(reason: "no model")
+            kind: .foundationModels, availability: .unavailable(reason: .other("no model"))
         )
         let router = TransformerRouter(
             engines: [broken, StubTransformer(kind: .rules)], preference: [.foundationModels, .rules]
@@ -138,6 +138,26 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.reason == "changed the meaning")
     }
 
+    @Test("records an unavailable engine and its reason when rules handle the dictation")
+    func recordsUnavailableEngine() async throws {
+        let unavailable = StubTransformer(
+            kind: .foundationModels,
+            availability: .unavailable(reason: .appleIntelligenceDisabled))
+        let router = TransformerRouter(
+            engines: [unavailable, StubTransformer(kind: .rules)],
+            preference: [.foundationModels, .rules])
+
+        let result = try await router.transform(request)
+
+        #expect(result.producedBy == .rules)
+        #expect(
+            result.cleaning?.unavailableEngines == [
+                .init(
+                    engine: TransformerKind.foundationModels.rawValue,
+                    reason: .appleIntelligenceDisabled)
+            ])
+    }
+
     @Test("leaves the record alone when the first engine answers")
     func recordsNoRefusalWhenNothingWasRefused() async throws {
         let router = TransformerRouter(
@@ -171,7 +191,9 @@ struct TransformerRouterTests {
     @Test("reports that nothing could handle the request rather than returning nothing")
     func exhausted() async {
         let router = TransformerRouter(
-            engines: [StubTransformer(kind: .foundationModels, availability: .unavailable(reason: "x"))],
+            engines: [
+                StubTransformer(kind: .foundationModels, availability: .unavailable(reason: .other("x")))
+            ],
             preference: [.foundationModels]
         )
 

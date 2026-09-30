@@ -53,7 +53,7 @@ public actor MLXCleanupModel: CleanupModel {
 
     /// Whether this model is loaded and can work in `language`.
     public func availability(for language: LanguageCode?) async -> TransformerAvailability {
-        guard container != nil else { return .unavailable(reason: "the local model is not loaded") }
+        guard container != nil else { return .unavailable(reason: .other("the local model is not loaded")) }
         guard let language else { return .available }
         return model.supports(language) ? .available : .unsupportedLanguage(language)
     }

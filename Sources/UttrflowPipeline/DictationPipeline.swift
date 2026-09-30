@@ -907,6 +907,7 @@ public actor DictationPipeline {
             let attempt = await insert(
                 toWrite, cleanedBy: whole.cleaned.producedBy, changes: changes,
                 delivery: delivery, generation: mine,
+                unavailableEngines: whole.cleaned.cleaning?.unavailableEngines ?? [],
                 destination: InsertionDestination(
                     applicationName: appContext?.applicationName,
                     bundleIdentifier: appContext?.bundleIdentifier))
@@ -1235,7 +1236,8 @@ public actor DictationPipeline {
     /// Puts the finished text where the user was typing, answering how it arrived, or nil on failure.
     private func insert(
         _ text: String, cleanedBy: TransformerKind, changes: AppliedChanges, delivery: Delivery,
-        generation mine: Int, destination: InsertionDestination
+        generation mine: Int, unavailableEngines: [CleaningRecord.UnavailableEngine],
+        destination: InsertionDestination
     ) async -> InsertionAttempt? {
         let inserter = delivery == .copy ? clipboard : self.inserter
         // Said before the words are handed over, because the app takes its own time to show them.
@@ -1270,7 +1272,8 @@ public actor DictationPipeline {
                             ?? insertedIntoIdentifier,
                         spokenFor: spokenFor, changes: changes,
                         fromRecording: delivery == .copy, arrival: attempt.arrival,
-                        intoSecureField: destinationIsSecure, missedPieces: missedPieces)))
+                        intoSecureField: destinationIsSecure, missedPieces: missedPieces,
+                        unavailableEngines: unavailableEngines)))
             return attempt
         } catch {
             guard !wasCancelled(mine) else { return nil }

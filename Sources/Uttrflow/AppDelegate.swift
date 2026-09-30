@@ -185,6 +185,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let pressureSource = MemoryPressureSource()
     /// Which clean-up engines answered that they could run; internal so a test can read it back.
     private(set) var transformerAvailability: [TransformerKind: Bool] = [:]
+    /// Whether the first rules-only fallback due to Apple Intelligence has already been explained.
+    private var appleIntelligenceFallbackNoticeShown = false
     /// Prevents a slower earlier probe from replacing a newer reading.
     private var transformerProbeGeneration = 0
     /// The clean-up engine that produced the last inserted dictation.
@@ -1982,6 +1984,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
         if case .inserted(let outcome) = state {
             lastCleanedBy = outcome.cleanedBy
+            if !appleIntelligenceFallbackNoticeShown,
+                outcome.cleanedBy == .rules,
+                let unavailable = outcome.unavailableEngines.first(where: {
+                    $0.engine == TransformerKind.foundationModels.rawValue
+                })
+            {
+                appleIntelligenceFallbackNoticeShown = true
+                let notice = MainNotice.appleIntelligenceUnavailable(unavailable.reason)
+                actionNotice = notice
+                announce(notice.message, urgently: false)
+            }
             if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
                 probeTransformers()
             }
@@ -2747,6 +2760,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     suggestionModel == .fetchFailed || suggestionModel == .loadFailed
                 else { return }
                 prepareTheModelIfNeeded()
+            case .openSystemSettings(let pane):
+                Task { await openSettingsPane(pane) }
             case .openPage(let page): show(.main(page))
             default: break
             }

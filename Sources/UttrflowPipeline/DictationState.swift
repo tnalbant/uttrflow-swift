@@ -94,12 +94,15 @@ public struct DictationOutcome: Sendable, Equatable {
     public let intoSecureField: Bool
     /// Pieces of speech that decoded to no words twice and are missing from the text; zero when nothing is.
     public let missedPieces: Int
+    /// Availability causes that made this successful dictation use a lower-priority engine.
+    public let unavailableEngines: [CleaningRecord.UnavailableEngine]
 
     public init(
         text: String, method: TextInsertionMethod, cleanedBy: TransformerKind,
         insertedInto: String? = nil, insertedIntoIdentifier: String? = nil,
         spokenFor: Duration? = nil, changes: AppliedChanges = .none, fromRecording: Bool = false,
-        arrival: InsertionArrival = .notReported, intoSecureField: Bool = false, missedPieces: Int = 0
+        arrival: InsertionArrival = .notReported, intoSecureField: Bool = false, missedPieces: Int = 0,
+        unavailableEngines: [CleaningRecord.UnavailableEngine] = []
     ) {
         self.text = text
         self.method = method
@@ -112,6 +115,7 @@ public struct DictationOutcome: Sendable, Equatable {
         self.arrival = arrival
         self.intoSecureField = intoSecureField
         self.missedPieces = missedPieces
+        self.unavailableEngines = unavailableEngines
     }
 
     /// The words Uttrflow may keep or show, which is none for a secure field.

@@ -62,6 +62,23 @@ struct DiagnosticsCleanUpTests {
         #expect(page.cleanUp.first?.state == .good)
     }
 
+    @Test("names an unavailable engine and preserves Apple's reason")
+    func namesSkippedEngineAndReason() {
+        let record = CleaningRecord(
+            changes: [],
+            unavailableEngines: [
+                .init(
+                    engine: TransformerKind.foundationModels.rawValue,
+                    reason: .modelNotReady)
+            ])
+        let row = DiagnosticsFixture.page(cleaning: record).cleanUp.first
+
+        #expect(row?.title == "Engine skipped")
+        #expect(row?.detail.contains("foundationModels") == true)
+        #expect(row?.detail.contains("downloading") == true)
+        #expect(row?.state == .attention)
+    }
+
     /// The page is on the user's own screen; the report is pasted somewhere else.
     @Test("the copied report counts the words rather than quoting them")
     func reportCountsOnly() {

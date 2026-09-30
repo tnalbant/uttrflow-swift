@@ -771,7 +771,14 @@ public enum DiagnosticsPresenter {
             DiagnosticsRow(
                 title: "Answer refused", detail: "\($0.engine): \($0.reason)", state: .unknown)
         }
-        guard changed.isEmpty, off.isEmpty, refused.isEmpty else { return refused + changed + off }
+        let unavailable = record.unavailableEngines.map {
+            DiagnosticsRow(
+                title: "Engine skipped",
+                detail: "\($0.engine): \($0.reason.diagnosticDescription)", state: .attention)
+        }
+        guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty else {
+            return unavailable + refused + changed + off
+        }
         return [
             DiagnosticsRow(
                 title: "Clean-up steps", detail: "Nothing needed changing", state: .good)
@@ -816,6 +823,9 @@ public enum DiagnosticsPresenter {
             + record.switchedOff.map { "  \(CleaningSteps.name(of: $0)): switched off" }
             // The kind, never the reason: a reason quotes what was said, and this string is pasted elsewhere.
             + record.refusals.map { "  answer refused (\($0.engine)): \($0.kind.summary)" }
+            + record.unavailableEngines.map {
+                "  engine skipped (\($0.engine)): \($0.reason.diagnosticDescription)"
+            }
     }
 
     // MARK: - Permissions

@@ -78,8 +78,25 @@ public enum TransformerAvailability: Sendable, Equatable {
     case available
     /// The engine works, but not for this language.
     case unsupportedLanguage(LanguageCode)
-    /// The engine cannot run at all right now — model missing, hardware unsupported.
-    case unavailable(reason: String)
+    /// The engine cannot run at all right now, with the cause retained for the user and Diagnostics.
+    case unavailable(reason: TransformerUnavailableReason)
 
     public var isAvailable: Bool { self == .available }
+}
+
+/// Why an engine declined to run, expressed without importing a platform framework into Core.
+public enum TransformerUnavailableReason: Sendable, Equatable {
+    case appleIntelligenceDisabled
+    case modelNotReady
+    case deviceNotEligible
+    case other(String)
+
+    public var diagnosticDescription: String {
+        switch self {
+        case .appleIntelligenceDisabled: "Apple Intelligence is switched off"
+        case .modelNotReady: "Apple Intelligence is downloading its model"
+        case .deviceNotEligible: "This device cannot run Apple Intelligence"
+        case .other(let description): description
+        }
+    }
 }
