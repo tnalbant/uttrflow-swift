@@ -133,7 +133,7 @@ let package = Package(
         // The whole product, expressed once, over protocols only.
         .target(
             name: "UttrflowPipeline",
-            dependencies: ["UttrflowCore"],
+            dependencies: ["UttrflowAI", "UttrflowCore"],
             swiftSettings: sharedSwiftSettings
         ),
 

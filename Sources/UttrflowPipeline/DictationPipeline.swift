@@ -1,4 +1,5 @@
 // The whole product in one actor: from the key going down to the text landing.
+import UttrflowAI
 public import UttrflowCore
 public import struct Foundation.Date
 public import struct Foundation.UUID
@@ -618,6 +619,19 @@ public actor DictationPipeline {
         }) ?? nil) ?? AppContext()
     }
 
+    /// Uses caret text read just before insertion, refusing it when the destination app changed.
+    private func insertionContextForWrite(matching destination: AppContext?) async -> AppContext {
+        let current = await readContext()
+        guard let destination else { return current }
+        if let expected = destination.bundleIdentifier, let actual = current.bundleIdentifier {
+            return expected == actual ? current : .unknown
+        }
+        if let expected = destination.applicationName, let actual = current.applicationName {
+            return expected == actual ? current : .unknown
+        }
+        return current
+    }
+
     // MARK: Stages
 
     /// One span of a recording: the words a pass finished it with, or audio a later pass still has to do.
@@ -796,15 +810,37 @@ public actor DictationPipeline {
         let expanded = await expand(
             written, matching: snippetInput, laidOut: layout)
         guard !wasCancelled(mine) else { return }
-        let output = LatinScript.enforced(expanded.text)
+        var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
 
+        let insertionContext: AppContext
+        if delivery == .insert {
+            insertionContext = await insertionContextForWrite(matching: appContext)
+            guard !wasCancelled(mine) else { return }
+            let situation = SituationResolver.resolve(
+                app: appContext ?? .unknown, insertion: insertionContext.insertionPoint,
+                overrides: runningOverrides)
+            let formatter = DestinationFormatter.standard(for: situation)
+            output =
+                FirstWordPass(
+                    policy: formatter.firstWord, state: insertionContext.insertionPoint.sentenceState,
+                    onScreen: [
+                        insertionContext.documentName, insertionContext.selectedText,
+                        insertionContext.precedingText, insertionContext.followingText,
+                    ].compactMap { $0 }, heard: whole.heard.text,
+                    capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                        && formatter.destination != .codeEditor
+                )
+                .apply(Draft(keepingLineBreaks: output)).text
+        } else {
+            insertionContext = appContext ?? .unknown
+        }
+
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let insertionPoint = appContext?.insertionPoint ?? .unknown
-        let toWrite = insertionPoint.paddedBoundary(for: output)
+        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: output)
 
         let changes = AppliedChanges(
             corrections: DictationCorrection.locating(

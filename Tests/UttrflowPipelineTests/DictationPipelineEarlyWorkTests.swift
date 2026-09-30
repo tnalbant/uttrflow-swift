@@ -519,6 +519,54 @@ struct DictationPipelineEarlyWorkTests {
         #expect(await pipeline.currentState.outcome?.changes.corrections.count == 1)
     }
 
+    @Test("insertion padding and first-word case follow the caret at insertion time")
+    func refreshesCaretBeforeInsertion() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.firstPieceOnly))
+        await capture.setCaptured(Take.firstPieceOnly)
+        let context = FakeContextEngine(
+            context: .fixture(
+                applicationName: "TextEdit", bundleIdentifier: "com.apple.TextEdit",
+                precedingText: "Hello"))
+        let cleaner = HeldCleaner()
+        let inserter = CollectingInserter()
+        let pipeline = makePipeline(
+            capture: capture, speech: KeepingSpeechEngine(), cleaner: cleaner,
+            inserter: inserter, context: context)
+
+        await pipeline.startRecording()
+        try await eventually { await cleaner.isHolding }
+        await context.setInsertionPoint(InsertionPoint(precedingText: "\n"))
+        await cleaner.release()
+        await pipeline.finishRecording()
+
+        #expect(inserter.texts == ["W1 x.w2 x"])
+    }
+
+    @Test("a different frontmost app makes the insertion caret unknown")
+    func ignoresCaretFromDifferentApp() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.firstPieceOnly))
+        await capture.setCaptured(Take.firstPieceOnly)
+        let context = FakeContextEngine(
+            context: .fixture(
+                applicationName: "TextEdit", bundleIdentifier: "com.apple.TextEdit",
+                precedingText: "Hello"))
+        let cleaner = HeldCleaner()
+        let inserter = CollectingInserter()
+        let pipeline = makePipeline(
+            capture: capture, speech: KeepingSpeechEngine(), cleaner: cleaner,
+            inserter: inserter, context: context)
+
+        await pipeline.startRecording()
+        try await eventually { await cleaner.isHolding }
+        await context.setContext(
+            .fixture(
+                applicationName: "Notes", bundleIdentifier: "com.apple.Notes", precedingText: "Hello"))
+        await cleaner.release()
+        await pipeline.finishRecording()
+
+        #expect(inserter.texts == ["W1 x.w2 x"])
+    }
+
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
     func mismatchedAudioStartsOver() async throws {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 0.5)))
