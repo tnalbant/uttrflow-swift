@@ -49,6 +49,25 @@ struct DestinationCorpusTests {
         }
     }
 
+    @Test("title pipelines remove an added period, keep a question mark, and leave other apps alone")
+    func titlePipelinesProduceTheExpectedTerminalOutput() {
+        for bundle in ["com.apple.reminders", "com.apple.iCal"] {
+            let situation = SituationResolver.resolve(from: AppContext(bundleIdentifier: bundle))
+            let formatter = DestinationFormatter.standard(for: situation)
+            let pipeline = CleaningPipeline.standard(for: formatter, situation: situation)
+            #expect(pipeline.run(Draft(text: "water the plants.")).text == "Water the plants")
+            #expect(
+                pipeline.run(Draft(text: "should we water the plants?")).text
+                    == "Should we water the plants?"
+            )
+        }
+
+        let situation = SituationResolver.resolve(from: AppContext(bundleIdentifier: "com.example.unknown"))
+        let pipeline = CleaningPipeline.standard(
+            for: DestinationFormatter.standard(for: situation), situation: situation)
+        #expect(pipeline.run(Draft(text: "water the plants.")).text == "Water the plants.")
+    }
+
     @Test("builds the request the bake-off hands an engine")
     func buildsTheRequest() {
         let request = shaped.transformationRequest()
