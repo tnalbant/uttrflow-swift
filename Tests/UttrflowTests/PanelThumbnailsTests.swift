@@ -117,6 +117,31 @@ struct PanelThumbnailsTests {
         #expect(counter.files.count == 1)
     }
 
+    @Test("a thumbnail read neither expires a miss nor schedules another decode")
+    func thumbnailReadIsPureForAMiss() async {
+        let (thumbnails, counter) = thumbnails(retryAfter: .zero)
+
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        let observedBefore = thumbnails.known.count
+        for _ in 0..<100 { #expect(thumbnails.thumbnail(for: file) == nil) }
+
+        #expect(counter.calls == 1)
+        #expect(thumbnails.known.count == observedBefore)
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        #expect(counter.calls == 2)
+    }
+
+    @Test("repeated cache hits keep constant time LRU bookkeeping")
+    func repeatedHitsTouchLinkedLRU() async {
+        let (thumbnails, _) = thumbnails([file: Self.bitmap()])
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+        for _ in 0..<10_000 { #expect(thumbnails.thumbnail(for: file) != nil) }
+        #expect(thumbnails.cached(file) != nil)
+    }
+
     /// A picture file restored after a failed decode is decoded again once the miss is stale.
     @Test("decodes a restored picture after remembering it was gone")
     func decodesARestoredPicture() async {
