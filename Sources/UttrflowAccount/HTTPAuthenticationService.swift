@@ -29,6 +29,14 @@ public final class HTTPAuthenticationService: AuthenticationService {
         case codeExpired
         case sessionEnded
         case serverRefused
+        case sessionMalformed
+        case sessionCouldNotBeKept
+        case serverUnreachable
+    }
+
+    private struct SignInFailure: Error {
+        let reason: FailureReason
+        let accountError: AccountError
     }
 
     /// Renews the access token this long before expiry, so no request carries a token that dies in flight.
@@ -194,6 +202,10 @@ public final class HTTPAuthenticationService: AuthenticationService {
     private func beginDeviceSignIn(
         with _: SignInProvider
     ) async throws(AccountError) -> SignInChallenge {
+        try await beginDeviceSignInRequest()
+    }
+
+    private func beginDeviceSignInRequest() async throws -> SignInChallenge {
         do {
             let response = try await send(post("v1/auth/device/code", DeviceCodeBody(clientID: clientID)))
 
@@ -219,7 +231,6 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 state: state,
                 method: .code(userCode: started.userCode, verificationURL: verificationURL))
         } catch {
-            logSignInFailure(error)
             throw error
         }
     }
@@ -253,6 +264,9 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 Self.log.info("sign-in: completed")
                 return profile
             }
+        } catch let failure as SignInFailure {
+            Self.log.error("sign-in: failed reason=\(failure.reason.rawValue, privacy: .public)")
+            throw failure.accountError
         } catch {
             logSignInFailure(error)
             throw error
@@ -290,6 +304,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
 
             guard response.isSuccess else { throw refusal(response) }
             return try await beginSession(issuedBy: response)
+        } catch let failure as SignInFailure {
+            throw failure.accountError
         } catch {
             logSignInFailure(error)
             throw error
@@ -334,6 +350,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 guard now() < expiresAt else {
                     throw refusal(.codeExpired)
                 }
+            } catch let failure as SignInFailure {
+                throw failure
             } catch {
                 logSignInFailure(error)
                 throw error
@@ -588,7 +606,9 @@ public final class HTTPAuthenticationService: AuthenticationService {
             }
             return .success(current ? .token(issued.accessToken) : .noCredential)
         } catch {
-            Self.log.error("session: refresh failed reason=sessionCouldNotBeKept")
+            Self.log.error(
+                "session: refresh failed reason=\(FailureReason.sessionCouldNotBeKept.rawValue, privacy: .public)"
+            )
             return .failure(error)
         }
     }
@@ -616,7 +636,8 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 try adopt(issued)
             }
         } catch {
-            Self.log.error("sign-in: failed reason=sessionCouldNotBeKept")
+            Self.log.error(
+                "sign-in: failed reason=\(FailureReason.sessionCouldNotBeKept.rawValue, privacy: .public)")
             throw error
         }
         Self.log.notice("sign-in: session kept, reading the profile")
@@ -657,8 +678,14 @@ public final class HTTPAuthenticationService: AuthenticationService {
         case .token(let token):
             let response = try await send(profileRequest(token, ifNoneMatch: validator))
             Self.log.notice("sign-in: profile answered \(response.status, privacy: .public)")
-            guard response.isSuccess else { throw refusal(response) }
-            return try believe(response)
+            guard response.isSuccess else {
+                throw SignInFailure(reason: .serverRefused).accountError
+            }
+            do {
+                return try believe(response)
+            } catch {
+                throw SignInFailure(reason: .sessionMalformed).accountError
+            }
         }
     }
 
@@ -717,8 +744,12 @@ public final class HTTPAuthenticationService: AuthenticationService {
         return .providerRefused(description: "the server refused sign-in")
     }
 
-    private func refusal(_ failure: FailureReason) -> AccountError {
+    private func refusal(_ failure: FailureReason) -> SignInFailure {
         Self.log.error("sign-in: failed reason=\(failure.rawValue, privacy: .public)")
+        return SignInFailure(reason: failure, accountError: accountError(for: failure))
+    }
+
+    private func accountError(for failure: FailureReason) -> AccountError {
         let description: String
         switch failure {
         case .addressCouldNotBeBuilt: description = "the sign-in address could not be built"
@@ -728,31 +759,36 @@ public final class HTTPAuthenticationService: AuthenticationService {
         case .codeExpired: description = "that code expired before it was used"
         case .sessionEnded: description = "that session was already over"
         case .serverRefused: description = "the server refused sign-in"
+        case .sessionMalformed: description = "the session could not be verified"
+        case .sessionCouldNotBeKept: description = "the session could not be saved"
+        case .serverUnreachable: description = "the server could not be reached"
         }
-        return .providerRefused(description: description)
+        switch failure {
+        case .serverUnreachable: return .serverUnreachable
+        case .sessionMalformed: return .sessionMalformed
+        case .sessionCouldNotBeKept: return .sessionCouldNotBeKept
+        default: return .providerRefused(description: description)
+        }
     }
 
     private func logSignInFailure(_ error: AccountError) {
-        logAccountFailure("sign-in: failed", error)
+        let reason: FailureReason
+        switch error {
+        case .serverUnreachable: reason = .serverUnreachable
+        case .providerRefused: reason = .serverRefused
+        case .sessionMalformed: reason = .sessionMalformed
+        case .sessionCouldNotBeKept: reason = .sessionCouldNotBeKept
+        }
+        Self.log.error("sign-in: failed reason=\(reason.rawValue, privacy: .public)")
     }
 
     private func logAccountFailure(_ prefix: String, _ error: AccountError) {
         let reason: String
         switch error {
-        case .serverUnreachable: reason = "serverUnreachable"
-        case .providerRefused(let description):
-            switch description {
-            case "the sign-in address could not be built":
-                reason = FailureReason.addressCouldNotBeBuilt.rawValue
-            case "the server response could not be read": reason = FailureReason.responseUnreadable.rawValue
-            case "that sign-in does not answer this attempt": reason = FailureReason.attemptMismatch.rawValue
-            case "that sign-in was abandoned": reason = FailureReason.abandoned.rawValue
-            case "that code expired before it was used": reason = FailureReason.codeExpired.rawValue
-            case "that session was already over": reason = FailureReason.sessionEnded.rawValue
-            default: reason = FailureReason.serverRefused.rawValue
-            }
-        case .sessionMalformed: reason = "sessionMalformed"
-        case .sessionCouldNotBeKept: reason = "sessionCouldNotBeKept"
+        case .serverUnreachable: reason = FailureReason.serverUnreachable.rawValue
+        case .providerRefused: reason = FailureReason.serverRefused.rawValue
+        case .sessionMalformed: reason = FailureReason.sessionMalformed.rawValue
+        case .sessionCouldNotBeKept: reason = FailureReason.sessionCouldNotBeKept.rawValue
         }
         Self.log.error("\(prefix, privacy: .public) reason=\(reason, privacy: .public)")
     }
