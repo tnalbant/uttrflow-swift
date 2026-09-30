@@ -20,6 +20,32 @@ import UttrflowSettings
 import UttrflowSpeech
 import UttrflowUX
 
+struct DismissalCountdown {
+    private(set) var remaining: Duration
+    private var startedAt: ContinuousClock.Instant?
+
+    init(_ duration: Duration, at instant: ContinuousClock.Instant) {
+        remaining = duration
+        startedAt = instant
+    }
+
+    mutating func pause(at instant: ContinuousClock.Instant) {
+        guard let startedAt else { return }
+        remaining = max(.zero, remaining - startedAt.duration(to: instant))
+        self.startedAt = nil
+    }
+
+    mutating func resume(at instant: ContinuousClock.Instant) {
+        guard startedAt == nil, remaining > .zero else { return }
+        startedAt = instant
+    }
+
+    func hasExpired(at instant: ContinuousClock.Instant) -> Bool {
+        guard let startedAt else { return false }
+        return startedAt.duration(to: instant) >= remaining
+    }
+}
+
 /// Assembles the product and relays between it and the interface, deciding nothing itself.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -98,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var controller: DictationController<ContinuousClock>?
     private var stateTask: Task<Void, Never>?
     private var dismissalTask: Task<Void, Never>?
+    private var dismissalCountdown: DismissalCountdown?
+    private var dockHasAttention = false
 
     // MARK: The clipboard
 
@@ -292,6 +320,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     static let successLingers = Duration.seconds(2)
     /// Longer, because a failure asks something of the user — but it still goes.
     static let failureLingers = Duration.seconds(10)
+    static let voiceOverFailureLingers = Duration.seconds(20)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before the first read, so an install onboarded under ⌥Space keeps it. See `Docs/shortcuts.md`.
@@ -1100,6 +1129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // A toggle, not a press and a release: VoiceOver activates the button and has nothing to hold.
         dock.onToggle = { [weak self] in self?.toggleDictation() }
         dock.onRecoveryAction = { [weak self] action in self?.perform(action) }
+        dock.onAttentionChange = { [weak self] isAttended in
+            self?.dockAttentionChanged(to: isAttended)
+        }
 
         dock.setShortcut(SettingsShortcut.compact(settings.hotkey))
         dock.setShrinksToGrip(settings.shrinksToGripWhenIdle)
@@ -2797,14 +2829,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// How long a finished state stays up, or `nil` for a state that is not finished.
-    static func linger(after state: DictationState) -> Duration? {
+    static func linger(after state: DictationState, voiceOverEnabled: Bool = false) -> Duration? {
         switch state {
         // Copied rather than typed asks the user to paste, so it stays as long as a failure.
         case .inserted(let outcome) where outcome.method == .clipboard: failureLingers
         case .inserted: successLingers
         // An informational notice asks nothing of the user, so it goes sooner.
         case .failed(let notice):
-            notice.severity == .informational ? successLingers : failureLingers
+            if notice.severity == .informational {
+                successLingers
+            } else if voiceOverEnabled, notice.recovery != nil {
+                voiceOverFailureLingers
+            } else {
+                failureLingers
+            }
         case .idle, .recording, .transcribing, .tidying, .inserting: nil
         }
     }
@@ -2812,12 +2850,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Returns the interface to rest once the user has had time to read the result.
     private func scheduleDismissal(after state: DictationState) {
         dismissalTask?.cancel()
-        guard let linger = Self.linger(after: state) else { return }
+        dismissalCountdown = nil
+        guard
+            let linger = Self.linger(
+                after: state, voiceOverEnabled: NSWorkspace.shared.isVoiceOverEnabled)
+        else { return }
+        let now = ContinuousClock.now
+        dismissalCountdown = DismissalCountdown(linger, at: now)
+        guard !dockHasAttention else {
+            dismissalCountdown?.pause(at: now)
+            return
+        }
+        startDismissalTimer()
+    }
 
+    private func dockAttentionChanged(to isAttended: Bool) {
+        guard dockHasAttention != isAttended else { return }
+        dockHasAttention = isAttended
+        let now = ContinuousClock.now
+        if isAttended {
+            if dismissalCountdown?.hasExpired(at: now) == true {
+                Task { await pipeline?.acknowledge() }
+                return
+            }
+            dismissalCountdown?.pause(at: now)
+            dismissalTask?.cancel()
+            dismissalTask = nil
+        } else {
+            dismissalCountdown?.resume(at: now)
+            startDismissalTimer()
+        }
+    }
+
+    private func startDismissalTimer() {
+        guard let remaining = dismissalCountdown?.remaining, remaining > .zero else { return }
         dismissalTask = Task { [weak self] in
-            try? await Task.sleep(for: linger)
-            guard !Task.isCancelled else { return }
-            await self?.pipeline?.acknowledge()
+            do { try await Task.sleep(for: remaining) } catch { return }
+            guard let self, !self.dockHasAttention,
+                self.dismissalCountdown?.hasExpired(at: ContinuousClock.now) == true
+            else { return }
+            await self.pipeline?.acknowledge()
         }
     }
 
