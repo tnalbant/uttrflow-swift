@@ -491,6 +491,23 @@ struct GrammarGuardTests {
         #expect(!verdict(kept, rewritten).isAccepted)
     }
 
+    /// Subject pronouns and their auxiliaries change who acted, even though both are function words.
+    @Test(
+        "rejects a rewrite that invents a dropped subject",
+        arguments: [
+            ("going home", "I am going home."),
+            ("will call later", "I will call later."),
+            ("finished the draft", "We finished the draft."),
+            ("need a break", "I need a break."),
+            ("sent it yesterday", "She sent it yesterday."),
+            ("think so", "I think so."),
+            ("running late", "They are running late."),
+        ]
+    )
+    func rejectsInventedDroppedSubject(kept: String, rewritten: String) {
+        #expect(!verdict(kept, rewritten).isAccepted)
+    }
+
     /// The echo is the field's text before the caret, so its negators have no kept-side counterpart by construction.
     @Test("accepts a faithful rewrite when the caret echo carries a negation the speaker did not say")
     func acceptsANegationFromTheCaretEcho() {

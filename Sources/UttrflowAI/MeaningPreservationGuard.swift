@@ -387,7 +387,7 @@ public struct MeaningPreservationGuard: Sendable {
             echo: echo, allowing: doubtful)
     }
 
-    /// Refuses a content word that has no origin in the same aligned run or an offered reading for it.
+    /// Refuses a content or meaning-bearing word with no origin in the same aligned run or an offered reading for it.
     static func inventionVerdict(
         _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan]
     ) -> GuardVerdict {
@@ -397,7 +397,8 @@ public struct MeaningPreservationGuard: Sendable {
         let originIndex = WordOccurrenceIndex(origins)
         for index in alignment.rewritten.indices
         where alignment.rewritten[index].isPlain
-            && isContent(alignment.rewritten[index])
+            && (isContent(alignment.rewritten[index])
+                || FunctionWords.isMeaningBearing(alignment.rewritten[index].lookup))
         {
             let token = alignment.rewritten[index]
             if originIndex.contains(token.matching) || originIndex.spells(token.text)
