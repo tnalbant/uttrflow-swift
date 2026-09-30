@@ -94,6 +94,30 @@ struct FirstWordPassTests {
         #expect(cleaned("sat and sun are short", by: sut) == "Sat and sun are short")
     }
 
+    @Test("capitalises unambiguous place, language and nationality names")
+    func capitalisesProperNames() {
+        #expect(cleaned("we went to london and tokyo", by: sut) == "We went to London and Tokyo")
+        #expect(cleaned("he lives in new york", by: sut) == "He lives in New York")
+        #expect(cleaned("she speaks french and spanish", by: sut) == "She speaks French and Spanish")
+        #expect(cleaned("she moved to india", by: sut) == "She moved to India")
+        #expect(cleaned("we speak hindi at home", by: sut) == "We speak Hindi at home")
+        #expect(cleaned("we drove through texas", by: sut) == "We drove through Texas")
+        #expect(cleaned("the germans won", by: sut) == "The Germans won")
+        #expect(cleaned("we flew to paris last june", by: sut) == "We flew to Paris last June")
+    }
+
+    @Test("leaves ambiguous common nouns and ordinary uses of new and york alone")
+    func leavesAmbiguousWordsAlone() {
+        #expect(cleaned("we ate turkey in china", by: sut) == "We ate turkey in china")
+        #expect(cleaned("this is a new idea about york", by: sut) == "This is a new idea about york")
+    }
+
+    @Test("keeps a known proper name capital at a mid-sentence caret")
+    func properNameAtCaret() {
+        #expect(fromCaret("london is lovely", state: .midSentence) == "London is lovely")
+        #expect(fromCaret("new york is crowded", state: .midSentence) == "New York is crowded")
+    }
+
     @Test("calendar casing follows prose destinations and leaves terminal and code case spoken")
     func calendarWordsRespectDestination() {
         let situation = Situation.unknown

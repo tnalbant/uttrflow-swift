@@ -165,6 +165,15 @@ struct GenerativeTextTransformerTests {
         #expect(try await sut.transform(request(input)).text == modelOutput)
     }
 
+    @Test("finishes proper name casing the model leaves lower-case")
+    func finishesProperNameCasing() async throws {
+        let model = FakeCleanupModel { _ in "we went to london and tokyo." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        #expect(
+            try await sut.transform(request("we went to london and tokyo")).text
+                == "We went to London and Tokyo.")
+    }
+
     /// The passes under the destination's own policies, which is what the model is handed.
     @Test("runs the pre-model passes under the destination the words are going to")
     func runsThePassesForTheDestination() async throws {
@@ -589,6 +598,23 @@ struct RuleBasedTransformerTests {
     )
     func tidies(input: String, expected: String) async throws {
         #expect(try await sut.transform(request(input)).text == expected)
+    }
+
+    @Test("capitalises the reported place, language and nationality names on the rules path")
+    func capitalisesProperNames() async throws {
+        let cases = [
+            ("we went to london and tokyo", "We went to London and Tokyo."),
+            ("she speaks french and spanish", "She speaks French and Spanish."),
+            ("she moved to india", "She moved to India."),
+            ("we speak hindi at home", "We speak Hindi at home."),
+            ("we drove through texas", "We drove through Texas."),
+            ("the germans won", "The Germans won."),
+            ("we flew to paris last june", "We flew to Paris last June."),
+            ("he lives in new york", "He lives in New York."),
+        ]
+        for (spoken, expected) in cases {
+            #expect(try await sut.transform(request(spoken)).text == expected)
+        }
     }
 
     @Test("does not overflow while checking an Int.max designator")

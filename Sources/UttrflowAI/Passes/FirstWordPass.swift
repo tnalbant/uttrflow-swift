@@ -1,3 +1,4 @@
+import Foundation
 public import UttrflowCore
 
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
@@ -10,7 +11,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let onScreen: [String]
     /// The transcript whose case `.asSpoken` copies; nil reads it off the draft's own heard words.
     public let heard: String?
-    /// Whether weekday and unambiguous month names use their standard casing.
+    /// Whether calendar and known proper names use their standard casing.
     public let capitaliseCalendarWords: Bool
 
     public init(
@@ -49,7 +50,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
             } else if startOfSentence {
                 cased = WordShape.capitalised(cased)
             } else if capitaliseCalendarWords {
-                cased = Self.calendarWordCapitalised(cased)
+                cased = Self.properNameCapitalised(
+                    Self.calendarWordCapitalised(cased), in: text)
             }
             draft.replace(at: index, with: cased, by: Self.id)
             // A word trailing off in an ellipsis is a pause, so the next keeps the case it was heard in.
@@ -68,6 +70,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return Self.matchingHeardCase(word, heard: heard)
         case .fromInsertionPoint:
             guard state == .midSentence, !Self.keepsCapital(word),
+                !Self.isProperName(word, in: text),
                 !Self.looksLikeName(word, in: [text] + onScreen)
             else { return WordShape.capitalised(word) }
             return WordShape.lowercased(word)
@@ -107,6 +110,44 @@ public struct FirstWordPass: WholeTextCleaningPass {
         guard calendarWords.contains(key) else { return text }
         return shape.replacingCore(with: WordShape.capitalised(shape.core))
     }
+
+    /// Gives unambiguous English language, country, city, state and nationality names their conventional case.
+    static func properNameCapitalised(_ text: String, in context: String) -> String {
+        let shape = WordShape(text)
+        guard isProperName(text, in: context) else { return text }
+        return shape.replacingCore(with: WordShape.capitalised(shape.core))
+    }
+
+    private static func isProperName(_ text: String, in context: String) -> Bool {
+        let key = WordShape(text).key.lowercased()
+        return properNames.contains(key) || isNewYorkWord(key, in: context)
+    }
+
+    /// Recognises each half of the fixed city name without capitalising ordinary uses of "new" or "york".
+    private static func isNewYorkWord(_ key: String, in context: String) -> Bool {
+        guard key == "new" || key == "york" else { return false }
+        let words = context.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return zip(words, words.dropFirst()).contains { $0 == "new" && $1 == "york" }
+    }
+
+    private static let properNames: Set<String> = {
+        let english = Locale(identifier: "en")
+        let languages = Locale.LanguageCode.isoLanguageCodes.compactMap {
+            english.localizedString(forIdentifier: $0.identifier)
+        }
+        let regions = Locale.Region.isoRegions.compactMap {
+            english.localizedString(forRegionCode: $0.identifier)
+        }
+        let systemNames = (languages + regions).flatMap { name in
+            let words = name.split(whereSeparator: { !$0.isLetter })
+            return words.count == 1 ? [String(words[0]).lowercased()] : []
+        }
+        return Set(
+            systemNames + [
+                "london", "tokyo", "paris", "texas", "german", "germans", "indian", "indians",
+            ]
+        ).subtracting(["china", "turkey"])
+    }()
 
     private static let calendarWords: Set<String> = [
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
