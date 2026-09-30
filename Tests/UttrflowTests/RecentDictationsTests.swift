@@ -45,6 +45,24 @@ private func recentsFilled(with lines: [String], capacity: Int? = nil) -> Recent
 @Suite("Recent dictations")
 struct RecentDictationsTests {
     @MainActor
+    @Test("a history refresh repaints Recent with records written outside this app")
+    func historyRefreshRepaintsRecent() async throws {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root, account: HeldSession(signedIn: true).layer)
+        let history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: sandbox.root))
+        let spoken = RecentDictation(text: "Written by another process", when: .now)
+        try await history.append(spoken, keeping: Retention(days: 30, now: .now))
+
+        app.forget(after: .everything)
+
+        try await eventually {
+            app.menuBarPresentation.command(.insertRecent(index: 0)) != nil
+        }
+        #expect(app.menuBarPresentation.command(.copyRecent(index: 0)) != nil)
+        #expect(app.mainWindow == nil)
+    }
+
+    @MainActor
     @Test("a reset reloads Recent after history is deleted with no main window")
     func resetClearsRecentWithoutMainWindow() async throws {
         let sandbox = Sandbox()
