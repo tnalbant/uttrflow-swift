@@ -14,6 +14,15 @@ struct LayoutWordsPassTests {
             ("thanks new paragraph the second issue", "thanks\n\nthe second issue"),
             ("thanks blank line the second issue", "thanks\n\nthe second issue"),
             ("we need bullet point milk bullet point eggs", "we need\n- milk\n- eggs"),
+            (
+                "Shopping list, bullet point milk, bullet point eggs, bullet point bread.",
+                "Shopping list\n- milk\n- eggs\n- bread."
+            ),
+            ("milk, new line eggs", "milk\neggs"),
+            ("milk; next point eggs", "milk\n- eggs"),
+            ("milk,\" bullet point eggs", "milk\"\n- eggs"),
+            ("milk... bullet point eggs", "milk...\n- eggs"),
+            ("milk, bullet point eggs?", "milk\n- eggs?"),
             ("first next point second", "first\n- second"),
         ]
     )

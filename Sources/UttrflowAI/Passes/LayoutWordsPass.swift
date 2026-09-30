@@ -41,6 +41,7 @@ public struct LayoutWordsPass: CleaningPass {
                 position += 1
                 continue
             }
+            removeClauseMarkBeforeLayout(at: position, in: live, from: &draft)
             if let label = labelledItems[live[position]],
                 let item = itemNumber(at: position + 1, in: live, of: draft)
             {
@@ -58,6 +59,19 @@ public struct LayoutWordsPass: CleaningPass {
             position += 1
         }
         return draft
+    }
+
+    /// Removes a comma or semicolon stranded before a layout mark.
+    private func removeClauseMarkBeforeLayout(at position: Int, in live: [Int], from draft: inout Draft) {
+        guard position > 0 else { return }
+        let previous = live[position - 1]
+        let shape = draft.shape(at: previous)
+        guard
+            !shape.core.isEmpty,
+            let clauseMark = shape.suffix.first(where: { ",;".contains($0) })
+        else { return }
+        let suffix = shape.suffix.filter { $0 != clauseMark }
+        draft.replace(at: previous, with: shape.prefix + shape.core + suffix, by: Self.id)
     }
 
     /// Labels that repeat before a corroborated, consecutive sequence of numbered items.
