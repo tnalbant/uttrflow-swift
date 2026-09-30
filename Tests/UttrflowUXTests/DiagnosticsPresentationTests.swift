@@ -523,7 +523,7 @@ struct DiagnosticsPermissionTests {
 
 @Suite("Diagnostics reports whether dictation can start")
 struct DiagnosticsAvailabilityTests {
-    @Test("an unarmed dictation shortcut is shown and raises the attention summary")
+    @Test("a shortcut with no dictation listener is shown as unarmed and raises attention")
     func unarmedShortcutNeedsAttention() {
         let page = DiagnosticsFixture.page(dictationShortcutArmed: false)
         let shortcut = page.availability.first
