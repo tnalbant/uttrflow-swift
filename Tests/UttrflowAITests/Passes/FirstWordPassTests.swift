@@ -63,10 +63,27 @@ struct FirstWordPassTests {
             ("call me at 5 p.m. tomorrow", "Call me at 5 p.m. tomorrow"),
             ("we meet at 9 a.m. sharp", "We meet at 9 a.m. sharp"),
             ("bring a laptop e.g. the old one", "Bring a laptop e.g. the old one"),
+            ("etc. and drinks", "Etc. and drinks"),
+            ("apples vs. oranges", "Apples vs. oranges"),
+            ("dr. lee is here", "Dr. lee is here"),
+            ("mr. smith left", "Mr. smith left"),
+            ("mrs. jones left", "Mrs. jones left"),
+            ("ms. singh left", "Ms. singh left"),
+            ("st. paul is nearby", "St. paul is nearby"),
+            ("see dr. lee tomorrow", "See Dr. lee tomorrow"),
+            ("we finished etc. And then left", "We finished etc. And then left"),
         ]
     )
     func abbreviationsDoNotEndASentence(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("a capitalized word after a terminal abbreviation starts a new sentence")
+    func terminalAbbreviationCanEndSentence() {
+        #expect(
+            cleaned("we brought snacks, etc. And then we left", by: sut)
+                == "We brought snacks, etc. And then we left")
+        #expect(cleaned("we met Dr. Lee. Then we left", by: sut) == "We met Dr. Lee. Then we left")
     }
 
     @Test(
