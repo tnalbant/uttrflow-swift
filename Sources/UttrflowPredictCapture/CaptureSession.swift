@@ -132,7 +132,7 @@ public actor CaptureSession {
             try? await sink.retractAcceptance(last.text, in: last.surface)
         case .returnPressed, .focusLeft, .applicationDeactivated:
             lastAcceptance = nil
-        case .tick, .inserted:
+        case .tick, .typed, .inserted:
             return
         }
     }

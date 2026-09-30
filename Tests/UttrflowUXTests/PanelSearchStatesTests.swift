@@ -200,6 +200,21 @@ struct PanelNoResultsTests {
         #expect(page.emptyAction?.title.contains("pgprod") == true)
     }
 
+    @Test("keeping a nonblank query preserves its text")
+    func keepsNonblankQueryText() {
+        let query = "  pgprod\n"
+        let page = PanelPresenter.present(PanelFixture.panel(Self.clips, query: query))
+
+        #expect(page.emptyAction?.intent == .keepQuery(query))
+    }
+
+    @Test("whitespace-only queries cannot be kept")
+    func refusesWhitespaceOnlyQuery() {
+        let page = PanelPresenter.present(PanelFixture.panel(Self.clips, query: " \n\t "))
+
+        #expect(page.emptyAction == nil)
+    }
+
     /// Keeping an empty field would create nothing, and the other empty states have nothing to keep.
     @Test(
         "the other empty states offer nothing, because there is nothing to keep",

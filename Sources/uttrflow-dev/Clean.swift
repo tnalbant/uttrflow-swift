@@ -81,7 +81,7 @@ struct Clean: AsyncParsableCommand {
         if showModel {
             let builder = PromptBuilder.standard
             let spoken = CleaningPipeline.beforeModel(
-                for: .standard(for: request.situation.destination), situation: request.situation
+                for: .standard(for: request.situation), situation: request.situation
             ).run(Draft(transcription: request.transcription)).text
             let answer = try await AppleFoundationCleanupModel().rewrite(
                 builder.userPrompt(for: request, spoken: spoken, doubtful: doubtfulSpans),
@@ -148,7 +148,7 @@ struct Clean: AsyncParsableCommand {
     /// The runs the sources offer a reading for, recomputed here so the printed lines are the ones the model is given.
     private func spans(in request: TransformationRequest) async -> [DoubtfulSpan] {
         let draft = CleaningPipeline.beforeModel(
-            for: .standard(for: request.situation.destination), situation: request.situation
+            for: .standard(for: request.situation), situation: request.situation
         ).run(Draft(transcription: request.transcription))
         return await DoubtfulWords.standard.spans(in: draft, for: request.situation)
     }

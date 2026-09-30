@@ -23,6 +23,10 @@ struct QuestionShapeTests {
             "is the meeting at ten or eleven do we need the projector",
             "where did you park the car i cannot find it anywhere",
             "are you around yet i should be there in ten",
+            "I'm blocked on the credentials for the sandbox account can someone help",
+            "I think this will break if the array is empty can you add a check",
+            "This duplicates the logic in the helper class can we reuse that instead",
+            "I don't have access to the production database can someone grant it",
             "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya",
         ])
     func asks(text: String) {

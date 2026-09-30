@@ -106,7 +106,7 @@ struct SettingsGeneralDesignTests {
         let shortcuts = try #require(pane(.general).groups.first)
         #expect(
             shortcuts.rows.map(\.id).prefix(3) == [
-                "shortcut.dictate", "handsFreeEnabled", "shortcut.clipboard",
+                "shortcut.dictate", "handsFreeEnabled", "handsFreeDoubleTapMilliseconds",
             ])
         let handsFree = try #require(row("handsFreeEnabled", in: pane(.general)))
         #expect(handsFree.badge == "NEW")
@@ -118,6 +118,13 @@ struct SettingsGeneralDesignTests {
                 == SettingsKeyedSentence(
                     before: "Double-tap", keys: keys, after: "to keep listening · tap once to stop"))
         #expect(handsFree.accessibilityLabel.contains("Double-tap"))
+        let speed = try #require(row("handsFreeDoubleTapMilliseconds", in: pane(.general)))
+        let options = [450, 600, 800].map { milliseconds in
+            SettingsOption(
+                id: String(milliseconds), title: "\(milliseconds) ms",
+                change: .handsFreeDoubleTap(milliseconds: milliseconds))
+        }
+        #expect(speed.control == .menu(options: options, selectedID: "450"))
     }
 
     @Test("the hands-free switch follows the setting and turns it off")

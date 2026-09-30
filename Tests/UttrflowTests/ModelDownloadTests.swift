@@ -164,13 +164,13 @@ struct ModelDownloadTests {
 
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .fetchFailed)
         #expect(await asks.count == 1)
 
         app.apply(.retrySuggestionModel)
         await app.modelPreparation?.value
         #expect(await asks.count == 2)
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .fetchFailed)
         #expect(store.load().suggestions.isEnabled)
     }
 
@@ -190,7 +190,7 @@ struct ModelDownloadTests {
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
         app.suggestionModelWentMissing()
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .fetchFailed)
         #expect(await asks.count == 1)
 
         app.settingsChanged(to: settings(suggesting: false))

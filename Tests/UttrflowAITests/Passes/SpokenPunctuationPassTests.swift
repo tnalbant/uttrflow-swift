@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 import UttrflowCore
 
 @testable import UttrflowAI
@@ -226,5 +227,18 @@ struct SpokenPunctuationPassTests {
         #expect(draft.words[0].state == .replaced(by: SpokenPunctuationPass.id, from: "milk"))
         #expect(draft.words[1].state == .removed(by: SpokenPunctuationPass.id))
         #expect(draft.words[2].state == .kept)
+    }
+
+    @Test("a long unpunctuated rules-only transcript finishes inside the rules budget")
+    func longUnpunctuatedTranscript() async throws {
+        let text = String(
+            repeating: "so i was thinking about the garden and the tomatoes are growing well this year ",
+            count: 200)
+        let request = TransformationRequest(transcription: Transcription(text: text))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = try await RuleBasedTransformer().transform(request)
+        #expect(clock.now - start < StageTimeout.rules)
+        #expect(result.text.split(whereSeparator: \.isWhitespace).count == 2_801)
     }
 }

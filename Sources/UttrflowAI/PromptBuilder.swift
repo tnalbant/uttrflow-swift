@@ -3,7 +3,7 @@ public import UttrflowCore
 /// Builds the model's instructions and user prompt from three layers: the contract, the destination's block and the situation. See `Docs/cleanup.md`.
 public struct PromptBuilder: Sendable, Equatable {
     /// Bumped whenever any wording changes, so a measured result can be tied to the prompt that produced it.
-    public static let version = 9
+    public static let version = 10
 
     /// The label the text before a mid-sentence caret sits behind; the contract teaches the model to read it.
     public static let caretLabel = "Text before the caret:"
@@ -62,10 +62,19 @@ public struct PromptBuilder: Sendable, Equatable {
 
     /// The situation lines above the quoted words, in the same shape as the worked examples.
     public func userPrompt(
-        for request: TransformationRequest, spoken: String? = nil, doubtful: [DoubtfulSpan] = []
+        for request: TransformationRequest, spoken: String? = nil, doubtful: [DoubtfulSpan] = [],
+        preserving switchedOff: Set<PassID> = []
     ) -> String {
         let spoken = "Spoken: \"\(Self.unquoted(spoken ?? request.transcription.text))\""
-        return (situationBlock(for: request.situation, doubtful: doubtful) + [spoken])
+        let preservedSteps = CleaningSteps.offered.map(\.id).filter(switchedOff.contains)
+        let preferences =
+            preservedSteps.isEmpty
+            ? []
+            : [
+                "Cleanup steps switched off by the user; preserve these words, even when examples suggest otherwise: "
+                    + preservedSteps.map { CleaningSteps.name(of: $0) }.joined(separator: ", ")
+            ]
+        return (situationBlock(for: request.situation, doubtful: doubtful) + preferences + [spoken])
             .joined(separator: "\n")
     }
 

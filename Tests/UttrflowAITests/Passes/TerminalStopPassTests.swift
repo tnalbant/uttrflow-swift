@@ -24,8 +24,25 @@ struct TerminalStopPassTests {
             ("did the tests pass should i merge it now", "did the tests pass should i merge it now?"),
             ("the printer is jammed again who used it last", "the printer is jammed again who used it last."),
             ("Done. can you review the PR", "Done. can you review the PR?"),
+            (
+                "I'm blocked on the credentials for the sandbox account can someone help",
+                "I'm blocked on the credentials for the sandbox account, can someone help?"
+            ),
+            (
+                "I think this will break if the array is empty can you add a check.",
+                "I think this will break if the array is empty, can you add a check?"
+            ),
+            (
+                "This duplicates the logic in the helper class can we reuse that instead",
+                "This duplicates the logic in the helper class, can we reuse that instead?"
+            ),
+            (
+                "I don't have access to the production database can someone grant it",
+                "I don't have access to the production database, can someone grant it?"
+            ),
             ("it's late isn't it", "it's late isn't it?"),
             ("what we need is more time", "what we need is more time."),
+            ("I think we can do it", "I think we can do it."),
             ("Can you check? I think it's fine", "Can you check? I think it's fine."),
         ])
     func addsQuestionMark(input: String, expected: String) {

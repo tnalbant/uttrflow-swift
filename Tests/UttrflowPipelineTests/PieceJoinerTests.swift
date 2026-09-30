@@ -97,6 +97,16 @@ struct PieceJoinerListTests {
                 == "First, the milk and the eggs.\n\nSecond, the bread.")
     }
 
+    @Test("keeps ordinal subjects and decimal points in prose")
+    func ordinalAndDecimalSubjectsAreProse() {
+        #expect(
+            joined(["First place went to Sam.", "Second place went to Priya."], .document)
+                == "First place went to Sam.\n\nSecond place went to Priya.")
+        #expect(
+            joined(["Point one seconds of lag is fine.", "Point two seconds is not."], .document)
+                == "Point one seconds of lag is fine. Point two seconds is not.")
+    }
+
     /// "One person came" counts the people; a bare cardinal announces an item only where the speaker set it off, and an ordinal never counts.
     @Test("a bare cardinal counting what follows it is prose, however the pieces line up")
     func anAmountIsNotAnItem() {
@@ -408,12 +418,53 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == text)
     }
 
+    @Test(
+        "joins the reported phrase completions across a seam",
+        arguments: [
+            ("The meeting is on", "Tuesday at 10 in the morning."),
+            ("I left my keys in", "the blue car"),
+            ("Remind me to pick up", "the dry cleaning tomorrow."),
+            ("The server went down around", "Midnight last night."),
+            ("She asked whether we could finish", "the draft by Wednesday."),
+            ("The quarterly numbers look", "better than we expected."),
+            ("The workshop covers", "testing and deployment."),
+        ])
+    func reportedPhraseCompletionTakesNoStop(first: String, next: String) {
+        let seamed = PieceJoiner.seamed([first, next], under: .standard(for: .document))
+
+        #expect(seamed.first == first)
+    }
+
+    @Test("still stops a sentence-final particle before a new sentence")
+    func sentenceFinalParticleStillStops() {
+        let seamed = PieceJoiner.seamed(["Turn it on", "again later"], under: .standard(for: .document))
+
+        #expect(seamed.first == "Turn it on.")
+    }
+
     /// The seam of two whole utterances is still a sentence end, which is what #183 asked for.
     @Test("still stops a seam with no evidence either way")
     func seamWithNoEvidenceStillStops() {
         let seamed = PieceJoiner.seamed(["on my way", "be there soon"], under: .standard(for: .messaging))
 
         #expect(seamed.first == "on my way.")
+    }
+
+    @Test("joins a split currency amount across pieces")
+    func joinsSplitCurrencyAmount() {
+        let whole = PieceJoiner.join(
+            [piece("The total came to"), piece("400"), piece("and $20")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "The total came to $420")
+    }
+
+    @Test("keeps separate figures apart when the second number has no currency")
+    func keepsSeparateFiguresApart() {
+        let whole = PieceJoiner.join(
+            [piece("Room 400"), piece("And 20 chairs")], under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "Room 400. And 20 chairs")
     }
 
     /// A single piece is already the whole message, so the joiner has no seam to end.

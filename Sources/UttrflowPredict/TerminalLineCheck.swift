@@ -217,7 +217,7 @@ public struct TerminalLineCheck: Sendable {
                 patternGiven = true
                 patternFiles.append(ShellWord(String(flag.dropFirst(7)), isUnresolved: word.isUnresolved))
                 position += 1
-            } else if flag.hasPrefix("-e"), flag.count > 2 || flag.hasPrefix("--regexp=") {
+            } else if (flag.hasPrefix("-e") && flag.count > 2) || flag.hasPrefix("--regexp=") {
                 patternGiven = true
                 position += 1
             } else if Self.searchValueFlags.contains(flag) {

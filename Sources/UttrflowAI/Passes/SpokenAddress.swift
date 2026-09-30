@@ -43,7 +43,7 @@ struct SpokenAddress: Equatable {
 
     /// The address spoken from `position`, or nil where the words are not one.
     static func read(at position: Int, in live: [Int], of draft: Draft) -> SpokenAddress? {
-        let run = draft.sentenceRun(from: position, in: live)
+        let run = position..<draft.sentenceEnd(from: position, in: live)
         guard let local = part(from: position, within: run, in: live, of: draft),
             local.hasLetter, FunctionWords.isContent(local.spelled)
         else { return nil }

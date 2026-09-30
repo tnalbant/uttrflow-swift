@@ -282,11 +282,13 @@ fetched again; only turning the switch on, which shows progress, downloads.
 `MemoryPressureSource` watches the kernel's pressure events. At a warning or a critical
 reading `AppDelegate` releases the suggestion model the same way, and the AI suggestions screen
 says it is paused to free memory rather than going quiet. Once pressure is back to normal the
-model waits for the calm to last before it loads again — two minutes the first time — and
-`SuggestionModelPressure` doubles that wait, up to thirty minutes, each time a reload is
-followed by pressure within thirty minutes. Without the wait, the 3 s reload of 2.5 GB is
-exactly what pushes a small Mac straight back into pressure, and the model would load and
-drop in a loop. A reload that holds for thirty minutes starts the wait over.
+model waits for the calm to last before it becomes eligible for a reload — two minutes the
+first time — and `SuggestionModelPressure` doubles that wait, up to thirty minutes, each time
+a query-driven reload is followed by pressure within thirty minutes. Weights stay unloaded
+until the next suggestion query; an idle Mac does not load them just because pressure cleared.
+Without the wait, the 3 s reload of 2.5 GB is exactly what pushes a small Mac straight back
+into pressure, and the model would load and drop in a loop. A reload that holds for thirty
+minutes starts the wait over.
 
 The speech model is left alone under pressure, for the reasons above.
 

@@ -1,6 +1,7 @@
 // Tests that a piece the recogniser looped is written once, and a sentence really said twice is kept twice.
 import Testing
 
+import UttrflowEval
 @testable import UttrflowCore
 @testable import UttrflowSpeech
 
@@ -40,6 +41,94 @@ struct RecognitionLoopTests {
         let undone = RecognitionLoop.undone(heard(looped, seconds: 2.76), speechDuration: .seconds(2.76))
 
         #expect(undone.text == "KAL MEETING HAI PLEASE SLIDES READY RAKHNA")
+    }
+
+    @Test("three near-identical copies are written once")
+    func threeCopiesAreWrittenOnce() {
+        let looped =
+            "Please send the report today. Please send the report today. Please send that report today."
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 1.5), speechDuration: .seconds(1.5))
+
+        #expect(undone.text == "Please send the report today.")
+    }
+
+    @Test("four copies at a fast rate are written once")
+    func fourFastCopiesAreWrittenOnce() {
+        let looped = String(repeating: "Send the report. ", count: 4).trimmingCharacters(in: .whitespaces)
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 2), speechDuration: .seconds(2))
+
+        #expect(undone.text == "Send the report.")
+    }
+
+    @Test("six copies of a phrase are written once")
+    func sixCopiesAreWrittenOnce() {
+        let looped = String(repeating: "Send the report. ", count: 6).trimmingCharacters(in: .whitespaces)
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 3), speechDuration: .seconds(3))
+
+        #expect(undone.text == "Send the report.")
+    }
+
+    @Test("a trailing partial copy is dropped after three copies are proven")
+    func trailingPartialCopyIsDropped() {
+        let looped = "Send the report. Send the report. Send the report. Send the"
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 1.5), speechDuration: .seconds(1.5))
+
+        #expect(undone.text == "Send the report.")
+    }
+
+    @Test("quotes around a repeated run are removed after it is collapsed")
+    func wrappingQuotesAroundRunAreRemoved() {
+        let looped = "\"Send the report. Send the report. Send the report.\""
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 1.5), speechDuration: .seconds(1.5))
+
+        #expect(undone.text == "Send the report.")
+    }
+
+    @Test("unrelated words after three copies are kept")
+    func unrelatedTrailingWordsAreKept() {
+        let looped = "Send the report. Send the report. Send the report. Call me"
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 1.5), speechDuration: .seconds(1.5))
+
+        #expect(undone.text == "Send the report. Call me")
+    }
+
+    @Test("four copies below the speech-rate threshold are kept")
+    func slowFourCopiesAreKept() {
+        let looped = "Send the report. Send the report. Send the report. Send the report."
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 3), speechDuration: .seconds(3))
+
+        #expect(undone.text == looped)
+    }
+
+    @Test("six repetitions of a two-word phrase are kept")
+    func sixShortCopiesAreKept() {
+        let looped = String(repeating: "and then ", count: 6).trimmingCharacters(in: .whitespaces)
+
+        let undone = RecognitionLoop.undone(heard(looped, seconds: 1.5), speechDuration: .seconds(1.5))
+
+        #expect(undone.text == looped)
+    }
+
+    @Test("corpus passages at the recorded natural rate are not shortened")
+    func corpusPassagesAreNotShortenedAtNaturalRate() {
+        for passage in TranscriptionCorpus.all {
+            for form in passage.forms {
+                let wordCount = form.split(whereSeparator: \.isWhitespace).count
+                let duration = Duration.seconds(Double(wordCount) / 2.5)
+                let transcription = Transcription(text: form)
+
+                let undone = RecognitionLoop.undone(transcription, speechDuration: duration)
+
+                #expect(undone.text == form, "\(passage.id) was shortened")
+            }
+        }
     }
 
     @Test("a sentence said twice in a piece long enough to hold both is kept twice")

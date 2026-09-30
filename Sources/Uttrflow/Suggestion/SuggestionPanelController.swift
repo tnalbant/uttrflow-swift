@@ -296,15 +296,30 @@ final class SuggestionPanelController {
     /// Places the panel at the caret, or reports that there is nowhere on the line to draw it.
     @discardableResult
     private func reposition() -> Bool {
+        let font = baselineFont
         guard
             let anchor = SuggestionGeometry.anchor(
                 for: request.placement, caret: request.caret, window: request.window,
-                field: request.field, screen: screenFrame, size: panelSize)
+                field: request.field, screen: screenFrame, size: panelSize,
+                fontAscent: font.ascender, fontDescent: -font.descender)
         else { return false }
         guard anchor.frame != panel.frame else { return true }
         placements += 1
         panel.setFrame(anchor.frame, display: true)
         return true
+    }
+
+    /// The font metrics for the same face and size the ghost line uses.
+    private var baselineFont: NSFont {
+        let size = drawn.pointSize
+        let fallback =
+            drawn.prefersMonospaced
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            : NSFont.systemFont(ofSize: size)
+        guard let family = request.fontFamily else { return fallback }
+        return NSFont(name: family, size: size)
+            ?? NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size)
+            ?? fallback
     }
 
     /// The screen the caret is on, so a field on another display is drawn there and not against the panel's last screen.
