@@ -426,6 +426,18 @@ public enum EvaluationCorpus {
             expected: "We left early \u{2014} it was raining.",
             mustKeep: ["left early", "raining"], mustNotAdd: ["dash"]
         ),
+        .init(
+            id: "hinglish-spoken-comma-before-aur", category: .everyday,
+            spoken: "chai comma aur biscuit",
+            expected: "Chai, aur biscuit.",
+            mustKeep: ["chai", "aur", "biscuit"], mustNotAdd: ["comma"]
+        ),
+        .init(
+            id: "hinglish-spoken-colon-before-kal", category: .everyday,
+            spoken: "note colon kal chutti hai",
+            expected: "Note: kal chutti hai.",
+            mustKeep: ["note", "kal chutti hai"], mustNotAdd: ["colon"]
+        ),
         // Issue 237: the same bare names said as ordinary words, which must survive as words.
         .init(
             id: "colon-cancer-as-words", category: .everyday,

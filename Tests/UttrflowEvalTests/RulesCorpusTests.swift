@@ -28,6 +28,7 @@ struct RulesCorpusTests {
         "spoken-comma-after-a-greeting", "spoken-comma-after-an-opener", "spoken-comma-after-yes",
         "spoken-commas-in-a-bare-list", "spoken-comma-before-and", "spoken-colon-before-a-clause",
         "spoken-colon-before-an-item", "spoken-colon-at-the-end", "spoken-dash-before-a-clause",
+        "hinglish-spoken-comma-before-aur", "hinglish-spoken-colon-before-kal",
         "colon-cancer-as-words", "colon-trouble-as-words", "colon-surgery-as-words", "colon-health-as-words",
         "comma-separated-as-words", "comma-usage-as-words", "comma-splices-as-words",
         "comma-placement-as-words", "dash-training-as-words", "dash-cam-as-words", "dash-drills-as-words",
