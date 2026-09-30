@@ -77,7 +77,9 @@ struct RulesCorpusTests {
         "number-jersey-not-an-item",
         "hindi-translation-refused", "hindi-worked-example-refused",
         "hinglish-late", "hinglish-trailing-english", "hinglish-false-start", "hinglish-request",
-        "hinglish-question", "hinglish-apology-kept",
+        "hinglish-question", "hinglish-question-after-verb", "hinglish-kaunsa-question",
+        "hinglish-kya-hua-question",
+        "hinglish-question-word-after-subject", "hinglish-na-question-tag", "hinglish-apology-kept",
     ]
 
     /// Destination cases only the model can pass: a spelling off the screen, or a question mark from a sentence's shape.

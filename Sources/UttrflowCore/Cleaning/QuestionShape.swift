@@ -13,6 +13,7 @@ public enum QuestionShape {
                 || hasInvertedQuestionAfterOpening(openingClause)
         }
         if opensAfterAddress(openingClause) { return true }
+        if opensHindiQuestion(openingClause) { return true }
         guard let start = trailingQuestionStart(in: shapes) else { return false }
         let clause = clauseAfterOpeners(Array(words[start...]))
         return opensAQuestion(clause) && !runsOn(clause)
@@ -142,6 +143,18 @@ public enum QuestionShape {
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
     }
 
+    /// Whether a Hindi question word appears in a clause with a finite predicate.
+    private static func opensHindiQuestion(_ clause: [String]) -> Bool {
+        guard clause.count >= 2,
+            clause.contains(where: hindiQuestionWords.contains) || clause.first == "kya"
+        else { return false }
+        if clause.first == "kya" {
+            return hindiSubjects.contains(clause.dropFirst().first ?? "")
+                || clause.contains(where: hindiFiniteVerbs.contains)
+        }
+        return clause.contains(where: hindiFiniteVerbs.contains)
+    }
+
     /// Whether a new subject starts later in the clause, as in "are you around yet I should be there", where the mark's place is unknown.
     private static func runsOn(_ clause: [String]) -> Bool {
         // The subject straight after the question's verb is the one it inverted, so the search starts past it.
@@ -177,7 +190,7 @@ public enum QuestionShape {
         guard words.count >= 3, let last = words.last else { return false }
         let before = words[words.count - 2]
         if subjects.contains(last), negativeVerbs.contains(before) { return true }
-        return last == "kya" && hindiVerbs.contains(before)
+        return (last == "kya" || last == "na") && hindiFiniteVerbs.contains(before)
     }
 
     /// Words a question may start after: "so did you…", "okay, can we…".
@@ -287,8 +300,8 @@ public enum QuestionShape {
 
     /// Romanised Hindi question words that ask from the start of a sentence.
     static let hindiQuestionWords: Set<String> = [
-        "kaun", "kahan", "kab", "kaise", "kyun", "kyon", "kitna", "kitne", "kitni", "kiska", "kiski", "kiske",
-        "kisne", "kisko",
+        "kaun", "kaunsa", "kaunsi", "kaunse", "kahan", "kab", "kaise", "kyun", "kyon", "kitna", "kitne",
+        "kitni", "kiska", "kiski", "kiske", "kisne", "kisko",
     ]
 
     /// Romanised Hindi subject pronouns, which "kya" asks about from the start of a sentence.
@@ -301,4 +314,11 @@ public enum QuestionShape {
     static let hindiVerbs: Set<String> = [
         "hai", "hain", "ho", "hoon", "tha", "thi", "the", "hoga", "hogi", "honge",
     ]
+
+    /// Hindi copulas and common finite verb forms used before question tags.
+    private static let hindiFiniteVerbs: Set<String> = hindiVerbs.union([
+        "hu", "h", "hua", "hui", "hue", "gaya", "gayi", "gaye", "di", "dia", "diya", "kiye", "kiya",
+        "ki", "li", "lia", "liya", "kar", "karta", "karte", "karti", "karoge", "karogi", "karega",
+        "karegi", "karunga", "karungi", "karna", "chahiye", "sakte", "sakti", "sakta",
+    ])
 }

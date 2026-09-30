@@ -1071,6 +1071,31 @@ public enum EvaluationCorpus {
             expected: "Kya tum aaj ka PR review kar sakte ho?",
             mustKeep: ["PR", "review"]
         ),
+        .init(
+            id: "hinglish-question-after-verb", category: .multilingual, language: .hindi,
+            spoken: "report bhej di kya",
+            expected: "Report bhej di kya?"
+        ),
+        .init(
+            id: "hinglish-kaunsa-question", category: .multilingual, language: .hindi,
+            spoken: "kaunsa option better hai",
+            expected: "Kaunsa option better hai?"
+        ),
+        .init(
+            id: "hinglish-kya-hua-question", category: .multilingual, language: .hindi,
+            spoken: "kya hua",
+            expected: "Kya hua?"
+        ),
+        .init(
+            id: "hinglish-question-word-after-subject", category: .multilingual, language: .hindi,
+            spoken: "meeting kab hai",
+            expected: "Meeting kab hai?"
+        ),
+        .init(
+            id: "hinglish-na-question-tag", category: .multilingual, language: .hindi,
+            spoken: "tum kal aa rahe ho na",
+            expected: "Tum kal aa rahe ho na?"
+        ),
         // A repeated Hindi pronoun starts a fresh clause, so "sorry" here is an apology, not a correction.
         .init(
             id: "hinglish-apology-kept", category: .multilingual, language: .hindi,

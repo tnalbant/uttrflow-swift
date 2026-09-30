@@ -34,7 +34,10 @@ struct QuestionShapeTests {
             "what I mean is we should wait",
             "This duplicates the logic in the helper class can we reuse that instead",
             "I don't have access to the production database can someone grant it",
-            "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya",
+            "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya", "report bhej di kya",
+            "report bhej diya kya", "report karoge kya", "kaunsa option better hai", "kaunsi file chahiye",
+            "kaunse option sahi hain", "kya hua", "meeting kab hai", "tum kyun nahi aaye",
+            "tum kal aa rahe ho na",
         ])
     func asks(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
@@ -53,7 +56,8 @@ struct QuestionShapeTests {
             "have a great weekend", "tell me what you think", "that's right", "turn right at the station",
             "turn right", "you should turn right", "everything is right", "it feels right", "I have no right",
             "you got the answer right", "I think it is right",
-            "if it rains, we stay in", "", "kya baat hai",
+            "if it rains, we stay in", "", "kya baat hai", "sunno na ek baat",
+            "woh kya hai na yaani mujhe time chahiye",
             "the printer is jammed again who used it last",
             "please close the door will you be home tonight",
             "are you around yet i should be there in ten",
