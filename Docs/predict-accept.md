@@ -9,9 +9,10 @@ for it.
 
 Tab by default. The right arrow in terminals, because Tab there is the shell's own
 completion and taking it would break the thing the user is actually trying to do.
-Option-Tab in editors, because Tab there is indentation and the language server's
-completion is already bound to it. The user can override any application, and the
-override wins over the kind.
+Option-Tab in editors, because Tab there is indentation, native completion, or text
+navigation. This includes code editors, query editors, and document editors such as Word,
+Pages, and TextEdit. The user can override any application, and the override wins over the
+kind.
 
 `AcceptKeys` recognises editors from a bundle-identifier prefix. Terminals are recognised
 by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell the right

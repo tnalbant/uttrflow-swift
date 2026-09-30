@@ -58,6 +58,13 @@ struct AcceptKeyTests {
     }
 
     @Test(
+        "Document editors get Option-Tab so Tab remains available for their native editing behavior.",
+        arguments: ["com.microsoft.Word", "com.apple.iWork.Pages", "com.apple.TextEdit"])
+    func documentEditorsGetOptionTab(bundleIdentifier: String) {
+        #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .optionTab)
+    }
+
+    @Test(
         "Every terminal to AI suggestions is a terminal to dictation, and every terminal row is one to suggestions."
     )
     func terminalsAgreeWithTheDestinationTable() {
@@ -80,7 +87,9 @@ struct AcceptKeyTests {
         for prefix in editors {
             #expect(AcceptKeys.standard.key(forBundleIdentifier: prefix) == .optionTab)
             let kind = DestinationClassifier.rule(for: AppContext(bundleIdentifier: prefix))?.kind
-            #expect(kind == .codeEditor || kind == .sqlEditor, "\(prefix) is an editor to suggestions only")
+            #expect(
+                kind == .codeEditor || kind == .sqlEditor || kind == .documentEditor,
+                "\(prefix) is an editor to suggestions only")
         }
     }
 
@@ -93,6 +102,12 @@ struct AcceptKeyTests {
     func overrideWins() {
         let keys = AcceptKeys(overrides: ["com.apple.Terminal": .optionTab])
         #expect(keys.key(forBundleIdentifier: "com.apple.Terminal") == .optionTab)
+    }
+
+    @Test("A user's choice still wins for a document editor.")
+    func documentEditorOverrideWins() {
+        let keys = AcceptKeys(overrides: ["com.microsoft.Word": .tab])
+        #expect(keys.key(forBundleIdentifier: "com.microsoft.Word") == .tab)
     }
 
     @Test("An override is found however the user's own file spelled the identifier.")
