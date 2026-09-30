@@ -17,6 +17,17 @@ struct SuggestionAnnouncerTests {
         #expect(coalescer.flushIfReady(at: .milliseconds(250)) == "latest")
     }
 
+    @Test("An update just before a timer wakes shortens the next wait to the quiet deadline")
+    func updateJustBeforeTimerWakeUsesRemainingQuietInterval() {
+        var coalescer = SuggestionAnnouncementCoalescer()
+        #expect(coalescer.offer("first", at: .zero) == nil)
+        #expect(coalescer.offer("latest", at: .milliseconds(149)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(150)) == nil)
+        #expect(coalescer.remainingQuietInterval(at: .milliseconds(150)) == .milliseconds(149))
+        #expect(coalescer.flushIfReady(at: .milliseconds(298)) == nil)
+        #expect(coalescer.flushIfReady(at: .milliseconds(299)) == "latest")
+    }
+
     @Test("A stable offer is announced promptly after the coalescing interval")
     func stableOfferIsPrompt() {
         var coalescer = SuggestionAnnouncementCoalescer()

@@ -64,6 +64,12 @@ public struct SuggestionAnnouncementCoalescer: Sendable, Equatable {
         return pending
     }
 
+    /// The remaining quiet interval, or nothing when no announcement is pending.
+    public func remainingQuietInterval(at now: Duration) -> Duration? {
+        guard let lastUpdate else { return nil }
+        return max(.zero, SuggestionAnnouncer.coalescingInterval - (now - lastUpdate))
+    }
+
     /// Drops queued text when the visible suggestion surface is withdrawn.
     public mutating func reset() {
         pending = nil

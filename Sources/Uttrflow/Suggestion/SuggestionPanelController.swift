@@ -274,7 +274,8 @@ final class SuggestionPanelController {
             if let ready = self.announcementCoalescer.flushIfReady(at: now) {
                 self.announce(ready)
             } else {
-                self.scheduleAnnouncementFlush(after: SuggestionAnnouncer.coalescingInterval)
+                let remaining = self.announcementCoalescer.remainingQuietInterval(at: now) ?? .zero
+                self.scheduleAnnouncementFlush(after: remaining)
                 return
             }
             self.announcementTask = nil
