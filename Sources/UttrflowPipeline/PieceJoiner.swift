@@ -96,7 +96,7 @@ enum PieceJoiner {
 
     /// Whether the words across a seam show the sentence carried on, which is the one reason not to end it there.
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
-        endsUnfinished(text) || opensWithAPhrase(next)
+        endsUnfinished(text) || opensWithAPhrase(next) || completesFinalPhrase(text, with: next)
     }
 
     /// Whether a piece ends on a word no sentence ends on, so the pause the cut fell at was inside a phrase.
@@ -108,11 +108,29 @@ enum PieceJoiner {
     /// Whether a piece opens on a phrase that continues the clause before it: a preposition, then a name or a determiner.
     private static func opensWithAPhrase(_ text: String) -> Bool {
         let words = text.spokenWords
-        guard words.count > 1, Self.neverFronted.contains(WordShape(String(words[0])).key)
-        else { return false }
+        guard words.count > 1 else { return false }
+        let first = WordShape(String(words[0]))
+        guard Self.neverFronted.contains(first.key) || Self.seamPrepositions.contains(first.key) else {
+            return false
+        }
         let following = WordShape(String(words[1]))
         // "to be honest" opens a sentence as readily as it continues one, so only a phrase counts as evidence.
         return Self.determiners.contains(following.key) || following.core.first?.isUppercase == true
+    }
+
+    /// Whether the next piece supplies an object for a final verb or particle phrase.
+    private static func completesFinalPhrase(_ text: String, with next: String) -> Bool {
+        let previous = text.spokenWords.map { WordShape(String($0)).key }
+        let following = next.spokenWords
+        guard let last = previous.last, let first = following.first else { return false }
+        let completesReportedVerb = Self.seamObjectEndings.contains { ending in
+            previous.suffix(ending.count) == ending
+        }
+        let startsObject =
+            Self.determiners.contains(WordShape(String(first)).key)
+            || (following.count > 1 && WordShape(String(first)).core.first?.isUppercase == true)
+        if Self.seamPrepositions.contains(last) { return startsObject }
+        return completesReportedVerb && (startsObject || following.count > 1)
     }
 
     /// The cleaned pieces as one text: a spoken list, a paragraph at a topic, a restatement across the seam, else a space.
@@ -309,6 +327,14 @@ enum PieceJoiner {
         "to", "of", "at", "with", "from", "by", "into", "onto", "upon", "between", "among",
         "toward", "towards", "against", "without", "within", "beside", "behind", "beyond",
         "near", "past",
+    ]
+
+    /// Prepositions and particles that can also close a complete sentence, so their seam evidence needs an object.
+    private static let seamPrepositions: Set<String> = ["on", "in", "up", "around"]
+
+    /// Reported verb phrases whose object continues in the next piece.
+    private static let seamObjectEndings: [[String]] = [
+        ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
     ]
 
     /// The phrases a speaker opens a new topic with after a pause.
