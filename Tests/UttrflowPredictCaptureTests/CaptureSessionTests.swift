@@ -190,6 +190,23 @@ struct CaptureSessionTests {
         #expect(try await session.handle(.returnPressed(at: start), in: chat) == .recorded("thanks"))
     }
 
+    @Test("A menu paste followed by a typed character and Return writes nothing.")
+    func aMenuPastedLineWithOneTypedCharacterIsNotWritten() async throws {
+        let scratch = Scratch()
+        let recorder = Recorder()
+        let chat = FieldReading(bundleIdentifier: "com.example.chat", role: "AXTextArea")
+        let session = try await session(scratch, recorder, allowing: ["com.example.chat"])
+        let pasted = "https://example.com/some/long/link"
+        let moment = start.addingTimeInterval(1)
+
+        _ = try await session.handle(.typed("x", at: moment), in: chat)
+        _ = try await session.handle(.keystroke(pasted + "x", at: moment), in: chat)
+        _ = try await session.handle(.inserted(at: moment), in: chat)
+
+        #expect(try await session.handle(.returnPressed(at: moment), in: chat) == .nothing)
+        #expect(await recorder.texts.isEmpty)
+    }
+
     @Test("A password field is refused, so what is typed into it is never written.")
     func secureFieldsAreRefused() async throws {
         let scratch = Scratch()

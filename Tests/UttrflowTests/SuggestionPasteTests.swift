@@ -1,6 +1,7 @@
 // Tests that a paste is told apart from typing, so pasted text is never learned as typed.
 
 import AppKit
+import Foundation
 import Testing
 
 @testable import Uttrflow
@@ -54,6 +55,18 @@ struct SuggestionPasteTests {
     func plainDvorak() {
         #expect(pastes(dvorakV, [.command], on: dvorakV))
         #expect(!pastes(qwertyV, [.command], on: dvorakV))
+    }
+
+    @Test("an Accessibility value change without a nearby key-down is an insertion")
+    func accessibilityValueChangesWithoutKeyDownAreInsertions() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        #expect(
+            SuggestionCoordinator.isUnkeyedAccessibilityChange(
+                lastKeyDown: now.addingTimeInterval(-0.101), at: now))
+        #expect(
+            !SuggestionCoordinator.isUnkeyedAccessibilityChange(
+                lastKeyDown: now.addingTimeInterval(-0.099), at: now))
     }
 
     @Test("Tab, Escape and any Command shortcut may move focus, and typing does not")

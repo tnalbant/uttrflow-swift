@@ -109,6 +109,8 @@ final class SuggestionCoordinator {
     nonisolated static let fieldReadDebounceInMilliseconds = 180
     /// Lets the target application apply a drop before its field is read again.
     nonisolated static let mouseUpReadDelayInMilliseconds = 80
+    /// How long a key-down can explain an Accessibility value change.
+    nonisolated static let accessibilityKeyWindowInMilliseconds = 100
 
     private var session = SuggestionSession()
     private var monitors: [Any] = []
@@ -136,6 +138,8 @@ final class SuggestionCoordinator {
     /// The line the accept key takes as last armed by a draw, so a later answer never inherits that claim.
     private(set) var armedOffer: String?
     private var lastKeystroke = Date.distantPast
+    /// The last observed key-down, used to distinguish typing from edits made without a key.
+    private var lastObservedKeyDown = Date.distantPast
     /// One turn at a time, with a turn that never returns left behind so the loop cannot die with it.
     private var turns = TurnGate()
     /// The step the newest turn is waiting on and the bundle identifier it read, so a stall names where it stuck.
@@ -392,8 +396,12 @@ final class SuggestionCoordinator {
         watchFocusedFieldValues()
         let keys = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             let pastes = Self.isPaste(event)
+            let observedAt = Date()
             // A paste, the person's or this app's own, puts words in the line that were never typed.
-            if pastes { MainActor.assumeIsolated { self?.insertionPending = true } }
+            MainActor.assumeIsolated {
+                self?.lastObservedKeyDown = observedAt
+                if pastes { self?.insertionPending = true }
+            }
             // A key this app inserted must not wake another turn, or the feature types on its own.
             if let cgEvent = event.cgEvent, SyntheticEvent.isOurs(cgEvent) { return }
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
@@ -467,12 +475,22 @@ final class SuggestionCoordinator {
 
     /// Withdraws an offer when the focused field changes without a corresponding key event.
     private func accessibilityValueChanged() {
-        guard !isStopped, !isInserting, armedOffer != nil,
-            Date().timeIntervalSince(lastKeystroke) * 1000 >= Double(Self.fieldReadDebounceInMilliseconds)
+        guard !isStopped, !isInserting else { return }
+        let moment = Date()
+        if Self.isUnkeyedAccessibilityChange(lastKeyDown: lastObservedKeyDown, at: moment) {
+            insertionPending = true
+        }
+        guard armedOffer != nil,
+            moment.timeIntervalSince(lastKeystroke) * 1000 >= Double(Self.fieldReadDebounceInMilliseconds)
         else { return }
         noteActivity()
         withdraw()
         wake(.tick)
+    }
+
+    /// Whether a value change arrived without a nearby key-down to explain it.
+    nonisolated static func isUnkeyedAccessibilityChange(lastKeyDown: Date, at moment: Date) -> Bool {
+        moment.timeIntervalSince(lastKeyDown) * 1000 >= Double(accessibilityKeyWindowInMilliseconds)
     }
 
     /// Whether a key-down may move keyboard focus to another field: Tab, Escape, or any ⌘ shortcut.
