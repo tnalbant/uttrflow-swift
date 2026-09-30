@@ -1,11 +1,30 @@
 import Testing
 import UttrflowPredict
+import MLXLMCommon
 
 @testable import UttrflowLocalModel
 
 /// What the model's reply is allowed to become, decided without loading a model.
 @Suite("Completion parsing")
 struct CompletionParsingTests {
+    @Test("A single-line pass stopped by its token budget offers no candidate.")
+    func tokenLimitedPassIsWithheld() {
+        let situation = GenerationSituation(application: "Notes")
+        let cutOff = MLXCandidateScorer.completions(
+            from: .init(
+                text: "see you at the", stop: .length, written: "", tokens: [],
+                logProbabilities: [], bytes: []),
+            typed: "see you", asking: .one, in: situation)
+        #expect(cutOff.isEmpty)
+
+        let endedNormally = MLXCandidateScorer.completions(
+            from: .init(
+                text: "see you at the", stop: .stop, written: "", tokens: [],
+                logProbabilities: [], bytes: []),
+            typed: "see you", asking: .one, in: situation)
+        #expect(endedNormally == ["see you at the"])
+    }
+
     @Test(
         "An indented line is read against the typed text without its indentation, and keeps it in the answer."
     )

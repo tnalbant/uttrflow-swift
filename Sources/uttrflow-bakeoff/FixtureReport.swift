@@ -21,6 +21,8 @@ struct FixtureResult: Encodable {
     let rescued: Bool
     /// What the second pass cost, recorded only when one was spent.
     let secondOpinionMs: Int?
+    /// Whether the first generation pass ended because it reached its token budget.
+    let lengthStopped: Bool
     /// What the confidence floor made of the first line.
     let gate: Gate
 
@@ -39,7 +41,8 @@ struct FixtureResult: Encodable {
     init(
         name: String, category: String, typed: String, hit: Bool, judged: Bool, conforms: Bool,
         elapsedMs: Int, first: String?,
-        raw: String?, invented: Bool, rescued: Bool = false, secondOpinionMs: Int? = nil, gate: Gate = .open
+        raw: String?, invented: Bool, rescued: Bool = false, secondOpinionMs: Int? = nil,
+        lengthStopped: Bool = false, gate: Gate = .open
     ) {
         self.name = name
         self.category = category
@@ -53,6 +56,7 @@ struct FixtureResult: Encodable {
         self.invented = invented
         self.rescued = rescued
         self.secondOpinionMs = secondOpinionMs
+        self.lengthStopped = lengthStopped
         self.gate = gate
     }
 
@@ -88,6 +92,10 @@ struct FixtureSummary: Encodable {
     let conforming: Int
     /// How many answers the model wrote that named what the machine does not have, which the sieve kept off the screen.
     let invented: Int
+    /// First passes that reached their token budget, whether or not the completion was withheld.
+    let lengthStopped: Int
+    /// Shown candidates that came from a length-stopped pass. This must stay zero.
+    let shownFromLengthStop: Int
     /// Hits checked against a named answer, and hits taken on any continuation, which say nothing about being right.
     let judgedHits: Int
     let unjudgedHits: Int
@@ -109,6 +117,8 @@ struct FixtureSummary: Encodable {
         hits = results.filter(\.hit).count
         conforming = results.filter(\.conforms).count
         invented = results.filter(\.invented).count
+        lengthStopped = results.filter(\.lengthStopped).count
+        shownFromLengthStop = results.filter { $0.lengthStopped && $0.shown }.count
         judgedHits = results.filter { $0.hit && $0.judged }.count
         unjudgedHits = results.filter { $0.hit && !$0.judged }.count
         shown = results.filter { $0.shown && $0.judged }.count
@@ -161,7 +171,9 @@ struct FixtureReport: Encodable {
         guard summary.total > 0 else { return }
         print(
             "\nall  hit \(summary.hits)/\(summary.total)  in register \(summary.conforming)/\(summary.total)"
-                + "  invented \(summary.invented)  p50 \(summary.p50Ms)ms  p95 \(summary.p95Ms)ms")
+                + "  invented \(summary.invented)  length-stopped \(summary.lengthStopped)"
+                + "  shown from length stop \(summary.shownFromLengthStop)"
+                + "  p50 \(summary.p50Ms)ms  p95 \(summary.p95Ms)ms")
         print("hits judged \(summary.judgedHits)  unjudged \(summary.unjudgedHits)")
         // Precision is what a person feels: of the judged times it spoke, how often it was right. Coverage is how often it spoke at all.
         let wrong = summary.shown - summary.right

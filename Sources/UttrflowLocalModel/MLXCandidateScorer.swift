@@ -355,7 +355,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     private static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
-        let text = ask == .one && run.stop == .length ? CompletionText.wholeWords(of: run.text) : run.text
+        guard !(ask == .one && run.stop == .length) else { return [] }
+        let text = run.text
         let context = CompletionText.contextNeverCopied(in: situation)
         // The prefill is the line's own start, so the answer reads as the whole line it would echo.
         let lines = CompletionText.parse(run.written + text, typed: typed).compactMap {

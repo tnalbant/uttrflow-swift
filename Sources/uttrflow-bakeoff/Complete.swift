@@ -131,6 +131,7 @@ struct Complete: AsyncParsableCommand {
             var completions: [String] = []
             var failure: String?
             var words: String?
+            var lengthStopped = false
             var invented = false
             var rescued = false
             var secondMs: Int?
@@ -152,6 +153,7 @@ struct Complete: AsyncParsableCommand {
                 } else if raw, let scorer = scorer as? any PassShowing {
                     let pass = try await scorer.pass(for: fixture.typed, in: situation)
                     completions = pass?.completions ?? []
+                    lengthStopped = pass?.stopReason == "length"
                     words = pass.map { "[\($0.stopReason)] \($0.text)" } ?? "[not asked]"
                 } else {
                     completions = try await scorer.completions(for: fixture.typed, in: situation)
@@ -208,7 +210,7 @@ struct Complete: AsyncParsableCommand {
                 hit: fixture.hits(drawn), judged: fixture.isJudged,
                 conforms: fixture.conforms(drawn), elapsedMs: elapsed,
                 first: failure ?? completions.first, raw: words, invented: invented, rescued: rescued,
-                secondOpinionMs: secondMs,
+                secondOpinionMs: secondMs, lengthStopped: lengthStopped,
                 gate: FixtureResult.Gate(
                     confidence: confidence, held: held, hitIfDrawn: fixture.hits(completions),
                     judgeScore: judgeScore, judgeMs: judgeMs))
