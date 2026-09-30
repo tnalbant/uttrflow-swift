@@ -121,6 +121,10 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let acceptKey: AcceptKey
     /// The field's own font family, so the ghost is set in the face the line is, or nothing when it will not say.
     public let fontFamily: String?
+    /// Whether to set the ghost in bold to match the field's face.
+    public let isBold: Bool
+    /// Whether to set the ghost in italics to match the field's face.
+    public let isItalic: Bool
     /// The colour the ghost is drawn in, and whether it needs a backing to be read at all.
     public let ink: Ink
 
@@ -132,12 +136,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
         appearance: SuggestionAppearance = .standard,
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         fieldTextColor: TextColor? = nil,
         maximumWidth: CGFloat? = nil,
         direction: SuggestionWritingDirection = .leftToRight
     ) {
         self.acceptKey = acceptKey
         self.fontFamily = fontFamily
+        self.isBold = isBold
+        self.isItalic = isItalic
         ink = fieldTextColor.map(Ink.field) ?? .backed
         let offered = Self.rows(of: suggestion, after: typed, selected: selection.index)
         style =

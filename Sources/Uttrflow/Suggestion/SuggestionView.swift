@@ -155,8 +155,15 @@ struct SuggestionGhostLine: View {
 extension SuggestionPresentation {
     /// The field's own face where it names one, else the system face, monospaced where even the size is unknown.
     func font(at size: CGFloat) -> Font {
-        if let fontFamily { return .custom(fontFamily, size: size) }
-        return .system(size: size, design: prefersMonospaced ? .monospaced : .default)
+        var font: Font
+        if let fontFamily {
+            font = .custom(fontFamily, size: size)
+        } else {
+            font = .system(size: size, design: prefersMonospaced ? .monospaced : .default)
+        }
+        if isBold { font = font.weight(.bold) }
+        if isItalic { font = font.italic() }
+        return font
     }
 }
 

@@ -389,7 +389,7 @@ let package = Package(
         .testTarget(
             name: "UttrflowUXTests",
             dependencies: [
-                "UttrflowAI", "UttrflowPredict", "UttrflowUX", "UttrflowTestSupport",
+                "UttrflowAI", "UttrflowContext", "UttrflowPredict", "UttrflowUX", "UttrflowTestSupport",
             ],
             swiftSettings: sharedSwiftSettings
         ),

@@ -1219,7 +1219,8 @@ final class SuggestionCoordinator {
                     applicationName: snapshot.applicationName,
                     bundleIdentifier: snapshot.bundleIdentifier,
                     documentName: snapshot.windowTitle)),
-            fontFamily: snapshot.fontFamily, textColor: snapshot.textColor)
+            fontFamily: snapshot.fontFamily, isBold: snapshot.isBold, isItalic: snapshot.isItalic,
+            textColor: snapshot.textColor)
         // An offer the panel could not show whole claims no key, so Tab never inserts what was not drawn.
         guard shown else {
             stopWatchingSelection()

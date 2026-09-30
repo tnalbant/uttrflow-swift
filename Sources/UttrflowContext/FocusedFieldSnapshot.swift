@@ -60,6 +60,10 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let pointSize: CGFloat?
     /// The field's own font family, so the ghost is set in the face the line is.
     public let fontFamily: String?
+    /// Whether the field's face is bold, so the ghost keeps the run's weight.
+    public let isBold: Bool
+    /// Whether the field's face is italic, so the ghost keeps the run's slant.
+    public let isItalic: Bool
     /// The field's own text colour, so the ghost reads against the field and not against Uttrflow's appearance.
     public let textColor: TextColor?
     /// Whether the field hides what is typed into it.
@@ -102,6 +106,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         field: CGRect? = nil,
         pointSize: CGFloat? = nil,
         fontFamily: String? = nil,
+        isBold: Bool = false,
+        isItalic: Bool = false,
         textColor: TextColor? = nil,
         isSecure: Bool = false,
         isEnabled: Bool? = nil,
@@ -129,6 +135,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.field = field
         self.pointSize = pointSize
         self.fontFamily = fontFamily
+        self.isBold = isBold
+        self.isItalic = isItalic
         self.textColor = textColor
         self.isSecure = isSecure
         self.isEnabled = isEnabled
@@ -161,8 +169,8 @@ extension FocusedFieldSnapshot {
             readMicroseconds: readMicroseconds)
     }
 
-    /// Whether any of the field's type can be matched — size, family or colour — since the ghost defaults the rest.
-    var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || textColor != nil }
+    /// Whether any of the field's type can be matched, since the ghost defaults the rest.
+    var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || isBold || isItalic || textColor != nil }
 
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
     public var placement: SuggestionPlacement? {
