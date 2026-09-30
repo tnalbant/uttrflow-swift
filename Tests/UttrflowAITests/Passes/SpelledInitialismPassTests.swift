@@ -50,4 +50,18 @@ struct SpelledInitialismPassTests {
         #expect(CleaningPipeline(passes: [sut]).run(Draft(text: "a p i")).text == "API")
         #expect(CleaningPipeline(passes: [sut]).run(Draft(text: "we need a p")).text == "we need a p")
     }
+
+    @Test("does not join letters separated by a removed filler")
+    func removedFillerBreaksInitialism() {
+        var draft = Draft(text: "we said e uh g")
+        draft.remove(at: 3, by: .fillers)
+        #expect(sut.apply(draft).text == "we said e g")
+    }
+
+    @Test("does not treat i after a removed filler as part of the previous letter run")
+    func removedFillerKeepsPronounI() {
+        var draft = Draft(text: "we said p uh i")
+        draft.remove(at: 3, by: .fillers)
+        #expect(FirstWordPass().apply(draft).text == "we said p I")
+    }
 }

@@ -4,22 +4,20 @@ public import UttrflowCore
 public struct SpelledInitialismPass: WholeTextCleaningPass {
     public static let id: PassID = .spelledInitialism
 
-    static let letterNamesForCasing: Set<String> = [
-        "a", "be", "bee", "cee", "see", "dee", "e", "ef", "eff", "gee", "aitch", "i", "eye",
-        "jay", "kay", "el", "ell", "em", "en", "oh", "pee", "cue", "queue", "ar", "are",
-        "ess", "tee", "you", "vee", "doubleu", "ex", "why", "zee", "zed",
+    static let letterNames: [String: String] = [
+        "a": "A", "b": "B", "be": "B", "bee": "B", "c": "C", "cee": "C", "see": "C",
+        "d": "D", "dee": "D", "e": "E", "f": "F", "ef": "F", "eff": "F", "g": "G",
+        "gee": "G", "h": "H", "aitch": "H", "i": "I", "eye": "I", "j": "J", "jay": "J",
+        "k": "K", "kay": "K", "l": "L", "el": "L", "ell": "L", "m": "M", "em": "M",
+        "n": "N", "en": "N", "o": "O", "oh": "O", "p": "P", "pee": "P", "q": "Q",
+        "cue": "Q", "queue": "Q", "r": "R", "ar": "R", "are": "R", "s": "S", "ess": "S",
+        "t": "T", "tee": "T", "u": "U", "you": "U", "v": "V", "vee": "V", "w": "W",
+        "doubleu": "W", "x": "X", "ex": "X", "y": "Y", "why": "Y", "z": "Z", "zee": "Z",
+        "zed": "Z",
     ]
-
-    private static let letterNames: [String: String] = [
-        "a": "A", "be": "B", "bee": "B", "cee": "C", "see": "C", "dee": "D", "e": "E",
-        "ef": "F", "eff": "F", "gee": "G", "aitch": "H", "i": "I", "eye": "I", "jay": "J",
-        "kay": "K", "el": "L", "ell": "L", "em": "M", "en": "N", "oh": "O", "pee": "P",
-        "cue": "Q", "queue": "Q", "ar": "R", "are": "R", "ess": "S", "tee": "T",
-        "you": "U", "vee": "V", "doubleu": "W", "ex": "X", "why": "Y", "zee": "Z", "zed": "Z",
-    ]
+    static let letterNamesForCasing = Set(letterNames.keys)
 
     private static let dottedPairs: Set<String> = ["eg", "ie"]
-    private static let articleAcronyms: Set<String> = ["api", "asap"]
 
     public init() {}
 
@@ -62,11 +60,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             let candidateEnd = candidateRunEnd(from: position, in: live, draft: draft)
             let value = live[position..<candidateEnd].compactMap { Self.letterNames[draft.shape(at: $0).key] }
                 .joined().lowercased()
-            guard Self.articleAcronyms.contains(value) || Self.dottedPairs.contains(value) else { return nil }
+            guard candidateEnd - position >= 3 || Self.dottedPairs.contains(value) else { return nil }
         }
         let initialismStart = position
         var end = position + 1
         while end < live.count, !draft.shape(at: live[end - 1]).endsClause,
+            live[end] == live[end - 1] + 1,
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
             Self.letterNames[draft.shape(at: live[end]).key] != nil,
@@ -83,6 +82,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     private func candidateRunEnd(from position: Int, in live: [Int], draft: Draft) -> Int {
         var end = position
         while end < live.count, !draft.shape(at: live[end]).endsClause,
+            end == position || live[end] == live[end - 1] + 1,
             !draft.words[live[end]].isLayoutMark,
             Self.letterNames[draft.shape(at: live[end]).key] != nil
         {
