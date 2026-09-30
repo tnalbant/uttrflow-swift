@@ -158,7 +158,7 @@ Thank you to everyone who has sent a fix, filed an issue or asked a good questio
   sound, so spellings you have not seen yet are caught too.
 - **Tab-to-complete**, once you turn it on in Settings → AI suggestions. The rest of the line
   appears in grey ahead of the caret as you type; **Tab** takes it, typing on ignores it,
-  and ↓ opens the alternatives when there is more than one. Tab is already spoken for in a
+  and **⌥↓** opens the alternatives when there is more than one. Tab is already spoken for in a
   terminal and in an editor, so those take a completion with **→** and **⌥Tab** instead,
   and the key can be set per application.
 
