@@ -698,20 +698,27 @@ struct SettingsUpdatesTests {
             .groups.first { $0.id == "updates" }
     }
 
-    @Test("shows the version, a way to check, and the automatic switch")
+    @Test("shows the version, a way to check, and both automatic preferences")
     func theWholeGroup() throws {
         let group = try #require(Self.general(.everything))
         #expect(group.title == "Updates")
-        #expect(group.rows.map(\.id) == ["version", "checkForUpdates", "installsUpdatesAutomatically"])
+        #expect(
+            group.rows.map(\.id) == [
+                "version", "checkForUpdates", "checksForUpdatesAutomatically",
+                "installsUpdatesAutomatically",
+            ])
 
         let version = try #require(group.rows.first { $0.id == "version" })
         #expect(version.control == .text("1.0.0 (1)"))
         #expect(version.unavailability == nil)
     }
 
-    @Test("the check button asks for a check and changes no setting")
+    @Test("Check Now remains available with automatic checks off")
     func checkingIsAnAction() throws {
-        let row = try #require(Self.general(.everything)?.rows.first { $0.id == "checkForUpdates" })
+        var settings = Settings.default
+        settings.checksForUpdatesAutomatically = false
+        let row = try #require(
+            Self.general(.everything, settings)?.rows.first { $0.id == "checkForUpdates" })
         #expect(row.control == .action(title: "Check Now", change: .checkForUpdatesNow))
         #expect(row.unavailability == nil)
     }
@@ -725,7 +732,7 @@ struct SettingsUpdatesTests {
         let group = try #require(Self.general(capabilities))
         #expect(group.rows.contains { $0.id == "version" })
 
-        for id in ["checkForUpdates", "installsUpdatesAutomatically"] {
+        for id in ["checkForUpdates", "checksForUpdatesAutomatically", "installsUpdatesAutomatically"] {
             let row = try #require(group.rows.first { $0.id == id })
             #expect(row.unavailability != nil, "\(id) should say why it cannot act")
         }
@@ -752,11 +759,31 @@ struct SettingsUpdatesTests {
             #expect(row.control == .toggle(field: .installsUpdatesAutomatically, isOn: isOn))
         }
     }
+
+    @Test("the automatic-check switch reads the saved setting")
+    func automaticCheckSwitchFollowsSetting() throws {
+        for isOn in [true, false] {
+            var settings = Settings.default
+            settings.checksForUpdatesAutomatically = isOn
+            let group = try #require(Self.general(.everything, settings))
+            let row = try #require(group.rows.first { $0.id == "checksForUpdatesAutomatically" })
+            #expect(row.control == .toggle(field: .checksForUpdatesAutomatically, isOn: isOn))
+        }
+    }
 }
 
 /// Applying the two update changes.
 @Suite("Updating, applied")
 struct SettingsUpdateEditingTests {
+    @Test("the automatic-check switch is written through")
+    func togglesAutomaticChecksThrough() throws {
+        var settings = Settings.default
+        settings.checksForUpdatesAutomatically = true
+        let updated = try SettingsEditor.apply(
+            .toggle(.checksForUpdatesAutomatically, isOn: false), to: settings)
+        #expect(!updated.checksForUpdatesAutomatically)
+    }
+
     @Test("the switch is written through")
     func togglesThrough() throws {
         var settings = Settings.default

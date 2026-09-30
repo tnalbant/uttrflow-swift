@@ -70,6 +70,9 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Whether macOS launches Uttrflow when the user logs in.
     public var opensAtLogin: Bool
 
+    /// Whether Sparkle checks for releases on its own.
+    public var checksForUpdatesAutomatically: Bool
+
     /// Whether a found update installs itself or waits to be asked; `UpdateGate` picks the moment.
     public var installsUpdatesAutomatically: Bool
 
@@ -109,6 +112,7 @@ public struct Settings: Sendable, Equatable, Codable {
         minimisesWhileDictating: Bool = true,
         playsSoundWhenRecordingStarts: Bool = true,
         opensAtLogin: Bool = true,
+        checksForUpdatesAutomatically: Bool = true,
         installsUpdatesAutomatically: Bool = true,
         sharesUsageStatistics: Bool = true,
         sendsCrashReports: Bool = false,
@@ -135,6 +139,7 @@ public struct Settings: Sendable, Equatable, Codable {
         self.minimisesWhileDictating = minimisesWhileDictating
         self.playsSoundWhenRecordingStarts = playsSoundWhenRecordingStarts
         self.opensAtLogin = opensAtLogin
+        self.checksForUpdatesAutomatically = checksForUpdatesAutomatically
         self.installsUpdatesAutomatically = installsUpdatesAutomatically
         self.sharesUsageStatistics = sharesUsageStatistics
         self.sendsCrashReports = sendsCrashReports
@@ -198,6 +203,7 @@ extension Settings {
         case minimisesWhileDictating
         case playsSoundWhenRecordingStarts
         case opensAtLogin
+        case checksForUpdatesAutomatically
         case installsUpdatesAutomatically
         case sharesUsageStatistics
         case sendsCrashReports
@@ -253,6 +259,10 @@ extension Settings {
                 default: fallback.playsSoundWhenRecordingStarts
             ),
             opensAtLogin: container.value(forKey: .opensAtLogin, default: fallback.opensAtLogin),
+            checksForUpdatesAutomatically: container.value(
+                forKey: .checksForUpdatesAutomatically,
+                default: fallback.checksForUpdatesAutomatically
+            ),
             installsUpdatesAutomatically: container.value(
                 forKey: .installsUpdatesAutomatically,
                 default: fallback.installsUpdatesAutomatically

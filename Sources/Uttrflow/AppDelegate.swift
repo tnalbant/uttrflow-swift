@@ -332,7 +332,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         // Configured last, from the setting; the automatic check itself waits for `modelLoadingSettled()`.
         updates.onProgressChanged = { [weak self] in self?.refreshMenuBar() }
-        updates.begin(automatically: settings.installsUpdatesAutomatically)
+        updates.begin(
+            checksAutomatically: settings.checksForUpdatesAutomatically,
+            installsAutomatically: settings.installsUpdatesAutomatically)
     }
 
     /// Builds the telemetry service from the saved switch and starts its hourly flush.
@@ -2715,6 +2717,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // As above: a switch that drew itself and changed nothing.
         if updated.installsUpdatesAutomatically != previous.installsUpdatesAutomatically {
             updates.setInstallsAutomatically(updated.installsUpdatesAutomatically)
+        }
+        if updated.checksForUpdatesAutomatically != previous.checksForUpdatesAutomatically {
+            updates.setChecksAutomatically(updated.checksForUpdatesAutomatically)
         }
         if updated.sendsCrashReports != previous.sendsCrashReports {
             crashReports.follow(isEnabled: updated.sendsCrashReports)

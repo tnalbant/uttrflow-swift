@@ -58,6 +58,8 @@ struct SettingsTests {
         #expect(settings.minimisesWhileDictating)
         #expect(settings.playsSoundWhenRecordingStarts)
         #expect(settings.opensAtLogin)
+        #expect(settings.checksForUpdatesAutomatically)
+        #expect(settings.installsUpdatesAutomatically)
         #expect(settings.transcriptRetentionDays == Settings.defaultTranscriptRetentionDays)
         #expect(settings.cleaning == .default)
         #expect(settings.destinations == .none)
@@ -82,6 +84,7 @@ struct SettingsTests {
         let settings = try decode(#"{"opensAtLogin": false}"#)
         #expect(settings.cleaning == .default)
         #expect(settings.destinations == .none)
+        #expect(settings.checksForUpdatesAutomatically)
     }
 
     @Test("an unreadable clean-up choice costs only that choice")
@@ -115,16 +118,18 @@ struct SettingsTests {
         #expect(restored == settings)
     }
 
-    /// Switching automatic updates off survives a save and a load.
-    @Test("keeps automatic updates switched off across a save and a load")
-    func automaticUpdatesStayOff() throws {
-        let settings = Settings(installsUpdatesAutomatically: false)
+    /// Each update preference survives a save and a load independently.
+    @Test("keeps automatic checks and installs independently across a save and a load")
+    func updatePreferencesStayIndependent() throws {
+        let settings = Settings(
+            checksForUpdatesAutomatically: false, installsUpdatesAutomatically: true)
 
         let restored = try JSONDecoder().decode(
             Settings.self, from: JSONEncoder().encode(settings)
         )
 
-        #expect(!restored.installsUpdatesAutomatically)
+        #expect(!restored.checksForUpdatesAutomatically)
+        #expect(restored.installsUpdatesAutomatically)
     }
 
     /// Usage statistics are shared unless the user says otherwise, and saying so is kept.

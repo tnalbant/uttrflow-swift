@@ -96,6 +96,7 @@ public enum SettingsEditor {
         case .minimisesWhileDictating: settings.minimisesWhileDictating = isOn
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts = isOn
         case .opensAtLogin: settings.opensAtLogin = isOn
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically = isOn
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically = isOn
         case .sharesUsageStatistics: settings.sharesUsageStatistics = isOn
         case .sendsCrashReports: settings.sendsCrashReports = isOn
@@ -136,6 +137,10 @@ public enum SettingsEditor {
             capabilities.canCheckForUpdates
                 ? nil
                 : "This build has no update feed, so there is nothing for it to install."
+        case .checksForUpdatesAutomatically:
+            capabilities.canCheckForUpdates
+                ? nil
+                : "This build has no update feed, so there is nothing to check."
         case .suggestionsEnabled, .sendsCrashReports:
             nil
         case .quietSuggestions:

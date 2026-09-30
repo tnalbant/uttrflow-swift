@@ -341,6 +341,7 @@ public enum SettingsToggleField: String, Sendable, Equatable, CaseIterable {
     case minimisesWhileDictating
     case playsSoundWhenRecordingStarts
     case opensAtLogin
+    case checksForUpdatesAutomatically
     case installsUpdatesAutomatically
     case sharesUsageStatistics
     case sendsCrashReports

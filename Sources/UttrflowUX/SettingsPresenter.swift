@@ -348,10 +348,18 @@ public enum SettingsPresenter {
                 id: "checkForUpdates",
                 label: "Check for updates",
                 explanation: capabilities.canCheckForUpdates
-                    ? "Uttrflow also checks on its own every six hours." : nil,
+                    ? "Check now even when automatic checks are off." : nil,
                 control: .action(title: "Check Now", change: .checkForUpdatesNow),
                 unavailability: capabilities.canCheckForUpdates ? nil : noFeed,
                 icon: .symbol("arrow.triangle.2.circlepath", .info)))
+
+        rows.append(
+            toggleRow(
+                .checksForUpdatesAutomatically,
+                label: "Check for updates automatically",
+                explanation: "Checks the update feed every six hours.",
+                settings, capabilities
+            ).with(icon: .symbol("arrow.triangle.2.circlepath", .info)))
 
         rows.append(
             toggleRow(
@@ -1072,6 +1080,7 @@ public enum SettingsPresenter {
         case .minimisesWhileDictating: settings.minimisesWhileDictating
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts
         case .opensAtLogin: settings.opensAtLogin
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically
         case .sharesUsageStatistics: settings.sharesUsageStatistics
         case .sendsCrashReports: settings.sendsCrashReports
