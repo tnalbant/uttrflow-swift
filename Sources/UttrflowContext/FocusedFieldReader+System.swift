@@ -329,6 +329,8 @@ public enum FocusedFieldReader {
         // An editor that draws its own text keeps an empty input at the caret, so its line is read off the rendered text.
         let hidden =
             secure ? nil : hiddenInputLine(field, role: role, value: value, frame: fieldRect, while: goOn)
+        let number = windowNumber(while: goOn) { windowNumber(of: field) }
+        guard goOn() else { return nil }
 
         return FocusedFieldSnapshot(
             bundleIdentifier: app.bundleIdentifier,
@@ -358,8 +360,16 @@ public enum FocusedFieldReader {
             showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
             windowTitle: title,
-            windowNumber: windowNumber(of: field)
+            windowNumber: number
         )
+    }
+
+    /// Reads a window number only while this field snapshot is still wanted.
+    static func windowNumber(while isWanted: () -> Bool, read: () -> UInt32?) -> UInt32? {
+        guard isWanted() else { return nil }
+        let number = read()
+        guard isWanted() else { return nil }
+        return number
     }
 
     /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
