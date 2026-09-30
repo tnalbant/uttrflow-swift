@@ -95,7 +95,7 @@ public struct SpokenPunctuationPass: CleaningPass {
             }
     }
 
-    /// Whether an ordinary name stands at a seam: the text closes, a mark precedes it, a small word follows, or it is said again.
+    /// Whether an ordinary name stands at a seam: it is sentence-final, follows punctuation, or has a continuation.
     private func isEvidenced(
         _ words: [String], at position: Int, in live: [Int], of draft: Draft, repeated: Set<Int>
     ) -> Bool {
@@ -103,7 +103,9 @@ public struct SpokenPunctuationPass: CleaningPass {
         let next = position + words.count
         if closes(at: next, in: live, of: draft) || repeated.contains(live[position]) { return true }
         if position > 0 && draft.shape(at: live[position - 1]).endsClause { return true }
-        return next < live.count && FunctionWords.holds(draft.shape(at: live[next]).key)
+        return next == live.count
+            || next < live.count
+                && FunctionWords.holds(draft.shape(at: live[next]).key)
     }
 
     /// The word indices of ordinary names said more than once in one sentence, which is a list rather than a noun.

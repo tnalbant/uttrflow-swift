@@ -129,6 +129,25 @@ struct GenerativeTextTransformerTests {
         #expect(try await sut.transform(request(input)).text == expected)
     }
 
+    @Test("converts ordinary spoken punctuation names with content continuations and at dictation end")
+    func convertsOrdinaryMarkNamesWithoutFunctionWordEvidence() async throws {
+        let cases = [
+            ("call me tomorrow comma okay", "Call me tomorrow, okay."),
+            ("hi john comma how are you question mark", "Hi john, how are you?"),
+            ("here is the list colon apples and pears", "Here is the list: apples and pears."),
+            ("note colon bring snacks", "Note: bring snacks."),
+            ("meet at five colon thirty", "Meet at five: 30."),
+            ("the build passed period the tests passed period", "The build passed. The tests passed."),
+            ("i finished the draft period", "I finished the draft."),
+            ("that was amazing exclamation point", "That was amazing!"),
+        ]
+        for (input, expected) in cases {
+            let sut = GenerativeTextTransformer(
+                kind: .foundationModels, model: FakeCleanupModel { _ in input })
+            #expect(try await sut.transform(request(input)).text == expected)
+        }
+    }
+
     @Test(
         "keeps mark names the model uses as literal vocabulary",
         arguments: [

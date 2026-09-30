@@ -25,6 +25,14 @@ struct SpokenPunctuationPassTests {
             ("ready. question mark", "ready?"),
             ("milk, comma eggs", "milk, eggs"),
             ("done comma we move on", "done, we move on"),
+            ("call me tomorrow comma okay", "call me tomorrow, okay"),
+            ("hi john comma how are you question mark", "hi john, how are you?"),
+            ("here is the list colon apples and pears", "here is the list: apples and pears"),
+            ("note colon bring snacks", "note: bring snacks"),
+            ("meet at five colon thirty", "meet at five: 30"),
+            ("the build passed period the tests passed period", "the build passed. the tests passed."),
+            ("i finished the draft period", "i finished the draft."),
+            ("that was amazing exclamation point", "that was amazing!"),
         ]
     )
     func attachesMarks(input: String, expected: String) {
@@ -147,6 +155,16 @@ struct SpokenPunctuationPassTests {
     )
     func leavesMentions(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("keeps words that mention mark names literally")
+    func keepsLiteralVocabulary() {
+        for input in [
+            "the colon is an organ", "the period of time was long", "a new line of products",
+            "question mark over his future", "a comma splice",
+        ] {
+            #expect(cleaned(input, by: sut) == input)
+        }
     }
 
     /// "Period", "comma" and "dash" are nouns too, and a modifier hides the determiner that says so.
