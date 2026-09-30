@@ -46,8 +46,9 @@ public struct AcceptKeys: Sendable, Equatable {
         key(forBundleIdentifier: surface.bundleIdentifier)
     }
 
-    /// The code and query editors in the destination table, matched on a lowercased prefix.
-    private static let editors = DestinationRules.bundlePrefixes(of: [.codeEditor, .sqlEditor])
+    /// The editors in the destination table, matched on a lowercased prefix.
+    private static let editors = DestinationRules.bundlePrefixes(
+        of: [.codeEditor, .sqlEditor, .documentEditor])
 }
 
 /// The applications whose text areas hold commands rather than prose, which Accessibility cannot tell by role alone.
