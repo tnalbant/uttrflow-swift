@@ -713,7 +713,8 @@ public actor DictationPipeline {
             dictationContext?.situation
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
-        let joined = PieceJoiner.join(pieces, under: .standard(for: joining.destination))
+        let joiningFormatter = DestinationFormatter.standard(for: joining)
+        let joined = PieceJoiner.join(pieces, under: joiningFormatter)
         let whole = await finishMessage(joined, going: joining, seeing: appContext ?? AppContext())
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
@@ -726,8 +727,8 @@ public actor DictationPipeline {
 
         // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
         let snippetInput = PieceJoiner.snippetInput(
-            pieces, under: .standard(for: joining.destination), using: written)
-        let layout = DestinationFormatter.standard(for: joining.destination).layout
+            pieces, under: joiningFormatter, using: written)
+        let layout = joiningFormatter.layout
         let expanded = await expand(
             written, matching: snippetInput, laidOut: layout)
         guard !wasCancelled(mine) else { return }
