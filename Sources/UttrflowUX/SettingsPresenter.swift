@@ -599,10 +599,29 @@ public enum SettingsPresenter {
     static func suggestionModelBanner(
         _ settings: Settings, _ capabilities: SettingsCapabilities
     ) -> SettingsBanner? {
-        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
-        guard settings.suggestions.isEnabled, let title = capabilities.suggestionModel.headline else {
-            return nil
+        guard settings.suggestions.isEnabled else { return nil }
+        switch capabilities.suggestionRuntime {
+        case .starting:
+            return SettingsBanner(
+                symbolName: "clock", title: "Suggestions are paused briefly",
+                message: "The key tap is restarting. Suggestions will resume automatically.")
+        case .tapFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "Allow Uttrflow to monitor input in Privacy & Security, then turn suggestions off and on again."
+            )
+        case .corpusFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "The suggestion corpus could not be opened. Check its file access, then turn suggestions off and on again."
+            )
+        case .idle, .running:
+            break
         }
+        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
+        guard let title = capabilities.suggestionModel.headline else { return nil }
         switch capabilities.suggestionModel {
         case .ready, .notAsked, .downloading:
             return SettingsBanner(

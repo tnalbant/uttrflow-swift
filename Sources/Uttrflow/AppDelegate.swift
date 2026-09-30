@@ -156,6 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
     private var suggestionSecureInputNotice: String?
+    private var suggestionRuntime: SuggestionRuntimeStatus = .idle {
+        didSet { settingsPage.setSuggestionRuntime(suggestionRuntime) }
+    }
 
     /// Builds the app around one folder, which a test points at a temporary one.
     init(
@@ -806,10 +809,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self?.suggestionSecureInputNotice = isBlocking ? SecureInputWatch.suggestionNotice : nil
                 self?.refreshMenuBar()
             }
+            coordinator.onTapRestChanged = { [weak self] result in
+                guard let result else { self?.suggestionRuntime = .starting; return }
+                switch result {
+                case .success: self?.suggestionRuntime = .running
+                case .failure: self?.suggestionRuntime = .tapFailed
+                }
+            }
             completions = coordinator
-            coordinator.start()
+            suggestionRuntime = .starting
+            switch coordinator.start() {
+            case .success:
+                suggestionRuntime = coordinator.tapRest.isPending ? .starting : .running
+            case .failure:
+                suggestionRuntime = .tapFailed
+            }
         } catch {
             Self.log.error("the corpus would not open: \(SuggestionLog.failure(error), privacy: .public)")
+            suggestionRuntime = .corpusFailed
         }
     }
 
@@ -941,6 +958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Takes tab-to-complete away and lets its model go.
     private func stopCompleting() {
+        suggestionRuntime = .idle
         completions?.stop()
         completions = nil
         memoryPressure.forget()
