@@ -1192,7 +1192,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Why the shortcut is not armed, shown until it is; retried on the way back in.
-    private lazy var shortcutArming = ShortcutArming { [weak self] in self?.showShortcutUnheard() }
+    private var shortcutArmingAttempt = 0
+    private lazy var shortcutArming = ShortcutArming(
+        onChange: { [weak self] in self?.showShortcutUnheard() },
+        accessibilityIsGranted: { AXIsProcessTrusted() })
     /// Claimed shortcuts the window server refused, so a row never shows a key that does nothing.
     private var unarmedShortcuts: Set<ShortcutAction> = [] {
         didSet {
@@ -1203,6 +1206,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Arms the dictation shortcut while dictation is on, and releases it while it is off.
     private func startWatchingForTheShortcut() {
+        shortcutArmingAttempt += 1
+        let attempt = shortcutArmingAttempt
         guard let controller else { return }
         guard surfaces.listensForDictation else {
             shortcutArming.disarm()
@@ -1213,7 +1218,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let arming = shortcutArming
         // Kept as its own state on the menu bar and floating button, never shown as a failed dictation.
         Task {
-            await arming.arm { () throws(HotkeyError) in try await controller.start(binding: binding) }
+            await arming.arm {
+                guard attempt == shortcutArmingAttempt, surfaces.listensForDictation else { return }
+                try await controller.start(binding: binding)
+            }
             if let failure = arming.failure {
                 let reason = SuggestionLog.failure(failure)
                 Self.log.error("the dictation shortcut is not armed: \(reason, privacy: .public)")
@@ -3007,8 +3015,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch pane {
         case .accessibility:
             let outcome = await AccessibilityPermissionGate().request()
-            // A held modifier needs this grant to be watched at all. See `Docs/shortcuts.md`.
-            if outcome == .granted, settings.hotkey.heldModifier != nil {
+            if outcome == .granted {
                 startWatchingForTheShortcut()
             }
         case .microphone:

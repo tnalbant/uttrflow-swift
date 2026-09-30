@@ -47,6 +47,72 @@ struct ShortcutArmingTests {
         #expect(arming.failure == nil)
     }
 
+    @Test("retries after Accessibility permission becomes available")
+    func retriesAfterAccessibilityGrant() async throws {
+        let permission = Permission()
+        let attempts = Attempts()
+        let arming = ShortcutArming(
+            onChange: {}, accessibilityIsGranted: { permission.granted },
+            retryInterval: .milliseconds(10))
+
+        await arming.arm {
+            attempts.count += 1
+            throw .observationNotPermitted
+        }
+        #expect(attempts.count == 1)
+
+        permission.granted = true
+        for _ in 0..<100 where arming.failure != nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(attempts.count == 2)
+        #expect(arming.failure == nil)
+        arming.disarm()
+    }
+
+    @Test("does not retry unrelated arming failures")
+    func doesNotRetryOtherFailures() async throws {
+        let attempts = Attempts()
+        let arming = ShortcutArming(
+            onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
+
+        await arming.arm {
+            attempts.count += 1
+            throw .shortcutUnavailable
+        }
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(attempts.count == 1)
+        #expect(arming.failure == .shortcutUnavailable)
+        arming.disarm()
+    }
+
+    @Test("stops retrying when dictation is turned off")
+    func disarmStopsRetries() async throws {
+        let attempts = Attempts()
+        let arming = ShortcutArming(
+            onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
+
+        await arming.arm {
+            attempts.count += 1
+            throw .observationNotPermitted
+        }
+        arming.disarm()
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(attempts.count == 1)
+        #expect(arming.failure == nil)
+    }
+
+    private final class Permission {
+        var granted = false
+    }
+
+    private final class Attempts {
+        var count = 0
+    }
+
     @Test("gives way to secure input, which blocks every shortcut")
     func secureInputComesFirst() {
         #expect(

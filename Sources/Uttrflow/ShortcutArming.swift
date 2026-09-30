@@ -12,8 +12,18 @@ final class ShortcutArming {
     /// Told whenever the failure appears, changes or clears, so the lasting surfaces redraw.
     private let onChange: @MainActor () -> Void
 
-    init(onChange: @escaping @MainActor () -> Void) {
+    private let accessibilityIsGranted: @MainActor () -> Bool
+    private let retryInterval: Duration
+    private var retryTask: Task<Void, Never>?
+
+    init(
+        onChange: @escaping @MainActor () -> Void,
+        accessibilityIsGranted: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
+        retryInterval: Duration = .seconds(2)
+    ) {
         self.onChange = onChange
+        self.accessibilityIsGranted = accessibilityIsGranted
+        self.retryInterval = retryInterval
     }
 
     /// Arms through `start`, keeping a failure as this state rather than reporting it as a dictation.
@@ -21,13 +31,43 @@ final class ShortcutArming {
         do {
             try await start()
             failure = nil
+            stopRetrying()
         } catch {
             failure = error
+            if error == .observationNotPermitted {
+                retryUntilPermissionGranted(start)
+            } else {
+                stopRetrying()
+            }
         }
     }
 
     /// Forgets the failure once dictation is off, since an unwatched shortcut owes nobody a notice.
-    func disarm() { failure = nil }
+    func disarm() {
+        stopRetrying()
+        failure = nil
+    }
+
+    private func retryUntilPermissionGranted(
+        _ start: @escaping @MainActor () async throws(HotkeyError) -> Void
+    ) {
+        guard retryTask == nil else { return }
+        retryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: retryInterval) } catch { return }
+                guard !Task.isCancelled else { return }
+                guard accessibilityIsGranted() else { continue }
+                await arm(start)
+                if failure != .observationNotPermitted { return }
+            }
+        }
+    }
+
+    private func stopRetrying() {
+        retryTask?.cancel()
+        retryTask = nil
+    }
 
     /// What the surfaces say while the shortcut cannot be heard, secure input first since it blocks every shortcut.
     static func unheard(secureInputBlocking: Bool, failure: HotkeyError?) -> String? {
