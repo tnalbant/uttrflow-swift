@@ -25,6 +25,11 @@ struct SettingsDiagnosticsView: View {
                 rows(presentation.system + presentation.permissions + presentation.availability)
             }
             timings
+            if !presentation.decoding.isEmpty {
+                section("Recognition effort") {
+                    rows(presentation.decoding)
+                }
+            }
             if !presentation.reliability.isEmpty {
                 section("How often each step worked") {
                     rows(

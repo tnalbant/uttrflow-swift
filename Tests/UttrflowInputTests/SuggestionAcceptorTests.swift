@@ -236,6 +236,50 @@ struct TypedTextInsertionEngineTests {
         #expect(typist.deletions == [2], "one Delete per character, and the emoji is one character")
         #expect(typist.text == ["🚀 launch"])
     }
+
+    @Test("Acceptance reuses its bounded read for a large replacement field")
+    func acceptanceDoesNotReadTheLargeFieldAgain() async throws {
+        let focus = LargeValueFocus()
+        let typist = RecordingTypist()
+        let acceptor = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+
+        try await acceptor.accept(.certain("git commit"), after: "gti ")
+
+        #expect(focus.boundedReads == 1)
+        #expect(focus.largestBoundedRequest < 100)
+        #expect(focus.wholeValueReads == 0)
+        #expect(typist.deletions == [3])
+    }
+}
+
+/// A million-character field that counts bounded reads separately from whole-value reads.
+private final class LargeValueFocus: AccessibilityFocus, Sendable {
+    private struct State {
+        var boundedRequests: [Int] = []
+        var wholeValueReads = 0
+    }
+    private let state = Mutex(State())
+    private let value = String(repeating: "z", count: 999_996) + "gti "
+
+    var boundedReads: Int { state.withLock { $0.boundedRequests.count } }
+    var largestBoundedRequest: Int { state.withLock { $0.boundedRequests.max() ?? 0 } }
+    var wholeValueReads: Int { state.withLock { $0.wholeValueReads } }
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func focusedFieldIsSecure() -> Bool { false }
+    func tail(upTo count: Int) -> FieldTail {
+        state.withLock { $0.boundedRequests.append(count) }
+        return .text(String(value.suffix(count)))
+    }
+    func precedingText(_ count: Int) -> String? {
+        state.withLock { $0.wholeValueReads += 1 }
+        return String(value.suffix(count))
+    }
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (nil, tail(upTo: count))
+    }
 }
 
 @Suite("Writing a completion through Accessibility")

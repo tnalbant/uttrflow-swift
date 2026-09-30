@@ -8,6 +8,8 @@ public enum SystemSettingsPane: Sendable, Equatable, CaseIterable {
     case accessibility
     /// Apple Intelligence & Siri.
     case appleIntelligence
+    /// Keyboard.
+    case keyboard
 }
 
 /// What the user can do about a failure; the UI renders every failure from this one value.

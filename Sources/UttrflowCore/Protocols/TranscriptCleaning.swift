@@ -2,6 +2,9 @@
 
 /// Turns a raw transcript into the words the speaker meant; the pipeline sees this, never the router behind.
 public protocol TranscriptCleaning: Sendable {
+    /// The clean-up choices used for this dictation.
+    var cleaningSteps: CleaningSteps { get }
+
     /// Cleans one transcript, or throws when no cleaner can.
     func clean(
         _ request: TransformationRequest
@@ -18,6 +21,9 @@ public protocol TranscriptCleaning: Sendable {
 }
 
 extension TranscriptCleaning {
+    /// A cleaner without configurable passes runs every step.
+    public var cleaningSteps: CleaningSteps { .default }
+
     /// Nothing to prepare, which is what most cleaners have.
     public func warm(for situation: Situation?) async {}
 

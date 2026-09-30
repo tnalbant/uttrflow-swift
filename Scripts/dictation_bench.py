@@ -335,7 +335,8 @@ def normalise(text):
     t = re.sub(r"(?<=[a-z])\.(?=[a-z])", " dot ", t)
     t = re.sub(r"(\d)[snrt][tdh]\b", r"\1", t)  # drops the suffix of an ordinal numeral
     t = re.sub(r"\d[\d,]*(?:[.:]\d+)?", numeral, t)
-    t = re.sub(r"[^\w\s]", " ", t.replace("'", "").replace("’", ""))
+    t = "".join(" " if unicodedata.category(ch)[0] in "PS" else ch
+                 for ch in t.replace("'", "").replace("’", ""))
     return [ORDINALS.get(w, w) for w in t.split()]
 
 

@@ -474,15 +474,26 @@ public actor PredictStore: PredictionStore {
         leaveNothingBehind()
     }
 
-    /// Forgets one entry, and every succession naming it, wherever the user noticed it.
+    /// Retires one entry in this scope, and every succession naming it, so other scopes cannot offer it here.
     public func forget(_ text: String, in surface: Surface) throws(PredictStoreError) {
         guard let id = try identifier(of: surface, creating: false) else { return }
         let text = Spelling.canonical(text)
         try database.transaction { () throws(PredictStoreError) in
-            try database.run("DELETE FROM entry WHERE surface_id = ? AND text = ?") {
+            // Keep a scoped tombstone so copies read from other scopes stay forgotten here.
+            try database.run(
+                """
+                INSERT INTO entry (surface_id, text, text_lower, count, last_used, superseded_by)
+                VALUES (?, ?, ?, 0, 0, ?)
+                ON CONFLICT (surface_id, text) DO UPDATE SET
+                    count = 0, last_used = 0, superseded_by = excluded.superseded_by
+                """
+            ) {
                 $0.bind(1, id)
                 $0.bind(2, text)
+                $0.bind(3, text.lowercased())
+                $0.bind(4, text)
             }
+            try evictWeakest(surfaceIdentifier: id)
             try database.run("DELETE FROM succession WHERE surface_id = ? AND (previous = ? OR next = ?)") {
                 $0.bind(1, id)
                 $0.bind(2, text)

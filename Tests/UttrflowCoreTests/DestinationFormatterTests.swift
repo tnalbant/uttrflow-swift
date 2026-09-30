@@ -74,4 +74,20 @@ struct DestinationFormatterTests {
         #expect(one == two)
         #expect(one != DestinationFormatter.standard(for: .plain))
     }
+
+    @Test("search fields preserve heard casing, omit terminal stops, and stay on one line")
+    func searchField() {
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.firstWord == .asSpoken)
+        #expect(formatter.terminalStop == .never)
+        #expect(formatter.layout == .singleLine)
+    }
+
+    @Test("AX text fields stay on one line")
+    func textField() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.layout == .singleLine)
+    }
 }

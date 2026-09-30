@@ -132,7 +132,7 @@ struct SuggestionPresentationTests {
         let presentation = SuggestionPresentation(.certain("Sydney"))
         #expect(SuggestionPresentation.listPrefix == "↳")
         #expect(presentation.footer == "⇥ take   ⌥↓ next   ⎋ dismiss")
-        #expect(SuggestionPresentation.dimmedShare > 0 && SuggestionPresentation.dimmedShare < 1)
+        #expect(SuggestionPresentation.unselectedListOpacity > 0)
     }
 
     @Test("A field that names its face is drawn in it; one that names nothing gets the monospaced default")
@@ -466,6 +466,52 @@ struct SuggestionPresentationTests {
             green: text.green * share + background.green * (1 - share),
             blue: text.blue * share + background.blue * (1 - share))
         return TextColor.contrast(seen, background)
+    }
+
+    /// The contrast of list and footer text, whose opacity is independent of the inline ghost.
+    private static func listContrast(
+        of presentation: SuggestionPresentation, on background: TextColor
+    ) -> Double {
+        guard case .field(let text) = presentation.ink else {
+            Issue.record("the list did not take the field's colour")
+            return 1
+        }
+        let share = presentation.unselectedListOpacity
+        let seen = TextColor(
+            red: text.red * share + background.red * (1 - share),
+            green: text.green * share + background.green * (1 - share),
+            blue: text.blue * share + background.blue * (1 - share))
+        return TextColor.contrast(seen, background)
+    }
+
+    @Test("Unselected rows and footer use contrast-safe direct opacity for every appearance")
+    func listAndFooterOpacityMeetContrastTargets() {
+        for appearance in [SuggestionAppearance.standard, highContrast, opaque] {
+            let presentation = SuggestionPresentation(
+                .choice(leader: "Sydney", others: ["Sydenham"]), appearance: appearance,
+                fieldTextColor: .black)
+            let target = appearance.demandsOpaqueGhost ? 4.5 : 3.0
+            #expect(presentation.unselectedListOpacity == (appearance.demandsOpaqueGhost ? 0.9 : 0.72))
+            #expect(Self.listContrast(of: presentation, on: .white) >= target)
+
+            let darkPresentation = SuggestionPresentation(
+                .choice(leader: "Sydney", others: ["Sydenham"]), appearance: appearance,
+                fieldTextColor: .white)
+            #expect(Self.listContrast(of: darkPresentation, on: Self.darkField) >= target)
+        }
+    }
+
+    @Test("Selected list row remains stronger than unselected rows")
+    func selectedListRowHasDistinctAppearance() throws {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "Sydney", others: ["Sydenham"]),
+            selection: SuggestionSelection(index: 1, hasMoved: true))
+        let selected = try #require(presentation.list.first(where: \.isSelected))
+        let unselected = try #require(presentation.list.first(where: { !$0.isSelected }))
+        #expect(selected.isSelected)
+        #expect(!unselected.isSelected)
+        #expect(presentation.listOpacity(for: selected) == 1)
+        #expect(presentation.listOpacity(for: unselected) < presentation.listOpacity(for: selected))
     }
 
     @Test(

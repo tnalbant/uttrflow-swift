@@ -29,6 +29,11 @@ struct SpokenPunctuationPassTests {
             ("hi john comma how are you question mark", "hi john, how are you?"),
             ("here is the list colon apples and pears", "here is the list: apples and pears"),
             ("note colon bring snacks", "note: bring snacks"),
+            ("chai comma aur biscuit", "chai, aur biscuit"),
+            ("note colon kal chutti hai", "note: kal chutti hai"),
+            ("we discussed colon cancer", "we discussed colon cancer"),
+            ("export comma separated values", "export comma separated values"),
+            ("we checked dash cam footage", "we checked dash cam footage"),
             ("meet at five colon thirty", "meet at five: 30"),
             ("the build passed period the tests passed period", "the build passed. the tests passed."),
             ("i finished the draft period", "i finished the draft."),
@@ -214,6 +219,7 @@ struct SpokenPunctuationPassTests {
             "screened for colon cancer last year", "write comma separated values please",
             "reduce comma usage in prose", "sprint dash training starts monday",
             "we checked dash cam footage", "he keeps writing comma splices",
+            "the main road is closed", "turn left at the main gate",
             "done comma next", "two things colon milk", "milk comma eggs and bread",
         ]
     )
@@ -231,6 +237,9 @@ struct SpokenPunctuationPassTests {
             ("however comma the build passed", "however, the build passed"),
             ("the reason is simple colon we ran out", "the reason is simple: we ran out"),
             ("we left early dash it was raining", "we left early \u{2014} it was raining"),
+            ("chai comma aur biscuit", "chai, aur biscuit"),
+            ("note colon kal chutti hai", "note: kal chutti hai"),
+            ("chai dash phir biscuit", "chai \u{2014} phir biscuit"),
             ("apples comma pears comma plums", "apples, pears, plums"),
             ("red comma green. blue comma white", "red comma green. blue comma white"),
             ("we have colon trouble. the colon comma and more", "we have colon trouble. the colon, and more"),
@@ -238,6 +247,28 @@ struct SpokenPunctuationPassTests {
     )
     func takesAnOrdinaryNameOnEvidence(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("recognises each requested romanised Hindi evidence word")
+    func romanisedHindiEvidenceWords() {
+        for word in [
+            "aur", "ya", "toh", "phir", "lekin", "par", "ki", "ke", "ka", "ko", "main", "hum", "tum",
+            "aap", "yeh", "woh",
+        ] {
+            #expect(cleaned("chai comma \(word) biscuit", by: sut) == "chai, \(word) biscuit")
+        }
+    }
+
+    @Test("rules-only cleaner applies the Hinglish spoken punctuation examples")
+    func rulesOnlyHinglishExamples() async throws {
+        let cleaner = RuleBasedTransformer()
+        for (spoken, expected) in [
+            ("chai comma aur biscuit", "Chai, aur biscuit."),
+            ("note colon kal chutti hai", "Note: kal chutti hai."),
+        ] {
+            let request = TransformationRequest(transcription: Transcription(text: spoken))
+            #expect(try await cleaner.transform(request).text == expected)
+        }
     }
 
     @Test(

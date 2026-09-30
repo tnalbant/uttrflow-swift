@@ -21,7 +21,7 @@ public enum TextInsertionError: UttrflowFailure {
     public var userMessage: String {
         switch self {
         case .noFocusedTextField:
-            "There's no text field to type into. Click where you want the text, then try again."
+            "There's no text field to type into. Your dictation is saved under Recent in the menu bar."
         case .accessibilityDenied:
             "Accessibility access is required to insert text into other applications."
         case .clipboardUnavailable:
@@ -42,7 +42,7 @@ public enum TextInsertionError: UttrflowFailure {
     /// Wherever the words are: the clipboard, or Recent when the clipboard is what failed.
     public var recovery: RecoveryAction? {
         switch self {
-        case .noFocusedTextField: .retry
+        case .noFocusedTextField: .showRecentDictations
         case .accessibilityDenied: .openSystemSettings(.accessibility)
         // The clipboard failed, so "paste" would point at the one place the words are not.
         case .clipboardUnavailable: .showRecentDictations

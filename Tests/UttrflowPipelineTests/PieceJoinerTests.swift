@@ -61,6 +61,33 @@ struct PieceJoinerListTests {
                 == "First, we need to fix the build. Second, we should review the PR.")
     }
 
+    @Test("ordinal paragraph layout is independent of where pieces are cut")
+    func ordinalParagraphsIgnorePieceCuts() {
+        let layouts = [
+            ["We need a plan. First, finish onboarding. Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding. Second, fix login.", "Third, review design."],
+            ["We need a plan.", "First, finish onboarding. Second, fix login. Third, review design."],
+        ].map { joined($0, .messaging) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(
+            layouts[0]
+                == "We need a plan. First, finish onboarding.\n\nSecond, fix login.\n\nThird, review design.")
+    }
+
+    @Test("ordinal list layout is independent of where pieces are cut")
+    func ordinalListsIgnorePieceCuts() {
+        let layouts = [
+            ["First, finish onboarding. Second, fix login. Third, review design."],
+            ["First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["First, finish onboarding. Second, fix login.", "Third, review design."],
+        ].map { joined($0, .document) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(layouts[0] == "- Finish onboarding\n- Fix login\n- Review design")
+    }
+
     @Test("keeps the prose a list is introduced with, above the items")
     func leadInStaysProse() {
         let text = joined(
@@ -210,9 +237,47 @@ struct PieceJoinerRestatementTests {
         #expect(joined(["Let's meet at four.", "No, sorry, at five."], .document) == "Let's meet at five.")
     }
 
+    @Test("keeps a seam restatement when self-corrections are switched off")
+    func selfCorrectionOffKeepsBothPieces() {
+        let pieces = [
+            piece("We shipped the build on Monday."), piece("Actually shipped the build on Tuesday."),
+        ]
+        let steps = CleaningSteps.default.setting(.selfCorrection, isOn: false)
+
+        #expect(
+            PieceJoiner.join(pieces, under: .standard(for: .document)).cleaned.text
+                == "We shipped the build on Tuesday.")
+
+        let whole = PieceJoiner.join(
+            pieces, under: .standard(for: .document), steps: steps)
+
+        #expect(
+            whole.cleaned.text == "We shipped the build on Monday. Actually shipped the build on Tuesday.")
+    }
+
     @Test("matches two numbers across the cut the way the pass does inside one piece")
     func numbersAcrossTheCut() {
         #expect(joined(["Coffee at 2.", "Actually 3."], .document) == "Coffee at 3.")
+    }
+
+    @Test("drops a replaced phrase when its correction trigger ends the previous piece")
+    func triggerAtEndOfPreviousPiece() {
+        #expect(
+            joined(["Let's move it to Tuesday no wait", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+        #expect(
+            joined(["Let's move it to Tuesday sorry", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+        #expect(
+            joined(["Let's move it to Tuesday I mean", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+    }
+
+    @Test("keeps a trailing apology when the next piece does not restate the phrase")
+    func trailingSorryIsAnApology() {
+        #expect(
+            joined(["I am sorry", "Thank you for waiting"], .document)
+                == "I am sorry. Thank you for waiting")
     }
 
     @Test("keeps both halves when the piece after the trigger says something else")
@@ -461,10 +526,27 @@ struct PieceJoinerSeamTests {
     @Test("adds no stop where the next piece opens on a phrase that continues the sentence")
     func mdSentenceSeamTakesNoStop() {
         let whole = PieceJoiner.join(
-            [piece("we moved the review"), piece("to Thursday because the room was taken")],
+            [piece("We moved the review"), piece("To Thursday because the room was taken")],
             under: .standard(for: .document))
 
-        #expect(whole.cleaned.text == "we moved the review to Thursday because the room was taken")
+        #expect(whole.cleaned.text == "We moved the review to Thursday because the room was taken")
+    }
+
+    @Test("lowers a recognizer sentence capital across a run-on seam")
+    func lowersCapitalAtRunOnSeam() {
+        let whole = PieceJoiner.join(
+            [piece("We moved the review to"), piece("The next slot works")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "We moved the review to the next slot works")
+    }
+
+    @Test("keeps protected first word casing across a run-on seam")
+    func keepsProtectedCaseAtRunOnSeam() {
+        let seamed = PieceJoiner.seamed(
+            ["We moved the review to", "I called John"], under: .standard(for: .document))
+
+        #expect(seamed == ["We moved the review to", "I called John"])
     }
 
     /// An infinitive opens a sentence as readily as it continues one, so it is no evidence either way.
@@ -484,6 +566,29 @@ struct PieceJoinerSeamTests {
             ["the room was taken", "in the morning we moved it"], under: .standard(for: .document))
 
         #expect(seamed.first == "the room was taken.")
+    }
+
+    @Test(
+        "joins a dependent clause opening to its main clause across a seam",
+        arguments: ["When", "If", "Because", "Although"])
+    func dependentClauseAtASeamRunsOn(subordinator: String) {
+        let seamed = PieceJoiner.seamed(
+            [
+                "\(subordinator) the light was finally automated.",
+                "The logbook was given to the town museum.",
+            ],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "\(subordinator) the light was finally automated")
+    }
+
+    @Test("still stops after a statement that starts with a wh-word")
+    func whWordStatementAtASeamStillStops() {
+        let seamed = PieceJoiner.seamed(
+            ["What it showed was surprising.", "The board approved the report."],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "What it showed was surprising.")
     }
 
     /// A hard cut falls where the speaker never paused, which is most often inside a phrase.

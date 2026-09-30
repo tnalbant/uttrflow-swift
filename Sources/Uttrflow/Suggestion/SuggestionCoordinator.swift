@@ -162,6 +162,8 @@ final class SuggestionCoordinator {
     var onTurnedOffEverywhere: (() -> Void)?
     /// Tells the menu bar why suggestion input is paused.
     var onSecureInputBlockingChanged: ((Bool) -> Void)?
+    var onTapRestChanged: ((Result<Void, any Error>?) -> Void)?
+    var onSecureInputChanged: ((Bool) -> Void)?
 
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
@@ -266,7 +268,8 @@ final class SuggestionCoordinator {
     }
 
     /// Arms the tap and starts watching, or says why it cannot.
-    func start() {
+    @discardableResult
+    func start() -> Result<Void, any Error> {
         processActivity.begin()
         isStopped = false
         tapRest.cancel()
@@ -283,17 +286,22 @@ final class SuggestionCoordinator {
             }
         }
         checkSecureInput()
-        guard !secureInput.isBlocking else { return }
-        startInterceptor()
+        guard !secureInput.isBlocking else {
+            onSecureInputChanged?(true)
+            return .success(())
+        }
+        let result = startInterceptor()
+        if case .success = result { onTapRestChanged?(.success(())) }
+        return result
     }
 
     /// Starts the key tap and activity monitors after secure keyboard entry ends.
-    private func startInterceptor() {
+    private func startInterceptor() -> Result<Void, any Error> {
         do {
             try interceptor.start()
         } catch {
             Self.log.error("tab-to-complete is off: \(SuggestionLog.failure(error), privacy: .public)")
-            return
+            return .failure(error)
         }
         interceptor.arm([])
         // Before the first keystroke, because the reader's queue may not call AppKit or HIToolbox.
@@ -311,6 +319,7 @@ final class SuggestionCoordinator {
         } else {
             watchFocusedFieldValues()
         }
+        return .success(())
     }
 
     /// Withdraws suggestions while secure keyboard entry prevents reliable key capture.
@@ -319,14 +328,19 @@ final class SuggestionCoordinator {
         let now = secureInput.isBlocking ? "on" : "off"
         Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
         if secureInput.isBlocking {
+            onSecureInputChanged?(true)
             withdraw()
             focusedFieldValueObserver.stop()
             interceptor.stop()
             onSecureInputBlockingChanged?(true)
             panel.announce(SecureInputWatch.suggestionNotice)
         } else {
+            onSecureInputChanged?(false)
             onSecureInputBlockingChanged?(false)
-            startInterceptor()
+            switch startInterceptor() {
+            case .success: onTapRestChanged?(.success(()))
+            case .failure(let error): onTapRestChanged?(.failure(error))
+            }
         }
     }
 
@@ -1197,6 +1211,7 @@ final class SuggestionCoordinator {
         }
         let shown = panel.show(
             update.suggestion, typed: session.typed, placement: .inlineGhost, caret: caret,
+            direction: snapshot.writingDirection == .rightToLeft ? .rightToLeft : .leftToRight,
             window: snapshot.window, field: snapshot.ghostField, fieldPointSize: snapshot.pointSize,
             selection: session.selection,
             acceptKey: preferences.acceptKeys.key(
@@ -1302,6 +1317,7 @@ final class SuggestionCoordinator {
 
     /// Rests the tap and starts it again, since a disable is usually the system's doing and the feature need not die of it.
     private func restTap() {
+        onTapRestChanged?(nil)
         interceptor.arm([])
         interceptor.stop()
         panel.hide()
@@ -1310,8 +1326,10 @@ final class SuggestionCoordinator {
             do {
                 try interceptor.start()
                 Self.log.error("the tap is back after resting \(Self.tapRestSeconds)s")
+                onTapRestChanged?(.success(()))
             } catch {
                 Self.log.error("the tap could not restart: \(SuggestionLog.failure(error), privacy: .public)")
+                onTapRestChanged?(.failure(error))
             }
         }
     }
@@ -1340,22 +1358,13 @@ final class SuggestionCoordinator {
             return false
         }
         var via = "nothing"
-        switch await acceptor.aim(
-            .certain(text), after: typed, expectedWindowNumber: windowNumber)
-        {
-        case .refused(let reason):
-            Self.log.error("\(SuggestionLog.refusedUnwritten(reason, typed: typed), privacy: .public)")
+        do throws(TextInsertionError) {
+            via =
+                try await acceptor.accept(
+                    .certain(text), after: typed, expectedWindowNumber: windowNumber)?.rawValue ?? via
+        } catch {
+            Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
             return false
-        case .nothing:
-            break
-        case .write(let edit):
-            do throws(TextInsertionError) {
-                via = try await acceptor.write(edit, expectedWindowNumber: windowNumber)?.rawValue ?? via
-            } catch {
-                // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
-                Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
-                return false
-            }
         }
         Self.log.debug(
             "\(SuggestionLog.accept(text: text, typed: typed, via: via), privacy: .public)"

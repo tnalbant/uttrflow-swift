@@ -16,6 +16,8 @@ public struct FillersPass: CleaningPass {
     ]
 
     private static let standaloneReplies: Set<String> = ["hmm", "mhm"]
+    /// Only er also names a noun; the other filler spellings remain sounds after determiners.
+    private static let nounLikeFillerWords: Set<String> = ["er", "erm"]
     public init() {}
 
     /// Whether the comma before a bracketed filler belongs to the sentence rather than to the pause.
@@ -53,9 +55,10 @@ public struct FillersPass: CleaningPass {
                 previous = index
                 continue
             }
-            // A filler sound is never preceded by a determiner; a noun spelled like one — "the ER" — always is.
+            // Only noun-capable filler spellings need protection when a determiner opens their noun phrase.
             guard Self.fillerWords.contains(draft.shape(at: index).key),
-                position == 0
+                !Self.nounLikeFillerWords.contains(draft.shape(at: index).key)
+                    || position == 0
                     || !MentionGuard.isMentioned(at: position, spanning: 1, in: live, of: draft)
             else {
                 previous = index

@@ -46,8 +46,14 @@ public protocol AccessibilityFocus: Sendable {
     /// The containing window and tail from one focused element read.
     func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail)
 
+    /// The bounded accept-path read, including the secure-field check.
+    func acceptanceWindowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail)
+
     /// The containing window of the field that will receive an insertion.
     func focusedWindowNumber() -> UInt32?
+
+    /// The containing window rechecked with the accept-path timeout.
+    func acceptanceFocusedWindowNumber() -> UInt32?
 
     /// The application in front right now, which is where a write lands. See `Docs/insertion.md`.
     func frontmostApplication() -> InsertionDestination?
@@ -81,8 +87,17 @@ extension AccessibilityFocus {
         (nil, tail(upTo: count))
     }
 
+    /// Keeps fake and alternate readers secure while reusing their window-aware tail.
+    public func acceptanceWindowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard !focusedFieldIsSecure() else { return (nil, .unreadable) }
+        return windowNumberAndTail(upTo: count)
+    }
+
     /// A reader without a window-aware API cannot prove where an insertion will land.
     public func focusedWindowNumber() -> UInt32? { nil }
+
+    /// Uses the regular window answer when no accept-specific timeout is needed.
+    public func acceptanceFocusedWindowNumber() -> UInt32? { focusedWindowNumber() }
 
     /// A reader with no window server behind it cannot say what is in front, and says so.
     public func frontmostApplication() -> InsertionDestination? { nil }

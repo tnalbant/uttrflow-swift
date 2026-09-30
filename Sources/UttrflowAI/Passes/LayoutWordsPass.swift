@@ -35,7 +35,7 @@ public struct LayoutWordsPass: CleaningPass {
             guard
                 let found = opening(mark(at: position, in: live, of: draft), at: position),
                 position + found.length < live.count,
-                isUsed(found, at: position, in: live, of: draft),
+                isUsed(found, at: position, in: live, of: draft, among: numbered),
                 isCorroborated(at: position, in: live, of: draft, among: numbered)
             else {
                 position += 1
@@ -79,7 +79,7 @@ public struct LayoutWordsPass: CleaningPass {
         var groups: [String: [(marker: Int, label: Int, value: Int)]] = [:]
         for position in live.indices {
             guard let found = mark(at: position, in: live, of: draft), position + found.length < live.count,
-                isUsed(found, at: position, in: live, of: draft),
+                isUsed(found, at: position, in: live, of: draft, among: numbered),
                 isCorroborated(at: position, in: live, of: draft, among: numbered),
                 position > 0,
                 let item = itemNumber(at: position + 1, in: live, of: draft),
@@ -115,7 +115,8 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// Whether the phrase is dictated layout rather than named; an item opening its sentence needs a mark. See `Docs/cleanup.md`.
     private func isUsed(
-        _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft
+        _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft,
+        among numbered: Set<Int>
     ) -> Bool {
         let length = found.length
         if position == 0, found.mark.allSatisfy(\.isNewline), insertionState != .unknown { return true }
@@ -128,16 +129,16 @@ public struct LayoutWordsPass: CleaningPass {
         // A break straight after a sentence's stop is how people dictate one: "full stop new paragraph".
         if position > 0, found.mark.allSatisfy(\.isNewline) { return true }
         let last = draft.shape(at: live[position + length - 1])
-        return last.endsClause && !last.endsSentence
+        return (last.endsClause && !last.endsSentence)
+            || isCorroborated(at: position, in: live, of: draft, among: numbered)
     }
 
     /// Whether a numbered item inside its sentence has a neighbouring item said beside it, since a lone one is a designator.
     private func isCorroborated(
         at position: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
     ) -> Bool {
-        guard position > 0, !draft.shape(at: live[position - 1]).endsSentence,
-            let value = itemValue(at: position, in: live, of: draft)
-        else { return true }
+        let opensSentence = position == 0 || draft.shape(at: live[position - 1]).endsSentence
+        guard opensSentence, let value = itemValue(at: position, in: live, of: draft) else { return true }
         guard
             (value > 1 && numbered.contains(value - 1))
                 || (value < Int.max && numbered.contains(value + 1))

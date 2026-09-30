@@ -32,16 +32,23 @@ public struct FocusedWindow: Sendable, Equatable {
     public let followingText: String?
     /// Whether the focused field hides what is typed, judged before its value is read.
     public let isSecure: Bool
+    /// The focused field's Accessibility role, when reported.
+    public let accessibilityRole: String?
+    /// Whether Accessibility says the field accepts multiple lines.
+    public let isMultiline: Bool?
 
     public init(
         title: String? = nil, selectedText: String? = nil, precedingText: String? = nil,
-        followingText: String? = nil, isSecure: Bool = false
+        followingText: String? = nil, isSecure: Bool = false,
+        accessibilityRole: String? = nil, isMultiline: Bool? = nil
     ) {
         self.title = title
         self.selectedText = selectedText
         self.precedingText = precedingText
         self.followingText = followingText
         self.isSecure = isSecure
+        self.accessibilityRole = accessibilityRole
+        self.isMultiline = isMultiline
     }
 }
 
@@ -146,7 +153,9 @@ public final class MacContextEngine: ContextEngine, Sendable {
             selectedText: Self.meaningful(gathered.window?.selectedText).map(Self.truncated),
             // Kept verbatim: an empty field is the start of the text, not nothing learnt.
             precedingText: gathered.window?.precedingText,
-            followingText: gathered.window?.followingText
+            followingText: gathered.window?.followingText,
+            accessibilityRole: gathered.window?.accessibilityRole,
+            isMultiline: gathered.window?.isMultiline
         )
     }
 

@@ -110,9 +110,20 @@ extension MacContextEngine {
             return bounded(field, selection: selection)
                 ?? CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: selection)
         }
+        let role = field.flatMap { SurfaceProbe.string($0, kAXRoleAttribute) }
+        let multiline =
+            field.flatMap { SurfaceProbe.boolean($0, "AXMultiline") }
+            ?? role.flatMap { role in
+                switch role {
+                case "AXTextArea": true
+                case "AXTextField", "AXSearchField": false
+                default: nil
+                }
+            }
         return FocusedWindow(
             title: title, selectedText: selected,
-            precedingText: caret?.preceding, followingText: caret?.following)
+            precedingText: caret?.preceding, followingText: caret?.following,
+            accessibilityRole: role, isMultiline: multiline)
     }
 
     /// Whether the field declares itself secure, or reads back as nothing but mask characters.

@@ -101,9 +101,12 @@ final class MenuBarController: NSObject {
     private func apply() {
         if let button = statusItem.button {
             button.image = Self.icon(for: presentation, isDevelopmentBuild: isDevelopmentBuild)
+            let captureLabel =
+                presentation.clipboardCaptureEnabled ? "Clipboard capture on" : "Clipboard capture off"
             let label =
                 isDevelopmentBuild
-                ? "Uttrflow Dev, \(presentation.accessibilityLabel)" : presentation.accessibilityLabel
+                ? "Uttrflow Dev, \(presentation.accessibilityLabel), \(captureLabel)"
+                : "\(presentation.accessibilityLabel), \(captureLabel)"
             button.setAccessibilityLabel(label)
             button.attributedTitle = Self.title(
                 isDevelopmentBuild: isDevelopmentBuild, iconMissing: button.image == nil)
@@ -140,14 +143,42 @@ final class MenuBarController: NSObject {
         } else if isDevelopmentBuild {
             colour = developmentColour
         } else {
-            return image
+            return clipboardBadge(on: image, isEnabled: presentation.clipboardCaptureEnabled)
         }
 
         guard let tinted = image.withSymbolConfiguration(.init(paletteColors: [colour]))
-        else { return image }
+        else { return clipboardBadge(on: image, isEnabled: presentation.clipboardCaptureEnabled) }
         // A template image is recoloured by the menu bar, so keeping the tint means opting out.
         tinted.isTemplate = false
-        return tinted
+        return clipboardBadge(on: tinted, isEnabled: presentation.clipboardCaptureEnabled)
+    }
+
+    /// Adds a high-contrast dot so clipboard capture stays visible while another activity owns the icon.
+    private static func clipboardBadge(on image: NSImage, isEnabled: Bool) -> NSImage {
+        let badge = NSImage(size: image.size, flipped: false) { bounds in
+            image.draw(in: bounds)
+            let diameter: CGFloat = 7
+            let circle = NSBezierPath(
+                ovalIn: CGRect(
+                    x: bounds.maxX - diameter + 0.5, y: bounds.minY - 0.5,
+                    width: diameter, height: diameter))
+            NSColor.white.setFill()
+            circle.fill()
+            (isEnabled ? NSColor.systemGreen : NSColor.systemGray).setFill()
+            NSBezierPath(ovalIn: circle.bounds.insetBy(dx: 0.8, dy: 0.8)).fill()
+            if !isEnabled {
+                let mark = NSBezierPath()
+                mark.lineWidth = 0.9
+                mark.move(to: CGPoint(x: bounds.maxX - 5.7, y: bounds.minY + 3))
+                mark.line(to: CGPoint(x: bounds.maxX - 2.3, y: bounds.minY + 3))
+                NSColor.white.setStroke()
+                mark.stroke()
+            }
+            return true
+        }
+        badge.isTemplate = false
+        badge.accessibilityDescription = isEnabled ? "Clipboard capture on" : "Clipboard capture off"
+        return badge
     }
 
     static func title(isDevelopmentBuild: Bool, iconMissing: Bool) -> NSAttributedString {

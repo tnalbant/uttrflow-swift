@@ -2,6 +2,8 @@
 public struct GenerationSituation: Sendable, Equatable {
     /// The application as the user knows it, e.g. "Terminal", "DBeaver", "Safari".
     public let application: String
+    /// Whether the destination table classifies this as a SQL or code editor.
+    public let isCodeDestination: Bool
     /// What the field calls itself, when it says anything: a role, a placeholder, a description.
     public let field: String?
     /// The page or directory the field belongs to: a web host, a working directory.
@@ -23,11 +25,13 @@ public struct GenerationSituation: Sendable, Equatable {
 
     /// The moment as the field reports it, everything but the application optional.
     public init(
-        application: String, field: String? = nil, document: String? = nil, preceding: String? = nil,
+        application: String, isCodeDestination: Bool = false, field: String? = nil,
+        document: String? = nil, preceding: String? = nil,
         windowTitle: String? = nil, surroundings: String? = nil, recentLines: [String] = [],
         timedTurnLines: Int = 0, isMultiline: Bool = false, choices: [String] = []
     ) {
         self.application = application
+        self.isCodeDestination = isCodeDestination
         self.field = field
         self.document = document
         self.preceding = preceding
@@ -49,7 +53,8 @@ public struct GenerationSituation: Sendable, Equatable {
     /// The same moment with the next word held to these choices.
     public func choosing(_ choices: [String]) -> GenerationSituation {
         GenerationSituation(
-            application: application, field: field, document: document, preceding: preceding,
+            application: application, isCodeDestination: isCodeDestination, field: field, document: document,
+            preceding: preceding,
             windowTitle: windowTitle, surroundings: surroundings, recentLines: recentLines,
             timedTurnLines: timedTurnLines, isMultiline: isMultiline, choices: choices)
     }

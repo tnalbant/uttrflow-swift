@@ -27,6 +27,8 @@ final class DockViewModel {
     /// Which edge the button is parked on, so the button stays nearest that edge as the form grows.
     var anchor: DockAnchor
     var isHovering = false
+    var isAccessibilityFocused = false
+    var isEngaged: Bool { isHovering || isAccessibilityFocused }
     var isPressed = false
     var increasesContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     /// Microphone loudness in `0...1` as RMS, written at 20 Hz while recording; not part of the presentation.
@@ -78,12 +80,14 @@ final class DockViewModel {
 
 /// The floating button in whichever form the state calls for; every form derives from the presentation.
 struct DockView: View {
+    @AccessibilityFocusState private var isAccessibilityFocused: Bool
     let model: DockViewModel
     var onPressBegan: () -> Void = {}
     var onPressEnded: () -> Void = {}
     /// Starts or finishes a dictation in one go, for a caller that cannot hold the button down.
     var onToggle: () -> Void = {}
     var onRecovery: (RecoveryAction) -> Void = { _ in }
+    var onAttentionChange: (Bool) -> Void = { _ in }
     /// The size the current form wants; the panel is resized to match, so a grip claims no more screen.
     var onDesiredSize: (CGSize) -> Void = { _ in }
 
@@ -112,6 +116,11 @@ struct DockView: View {
             .accessibilityValue(Self.spokenValue(for: model.presentation))
             .accessibilityHint(Self.spokenHint(for: model.presentation))
             .accessibilityAddTraits(.isButton)
+            .accessibilityFocused($isAccessibilityFocused)
+            .onChange(of: isAccessibilityFocused) { _, focused in
+                model.isAccessibilityFocused = focused
+                onAttentionChange(focused)
+            }
             // A press-and-hold is not a gesture VoiceOver can perform, so activating toggles instead.
             .accessibilityAction { onToggle() }
             .accessibilityActions {

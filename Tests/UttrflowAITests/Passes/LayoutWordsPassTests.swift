@@ -93,6 +93,8 @@ struct LayoutWordsPassTests {
             ("the build failed. number one is broken", "the build failed. number one is broken"),
             ("here is the plan. number one, fix the build", "here is the plan.\n1. fix the build"),
             ("number one, fix the build", "1. fix the build"),
+            ("number one check logs number two restart the server", "\n1. check logs\n2. restart the server"),
+            ("number one is broken", "number one is broken"),
             ("bullet point, the milk", "- the milk"),
             ("we shipped. bullet point, the milk", "we shipped.\n- the milk"),
             // A break at the head of the text has nothing to break from, so the words stay.
