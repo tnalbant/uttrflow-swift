@@ -48,6 +48,9 @@ final class RejectedSuggestionRecorder {
             do {
                 try await store.recordRejected(pending.rejection.text, in: pending.rejection.surface)
                 if unwritten.first?.id == pending.id { unwritten.removeFirst() }
+                if !unwritten.contains(where: { $0.rejection == pending.rejection }) {
+                    suppressed.remove(pending.rejection)
+                }
             } catch {
                 Self.log.error(
                     "A rejected suggestion's corpus retry failed: \(failure(error), privacy: .public)")

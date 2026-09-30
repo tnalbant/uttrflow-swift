@@ -238,20 +238,26 @@ final class SuggestionCoordinator {
     /// Forgets what one application taught, on disk and in every copy this loop holds.
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         await capture.forgetLearned(from: bundleIdentifier)
-        await forgetWhatThisLoopRemembers()
-        try await store.forget(bundleIdentifier: bundleIdentifier)
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forget(bundleIdentifier: bundleIdentifier)
+        })
     }
 
     /// Forgets every line and answer, on disk and in every copy this loop holds.
     func forgetEverySuggestion() async throws {
         try await capture.forgetEverythingLearned()
-        await forgetWhatThisLoopRemembers()
-        try await store.forgetEverything()
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forgetEverything()
+        })
     }
 
     /// Drops the verdicts and model answers this loop keeps, which may name a forgotten line.
-    private func forgetWhatThisLoopRemembers() async {
-        await verifier.forgetEverything()
+    private func forgetWhatThisLoopRemembers(
+        clearingCorpus: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await verifier.forgetEverything(then: clearingCorpus)
         modelPass.freshStart(surfaceChanged: true, lineIsEmpty: true)
     }
 
