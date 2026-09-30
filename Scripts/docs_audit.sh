@@ -197,6 +197,53 @@ PYTHON
     done
 }
 
+changelog_release_link_findings() {
+    python3 - "$1" <<'PYTHON'
+import re
+import sys
+
+path = sys.argv[1]
+text = open(path, errors="ignore").read()
+headings = re.findall(r"^## \[([^\]]+)\]", text, re.MULTILINE)
+definitions = {
+    " ".join(label.split()).casefold()
+    for label in re.findall(r"^\[([^\]]+)\]:", text, re.MULTILINE)
+}
+for label in headings:
+    if label.casefold() == "unreleased":
+        continue
+    if " ".join(label.split()).casefold() not in definitions:
+        print(f"{path}: missing link definition for [{label}]")
+PYTHON
+}
+
+run_changelog_release_link_self_test() {
+    local work fixture findings
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' RETURN
+    fixture="$work/CHANGELOG.md"
+    cat >"$fixture" <<'EOF'
+## [Unreleased]
+## [2026.9.14] — 2026-09-14
+EOF
+
+    printf 'CHANGELOG release-link fixture\n'
+    findings="$(changelog_release_link_findings "$fixture")"
+    if [[ "$findings" == *"missing link definition for [2026.9.14]"* ]]; then
+        pass "a release heading without a link definition fails"
+    else
+        fail "a release heading without a link definition passed" "$findings"
+    fi
+
+    printf '[2026.9.14]: https://example.com/release\n' >>"$fixture"
+    findings="$(changelog_release_link_findings "$fixture")"
+    if [[ -z "${findings//[[:space:]]/}" ]]; then
+        pass "a release heading with a link definition passes"
+    else
+        fail "a release heading with a link definition was flagged" "$findings"
+    fi
+}
+
 run_changelog_self_test() {
     printf 'CHANGELOG release-bullet fixture\n'
 
@@ -282,6 +329,8 @@ if [[ "$SELF_TEST" -eq 1 ]]; then
 fi
 
 if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_changelog_release_link_self_test
+    printf '\n'
     run_changelog_self_test
     printf '\n'
 fi
@@ -949,6 +998,16 @@ if [[ -n "${post_tag_bullets//[[:space:]]/}" ]]; then
         "" $'\n'"$post_tag_bullets"
 else
     pass "every bullet in a tagged release section existed by that tag"
+fi
+
+printf '\nCHANGELOG release links\n'
+missing_release_links="$(changelog_release_link_findings CHANGELOG.md)"
+if [[ -n "${missing_release_links//[[:space:]]/}" ]]; then
+    fail "a release heading has no link definition" \
+        "Every released version heading must link to its release page." \
+        "" $'\n'"$missing_release_links"
+else
+    pass "every released version heading has a link definition"
 fi
 
 # ---------------------------------------------------------------------------
