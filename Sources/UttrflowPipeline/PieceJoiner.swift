@@ -75,9 +75,25 @@ enum PieceJoiner {
     static func seamed(_ pieces: [String], under formatter: DestinationFormatter) -> [String] {
         let pieces = joiningAmountsAcrossSeams(pieces)
         return pieces.enumerated().map { index, text in
-            index == pieces.count - 1
-                ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
+            guard index > 0, sentenceRunsOn(pieces[index - 1], into: text) else {
+                return index == pieces.count - 1
+                    ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
+            }
+            return lowercasedOpening(text, in: pieces[index - 1] + " " + text)
         }
+    }
+
+    /// Lowers a capital opened by the recognizer while keeping spellings the casing passes protect.
+    private static func lowercasedOpening(_ text: String, in context: String) -> String {
+        guard let start = text.firstIndex(where: { !$0.isWhitespace }),
+            let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex,
+            let first = text[start..<end].first, first.isUppercase,
+            !FirstWordPass.keepsCapital(String(text[start..<end])),
+            !FirstWordPass.isCalendarWord(String(text[start..<end])),
+            !FirstWordPass.looksLikeName(String(text[start..<end]), in: [context])
+        else { return text }
+        let word = String(text[start..<end])
+        return text.replacingCharacters(in: start..<end, with: WordShape.lowercased(word))
     }
 
     /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.

@@ -413,10 +413,27 @@ struct PieceJoinerSeamTests {
     @Test("adds no stop where the next piece opens on a phrase that continues the sentence")
     func mdSentenceSeamTakesNoStop() {
         let whole = PieceJoiner.join(
-            [piece("we moved the review"), piece("to Thursday because the room was taken")],
+            [piece("We moved the review"), piece("To Thursday because the room was taken")],
             under: .standard(for: .document))
 
-        #expect(whole.cleaned.text == "we moved the review to Thursday because the room was taken")
+        #expect(whole.cleaned.text == "We moved the review to Thursday because the room was taken")
+    }
+
+    @Test("lowers a recognizer sentence capital across a run-on seam")
+    func lowersCapitalAtRunOnSeam() {
+        let whole = PieceJoiner.join(
+            [piece("We moved the review to"), piece("The next slot works")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "We moved the review to the next slot works")
+    }
+
+    @Test("keeps protected first word casing across a run-on seam")
+    func keepsProtectedCaseAtRunOnSeam() {
+        let seamed = PieceJoiner.seamed(
+            ["We moved the review to", "I called John"], under: .standard(for: .document))
+
+        #expect(seamed == ["We moved the review to", "I called John"])
     }
 
     /// An infinitive opens a sentence as readily as it continues one, so it is no evidence either way.
