@@ -40,6 +40,14 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 startOfSentence = true
                 continue
             }
+            let letterAdjacent = Self.hasLetterNameBesideI(at: index, in: draft)
+            if letterAdjacent, WordShape(word.text).key == "i" {
+                let cased = WordShape(word.text).replacingCore(with: "i")
+                draft.replace(at: index, with: cased, by: Self.id)
+                startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+                isFirst = false
+                continue
+            }
             var cased = Self.pronounCapitalised(word.text)
             if isFirst {
                 // The case is read from where this word stands, so a word a pass dropped cannot decide it.
@@ -102,6 +110,23 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return text
         }
         return shape.replacingCore(with: "I" + shape.core.dropFirst())
+    }
+
+    private static func hasLetterNameBesideI(at index: Int, in draft: Draft) -> Bool {
+        let live = draft.presentIndices
+        guard let position = live.firstIndex(of: index), WordShape(draft.words[index].text).key == "i" else {
+            return false
+        }
+        let names = SpelledInitialismPass.letterNamesForCasing
+        let previousIsLetter =
+            position > 0
+            && !draft.shape(at: live[position - 1]).endsClause
+            && names.contains(draft.shape(at: live[position - 1]).key)
+        let nextIsLetter =
+            position + 1 < live.count
+            && !draft.shape(at: index).endsClause
+            && names.contains(draft.shape(at: live[position + 1]).key)
+        return previousIsLetter || nextIsLetter
     }
 
     /// Gives unambiguous weekday and month names their conventional case without guessing at May or March.

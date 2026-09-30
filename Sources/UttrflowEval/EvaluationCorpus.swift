@@ -164,6 +164,36 @@ public enum EvaluationCorpus {
             expected: "I think I'll take the earlier train."
         ),
         .init(
+            id: "initialisms-spelled-as-letter-names", category: .technical,
+            spoken: "the a p i is down",
+            expected: "The API is down."
+        ),
+        .init(
+            id: "article-before-spelled-letter", category: .everyday,
+            spoken: "we need a p",
+            expected: "We need a p."
+        ),
+        .init(
+            id: "spelled-eg", category: .technical,
+            spoken: "bring snacks e g chips",
+            expected: "Bring snacks e.g. chips."
+        ),
+        .init(
+            id: "spelled-asap", category: .technical,
+            spoken: "we need it a s a p",
+            expected: "We need it ASAP."
+        ),
+        .init(
+            id: "spelled-apr", category: .technical,
+            spoken: "open a p r for it",
+            expected: "Open APR for it."
+        ),
+        .init(
+            id: "standalone-pronoun-i", category: .everyday,
+            spoken: "so i think",
+            expected: "So I think."
+        ),
+        .init(
             id: "number-words", category: .everyday,
             spoken: "there were about fifteen people in the room",
             expected: "There were about 15 people in the room.",

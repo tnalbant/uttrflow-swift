@@ -74,6 +74,7 @@ struct FirstWordPassTests {
         arguments: [
             ("i think so", "I think so"),
             ("well i think", "Well I think"),
+            ("i e the main one", "I e the main one"),
             ("i", "I"),
             ("i, therefore", "I, therefore"),
             ("well i'll go", "Well I'll go"),
