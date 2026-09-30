@@ -224,9 +224,9 @@ struct MemoryPressureTests {
         #expect(app.suggestionModel == .ready)
         app.suggestionModelReloaded(.started)
         app.suggestionModelReloaded(.failed)
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .loadFailed)
         app.suggestionModelReloaded(.started)
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .loadFailed)
         app.settingsChanged(to: settings(suggesting: false))
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value

@@ -63,15 +63,20 @@ public struct Register: Sendable, Equatable {
 
     /// Whether the field's own accessibility name says it takes web addresses: browsers publish "Address and search bar", "Search or enter website name", "Search or enter address" or a URL field, while a postal or email address field never pairs the word with search.
     static func namesAddressField(_ name: String?) -> Bool {
-        guard let name = name?.lowercased() else { return false }
-        return name.contains("url") || name.contains("website") || name.contains("web address")
-            || (name.contains("search") && name.contains("address"))
+        let words = fieldNameWords(name)
+        return words.contains("url") || words.contains("website")
+            || (words.contains("web") && words.contains("address"))
+            || (words.contains("search") && words.contains("address"))
     }
 
     /// Whether the field's own accessibility name says it searches: a box called a search or a find is answered from what this person has looked for, never from a guess at what they mean; a filter or a query is not counted, since an editor calls its own field one.
     static func namesSearchField(_ name: String?) -> Bool {
-        guard let name = name?.lowercased() else { return false }
-        return name.contains("search") || name.contains("find")
+        let words = fieldNameWords(name)
+        return words.contains("search") || words.contains("find")
+    }
+
+    private static func fieldNameWords(_ name: String?) -> Set<String> {
+        Set((name ?? "").lowercased().split { !$0.isLetter }.map(String.init))
     }
 
     /// Whether the line can only come from what this person has entered here before: a host and a search phrase are both known or unknowable, never inferred. See `Docs/predict-precision.md`.

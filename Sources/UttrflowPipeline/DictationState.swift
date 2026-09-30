@@ -137,6 +137,14 @@ public enum DictationState: Sendable, Equatable {
         }
     }
 
+    /// Whether the dictation has reached an outcome.
+    public var hasEnded: Bool {
+        switch self {
+        case .inserted, .failed: true
+        case .idle, .recording, .transcribing, .tidying, .inserting: false
+        }
+    }
+
     /// Whether the microphone is live. Drives the recording indicator.
     public var isListening: Bool { self == .recording }
 }

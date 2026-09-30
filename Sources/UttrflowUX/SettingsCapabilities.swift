@@ -78,7 +78,11 @@ public enum SuggestionModelReadiness: Sendable, Equatable {
     case ready
     /// Set aside while this Mac is short of memory, and loaded again once memory has stayed free for a while.
     case releasedForMemory
-    /// It could not be fetched or read; carries what to tell the user, never the raw error.
+    /// The fetch or initial prepare failed; connection advice can help.
+    case fetchFailed
+    /// The weights are on disk, but reading them into memory failed.
+    case loadFailed
+    /// A failed fetch, for callers that still use the earlier spelling.
     case failed
 
     /// What the model is doing in a few words, the same in Settings and the menu bar, or nothing when it is ready or not asked for.
@@ -89,7 +93,8 @@ public enum SuggestionModelReadiness: Sendable, Equatable {
             fraction.map { "Getting ready — \(MenuBarPresenter.percentage(of: $0))%" } ?? "Getting ready"
         case .loading: "Getting ready"
         case .releasedForMemory: "Paused to free memory"
-        case .failed: "The model could not be fetched"
+        case .fetchFailed, .failed: "The model could not be fetched"
+        case .loadFailed: "The model could not be loaded"
         }
     }
 }

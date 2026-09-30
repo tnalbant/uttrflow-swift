@@ -609,22 +609,39 @@ public enum SettingsPresenter {
                 message:
                     "This Mac is short of memory, so the model that finishes your lines has been "
                     + "set aside. AI suggestions come back on their own once memory frees up.")
-        case .failed:
+        case .fetchFailed, .failed:
             return SettingsBanner(
                 symbolName: "exclamationmark.triangle",
                 title: title,
                 message: "AI suggestions cannot run without it. Check your connection, then try again.")
+        case .loadFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle",
+                title: title,
+                message: "AI suggestions cannot run without it. Try loading it again.")
         }
     }
 
-    /// Offers recovery only after a failed fetch.
+    /// Offers recovery only after a failed fetch or disk load.
     private static func retrySuggestionModelRow(
         _ settings: Settings, _ capabilities: SettingsCapabilities
     ) -> SettingsRow? {
-        guard settings.suggestions.isEnabled, capabilities.suggestionModel == .failed else { return nil }
+        guard settings.suggestions.isEnabled else { return nil }
+        let advice: String
+        switch capabilities.suggestionModel {
+        case .fetchFailed, .failed:
+            advice = "Check your connection, then fetch the model again."
+        case .loadFailed:
+            advice = "Try loading the model again."
+        default:
+            return nil
+        }
+        let label =
+            capabilities.suggestionModel == .loadFailed
+            ? "Suggestion model could not be loaded" : "Suggestion model could not be fetched"
         return SettingsRow(
-            id: "retrySuggestionModel", label: "Suggestion model could not be fetched",
-            explanation: "Check your connection, then fetch the model again.",
+            id: "retrySuggestionModel", label: label,
+            explanation: advice,
             control: .action(title: "Retry", change: .retrySuggestionModel),
             icon: .symbol("arrow.clockwise", .suggestion))
     }

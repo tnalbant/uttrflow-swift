@@ -1,4 +1,5 @@
 // Tests the clean-up scorer, runner, report and corpus hygiene.
+import Foundation
 import UttrflowAI
 import Synchronization
 import Testing
@@ -486,16 +487,52 @@ struct CorpusIndependenceTests {
         Scorer.tokens(text).joined(separator: " ")
     }
 
-    /// A worked example that is a verbatim corpus case scores the model on answers it has been shown.
-    @Test("no corpus case appears among any block's worked examples")
-    func corpusIsNotInThePrompt() {
-        let examples = Set(PromptBuilder.standard.allWorkedExamples.map(normalise))
-        for testCase in EvaluationCorpus.all {
-            #expect(!examples.contains(normalise(testCase.spoken)), "\(testCase.id) is in the prompt")
-            #expect(
-                !examples.contains(normalise(testCase.expected)),
-                "\(testCase.id)'s answer is in the prompt")
+    private func quotedFragments(in text: String) -> [String] {
+        let pattern = #""([^"]+)""#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let range = Range(match.range(at: 1), in: text) else { return nil }
+            return String(text[range])
         }
+    }
+
+    private func knownContamination(in prompt: PromptBuilder) -> [(caseID: String, fragment: String)] {
+        let instructions = [prompt.contract] + prompt.blocks.values.map(\.rules)
+        let fragments = instructions.flatMap(quotedFragments(in:)) + prompt.allWorkedExamples
+        return EvaluationCorpus.all.flatMap { testCase in
+            let corpusText = [normalise(testCase.spoken), normalise(testCase.expected)]
+            return fragments.compactMap { fragment in
+                let normalised = normalise(fragment)
+                guard fragment.contains(where: \.isWhitespace),
+                    corpusText.contains(where: { $0.contains(normalised) })
+                else { return nil }
+                return (testCase.id, fragment)
+            }
+        }
+    }
+
+    /// Quoted rule fragments and worked examples cannot give a case's answer away.
+    @Test("no corpus case appears in prompt rules or worked examples")
+    func corpusIsNotInThePrompt() {
+        #expect(knownContamination(in: .standard).isEmpty)
+    }
+
+    @Test("finds an exact corpus leak quoted in a rule")
+    func detectsKnownRuleLeak() {
+        let prompt = PromptBuilder(
+            contract: "",
+            contractExamples: [],
+            blocks: [
+                "plain": PromptBlock(
+                    id: "plain", rules: #"Fix the slip: "there is three" → "there are three"."#,
+                    examples: [])
+            ])
+
+        #expect(
+            knownContamination(in: prompt).contains {
+                $0.caseID == "agreement-there-is" && $0.fragment == "there is three"
+            })
     }
 
     /// An input that closely matches an example can make a model answer with a different example's text.

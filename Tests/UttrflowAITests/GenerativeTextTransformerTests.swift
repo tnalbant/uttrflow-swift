@@ -146,6 +146,35 @@ struct GenerativeTextTransformerTests {
         #expect(model.calls.first?.text == "Spoken: \"um hello there\"")
     }
 
+    @Test(
+        "the model preserves each switched-off spoken cleanup step",
+        arguments: [
+            (PassID.fillers, "um so I think we should ship it", "Um, so I think we should ship it."),
+            (PassID.stammers, "I I think we should ship it", "I, I think we should ship it."),
+            (PassID.repeatedPhrase, "we should ship it Friday Friday", "We should ship it Friday Friday."),
+            (
+                PassID.selfCorrection, "we should ship Monday no sorry Friday",
+                "We should ship Monday, no sorry, Friday."
+            ),
+        ]
+    )
+    func preservesWordsForSwitchedOffSpokenSteps(
+        step: PassID, spoken: String, modelAnswer: String
+    ) async throws {
+        let model = FakeCleanupModel { _ in modelAnswer }
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: model,
+            steps: CleaningSteps(switchedOff: [step]))
+
+        let result = try await sut.transform(request(spoken))
+
+        #expect(result.text == modelAnswer)
+        #expect(model.calls.first?.text.contains("preserve these words") == true)
+        #expect(model.calls.first?.text.contains(CleaningSteps.name(of: step)) == true)
+        #expect(result.cleaning?.switchedOff == [step])
+        #expect(result.cleaning?.changes.contains(where: { $0.step == step }) == false)
+    }
+
     private func request(
         _ text: String, destination: Destination, preceding: String? = nil
     ) -> TransformationRequest {

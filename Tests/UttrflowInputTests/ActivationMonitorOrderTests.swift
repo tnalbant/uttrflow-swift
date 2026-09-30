@@ -13,18 +13,28 @@ private final class HandFedSource: KeyboardEventSource {
         let call: @Sendable (KeyStroke) -> Void
     }
 
-    private let sink = Mutex<Sink?>(nil)
+    private struct State: Sendable {
+        var sink: Sink?
+        var consumesKeyDown = true
+    }
+
+    private let state = Mutex(State(sink: nil))
 
     func start(
         _ deliver: @escaping @Sendable (KeyStroke) -> Void,
         consumeKeyDown: Bool = false
     ) throws(KeyboardSourceError) {
-        sink.withLock { $0 = Sink(call: deliver) }
+        state.withLock {
+            $0.sink = Sink(call: deliver)
+            $0.consumesKeyDown = consumeKeyDown
+        }
     }
 
-    func stop() { sink.withLock { $0 = nil } }
+    func stop() { state.withLock { $0.sink = nil } }
 
-    func send(_ stroke: KeyStroke) { sink.withLock { $0 }?.call(stroke) }
+    func send(_ stroke: KeyStroke) { state.withLock { $0.sink }?.call(stroke) }
+
+    var consumesKeyDown: Bool { state.withLock { $0.consumesKeyDown } }
 }
 
 /// Holds the source's thread once its stroke has left the lock, until the test lets it go.
@@ -74,6 +84,21 @@ private func firstTwo(_ monitor: ActivationMonitor) async -> [HotkeyEvent] {
 
 @Suite("Activation monitor: stopping while a keystroke is in flight")
 struct ActivationMonitorOrderTests {
+    @Test("reports bare Escape without consuming it")
+    @MainActor
+    func bareEscapeIsForwarded() async throws {
+        let source = HandFedSource()
+        let monitor = ActivationMonitor(source: source, strokeLeftLock: {})
+        try monitor.start(binding: .optionSpace)
+
+        source.send(KeyStroke(keyCode: 53, phase: .down))
+        var events = monitor.events.makeAsyncIterator()
+
+        #expect(await events.next() == .escapePressed)
+        #expect(!source.consumesKeyDown)
+        monitor.stop()
+    }
+
     @Test("a stop during a press delivers the press before the release it owes")
     @MainActor
     func stopDuringPress() async throws {

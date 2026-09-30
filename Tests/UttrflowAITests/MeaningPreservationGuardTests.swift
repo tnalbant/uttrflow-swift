@@ -491,6 +491,23 @@ struct GrammarGuardTests {
         #expect(!verdict(kept, rewritten).isAccepted)
     }
 
+    /// Subject pronouns and their auxiliaries change who acted, even though both are function words.
+    @Test(
+        "rejects a rewrite that invents a dropped subject",
+        arguments: [
+            ("going home", "I am going home."),
+            ("will call later", "I will call later."),
+            ("finished the draft", "We finished the draft."),
+            ("need a break", "I need a break."),
+            ("sent it yesterday", "She sent it yesterday."),
+            ("think so", "I think so."),
+            ("running late", "They are running late."),
+        ]
+    )
+    func rejectsInventedDroppedSubject(kept: String, rewritten: String) {
+        #expect(!verdict(kept, rewritten).isAccepted)
+    }
+
     /// The echo is the field's text before the caret, so its negators have no kept-side counterpart by construction.
     @Test("accepts a faithful rewrite when the caret echo carries a negation the speaker did not say")
     func acceptsANegationFromTheCaretEcho() {
@@ -550,6 +567,25 @@ struct GrammarGuardTests {
     @Test("accepts a missing apostrophe restored, which is a form change")
     func acceptsRestoredApostrophe() {
         #expect(verdict("she dont want the early slot", "She doesn't want the early slot.").isAccepted)
+    }
+
+    @Test("rejects rewrites that remove meaning-bearing apostrophes")
+    func rejectsRemovedApostrophes() {
+        let apostropheRemovedYalls = ["Y'all", "s car is blocking mine."].joined()
+        for (kept, rewritten) in [
+            ("it's sorta like a cafe", "Its sorta like a cafe."),
+            ("me myself i don't like it", "Me myself I dont like it."),
+            ("y'all's car is blocking mine", apostropheRemovedYalls),
+        ] {
+            #expect(!verdict(kept, rewritten).isAccepted, "\(kept) -> \(rewritten)")
+        }
+    }
+
+    @Test("treats straight and curly apostrophes as the same spelling")
+    func acceptsApostropheStyleChanges() {
+        #expect(verdict("it's a cafe", "It’s a cafe.").isAccepted)
+        #expect(verdict("don't do that", "Don’t do that.").isAccepted)
+        #expect(verdict("y’all’s car is here", "Y'all's car is here.").isAccepted)
     }
 
     @Test("leaves Devanagari to the base checks, so romanising is not a lost word")

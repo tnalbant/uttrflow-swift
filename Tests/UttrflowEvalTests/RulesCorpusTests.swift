@@ -11,7 +11,7 @@ struct RulesCorpusTests {
     static let rulesMustPass: Set<String> = [
         "false-start", "self-correction", "filler-heavy", "ellipsis-glued-fillers",
         "noun-spelled-like-a-filler",
-        "pronoun-i", "number-words", "short-yes",
+        "pronoun-i", "number-words", "money-billion", "short-yes",
         "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
         "filler-between-commas",
         "repeated-phrase", "i-mean-correction", "correction-between-commas", "actually-between-numbers",

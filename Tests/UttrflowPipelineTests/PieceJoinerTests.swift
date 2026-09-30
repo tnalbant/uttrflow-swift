@@ -418,6 +418,30 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == text)
     }
 
+    @Test(
+        "joins the reported phrase completions across a seam",
+        arguments: [
+            ("The meeting is on", "Tuesday at 10 in the morning."),
+            ("I left my keys in", "the blue car"),
+            ("Remind me to pick up", "the dry cleaning tomorrow."),
+            ("The server went down around", "Midnight last night."),
+            ("She asked whether we could finish", "the draft by Wednesday."),
+            ("The quarterly numbers look", "better than we expected."),
+            ("The workshop covers", "testing and deployment."),
+        ])
+    func reportedPhraseCompletionTakesNoStop(first: String, next: String) {
+        let seamed = PieceJoiner.seamed([first, next], under: .standard(for: .document))
+
+        #expect(seamed.first == first)
+    }
+
+    @Test("still stops a sentence-final particle before a new sentence")
+    func sentenceFinalParticleStillStops() {
+        let seamed = PieceJoiner.seamed(["Turn it on", "again later"], under: .standard(for: .document))
+
+        #expect(seamed.first == "Turn it on.")
+    }
+
     /// The seam of two whole utterances is still a sentence end, which is what #183 asked for.
     @Test("still stops a seam with no evidence either way")
     func seamWithNoEvidenceStillStops() {

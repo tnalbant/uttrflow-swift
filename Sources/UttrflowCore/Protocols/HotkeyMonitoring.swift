@@ -137,7 +137,7 @@ public enum HotkeyActivation: String, Sendable, Equatable, CaseIterable, Codable
     case pressToToggle
 }
 
-/// What the user did with the shortcut.
+/// What the user did while the shortcut monitor was active.
 public enum HotkeyEvent: Sendable, Equatable {
     /// The shortcut went down.
     case pressed
@@ -145,6 +145,8 @@ public enum HotkeyEvent: Sendable, Equatable {
     case released
     /// The held modifiers turned out to begin another shortcut, so the press is withdrawn unused.
     case cancelled
+    /// Escape was pressed, which abandons the recording without inserting its words.
+    case escapePressed
 }
 
 /// Watches for the shortcut in every app.
