@@ -26,6 +26,46 @@ private struct QuietCleaner: TranscriptCleaning {
     }
 }
 
+/// Holds recognition so another hands-free dictation can arrive while the first is transcribing.
+private final class GatedSpeechEngine: SpeechEngine {
+    private struct State {
+        var calls = 0
+        var held: CheckedContinuation<Void, Never>?
+        var released = false
+    }
+
+    private let state = Mutex(State())
+
+    var kind: SpeechEngineKind { .whisperKit }
+    func prepare() async throws(SpeechEngineError) {}
+    func warm() async {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        await withCheckedContinuation { continuation in
+            let resumeNow = state.withLock { state -> Bool in
+                state.calls += 1
+                guard state.calls == 1, !state.released else { return true }
+                state.held = continuation
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+        return Transcription(text: "a long dictation")
+    }
+
+    var isHolding: Bool { state.withLock { $0.held != nil } }
+    func release() {
+        let held = state.withLock { state -> CheckedContinuation<Void, Never>? in
+            state.released = true
+            defer { state.held = nil }
+            return state.held
+        }
+        held?.resume()
+    }
+}
+
 /// A ``TextInserting`` that records what reached the screen, holding every insertion while it is shut.
 private final class QuietInserter: TextInserting, Sendable {
     private struct State {
@@ -124,6 +164,23 @@ struct DictationLimitWiringTests {
             clock: clock,
             limit: Self.limit,
             onAdvice: advice)
+    }
+
+    private func makeGatedHandsFreeController(
+        clock: ManualClock, inserter: QuietInserter, speech: GatedSpeechEngine
+    ) -> DictationController<ManualClock> {
+        DictationController(
+            pipeline: DictationPipeline(
+                capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 200))),
+                speech: speech,
+                cleaner: QuietCleaner(),
+                context: FakeContextEngine(),
+                inserter: inserter,
+                clock: ContinuousClock()),
+            monitor: SilentMonitor(),
+            activation: .holdToTalk,
+            clock: clock,
+            limit: Self.limit)
     }
 
     /// Lets the clock reach `deadline`, once something is actually waiting for it.
@@ -240,23 +297,31 @@ struct DictationLimitWiringTests {
         #expect(inserter.inserted == ["a long dictation", "a long dictation"])
     }
 
-    @Test("a double-tap dictation finished at the cap leaves the double tap working")
-    func doubleTapWorksAfterHandsFreeReachesTheCap() async {
+    @Test("a double tap during capped transcription starts another dictation")
+    func doubleTapDuringCappedTranscriptionStartsAnotherDictation() async throws {
         let clock = ManualClock()
         let inserter = QuietInserter()
-        let heard = Mutex<[DictationAdvice]>([])
-        let controller = makeController(clock: clock, inserter: inserter) { advice in
-            heard.withLock { $0.append(advice) }
-        }
-        await runHandsFreeToTheCap(controller, clock: clock) {
-            heard.withLock { Self.capFinished($0) }
-        }
-
+        let speech = GatedSpeechEngine()
+        let controller = makeGatedHandsFreeController(clock: clock, inserter: inserter, speech: speech)
         await doubleTap(controller, clock: clock)
+        await advance(clock, to: Self.limit.warnAfter)
+        await advance(clock, to: Self.limit.stopAfter - Self.limit.warnAfter)
+        try await eventually { speech.isHolding }
+
+        for _ in 0..<2 {
+            controller.submit(.pressed)
+            clock.advance(by: DictationController<ManualClock>.minimumHold - .milliseconds(1))
+            controller.submit(.released)
+        }
+        await controller.drained()
+        #expect(await controller.currentStopGesture == .pressAgainHandsFree)
+
+        speech.release()
         clock.advance(by: .seconds(2))
         await doubleTap(controller, clock: clock)
 
-        #expect(inserter.inserted == ["a long dictation", "a long dictation"], "opened and closed again")
+        try await eventually { inserter.inserted.count == 2 }
+        #expect(inserter.inserted == ["a long dictation", "a long dictation"])
     }
 
     /// A press-to-toggle controller whose first dictation is held in its learning step until released.
