@@ -542,6 +542,7 @@ public enum FocusedFieldReader {
         }
 
         var role: String? { self[kAXRoleAttribute] as? String }
+        var subrole: String? { self[kAXSubroleAttribute] as? String }
         var title: String? { self[kAXTitleAttribute] as? String }
 
         /// Whether the element declares itself secure by role or subrole, or as a field by name, asked of the answers already fetched.
@@ -608,6 +609,16 @@ public enum FocusedFieldReader {
 
         var children: [AXUIElement] { self[kAXChildrenAttribute] as? [AXUIElement] ?? [] }
 
+        /// Whether a sibling list contains links, which identify other navigable conversations.
+        var isConversationLinkList: Bool {
+            guard role == "AXList" else { return false }
+            return children.contains { child in
+                let child = Answers(child)
+                return child.role == "AXLink"
+                    || child.children.contains { Answers($0).role == "AXLink" }
+            }
+        }
+
         var isHidden: Bool { (self[kAXHiddenAttribute] as? NSNumber)?.boolValue ?? false }
 
         var parent: AXUIElement? {
@@ -622,6 +633,8 @@ public enum FocusedFieldReader {
     /// The other application's window as the surroundings collector walks it, one Accessibility message per element.
     struct AXElementTree: ElementTree {
         func role(of node: AXNode) -> String? { node.answers.role }
+        func subrole(of node: AXNode) -> String? { node.answers.subrole }
+        func isConversationLinkList(_ node: AXNode) -> Bool { node.answers.isConversationLinkList }
         func isHidden(_ node: AXNode) -> Bool { node.answers.isHidden }
         func isSecure(_ node: AXNode) -> Bool { node.answers.isSecure }
         func text(of node: AXNode) -> String? { node.answers.text }

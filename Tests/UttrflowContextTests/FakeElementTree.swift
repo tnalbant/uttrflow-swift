@@ -6,6 +6,7 @@ import CoreGraphics
 struct Node: Equatable {
     let id: Int
     var role: String? = "AXGroup"
+    var subrole: String? = nil
     var text: String? = nil
     var visible = true
     /// Whether the node declares itself a field that hides what is typed.
@@ -35,6 +36,10 @@ struct FakeTree: ElementTree {
     var textReads: TextReadLog? = nil
 
     func role(of element: Node) -> String? { element.role }
+    func subrole(of element: Node) -> String? { element.subrole }
+    func isConversationLinkList(_ element: Node) -> Bool {
+        element.role == "AXList" && element.children.contains { $0.role == "AXLink" }
+    }
     func isSecure(_ element: Node) -> Bool { element.secure }
     func text(of element: Node) -> String? {
         textReads?.ids.append(element.id)
