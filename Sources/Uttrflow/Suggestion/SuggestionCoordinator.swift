@@ -163,6 +163,7 @@ final class SuggestionCoordinator {
     /// Tells the menu bar why suggestion input is paused.
     var onSecureInputBlockingChanged: ((Bool) -> Void)?
     var onTapRestChanged: ((Result<Void, any Error>?) -> Void)?
+    var onSecureInputChanged: ((Bool) -> Void)?
 
     /// Opens the corpus, or reports why it could not; the scorer, when given, is the model that validates.
     init(
@@ -285,7 +286,10 @@ final class SuggestionCoordinator {
             }
         }
         checkSecureInput()
-        guard !secureInput.isBlocking else { return .success(()) }
+        guard !secureInput.isBlocking else {
+            onSecureInputChanged?(true)
+            return .success(())
+        }
         let result = startInterceptor()
         if case .success = result { onTapRestChanged?(.success(())) }
         return result
@@ -324,12 +328,14 @@ final class SuggestionCoordinator {
         let now = secureInput.isBlocking ? "on" : "off"
         Self.log.notice("suggestion secure keyboard entry \(now, privacy: .public)")
         if secureInput.isBlocking {
+            onSecureInputChanged?(true)
             withdraw()
             focusedFieldValueObserver.stop()
             interceptor.stop()
             onSecureInputBlockingChanged?(true)
             panel.announce(SecureInputWatch.suggestionNotice)
         } else {
+            onSecureInputChanged?(false)
             onSecureInputBlockingChanged?(false)
             switch startInterceptor() {
             case .success: onTapRestChanged?(.success(()))

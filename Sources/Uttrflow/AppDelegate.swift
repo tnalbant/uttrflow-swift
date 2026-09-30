@@ -816,11 +816,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 case .failure: self?.suggestionRuntime = .tapFailed
                 }
             }
+            coordinator.onSecureInputChanged = { [weak self] isBlocking in
+                self?.suggestionRuntime = isBlocking ? .secureInputBlocked : .running
+            }
             completions = coordinator
             suggestionRuntime = .starting
             switch coordinator.start() {
             case .success:
-                suggestionRuntime = coordinator.tapRest.isPending ? .starting : .running
+                if coordinator.tapRest.isPending {
+                    suggestionRuntime = .starting
+                } else if suggestionRuntime != .secureInputBlocked {
+                    suggestionRuntime = .running
+                }
             case .failure:
                 suggestionRuntime = .tapFailed
             }

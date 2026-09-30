@@ -61,6 +61,13 @@ struct SuggestionModelBannerTests {
         #expect(shown.message.contains("resume automatically"))
     }
 
+    @Test("secure input does not report suggestions running with a ready model")
+    func secureInputIsReported() throws {
+        let shown = try #require(bannerForRuntime(.secureInputBlocked))
+        #expect(shown.title == "Suggestions are paused")
+        #expect(shown.message.contains("secure input"))
+    }
+
     @Test("nor does a Mac that never asked for the feature")
     func neverAskedSaysNothing() {
         #expect(bannerFor(.notAsked) == nil)

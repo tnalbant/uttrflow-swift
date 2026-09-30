@@ -605,6 +605,10 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "clock", title: "Suggestions are paused briefly",
                 message: "The key tap is restarting. Suggestions will resume automatically.")
+        case .secureInputBlocked:
+            return SettingsBanner(
+                symbolName: "lock", title: "Suggestions are paused",
+                message: "A secure input field is active. Suggestions resume when you leave it.")
         case .tapFailed:
             return SettingsBanner(
                 symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
