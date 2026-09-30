@@ -9,7 +9,8 @@ import UttrflowCore
 struct RulesCorpusTests {
     /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
     static let rulesMustPass: Set<String> = [
-        "false-start", "self-correction", "filler-heavy", "noun-spelled-like-a-filler",
+        "false-start", "self-correction", "filler-heavy", "ellipsis-glued-fillers",
+        "noun-spelled-like-a-filler",
         "pronoun-i", "number-words", "short-yes",
         "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
         "filler-between-commas",

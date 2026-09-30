@@ -24,6 +24,17 @@ struct FillersPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("removes fillers joined to neighboring words by an ellipsis")
+    func removesEllipsisJoinedFillers() {
+        #expect(
+            cleaned("Ah...the...um...the invoice is...ah...overdue", by: sut)
+                == "the...the invoice is...overdue")
+        #expect(cleaned("e.g. uh...hello", by: sut) == "e.g. hello")
+        #expect(
+            cleaned("https://example.com/uh...hello", by: sut)
+                == "https://example.com/uh...hello")
+    }
+
     @Test(
         "keeps words that only sometimes act as filler",
         arguments: [
