@@ -62,6 +62,10 @@ struct TerminalStopPassTests {
         #expect(cleaned("that's right", by: sut) == "that's right.")
         #expect(cleaned("everything is right", by: sut) == "everything is right.")
         #expect(cleaned("you should turn right", by: sut) == "you should turn right.")
+        #expect(cleaned("it feels right", by: sut) == "it feels right.")
+        #expect(cleaned("I have no right", by: sut) == "I have no right.")
+        #expect(cleaned("you got the answer right", by: sut) == "you got the answer right.")
+        #expect(cleaned("I think it is right", by: sut) == "I think it is right.")
     }
 
     @Test("keeps an indirect if clause as a statement")
