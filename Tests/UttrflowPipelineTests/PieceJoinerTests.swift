@@ -450,6 +450,23 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == "on my way.")
     }
 
+    @Test("joins a split currency amount across pieces")
+    func joinsSplitCurrencyAmount() {
+        let whole = PieceJoiner.join(
+            [piece("The total came to"), piece("400"), piece("and $20")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "The total came to $420")
+    }
+
+    @Test("keeps separate figures apart when the second number has no currency")
+    func keepsSeparateFiguresApart() {
+        let whole = PieceJoiner.join(
+            [piece("Room 400"), piece("And 20 chairs")], under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "Room 400. And 20 chairs")
+    }
+
     /// A single piece is already the whole message, so the joiner has no seam to end.
     @Test("leaves a one-piece dictation to the message stage")
     func leavesOnePieceAlone() {

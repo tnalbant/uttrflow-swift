@@ -73,10 +73,47 @@ enum PieceJoiner {
 
     /// Every piece but the last ended as a sentence the way the place ends one; the message's own stop is the cleaner's.
     static func seamed(_ pieces: [String], under formatter: DestinationFormatter) -> [String] {
-        pieces.enumerated().map { index, text in
+        let pieces = joiningAmountsAcrossSeams(pieces)
+        return pieces.enumerated().map { index, text in
             index == pieces.count - 1
                 ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
         }
+    }
+
+    /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
+    private static func joiningAmountsAcrossSeams(_ pieces: [String]) -> [String] {
+        guard pieces.count > 1 else { return pieces }
+        var joined = pieces
+        for index in 0..<(joined.count - 1) {
+            let following = joined[index + 1].split(whereSeparator: \.isWhitespace)
+            guard let last = joined[index].split(whereSeparator: \.isWhitespace).last,
+                following.count == 2, WordShape(String(following[0])).key == "and",
+                let leadingValue = integer(String(last)),
+                let amount = currencyAmount(String(following[1]))
+            else { continue }
+            let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
+            guard !overflow else { continue }
+            let replacement = amount.symbol + NumberWords.render(sum, grouped: true)
+            let prefix = String(joined[index].dropLast(last.count))
+            joined[index] = prefix + replacement
+            joined[index + 1] = ""
+        }
+        return joined
+    }
+
+    /// Reads a grouped or ungrouped nonnegative integer.
+    private static func integer(_ text: String) -> Int? {
+        let digits = text.replacingOccurrences(of: ",", with: "")
+        guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else { return nil }
+        return Int(digits)
+    }
+
+    /// Reads the currency symbol and integer value from a cleaned amount.
+    private static func currencyAmount(_ text: String) -> (symbol: String, value: Int)? {
+        guard let symbol = text.first, "$€£₹".contains(symbol),
+            let value = integer(String(text.dropFirst()))
+        else { return nil }
+        return (String(symbol), value)
     }
 
     /// One piece ended at a seam, unless the words on either side of the cut say the sentence ran through it. See `Docs/cleanup-design.md` §7.
@@ -84,6 +121,7 @@ enum PieceJoiner {
         _ text: String, before next: String, under formatter: DestinationFormatter
     ) -> String {
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
+        if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
             !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline)),
