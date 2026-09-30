@@ -36,6 +36,11 @@ struct MotionBudget: Equatable {
         !reducesMotion
     }
 
+    /// Whether onboarding page changes may move; energy conditions do not change this choice.
+    var onboardingMoves: Bool {
+        !reducesMotion
+    }
+
     /// `animation` for a one-off move, or none under Reduce Motion, so the change lands in place.
     func allowing(_ animation: Animation) -> Animation? {
         reducesMotion ? nil : animation

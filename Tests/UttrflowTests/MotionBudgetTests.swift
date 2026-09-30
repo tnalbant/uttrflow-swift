@@ -44,6 +44,13 @@ struct MotionBudgetTests {
         #expect(!MotionBudget(reducesMotion: true).workingBarsMove)
     }
 
+    @Test("allows onboarding page changes unless Reduce Motion is on")
+    func onboardingMoves() {
+        #expect(MotionBudget().onboardingMoves)
+        #expect(MotionBudget(energy: EnergyConditions(isLowPowerMode: true)).onboardingMoves)
+        #expect(!MotionBudget(reducesMotion: true).onboardingMoves)
+    }
+
     @Test("caps the dock at 60 frames a second on a Mac that asks for nothing less")
     func dockAtSixty() {
         #expect(MotionBudget().dockFrameInterval == 1.0 / 60)

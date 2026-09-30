@@ -87,6 +87,7 @@ struct OnboardingCard: View {
     let press: (OnboardingIntent) -> Void
 
     var body: some View {
+        let motion = MotionBudgetObserver.shared.budget
         content
             .frame(width: OnboardingMetrics.cardWidth)
             .frame(maxHeight: .infinity)
@@ -106,7 +107,7 @@ struct OnboardingCard: View {
                     .fill(.black)
                     .shadow(color: .black.opacity(0.65), radius: 30, y: 30)
             }
-            .animation(.smooth(duration: 0.26), value: page.title)
+            .animation(motion.onboardingMoves ? .smooth(duration: 0.26) : nil, value: page.title)
     }
 
     /// The welcome and the first try put their heading first; every other page leads with its picture.

@@ -28,6 +28,7 @@ struct OnboardingSky: View {
     var saturation: Double = 1
 
     var body: some View {
+        let motion = MotionBudgetObserver.shared.budget
         ZStack {
             Color(rgb: BrandPalette.Onboarding.windowGround)
             OnboardingAurora(mood: mood, saturation: saturation)
@@ -37,7 +38,7 @@ struct OnboardingSky: View {
                 colors: [.clear, Color(rgb: BrandPalette.Onboarding.windowGround).opacity(0.3)],
                 startPoint: .top, endPoint: .bottom)
         }
-        .animation(.easeInOut(duration: 0.6), value: mood)
+        .animation(motion.onboardingMoves ? .easeInOut(duration: 0.6) : nil, value: mood)
     }
 }
 
