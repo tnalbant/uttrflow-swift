@@ -13,6 +13,8 @@ public struct HotkeyRecogniser: Sendable, Equatable {
     private var isSpoiled = false
     /// Whether Fn began another shortcut, which lasts until Fn is up.
     private var functionHoldIsSpoiled = false
+    /// Whether a combination key is down, independent of changes to its modifiers.
+    private var combinationKeyIsDown = false
 
     public init(binding: HotkeyBinding) {
         self.binding = binding
@@ -22,7 +24,29 @@ public struct HotkeyRecogniser: Sendable, Equatable {
     public mutating func receive(_ stroke: KeyStroke) -> HotkeyEvent? {
         if binding.isFunctionHold { return receiveFunctionHold(stroke) }
         if binding.heldModifier != nil { return receiveModifierHold(stroke) }
-        return settle(matches(stroke))
+        return receiveCombination(stroke)
+    }
+
+    /// A combination remains held until its key itself comes up, even as modifier flags change.
+    private mutating func receiveCombination(_ stroke: KeyStroke) -> HotkeyEvent? {
+        guard stroke.keyCode == binding.keyCode else { return nil }
+        switch stroke.phase {
+        case .down:
+            guard stroke.modifiers == binding.modifiers else { return nil }
+            combinationKeyIsDown = true
+            return settle(true)
+        case .up:
+            guard combinationKeyIsDown else { return nil }
+            combinationKeyIsDown = false
+            return settle(false)
+        case .modifiersChanged:
+            guard let modifier = HotkeyBinding.modifier(ofKeyCode: stroke.keyCode),
+                binding.modifiers.contains(modifier), !stroke.isKeyDown,
+                combinationKeyIsDown
+            else { return nil }
+            combinationKeyIsDown = false
+            return settle(false)
+        }
     }
 
     /// Fn held, read only from a flags change: an arrow key carries the same flag without being Fn.
@@ -51,7 +75,10 @@ public struct HotkeyRecogniser: Sendable, Equatable {
     }
 
     /// A release owed because watching stopped mid-hold, or nothing when nothing was held.
-    public mutating func finish() -> HotkeyEvent? { settle(false) }
+    public mutating func finish() -> HotkeyEvent? {
+        combinationKeyIsDown = false
+        return settle(false)
+    }
 
     /// Whether this stroke is the binding held right now.
     private func matches(_ stroke: KeyStroke) -> Bool {
