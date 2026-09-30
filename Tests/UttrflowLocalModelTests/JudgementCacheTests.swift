@@ -133,7 +133,7 @@ struct JudgedLineTests {
         #expect(ScoredSpan.continuing(Array("pl".utf8), in: vocabulary) == [2, 3])
         vocabulary.resetExaminedEntries()
         let judged = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &vocabulary)
-        #expect(vocabulary.examinedEntries == 14)
+        #expect(vocabulary.examinedEntries == 3)
         #expect(judged.count == 2)
         #expect(abs(judged[0].logProbability + log(3)) < 1e-6)
         #expect(judged[1].logProbability == -8)
@@ -141,7 +141,7 @@ struct JudgedLineTests {
         var smallVocabulary = TokenHealing.Vocabulary(bytes: Array(vocabularyBytes.prefix(6)), ending: [])
         smallVocabulary.resetExaminedEntries()
         _ = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &smallVocabulary)
-        #expect(smallVocabulary.examinedEntries == 14)
+        #expect(smallVocabulary.examinedEntries == 3)
     }
 
     @Test("An empty cached line returns nothing rather than indexing out of bounds.")
