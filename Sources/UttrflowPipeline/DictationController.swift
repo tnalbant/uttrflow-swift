@@ -468,6 +468,11 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     }
 
     private func beginListening() async {
+        // The previous take can still be transcribed; a new capture must not wait for its insertion.
+        if let processing {
+            self.processing = nil
+            Task { await processing.value }
+        }
         await pipeline.startRecording()
         // Only once the pipeline is listening, so a refused microphone does not sound as though it worked.
         if await pipeline.currentState.isListening {
