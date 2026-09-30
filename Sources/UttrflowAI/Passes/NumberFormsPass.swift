@@ -235,24 +235,18 @@ public struct NumberFormsPass: CleaningPass {
         return Phrase(text: text, count: end - position)
     }
 
-    /// True when a clock time's minute reads as two single digits without a time cue around the time, so the run is a digit string.
+    /// Requires temporal evidence when the hour and minute form one phrase.
     private static func timeAcceptable(
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
-        guard minuteEnd - minuteStart == 2,
-            keys[minuteStart] == "oh" || keys[minuteStart] == "zero",
-            NumberWords.units[keys[minuteStart + 1]] != nil
-        else { return true }
-        if position > 0, !startsASentence(position, shapes), keys[position - 1] == "at" {
-            return true
-        }
-        if minuteEnd < shapes.count, joined(minuteEnd, shapes),
-            meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock"
-        {
-            return true
-        }
-        return false
+        let hasBeforeCue =
+            position > 0 && !startsASentence(position, shapes)
+            && ["at", "by", "until", "from"].contains(keys[position - 1])
+        let hasAfterCue =
+            minuteEnd < shapes.count && joined(minuteEnd, shapes)
+            && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
+        return hasBeforeCue || hasAfterCue
     }
 
     /// Whether the words here finish a scale the parser could not read whole, as in "a hundred and fifty".

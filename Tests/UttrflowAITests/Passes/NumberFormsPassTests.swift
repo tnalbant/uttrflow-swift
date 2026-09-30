@@ -154,14 +154,21 @@ struct NumberFormsPassTests {
         "writes times of day",
         arguments: [
             ("two thirty pm", "2:30 pm"),
+            ("meet at two thirty", "meet at 2:30"),
+            ("I have two twenty dollar bills", "I have two 20 dollar bills"),
+            ("take three fifteen minute breaks", "take three 15 minute breaks"),
+            ("we got a four oh four error", "we got a four oh four error"),
             ("ten am", "10 am"),
             ("ten a.m.", "10 a.m."),
             ("two oh five pm", "2:05 pm"),
             ("five o'clock", "5 o'clock"),
             ("at four thirty", "at 4:30"),
+            ("by two thirty", "by 2:30"),
+            ("until two thirty", "until 2:30"),
+            ("from two thirty", "from 2:30"),
             ("twelve fifteen pm", "12:15 pm"),
             ("2 thirty pm", "2:30 pm"),
-            ("one thirty", "1:30"),
+            ("one thirty", "one 30"),
             ("two forty five pm", "2:45 pm"),
         ]
     )
