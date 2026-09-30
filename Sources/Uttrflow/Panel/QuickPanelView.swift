@@ -1,8 +1,32 @@
 // The quick panel's layout: search, chips, list, menu, sheets and colours.
 
+import AppKit
+import SwiftUI
 import UttrflowClipboard
 import UttrflowUX
-import SwiftUI
+
+enum PanelRowMenuEvent {
+    case scroll
+    case windowResignedKey
+    case clickAway
+}
+
+struct PanelRowMenuState {
+    private(set) var rowID: UUID?
+
+    mutating func open(_ rowID: UUID?) {
+        self.rowID = rowID
+    }
+
+    mutating func handle(_ event: PanelRowMenuEvent) {
+        rowID = nil
+    }
+
+    mutating func select(_ action: PanelAction, perform: (PanelIntent) -> Void) {
+        rowID = nil
+        perform(action.intent)
+    }
+}
 
 /// Lays out the quick panel; every decision about rows is `PanelPresenter`'s. See Docs/app-quick-panel.md.
 struct QuickPanelView: View {
@@ -18,7 +42,7 @@ struct QuickPanelView: View {
     /// True while `query` is being set from `presentation.query` rather than typed, so that set is never relayed as a search.
     @State private var isSyncingQuery = false
     /// Which row's ⋯ menu is open, if any; every action in it also has a key of its own.
-    @State private var openMenu: UUID?
+    @State private var rowMenu = PanelRowMenuState()
     /// Which menu item the pointer is on, tracked by `PointerWatch` because `onHover` is inactive here.
     @State private var hoveredItem: String?
     @FocusState private var isSearchFocused: Bool
@@ -48,6 +72,12 @@ struct QuickPanelView: View {
         // Over the list, so the row a sheet asks about stays visible behind it.
         .overlay { if let sheet = presentation.sheet { sheetOverlay(sheet) } }
         .overlay(alignment: .topTrailing) { menuOverlay }
+        .onReceive(NotificationCenter.default.publisher(for: NSScrollView.didLiveScrollNotification)) { _ in
+            rowMenu.handle(.scroll)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            rowMenu.handle(.windowResignedKey)
+        }
         // Hands focus back to the search when a sheet closes; see Docs/app-quick-panel.md on focus.
         .task(id: presentation.sheet == nil) {
             guard presentation.sheet == nil else { return }
@@ -56,7 +86,7 @@ struct QuickPanelView: View {
         }
         // Closes a leftover menu and resets the field before the panel shows, so no stale text ever flashes.
         .onChange(of: openCount) {
-            openMenu = nil
+            rowMenu = PanelRowMenuState()
             isSyncingQuery = true
             query = presentation.query
             isSyncingQuery = false
@@ -402,20 +432,20 @@ struct QuickPanelView: View {
     private func rowView(_ row: PanelRow) -> some View {
         QuickPanelRow(
             row: row, hasSelection: presentation.selectedRow != nil,
-            isMenuOpen: openMenu == row.id, hint: presentation.rowHint, openCount: openCount,
-            onKey: { relayKey($0) }, onAction: { perform($0) }, onMenu: { openMenu = $0 }
+            isMenuOpen: rowMenu.rowID == row.id, hint: presentation.rowHint, openCount: openCount,
+            onKey: { relayKey($0) }, onAction: { perform($0) }, onMenu: { rowMenu.open($0) }
         )
         .equatable()
     }
 
     /// The open ⋯ menu, anchored to the panel's edge so the scroll view never clips it, plus its click-away.
     @ViewBuilder private var menuOverlay: some View {
-        if let id = openMenu, let row = presentation.rows.first(where: { $0.id == id }) {
+        if let id = rowMenu.rowID, let row = presentation.rows.first(where: { $0.id == id }) {
             ZStack(alignment: .topTrailing) {
                 // Catches the click-away; not dimmed, because the list is the menu's context.
                 Color.black.opacity(0.001)
                     .contentShape(.rect)
-                    .onTapGesture { openMenu = nil }
+                    .onTapGesture { rowMenu.handle(.clickAway) }
                 actionMenu(for: row)
                     .padding(.top, 84)
                     .padding(.trailing, 10)
@@ -455,8 +485,7 @@ struct QuickPanelView: View {
         let isDestructive = action.isDestructive
         // Delete is last and is the only item ruled off from the rest.
         return Button {
-            openMenu = nil
-            perform(action.intent)
+            rowMenu.select(action, perform: perform)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: action.symbolName)
@@ -618,7 +647,7 @@ struct QuickPanelView: View {
             // A cap, not a width, so the sheet shrinks with a panel narrower than the design.
             .frame(maxWidth: QuickPanelMetrics.width - 56, alignment: .leading)
             .panelPopover(cornerRadius: 12, shadowOpacity: 0.4, radius: 24, y: 8)
-                .padding(.horizontal, 28)
+            .padding(.horizontal, 28)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -770,7 +799,7 @@ struct QuickPanelView: View {
             shiftHeld: press.modifiers.contains(.shift),
             isReturn: press.key == .return,
             isEscape: press.key == .escape,
-            rowMenuOpen: openMenu != nil,
+            rowMenuOpen: rowMenu.rowID != nil,
             presentation: presentation)
         switch decision {
         case .key(let key), .keyAfterClosingMenu(let key):
@@ -799,11 +828,11 @@ struct QuickPanelView: View {
 
     /// Sends a key to the controller, letting esc close an open menu before it closes the panel.
     private func relayKey(_ key: PanelKey) {
-        switch PanelKeyHandling.relayDecision(for: key, rowMenuOpen: openMenu != nil) {
+        switch PanelKeyHandling.relayDecision(for: key, rowMenuOpen: rowMenu.rowID != nil) {
         case .closeMenu:
-            openMenu = nil
+            rowMenu.handle(.windowResignedKey)
         case .key(let key), .keyAfterClosingMenu(let key):
-            openMenu = nil
+            rowMenu.handle(.windowResignedKey)
             onKey(key)
         case .intent, .ignore:
             break
