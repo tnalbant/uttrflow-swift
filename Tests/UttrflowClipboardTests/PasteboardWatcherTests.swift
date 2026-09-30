@@ -259,6 +259,39 @@ struct PasteboardWatcherTests {
         #expect(clipboard.htmlReads == 1)
     }
 
+    @Test("notices a rich-only copy")
+    func richOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, html: "<p>Hello <b>world</b></p>")
+
+        let noticed = await watcher.newClip(at: noon)
+
+        #expect(noticed?.clip.text == "Hello world")
+        #expect(noticed?.clip.richText == "<p>Hello <b>world</b></p>")
+    }
+
+    @Test("ignores a rich-only copy that is blank as plain text")
+    func blankRichOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, html: "<p> </p>")
+
+        #expect(await watcher.newClip(at: noon) == nil)
+    }
+
+    @Test("compares noticed pictures by bytes and dimensions")
+    func noticedClipEqualityIncludesPictureDimensions() {
+        let clip = Clip(text: "same", kind: .text, copiedAt: noon)
+        let data = Data([1, 2, 3])
+        let first = NoticedClip(clip: clip, picture: (data, 10, 20))
+        let same = NoticedClip(clip: clip, picture: (data, 10, 20))
+        let differentSize = NoticedClip(clip: clip, picture: (data, 20, 10))
+
+        #expect(first == same)
+        #expect(first != differentSize)
+    }
+
     @Test("still notices a copy that fits")
     func keepsACopyUnderTheBound() async {
         let clipboard = FakeClipboard()
