@@ -22,7 +22,7 @@ struct QuestionShapeTests {
             "did the tests pass should i merge it now",
             "is the meeting at ten or eleven do we need the projector",
             "where did you park the car i cannot find it anywhere",
-            "what happens if the call fails", "what changed",
+            "what happens if the call fails", "what changed", "who owns the notification service",
             "are you around yet i should be there in ten",
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
@@ -38,7 +38,7 @@ struct QuestionShapeTests {
         "leaves a statement, an indirect question and a command alone",
         arguments: [
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
-            "what works for you is fine",
+            "what works for you is fine", "the person who owns the notification service is unclear",
             "where I put the keys is a mystery",
             "I don't know why the build failed", "when the build finishes we ship",
             "do the dishes before you leave",
