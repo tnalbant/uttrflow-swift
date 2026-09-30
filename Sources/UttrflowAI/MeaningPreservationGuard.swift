@@ -750,6 +750,7 @@ public struct MeaningPreservationGuard: Sendable {
     /// Whether a rewritten word preserves the kept word as a listed form, numeral, homophone, identifier spelling, or contracted auxiliary.
     static func survives(_ word: String, as candidate: GrammarToken) -> Bool {
         if word == candidate.matching || sameIrregularVerbForm(word, candidate.matching) { return true }
+        if equivalentClockTime(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
@@ -762,6 +763,20 @@ public struct MeaningPreservationGuard: Sendable {
             return true
         }
         return false
+    }
+
+    /// Treats a two digit dotted hour and minute as the same clock token as its colon form.
+    private static func equivalentClockTime(_ first: String, _ second: String) -> Bool {
+        func clockParts(_ token: String) -> (hour: String, minute: String)? {
+            let parts = token.split(whereSeparator: { $0 == "." || $0 == ":" })
+            guard parts.count == 2, parts[0].allSatisfy(\.isNumber), parts[1].count == 2,
+                parts[1].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+                let minute = Int(parts[1]), (0...59).contains(minute)
+            else { return nil }
+            return (String(hour), String(parts[1]))
+        }
+        guard let left = clockParts(first), let right = clockParts(second) else { return false }
+        return left.hour == right.hour && left.minute == right.minute
     }
 
     /// Aux verbs the rewrite can still contract to the same word; a dropped or substituted one is a rewrite.

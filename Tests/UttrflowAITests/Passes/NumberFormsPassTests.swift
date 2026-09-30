@@ -160,6 +160,15 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("normalizes dotted times only with a clock cue")
+    func dottedTimes() {
+        #expect(cleaned("moved to 4.30 p.m. on June 2", by: sut) == "moved to 4:30 p.m. on June 2")
+        #expect(cleaned("lands at 7.15, so book a cab", by: sut) == "lands at 7:15, so book a cab")
+        #expect(cleaned("version 2.4.1", by: sut) == "version 2.4.1")
+        #expect(cleaned("12.5% and $3.50", by: sut) == "12.5% and $3.50")
+        #expect(cleaned("the ratio is 7.15", by: sut) == "the ratio is 7.15")
+    }
+
     /// A run of three or more single digits is a digit string, never a clock time; a clock time needs a cue or a non-digit-run minute.
     @Test(
         "writes single-digit runs as a digit string",

@@ -1138,6 +1138,16 @@ struct GuardMatchStrengthTests {
         #expect(!survives("confirm", as: "confuse"))
     }
 
+    @Test("accepts a dotted clock time rewritten with a colon")
+    func acceptsDottedClockNormalization() {
+        #expect(
+            verdict("meeting moved to 4.30 p.m. on June 2", "Meeting moved to 4:30 p.m. on June 2?")
+                .isAccepted)
+        #expect(!survives("2.4.1", as: "2:4:1"))
+        #expect(!survives("12.5%", as: "12:5%"))
+        #expect(!survives("3.50", as: "3:50"))
+    }
+
     /// Changing a name is Tier 3, and two names can begin alike.
     @Test("refuses a name replaced by one that begins the same way")
     func refusesNearName() {
