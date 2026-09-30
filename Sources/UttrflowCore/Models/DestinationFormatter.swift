@@ -161,13 +161,22 @@ public struct DestinationFormatter: Sendable, Equatable {
     /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
     public static func standard(for situation: Situation) -> DestinationFormatter {
         let base = standard(for: situation.destination)
-        guard let rule = DestinationClassifier.rule(for: situation.app),
-            rule.destination == situation.destination,
-            let terminalStop = rule.terminalStop
-        else { return base }
+        let ruleStop: TerminalStopPolicy? = {
+            guard let rule = DestinationClassifier.rule(for: situation.app),
+                rule.destination == situation.destination
+            else { return nil }
+            return rule.terminalStop
+        }()
+        let role = situation.app.accessibilityRole
+        let isSearch = role == "AXSearchField"
+        let isSingleLine = situation.app.isMultiline == false || role == "AXTextField" || isSearch
+        guard ruleStop != nil || isSingleLine else { return base }
         return DestinationFormatter(
-            destination: base.destination, firstWord: base.firstWord, terminalStop: terminalStop,
-            layout: base.layout, grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            destination: base.destination,
+            firstWord: isSearch ? .asSpoken : base.firstWord,
+            terminalStop: isSearch ? .never : (ruleStop ?? base.terminalStop),
+            layout: isSingleLine ? .singleLine : base.layout,
+            grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock)
     }
 }

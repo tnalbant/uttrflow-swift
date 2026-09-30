@@ -47,4 +47,13 @@ struct SituationTests {
         #expect(AppContext.unknown.insertionPoint == .unknown)
         #expect(AppContext(precedingText: "").insertionPoint.sentenceState == .startOfText)
     }
+
+    @Test("field role and multiline capability reach the resolved situation")
+    func resolvesFocusedFieldShape() {
+        let app = AppContext(
+            applicationName: "Browser", accessibilityRole: "AXSearchField", isMultiline: false)
+        let situation = SituationResolver.resolve(from: app)
+        #expect(situation.app.accessibilityRole == "AXSearchField")
+        #expect(situation.app.isMultiline == false)
+    }
 }

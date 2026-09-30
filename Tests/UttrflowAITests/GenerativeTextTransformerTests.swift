@@ -47,6 +47,16 @@ struct GenerativeTextTransformerTests {
         #expect(model.calls.first?.kind == .foundationModels)
     }
 
+    @Test("model cleanup applies search-field casing and stop policies")
+    func searchFieldModelPath() async throws {
+        let model = FakeCleanupModel { _ in "Lowercase query." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
+    }
+
     @Test("attributes the result to itself")
     func attributesResult() async throws {
         let model = FakeCleanupModel { _ in "Hello there." }
@@ -634,6 +644,14 @@ struct RuleBasedTransformerTests {
     @Test("attributes its work to itself")
     func attributesResult() async throws {
         #expect(try await sut.transform(request("hello")).producedBy == .rules)
+    }
+
+    @Test("rule passes keep search casing and remove terminal punctuation")
+    func searchFieldRules() async throws {
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let request = TransformationRequest(
+            transcription: .fixture(text: "lowercase query", language: .english), context: app)
+        #expect(try await sut.transform(request).text == "lowercase query")
     }
 
     private func request(
