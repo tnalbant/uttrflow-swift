@@ -31,48 +31,68 @@ private final class FakeFocusedFieldValueObserver: FocusedFieldValueObserving {
 @MainActor
 @Suite("AX value changes withdraw stale suggestion offers", .serialized)
 struct FocusedFieldValueObserverTests {
-    @Test("closing one menu leaves the focused menu observed across a focus change")
-    func menuVisibilitySurvivesFocusChange() {
+    @Test("an unsupported close notification removes its matching open subscription")
+    func menuNotificationRegistrationRequiresAPair() {
+        var operations: [String] = []
+        let registered = registerPairedNativeMenuNotifications(
+            registerOpened: {
+                operations.append("open")
+                return true
+            },
+            registerClosed: {
+                operations.append("close")
+                return false
+            },
+            removeOpened: { operations.append("remove open") },
+            removeClosed: { operations.append("remove close") })
+
+        #expect(!registered)
+        #expect(operations == ["open", "close", "remove open"])
+    }
+
+    @Test("application menu notifications close across focus and AX source changes")
+    func menuVisibilitySurvivesFocusAndSourceChanges() {
         var state = NativeMenuVisibilityState<Int>()
         state.focusedElementChanged(to: 1)
-        state.menuOpened(from: 100)
-        state.menuOpened(from: 1)
+        state.menuOpened()
         state.focusedElementChanged(to: 2)
 
         #expect(state.isOpen)
-        #expect(state.observedFocusedElements == [1, 2])
+        #expect(state.focusedElement == 2)
 
-        state.menuClosed(from: 100)
-        #expect(state.isOpen)
-        state.menuClosed(from: 1)
+        state.menuClosed()
 
         #expect(!state.isOpen)
-        #expect(state.observedFocusedElements == [2])
     }
 
-    @Test("closing one of two menus from the same AX element keeps the other open")
-    func multipleMenusFromOneElementStayOpenUntilBothClose() {
+    @Test("overlapping application menu notifications stay open until each closes")
+    func overlappingMenusStayOpenUntilBothClose() {
         var state = NativeMenuVisibilityState<Int>()
-        state.menuOpened(from: 1)
-        state.menuOpened(from: 1)
+        state.menuOpened()
+        state.menuOpened()
 
-        state.menuClosed(from: 1)
+        state.menuClosed()
         #expect(state.isOpen)
 
-        state.menuClosed(from: 1)
+        state.menuClosed()
         #expect(!state.isOpen)
     }
 
-    @Test("observer teardown clears menu state and retained focused elements")
+    @Test("an unmatched close cannot underflow and teardown clears menu state")
     func teardownClearsNativeMenuState() {
         var state = NativeMenuVisibilityState<Int>()
         state.focusedElementChanged(to: 1)
-        state.menuOpened(from: 1)
+        state.menuOpened()
         state.focusedElementChanged(to: 2)
 
+        state.menuClosed()
+        state.menuClosed()
+        #expect(!state.isOpen)
+
+        state.menuOpened()
         #expect(state.reset())
         #expect(!state.isOpen)
-        #expect(state.observedFocusedElements.isEmpty)
+        #expect(state.focusedElement == nil)
     }
 
     @Test("an AX SetValue change disarms and hides the current offer")
