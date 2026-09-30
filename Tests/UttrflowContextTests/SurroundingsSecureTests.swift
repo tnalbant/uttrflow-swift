@@ -71,6 +71,25 @@ struct SurroundingsSecureTests {
             asked.isSuperset(of: [kAXSubroleAttribute, kAXIdentifierAttribute, kAXPlaceholderValueAttribute]))
     }
 
+    @Test("A batched window answer includes its document, title and frame.")
+    func windowMetadataIsAvailableFromOneBatch() throws {
+        let origin = CGPoint(x: 12, y: 34)
+        let size = CGSize(width: 560, height: 380)
+        let position = try #require(withUnsafePointer(to: origin) { AXValueCreate(.cgPoint, $0) })
+        let dimensions = try #require(withUnsafePointer(to: size) { AXValueCreate(.cgSize, $0) })
+        let window = answers([
+            kAXPositionAttribute: position,
+            kAXSizeAttribute: dimensions,
+            kAXTitleAttribute: "Project" as NSString,
+            kAXDocumentAttribute: "file:///tmp/project" as NSString,
+        ])
+
+        #expect(FocusedFieldReader.Answers.attributes.contains(kAXDocumentAttribute))
+        #expect(window.title == "Project")
+        #expect(window.document == "file:///tmp/project")
+        #expect(window.frame == CGRect(origin: origin, size: size))
+    }
+
     @Test("An element with the secure subrole says nothing, not even its title.")
     func secureSubroleSaysNothing() {
         let secure = answers([

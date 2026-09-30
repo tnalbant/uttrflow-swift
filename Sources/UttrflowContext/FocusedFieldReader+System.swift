@@ -262,17 +262,14 @@ public enum FocusedFieldReader {
         } else {
             let fieldDocument = SurfaceProbe.string(field, kAXDocumentAttribute)
             guard goOn() else { return nil }
-            let document =
-                fieldDocument
-                ?? window.flatMap {
-                    goOn() ? SurfaceProbe.string($0, kAXDocumentAttribute) : nil
-                }
+            let windowAnswers = window.map { AXNode($0).answers }
+            let document = fieldDocument ?? windowAnswers?.document
             guard goOn() else { return nil }
             let fieldFrame = frame(of: field)
             guard goOn() else { return nil }
-            let windowFrame = window.flatMap { frame(of: $0) }
+            let windowFrame = windowAnswers?.frame
             guard goOn() else { return nil }
-            let windowTitle = window.flatMap { SurfaceProbe.string($0, kAXTitleAttribute) }
+            let windowTitle = windowAnswers?.title
             guard goOn() else { return nil }
             let value = StableSnapshotValue(
                 identity: fieldIdentity, document: document, fieldFrame: fieldFrame,
@@ -527,6 +524,7 @@ public enum FocusedFieldReader {
             kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute,
             kAXDescriptionAttribute, kAXChildrenAttribute, kAXParentAttribute, kAXSubroleAttribute,
             kAXIdentifierAttribute, kAXPlaceholderValueAttribute, kAXHiddenAttribute,
+            kAXDocumentAttribute,
         ]
 
         /// How many UTF-16 units of a long value are read from its end, twice the per-element cap so cleaning still leaves enough.
@@ -567,6 +565,7 @@ public enum FocusedFieldReader {
         var role: String? { self[kAXRoleAttribute] as? String }
         var subrole: String? { self[kAXSubroleAttribute] as? String }
         var title: String? { self[kAXTitleAttribute] as? String }
+        var document: String? { self[kAXDocumentAttribute] as? String }
 
         /// Whether the element declares itself secure by role or subrole, or as a field by name, asked of the answers already fetched.
         var isSecure: Bool {
