@@ -116,6 +116,26 @@ struct RecordingTests {
         #expect(try await store.candidates(for: terminal, matching: "git s").map(\.text) == ["git status"])
     }
 
+    @Test("A shorter grapheme before a multi-scalar completion is recognized as a fragment.")
+    func multiScalarCompletionSuppressesFragment() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("👨‍👩‍👧‍👦", in: terminal, at: moment)
+        try await store.record("👨‍👩‍👧‍👦 end", in: terminal, at: moment)
+
+        #expect(try await store.candidates(for: terminal, matching: "👨‍👩‍👧‍👦").map(\.text) == ["👨‍👩‍👧‍👦 end"])
+    }
+
+    @Test("A shorter grapheme after a multi-scalar completion stays a fragment.")
+    func multiScalarCompletionSuppressesLateFragment() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("👨‍👩‍👧‍👦 end", in: terminal, at: moment)
+        try await store.record("👨‍👩‍👧‍👦", in: terminal, at: moment)
+
+        #expect(try await store.candidates(for: terminal, matching: "👨‍👩‍👧‍👦").map(\.text) == ["👨‍👩‍👧‍👦 end"])
+    }
+
     @Test("Prefix hygiene ignores case, so a capitalised fragment is still recognised as one.")
     func fragmentSuppressionIgnoresCase() async throws {
         let corpus = Corpus()

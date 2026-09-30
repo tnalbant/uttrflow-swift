@@ -575,7 +575,7 @@ public actor PredictStore: PredictionStore {
         surfaceIdentifier id: Int64, text: String
     ) throws(PredictStoreError) -> Bool {
         let lowered = text.lowercased()
-        let length = Int64(lowered.count)
+        let length = Int64(lowered.unicodeScalars.count)
         let found = try database.rows(
             """
             SELECT 1 FROM entry
@@ -607,7 +607,7 @@ public actor PredictStore: PredictionStore {
             {
                 $0.bind(1, id)
                 $0.bind(2, text)
-                $0.bind(3, Int64(lowered.count))
+                $0.bind(3, Int64(lowered.unicodeScalars.count))
                 $0.bind(4, lowered)
             }
         ) { $0.text(0) }
