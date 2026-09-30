@@ -91,6 +91,8 @@ public actor DictationPipeline {
     private var earlyTidyTask: Task<Piece, Never>?
     /// Whether a piece is being recognised or tidied right now, which is what makes the drain a wait worth timing.
     private var pieceInFlight = false
+    /// Early recogniser calls still running after their cancelled task has returned.
+    private var earlyDecodesInFlight = 0
     private var earlyContext: AppContext?
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     private(set) var earlyReadsSettled = 0
@@ -266,7 +268,7 @@ public actor DictationPipeline {
     // MARK: The sequence
 
     /// Whether a new dictation can begin, counting one that holds the turn before its state has moved.
-    private var isBusy: Bool { hasTurn || state.isBusy }
+    private var isBusy: Bool { hasTurn || state.isBusy || earlyDecodesInFlight > 0 }
 
     /// Begins listening. Does nothing if a dictation is already under way.
     public func startRecording() async {
@@ -547,12 +549,15 @@ public actor DictationPipeline {
             }
             // Recognition only; a key released mid-tidy is not held to this, since the tidy runs on past it.
             pieceInFlight = true
+            earlyDecodesInFlight += 1
             let heard: Transcription?
             do {
                 heard = try await transcribe(
                     audio, lead..<cut, biasedTowards: await vocabulary(mine, seeing: seeing),
                     recording: NoOpMetricsRecorder(), skippingAMiss: false, for: mine)
             } catch {
+                earlyDecodesInFlight -= 1
+                wakeWhatWaitsForRest()
                 guard generation == mine, !wasCancelled(mine) else { return }
                 // A failed piece is left for the end, where it is reported; the rest still work ahead.
                 earlySpans.append(.pending(earlyCut..<end))
@@ -560,6 +565,8 @@ public actor DictationPipeline {
                 pieceInFlight = false
                 continue
             }
+            earlyDecodesInFlight -= 1
+            wakeWhatWaitsForRest()
             guard generation == mine, !wasCancelled(mine) else { return }
             // Cut here, before the tidy, so a key-up mid-tidy still knows what audio is left to recognise.
             earlyCut = end
