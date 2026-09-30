@@ -248,6 +248,28 @@ struct CommitDetectorTests {
         }
     }
 
+    @Test("A host-app rewrite that differs from delivered typing is not learned.")
+    func appMutatedTextIsNotLearned() {
+        var detector = CommitDetector()
+        _ = detector.receive(.keystroke("", at: start))
+        _ = detector.receive(.typed("teh ", at: start.addingTimeInterval(1)))
+        _ = detector.receive(.keystroke("the ", at: start.addingTimeInterval(2)))
+        _ = detector.receive(.typed("meeting", at: start.addingTimeInterval(3)))
+        _ = detector.receive(.keystroke("the meeting", at: start.addingTimeInterval(4)))
+        #expect(detector.receive(.returnPressed(at: start.addingTimeInterval(5))) == nil)
+    }
+
+    @Test("Text matching delivered typing remains eligible for learning.")
+    func unmodifiedTypingIsLearned() {
+        var detector = CommitDetector()
+        _ = detector.receive(.keystroke("", at: start))
+        _ = detector.receive(.typed("team ", at: start.addingTimeInterval(1)))
+        _ = detector.receive(.keystroke("team ", at: start.addingTimeInterval(2)))
+        _ = detector.receive(.typed("lunch", at: start.addingTimeInterval(3)))
+        _ = detector.receive(.keystroke("team lunch", at: start.addingTimeInterval(4)))
+        #expect(detector.receive(.returnPressed(at: start.addingTimeInterval(5)))?.text == "team lunch")
+    }
+
     @Test("An idle does not learn a line that took inserted text either.")
     func insertedTextIsNotLearnedFromAnIdle() {
         var detector = CommitDetector()

@@ -24,6 +24,8 @@ enum DiagnosticsFixture {
         availability: [TransformerKind: Bool] = [:],
         model: DiagnosticsModelPresence? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
+        dictationShortcutArmed: Bool? = true,
+        hasDefaultInputDevice: Bool? = true,
         measurements: [StageMeasurement] = [],
         cleaning: CleaningRecord? = nil,
         lastCleanedBy: TransformerKind? = nil
@@ -31,7 +33,9 @@ enum DiagnosticsFixture {
         DiagnosticsPresenter.page(
             for: DiagnosticsSnapshot(
                 engines: engines, transformerAvailability: availability, speechModel: model,
-                permissions: permissions, measurements: measurements, cleaning: cleaning,
+                permissions: permissions, dictationShortcutArmed: dictationShortcutArmed,
+                hasDefaultInputDevice: hasDefaultInputDevice,
+                measurements: measurements, cleaning: cleaning,
                 lastCleanedBy: lastCleanedBy),
             locale: locale)
     }
@@ -514,6 +518,45 @@ struct DiagnosticsPermissionTests {
     @Test("a row is identified by what it reports on")
     func rowIdentity() {
         #expect(DiagnosticsFixture.page().permissions.first?.id == "Microphone")
+    }
+}
+
+@Suite("Diagnostics reports whether dictation can start")
+struct DiagnosticsAvailabilityTests {
+    @Test("a shortcut with no dictation listener is shown as unarmed and raises attention")
+    func unarmedShortcutNeedsAttention() {
+        let page = DiagnosticsFixture.page(dictationShortcutArmed: false)
+        let shortcut = page.availability.first
+
+        #expect(shortcut?.title == "Dictation shortcut")
+        #expect(shortcut?.detail == "Not armed")
+        #expect(shortcut?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Dictation shortcut: Not armed")
+    }
+
+    @Test("a missing default input device is shown and raises the attention summary")
+    func missingInputNeedsAttention() {
+        let page = DiagnosticsFixture.page(hasDefaultInputDevice: false)
+        let input = page.availability.last
+
+        #expect(input?.title == "Input device")
+        #expect(input?.detail == "No default input device")
+        #expect(input?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Input device: No default input device")
+    }
+
+    @Test("both availability rows appear in copied diagnostics")
+    func reportIncludesAvailability() {
+        let report = DiagnosticsPresenter.report(
+            for: DiagnosticsSnapshot(
+                dictationShortcutArmed: false, hasDefaultInputDevice: false),
+            locale: DiagnosticsFixture.locale)
+
+        #expect(
+            report.contains(
+                "Availability\n  Dictation shortcut: Not armed\n  Input device: No default input device"))
     }
 }
 

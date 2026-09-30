@@ -18,14 +18,16 @@ public enum SuggestionGeometry {
     /// Below this much room after the caret nothing is drawn, since a ghost cut to a letter or two says nothing.
     public static let minimumWidth: CGFloat = 24
 
-    /// The frame at the caret, never wider than the room to the field's, window's or screen's right edge and never off the screen or the window.
+    /// The frame at the caret's text baseline, never wider than the room after it or off the screen or window.
     public static func anchor(
         for placement: SuggestionPlacement,
         caret: CGRect?,
         window: CGRect?,
         field: CGRect? = nil,
         screen: CGRect,
-        size: CGSize
+        size: CGSize,
+        fontAscent: CGFloat? = nil,
+        fontDescent: CGFloat? = nil
     ) -> SuggestionAnchor? {
         guard placement == .inlineGhost, let caret = usable(caret, on: screen),
             let room = availableWidth(caret: caret, field: field, window: window, screen: screen),
@@ -36,10 +38,19 @@ public enum SuggestionGeometry {
         let lowerY = max(screen.minY, window?.minY ?? screen.minY)
         let upperY = min(screen.maxY, window?.maxY ?? screen.maxY)
         let height = min(size.height, max(upperY - lowerY, 0))
-        let top = min(max(caret.maxY, lowerY + height), upperY)
+        let baselineTop = firstLineTop(caret: caret, ascent: fontAscent, descent: fontDescent)
+        let top = min(max(baselineTop, lowerY + height), upperY)
         return SuggestionAnchor(
             placement: .inlineGhost,
             frame: CGRect(x: caret.maxX, y: top - height, width: width, height: height))
+    }
+
+    /// The first line's top follows the field baseline when its font metrics are available.
+    private static func firstLineTop(caret: CGRect, ascent: CGFloat?, descent: CGFloat?) -> CGFloat {
+        guard let ascent, let descent, ascent.isFinite, descent.isFinite,
+            ascent >= 0, descent >= 0
+        else { return caret.maxY }
+        return caret.minY + descent + ascent
     }
 
     /// How far the ghost may run from the caret before it meets the field's, window's or screen's right edge, or nothing when the caret is past all three.

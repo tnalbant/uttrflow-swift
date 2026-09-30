@@ -84,6 +84,8 @@ private actor SlowRecordingKeeper: RecordingKeeper {
         return recording
     }
 
+    func setDestination(_ destination: AppContext, for id: UUID) async {}
+
     func discard(_ id: UUID) {
         discarded.append(id)
     }

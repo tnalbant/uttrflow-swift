@@ -6,6 +6,7 @@ import Testing
 /// Pieces a field's value is built from: plain words, whitespace, newlines, and every kind of character a caret can split.
 private let pieces = [
     "a", "git", "commit", " ", " ", "  ", "\t", "\n", "\n", "\r\n", "🐕", "👍🏽", "e\u{301}", "n\u{303}", "नमस्ते",
+    ")", "]", "}", "'", "\"", "`",
     "क्ष", "é", "-", "🙏🏽", "\u{1F1EE}\u{1F1F3}",
 ]
 
@@ -115,7 +116,7 @@ struct FocusedFieldSnapshotPropertyTests {
     }
 
     @Test(
-        "The caret is at the line's end exactly when only spaces and tabs lie between it and the next newline.",
+        "The caret is at the completion end exactly when only padding and closing punctuation follow it.",
         arguments: carets)
     func lineEndIsReadForward(caret: Caret) {
         let snapshot = caret.snapshot()
@@ -128,7 +129,9 @@ struct FocusedFieldSnapshotPropertyTests {
             in: value, atUTF16Offset: selection.location + selection.length)
         var expected = true
         while index < value.endIndex, !value[index].isNewline {
-            if value[index] != " " && value[index] != "\t" {
+            if value[index] != " " && value[index] != "\t"
+                && ![")", "]", "}", "'", "\"", "`"].contains(value[index])
+            {
                 expected = false
                 break
             }

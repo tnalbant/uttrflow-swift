@@ -5,6 +5,8 @@ public import Foundation
 public enum CaptureEvent: Sendable, Equatable {
     /// The line the caret is on after a key was pressed, which is what a completion matches.
     case keystroke(String, at: Date)
+    /// Characters the keyboard delivered since the last line read.
+    case typed(String?, at: Date)
     /// Return was pressed, which is the user saying the value is finished.
     case returnPressed(at: Date)
     /// The focus moved off this field.
@@ -19,7 +21,8 @@ public enum CaptureEvent: Sendable, Equatable {
     /// When the event happened, which is the clock the detector runs on.
     public var moment: Date {
         switch self {
-        case .keystroke(_, let moment), .returnPressed(let moment), .focusLeft(let moment),
+        case .keystroke(_, let moment), .typed(_, let moment), .returnPressed(let moment),
+            .focusLeft(let moment),
             .applicationDeactivated(let moment), .tick(let moment), .inserted(let moment):
             moment
         }
@@ -29,7 +32,7 @@ public enum CaptureEvent: Sendable, Equatable {
     var endsTheField: Bool {
         switch self {
         case .returnPressed, .focusLeft, .applicationDeactivated: true
-        case .keystroke, .tick, .inserted: false
+        case .keystroke, .typed, .tick, .inserted: false
         }
     }
 
@@ -87,6 +90,16 @@ public struct CommitDetector: Sendable, Equatable {
     private var acceptedLine: String?
     /// Whether text that was not typed reached the line in this field's life, which keeps anything it ends from being learned.
     private var holdsInsertion = false
+    /// Whether a line read established a baseline for checking later keyboard input.
+    private var hasObservedLine = false
+    /// The untrimmed last line read, needed to retain spaces typed before a later word.
+    private var observedLine = ""
+    /// Characters expected to have reached the line since its last read.
+    private var typedSinceRead = ""
+    /// Whether a key without printable characters may have edited the line.
+    private var hasUnverifiableKeySinceRead = false
+    /// Whether a host-app edit made the line differ from the delivered keyboard input.
+    private var holdsMutation = false
 
     /// A detector watching a field nothing has been typed into.
     public init() {}
@@ -102,10 +115,28 @@ public struct CommitDetector: Sendable, Equatable {
     ) -> Commit? {
         switch event {
         case .keystroke(let text, let moment):
-            pending = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if hasObservedLine, (!typedSinceRead.isEmpty || hasUnverifiableKeySinceRead) {
+                if text != observedLine + typedSinceRead { holdsMutation = true }
+            }
+            observedLine = text
+            pending = line
+            hasObservedLine = true
+            typedSinceRead = ""
+            hasUnverifiableKeySinceRead = false
             lastKeystroke = moment
             // A line emptied by hand holds nothing inserted, so what is typed into it next is learned again.
-            if pending.isEmpty { holdsInsertion = false }
+            if pending.isEmpty {
+                holdsInsertion = false
+                holdsMutation = false
+            }
+            return nil
+        case .typed(let text, _):
+            if let text {
+                typedSinceRead += text
+            } else {
+                hasUnverifiableKeySinceRead = true
+            }
             return nil
         case .inserted(let moment):
             holdsInsertion = true
@@ -141,6 +172,11 @@ public struct CommitDetector: Sendable, Equatable {
         committedPrior = nil
         acceptedLine = nil
         holdsInsertion = false
+        hasObservedLine = false
+        observedLine = ""
+        typedSinceRead = ""
+        hasUnverifiableKeySinceRead = false
+        holdsMutation = false
     }
 
     /// Undoes the most recent idle commit, so a later tick can re-emit the value after a failed write.
@@ -151,13 +187,15 @@ public struct CommitDetector: Sendable, Equatable {
 
     /// Commits and then forgets, for the three events that end the field's life.
     private mutating func finish(_ reason: CommitReason, _ admits: (CommitReason) -> Bool) -> Commit? {
+        if !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead { holdsMutation = true }
         defer { reset() }
         return commit(reason, admits)
     }
 
     /// Emits what is pending, unless it is nothing, holds text that was not typed, is exactly what was emitted last, or ended in a way not admitted.
     private mutating func commit(_ reason: CommitReason, _ admits: (CommitReason) -> Bool) -> Commit? {
-        guard !pending.isEmpty, !holdsInsertion, pending != committed, pending != acceptedLine, admits(reason)
+        guard !pending.isEmpty, !holdsInsertion, !holdsMutation, pending != committed,
+            pending != acceptedLine, admits(reason)
         else {
             return nil
         }

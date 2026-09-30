@@ -45,6 +45,11 @@ public enum SettingsEditor {
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
+        case .handsFreeDoubleTap(let milliseconds):
+            guard Settings.handsFreeDoubleTapChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hands-free interval.")
+            }
+            updated.handsFreeDoubleTapMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):

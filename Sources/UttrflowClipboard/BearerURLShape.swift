@@ -17,6 +17,7 @@ enum BearerURLShape {
                 if hasWebhook(bytes, from: start, to: end) { return true }
                 from = end
             }
+            if hasSchemeLessSlackWebhook(bytes) { return true }
             return false
         }
     }
@@ -64,6 +65,7 @@ enum BearerURLShape {
             let value = pair.dropFirst(name.count + 1)
             return value.count >= shortestValue
                 && credentialParameters.contains(percentDecoded(name).lowercased())
+                && SecretShapes.looksGenerated(percentDecoded(value))
         }
     }
 
@@ -109,15 +111,58 @@ enum BearerURLShape {
     private static func isWebhook(host: String, path: [Substring]) -> Bool {
         switch host {
         case "hooks.slack.com":
-            return ["services", "workflows", "triggers"].contains(path.first ?? "") && path.count >= 3
+            guard ["services", "workflows", "triggers"].contains(path.first ?? ""), path.count >= 4,
+                hasIdentifier(path[1], prefix: "T"), hasIdentifier(path[2], prefix: "B")
+            else { return false }
+            return SecretShapes.looksGenerated(String(path[3]))
         case "discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com":
             guard path.first == "api", let hook = path.firstIndex(of: "webhooks") else { return false }
-            return path.count - hook >= 3
+            guard path.count - hook >= 3, !path[hook + 1].isEmpty,
+                path[hook + 1].allSatisfy(\.isNumber), path[hook + 1].allSatisfy(\.isASCII)
+            else { return false }
+            return SecretShapes.looksGenerated(String(path[hook + 2]))
         case "outlook.office.com":
             return path.first == "webhook" && path.count >= 2
         default:
             return host.hasSuffix(".webhook.office.com") && path.first == "webhookb2" && path.count >= 2
         }
+    }
+
+    /// Whether a Slack address copied without its scheme has the same team, channel and generated-token shape.
+    private static func hasSchemeLessSlackWebhook(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
+        let host = Array("hooks.slack.com".utf8)
+        guard bytes.count >= host.count else { return false }
+        for start in 0...(bytes.count - host.count) {
+            guard host.indices.allSatisfy({ bytes[start + $0].lowercasedASCII == host[$0] }),
+                start == 0 || !isHostByte(bytes[start - 1])
+            else { continue }
+            let pathStart = start + host.count
+            guard pathStart < bytes.count, bytes[pathStart] == UInt8(ascii: "/") else { continue }
+            var end = pathStart
+            while end < bytes.count, !endsURL(bytes[end]) { end += 1 }
+            let location = Location(urlText(bytes, from: start, to: end))
+            if isWebhook(host: location.host, path: location.path) { return true }
+        }
+        return false
+    }
+
+    /// Whether a byte can continue a hostname.
+    private static func isHostByte(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte.lowercasedASCII)
+            || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+            || byte == UInt8(ascii: ".") || byte == UInt8(ascii: "-")
+    }
+
+    /// Whether a service identifier has its required prefix and an alphanumeric suffix.
+    private static func hasIdentifier(_ value: Substring, prefix: String) -> Bool {
+        value.first == prefix.first && value.count >= 2 && value.dropFirst().allSatisfy(\.isASCII)
+            && value.dropFirst().allSatisfy { $0.isLetter || $0.isNumber }
+    }
+}
+
+private extension UInt8 {
+    var lowercasedASCII: UInt8 {
+        (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(self) ? self + 32 : self
     }
 }
 

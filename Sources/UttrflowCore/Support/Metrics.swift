@@ -4,6 +4,8 @@
 public enum PipelineStage: String, Sendable, Equatable, CaseIterable, Codable {
     /// The microphone opening: the graph built, the tap installed, the engine started.
     case microphoneOpen
+    /// From the shortcut going down until its first audio samples arrive.
+    case keyDownToAudio
     /// Microphone audio arriving.
     case capture
     /// Waiting for the piece that was already being transcribed when the key came up.

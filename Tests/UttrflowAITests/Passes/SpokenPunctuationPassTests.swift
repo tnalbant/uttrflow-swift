@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 import UttrflowCore
 
 @testable import UttrflowAI
@@ -14,6 +15,8 @@ struct SpokenPunctuationPassTests {
             ("is it ready question mark", "is it ready?"),
             ("ship it full stop", "ship it."),
             ("ship it period", "ship it."),
+            ("that is it period", "that is it."),
+            ("this is final period", "this is final."),
             ("wow exclamation mark", "wow!"),
             ("wow exclamation point", "wow!"),
             ("two things colon the milk", "two things: the milk"),
@@ -150,7 +153,8 @@ struct SpokenPunctuationPassTests {
     @Test(
         "leaves the noun a determiner opens even when a modifier stands between them",
         arguments: [
-            "during the trial period", "I love the Victorian period",
+            "during the trial period", "that trial period", "this period of time",
+            "I love the Victorian period",
             "the 100 metre dash was close", "a short grace period follows",
         ]
     )
@@ -226,5 +230,18 @@ struct SpokenPunctuationPassTests {
         #expect(draft.words[0].state == .replaced(by: SpokenPunctuationPass.id, from: "milk"))
         #expect(draft.words[1].state == .removed(by: SpokenPunctuationPass.id))
         #expect(draft.words[2].state == .kept)
+    }
+
+    @Test("a long unpunctuated rules-only transcript finishes inside the rules budget")
+    func longUnpunctuatedTranscript() async throws {
+        let text = String(
+            repeating: "so i was thinking about the garden and the tomatoes are growing well this year ",
+            count: 200)
+        let request = TransformationRequest(transcription: Transcription(text: text))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = try await RuleBasedTransformer().transform(request)
+        #expect(clock.now - start < StageTimeout.rules)
+        #expect(result.text.split(whereSeparator: \.isWhitespace).count == 2_801)
     }
 }

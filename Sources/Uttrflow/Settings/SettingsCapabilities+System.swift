@@ -60,8 +60,18 @@ extension SettingsCapabilities {
 
     /// Whether macOS has an output device; `NSSound.play()` on none returns false without saying why.
     private static var hasAudioOutput: Bool {
+        hasAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
+    }
+
+    /// Whether macOS has an input device, even when microphone permission has already been granted.
+    static var hasAudioInput: Bool {
+        hasAudioDevice(kAudioHardwarePropertyDefaultInputDevice)
+    }
+
+    /// Whether Core Audio has a default device for the requested direction.
+    private static func hasAudioDevice(_ selector: AudioObjectPropertySelector) -> Bool {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
         var device = AudioDeviceID(kAudioObjectUnknown)

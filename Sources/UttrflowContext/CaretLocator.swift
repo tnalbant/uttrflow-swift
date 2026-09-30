@@ -52,26 +52,31 @@ enum CaretLocator {
         inRange selection: (location: Int, length: Int), value: String?,
         textSelectionLocation: Int, bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> CGRect? {
-        // A real selection, unlike a caret, reports its own bounds honestly.
-        if selection.length > 0, let rect = bounds(selection.location, selection.length), rect.height > 0 {
-            return rect
-        }
+        if selection.length > 0 { return glyph(at: selection.location, bounds: bounds) }
         let location = selection.location
         // A line break's bounds belong to the line it ends, so use the first glyph on the next line.
-        let followsLineBreak = hasLineBreak(beforeUTF16Offset: textSelectionLocation, in: value)
+        return glyph(
+            at: location, value: value, textSelectionLocation: textSelectionLocation, bounds: bounds)
+    }
+
+    /// The caret edge beside a single glyph at the selection start.
+    private static func glyph(
+        at location: Int, value: String? = nil, textSelectionLocation: Int? = nil,
+        bounds: (_ location: Int, _ length: Int) -> CGRect?
+    ) -> CGRect? {
+        let textLocation = textSelectionLocation ?? location
+        let followsLineBreak = hasLineBreak(beforeUTF16Offset: textLocation, in: value)
         // The caret sits at the trailing edge of the complete character before it, including emoji graphemes.
-        let precedingLength = precedingCharacterLength(in: value, beforeUTF16Offset: textSelectionLocation) ?? 1
+        let precedingLength = precedingCharacterLength(in: value, beforeUTF16Offset: textLocation) ?? 1
         if location > 0, !followsLineBreak,
             let before = bounds(location - precedingLength, precedingLength), before.height > 0
         {
             return CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height)
         }
-        // At the very start, or just after a line break, take the leading edge of the following glyph.
+        // At the start of the value, or just after a line break, use the following glyph.
         if let at = bounds(location, 1), at.height > 0 {
             return CGRect(x: at.minX, y: at.minY, width: 0, height: at.height)
         }
-        // An empty line has no glyph beside the caret, so its own bounds is all there is.
-        if let rect = bounds(selection.location, selection.length), rect.height > 0 { return rect }
         return nil
     }
 

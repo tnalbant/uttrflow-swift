@@ -187,6 +187,45 @@ struct SecretDetectionTests {
     }
 
     @Test(
+        "masks generated query credentials and shaped webhooks",
+        arguments: [
+            "https://api.example.com/v1?token=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?access_token=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?sig=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?signature=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?X-Goog-Signature=Zx9kLmQ2rT7pQ3vB",
+            "https://hooks.slack.com/services/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",
+            "hooks.slack.com/services/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",
+            "https://discord.com/api/webhooks/123456789012345678/Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf",
+        ])
+    func generatedBearerAddresses(_ text: String) {
+        #expect(SecretShapes.matches(text))
+    }
+
+    @Test(
+        "leaves URL placeholders and webhook documentation pages alone",
+        arguments: [
+            "https://api.example.com/v1?token=YOUR_TOKEN_HERE",
+            "https://api.example.com/v1?access_token=ACCESS_TOKEN",
+            "https://api.example.com/v1?token=REPLACE_ME_PLEASE",
+            "https://api.example.com/v1?token=${TOKEN}",
+            "https://api.example.com/v1?token=$API_TOKEN",
+            "https://api.example.com/v1?token=<YOUR_TOKEN>",
+            "https://api.example.com/v1?token=xxxxxxxxxxxx",
+            "https://api.example.com/v1?sig=00000000",
+            "https://api.example.com/v1?X-Goog-Signature=REDACTED",
+            "https://api.example.com/v1?token=unsubscribe",
+            "https://api.example.com/v1?token=undefined",
+            "https://api.example.com/v1?signature=required",
+            "https://hooks.slack.com/services/apps/overview",
+            "https://discord.com/api/webhooks/docs/overview",
+        ])
+    func placeholderBearerAddresses(_ text: String) {
+        #expect(!SecretShapes.matches(text))
+        #expect(ClipKindDetector.kind(of: text) == .link)
+    }
+
+    @Test(
         "masks a webhook nested in another address, a percent-encoded token name, and a host with a closing dot",
         arguments: [
             "https://example.com/r?next=https://hooks.slack.com/services/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",

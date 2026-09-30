@@ -1,5 +1,6 @@
 // The whole product in one actor: from the key going down to the text landing.
 public import UttrflowCore
+public import struct Foundation.Date
 public import struct Foundation.UUID
 
 /// Speak, and the words appear where you were typing. See `Docs/pipeline.md`.
@@ -41,6 +42,10 @@ public actor DictationPipeline {
     private var state: DictationState = .idle
     private let observers = StateObservers()
 
+    /// A microphone opened while a modifier press settles, before it belongs to a dictation.
+    private var pendingCapture: Task<Void, Never>?
+    private var pendingCaptureStartedAt: (any Clock<Duration>).Instant?
+
     /// Counts dictations, so a cancel can name the one it abandoned.
     private var generation = 0
     private var cancelledGeneration: Int?
@@ -73,6 +78,8 @@ public actor DictationPipeline {
 
     /// The kept audio of the dictation under way, deleted or left for a retry as it ends.
     private var openRecording: UUID?
+    /// Destination facts read for audio kept for a retry.
+    private var recordingDestination: AppContext?
 
     /// Spans the early loop reached while the key was held, and where the audio it consumed ends. See `Docs/early-transcription.md`.
     private var earlySpans: [Span] = []
@@ -266,18 +273,66 @@ public actor DictationPipeline {
         guard !isLoading else { return transition(to: .failed(.stillLoading)) }
         hasTurn = true
         defer { hasTurn = false }
-        // At key-down, so a recogniser let go while idle loads while the person speaks.
         await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
 
-        generation += 1
-        let mine = generation
+    /// Opens the microphone before a modifier shortcut settles, keeping speech from key-down onward.
+    public func beginModifierPress(at instant: Duration) async {
+        guard pendingCapture == nil, !isBusy, !isLoading else { return }
+        pendingCaptureStartedAt = instant
         do {
-            // Measured because the user is already speaking: nothing is heard until this returns.
             try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
                 try await capture.start()
             }
+        } catch {
+            pendingCaptureStartedAt = nil
+            transition(to: .failed(DictationFailure(error)))
+            return
+        }
+        pendingCapture = Task {}
+    }
+
+    /// Makes a modifier press's already-open microphone the recording under way.
+    public func adoptModifierPress() async {
+        guard !isBusy, !isLoading else { return }
+        hasTurn = true
+        defer { hasTurn = false }
+        await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
+
+    /// Cancels a modifier press that became another shortcut before it settled.
+    public func cancelModifierPress() async {
+        guard let pendingCapture else { return }
+        self.pendingCapture = nil
+        pendingCaptureStartedAt = nil
+        await capture.cancel()
+    }
+
+    /// Adopts audio already arriving as a dictation after the modifier press settles.
+    private func startRecordingUsingOpenCapture() async {
+        generation += 1
+        let mine = generation
+        do {
+            if let pendingCapture {
+                await pendingCapture.value
+                self.pendingCapture = nil
+                let openedAt = pendingCaptureStartedAt
+                pendingCaptureStartedAt = nil
+                if let openedAt {
+                    await metrics.record(
+                        .init(
+                            stage: .keyDownToAudio,
+                            duration: openedAt.duration(to: clock.now),
+                            succeeded: true))
+                }
+            } else {
+                try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
+                    try await capture.start()
+                }
+            }
             guard !wasCancelled(mine) else {
-                // Cancelled while the microphone was opening: close it rather than listen on.
                 await capture.cancel()
                 return
             }
@@ -291,7 +346,6 @@ public actor DictationPipeline {
             transition(to: .recording)
             beginWorkingAhead(mine)
         } catch {
-            // A cancel during the open leaves the pipeline at rest, so no failure is published over it.
             guard !wasCancelled(mine) else { return }
             transition(to: .failed(DictationFailure(error)))
         }
@@ -373,8 +427,11 @@ public actor DictationPipeline {
         stopwatch = nil
         takeSettings()
         spokenFor = audio.duration
-        insertedInto = nil
-        insertedIntoIdentifier = nil
+        recordingDestination =
+            (await recordings.waiting(now: Date()))
+            .first(where: { $0.id == recording })?.destination
+        insertedInto = recordingDestination?.applicationName
+        insertedIntoIdentifier = recordingDestination?.bundleIdentifier
         destinationIsSecure = false
         cleaningRecords = []
         openRecording = recording
@@ -393,6 +450,9 @@ public actor DictationPipeline {
 
     /// Abandons the dictation at any stage: nothing is transcribed and nothing is inserted.
     public func cancel() async {
+        pendingCapture?.cancel()
+        pendingCapture = nil
+        pendingCaptureStartedAt = nil
         cancelledGeneration = generation
         earlyWork?.cancel()
         earlyWork = nil
@@ -439,6 +499,7 @@ public actor DictationPipeline {
     private func resolveDictationContext(
         _ app: AppContext, cleaner: any TranscriptCleaning, overrides: DestinationOverrides
     ) async {
+        recordingDestination = app
         let situation = SituationResolver.resolve(from: app, overrides: overrides)
         let words = await speechWords(app)
         dictationWords = words
@@ -713,7 +774,8 @@ public actor DictationPipeline {
             dictationContext?.situation
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
-        let joined = PieceJoiner.join(pieces, under: .standard(for: joining.destination))
+        let joiningFormatter = DestinationFormatter.standard(for: joining)
+        let joined = PieceJoiner.join(pieces, under: joiningFormatter)
         let correctedAtSeams = await correctAcrossSeams(
             pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
         let whole = await finishMessage(
@@ -729,8 +791,8 @@ public actor DictationPipeline {
 
         // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
         let snippetInput = PieceJoiner.snippetInput(
-            pieces, under: .standard(for: joining.destination), using: written)
-        let layout = DestinationFormatter.standard(for: joining.destination).layout
+            pieces, under: joiningFormatter, using: written)
+        let layout = joiningFormatter.layout
         let expanded = await expand(
             written, matching: snippetInput, laidOut: layout)
         guard !wasCancelled(mine) else { return }
@@ -780,9 +842,14 @@ public actor DictationPipeline {
             insertedInto = read.applicationName
             insertedIntoIdentifier = read.bundleIdentifier
             destinationIsSecure = read.isSecure
+            let recordedDestination = earlyContext ?? dictationContext?.app ?? read
+            recordingDestination = recordedDestination
+            if let openRecording {
+                await recordings.setDestination(recordedDestination, for: openRecording)
+            }
             return read
         case .copy:
-            return AppContext()
+            return recordingDestination ?? AppContext()
         }
     }
 
@@ -790,7 +857,7 @@ public actor DictationPipeline {
     private func correctionContext(for delivery: Delivery) async -> AppContext {
         switch delivery {
         case .insert: await readContext()
-        case .copy: AppContext()
+        case .copy: recordingDestination ?? AppContext()
         }
     }
 
@@ -846,8 +913,8 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
-                    guard transcription.isBlank else { return Heard.words(transcription) }
-                    return speaks ? Heard.missed : Heard.nothing
+                    if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
+                    return Heard.words(transcription)
                 } catch SpeechEngineError.audioTooShort {
                     // Alone, a hold too brief to transcribe says so, since the fix is to hold longer.
                     guard !whole else { throw SpeechEngineError.audioTooShort }
@@ -1136,6 +1203,9 @@ public actor DictationPipeline {
             return
         }
         openRecording = kept?.id
+        if let destination = earlyContext ?? dictationContext?.app, let id = kept?.id {
+            await recordings.setDestination(destination, for: id)
+        }
     }
 
     /// Deletes the kept audio of the dictation under way, if there is one.

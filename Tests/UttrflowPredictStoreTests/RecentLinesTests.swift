@@ -33,7 +33,7 @@ struct RecentLinesTests {
         let store = try store(corpus)
         try await store.record("teh thing", in: chat, at: moment)
         try await store.record("the thing", in: chat, at: moment.addingTimeInterval(60))
-        await store.recordRejection(of: "teh thing", in: chat)
+        try await store.recordRejection(of: "teh thing", in: chat)
         #expect(try await store.recent(in: chat, limit: 6) == ["the thing"])
         #expect(try await store.recent(in: search, limit: 6).isEmpty)
     }

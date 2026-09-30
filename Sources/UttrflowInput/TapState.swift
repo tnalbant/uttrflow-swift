@@ -166,15 +166,3 @@ final class TapState: @unchecked Sendable {
         return events
     }
 }
-
-extension KeyModifiers {
-    /// The window server's flags, narrowed to the four that change what a key means.
-    init(_ flags: CGEventFlags) {
-        var modifiers = KeyModifiers()
-        if flags.contains(.maskCommand) { modifiers.insert(.command) }
-        if flags.contains(.maskAlternate) { modifiers.insert(.option) }
-        if flags.contains(.maskControl) { modifiers.insert(.control) }
-        if flags.contains(.maskShift) { modifiers.insert(.shift) }
-        self = modifiers
-    }
-}

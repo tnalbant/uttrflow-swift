@@ -4,6 +4,7 @@ import Synchronization
 import Testing
 
 @testable import UttrflowCore
+@testable import UttrflowAI
 @testable import UttrflowPipeline
 @testable import UttrflowTestSupport
 
@@ -174,7 +175,7 @@ private let paymentSheet = DictationCorrection(
 
 private func makePipeline(
     spoken: String = heard,
-    cleaner: FakeCleaner = FakeCleaner(),
+    cleaner: any TranscriptCleaning = FakeCleaner(),
     inserter: FakeInserter = FakeInserter(),
     corrector: any WordCorrecting = NoTextChanges(),
     snippets: any SnippetExpanding = NoTextChanges(),
@@ -278,6 +279,49 @@ struct DictationPipelineCorrectionTests {
 
         #expect(inserter.received.isEmpty)
         #expect(await pipeline.currentState == .idle)
+    }
+}
+
+@Suite("Dictation pipeline: dictionary terms in restatements")
+struct DictationPipelineDictionaryRestatementTests {
+    private func correctedPipeline(for spoken: String) -> DictationPipeline {
+        makePipeline(
+            spoken: spoken, cleaner: RuleBasedTransformer(),
+            corrector: FakeCorrector(proposing: [
+                DictationCorrection(
+                    heard: "payment sheet", wrote: "PaymentSheet", wordRange: 5..<7,
+                    entryID: entry, reason: "heardAsSeveralWords", heardConfidence: 0.2)
+            ]))
+    }
+
+    @Test("removes the old phrase after sorry and keeps the corrected word index")
+    func sorryBeforeDictionaryTerm() async {
+        let pipeline = correctedPipeline(for: "open the payment form sorry payment sheet")
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open the PaymentSheet")
+        #expect(await pipeline.outcome?.changes.corrections.first?.writtenWordIndex == 2)
+    }
+
+    @Test("removes the old phrase after i mean and keeps the corrected word index")
+    func meanBeforeDictionaryTerm() async {
+        let pipeline = correctedPipeline(for: "open payment form I mean payment sheet")
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open PaymentSheet")
+        #expect(await pipeline.outcome?.changes.corrections.first?.writtenWordIndex == 1)
+    }
+
+    @Test("keeps the control restatement when its heard anchor matches")
+    func matchingSpokenAnchorControl() async {
+        let pipeline = makePipeline(
+            spoken: "open the payment form sorry payment page", cleaner: RuleBasedTransformer())
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open the payment page")
     }
 }
 

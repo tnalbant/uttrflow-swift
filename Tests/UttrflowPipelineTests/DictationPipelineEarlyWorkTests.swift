@@ -710,6 +710,37 @@ struct DictationPipelineEarlyWorkTests {
         #expect(await pipeline.currentState == .failed(DictationFailure(SpeechEngineError.nothingHeard)))
     }
 
+    @Test("a blank transcript of non-speech remains nothing heard")
+    func blankNonSpeechDecodeIsNothing() async {
+        let speech = NumberingSpeechEngine(blankCalls: [1])
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(
+                stopOutcome: .success(AudioSamples.canonical(Take.silence(3)))),
+            speech: speech)
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState == .failed(DictationFailure(SpeechEngineError.nothingHeard)))
+    }
+
+    @Test("speech that decodes to blank text remains a recognition miss")
+    func blankSpeechDecodeIsMissed() async {
+        let speech = NumberingSpeechEngine(blankCalls: [1, 2])
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.onePiece)), speech: speech)
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(
+            await pipeline.currentState
+                == .failed(
+                    DictationFailure(
+                        SpeechEngineError.transcriptionFailed(
+                            description: "speech in a recording piece produced no words"))))
+    }
+
     @Test("corrections keep pointing at their words after the pieces are joined")
     func correctionsAreShifted() async {
         let pipeline = makePipeline(

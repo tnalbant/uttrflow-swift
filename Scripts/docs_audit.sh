@@ -1509,6 +1509,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 7f. The sign-in artboards show only providers the app offers.
+# ---------------------------------------------------------------------------
+# #1171 found the generator drawing Google, GitHub and Apple even though
+# SignInProvider.offered deploys Google alone. The generator reads the offered
+# cases and their button titles from Account.swift; this audit checks all four
+# committed appearances against that production contract.
+printf '\nSign-in artboard contract\n'
+
+if [[ ! -x "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" ]]; then
+    fail "Scripts/signin_artboard_contract_audit.py is missing or not executable" \
+        "The audit keeps every light, dark and offline sign-in artboard aligned with" \
+        "SignInProvider.offered; without it a design-only provider can return silently."
+else
+    if "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" --self-test; then
+        if "$PACKAGE_ROOT/Scripts/signin_artboard_contract_audit.py" >&2; then
+            pass "all four sign-in artboards match SignInProvider.offered"
+        else
+            fail "a sign-in artboard disagrees with SignInProvider.offered" \
+                "The audit names the artboard and provider/title mismatch. Regenerate" \
+                "the sign-in variants with Design/_gen_signin.py."
+        fi
+    else
+        fail "Scripts/signin_artboard_contract_audit.py --self-test failed" \
+            "The audit's self-test must catch provider and title drift before it checks" \
+            "the committed artboards. Fix the audit before relying on it."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n'
 if [[ "$failures" -gt 0 ]]; then
     printf 'docs audit: %s check(s) failed. The documentation contradicts the tree.\n\n' "$failures" >&2

@@ -19,6 +19,11 @@ public enum PanelKeyHandling {
         rowMenuOpen: Bool,
         presentation: PanelPresentation
     ) -> PanelKeyDecision {
+        if presentation.sheet?.takesTyping == true {
+            if isEscape { return .key(.escape) }
+            if isReturn, !commandHeld { return .key(.return) }
+            return .ignore
+        }
         if isEscape {
             return rowMenuOpen ? .closeMenu : .key(.escape)
         }

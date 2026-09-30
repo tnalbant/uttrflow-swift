@@ -547,6 +547,8 @@ private final class MicrophoneWatchingCue: RecordingCueing {
         log.withLock { $0.stops.append(delivering) }
     }
 
+    func playWarning() {}
+
     var starts: Int { log.withLock(\.starts) }
     var stopsHeardWhileDelivering: [Bool] { log.withLock(\.stops) }
 }
