@@ -78,6 +78,8 @@ public enum OnboardingTrial: Sendable, Equatable {
     case waiting
     /// The shortcut is down and the microphone is live.
     case listening
+    /// Dictation was refused while the speech model is still loading.
+    case stillLoading
     /// The words that came back, shown before onboarding closes.
     case heard(String)
 }

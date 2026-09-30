@@ -86,28 +86,21 @@ neither a path nor a host — rather than as a directory. Three things follow fr
 stand behind one; and what is typed there is remembered under the session rather than under the
 directory this Mac was left in. Nothing is stat'ed on the strength of a remote prompt.
 
-**How the session is recognised, and how reliable that is.** Whether a terminal is remote is not
-knowable from outside it, so this reads the one signal the app already holds: the window title,
-which by default carries the name of the foreground process — `ssh`, `mosh`, `mosh-client` — as
-its own word. A word that only reads like one is not it: `~/.ssh`, `.ssh`, `ssh-keygen` and `scp`
-keep the directory.
+**How the session is recognised, and how reliable that is.** A title naming `ssh`, `mosh`,
+`mosh-client`, `autossh`, `docker exec`, `kubectl exec`, or `gcloud compute ssh` is scoped as
+remote. A `user@host` title is remote unless its host exactly matches this Mac's reported local
+host name (with an optional `.local` suffix). A path-like title such as `~/.ssh` is not a remote
+program name.
 
-The two other candidate signals were weighed and left alone:
+The title cannot prove locality in every terminal configuration. If it names neither a known
+remote command nor this Mac's exact host, it receives `RemoteSession.unknownScope`. That opaque
+scope is also refused by the verifier, so an overwritten remote title, a shell inside tmux or
+screen, or an unfamiliar command cannot use this Mac's files, branches, programs, or remembered
+lines. This may withhold suggestions in a local terminal whose title does not name its host; that
+is the cost of not treating an uncertain machine as this one.
 
-- **A `user@host` prompt or title that differs from this Mac's name.** It needs this Mac's names to
-  compare against, and it has several — the Bonjour name, the local hostname with and without
-  `.local`, the name the network hands out — so a local prompt reads as remote often enough to
-  lose the feature in ordinary local terminals. That is failing closed in the wrong place.
-- **A process check.** What a terminal is running is the terminal's child, not this app's, and
-  reading it means looking outside what the app is permitted to see. It is not worth a wider
-  permission.
-
-**This detection fails open**, and deliberately: with no positive signal a terminal is read as
-local, so an `ssh` session whose title names no program — one the remote shell has overwritten,
-or a terminal configured not to show the process — is still read against this disk. Failing the
-other way means treating every terminal as possibly remote, which withdraws the feature from every
-local one. So this narrows the bug to the case where no signal exists rather than closing it; a
-session that announces itself is handled, and one that does not is where it stood before.
+A process check is not used: the terminal process is the shell, not the program that shell runs,
+and inspecting its descendants would require access beyond the window title.
 
 ## tmux and screen panes
 
@@ -116,18 +109,10 @@ text area. The document directory exposed there belongs to the outer terminal pr
 identify the pane currently under the caret. Pane switches therefore cannot safely reuse that
 directory for path checks, branch lookups, machine candidates, or corpus identity.
 
-When the terminal window title identifies `tmux` or `screen` as the foreground program, the field is scoped
-as `RemoteSession.scope`. The verifier consequently refuses terminal lines, no local directory
-index is queried, and observations are kept under an opaque session scope rather than the outer
-directory. This is deliberately fail-closed because a wrong pane's filesystem can make an unsafe
-command appear valid.
-
-The title is the only pane-related signal this process can obtain without entering the shell or
-requesting broader access. Detection is best-effort: if a terminal configuration hides the
-multiplexer name from its window title, Accessibility still cannot reveal the active pane's cwd,
-and the outer document may be treated as local. The same limitation applies to multiplexers whose
-title format omits their name. Users who need reliable per-pane suggestions should configure their
-terminal title to include `tmux` or `screen`, or use a non-multiplexed terminal window.
+When the terminal title names `tmux` or `screen`, or provides no trustworthy machine identity,
+the field receives `RemoteSession.unknownScope`. The verifier refuses terminal lines, no local
+directory index is queried, and observations stay outside the outer directory's corpus. A pane's
+filesystem cannot be inferred from the outer terminal's Accessibility document.
 
 ## What it never does
 

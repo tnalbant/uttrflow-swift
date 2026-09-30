@@ -197,6 +197,18 @@ struct CodeReindentTests {
         #expect(CodeReindent.reindented("all:\r\n# Build target\r\n\t@echo ok\r\n  X = 1\r\n") == nil)
     }
 
+    /// Conditional directives between a rule and recipe do not make the recipe tab editable.
+    @Test("refuses makefile recipes inside conditionals")
+    func makefileRecipesInsideConditionals() {
+        let ifeq = "SRCS = a.c \\\n    b.c\nbuild:\nifeq ($(DEBUG),1)\n\t$(CC) -g\nendif\n"
+        let defineBlock = "build:\ndefine RULES\n\t$(CC) -g\nendef\n\t$(CC) -O2\n  done\n"
+        let elseBranch = "build:\nifeq ($(DEBUG),1)\n\t$(CC) -g\nelse\n\t$(CC) -O2\nendif\n"
+
+        #expect(CodeReindent.reindented(ifeq) == nil)
+        #expect(CodeReindent.reindented(elseBranch) == nil)
+        #expect(CodeReindent.reindented(defineBlock) == nil)
+    }
+
     /// The same shape catches tab-bodied Python, where a wrong level moves a statement.
     @Test("refuses tab-and-space Python")
     func indentationSensitiveLanguages() {

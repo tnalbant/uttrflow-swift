@@ -45,13 +45,17 @@ public actor AppleSpeechBackend: TranscriptionBackend {
 
     /// The audio format the analyser reads, found once the locale's assets are installed.
     private var format: AVAudioFormat?
-    /// A transcriber and analyser already prepared for the next piece, so it pays no setup.
-    private var ready: Pair?
-
+    /// A prepared analyser whose context matches the next vocabulary exactly.
+    private var ready: PreparedPair<Pair>?
     /// One analyser run: an analyser is finished after one clip, so each piece takes a fresh pair.
     private struct Pair {
         let transcriber: SpeechTranscriber
         let analyzer: SpeechAnalyzer
+    }
+
+    struct PreparedPair<Value> {
+        let vocabulary: [String]
+        let value: Value
     }
 
     /// Installs the locale's assets and prepares the first pair, once per lifetime. See Docs/speech-engines.md.
@@ -76,11 +80,17 @@ public actor AppleSpeechBackend: TranscriptionBackend {
         guard let offered = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
         else { throw .modelLoadFailed(description: "the recogniser offered no audio format") }
         format = offered
-        ready = try? await Self.preparedPair(locale: locale, format: offered)
+        ready = nil
     }
 
     public func transcribe(
         _ samples: [Float], languageHint: LanguageCode?
+    ) async throws(SpeechEngineError) -> RawTranscript {
+        try await transcribe(samples, languageHint: languageHint, biasedTowards: [])
+    }
+
+    public func transcribe(
+        _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
     ) async throws(SpeechEngineError) -> RawTranscript {
         try await load()
         guard let format else {
@@ -88,14 +98,17 @@ public actor AppleSpeechBackend: TranscriptionBackend {
         }
 
         do {
+            let normalizedVocabulary = Self.contextualStrings(for: vocabulary)
+            let selection = Self.takePreparedPair(ready, matching: normalizedVocabulary)
+            ready = selection.remaining
             let pair: Pair
-            if let prepared = ready {
-                ready = nil
-                pair = prepared
+            if let cached = selection.value {
+                pair = cached
             } else {
-                pair = try await Self.preparedPair(locale: locale, format: format)
+                pair = try await Self.preparedPair(
+                    locale: locale, format: format, vocabulary: normalizedVocabulary)
             }
-            defer { prepareNext(format: format) }
+            defer { prepareNext(format: format, vocabulary: normalizedVocabulary) }
             return try await run(samples, on: pair, format: format)
         } catch let error as SpeechEngineError {
             forget()
@@ -131,30 +144,57 @@ public actor AppleSpeechBackend: TranscriptionBackend {
         )
     }
 
-    /// Prepares the next piece's pair after this one answers, off the wait for the words.
-    private func prepareNext(format: AVAudioFormat) {
-        let locale = locale
-        Task {
-            guard let pair = try? await Self.preparedPair(locale: locale, format: format) else { return }
-            self.keep(pair)
-        }
-    }
-
-    private func keep(_ pair: Pair) {
-        if ready == nil, format != nil { ready = pair }
-    }
-
-    /// Drops everything learned, so the next call checks the assets and the format again.
+    /// Drops cached assets and analyzer state after a transcription error.
     private func forget() {
         format = nil
         ready = nil
     }
 
-    private static func preparedPair(locale: Locale, format: AVAudioFormat) async throws -> Pair {
+    private static func preparedPair(
+        locale: Locale, format: AVAudioFormat, vocabulary: [String]
+    ) async throws -> Pair {
         let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        let context = context(for: vocabulary)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        try await analyzer.setContext(context)
         try await analyzer.prepareToAnalyze(in: format)
         return Pair(transcriber: transcriber, analyzer: analyzer)
+    }
+
+    static func contextualStrings(for vocabulary: [String]) -> [String] {
+        Array(
+            Set(
+                vocabulary.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty })
+        ).sorted()
+    }
+
+    static func context(for vocabulary: [String]) -> AnalysisContext {
+        let context = AnalysisContext()
+        context.contextualStrings = [.general: contextualStrings(for: vocabulary)]
+        return context
+    }
+
+    static func takePreparedPair<Value>(
+        _ prepared: PreparedPair<Value>?, matching vocabulary: [String]
+    ) -> (value: Value?, remaining: PreparedPair<Value>?) {
+        guard let prepared, prepared.vocabulary == vocabulary else { return (nil, nil) }
+        return (prepared.value, nil)
+    }
+
+    private func prepareNext(format: AVAudioFormat, vocabulary: [String]) {
+        let locale = locale
+        Task {
+            guard
+                let pair = try? await Self.preparedPair(
+                    locale: locale, format: format, vocabulary: vocabulary)
+            else { return }
+            self.keep(PreparedPair(vocabulary: vocabulary, value: pair))
+        }
+    }
+
+    private func keep(_ prepared: PreparedPair<Pair>) {
+        if ready == nil, format != nil { ready = prepared }
     }
 
     private static func collect(

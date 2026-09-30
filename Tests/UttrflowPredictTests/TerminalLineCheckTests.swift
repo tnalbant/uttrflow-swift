@@ -230,6 +230,14 @@ struct TerminalLineCheckTests {
         #expect(check.allows(line, in: api), "\(line) can run with files present")
     }
 
+    @Test(
+        "The documented --regexp=PATTERN form checks file operands for grep and rg.",
+        arguments: ["grep", "rg"])
+    func regexpEqualsChecksFileOperands(_ command: String) {
+        #expect(check.allows("\(command) --regexp=TODO Package.swift", in: api))
+        #expect(!check.allows("\(command) --regexp=TODO missing.swift", in: api))
+    }
+
     @Test("A pattern option without its value is refused.")
     func missingSearchOptionValue() {
         #expect(!check.allows("grep -f", in: api))

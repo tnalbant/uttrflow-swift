@@ -44,6 +44,7 @@ public struct WordShape: Equatable, Sendable {
     /// Uppercases the first letter; a leading digit counts as the start and stays as it is.
     public static func capitalised(_ text: String) -> String {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }) else { return text }
+        guard !hasInternalCapital(text) else { return text }
         return String(text[..<start]) + text[start].uppercased() + String(text[text.index(after: start)...])
     }
 
@@ -52,7 +53,14 @@ public struct WordShape: Equatable, Sendable {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }), text[start].isLetter else {
             return text
         }
+        guard !hasInternalCapital(text) else { return text }
         return String(text[..<start]) + text[start].lowercased() + String(text[text.index(after: start)...])
+    }
+
+    /// Whether a word carries an uppercase letter after its first letter.
+    public static func hasInternalCapital(_ text: String) -> Bool {
+        guard let first = text.firstIndex(where: { $0.isLetter || $0.isNumber }) else { return false }
+        return text[text.index(after: first)...].contains(where: { $0.isUppercase })
     }
 
     /// Marks that end a text already: a clause mark, an ellipsis, or a bracket the words closed themselves.
@@ -108,7 +116,25 @@ extension Draft {
 
     /// The live positions from `position` to the end of the sentence it sits in, which one spoken phrase cannot run past.
     public func sentenceRun(from position: Int, in live: [Int]) -> Range<Int> {
-        let end = live[position...].firstIndex { shape(at: $0).endsSentence }.map { $0 + 1 }
-        return position..<(end ?? live.count)
+        position..<sentenceEnd(from: position, in: live)
+    }
+
+    /// The exclusive end of the sentence containing `position`.
+    public func sentenceEnd(from position: Int, in live: [Int]) -> Int {
+        guard position < live.count else { return live.count }
+        for index in position..<live.count where shape(at: live[index]).endsSentence {
+            return index + 1
+        }
+        return live.count
+    }
+
+    /// Whether at least `count` words remain before this sentence ends.
+    public func sentenceContains(_ count: Int, from position: Int, in live: [Int]) -> Bool {
+        let end = min(position + count, live.count)
+        guard position < end else { return count == 0 }
+        for index in position..<end where shape(at: live[index]).endsSentence {
+            return index + 1 == end
+        }
+        return end == position + count
     }
 }

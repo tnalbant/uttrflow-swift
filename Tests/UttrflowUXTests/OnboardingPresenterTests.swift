@@ -429,6 +429,25 @@ struct OnboardingPresenterTests {
         )
     }
 
+    @Test("shows the Settings keycaps for letter, digit and F-key shortcuts on the ready page")
+    func readyPageUsesSettingsKeycaps() {
+        let ready = OnboardingState(step: .ready, detail: .finishing(.ready))
+        let bindings = [
+            HotkeyBinding(keyCode: 2, modifiers: [.option]),
+            HotkeyBinding(keyCode: 18, modifiers: [.control, .command]),
+            HotkeyBinding(keyCode: 96, modifiers: [.option]),
+        ]
+
+        for binding in bindings {
+            let readyPage = page(ready, hotkey: binding)
+            guard case .keyboard(let keyboard) = readyPage.picture else {
+                Issue.record("the ready page draws \(readyPage.picture)")
+                continue
+            }
+            #expect(keyboard.keys == SettingsShortcut.keycaps(for: binding))
+        }
+    }
+
     @Test("lights only the corner keys a shortcut uses, and gives up on keys the corner lacks")
     func theCornerKeys() {
         #expect(OnboardingKeys.corner(of: .controlOptionHold) == [.control, .option])

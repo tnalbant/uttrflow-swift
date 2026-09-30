@@ -1,6 +1,6 @@
 public import UttrflowCore
 
-/// Removes the sounds people make while thinking, and nothing that is ever a word on its own.
+/// Removes hesitation sounds while keeping standalone replies and fixed interjections.
 public struct FillersPass: CleaningPass {
     public static let id: PassID = .fillers
     public static let removes: RemovalGrant = .sound
@@ -15,6 +15,7 @@ public struct FillersPass: CleaningPass {
         "yes", "no", "yeah", "okay", "ok", "well", "thanks", "so", "now", "actually",
     ]
 
+    private static let standaloneReplies: Set<String> = ["hmm", "mhm"]
     public init() {}
 
     /// Whether the comma before a bracketed filler belongs to the sentence rather than to the pause.
@@ -35,8 +36,23 @@ public struct FillersPass: CleaningPass {
         var draft = draft
         let live = draft.presentIndices
         var previous: Int?
+        var consumed: Set<Int> = []
         for (position, index) in live.enumerated() {
+            guard !consumed.contains(index) else { continue }
             let word = draft.words[index].text
+            if let pair = Self.interjection(at: position, in: live, of: draft) {
+                let shape = draft.shape(at: index)
+                let written = position == 0 ? WordShape.capitalised(pair.written) : pair.written
+                draft.replace(at: index, with: shape.replacingCore(with: written), by: Self.id)
+                draft.remove(at: pair.second, by: Self.id, carryingMarks: true)
+                consumed.insert(pair.second)
+                previous = index
+                continue
+            }
+            if live.count == 1, Self.standaloneReplies.contains(draft.shape(at: index).key) {
+                previous = index
+                continue
+            }
             // A filler sound is never preceded by a determiner; a noun spelled like one — "the ER" — always is.
             guard Self.fillerWords.contains(draft.shape(at: index).key),
                 position == 0
@@ -59,6 +75,26 @@ public struct FillersPass: CleaningPass {
             draft.remove(at: index, by: Self.id, carryingMarks: true)
         }
         return draft
+    }
+
+    /// Joins the two heard words that form a fixed assent or alarm reply.
+    private static func interjection(
+        at position: Int, in live: [Int], of draft: Draft
+    ) -> (second: Int, written: String)? {
+        guard position + 1 < live.count else { return nil }
+        let first = draft.shape(at: live[position])
+        let secondIndex = live[position + 1]
+        let second = draft.shape(at: secondIndex)
+        guard first.prefix.isEmpty, first.suffix.isEmpty, second.prefix.isEmpty
+        else { return nil }
+        let written: String
+        switch (first.key, second.key) {
+        case ("uh", "huh"): written = "uh-huh"
+        case ("uh", "oh"): written = "uh-oh"
+        case ("mm", "hmm"): written = "mm-hmm"
+        default: return nil
+        }
+        return (secondIndex, written)
     }
 
     /// Whether the filler's full stop marks the pause in a clause: the next word runs on in lower case, or the one before cannot end a sentence.

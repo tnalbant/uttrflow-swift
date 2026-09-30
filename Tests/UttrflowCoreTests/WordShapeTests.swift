@@ -5,6 +5,20 @@ import Testing
 @Suite("WordShape")
 struct WordShapeTests {
     @Test(
+        "casing a word keeps internal capitals and still cases ordinary words",
+        arguments: [
+            ("iPhone", "iPhone", "iPhone"), ("eBay", "eBay", "eBay"),
+            ("macOS", "macOS", "macOS"), ("iOS", "iOS", "iOS"),
+            ("WiFi", "WiFi", "WiFi"), ("YouTube", "YouTube", "YouTube"),
+            ("hello", "Hello", "hello"), ("Hello", "Hello", "hello"),
+        ]
+    )
+    func casing(text: String, capitalised: String, lowercased: String) {
+        #expect(WordShape.capitalised(text) == capitalised)
+        #expect(WordShape.lowercased(text) == lowercased)
+    }
+
+    @Test(
         "an ellipsis with no question or exclamation mark trails off",
         arguments: [
             ("...", true), ("\u{2026}", true), ("..,", true), (".", false), ("...?", false), ("", false),

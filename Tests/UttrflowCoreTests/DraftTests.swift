@@ -13,6 +13,21 @@ struct DraftTests {
         #expect(draft.words.allSatisfy { $0.state == .kept && $0.confidence == 1 && $0.heard == $0.text })
     }
 
+    @Test("splits pause ellipses only between adjacent words")
+    func splitsPauseEllipses() {
+        let draft = Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+        #expect(
+            draft.words.map(\.text)
+                == ["Ah", "the", "um", "the", "invoice", "is", "ah", "overdue"])
+        #expect(draft.text == "Ah the um the invoice is ah overdue")
+    }
+
+    @Test("keeps abbreviations and URLs intact while splitting a pause")
+    func keepsAbbreviationsAndURLs() {
+        let draft = Draft(text: "e.g. https://example.com/a...b hello...world")
+        #expect(draft.words.map(\.text) == ["e.g.", "https://example.com/a...b", "hello", "world"])
+    }
+
     @Test(
         "keeps line breaks between words as layout marks when asked, and round-trips the text",
         arguments: [

@@ -169,8 +169,10 @@ extension FocusedFieldSnapshot {
     /// The line capture may learn, which is nothing when the line was too long to read whole or text follows the caret on it.
     public var learnableLine: String { isLineCut || hasTextAfterCaret ? "" : currentLine }
 
-    /// Whether the field shows text after the caret on its line, so the line up to the caret is a cut, not a finished value.
-    public var hasTextAfterCaret: Bool { rowAhead != nil && !caretAtLineEnd }
+    /// Whether non-padding text follows the caret on its line, so capture does not learn a cut value.
+    public var hasTextAfterCaret: Bool {
+        rowAhead?.contains(where: { $0 != " " && $0 != "\t" }) ?? false
+    }
 
     /// How many characters back from the caret its line is read; a prompt and a line to complete both fit well inside it.
     public static let lineReadLimit = ShellPrompt.searchLimit + SuggestionSession.maximumTypedLength + 1
@@ -283,11 +285,14 @@ extension FocusedFieldSnapshot {
         String(text.drop { $0 == " " || $0 == "\t" })
     }
 
-    /// Whether the caret sits at the end of the line it is on, which completing presumes.
+    /// Whether only padding and closing punctuation follow the caret, which completing presumes.
     public var caretAtLineEnd: Bool {
         guard let ahead = rowAhead else { return false }
-        return ahead.allSatisfy { $0 == " " || $0 == "\t" }
+        return ahead.allSatisfy { $0 == " " || $0 == "\t" || Self.closingPunctuation.contains($0) }
     }
+
+    /// Characters an editor may keep after the caret while it completes inside a pair.
+    private static let closingPunctuation: Set<Character> = [")", "]", "}", "'", "\"", "`"]
 
     /// The fewest padding spaces that separate the caret from a terminal's right-side display text.
     static let rightPromptPadding = 4
