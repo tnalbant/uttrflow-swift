@@ -1059,6 +1059,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
         )
+        DictationIntentBridge.toggle = { [weak self] in
+            await self?.controller?.toggleFromControl()
+        }
     }
 
     /// Redraws the menu bar and the floating button as a recording nears its cap.
