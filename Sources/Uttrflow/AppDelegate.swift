@@ -2219,7 +2219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task { [weak self] in
             guard let self else { return }
             let measurements = await diagnostics.recorded
+            let decoding = await diagnostics.decoding
             lastMeasurements = measurements
+            lastDecoding = decoding
             lastCleaning = await diagnostics.lastCleaning
             let kept = await history.records(
                 keeping: Retention(days: settings.transcriptRetentionDays, now: Date()))
@@ -2310,7 +2312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     dictationShortcutArmed: surfaces.listensForDictation
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
-                    measurements: measurements, cleaning: lastCleaning,
+                    measurements: measurements, decoding: lastDecoding, cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),
@@ -2400,6 +2402,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var knownPicture: (path: String, bytes: Data)?
     /// The timings last read, so a keystroke redraws without hopping to the actor.
     private var lastMeasurements: [StageMeasurement] = []
+    /// The decode effort last read, so a keystroke redraw uses the same bounded session window.
+    private var lastDecoding: [DecodeEffort] = []
     /// Whether the main window's pages were last skipped because it was out of sight.
     private var mainWindowIsBehind = false
     /// Everything the store keeps, which is not ``recents`` — that is the menu's five.
