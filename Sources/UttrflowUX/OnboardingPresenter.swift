@@ -418,15 +418,8 @@ private struct PermissionWording {
 enum OnboardingKeys {
     /// Modifiers in the order macOS draws them, then the key itself.
     static func of(_ binding: HotkeyBinding) -> [String] {
-        // A key that is itself a modifier, or Fn, is drawn exactly as Settings draws it.
-        guard binding.heldModifier == nil else { return SettingsShortcut.keycaps(for: binding) }
-        return SettingsShortcut.modifierCaps(for: binding) + [name(for: binding.keyCode)]
+        SettingsShortcut.keycaps(for: binding)
     }
-
-    /// The keys a shortcut is realistically bound to; a key code becomes a letter only through the layout.
-    private static let names: [UInt16: String] = [
-        36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 53: "Escape",
-    ]
 
     /// The shortcut lit on the keyboard's bottom-left corner, or `nil` when it uses a key the corner lacks.
     static func corner(of binding: HotkeyBinding) -> Set<OnboardingCornerKey>? {
@@ -456,8 +449,4 @@ enum OnboardingKeys {
         "⌃": "control", "⌥": "option", "⇧": "shift", "⌘": "command", "fn": "fn",
     ]
 
-    /// The key's name, or its code when the name is unknown.
-    private static func name(for keyCode: UInt16) -> String {
-        names[keyCode] ?? "Key \(keyCode)"
-    }
 }

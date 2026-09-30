@@ -32,7 +32,7 @@ struct RulesCorpusTests {
         "comma-placement-as-words", "dash-training-as-words", "dash-cam-as-words", "dash-drills-as-words",
         "period-furniture-as-words", "new-paragraph", "time-of-day",
         "percentage", "money",
-        "period-as-a-word", "spoken-period",
+        "period-as-a-word", "spoken-period", "demonstrative-subject-spoken-period",
         "period-after-new-line", "full-stop-new-paragraph", "question-mark-new-line",
         "dates", "ordinal-not-date", "compound-ordinal-above-one-hundred",
         "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",

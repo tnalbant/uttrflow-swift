@@ -579,6 +579,7 @@ struct QuickPanelView: View {
                 Text(sheet.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.panelLabel)
+                    .accessibilityAddTraits(.isHeader)
 
                 if sheet.takesTyping {
                     sheetField(sheet)
@@ -617,8 +618,10 @@ struct QuickPanelView: View {
             // A cap, not a width, so the sheet shrinks with a panel narrower than the design.
             .frame(maxWidth: QuickPanelMetrics.width - 56, alignment: .leading)
             .panelPopover(cornerRadius: 12, shadowOpacity: 0.4, radius: 24, y: 8)
-            .padding(.horizontal, 28)
+                .padding(.horizontal, 28)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 
     /// Bound to the presentation, not `@State`, so the field cannot disagree with its conflict note.

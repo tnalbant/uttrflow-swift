@@ -21,6 +21,8 @@ struct TerminalStopPassTests {
         "finishes a sentence that asks a question with a question mark",
         arguments: [
             ("where did you put the keys", "where did you put the keys?"),
+            ("did the tests pass should i merge it now", "did the tests pass should i merge it now?"),
+            ("the printer is jammed again who used it last", "the printer is jammed again who used it last."),
             ("Done. can you review the PR", "Done. can you review the PR?"),
             (
                 "I'm blocked on the credentials for the sandbox account can someone help",

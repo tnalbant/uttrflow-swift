@@ -502,6 +502,13 @@ public enum EvaluationCorpus {
             mustNotAdd: ["period"]
         ),
         .init(
+            id: "demonstrative-subject-spoken-period", category: .everyday,
+            spoken: "that is it period",
+            expected: "That is it.",
+            mustKeep: ["that is it"],
+            mustNotAdd: ["period"]
+        ),
+        .init(
             id: "period-after-new-line", category: .everyday,
             spoken: "first line new line second line period",
             expected: "First line\nSecond line.",

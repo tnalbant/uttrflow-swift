@@ -29,8 +29,9 @@ extension RawTranscript {
         return DetectedLanguage(code: code, confidence: languageProbability)
     }
 
-    /// The words a recogniser writes inside brackets for what it heard instead of speech; a bracket holding anything else is the speaker's own. See `Docs/silence.md`.
+    /// Words recognisers use for non-speech markers; unknown bracketed or starred words stay as dictated. See `Docs/silence.md`.
     static let markerWords: Set<String> = [
+        "pain", "painful", "thud", "thunk", "puff", "crack", "gunshot",
         "blank", "audio", "silence", "silent", "quiet", "pause", "no", "speech", "sound", "sounds",
         "noise", "noises", "static", "background", "inaudible", "unintelligible", "indistinct",
         "muffled", "crosstalk", "chatter", "music", "musical", "song", "singing", "humming",
@@ -48,7 +49,7 @@ extension RawTranscript {
         "background conversations",
     ]
 
-    /// Whether every word between the brackets is one of those, which is the evidence that tells a marker from a parenthesis the speaker dictated.
+    /// Whether a bounded bracket or star phrase is a known non-speech description.
     static func isMarker(_ inside: Substring) -> Bool {
         let words = inside.split(whereSeparator: { $0.isWhitespace || $0 == "_" || $0 == "-" })
         guard !words.isEmpty else { return false }
@@ -147,15 +148,21 @@ extension RawTranscript {
         var index = withoutSpeaker.startIndex
 
         while index < withoutSpeaker.endIndex {
+            if withoutSpeaker[index].text.allSatisfy({ $0 == "*" }), withoutSpeaker[index].text.count >= 3 {
+                index += 1
+                continue
+            }
             let opener = withoutSpeaker[index].text.first
-            guard opener == "[" || opener == "(" else {
+            guard opener == "[" || opener == "(" || opener == "*" else {
                 kept.append(withoutSpeaker[index])
                 index += 1
                 continue
             }
-            let closer: Character = opener == "[" ? "]" : ")"
+            let closer: Character = opener == "[" ? "]" : opener == "(" ? ")" : "*"
             guard
-                let close = withoutSpeaker[index...].firstIndex(where: { $0.text.hasSuffix(String(closer)) })
+                let close = withoutSpeaker[index...].firstIndex(where: {
+                    $0.text.hasSuffix(String(closer))
+                })
             else {
                 kept.append(withoutSpeaker[index])
                 index += 1
@@ -222,14 +229,29 @@ extension RawTranscript {
         return next?.isWhitespace == true || next?.isPunctuation == true
     }
 
-    /// Removes bracketed non-speech markers such as `[BLANK_AUDIO]`. See `Docs/silence.md`.
+    /// Removes standalone non-speech markers. See `Docs/silence.md`.
     static func cleaned(_ text: String) -> String {
         let withoutSpeaker = removingSpeakerPrefix(from: text)
         var result: [Substring] = []
         var remainder = Substring(withoutSpeaker)
 
-        while let open = remainder.firstIndex(where: { $0 == "[" || $0 == "(" }) {
-            let closer: Character = remainder[open] == "[" ? "]" : ")"
+        while let open = remainder.firstIndex(where: { $0 == "[" || $0 == "(" || $0 == "*" }) {
+            if remainder[open] == "*" {
+                let runEnd = remainder[open...].prefix(while: { $0 == "*" }).endIndex
+                let runLength = remainder.distance(from: open, to: runEnd)
+                if runLength >= 3 {
+                    let before = remainder[..<open].last
+                    let after = runEnd < remainder.endIndex ? remainder[runEnd] : nil
+                    let standsAlone =
+                        (before == nil || before?.isWhitespace == true)
+                        && (after == nil || after?.isWhitespace == true || after?.isPunctuation == true)
+                    result.append(remainder[..<open])
+                    if !standsAlone { result.append(remainder[open..<runEnd]) }
+                    remainder = remainder[runEnd...]
+                    continue
+                }
+            }
+            let closer: Character = remainder[open] == "[" ? "]" : remainder[open] == "(" ? ")" : "*"
             guard let close = remainder[open...].firstIndex(of: closer) else { break }
 
             let before = remainder[..<open].last

@@ -329,6 +329,8 @@ public enum FocusedFieldReader {
         // An editor that draws its own text keeps an empty input at the caret, so its line is read off the rendered text.
         let hidden =
             secure ? nil : hiddenInputLine(field, role: role, value: value, frame: fieldRect, while: goOn)
+        let number = windowNumber(while: goOn) { windowNumber(of: field) }
+        guard goOn() else { return nil }
 
         return FocusedFieldSnapshot(
             bundleIdentifier: app.bundleIdentifier,
@@ -358,8 +360,16 @@ public enum FocusedFieldReader {
             showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
             windowTitle: title,
-            windowNumber: windowNumber(of: field)
+            windowNumber: number
         )
+    }
+
+    /// Reads a window number only while this field snapshot is still wanted.
+    static func windowNumber(while isWanted: () -> Bool, read: () -> UInt32?) -> UInt32? {
+        guard isWanted() else { return nil }
+        let number = read()
+        guard isWanted() else { return nil }
+        return number
     }
 
     /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
@@ -564,20 +574,21 @@ public enum FocusedFieldReader {
             return read
         }
 
-        /// The end of an element's value by range where it is long, else the whole value, which is short or of unknown length.
+        /// The end of an element's value by range where it is long; unknown lengths and failed ranges are skipped.
         private static func tail(of element: AXUIElement) -> String? {
             var length: AnyObject?
-            if AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
-                == .success,
-                let count = (length as? NSNumber)?.intValue, count > valueReadLimit
-            {
+            guard
+                AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
+                    == .success, let count = (length as? NSNumber)?.intValue, count >= 0
+            else { return nil }
+            if count > valueReadLimit {
                 let range = CFRange(location: count - valueReadLimit, length: valueReadLimit)
-                if let tail = SurfaceProbe.parameterized(
-                    element, kAXStringForRangeParameterizedAttribute, range)
-                    as? String
-                {
-                    return tail
-                }
+                guard
+                    let tail = SurfaceProbe.parameterized(
+                        element, kAXStringForRangeParameterizedAttribute, range)
+                        as? String, tail.utf16.count == valueReadLimit
+                else { return nil }
+                return tail
             }
             var value: AnyObject?
             guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success

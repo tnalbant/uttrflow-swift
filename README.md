@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://uttrflow.com">
     <img src="Docs/media/readme-banner.png" width="880"
-         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌥Space and talk, let go, and the words land at your cursor, in any app.">
+         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌃⌥ (Control and Option) and talk, let go, and the words land at your cursor, in any app.">
   </a>
 </p>
 

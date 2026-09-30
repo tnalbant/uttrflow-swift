@@ -46,6 +46,16 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "keeps mixed-case product names at sentence starts and insertion points",
+        arguments: ["iPhone", "eBay", "macOS", "iOS", "WiFi", "YouTube"]
+    )
+    func keepsMixedCaseProductNames(text: String) {
+        #expect(cleaned(text, by: sut) == text)
+        #expect(fromCaret(text, state: .midSentence) == text)
+        #expect(asSpoken(text, heard: text) == text)
+    }
+
     /// An abbreviation carries a stop of its own, and the word after it is still inside the sentence.
     @Test(
         "does not start a sentence after a dotted abbreviation",

@@ -89,7 +89,7 @@ public struct SpokenPunctuationPass: CleaningPass {
 
     private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
         position + words.count <= live.count
-            && draft.sentenceRun(from: position, in: live).count >= words.count
+            && draft.sentenceContains(words.count, from: position, in: live)
             && zip(words, live[position..<position + words.count]).allSatisfy {
                 $0 == draft.shape(at: $1).key
             }

@@ -25,7 +25,10 @@ public enum GeneralVocabulary {
         guard !FunctionWords.holds(text.lowercased()) else { return [] }
         return Array(
             (byPrimarySound[DoubleMetaphone.code(for: text).primary] ?? [])
-                .filter { ReadingRestraint.closedUp($0) != ReadingRestraint.closedUp(text) }
+                .filter {
+                    Homophones.share($0, text)
+                        || ReadingRestraint.closedUp($0) != ReadingRestraint.closedUp(text)
+                }
                 .filter { ReadingRestraint.opensAlike($0, heard: text) && !FunctionWords.holds($0) }
                 // Both sides ordinary is a metaphone collision — "man" for "main" — unless they are said alike.
                 .filter { !ReadingRestraint.isOrdinaryCollision($0, heard: text) }

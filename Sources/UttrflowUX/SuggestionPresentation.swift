@@ -151,9 +151,6 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The rows listed under the caret's line, which is every candidate once the list is open and none before.
     public var list: [Row] { isExpanded ? rows : [] }
 
-    /// The accept key as a glyph, which opens the list's footer so a terminal reads →, not ⇥; the ghost line carries none.
-    public var acceptGlyph: String { acceptKey.glyph }
-
     /// The keys that work the open list, drawn under it in the dimmed style.
     public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
 

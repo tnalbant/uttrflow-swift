@@ -42,6 +42,10 @@ public actor DictationPipeline {
     private var state: DictationState = .idle
     private let observers = StateObservers()
 
+    /// A microphone opened while a modifier press settles, before it belongs to a dictation.
+    private var pendingCapture: Task<Void, Never>?
+    private var pendingCaptureStartedAt: (any Clock<Duration>).Instant?
+
     /// Counts dictations, so a cancel can name the one it abandoned.
     private var generation = 0
     private var cancelledGeneration: Int?
@@ -269,18 +273,66 @@ public actor DictationPipeline {
         guard !isLoading else { return transition(to: .failed(.stillLoading)) }
         hasTurn = true
         defer { hasTurn = false }
-        // At key-down, so a recogniser let go while idle loads while the person speaks.
         await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
 
-        generation += 1
-        let mine = generation
+    /// Opens the microphone before a modifier shortcut settles, keeping speech from key-down onward.
+    public func beginModifierPress(at instant: Duration) async {
+        guard pendingCapture == nil, !isBusy, !isLoading else { return }
+        pendingCaptureStartedAt = instant
         do {
-            // Measured because the user is already speaking: nothing is heard until this returns.
             try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
                 try await capture.start()
             }
+        } catch {
+            pendingCaptureStartedAt = nil
+            transition(to: .failed(DictationFailure(error)))
+            return
+        }
+        pendingCapture = Task {}
+    }
+
+    /// Makes a modifier press's already-open microphone the recording under way.
+    public func adoptModifierPress() async {
+        guard !isBusy, !isLoading else { return }
+        hasTurn = true
+        defer { hasTurn = false }
+        await speech.warm()
+        await startRecordingUsingOpenCapture()
+    }
+
+    /// Cancels a modifier press that became another shortcut before it settled.
+    public func cancelModifierPress() async {
+        guard let pendingCapture else { return }
+        self.pendingCapture = nil
+        pendingCaptureStartedAt = nil
+        await capture.cancel()
+    }
+
+    /// Adopts audio already arriving as a dictation after the modifier press settles.
+    private func startRecordingUsingOpenCapture() async {
+        generation += 1
+        let mine = generation
+        do {
+            if let pendingCapture {
+                await pendingCapture.value
+                self.pendingCapture = nil
+                let openedAt = pendingCaptureStartedAt
+                pendingCaptureStartedAt = nil
+                if let openedAt {
+                    await metrics.record(
+                        .init(
+                            stage: .keyDownToAudio,
+                            duration: openedAt.duration(to: clock.now),
+                            succeeded: true))
+                }
+            } else {
+                try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
+                    try await capture.start()
+                }
+            }
             guard !wasCancelled(mine) else {
-                // Cancelled while the microphone was opening: close it rather than listen on.
                 await capture.cancel()
                 return
             }
@@ -294,7 +346,6 @@ public actor DictationPipeline {
             transition(to: .recording)
             beginWorkingAhead(mine)
         } catch {
-            // A cancel during the open leaves the pipeline at rest, so no failure is published over it.
             guard !wasCancelled(mine) else { return }
             transition(to: .failed(DictationFailure(error)))
         }
@@ -399,6 +450,9 @@ public actor DictationPipeline {
 
     /// Abandons the dictation at any stage: nothing is transcribed and nothing is inserted.
     public func cancel() async {
+        pendingCapture?.cancel()
+        pendingCapture = nil
+        pendingCaptureStartedAt = nil
         cancelledGeneration = generation
         earlyWork?.cancel()
         earlyWork = nil
@@ -722,7 +776,10 @@ public actor DictationPipeline {
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         let joiningFormatter = DestinationFormatter.standard(for: joining)
         let joined = PieceJoiner.join(pieces, under: joiningFormatter)
-        let whole = await finishMessage(joined, going: joining, seeing: appContext ?? AppContext())
+        let correctedAtSeams = await correctAcrossSeams(
+            pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
+        let whole = await finishMessage(
+            correctedAtSeams, going: joining, seeing: appContext ?? AppContext())
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
 
@@ -856,8 +913,8 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
-                    guard transcription.isBlank else { return Heard.words(transcription) }
-                    return speaks ? Heard.missed : Heard.nothing
+                    if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
+                    return Heard.words(transcription)
                 } catch SpeechEngineError.audioTooShort {
                     // Alone, a hold too brief to transcribe says so, since the fix is to hold longer.
                     guard !whole else { throw SpeechEngineError.audioTooShort }
@@ -920,6 +977,79 @@ public actor DictationPipeline {
         } catch {
             return .unchanged(transcription.text)
         }
+    }
+
+    /// Gives the dictionary a joined transcript, keeping only proposals that cross a piece boundary.
+    private func correctAcrossSeams(
+        _ pieces: [Piece], in joined: Piece, seeing appContext: AppContext,
+        recording metrics: any MetricsRecording
+    ) async -> Piece {
+        guard pieces.count > 1 else { return joined }
+        let boundaries = pieces.dropLast().reduce(into: [Int]()) { result, piece in
+            result.append((result.last ?? 0) + piece.heard.text.spokenWordCount)
+        }
+        let proposed = await correct(joined.heard, seeing: appContext, recording: metrics).corrections
+        let crossings = proposed.filter { correction in
+            boundaries.contains {
+                correction.wordRange.lowerBound < $0 && correction.wordRange.upperBound > $0
+            } && !joined.corrected.corrections.contains { $0.wordRange.overlaps(correction.wordRange) }
+        }
+        guard !crossings.isEmpty else { return joined }
+
+        var correctedText = joined.corrected.text
+        var cleanedText = joined.cleaned.text
+        var added: [DictationCorrection] = []
+        var shift = 0
+        for correction in crossings.sorted(by: { $0.wordRange.lowerBound < $1.wordRange.lowerBound }) {
+            let earlier = joined.corrected.corrections.filter {
+                $0.wordRange.lowerBound < correction.wordRange.lowerBound
+            }
+            let priorShift = earlier.reduce(0) {
+                $0 + $1.wrote.spokenWords.count - $1.wordRange.count
+            }
+            let correctedStart = correction.wordRange.lowerBound + priorShift + shift
+            let correctedEnd = correction.wordRange.upperBound + priorShift + shift
+            let correctedRange = correctedStart..<correctedEnd
+            let replacement = correction.wrote.spokenWords
+                .map { String(SpokenToken($0).core) }
+                .joined(separator: " ")
+            let mapped = Self.correction(correction, at: correctedRange, writing: replacement)
+            let applied = DictationCorrection.applying([mapped], to: correctedText)
+            guard applied.corrections.count == 1 else { continue }
+            correctedText = applied.text
+            let actual = applied.corrections[0]
+            added.append(Self.correction(actual, at: correction.wordRange))
+            shift += actual.wrote.spokenWords.count - correction.wordRange.count
+
+            let heardShape = Self.correction(correction, at: correction.wordRange, writing: correction.heard)
+            let located = DictationCorrection.locating(
+                [heardShape], from: joined.heard.text, in: cleanedText
+            ).first?.writtenWordIndex
+            if let located {
+                let cleanedRange = located..<(located + correction.wordRange.count)
+                cleanedText =
+                    DictationCorrection.applying(
+                        [Self.correction(correction, at: cleanedRange)], to: cleanedText
+                    ).text
+            }
+        }
+        guard !added.isEmpty else { return joined }
+        return Piece(
+            heard: joined.heard,
+            corrected: CorrectedTranscript(
+                text: correctedText, corrections: joined.corrected.corrections + added),
+            cleaned: TransformationResult(
+                text: cleanedText, producedBy: joined.cleaned.producedBy,
+                cleaning: joined.cleaned.cleaning, entriesTaken: joined.cleaned.entriesTaken))
+    }
+
+    private static func correction(
+        _ correction: DictationCorrection, at range: Range<Int>, writing text: String? = nil
+    ) -> DictationCorrection {
+        DictationCorrection(
+            heard: correction.heard, wrote: text ?? correction.wrote, wordRange: range,
+            entryID: correction.entryID, reason: correction.reason,
+            heardConfidence: correction.heardConfidence)
     }
 
     /// Tidies the transcript, falling back to exactly what was said. The only optional stage.

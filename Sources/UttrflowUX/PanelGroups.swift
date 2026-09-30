@@ -87,7 +87,7 @@ extension PanelPresenter {
     /// The one thing worth doing about a search that found nothing: keep what was typed as a clip.
     static func emptyAction(for snapshot: PanelSnapshot) -> PanelAction? {
         let query = snapshot.needle
-        guard !query.isEmpty else { return nil }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return PanelAction(
             title: "Keep “\(query)” as a clip", symbolName: "plus.circle",
             intent: .keepQuery(query))

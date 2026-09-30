@@ -28,6 +28,13 @@ private actor SeamSpeechEngine: SpeechEngine {
         guard calls <= lines.count else { throw .nothingHeard }
         return Transcription(
             text: lines[calls - 1], detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
+            segments: [
+                TranscriptionSegment(
+                    text: lines[calls - 1], start: .zero, end: audio.duration,
+                    words: lines[calls - 1].spokenWords.map {
+                        TranscribedWord(text: String($0), confidence: 0.2)
+                    })
+            ],
             audioDuration: audio.duration)
     }
 }
@@ -55,6 +62,44 @@ private final class SeamInserter: TextInserting, Sendable {
         received.withLock { $0.append(text) }
         return InsertionAttempt(.accessibility)
     }
+}
+
+/// A dictionary fixture that proposes one replacement when all of its spoken words are visible.
+private final class SeamCorrector: WordCorrecting, Sendable {
+    private let heard: String
+    private let wrote: String
+    private let entryID = UUID()
+    private let state = Mutex<[String]>([])
+
+    init(hearing heard: String, writing wrote: String) {
+        self.heard = heard
+        self.wrote = wrote
+    }
+
+    func corrections(
+        for transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> [DictationCorrection] {
+        state.withLock { $0.append(transcription.text) }
+        let words = transcription.text.spokenWords.map(String.init)
+        let wanted = heard.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard wanted.count <= words.count,
+            let start = (0...(words.count - wanted.count)).first(where: { index in
+                words[index..<(index + wanted.count)].map { SpokenToken($0).core.lowercased() }
+                    == wanted.map(\.lowercased)
+            })
+        else { return [] }
+        let range = start..<(start + wanted.count)
+        guard let scores = transcription.scoredWords,
+            scores[range].allSatisfy({ $0.confidence < 0.5 })
+        else { return [] }
+        return [
+            DictationCorrection(
+                heard: heard, wrote: wrote, wordRange: range, entryID: entryID,
+                reason: "heardAsSeveralWords", heardConfidence: 0.2)
+        ]
+    }
+
+    var seen: [String] { state.withLock { $0 } }
 }
 
 /// A recording with a clear pause between each of its phrases, cut into one piece per phrase.
@@ -93,8 +138,18 @@ struct DictationPipelineSeamTests {
     /// One whole dictation, a piece per line, cleaned by `cleaner` against the screen `context` shows.
     private func dictate(
         _ lines: [String], seeing context: AppContext, cleaner: any TranscriptCleaning = rules,
-        snippets: any SnippetExpanding = NoTextChanges()
+        snippets: any SnippetExpanding = NoTextChanges(),
+        corrector: any WordCorrecting = NoTextChanges()
     ) async -> String? {
+        await dictateOutcome(
+            lines, seeing: context, cleaner: cleaner, snippets: snippets, corrector: corrector)?.text
+    }
+
+    private func dictateOutcome(
+        _ lines: [String], seeing context: AppContext, cleaner: any TranscriptCleaning = rules,
+        snippets: any SnippetExpanding = NoTextChanges(),
+        corrector: any WordCorrecting = NoTextChanges()
+    ) async -> DictationOutcome? {
         let take = SeamTake.pieces(lines.count)
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
         await capture.setCaptured(take)
@@ -102,12 +157,13 @@ struct DictationPipelineSeamTests {
             capture: capture, speech: SeamSpeechEngine(lines), cleaner: cleaner,
             context: FakeContextEngine(context: context), inserter: SeamInserter(),
             snippets: snippets,
+            corrector: corrector,
             windowing: seamWindows, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()
         await pipeline.finishRecording()
         guard case .inserted(let outcome) = await pipeline.currentState else { return nil }
-        return outcome.text
+        return outcome
     }
 
     /// The shipping floor: the deterministic passes, with no model in front of them.
@@ -215,6 +271,49 @@ struct DictationPipelineSeamTests {
         let text = await dictate(["here is the meeting. Link"], seeing: Self.document, snippets: expander)
         #expect(text?.contains("meeting. Link") == true)
         #expect(text?.contains("https://example.test/meeting") == false)
+    }
+
+    @Test("a dictionary term split at a piece seam is corrected as one range")
+    func paymentSheetCrossesSeam() async {
+        let corrector = SeamCorrector(hearing: "payment sheet", writing: "PaymentSheet")
+        let outcome = await dictateOutcome(
+            ["I opened payment", "sheet today"], seeing: Self.document, corrector: corrector)
+
+        #expect(corrector.seen.contains("I opened payment sheet today"))
+        #expect(outcome?.text == "I opened PaymentSheet today")
+        #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
+    }
+
+    @Test("the product spelling is corrected across a piece seam")
+    func uttrflowCrossesSeam() async {
+        let corrector = SeamCorrector(hearing: "utter flow", writing: "Uttrflow")
+        let outcome = await dictateOutcome(
+            ["we use utter", "flow daily"], seeing: Self.document, corrector: corrector)
+
+        #expect(corrector.seen.contains("we use utter flow daily"))
+        #expect(outcome?.text == "We use Uttrflow daily")
+        #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
+    }
+
+    @Test("an initialism is corrected across a piece seam")
+    func sqlCrossesSeam() async {
+        let corrector = SeamCorrector(hearing: "s q l", writing: "SQL")
+        let outcome = await dictateOutcome(
+            ["run the s q", "l migration"], seeing: Self.document, corrector: corrector)
+
+        #expect(corrector.seen.contains("run the s q l migration"))
+        #expect(outcome?.text == "Run the SQL migration")
+        #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<5])
+    }
+
+    @Test("a dictionary term already together within a piece keeps the same stop and correction")
+    func paymentSheetWithinPieceIsUnchanged() async {
+        let corrector = SeamCorrector(hearing: "payment sheet", writing: "PaymentSheet")
+        let outcome = await dictateOutcome(
+            ["I opened payment sheet", "today"], seeing: Self.document, corrector: corrector)
+
+        #expect(outcome?.text == "I opened PaymentSheet. Today")
+        #expect(outcome?.changes.corrections.map(\.wordRange) == [2..<4])
     }
 }
 

@@ -242,7 +242,6 @@ struct LockedMenuBarTests {
     @Test("opening the menu asks for sign-in and never shows the popover")
     func openingAsksForSignIn() {
         let bar = MenuBarController()
-        defer { bar.removeFromMenuBar() }
         var asked: [MenuBarIntent] = []
         bar.onCommand = { asked.append($0) }
         bar.requiresSignIn = true

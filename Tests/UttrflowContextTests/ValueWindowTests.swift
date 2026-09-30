@@ -95,25 +95,57 @@ struct ValueWindowTests {
         #expect(read.copied == text.length)
     }
 
-    @Test("A field that cannot answer for a range is read whole.")
-    func unsupportedRangeFallsBack() {
+    @Test("A long field that cannot answer for a range is skipped without copying its whole value.")
+    func unsupportedRangeIsSkipped() {
         let text = Self.scrollback
         let caret = NSRange(location: text.length, length: 0)
+        var wholeReads = 0
         let read = ValueWindow.read(
-            count: text.length, selection: caret, whole: { text as String }, part: { _ in nil })
-        #expect(read.value?.utf16.count == text.length)
+            count: text.length, selection: caret,
+            whole: {
+                wholeReads += 1; return text as String
+            }, part: { _ in nil })
+        #expect(read.value == nil)
         #expect(read.selection == caret)
+        #expect(wholeReads == 0)
+    }
+
+    @Test("A missing length never triggers an unbounded read.")
+    func missingCountSkipsValue() {
+        var wholeReads = 0
         let noCount = ValueWindow.read(
-            count: nil, selection: caret, whole: { "whole" }, part: { _ in "part" })
-        #expect(noCount.value == "whole")
+            count: nil, selection: NSRange(location: 0, length: 0),
+            whole: {
+                wholeReads += 1; return "whole"
+            }, part: { _ in "part" })
+        #expect(noCount.value == nil)
+        #expect(wholeReads == 0)
+    }
+
+    @Test("A long field without a selection is skipped rather than read whole.")
+    func missingSelectionSkipsLongValue() {
+        let text = Self.scrollback
+        var wholeReads = 0
+        let read = ValueWindow.read(
+            count: text.length, selection: nil,
+            whole: {
+                wholeReads += 1; return text as String
+            }, part: { _ in "unexpected" })
+        #expect(read.value == nil)
+        #expect(wholeReads == 0)
     }
 
     @Test("A range answer of the wrong length is not trusted.")
-    func shortAnswerFallsBack() {
+    func mismatchedRangeIsSkipped() {
         let text = Self.scrollback
         let caret = NSRange(location: text.length, length: 0)
+        var wholeReads = 0
         let read = ValueWindow.read(
-            count: text.length, selection: caret, whole: { "whole" }, part: { _ in "short" })
-        #expect(read.value == "whole")
+            count: text.length, selection: caret,
+            whole: {
+                wholeReads += 1; return "whole"
+            }, part: { _ in "short" })
+        #expect(read.value == nil)
+        #expect(wholeReads == 0)
     }
 }

@@ -261,7 +261,7 @@ struct SettingsDiagnosticsView: View {
     /// Colours taken in the journey's order, so a stage cannot swap colours between the bar and the list.
     private func colour(for stage: DiagnosticsStageRow) -> Color {
         switch stage.stage {
-        case .microphoneOpen, .capture, .drain: PagePalette.dictation.opacity(0.45)
+        case .microphoneOpen, .keyDownToAudio, .capture, .drain: PagePalette.dictation.opacity(0.45)
         case .transcription: PagePalette.dictation
         case .correction: PagePalette.clipboard
         case .transformation: PagePalette.suggestion

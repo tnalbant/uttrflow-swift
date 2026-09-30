@@ -19,6 +19,13 @@ people type it, never written in Devanagari and never translated.** "हाँ �
 "Haan thik hai." on every path: a model's rewrite, the rules, and words no tidier touched.
 `Docs/latin-output.md` has the romaniser, the guard and the measurements.
 
+## Sound-alike spellings
+
+`Homophones` lists alternate spellings with the same spoken sound, including common
+contractions such as "its" and "it's". Near-homophones such as "then" and "than" or
+"affect" and "effect" do not belong in a separate list: their vowel sounds differ, so
+they are not spelling alternatives for this rule.
+
 ## The one rule above the others
 
 **Remove and format; never compose.** The tidier may take words out only when they were

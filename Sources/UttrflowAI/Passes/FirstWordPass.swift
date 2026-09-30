@@ -119,17 +119,16 @@ public struct FirstWordPass: WholeTextCleaningPass {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
-        return letters.count >= 2 && letters.allSatisfy(\.isUppercase)
+        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
     }
 
     /// Copies the case the word was heard in from where it stands, skipping fillers; a changed word is left alone.
     static func matchingHeardCase(_ word: String, heard: [String]) -> String {
         let letters = WordShape(word).core.filter(\.isLetter).lowercased()
         guard !letters.isEmpty,
-            let spoken = heard.first(where: { $0.filter(\.isLetter).lowercased() == letters }),
-            let lead = spoken.first(where: \.isLetter)
+            let spoken = heard.first(where: { $0.filter(\.isLetter).lowercased() == letters })
         else { return word }
-        return lead.isUppercase ? WordShape.capitalised(word) : WordShape.lowercased(word)
+        return WordShape(word).replacingCore(with: WordShape(spoken).core)
     }
 
     /// Whether a text holds the word capitalised off a sentence start; a title-cased text says nothing.

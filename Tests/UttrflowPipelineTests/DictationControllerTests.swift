@@ -56,6 +56,7 @@ private final class SpyCue: RecordingCueing {
     enum Play: Sendable, Equatable {
         case start
         case stop
+        case warning
     }
 
     private let log = Mutex<[Play]>([])
@@ -66,6 +67,10 @@ private final class SpyCue: RecordingCueing {
 
     func playStop() {
         log.withLock { $0.append(.stop) }
+    }
+
+    func playWarning() {
+        log.withLock { $0.append(.warning) }
     }
 
     var plays: [Play] { log.withLock { $0 } }

@@ -651,6 +651,40 @@ struct GrammarGuardTests {
         Draft(words: text.split(separator: " ").map { Draft.Word(String($0)) }, confidencesAreReal: true)
     }
 
+    @Test("refuses a sound-alike replacement of a high-confidence word")
+    func refusesConfidentHomophoneReplacement() {
+        let their = Draft(
+            words: "put it over their".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+        let hear = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+
+        #expect(
+            sut.verdict(draft: their, rewritten: "Put it over there.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'their' with a sound-alike",
+                    kind: .lostWord))
+        #expect(
+            sut.verdict(draft: hear, rewritten: "I can here you.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'hear' with a sound-alike",
+                    kind: .lostWord))
+    }
+
+    @Test("allows an offered homophone for a low-confidence word")
+    func allowsOfferedLowConfidenceHomophone() {
+        let draft = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
+    }
+
     @Test("accepts a doubtful word written as one of the readings it was offered")
     func acceptsAnOfferedReading() {
         let offered = [DoubtfulSpan(heard: "apple", confidence: 0.31, candidates: ["Apple", "apples"])]
@@ -1102,6 +1136,16 @@ struct GuardMatchStrengthTests {
             verdict("can you confirm the booking", "Can you confuse the booking?")
                 == .rejected(reason: "the rewrite lost or replaced 'confirm'", kind: .lostWord))
         #expect(!survives("confirm", as: "confuse"))
+    }
+
+    @Test("accepts a dotted clock time rewritten with a colon")
+    func acceptsDottedClockNormalization() {
+        #expect(
+            verdict("meeting moved to 4.30 p.m. on June 2", "Meeting moved to 4:30 p.m. on June 2?")
+                .isAccepted)
+        #expect(!survives("2.4.1", as: "2:4:1"))
+        #expect(!survives("12.5%", as: "12:5%"))
+        #expect(!survives("3.50", as: "3:50"))
     }
 
     /// Changing a name is Tier 3, and two names can begin alike.

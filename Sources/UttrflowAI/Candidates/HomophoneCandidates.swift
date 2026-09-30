@@ -9,12 +9,10 @@ public struct HomophoneCandidates: CandidateSource {
     public init() {}
 
     public func candidates(for word: Draft.Word, in situation: Situation) async -> [Reading] {
-        let heard = ReadingRestraint.closedUp(word.text)
-
         guard let group = Homophones.group(containing: word.text) else { return [] }
         return
             group
-            .filter { $0 != heard }
+            .filter { Homophones.share($0, word.text) }
             .prefix(Self.maximumOffered)
             .map { Reading($0) }
     }

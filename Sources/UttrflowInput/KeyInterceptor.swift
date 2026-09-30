@@ -60,6 +60,11 @@ public final class KeyInterceptor: Sendable {
         if let port = state.port() { CGEvent.tapEnable(tap: port, enable: listening) }
     }
 
+    /// Lets native application menus handle their own keyboard gestures until they close.
+    public func setNativeMenuIsOpen(_ isOpen: Bool) {
+        state.setNativeMenuIsOpen(isOpen)
+    }
+
     /// Replays the keys held back since the last swallowed keystroke, once that keystroke has been carried out.
     public func releaseHeldKeys() {
         let listening = state.releaseHeldKeys()
@@ -81,6 +86,7 @@ public final class KeyInterceptor: Sendable {
             tap?.stop()
             tap = nil
         }
+        state.setNativeMenuIsOpen(false)
         state.armed.store(0, ordering: .relaxed)
         state.hold.release()
     }

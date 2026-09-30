@@ -95,4 +95,13 @@ struct TapStateHoldTests {
         #expect(!state.arm([]))
         #expect(!state.takes(try Self.key(48)))
     }
+
+    @Test("an open native menu receives a key that the suggestion has armed")
+    func nativeMenuReceivesArmedKey() throws {
+        let state = Self.makeState()
+        #expect(state.arm(.tab))
+        state.setNativeMenuIsOpen(true)
+        #expect(!state.takes(try Self.key(48)))
+        #expect(state.armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0)
+    }
 }

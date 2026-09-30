@@ -81,6 +81,8 @@ final class SuggestionCoordinator {
     private let processActivity: any SuggestionProcessActivityManaging
     /// What the user has decided on the Suggestions screen, which the app hands over as it changes.
     private var preferences: SuggestionPreferences
+    /// Whether a native menu currently owns keyboard gestures in the focused application.
+    private var nativeMenuIsOpen = false
     /// What exists on this machine right now, which the corpus cannot know. See `Docs/predict.md`.
     private let environment: EnvironmentSource
     /// The gates that decide whether a candidate is right, which is not what the ranking measures.
@@ -332,6 +334,7 @@ final class SuggestionCoordinator {
     func stop() {
         processActivity.end()
         isStopped = true
+        nativeMenuIsOpen = false
         onSecureInputBlockingChanged?(false)
         tapRest.cancel()
         session.invalidate()
@@ -434,7 +437,18 @@ final class SuggestionCoordinator {
     }
 
     func watchFocusedFieldValues() {
-        focusedFieldValueObserver.start { [weak self] in self?.accessibilityValueChanged() }
+        focusedFieldValueObserver.start(
+            onValueChanged: { [weak self] in self?.accessibilityValueChanged() },
+            onNativeMenuVisibilityChanged: { [weak self] isOpen in
+                guard let self else { return }
+                nativeMenuIsOpen = isOpen
+                interceptor.setNativeMenuIsOpen(isOpen)
+                if isOpen {
+                    withdraw()
+                } else if !isStopped, !secureInput.isBlocking {
+                    wake(.tick)
+                }
+            })
     }
 
     /// Withdraws an offer when the focused field changes without a corresponding key event.
@@ -952,6 +966,8 @@ final class SuggestionCoordinator {
         await drawFresh(update, for: snapshot, turn: number)
         // With the one line on screen, the others are fetched behind it, so Down has a list and the person never waited for it.
         guard completions.count == 1, let leader = completions.first, turns.isCurrent(number) else { return }
+        // Quiet keeps the one-line ghost and never spends a pass on alternatives.
+        guard !preferences.isQuiet else { return }
         // Where the machine gave the values, the other values are the alternatives, and no pass is spent on them.
         if case .values(let listed) = ModelPass.alternativesSource(
             typed: query.typed, choices: choices, leader: leader)
@@ -967,8 +983,6 @@ final class SuggestionCoordinator {
                 [leader] + others, for: query, at: place, listed: Set(others))
             return await drawFresh(expanded, for: snapshot, turn: number)
         }
-        // Quiet never shows the list, so no model pass is spent building one.
-        guard !preferences.isQuiet else { return }
         let more = Task { [generator, store, contextCache] in
             let situation = await Self.situation(
                 of: snapshot, for: query, store: store, cache: contextCache, turn: number)
@@ -1146,7 +1160,9 @@ final class SuggestionCoordinator {
 
     /// Draws whatever a turn with no field behind it settled on, which is always nothing.
     private func draw(_ step: SuggestionStep) {
-        guard !isStopped, !isPointerGestureActive, case .settled(let update) = step else { return }
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen,
+            case .settled(let update) = step
+        else { return }
         stopWatchingSelection()
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
@@ -1157,7 +1173,7 @@ final class SuggestionCoordinator {
     /// Arms the tap first and draws second, so no key is claimed that nothing is offering.
     func draw(_ update: SuggestionUpdate, in snapshot: FocusedFieldSnapshot?) {
         // A stopped loop, a held pointer gesture, or a stale read draws nothing and claims no key.
-        guard !isStopped, !isPointerGestureActive, session.isCurrent else {
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen, session.isCurrent else {
             stopWatchingSelection()
             interceptor.arm([])
             panel.hide()
@@ -1200,7 +1216,7 @@ final class SuggestionCoordinator {
 
     /// Draws what a move or a dismissal left where the ghost already stands, since no field was read for it and typing may have moved it.
     private func redraw(_ update: SuggestionUpdate) {
-        guard !isStopped, !isPointerGestureActive, session.isCurrent else {
+        guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen, session.isCurrent else {
             stopWatchingSelection()
             interceptor.arm([])
             panel.hide()

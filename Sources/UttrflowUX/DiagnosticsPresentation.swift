@@ -614,6 +614,7 @@ public enum DiagnosticsPresenter {
     static func title(for stage: PipelineStage) -> String {
         switch stage {
         case .microphoneOpen: "Opening the microphone"
+        case .keyDownToAudio: "Shortcut to first audio"
         case .capture: "Recording"
         case .drain: "Finishing the piece already under way"
         case .transcription: "Transcribing"

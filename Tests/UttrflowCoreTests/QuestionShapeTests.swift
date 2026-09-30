@@ -19,6 +19,10 @@ struct QuestionShapeTests {
             "Would you like some coffee", "it's a long weekend isn't it",
             "you know the answer don\u{2019}t you",
             "so did you finish the slides", "okay can we start the call", "I sent the file, did you get it",
+            "did the tests pass should i merge it now",
+            "is the meeting at ten or eleven do we need the projector",
+            "where did you park the car i cannot find it anywhere",
+            "are you around yet i should be there in ten",
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
             "This duplicates the logic in the helper class can we reuse that instead",
@@ -37,8 +41,8 @@ struct QuestionShapeTests {
             "do the dishes before you leave",
             "have a great weekend", "tell me what you think", "that's right", "turn right at the station",
             "if it rains, we stay in", "", "kya baat hai",
-            // Two clauses run together, so where the question ends cannot be told.
-            "are you around yet i should be there in ten",
+            "the printer is jammed again who used it last",
+            "please close the door will you be home tonight",
         ])
     func leaves(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))

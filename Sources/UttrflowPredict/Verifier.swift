@@ -116,18 +116,24 @@ public actor Verifier {
 
         // Each lookup asks about its own word among its own kinds, so a path's name is not sought among whole paths.
         var judged: (word: String, prefix: String, known: Set<String>, caseSensitive: Bool)?
+        var complete = true
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
-            for kind in lookup.kinds {
-                guard let known = await known(of: [kind], in: surface, now: now) else { continue }
-                let caseSensitive = Self.requiresCaseSensitiveMatch(kind)
-                guard !Verification.attests(lookup.word, known, caseSensitive: caseSensitive) else {
-                    if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
-                    return .attested
-                }
-                if judged == nil { judged = (lookup.word, lookup.prefix, known, caseSensitive) }
+            guard
+                let (known, lookupComplete) = await knownAndComplete(
+                    of: lookup.kinds, in: surface, now: now)
+            else {
+                complete = false
+                continue
             }
+            complete = complete && lookupComplete
+            let caseSensitive = lookup.kinds.contains(where: Self.requiresCaseSensitiveMatch)
+            guard !Verification.attests(lookup.word, known, caseSensitive: caseSensitive) else {
+                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
+                return .attested
             }
+            if judged == nil { judged = (lookup.word, lookup.prefix, known, caseSensitive) }
         }
+        guard complete else { return .plausible }
 
         let plausibility = await self.plausibility(
             of: candidate.text, following: typed, before: deadline)
@@ -142,7 +148,7 @@ public actor Verifier {
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
             forGood: judged != nil && Verification.isClosedVocabulary(for: token),
             generation: generation)
-        if generation == forgetGeneration { cache.remember(verdict, for: key) }
+        if complete, generation == forgetGeneration { cache.remember(verdict, for: key) }
         return verdict
     }
 

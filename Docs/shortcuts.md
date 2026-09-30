@@ -58,10 +58,10 @@ it, so every shape is tested as a sequence of `KeyStroke`s.
 **Matching is by equality, not containment.** ⌃⌥ and ⌃⌥⌘ are different holds, and matching a
 superset would fire a ⌃⌥ binding on the way to every ⌃⌥⌘ shortcut.
 
-There was once a 250 ms timer that re-read the modifier state to catch a release the monitor
-had missed. It polled a source that cannot see Fn, read "up" while Fn was held, and cancelled
-the dictation the instant it started. It is gone: the tap delivers clean pairs, and the one
-release worth guaranteeing is the one below.
+The old modifier poll that could not see Fn is gone. Both hotkey monitors now start a
+250 ms reconciliation poll when they report a press and stop it when they report or
+reconcile the release; it checks the real key state only during that hold. See
+[`stuck-recording.md`](stuck-recording.md) for the lost-release cases it covers.
 
 ## Modifiers bound alone begin other shortcuts
 

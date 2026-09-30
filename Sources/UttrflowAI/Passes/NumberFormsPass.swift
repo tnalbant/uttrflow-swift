@@ -54,6 +54,15 @@ public struct NumberFormsPass: CleaningPass {
         let keys = shapes.map(\.key)
         var position = 0
         while position < live.count {
+            if let time = Self.dottedTime(at: position, keys: keys, shapes: shapes) {
+                let last = position + 1
+                draft.replace(
+                    at: live[position], with: shapes[position].prefix + time.text + shapes[last].suffix,
+                    by: Self.id)
+                draft.remove(at: live[last], by: Self.id)
+                position += 2
+                continue
+            }
             guard let phrase = Self.phrase(at: position, in: shapes, policy: policy, digits: digits)
             else {
                 position += Self.parseOrdinal(at: position, keys: keys, shapes: shapes)?.count ?? 1
@@ -66,6 +75,26 @@ public struct NumberFormsPass: CleaningPass {
             position += phrase.count
         }
         return draft
+    }
+
+    /// Reads `H.MM` as a clock only with a meridiem or an `at`/`by` cue.
+    private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard position + 1 < shapes.count,
+            let hour = Int(keys[position]), (1...12).contains(hour),
+            shapes[position].core.allSatisfy(\.isNumber),
+            let minute = Int(keys[position + 1]), (0...59).contains(minute),
+            shapes[position + 1].core.count == 2,
+            shapes[position].suffix == ".", shapes[position + 1].suffix.isEmpty,
+            joined(position + 1, shapes)
+        else { return nil }
+        let hasMeridiem =
+            position + 2 < keys.count && joined(position + 2, shapes)
+            && meridiems.contains(keys[position + 2].trimmingCharacters(in: CharacterSet(charactersIn: ".")))
+        let hasCue =
+            position > 0 && !startsASentence(position, shapes)
+            && ["at", "by"].contains(keys[position - 1])
+        guard hasMeridiem || hasCue else { return nil }
+        return Phrase(text: "\(hour):\(keys[position + 1])", count: 2)
     }
 
     /// The numeral for the number phrase starting at `position`, or nil when the words stay as they are.

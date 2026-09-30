@@ -7,11 +7,11 @@ public enum QuestionShape {
         guard !words.isEmpty else { return false }
         if endsOnATag(words) { return true }
         // The last clause is where "I sent it, did you see it" asks.
-        let lastClause = trailingQuestionStart(in: shapes).map { Array(words[$0...]) }
-        return ([words] + (lastClause.map { [$0] } ?? [])).contains {
-            let clause = Array($0.drop(while: openers.contains))
-            return opensAQuestion(clause) && !runsOn(clause)
-        }
+        let openingClause = Array(words.drop(while: openers.contains))
+        if opensAQuestion(openingClause) { return true }
+        guard let start = trailingQuestionStart(in: shapes) else { return false }
+        let clause = Array(words[start...].drop(while: openers.contains))
+        return opensAQuestion(clause) && !runsOn(clause)
     }
 
     /// The start of a trailing question after a comma or an inverted request modal.

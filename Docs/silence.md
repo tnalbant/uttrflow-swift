@@ -155,3 +155,11 @@ a transcript holding one marker no longer spelled its own word list, `Draft` cou
 the confidences up with it, and it fell back to treating every word as certain — which
 silently switched off the doubtful-word repair for that piece while the per-word scores were
 still being asked for and paid for. One representation cannot disagree with itself.
+
+The same positive rule handles the recogniser's asterisks. A standalone `*…*` is removed
+only when every word inside it is in `markerWords`; the incident's words `pain`, `painful`,
+`thud`, `thunk`, `puff`, `crack` and `gunshot` are included. `*really*` stays because `really` is
+not a marker word. A standalone run of three or more asterisks, such as `*******`, is an
+unlabelled non-speech span and is removed on its own; surrounding speech such as `review the
+******* Kubernetes` remains. With only markers left, the mapped transcript is blank, so the
+pipeline treats it as nothing heard and refuses insertion.

@@ -183,6 +183,8 @@ enum PieceJoiner {
         }
         guard starts.count > 1 else { return draft.text }
 
+        layoutCommands(&draft, at: starts, under: formatter)
+
         var marks: [Int: String] = [:]
         var absorbed: Set<Int> = []
         for opening in starts.indices.dropFirst() where restate(&draft, at: starts[opening]) {
@@ -202,6 +204,44 @@ enum PieceJoiner {
             draft.insert(mark, at: index, by: id)
         }
         return draft.text
+    }
+
+    /// Turns an explicit layout phrase at a noninitial piece boundary into its mark.
+    private static func layoutCommands(
+        _ draft: inout Draft, at starts: [Int], under formatter: DestinationFormatter
+    ) {
+        let commands: [(words: [String], mark: String, requiresLists: Bool)] = [
+            (["new", "line"], "\n", false), (["new", "paragraph"], "\n\n", false),
+            (["blank", "line"], "\n\n", false), (["bullet", "point"], "\n- ", true),
+            (["next", "point"], "\n- ", true),
+        ]
+        for opening in starts.indices.dropFirst() {
+            let start = starts[opening]
+            let end = opening + 1 < starts.count ? starts[opening + 1] : draft.words.count
+            let live = draft.presentIndices
+            guard let position = live.firstIndex(of: start) else { continue }
+            guard
+                let found = commands.first(where: { command in
+                    (!command.requiresLists || formatter.layout.contains(.lists))
+                        && (command.requiresLists
+                            || formatter.layout.contains(.paragraphs)
+                            || formatter.layout.contains(.preserveNewlines))
+                        && position + command.words.count < live.count
+                        && live[position + command.words.count - 1] < end
+                        && zip(command.words, live[position..<position + command.words.count]).allSatisfy {
+                            $0 == draft.shape(at: $1).key
+                        }
+                })
+            else { continue }
+            let body = live[position + found.words.count]
+            let shape = draft.shape(at: body)
+            draft.replace(
+                at: body, with: shape.replacingCore(with: WordShape.capitalised(shape.core)), by: id)
+            draft.replace(at: start, with: found.mark, by: id)
+            for index in live[(position + 1)..<(position + found.words.count)] {
+                draft.remove(at: index, by: id)
+            }
+        }
     }
 
     /// Whether this place wants a blank line between topics at all.
