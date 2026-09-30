@@ -882,6 +882,11 @@ public struct MeaningPreservationGuard: Sendable {
             || sameIrregularVerbForm(word, other)
     }
 
+    /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
+    static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
+        sameForm(fragment, word) || (whenCutOff && spelledInto(fragment, word, atCutOff: true))
+    }
+
     /// Whether both words belong to the same listed English verb paradigm.
     private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
         guard let group = irregularVerbFormGroups[word] else { return false }
@@ -972,6 +977,12 @@ public struct MeaningPreservationGuard: Sendable {
             let closes = end == written.count || written[end].isUppercase || !written[end].isLetter
             return opens && closes
         }
+    }
+
+    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
+    private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
+        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
+        return word.lowercased().hasPrefix(fragment.lowercased())
     }
 
     /// How many words in `tokens` turn a sentence's meaning around.
