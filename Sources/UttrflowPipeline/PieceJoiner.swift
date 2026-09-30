@@ -73,11 +73,78 @@ enum PieceJoiner {
 
     /// Every piece but the last ended as a sentence the way the place ends one; the message's own stop is the cleaner's.
     static func seamed(_ pieces: [String], under formatter: DestinationFormatter) -> [String] {
-        let pieces = joiningAmountsAcrossSeams(pieces)
+        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces))
         return pieces.enumerated().map { index, text in
             index == pieces.count - 1
                 ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
         }
+    }
+
+    /// Attaches a standalone spoken mark to the adjacent word across a seam.
+    private static func joiningSpokenMarksAcrossSeams(_ pieces: [String]) -> [String] {
+        guard pieces.count > 1 else { return pieces }
+        var joined = pieces
+        for index in joined.indices {
+            let words = joined[index].split(whereSeparator: \.isWhitespace)
+            guard let mark = spokenMark(in: words) else { continue }
+            let startsPiece = words.prefix(mark.words.count).map { WordShape(String($0)).key } == mark.words
+            let endsPiece = words.suffix(mark.words.count).map { WordShape(String($0)).key } == mark.words
+            if mark.opening, startsPiece {
+                guard
+                    let following = joined[(index + 1)...].indices.first(where: {
+                        !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                    })
+                else { continue }
+                let nextWords = joined[following].split(whereSeparator: \.isWhitespace)
+                guard let first = nextWords.first else { continue }
+                let rest = nextWords.dropFirst().joined(separator: " ")
+                joined[following] = mark.symbol + String(first) + (rest.isEmpty ? "" : " " + rest)
+                joined[index] = ""
+            } else if !mark.opening, startsPiece, endsPiece,
+                !isMentionedSpokenMark(preceding: joined[..<index])
+            {
+                guard
+                    let previous = joined[..<index].indices.reversed().first(where: {
+                        !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                    })
+                else { continue }
+                joined[previous] = WordShape.marked(joined[previous], with: mark.symbol)
+                joined[index] = ""
+            }
+        }
+        return joined
+    }
+
+    /// Keeps a spoken mark as words when a nearby determiner introduces its name.
+    private static func isMentionedSpokenMark(preceding pieces: ArraySlice<String>) -> Bool {
+        let prior = pieces.flatMap {
+            $0.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
+        }
+        guard let previous = prior.last else { return false }
+        if ["the", "a", "an", "this", "that", "these", "those", "my", "your", "our", "their"].contains(
+            previous)
+        {
+            return true
+        }
+        return prior.suffix(2).first == "word"
+            && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
+    }
+
+    /// Finds a spoken mark at the start or end of a piece.
+    private static func spokenMark(in words: [Substring]) -> (words: [String], symbol: String, opening: Bool)?
+    {
+        let names: [([String], String, Bool)] = [
+            (["open", "quote"], "\"", true), (["close", "quote"], "\"", false),
+            (["full", "stop"], ".", false), (["question", "mark"], "?", false),
+            (["exclamation", "mark"], "!", false), (["exclamation", "point"], "!", false),
+            (["semi", "colon"], ";", false), (["comma"], ",", false), (["period"], ".", false),
+            (["colon"], ":", false), (["semicolon"], ";", false),
+        ]
+        for (name, symbol, opening) in names where words.count >= name.count {
+            let candidate = opening ? words.prefix(name.count) : words.suffix(name.count)
+            if candidate.map({ WordShape(String($0)).key }) == name { return (name, symbol, opening) }
+        }
+        return nil
     }
 
     /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
