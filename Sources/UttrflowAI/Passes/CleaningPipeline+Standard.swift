@@ -49,6 +49,7 @@ extension CleaningPipeline {
         situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(passes: [
+            SpokenPunctuationPass(),
             CaretEchoPass(
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
                 spokenText: heard),

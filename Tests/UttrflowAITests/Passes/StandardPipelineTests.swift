@@ -113,7 +113,7 @@ struct StandardPipelineTests {
     func afterModel() {
         let cell = CleaningPipeline.afterModel(
             for: .standard(for: .spreadsheet), situation: .unknown, heard: "uh total revenue")
-        #expect(cell.ids == ["caretEcho", "firstWord", "terminalStop"])
+        #expect(cell.ids == ["spokenPunctuation", "caretEcho", "firstWord", "terminalStop"])
         #expect(cell.run(Draft(text: "Total revenue.")).text == "total revenue")
 
         let app = AppContext(documentName: "Chat with John", precedingText: "because ")
