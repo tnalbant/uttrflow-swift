@@ -61,6 +61,33 @@ struct PieceJoinerListTests {
                 == "First, we need to fix the build. Second, we should review the PR.")
     }
 
+    @Test("ordinal paragraph layout is independent of where pieces are cut")
+    func ordinalParagraphsIgnorePieceCuts() {
+        let layouts = [
+            ["We need a plan. First, finish onboarding. Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["We need a plan. First, finish onboarding. Second, fix login.", "Third, review design."],
+            ["We need a plan.", "First, finish onboarding. Second, fix login. Third, review design."],
+        ].map { joined($0, .messaging) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(
+            layouts[0]
+                == "We need a plan. First, finish onboarding.\n\nSecond, fix login.\n\nThird, review design.")
+    }
+
+    @Test("ordinal list layout is independent of where pieces are cut")
+    func ordinalListsIgnorePieceCuts() {
+        let layouts = [
+            ["First, finish onboarding. Second, fix login. Third, review design."],
+            ["First, finish onboarding.", "Second, fix login. Third, review design."],
+            ["First, finish onboarding. Second, fix login.", "Third, review design."],
+        ].map { joined($0, .document) }
+
+        #expect(layouts.allSatisfy { $0 == layouts[0] })
+        #expect(layouts[0] == "- Finish onboarding\n- Fix login\n- Review design")
+    }
+
     @Test("keeps the prose a list is introduced with, above the items")
     func leadInStaysProse() {
         let text = joined(
