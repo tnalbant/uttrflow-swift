@@ -1046,6 +1046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             cue: cue,
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
+            doubleTapWindow: .milliseconds(settings.handsFreeDoubleTapMilliseconds),
             clock: ContinuousClock(),
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
@@ -2699,6 +2700,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if updated.handsFreeEnabled != previous.handsFreeEnabled {
             let enabled = updated.handsFreeEnabled
             Task { [weak self] in await self?.controller?.setHandsFreeEnabled(enabled) }
+        }
+        if updated.handsFreeDoubleTapMilliseconds != previous.handsFreeDoubleTapMilliseconds {
+            Task { [weak self] in
+                await self?.controller?.setDoubleTapWindow(
+                    .milliseconds(updated.handsFreeDoubleTapMilliseconds))
+            }
         }
         telemetry?.setEnabled(updated.sharesUsageStatistics)
         // As above: a switch that drew itself and changed nothing.

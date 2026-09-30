@@ -31,6 +31,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private var activation: HotkeyActivation
     /// Whether a double tap of held keys leaves the microphone open; off, a short tap is only a slip.
     private var handsFreeEnabled: Bool
+    private var doubleTapWindow: Duration
     private var pressedAt: ClockType.Instant?
     /// When the last slip ended, so the next one can tell whether it is the second of a pair.
     private var lastTapEndedAt: ClockType.Instant?
@@ -72,6 +73,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         cue: any RecordingCueing = SilentCue(),
         activation: HotkeyActivation = .holdToTalk,
         handsFreeEnabled: Bool = true,
+        doubleTapWindow: Duration = .milliseconds(450),
         clock: ClockType,
         limit: DictationLimit = .default,
         onAdvice: @escaping @Sendable (DictationAdvice) -> Void = { _ in },
@@ -82,6 +84,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         self.cue = cue
         self.activation = activation
         self.handsFreeEnabled = handsFreeEnabled
+        self.doubleTapWindow = doubleTapWindow
         self.clock = clock
         self.limit = limit
         self.onAdvice = onAdvice
@@ -208,6 +211,11 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     }
 
     public var isHandsFreeEnabled: Bool { handsFreeEnabled }
+
+    /// Changes how far apart hands-free taps may be.
+    public func setDoubleTapWindow(_ window: Duration) {
+        doubleTapWindow = window
+    }
 
     /// What the dock has to say to end a recording that is under way right now.
     public var currentStopGesture: StopGesture {
@@ -502,7 +510,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         let now = clock.now
         let wasTap = pressed.map { $0.duration(to: now) < Self.minimumHold } ?? false
         if wasTap, handsFreeEnabled, let last = lastTapEndedAt,
-            last.duration(to: now) < Self.doubleTapWindow
+            last.duration(to: now) < doubleTapWindow
         {
             // A press that did not open the microphone and was not part of a hands-free toggle cannot change the gesture a click-started dictation is waiting for.
             guard pressOpenedTheMicrophone || isHandsFree else { return }
@@ -536,7 +544,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private func endTapThatNeverOpened() async {
         guard handsFreeEnabled else { return }
         let now = clock.now
-        guard let last = lastTapEndedAt, last.duration(to: now) < Self.doubleTapWindow else {
+        guard let last = lastTapEndedAt, last.duration(to: now) < doubleTapWindow else {
             lastTapEndedAt = now
             return
         }
