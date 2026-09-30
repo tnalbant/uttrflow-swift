@@ -59,7 +59,8 @@ public enum PromptBlocks {
         rules: """
             In a document:
             - full sentences; keep the breaks given, and a list only where one was spoken
-            - fix a grammar slip: "there is three" → "there are three", "a apple" → "an apple", \
+            - fix a grammar slip: "the documents is ready" → "the documents are ready", \
+            "a orange" → "an orange", \
             a drifting tense
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
@@ -149,8 +150,9 @@ public enum PromptBlocks {
         rules: """
             In an email:
             - full sentences and paragraphs; keep the greeting, the sign-off and every break as given
-            - fix a grammar slip: "there is three" → "there are three", "have went" → \
-            "have gone", "a apple" → "an apple", a drifting tense
+            - fix a grammar slip: "the documents is ready" → "the documents are ready", \
+            "we have ate" → \
+            "we have eaten", "a orange" → "an orange", a drifting tense
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
@@ -162,8 +164,9 @@ public enum PromptBlocks {
             In plain text:
             - full sentences; end with a full stop, question or exclamation mark
             - keep every line break given, and add none
-            - fix a grammar slip: "there is three" → "there are three", "a apple" → \
-            "an apple", a drifting tense, a lowercase name or acronym
+            - fix a grammar slip: "the documents is ready" → "the documents are ready", \
+            "a orange" → \
+            "an orange", a drifting tense, a lowercase name or acronym
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
