@@ -39,6 +39,19 @@ struct SpokenPunctuationPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "keeps abbreviation full stops when the standard pipeline adds a clause mark",
+        arguments: [
+            ("Is it 5 p.m. question mark", "Is it 5 p.m.?"),
+            ("We left at 5 p.m. comma then ate.", "We left at 5 p.m., then ate."),
+            ("Bring apples, pears, etc. exclamation mark", "Bring apples, pears, etc.!"),
+            ("Meet at 5 p.m. exclamation mark", "Meet at 5 p.m.!"),
+        ]
+    )
+    func keepsAbbreviationStops(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
     /// A two-word mark name cannot straddle a sentence end, because the halves were said in different sentences.
     @Test(
         "leaves a mark name whose two words sit in different sentences",
