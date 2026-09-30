@@ -872,6 +872,22 @@ else
     pass "every relative link resolves from the document that holds it"
 fi
 
+printf '\nDocumentation index\n'
+missing_index_pages=()
+for page in soak.md ui-tests.md; do
+    if ! grep -Fq "[$page]($page)" Docs/README.md; then
+        missing_index_pages+=("$page")
+    fi
+done
+if ((${#missing_index_pages[@]})); then
+    for page in "${missing_index_pages[@]}"; do
+        fail "Docs/README.md does not link to $page" \
+            "The documentation index should keep the soak and UI test guides discoverable."
+    done
+else
+    pass "the documentation index links to soak.md and ui-tests.md"
+fi
+
 # ---------------------------------------------------------------------------
 # 4. The worktree cleanup recipe must keep the pull request's remote branch.
 # ---------------------------------------------------------------------------
