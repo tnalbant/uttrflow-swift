@@ -23,7 +23,6 @@ struct QuestionShapeTests {
             "is the meeting at ten or eleven do we need the projector",
             "where did you park the car i cannot find it anywhere",
             "what happens if the call fails", "what changed", "who owns the notification service",
-            "are you around yet i should be there in ten",
             "the meeting is at three right", "you sent the invoice right", "the file is saved right",
             "we leave at noon right",
             "I'm blocked on the credentials for the sandbox account can someone help",
@@ -50,8 +49,34 @@ struct QuestionShapeTests {
             "if it rains, we stay in", "", "kya baat hai",
             "the printer is jammed again who used it last",
             "please close the door will you be home tonight",
+            "are you around yet i should be there in ten",
         ])
     func leaves(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
+        "keeps reported content inside an inverted question",
+        arguments: [
+            "did she say that", "did she say we're late", "did she really say we're late",
+            "did you know we lost", "did he say she was coming", "do you think we should wait",
+            "can you tell me they arrived",
+        ])
+    func reportedContent(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
+    }
+
+    @Test("leaves an unrelated declarative run-on unpunctuated")
+    func unrelatedRunOn() {
+        #expect(!QuestionShape.asks(shapes("are you around yet i should be there")))
+    }
+
+    @Test(
+        "keeps dependent clauses inside an inverted question",
+        arguments: [
+            "is it okay if i leave at five", "is it fine if we start late", "is it okay when i call later",
+        ])
+    func dependentClauses(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
     }
 }

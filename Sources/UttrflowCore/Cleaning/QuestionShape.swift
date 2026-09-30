@@ -8,7 +8,10 @@ public enum QuestionShape {
         if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
         // The last clause is where "I sent it, did you see it" asks.
         let openingClause = Array(words.drop(while: openers.contains))
-        if opensAQuestion(openingClause) { return true }
+        if opensAQuestion(openingClause) {
+            return !runsOn(openingClause) || questionWords.contains(openingClause[0])
+                || hasInvertedQuestionAfterOpening(openingClause)
+        }
         guard let start = trailingQuestionStart(in: shapes) else { return false }
         let clause = Array(words[start...].drop(while: openers.contains))
         return opensAQuestion(clause) && !runsOn(clause)
@@ -101,8 +104,28 @@ public enum QuestionShape {
         // The subject straight after the question's verb is the one it inverted, so the search starts past it.
         let verb =
             clause.prefix(4).firstIndex { verbsBeforeSubject.contains($0) || pronounVerbs.contains($0) } ?? 1
-        return clause.dropFirst(verb + 2).contains {
-            newSubjects.contains($0) || contractedNewSubjects.contains($0)
+        return clause.dropFirst(verb + 2).enumerated().contains { offset, subject in
+            guard newSubjects.contains(subject) || contractedNewSubjects.contains(subject) else {
+                return false
+            }
+            return !isDependentOrReportedSubject(at: verb + 2 + offset, in: clause)
+        }
+    }
+
+    /// Whether a subject starts a dependent or reported clause inside the question.
+    private static func isDependentOrReportedSubject(at index: Int, in clause: [String]) -> Bool {
+        if index > 0, ["if", "when"].contains(clause[index - 1]) { return true }
+        if index > 0, reportedVerbs.contains(clause[index - 1]) { return true }
+        return index > 1 && ["tell", "tells", "told"].contains(clause[index - 2]) && clause[index - 1] == "me"
+    }
+
+    /// Whether a later clause also opens an inverted question.
+    private static func hasInvertedQuestionAfterOpening(_ clause: [String]) -> Bool {
+        clause.indices.dropFirst().contains { index in
+            guard index + 1 < clause.count,
+                verbsBeforeSubject.contains(clause[index]) || pronounVerbs.contains(clause[index])
+            else { return false }
+            return subjects.contains(clause[index + 1])
         }
     }
 
@@ -193,6 +216,12 @@ public enum QuestionShape {
 
     /// Pronouns that can only be a subject, so one past a question's opening starts a second clause.
     static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
+
+    /// Verbs that can introduce reported content in an inverted question.
+    private static let reportedVerbs: Set<String> = [
+        "say", "says", "said", "tell", "tells", "told", "know", "knows", "knew", "known", "think", "thinks",
+        "thought", "see", "sees", "saw", "seen", "hear", "hears", "heard", "mean", "means", "meant",
+    ]
 
     /// Every contracted form of those pronouns: "I'm", "we'll", "they've".
     static let contractedNewSubjects = Set(
