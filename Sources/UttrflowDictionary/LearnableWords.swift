@@ -32,12 +32,27 @@ enum LearnableWords {
             spoken = spans
             guard
                 spans.contains(where: {
-                    sound.sounds(like: $0.sound) && ReadingRestraint.opensAlike(term, heard: $0.text)
+                    isDistinctSpelling(term, from: $0.text)
+                        && sound.sounds(like: $0.sound)
+                        && ReadingRestraint.opensAlike(term, heard: $0.text)
                 })
             else { continue }
             found.append(term)
         }
         return found
+    }
+
+    /// Whether a title term is a distinct written form of a heard span, not an identical word or abbreviation.
+    private static func isDistinctSpelling(_ term: String, from heard: String) -> Bool {
+        let titleLetters = ReadingRestraint.closedUp(term).filter(\.isLetter)
+        let spokenLetters = ReadingRestraint.closedUp(heard).filter(\.isLetter)
+        guard !term.contains(where: \.isNumber) else { return false }
+        let uppercase = term.filter(\.isLetter)
+        guard !(uppercase.count <= 5 && uppercase.count >= 2 && uppercase.allSatisfy(\.isUppercase)) else {
+            return false
+        }
+        guard titleLetters.lowercased() != spokenLetters.lowercased() else { return false }
+        return true
     }
 
     // MARK: - Corrected by the user
@@ -69,9 +84,9 @@ enum LearnableWords {
 
     // MARK: - Reading words out of a screen
 
-    /// The words in a piece of text, split on anything that is not a letter, at most `limit` of them.
+    /// The words in a piece of text, split on anything that is neither a letter nor a digit, at most `limit` of them.
     static func words(in text: String, atMost limit: Int) -> [String] {
-        text.split { !$0.isLetter }.prefix(limit).map(String.init)
+        text.split { !$0.isLetter && !$0.isNumber }.prefix(limit).map(String.init)
     }
 }
 
@@ -89,18 +104,34 @@ struct SightingLedger: Sendable {
     }
 
     private var sightings: [String: Sighting] = [:]
-    /// Words the user has deleted since Uttrflow started, refused for the rest of the run.
+    /// Words the user has deleted, which the store writes down so a relaunch still refuses them.
     private var refused: Set<String> = []
     /// The refused words oldest first, so the bound lapses the refusal made longest ago.
     private var refusalOrder: [String] = []
 
+    /// Starts with the refusals a previous run wrote down, oldest first, keeping only the newest the bound allows.
+    init(refusing earlier: [String] = []) {
+        for word in earlier { refuse(word) }
+    }
+
     /// How many refusals the ledger holds now.
     var refusalCount: Int { refused.count }
 
-    /// Stops counting a word and stops it being counted again; what a deletion reaches.
+    /// The refused words oldest first, which is what the store writes down.
+    var refusals: [String] { refusalOrder }
+
+    /// Whether the user has explicitly refused to learn this spelling.
+    func isRefused(_ word: String) -> Bool { refused.contains(word.lowercased()) }
+
+    /// Stops counting pending homophones and stops the refused spelling being counted again.
     mutating func refuse(_ word: String) {
         let key = word.lowercased()
-        sightings[key] = nil
+        let sound = DoubleMetaphone.code(for: word)
+        sightings = sightings.filter { sightingKey, sighting in
+            guard sightingKey != key else { return false }
+            guard !sound.isSilent else { return true }
+            return !sound.sounds(like: DoubleMetaphone.code(for: sighting.word))
+        }
         guard refused.insert(key).inserted else { return }
         refusalOrder.append(key)
         if refusalOrder.count > Self.maximumRefused {

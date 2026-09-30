@@ -8,7 +8,7 @@ public enum FirstWordPolicy: Sendable, Equatable {
 }
 
 /// Whether the last sentence is given a full stop.
-public enum TerminalStopPolicy: Sendable, Equatable {
+public enum TerminalStopPolicy: Sendable, Equatable, Codable {
     case always
     /// No full stop is added, and one the tidier or the model put there is taken back.
     case never
@@ -48,7 +48,7 @@ public enum SentenceCount {
         return count + (openSentence ? 1 : 0)
     }
 
-    private static let ends: Set<Character> = [".", "!", "?"]
+    private static let ends: Set<Character> = [".", "!", "?", "।", "॥"]
 }
 
 /// Which spoken numbers a place wants written as numerals.
@@ -132,6 +132,10 @@ public struct DestinationFormatter: Sendable, Equatable {
             destination: .codeEditor, firstWord: .fromInsertionPoint, terminalStop: .never,
             layout: .preserveNewlines, grammar: .asSpoken, numbers: .always, digits: .none,
             promptBlock: "codeEditor"),
+        .terminal: DestinationFormatter(
+            destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
+            layout: .preserveNewlines, grammar: .asSpoken, numbers: .always, digits: .none,
+            promptBlock: "terminal"),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,
             terminalStop: .offForShortMessages(sentences: 2), layout: .paragraphs,
@@ -152,5 +156,27 @@ public struct DestinationFormatter: Sendable, Equatable {
                 destination: .plain, firstWord: .fromInsertionPoint, terminalStop: .always,
                 layout: .paragraphs, grammar: .repair, numbers: .fromTen,
                 promptBlock: "plain")
+    }
+
+    /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
+    public static func standard(for situation: Situation) -> DestinationFormatter {
+        let base = standard(for: situation.destination)
+        let ruleStop: TerminalStopPolicy? = {
+            guard let rule = DestinationClassifier.rule(for: situation.app),
+                rule.destination == situation.destination
+            else { return nil }
+            return rule.terminalStop
+        }()
+        let role = situation.app.accessibilityRole
+        let isSearch = role == "AXSearchField"
+        let isSingleLine = situation.app.isMultiline == false || role == "AXTextField" || isSearch
+        guard ruleStop != nil || isSingleLine else { return base }
+        return DestinationFormatter(
+            destination: base.destination,
+            firstWord: isSearch ? .asSpoken : base.firstWord,
+            terminalStop: isSearch ? .never : (ruleStop ?? base.terminalStop),
+            layout: isSingleLine ? .singleLine : base.layout,
+            grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock)
     }
 }

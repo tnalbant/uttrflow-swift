@@ -14,6 +14,17 @@ public struct PhoneticIndex: Sendable, Equatable {
     /// The longest run of spoken words that can be one entry; `setUserPrefs` is said as three.
     public static let maximumWordsPerEntry = 3
 
+    /// Whether both editor fields fit the spans the lookup can produce.
+    public static func supports(word: String, pronunciation: String?) -> Bool {
+        wordCount(in: word) <= maximumWordsPerEntry
+            && (pronunciation.map { wordCount(in: $0) <= maximumWordsPerEntry } ?? true)
+    }
+
+    /// The words separated by whitespace, which is how recogniser utterances are split.
+    public static func wordCount(in text: String) -> Int {
+        Utterance(heard: text, confidence: 1).words.count
+    }
+
     /// Counts every entry a lookup reads, so a test can show the cost does not follow the dictionary's size.
     @TaskLocal package static var entriesRead: WorkTally?
 

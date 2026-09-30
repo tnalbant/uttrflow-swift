@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 import UttrflowCore
 
 @testable import UttrflowAI
@@ -14,6 +15,8 @@ struct SpokenPunctuationPassTests {
             ("is it ready question mark", "is it ready?"),
             ("ship it full stop", "ship it."),
             ("ship it period", "ship it."),
+            ("that is it period", "that is it."),
+            ("this is final period", "this is final."),
             ("wow exclamation mark", "wow!"),
             ("wow exclamation point", "wow!"),
             ("two things colon the milk", "two things: the milk"),
@@ -22,10 +25,36 @@ struct SpokenPunctuationPassTests {
             ("ready. question mark", "ready?"),
             ("milk, comma eggs", "milk, eggs"),
             ("done comma we move on", "done, we move on"),
+            ("call me tomorrow comma okay", "call me tomorrow, okay"),
+            ("hi john comma how are you question mark", "hi john, how are you?"),
+            ("here is the list colon apples and pears", "here is the list: apples and pears"),
+            ("note colon bring snacks", "note: bring snacks"),
+            ("chai comma aur biscuit", "chai, aur biscuit"),
+            ("note colon kal chutti hai", "note: kal chutti hai"),
+            ("we discussed colon cancer", "we discussed colon cancer"),
+            ("export comma separated values", "export comma separated values"),
+            ("we checked dash cam footage", "we checked dash cam footage"),
+            ("meet at five colon thirty", "meet at five: 30"),
+            ("the build passed period the tests passed period", "the build passed. the tests passed."),
+            ("i finished the draft period", "i finished the draft."),
+            ("that was amazing exclamation point", "that was amazing!"),
         ]
     )
     func attachesMarks(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps abbreviation full stops when the standard pipeline adds a clause mark",
+        arguments: [
+            ("Is it 5 p.m. question mark", "Is it 5 p.m.?"),
+            ("We left at 5 p.m. comma then ate.", "We left at 5 p.m., then ate."),
+            ("Bring apples, pears, etc. exclamation mark", "Bring apples, pears, etc.!"),
+            ("Meet at 5 p.m. exclamation mark", "Meet at 5 p.m.!"),
+        ]
+    )
+    func keepsAbbreviationStops(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
     /// A two-word mark name cannot straddle a sentence end, because the halves were said in different sentences.
@@ -133,6 +162,8 @@ struct SpokenPunctuationPassTests {
             "comma first",
             "a long period of time",
             "this period was hard",
+            "these comma separated values are easy to read",
+            "those question mark icons are confusing",
             "insert a colon",
             "say open quote",
             "a well hyphen",
@@ -144,11 +175,22 @@ struct SpokenPunctuationPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test("keeps words that mention mark names literally")
+    func keepsLiteralVocabulary() {
+        for input in [
+            "the colon is an organ", "the period of time was long", "a new line of products",
+            "question mark over his future", "a comma splice",
+        ] {
+            #expect(cleaned(input, by: sut) == input)
+        }
+    }
+
     /// "Period", "comma" and "dash" are nouns too, and a modifier hides the determiner that says so.
     @Test(
         "leaves the noun a determiner opens even when a modifier stands between them",
         arguments: [
-            "during the trial period", "I love the Victorian period",
+            "during the trial period", "that trial period", "this period of time",
+            "I love the Victorian period",
             "the 100 metre dash was close", "a short grace period follows",
         ]
     )
@@ -177,6 +219,7 @@ struct SpokenPunctuationPassTests {
             "screened for colon cancer last year", "write comma separated values please",
             "reduce comma usage in prose", "sprint dash training starts monday",
             "we checked dash cam footage", "he keeps writing comma splices",
+            "the main road is closed", "turn left at the main gate",
             "done comma next", "two things colon milk", "milk comma eggs and bread",
         ]
     )
@@ -194,6 +237,9 @@ struct SpokenPunctuationPassTests {
             ("however comma the build passed", "however, the build passed"),
             ("the reason is simple colon we ran out", "the reason is simple: we ran out"),
             ("we left early dash it was raining", "we left early \u{2014} it was raining"),
+            ("chai comma aur biscuit", "chai, aur biscuit"),
+            ("note colon kal chutti hai", "note: kal chutti hai"),
+            ("chai dash phir biscuit", "chai \u{2014} phir biscuit"),
             ("apples comma pears comma plums", "apples, pears, plums"),
             ("red comma green. blue comma white", "red comma green. blue comma white"),
             ("we have colon trouble. the colon comma and more", "we have colon trouble. the colon, and more"),
@@ -201,6 +247,28 @@ struct SpokenPunctuationPassTests {
     )
     func takesAnOrdinaryNameOnEvidence(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("recognises each requested romanised Hindi evidence word")
+    func romanisedHindiEvidenceWords() {
+        for word in [
+            "aur", "ya", "toh", "phir", "lekin", "par", "ki", "ke", "ka", "ko", "main", "hum", "tum",
+            "aap", "yeh", "woh",
+        ] {
+            #expect(cleaned("chai comma \(word) biscuit", by: sut) == "chai, \(word) biscuit")
+        }
+    }
+
+    @Test("rules-only cleaner applies the Hinglish spoken punctuation examples")
+    func rulesOnlyHinglishExamples() async throws {
+        let cleaner = RuleBasedTransformer()
+        for (spoken, expected) in [
+            ("chai comma aur biscuit", "Chai, aur biscuit."),
+            ("note colon kal chutti hai", "Note: kal chutti hai."),
+        ] {
+            let request = TransformationRequest(transcription: Transcription(text: spoken))
+            #expect(try await cleaner.transform(request).text == expected)
+        }
     }
 
     @Test(
@@ -224,5 +292,18 @@ struct SpokenPunctuationPassTests {
         #expect(draft.words[0].state == .replaced(by: SpokenPunctuationPass.id, from: "milk"))
         #expect(draft.words[1].state == .removed(by: SpokenPunctuationPass.id))
         #expect(draft.words[2].state == .kept)
+    }
+
+    @Test("a long unpunctuated rules-only transcript finishes inside the rules budget")
+    func longUnpunctuatedTranscript() async throws {
+        let text = String(
+            repeating: "so i was thinking about the garden and the tomatoes are growing well this year ",
+            count: 200)
+        let request = TransformationRequest(transcription: Transcription(text: text))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = try await RuleBasedTransformer().transform(request)
+        #expect(clock.now - start < StageTimeout.rules)
+        #expect(result.text.split(whereSeparator: \.isWhitespace).count == 2_801)
     }
 }

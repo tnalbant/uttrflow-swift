@@ -2,6 +2,33 @@
 public import Foundation
 public import UttrflowCore
 
+/// The private facts carried beside a recording, with support for the earlier app-only sidecar.
+private struct RecordedDestination: Sendable, Codable {
+    let app: AppContext
+    let fieldKind: Destination?
+
+    init(app: AppContext, fieldKind: Destination?) {
+        self.app = AppContext(
+            applicationName: app.applicationName, bundleIdentifier: app.bundleIdentifier)
+        self.fieldKind = fieldKind
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let app = try container.decodeIfPresent(AppContext.self, forKey: .app) {
+            self.init(
+                app: app, fieldKind: try container.decodeIfPresent(Destination.self, forKey: .fieldKind))
+        } else {
+            // Before field kinds were saved, the sidecar itself was an AppContext plist.
+            self.init(app: try AppContext(from: decoder), fieldKind: nil)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case app, fieldKind
+    }
+}
+
 /// The recordings kept on this Mac, one WAV each, deleted as their words land or go stale.
 public actor RecordingStore: RecordingKeeper {
     /// How long a recording that could not become text waits for a retry.
@@ -13,6 +40,8 @@ public actor RecordingStore: RecordingKeeper {
     private var open: RecordingWriter?
     /// The recording written for the dictation that most recently stopped.
     private var last: KeptRecording?
+    /// Destination facts for recordings awaiting retry, keyed by their audio file identifier.
+    private var destinations: [UUID: RecordedDestination] = [:]
     /// Writers whose bookkeeping is done and whose last bytes are still on their way to the disk.
     private var settling: [UUID: RecordingWriter] = [:]
 
@@ -82,7 +111,23 @@ public actor RecordingStore: RecordingKeeper {
     public func discard(_ id: UUID) async {
         await settle(id)
         try? FileManager.default.removeItem(at: url(of: id))
+        try? FileManager.default.removeItem(at: destinationURL(of: id))
         if last?.id == id { last = nil }
+        destinations[id] = nil
+    }
+
+    public func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) {
+        guard last?.id == id || FileManager.default.fileExists(atPath: url(of: id).path) else { return }
+        let recorded = RecordedDestination(app: destination, fieldKind: fieldKind)
+        destinations[id] = recorded
+        if let data = try? PropertyListEncoder().encode(recorded) {
+            try? data.write(to: destinationURL(of: id), options: .atomic)
+        }
+        if last?.id == id, let last {
+            self.last = KeptRecording(
+                id: last.id, when: last.when, duration: last.duration,
+                destination: recorded.app, fieldKind: fieldKind)
+        }
     }
 
     /// Deletes every recording kept for a retry, leaving only the one still being written.
@@ -91,7 +136,8 @@ public actor RecordingStore: RecordingKeeper {
         let files = try LocalStore.contents(of: directory)
             .map { directory.appending(path: $0, directoryHint: .notDirectory) }
             .filter { file in
-                guard file.pathExtension == "wav" else { return false }
+                guard file.pathExtension == "wav" || file.pathExtension == "context" else { return false }
+                if file.pathExtension == "context" { return true }
                 let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent)
                 return id == nil || id != open?.id
             }
@@ -123,7 +169,10 @@ public actor RecordingStore: RecordingKeeper {
             }
             let frames = WAVEncoder.frames(inFileOf: values?.fileSize ?? 0)
             kept.append(
-                KeptRecording(id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames)))
+                KeptRecording(
+                    id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames),
+                    destination: destination(for: id)?.app,
+                    fieldKind: destination(for: id)?.fieldKind))
         }
         return kept.sorted { $0.when > $1.when }
     }
@@ -135,5 +184,18 @@ public actor RecordingStore: RecordingKeeper {
 
     private func url(of id: UUID) -> URL {
         directory.appending(path: "\(id.uuidString).wav", directoryHint: .notDirectory)
+    }
+
+    private func destinationURL(of id: UUID) -> URL {
+        directory.appending(path: "\(id.uuidString).context", directoryHint: .notDirectory)
+    }
+
+    private func destination(for id: UUID) -> RecordedDestination? {
+        if let cached = destinations[id] { return cached }
+        guard let data = try? Data(contentsOf: destinationURL(of: id)),
+            let decoded = try? PropertyListDecoder().decode(RecordedDestination.self, from: data)
+        else { return nil }
+        destinations[id] = decoded
+        return decoded
     }
 }

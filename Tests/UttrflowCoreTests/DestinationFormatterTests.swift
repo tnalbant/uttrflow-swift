@@ -21,6 +21,7 @@ struct DestinationFormatterTests {
             (.spreadsheet, .asSpoken, .never, .singleLine, .asSpoken, .always),
             (.sqlEditor, .fromInsertionPoint, .always, .preserveNewlines, .asSpoken, .always),
             (.codeEditor, .fromInsertionPoint, .never, .preserveNewlines, .asSpoken, .always),
+            (.terminal, .asSpoken, .never, .preserveNewlines, .asSpoken, .always),
             (
                 .messaging, .fromInsertionPoint, .offForShortMessages(sentences: 2), .paragraphs,
                 .asSpoken, .fromTen
@@ -72,5 +73,21 @@ struct DestinationFormatterTests {
             grammar: .asSpoken, numbers: .always, promptBlock: "plain")
         #expect(one == two)
         #expect(one != DestinationFormatter.standard(for: .plain))
+    }
+
+    @Test("search fields preserve heard casing, omit terminal stops, and stay on one line")
+    func searchField() {
+        let app = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.firstWord == .asSpoken)
+        #expect(formatter.terminalStop == .never)
+        #expect(formatter.layout == .singleLine)
+    }
+
+    @Test("AX text fields stay on one line")
+    func textField() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.layout == .singleLine)
     }
 }

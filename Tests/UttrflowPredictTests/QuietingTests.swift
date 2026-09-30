@@ -16,6 +16,7 @@ struct QuietingTests {
             (PredictionContext(typed: "x", isEnabledHere: false), Quieting.Reason.turnedOffHere),
             (PredictionContext(typed: "x", isSecure: true), .secureField),
             (PredictionContext(typed: "x", hasSelection: true), .textSelected),
+            (PredictionContext(typed: "x", writingDirectionKnown: false), .unknownWritingDirection),
             (PredictionContext(typed: "x", caretAtLineEnd: false), .caretInsideText),
             (PredictionContext(typed: "x", rejectionsThisSession: 3), .rejectedTooOften),
             (

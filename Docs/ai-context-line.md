@@ -1,8 +1,8 @@
 # The context line, measured
 
 `AppContextDescriber` turns what the user is looking at into one caption above the
-dictation, and `CleanupPrompt` tells the model what to do with it. Every choice in the
-wording is a measured one against Apple's on-device model. The prompt-level
+dictation; `PromptBuilder` assembles the instructions that tell the model how to use it.
+Every choice in the wording is a measured one against Apple's on-device model. The prompt-level
 measurements (SQL invention, the spelling-only rule, the name-miss table) are in
 `Docs/bakeoff.md` under "Context, measured"; this file holds the ones about the line itself.
 

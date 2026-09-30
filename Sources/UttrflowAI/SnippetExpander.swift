@@ -40,16 +40,47 @@ public struct SnippetExpander: Sendable {
             let last = position + hit.words.count - 1
             let span = runs[position].range.lowerBound..<runs[last].range.upperBound
             text += transcript[copiedUpTo..<span.lowerBound]
-            text += hit.snippet.expansion
+            let prefix = transcript[copiedUpTo..<span.lowerBound]
+            let sentenceStart =
+                prefix.reversed().first(where: { !$0.isWhitespace }).map {
+                    ".!?\n\r".contains($0)
+                } ?? true
+            text += Self.expansion(hit.snippet.expansion, sentenceStart: sentenceStart)
             applied.append(
                 AppliedSnippet(
                     snippetID: hit.snippet.id, matched: String(transcript[span]),
                     expansion: hit.snippet.expansion))
-            copiedUpTo = span.upperBound
+            var after = span.upperBound
+            if let next = transcript[after...].first,
+                let terminal = Self.terminalMark(in: hit.snippet.expansion),
+                Self.sameTerminalClass(next, terminal)
+            {
+                after = transcript.index(after: after)
+            }
+            copiedUpTo = after
             position += hit.words.count
         }
         text += transcript[copiedUpTo...]
         return SnippetExpansion(original: transcript, text: text, applied: applied)
+    }
+
+    /// Carries sentence-start casing into a replacement while leaving every other saved character alone.
+    private static func expansion(_ expansion: String, sentenceStart: Bool) -> String {
+        guard sentenceStart, let first = expansion.first, first.isLetter, first.isLowercase else {
+            return expansion
+        }
+        return WordShape.capitalised(expansion)
+    }
+
+    /// The last punctuation mark that can be duplicated by tidying immediately after a trigger.
+    private static func terminalMark(in expansion: String) -> Character? {
+        expansion.last(where: { ".!?;:,".contains($0) })
+    }
+
+    /// Whether an adjacent tidy mark is already represented by the expansion's ending punctuation class.
+    private static func sameTerminalClass(_ first: Character, _ second: Character) -> Bool {
+        let terminalMarks: Set<Character> = [".", "!", "?", ";", ":", ","]
+        return terminalMarks.contains(first) && terminalMarks.contains(second)
     }
 
     // MARK: - Whether a trigger really was said
@@ -68,7 +99,10 @@ public struct SnippetExpander: Sendable {
 
         for offset in 1..<length {
             let between = Self.gap(runs[position + offset - 1], runs[position + offset], transcript)
-            if !Self.separatesWords(between) { return false }
+            let triggerJoiner = candidate.joiners[offset - 1]
+            if !Self.separatesWords(between) && !Self.matchesJoiner(between, triggerJoiner) {
+                return false
+            }
         }
 
         if position > 0, Self.joinsWords(Self.gap(runs[position - 1], runs[position], transcript)) {
@@ -91,6 +125,12 @@ public struct SnippetExpander: Sendable {
     /// Whether a gap is plain spacing inside one phrase: not glue ("sign_off") and not a sentence end.
     private static func separatesWords(_ gap: Substring) -> Bool {
         !joinsWords(gap) && !gap.contains(where: endsAPhrase)
+    }
+
+    /// Whether the transcript uses the same explicit joiner that the trigger spells between these words.
+    private static func matchesJoiner(_ gap: Substring, _ joiner: Character?) -> Bool {
+        guard let joiner else { return false }
+        return gap.count == 1 && gap.first == joiner && !gap.contains(where: endsAPhrase)
     }
 
     /// Punctuation after which the next word starts a new thought; commas and brackets are tolerated pauses.
@@ -116,6 +156,8 @@ extension SnippetExpander {
         let snippet: Snippet
         /// The trigger's words, lower-cased.
         let words: [String]
+        /// Explicit joiners between trigger words; whitespace and tolerated pauses are `nil`.
+        let joiners: [Character?]
         /// The expansion tidied like a transcript, so "is the user quoting this?" is one substring search.
         let quoted: String
         /// The trigger rejoined; breaks ties so two equally long triggers cannot swap places between runs.
@@ -125,6 +167,15 @@ extension SnippetExpander {
         init(snippet: Snippet, words: [String]) {
             self.snippet = snippet
             self.words = words
+            let runs = snippet.trigger.snippetWordRuns()
+            joiners = zip(runs, runs.dropFirst()).map { first, second in
+                let gap = snippet.trigger[first.range.upperBound..<second.range.lowerBound]
+                guard gap.count == 1, let character = gap.first,
+                    SnippetExpander.wordJoiners.contains(character),
+                    !SnippetExpander.endsAPhrase(character)
+                else { return nil }
+                return character
+            }
             quoted = TextTidy.collapseWhitespace(snippet.expansion).lowercased()
             key = words.joined(separator: " ")
         }

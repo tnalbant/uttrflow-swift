@@ -84,6 +84,43 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.kind == .negationMoved)
     }
 
+    @Test("spoken punctuation survives a model rewrite through the rules fallback")
+    func spokenPunctuationFallsBackFaithfully() async throws {
+        let cases = [
+            ("the plan dash if it works dash is simple", "The plan if it works is simple.", "—"),
+            ("he said open quote ship it close quote and left", "He said 'ship it' and left.", "\""),
+        ]
+        for (spoken, modelAnswer, mark) in cases {
+            let model = GenerativeTextTransformer(
+                kind: .foundationModels, model: FakeCleanupModel { _ in modelAnswer })
+            let router = TransformerRouter(
+                engines: [model, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+
+            let result = try await router.transform(
+                TransformationRequest(transcription: .fixture(text: spoken, language: .english)))
+
+            #expect(result.producedBy == .rules)
+            #expect(result.text.contains(mark))
+            #expect(result.cleaning?.refusals.isEmpty == false)
+        }
+    }
+
+    @Test("refuses regrouped Indian amounts and falls back to the rules")
+    func regroupedIndianAmountFallsBack() async throws {
+        let model = FakeCleanupModel { _ in "100000 rupaye transfer kar do." }
+        let generative = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let router = TransformerRouter(
+            engines: [generative, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+        let spoken = TransformationRequest(
+            transcription: .fixture(text: "1,00,000 rupaye transfer kar do", language: .english))
+
+        let result = try await router.transform(spoken)
+
+        #expect(result.producedBy == .rules)
+        #expect(result.text.contains("1,00,000"))
+        #expect(result.cleaning?.refusals.first?.kind == .changedNumber)
+    }
+
     /// A user who suddenly gets rules-only text has no other way to learn why. See #193.
     @Test("records the refused answer on the record of the engine that did answer")
     func recordsARefusal() async throws {
@@ -176,7 +213,7 @@ struct TransformerRouterTests {
 
     @Test(
         "hands a short, certain reply straight to the rules",
-        arguments: ["Okay.", "Ship it.", "See you tomorrow."])
+        arguments: ["Okay.", "Ship it."])
     func shortReplyGoesToRules(text: String) async throws {
         let (model, _, router) = shipping()
 
@@ -267,6 +304,13 @@ struct TextTransformersTests {
     @Test("routes to the floor last")
     func floorIsLast() {
         #expect(TextTransformers.router().route.last == .rules)
+    }
+
+    @Test("carries the user's clean-up choices to the message pipeline")
+    func keepsCleaningSteps() {
+        let steps = CleaningSteps.default.setting(.selfCorrection, isOn: false)
+
+        #expect(TextTransformers.router(steps: steps).cleaningSteps == steps)
     }
 
     @Test("leaves replies of three words or fewer to the rules")

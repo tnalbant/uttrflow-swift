@@ -1,8 +1,13 @@
+import Foundation
 public import struct Foundation.Date
+import class Foundation.NSError
+import OSLog
 private import Synchronization
 
 /// Runs the gates in order, remembers what they decided, and never makes a keystroke wait.
 public actor Verifier {
+    private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
+    private static let supersessionLimit = 32
     /// What this machine says it has, which is the gate nothing below may overrule.
     private let index: EnvironmentIndex
     /// The model that judges a candidate's likelihood, absent where there is none.
@@ -15,6 +20,18 @@ public actor Verifier {
     private let clock: any Clock<Duration>
     /// The verdicts already reached, so most keystrokes cost nothing at all.
     private var cache = VerdictCache()
+    /// Invalidates verdicts still being computed when a forget action arrives.
+    private var forgetGeneration: UInt64 = 0
+    /// Candidate lines whose durable refusal has not yet landed.
+    private var pendingSupersessions: [PendingSupersession] = []
+    private var nextSupersessionID: UInt64 = 0
+    private var isRetryingSupersessions = false
+    private var isForgetting = false
+    private var activeSupersessionOperations = 0
+    private var supersessionDrainWaiters: [CheckedContinuation<Void, Never>] = []
+    private var forgetWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Candidate lines kept out of this session while their refusal write is pending.
+    private var refusedThisSession: Set<RefusedCandidate> = []
     /// What a terminal line has to name on disk before it is shown, asked by stat and never by running a program.
     private let lines: TerminalLineCheck
 
@@ -38,23 +55,45 @@ public actor Verifier {
     public func verified(
         _ candidates: [Candidate], in surface: Surface, typed: String, now: Date
     ) async -> [Candidate] {
+        let generation = forgetGeneration
+        await retryPendingSupersessions()
+        guard generation == forgetGeneration else { return [] }
         let deadline = deadline()
         var kept: [Candidate] = []
         for candidate in candidates {
             // A keystroke that cancelled this turn's task makes every candidate after this one moot.
             guard !Task.isCancelled else { break }
-            guard
-                let allowed = await allowed(
-                    candidate, in: surface, typed: typed, now: now, before: deadline)
+            guard !refusedThisSession.contains(RefusedCandidate(text: candidate.text, surface: surface))
             else { continue }
-            // A corrected typo and the genuine line can land on the same text; the one typed as-is is the real one.
+            let allowed = await allowed(candidate, in: surface, typed: typed, now: now, before: deadline)
+            guard generation == forgetGeneration else { return [] }
+            guard let allowed else { continue }
             if let same = kept.firstIndex(where: { $0.text == allowed.text }) {
-                if allowed.editDistance < kept[same].editDistance { kept[same] = allowed }
+                kept[same] = Self.combine(kept[same], allowed)
             } else {
                 kept.append(allowed)
             }
         }
         return kept
+    }
+
+    /// A converged text sums its evidence and keeps the nearest source, favoring the first on a tie.
+    private static func combine(_ first: Candidate, _ second: Candidate) -> Candidate {
+        let nearest = first.editDistance <= second.editDistance ? first : second
+        let evidence: Entry?
+        if let firstEvidence = first.evidence, let secondEvidence = second.evidence {
+            evidence = Entry(
+                text: first.text, count: firstEvidence.count + secondEvidence.count,
+                accepted: firstEvidence.accepted + secondEvidence.accepted,
+                rejected: firstEvidence.rejected + secondEvidence.rejected,
+                selfSourced: firstEvidence.selfSourced + secondEvidence.selfSourced,
+                lastUsed: max(firstEvidence.lastUsed, secondEvidence.lastUsed))
+        } else {
+            evidence = first.evidence ?? second.evidence
+        }
+        return Candidate(
+            text: first.text, source: nearest.source, evidence: evidence,
+            editDistance: nearest.editDistance, isIrreversible: nearest.isIrreversible)
     }
 
     /// The verdict on one candidate, taken from the cache whenever the gates have already reached it.
@@ -69,57 +108,212 @@ public actor Verifier {
         for candidate: Candidate, in surface: Surface, typed: String, now: Date,
         before deadline: Budget
     ) async -> Verdict {
+        let generation = forgetGeneration
         let key = VerdictCache.Key(
             candidate: candidate.text, context: Self.context(of: surface, typed: typed))
-        if let remembered = cache.verdict(for: key, now: now) { return remembered }
+        if let remembered = cache.verdict(for: key) { return remembered }
         guard let token = CompletionToken(candidate.text) else { return .plausible }
 
         // Each lookup asks about its own word among its own kinds, so a path's name is not sought among whole paths.
-        var judged: (word: String, prefix: String, known: Set<String>)?
+        var judged: (word: String, prefix: String, known: Set<String>, caseSensitive: Bool)?
+        var complete = true
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
-            guard let known = await known(of: lookup.kinds, in: surface, now: now) else { continue }
-            guard !Verification.attests(lookup.word, known) else {
-                cache.remember(.attested, for: key, now: now)
+            guard
+                let (known, lookupComplete) = await knownAndComplete(
+                    of: lookup.kinds, in: surface, now: now)
+            else {
+                complete = false
+                continue
+            }
+            complete = complete && lookupComplete
+            let caseSensitive = lookup.kinds.contains(where: Self.requiresCaseSensitiveMatch)
+            guard !Verification.attests(lookup.word, known, caseSensitive: caseSensitive) else {
+                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
                 return .attested
             }
-            if judged == nil { judged = (lookup.word, lookup.prefix, known) }
+            if judged == nil { judged = (lookup.word, lookup.prefix, known, caseSensitive) }
         }
+        guard complete else { return .plausible }
 
         let plausibility = await self.plausibility(
             of: candidate.text, following: typed, before: deadline)
         guard plausibility != .overBudget else { return .rejected }
 
+        // Only a machine that answered can condemn a line for good; the model alone refuses it this time only.
         let verdict = await reported(
             Verification.verdict(
                 word: judged?.word ?? token.token, known: judged?.known ?? [],
-                modelObjects: Verification.objects(to: plausibility)),
+                modelObjects: Verification.objects(to: plausibility),
+                caseSensitive: judged?.caseSensitive ?? false),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
-            forGood: Verification.isClosedVocabulary(for: token))
-        cache.remember(verdict, for: key, now: now)
+            forGood: judged != nil && Verification.isClosedVocabulary(for: token),
+            generation: generation)
+        if complete, generation == forgetGeneration { cache.remember(verdict, for: key) }
         return verdict
     }
 
     /// The verdict in the whole line's terms, told to the store whenever it condemns the candidate for good.
     private func reported(
-        _ verdict: Verdict, on text: String, leading: String, in surface: Surface, forGood: Bool
+        _ verdict: Verdict, on text: String, leading: String, in surface: Surface, forGood: Bool,
+        generation: UInt64
     ) async -> Verdict {
         switch verdict {
         case .corrected(let word):
             let corrected = leading + word
             // A file or branch the machine does not know today may exist tomorrow, so only a closed vocabulary supersedes.
-            if forGood { await supersession?.recordSupersession(of: text, by: corrected, in: surface) }
+            if forGood, generation == forgetGeneration {
+                await record(
+                    .supersede(text, corrected), candidate: text, in: surface, generation: generation)
+            }
             return .corrected(corrected)
         case .rejected:
-            if forGood { await supersession?.recordRejection(of: text, in: surface) }
+            if forGood, generation == forgetGeneration {
+                await record(.reject(text), candidate: text, in: surface, generation: generation)
+            }
             return .rejected
         case .attested, .plausible:
             return verdict
         }
     }
 
-    /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
-    public func forgetEverything() {
+    /// Writes a final refusal and holds it for retry when the store fails.
+    private func record(
+        _ write: SupersessionWrite, candidate: String, in surface: Surface, generation: UInt64
+    ) async {
+        guard let supersession else { return }
+        await beginSupersessionOperation()
+        defer { endSupersessionOperation() }
+        guard generation == forgetGeneration else { return }
+        do {
+            try await apply(write, using: supersession, in: surface)
+        } catch {
+            pendingSupersessions.append(
+                PendingSupersession(
+                    id: claimSupersessionID(), write: write, surface: surface))
+            if pendingSupersessions.count > Self.supersessionLimit { pendingSupersessions.removeFirst() }
+            refusedThisSession.insert(RefusedCandidate(text: candidate, surface: surface))
+            Self.log.error(
+                "A refused suggestion's corpus write failed and is held for retry: \(Self.failure(error), privacy: .public)"
+            )
+        }
+    }
+
+    /// Retries held refusals in order and leaves them suppressed at the first repeated failure.
+    private func retryPendingSupersessions() async {
+        guard let supersession, !isRetryingSupersessions else { return }
+        await beginSupersessionOperation()
+        guard !isRetryingSupersessions else {
+            endSupersessionOperation()
+            return
+        }
+        isRetryingSupersessions = true
+        defer {
+            isRetryingSupersessions = false
+            endSupersessionOperation()
+        }
+        while let pending = pendingSupersessions.first {
+            do {
+                try await apply(pending.write, using: supersession, in: pending.surface)
+                if pendingSupersessions.first?.id == pending.id { pendingSupersessions.removeFirst() }
+                let candidate = Self.candidate(of: pending.write)
+                if !pendingSupersessions.contains(where: {
+                    $0.surface == pending.surface && Self.candidate(of: $0.write) == candidate
+                }) {
+                    refusedThisSession.remove(RefusedCandidate(text: candidate, surface: pending.surface))
+                }
+            } catch {
+                Self.log.error(
+                    "A refused suggestion's corpus retry failed: \(Self.failure(error), privacy: .public)"
+                )
+                return
+            }
+        }
+    }
+
+    /// Gives each held write an identity so an in-flight retry survives a forget or queue trim.
+    private func claimSupersessionID() -> UInt64 {
+        defer { nextSupersessionID &+= 1 }
+        return nextSupersessionID
+    }
+
+    /// Starts a corpus operation after any active forget has finished.
+    private func beginSupersessionOperation() async {
+        while isForgetting {
+            await withCheckedContinuation { forgetWaiters.append($0) }
+        }
+        activeSupersessionOperations += 1
+    }
+
+    /// Lets a waiting forget proceed after every active write and queue update completes.
+    private func endSupersessionOperation() {
+        activeSupersessionOperations -= 1
+        guard activeSupersessionOperations == 0 else { return }
+        let waiters = supersessionDrainWaiters
+        supersessionDrainWaiters = []
+        waiters.forEach { $0.resume() }
+    }
+
+    /// Whether a forget is waiting for an active write, exposed to deterministic regression coverage.
+    var isWaitingToForgetSupersessionWrites: Bool {
+        isForgetting && activeSupersessionOperations > 0
+    }
+
+    /// Applies one pending supersession or rejection.
+    private func apply(
+        _ write: SupersessionWrite, using store: any SupersessionRecording, in surface: Surface
+    ) async throws {
+        switch write {
+        case .supersede(let text, let replacement):
+            try await store.recordSupersession(of: text, by: replacement, in: surface)
+        case .reject(let text):
+            try await store.recordRejection(of: text, in: surface)
+        }
+    }
+
+    /// The candidate whose refusal a store operation makes durable.
+    private static func candidate(of write: SupersessionWrite) -> String {
+        switch write {
+        case .supersede(let text, _), .reject(let text): text
+        }
+    }
+
+    /// Names an error type and case without exposing a text payload.
+    private static func failure(_ error: any Error) -> String {
+        let type = String(describing: Swift.type(of: error))
+        let mirror = Mirror(reflecting: error)
+        if mirror.displayStyle == .enum, let label = mirror.children.first?.label {
+            return "\(type).\(label)"
+        }
+        let bridged = error as NSError
+        return "\(type) domain=\(bridged.domain) code=\(bridged.code)"
+    }
+
+    /// Forgets verifier state and runs the corpus clear before new persistence may begin.
+    public func forgetEverything(then clearCorpus: @Sendable () async throws -> Void) async throws {
+        while isForgetting {
+            await withCheckedContinuation { forgetWaiters.append($0) }
+        }
+        isForgetting = true
+        defer {
+            isForgetting = false
+            let waiters = forgetWaiters
+            forgetWaiters = []
+            waiters.forEach { $0.resume() }
+        }
+        if activeSupersessionOperations > 0 {
+            await withCheckedContinuation { supersessionDrainWaiters.append($0) }
+        }
+        forgetGeneration &+= 1
         cache.forgetEverything()
+        pendingSupersessions = []
+        refusedThisSession = []
+        await scoring?.forgetEverything()
+        try await clearCorpus()
+    }
+
+    /// Forgets every verdict when no corpus clear is needed.
+    public func forgetEverything() async {
+        try? await forgetEverything(then: {})
     }
 
     /// How many verdicts are remembered, which is what says a keystroke skipped the gates.
@@ -161,7 +355,7 @@ public actor Verifier {
             answered = true
             if !complete { everyLookupComplete = false }
             // A word already whole and known may be continued freely; the model is held only while the word is open.
-            if Verification.attests(lookup.word, known) { return .open }
+            if await attests(lookup, in: surface, now: now) { return .open }
             var values = known.filter { Self.begins($0, as: lookup.word) }.map { lookup.prefix + $0 }
             // A runner's `run` takes a script, so where the scripts are listed each `run script` is offered whole and bare `run` is not.
             if case .subcommand(let program)? = lookup.kinds.first,
@@ -200,17 +394,36 @@ public actor Verifier {
         return standing
     }
 
-    /// Whether every word the model added is one the machine names, or one no listing could deny.
+    /// Each generated line's mean log-probability per token from the pass that wrote it, absent where no pass measured it or no model is loaded.
+    public func scoreCompletions(_ completions: [String]) async -> [String: Double] {
+        guard let scoring else { return [:] }
+        var scores: [String: Double] = [:]
+        for completion in completions {
+            if let value = await scoring.confidence(ofGenerated: completion) {
+                scores[completion] = value
+            }
+        }
+        return scores
+    }
+
+    /// Whether every word the model added is one the machine names, or one no listing could deny; a listing not yet answered vouches for nothing.
     private func stands(
         _ completion: String, after typed: String, in surface: Surface, now: Date
     ) async -> Bool {
         guard await admits(completion, in: surface, now: now) else { return false }
+        // A field that is not a directory has no listings, so nothing it holds is looked up.
+        guard EnvironmentSource.workingDirectory(of: surface) != nil else { return true }
         for token in Verification.words(of: completion, addedAfter: typed) {
             guard let attestation = Verification.attestation(for: token) else { continue }
             var vouched = false
             for lookup in attestation.lookups where !vouched {
-                let known = await known(of: lookup.kinds, in: surface, now: now)
-                vouched = Verification.stands(lookup.word, known: known)
+                let answer = await knownAndComplete(of: lookup.kinds, in: surface, now: now)
+                if await attests(lookup, in: surface, now: now) {
+                    vouched = true
+                } else if answer?.complete != true {
+                    // A listing still out is no proof either way, so only the disk itself may vouch meanwhile.
+                    vouched = lines.confirms(lookup, in: surface.scope)
+                }
             }
             guard vouched else { return false }
         }
@@ -234,6 +447,27 @@ public actor Verifier {
         of kinds: [EnvironmentKind], in surface: Surface, now: Date
     ) async -> Set<String>? {
         await knownAndComplete(of: kinds, in: surface, now: now)?.known
+    }
+
+    /// Git names are case-sensitive even on a case-insensitive filesystem.
+    private func attests(_ lookup: Verification.Lookup, in surface: Surface, now: Date) async -> Bool {
+        for kind in lookup.kinds {
+            guard let known = await known(of: [kind], in: surface, now: now) else { continue }
+            if Verification.attests(
+                lookup.word, known, caseSensitive: Self.requiresCaseSensitiveMatch(kind))
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func requiresCaseSensitiveMatch(_ kind: EnvironmentKind) -> Bool {
+        switch kind {
+        case .branch, .gitAlias: true
+        case .subcommand(of: "git"): true
+        case .entries, .directories, .executable, .alias, .subcommand: false
+        }
     }
 
     /// The same union, plus whether every kind asked has actually answered, so a still-refreshing kind is never read as a "no".
@@ -300,6 +534,22 @@ public actor Verifier {
             surface.bundleIdentifier, surface.role, surface.locator ?? "", surface.scope ?? "", typed,
         ].joined(separator: "\u{0}")
     }
+}
+
+private enum SupersessionWrite: Sendable {
+    case supersede(String, String)
+    case reject(String)
+}
+
+private struct PendingSupersession: Sendable {
+    let id: UInt64
+    let write: SupersessionWrite
+    let surface: Surface
+}
+
+private struct RefusedCandidate: Hashable, Sendable {
+    let text: String
+    let surface: Surface
 }
 
 /// One keystroke's budget on the verifier's clock: whether it has run out, and a wait until it does.

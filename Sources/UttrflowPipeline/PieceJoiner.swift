@@ -11,8 +11,35 @@ struct Piece: Sendable {
 enum PieceJoiner {
     static let id: PassID = "pieceJoiner"
 
+    /// The finished transcript before seam stops are restored, with the affected seam positions retained.
+    static func snippetInput(
+        _ pieces: [Piece], under formatter: DestinationFormatter, using text: String
+    ) -> SeamSnippetInput {
+        guard pieces.count > 1 else { return SeamSnippetInput(text: text, removableStops: [], source: text) }
+        let texts = pieces.map(\.cleaned.text)
+        let seamed = seamed(texts, under: formatter)
+        var removableStops: [Int] = []
+        var original = ""
+        for index in pieces.indices {
+            if index > 0 { original += " " }
+            original += seamed[index]
+            if index < pieces.count - 1,
+                String(seamed[index]) != String(texts[index]),
+                let last = original.last, ".!?".contains(last)
+            {
+                removableStops.append(original.count - 1)
+            }
+        }
+        let source = original
+        let exact = source == text
+        return SeamSnippetInput(
+            text: text, removableStops: exact ? removableStops : [], source: exact ? source : text)
+    }
+
     /// Every piece as one, with the corrections' word ranges moved to where their piece begins.
-    static func join(_ pieces: [Piece], under formatter: DestinationFormatter) -> Piece {
+    static func join(
+        _ pieces: [Piece], under formatter: DestinationFormatter, steps: CleaningSteps = .default
+    ) -> Piece {
         guard pieces.count > 1, let first = pieces.first else {
             return pieces.first
                 ?? Piece(
@@ -42,16 +69,141 @@ enum PieceJoiner {
             corrected: CorrectedTranscript(
                 text: correctedText.joined(separator: " "), corrections: corrections),
             cleaned: TransformationResult(
-                text: laidOut(seamed(pieces.map(\.cleaned.text), under: formatter), under: formatter),
+                text: laidOut(
+                    seamed(pieces.map(\.cleaned.text), under: formatter), under: formatter, steps: steps),
                 producedBy: producedBy, entriesTaken: pieces.flatMap(\.cleaned.entriesTaken)))
     }
 
     /// Every piece but the last ended as a sentence the way the place ends one; the message's own stop is the cleaner's.
     static func seamed(_ pieces: [String], under formatter: DestinationFormatter) -> [String] {
-        pieces.enumerated().map { index, text in
-            index == pieces.count - 1
-                ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
+        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces))
+        return pieces.enumerated().map { index, text in
+            guard index > 0, sentenceRunsOn(pieces[index - 1], into: text) else {
+                return index == pieces.count - 1
+                    ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
+            }
+            return lowercasedOpening(text, in: pieces[index - 1] + " " + text)
         }
+    }
+
+    /// Attaches standalone spoken marks to adjacent words across piece boundaries.
+    private static func joiningSpokenMarksAcrossSeams(_ pieces: [String]) -> [String] {
+        guard pieces.count > 1 else { return pieces }
+        var joined = pieces
+        for index in joined.indices {
+            let words = joined[index].split(whereSeparator: \.isWhitespace)
+            guard !words.isEmpty else { continue }
+            if let leading = spokenMark(at: words, fromStart: true), leading.opening,
+                words.count == leading.words.count,
+                let following = joined[(index + 1)...].indices.first(where: {
+                    !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                })
+            {
+                let nextWords = joined[following].split(whereSeparator: \.isWhitespace)
+                if let first = nextWords.first {
+                    let rest = nextWords.dropFirst().joined(separator: " ")
+                    joined[following] = leading.symbol + String(first) + (rest.isEmpty ? "" : " " + rest)
+                    joined[index] = ""
+                }
+            }
+            guard let trailing = spokenMark(at: words, fromStart: false), !trailing.opening,
+                words.count == trailing.words.count,
+                !isMentionedSpokenMark(preceding: joined[..<index])
+            else { continue }
+            guard
+                let previous = joined[..<index].indices.reversed().first(where: {
+                    !joined[$0].split(whereSeparator: \.isWhitespace).isEmpty
+                })
+            else { continue }
+            joined[previous] = WordShape.marked(joined[previous], with: trailing.symbol)
+            joined[index] = ""
+        }
+        return joined
+    }
+
+    /// Keeps a spoken mark as words when a nearby determiner introduces its name.
+    private static func isMentionedSpokenMark(preceding pieces: ArraySlice<String>) -> Bool {
+        let prior = pieces.flatMap {
+            $0.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
+        }
+        guard let previous = prior.last else { return false }
+        if ["the", "a", "an", "this", "that", "these", "those", "my", "your", "our", "their"].contains(
+            previous)
+        {
+            return true
+        }
+        if let lastSentenceEnd = prior.lastIndex(where: { [".", "?", "!"].contains($0) }) {
+            return lastSentenceEnd == prior.index(before: prior.endIndex)
+        }
+        return prior.suffix(2).first == "word"
+            && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
+    }
+
+    /// Finds a spoken mark at the start or end of a piece.
+    private static func spokenMark(
+        at words: [Substring], fromStart: Bool
+    ) -> (words: [String], symbol: String, opening: Bool)? {
+        let names: [([String], String, Bool)] = [
+            (["open", "quote"], "\"", true), (["close", "quote"], "\"", false),
+            (["full", "stop"], ".", false), (["question", "mark"], "?", false),
+            (["exclamation", "mark"], "!", false), (["exclamation", "point"], "!", false),
+            (["semi", "colon"], ";", false), (["comma"], ",", false), (["period"], ".", false),
+            (["colon"], ":", false), (["semicolon"], ";", false),
+        ]
+        for (name, symbol, opening) in names where words.count >= name.count {
+            let candidate = fromStart ? words.prefix(name.count) : words.suffix(name.count)
+            if candidate.map({ WordShape(String($0)).key }) == name { return (name, symbol, opening) }
+        }
+        return nil
+    }
+
+    /// Lowers a capital opened by the recognizer while keeping spellings the casing passes protect.
+    private static func lowercasedOpening(_ text: String, in context: String) -> String {
+        guard let start = text.firstIndex(where: { !$0.isWhitespace }),
+            let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex,
+            let first = text[start..<end].first, first.isUppercase,
+            !FirstWordPass.keepsCapital(String(text[start..<end])),
+            !FirstWordPass.isCalendarWord(String(text[start..<end])),
+            !FirstWordPass.looksLikeName(String(text[start..<end]), in: [context])
+        else { return text }
+        let word = String(text[start..<end])
+        return text.replacingCharacters(in: start..<end, with: WordShape.lowercased(word))
+    }
+
+    /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
+    private static func joiningAmountsAcrossSeams(_ pieces: [String]) -> [String] {
+        guard pieces.count > 1 else { return pieces }
+        var joined = pieces
+        for index in 0..<(joined.count - 1) {
+            let following = joined[index + 1].split(whereSeparator: \.isWhitespace)
+            guard let last = joined[index].split(whereSeparator: \.isWhitespace).last,
+                following.count == 2, WordShape(String(following[0])).key == "and",
+                let leadingValue = integer(String(last)),
+                let amount = currencyAmount(String(following[1]))
+            else { continue }
+            let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
+            guard !overflow else { continue }
+            let replacement = amount.symbol + NumberWords.render(sum, grouped: true)
+            let prefix = String(joined[index].dropLast(last.count))
+            joined[index] = prefix + replacement
+            joined[index + 1] = ""
+        }
+        return joined
+    }
+
+    /// Reads a grouped or ungrouped nonnegative integer.
+    private static func integer(_ text: String) -> Int? {
+        let digits = text.replacingOccurrences(of: ",", with: "")
+        guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else { return nil }
+        return Int(digits)
+    }
+
+    /// Reads the currency symbol and integer value from a cleaned amount.
+    private static func currencyAmount(_ text: String) -> (symbol: String, value: Int)? {
+        guard let symbol = text.first, "$€£₹".contains(symbol),
+            let value = integer(String(text.dropFirst()))
+        else { return nil }
+        return (String(symbol), value)
     }
 
     /// One piece ended at a seam, unless the words on either side of the cut say the sentence ran through it. See `Docs/cleanup-design.md` §7.
@@ -59,6 +211,7 @@ enum PieceJoiner {
         _ text: String, before next: String, under formatter: DestinationFormatter
     ) -> String {
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
+        if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
             !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline)),
@@ -71,27 +224,14 @@ enum PieceJoiner {
 
     /// Whether the words across a seam show the sentence carried on, which is the one reason not to end it there.
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
-        endsUnfinished(text) || opensWithAPhrase(next)
-    }
-
-    /// Whether a piece ends on a word no sentence ends on, so the pause the cut fell at was inside a phrase.
-    private static func endsUnfinished(_ text: String) -> Bool {
-        guard let last = text.spokenWords.last else { return false }
-        return Self.neverLast.contains(WordShape(String(last)).key)
-    }
-
-    /// Whether a piece opens on a phrase that continues the clause before it: a preposition, then a name or a determiner.
-    private static func opensWithAPhrase(_ text: String) -> Bool {
-        let words = text.spokenWords
-        guard words.count > 1, Self.neverFronted.contains(WordShape(String(words[0])).key)
-        else { return false }
-        let following = WordShape(String(words[1]))
-        // "to be honest" opens a sentence as readily as it continues one, so only a phrase counts as evidence.
-        return Self.determiners.contains(following.key) || following.core.first?.isUppercase == true
+        SentenceBoundaryEvidence.sentenceRunsOn(text, into: next)
+            || trailingTriggerDiscardsWords(in: text, before: next)
     }
 
     /// The cleaned pieces as one text: a spoken list, a paragraph at a topic, a restatement across the seam, else a space.
-    static func laidOut(_ pieces: [String], under formatter: DestinationFormatter) -> String {
+    static func laidOut(
+        _ pieces: [String], under formatter: DestinationFormatter, steps: CleaningSteps = .default
+    ) -> String {
         var draft = Draft(words: [])
         var starts: [Int] = []
         for text in pieces {
@@ -102,14 +242,20 @@ enum PieceJoiner {
         }
         guard starts.count > 1 else { return draft.text }
 
+        layoutCommands(&draft, at: starts, under: formatter)
+
         var marks: [Int: String] = [:]
         var absorbed: Set<Int> = []
-        for opening in starts.indices.dropFirst() where restate(&draft, at: starts[opening]) {
+        for opening in starts.indices.dropFirst()
+        where steps.runs(.selfCorrection) && restate(&draft, at: starts[opening]) {
             absorbed.insert(opening)
         }
         let items = formatter.layout.contains(.lists) ? listItems(in: draft, starts: starts) : []
-        for opening in items {
-            if let mark = itemise(&draft, opening, starts) { marks[starts[opening]] = mark }
+        for (item, opening) in items.enumerated() {
+            let isOrdinal = Self.ordinals[draft.shape(at: opening).key] != nil
+            if let mark = itemise(&draft, opening, items: items, item: item, ordinal: isOrdinal) {
+                marks[opening] = mark
+            }
         }
         for opening in starts.indices.dropFirst() {
             guard paragraphs(formatter), !absorbed.contains(opening), !items.contains(opening),
@@ -121,6 +267,46 @@ enum PieceJoiner {
             draft.insert(mark, at: index, by: id)
         }
         return draft.text
+    }
+
+    /// Turns an explicit layout phrase at a noninitial piece boundary into its mark.
+    private static func layoutCommands(
+        _ draft: inout Draft, at starts: [Int], under formatter: DestinationFormatter
+    ) {
+        let commands: [(words: [String], mark: String, requiresLists: Bool)] = [
+            (["new", "line"], "\n", false), (["new", "paragraph"], "\n\n", false),
+            (["blank", "line"], "\n\n", false), (["bullet", "point"], "\n- ", true),
+            (["next", "point"], "\n- ", true),
+        ]
+        for opening in starts.indices.dropFirst() {
+            let start = starts[opening]
+            let end = opening + 1 < starts.count ? starts[opening + 1] : draft.words.count
+            let live = draft.presentIndices
+            guard let position = live.firstIndex(of: start) else { continue }
+            guard
+                let found = commands.first(where: { command in
+                    (!command.requiresLists || formatter.layout.contains(.lists))
+                        && (command.requiresLists
+                            || formatter.layout.contains(.paragraphs)
+                            || formatter.layout.contains(.preserveNewlines))
+                        && position + command.words.count < live.count
+                        && live[position + command.words.count - 1] < end
+                        && zip(command.words, live[position..<position + command.words.count]).allSatisfy {
+                            $0 == draft.shape(at: $1).key
+                        }
+                })
+            else { continue }
+            let body = live[position + found.words.count]
+            if body < end {
+                let shape = draft.shape(at: body)
+                draft.replace(
+                    at: body, with: shape.replacingCore(with: WordShape.capitalised(shape.core)), by: id)
+            }
+            draft.replace(at: start, with: found.mark, by: id)
+            for index in live[(position + 1)..<(position + found.words.count)] {
+                draft.remove(at: index, by: id)
+            }
+        }
     }
 
     /// Whether this place wants a blank line between topics at all.
@@ -150,11 +336,39 @@ enum PieceJoiner {
     /// The half the piece opening at `position` takes back, trigger included, or nil when the halves do not match.
     private static func discarded(at position: Int, in live: [Int], of draft: Draft) -> Range<Int>? {
         let trigger = Restatement.triggerRun(at: position, in: live, of: draft)
-        guard trigger > 0, position + trigger < live.count,
+        if trigger > 0, position + trigger < live.count,
             let start = Restatement.discardedStart(
                 before: position, after: position + trigger, in: live, of: draft)
+        {
+            return start..<(position + trigger)
+        }
+        guard let tail = trailingTriggerStart(before: position, in: live, of: draft),
+            position < live.count,
+            let start = Restatement.discardedStart(
+                before: tail, after: position, in: live, of: draft)
         else { return nil }
-        return start..<(position + trigger)
+        return start..<position
+    }
+
+    /// Finds a correction trigger that ends exactly at the seam and takes back the words before it.
+    private static func trailingTriggerStart(before position: Int, in live: [Int], of draft: Draft) -> Int? {
+        for start in stride(from: position - 1, through: max(0, position - 3), by: -1) {
+            let length = Restatement.triggerRun(at: start, in: live, of: draft)
+            if length > 0, start + length == position { return start }
+        }
+        return nil
+    }
+
+    /// Whether a trigger at the end of this piece matches the opening words of the next one as a correction.
+    private static func trailingTriggerDiscardsWords(in text: String, before next: String) -> Bool {
+        let draft = Draft(text: text + " " + next)
+        let live = draft.presentIndices
+        let boundary = Draft(text: text).presentIndices.count
+        guard boundary > 0, boundary < live.count,
+            let trigger = trailingTriggerStart(before: boundary, in: live, of: draft),
+            Restatement.discardedStart(before: trigger, after: boundary, in: live, of: draft) != nil
+        else { return false }
+        return true
     }
 
     // MARK: Lists from spoken sequence words
@@ -162,29 +376,69 @@ enum PieceJoiner {
     /// The openings that are the items of one spoken list, or nothing when the pieces do not spell one.
     private static func listItems(in draft: Draft, starts: [Int]) -> [Int] {
         let live = draft.presentIndices
-        guard
-            let head = starts.indices.first(where: {
-                sequence(draft, live, at: starts[$0])?.value == 1
-            }), starts.count - head >= 2
-        else { return [] }
-        let kind = sequence(draft, live, at: starts[head])?.kind
-        for opening in head..<starts.count {
-            guard let found = sequence(draft, live, at: starts[opening]), found.kind == kind,
-                found.value == opening - head + 1,
-                isClause(draft, live, opening, starts, after: found.length)
-            else { return [] }
+        guard !live.isEmpty else { return [] }
+
+        // Ordinals are semantic boundaries even when working-ahead did not cut there.
+        let startsSet = Set(starts)
+        let ordinalCandidates = live.indices.compactMap {
+            position -> (position: Int, value: Int)? in
+            let shape = draft.shape(at: live[position])
+            guard let value = Self.ordinals[shape.key],
+                (position == live.startIndex || startsSet.contains(live[position])
+                    || draft.shape(at: live[position - 1]).endsClause)
+            else { return nil }
+            return (position, value)
         }
-        return Array(head..<starts.count)
+        guard let ordinalHead = ordinalCandidates.firstIndex(where: { $0.value == 1 }),
+            ordinalCandidates.count - ordinalHead >= 2,
+            Array(ordinalCandidates[ordinalHead...]).enumerated().allSatisfy({ offset, candidate in
+                candidate.value == offset + 1
+            })
+        else {
+            return boundaryListItems(in: draft, starts: starts)
+        }
+        return Array(ordinalCandidates[ordinalHead...]).map { live[$0.position] }
+    }
+
+    /// Recognizes announced and cardinal sequences at piece boundaries, where their number is unambiguous.
+    private static func boundaryListItems(in draft: Draft, starts: [Int]) -> [Int] {
+        let live = draft.presentIndices
+        let candidates = starts.enumerated().compactMap { index, start in
+            guard let found = sequence(draft, live, at: start),
+                isClause(
+                    draft, live, position: live.firstIndex(of: start) ?? 0, starts: starts,
+                    after: found.length)
+            else { return nil }
+            return (index: index, value: found.value, kind: found.kind)
+        }
+        guard let head = candidates.firstIndex(where: { $0.value == 1 }), candidates.count - head >= 2
+        else { return [] }
+        let kind = candidates[head].kind
+        let run = Array(candidates[head...])
+        guard
+            run.enumerated().allSatisfy({ offset, candidate in
+                candidate.kind == kind && candidate.value == offset + 1
+            }), run.last?.value == candidates.count - head
+        else { return [] }
+        return run.map { starts[$0.index] }
     }
 
     /// Takes the sequence word off an item, capitalises what is left of it and drops its full stop, answering its mark.
-    private static func itemise(_ draft: inout Draft, _ opening: Int, _ starts: [Int]) -> String? {
+    private static func itemise(
+        _ draft: inout Draft, _ opening: Int, items: [Int], item: Int, ordinal: Bool
+    ) -> String? {
         let live = draft.presentIndices
-        guard let position = live.firstIndex(of: starts[opening]),
-            let found = sequence(draft, live, at: starts[opening])
-        else { return nil }
-        for index in live[position..<position + found.length] { draft.remove(at: index, by: id) }
-        let body = words(of: opening, starts, in: draft)
+        guard let position = live.firstIndex(of: opening) else { return nil }
+        let length: Int
+        if ordinal {
+            length = 1
+        } else {
+            guard let found = sequence(draft, live, at: opening) else { return nil }
+            length = found.length
+        }
+        for index in live[position..<position + length] { draft.remove(at: index, by: id) }
+        let end = item + 1 < items.count ? items[item + 1] : draft.words.count
+        let body = draft.presentIndices.filter { $0 >= opening && $0 < end }
         guard let head = body.first, let tail = body.last else { return nil }
         draft.replace(at: head, with: WordShape.capitalised(draft.words[head].text), by: id)
         draft.replace(at: tail, with: WordShape.withoutTrailingStop(draft.words[tail].text), by: id)
@@ -201,36 +455,55 @@ enum PieceJoiner {
             length = 1
         }
         guard position + length < live.count else { return nil }
+        let prefix = length == 0 ? nil : draft.shape(at: live[position]).key
         let head = draft.shape(at: live[position + length])
-        if let value = Self.ordinals[head.key] { return (value, .ordinal, length + 1) }
+        if let value = Self.ordinals[head.key] {
+            guard prefix != nil || head.endsClause else { return nil }
+            return (value, .ordinal, length + 1)
+        }
         // A bare cardinal counts the words after it as readily as it announces an item — "one bug is still open" — so it needs the announcing word or the mark the speaker set it off with.
         guard length > 0 || head.endsClause else { return nil }
+        // A point-number needs a clause mark to distinguish a list item from a decimal.
+        guard prefix != "point" || head.endsClause else { return nil }
         if let value = Self.cardinals[head.key] { return (value, .cardinal, length + 1) }
         return nil
     }
 
     /// Whether what a piece says after its sequence word stands as a clause rather than naming a thing.
     private static func isClause(
-        _ draft: Draft, _ live: [Int], _ opening: Int, _ starts: [Int], after head: Int
-    ) -> Bool {
-        let body = words(of: opening, starts, in: draft).dropFirst(head)
+        _ draft: Draft, _ live: [Int], position opening: Int, starts: [Int], after head: Int
+    )
+        -> Bool
+    {
+        let openingWord = live[opening]
+        let endWord = starts.first(where: { $0 > openingWord }) ?? draft.words.count
+        let body = live[(opening + head)..<live.count].prefix { $0 < endWord }
         guard body.count >= 2, let first = body.first else { return false }
         return !Self.determiners.contains(draft.shape(at: first).key)
     }
 
-    /// The words of one piece that are still in the text, in order.
-    private static func words(of opening: Int, _ starts: [Int], in draft: Draft) -> [Int] {
-        let end = opening + 1 < starts.count ? starts[opening + 1] : draft.words.count
-        return draft.presentIndices.filter { $0 >= starts[opening] && $0 < end }
-    }
-
     // MARK: Paragraphs between topics
 
-    /// Whether a piece opens on a new topic — a sequence word, or one of the phrases a speaker moves on with.
+    /// Whether a piece opens on a new topic — an ordinal item, or a phrase a speaker moves on with.
     private static func opensTopic(_ draft: Draft, at word: Int) -> Bool {
         let live = draft.presentIndices
         guard let position = live.firstIndex(of: word) else { return false }
-        if Self.ordinals[draft.shape(at: live[position]).key] != nil { return true }
+        let ordinalPosition: Int
+        if Self.ordinals[draft.shape(at: live[position]).key] != nil {
+            ordinalPosition = position
+        } else if position + 1 < live.count,
+            Self.prefixes.contains(draft.shape(at: live[position]).key),
+            Self.ordinals[draft.shape(at: live[position + 1]).key] != nil
+        {
+            ordinalPosition = position + 1
+        } else {
+            ordinalPosition = -1
+        }
+        if ordinalPosition >= 0, ordinalPosition + 1 < live.count,
+            !Self.determiners.contains(draft.shape(at: live[ordinalPosition + 1]).key)
+        {
+            return true
+        }
         return Self.topics.contains { phrase in
             position + phrase.count <= live.count
                 && zip(phrase, live[position..<position + phrase.count]).allSatisfy {
@@ -258,34 +531,48 @@ enum PieceJoiner {
         "9": 9, "10": 10,
     ]
 
-    /// The determiners: what follows one names a thing rather than says something about it.
-    private static let determiners: Set<String> = [
-        "a", "an", "the", "my", "your", "his", "her", "its", "their", "our", "this", "that",
-        "these", "those", "some", "any",
-    ]
-
-    /// Words no sentence ends on, each one closed-class and none of them also a pronoun or a particle.
-    private static let neverLast: Set<String> = [
-        "a", "an", "the", "my", "your", "its", "our", "their",
-        "of", "to", "at", "for", "with", "from", "by", "into", "onto", "upon", "between",
-        "during", "against", "within", "without", "among", "than",
-        "and", "or", "but", "because", "although", "while", "if", "whether", "nor",
-        "very",
-    ]
-
-    /// Prepositions a speaker does not front a sentence with, so one opening a piece continues the piece before.
-    private static let neverFronted: Set<String> = [
-        "to", "of", "at", "with", "from", "by", "into", "onto", "upon", "between", "among",
-        "toward", "towards", "against", "without", "within", "beside", "behind", "beyond",
-        "near", "past",
-    ]
-
     /// The phrases a speaker opens a new topic with after a pause.
     private static let topics: [[String]] = [
         ["okay", "so"], ["ok", "so"], ["another", "thing"], ["one", "more", "thing"],
         ["moving", "on"], ["also"], ["next"], ["finally"], ["anyway"], ["additionally"],
         ["furthermore"], ["lastly"],
     ]
+}
+
+struct SeamSnippetInput: Sendable {
+    let text: String
+    let removableStops: [Int]
+    let source: String
+
+    func removingSeamStops() -> String {
+        var result = source
+        for index in removableStops.reversed() where index < result.count {
+            result.remove(at: result.index(result.startIndex, offsetBy: index))
+        }
+        return result
+    }
+
+    func restoringUnconsumedStops(in expanded: ExpandedTranscript) -> ExpandedTranscript {
+        guard expanded.text != source else { return .unchanged(text) }
+        let expandedChars = Array(expanded.text)
+        var result = ""
+        var inputOffset = 0
+        var stopOffsets = Set(removableStops)
+        for _ in source {
+            if stopOffsets.remove(inputOffset) != nil {
+                if inputOffset < expandedChars.count,
+                    expandedChars[inputOffset].isWhitespace || expandedChars[inputOffset].isNewline
+                {
+                    result.append(".")
+                }
+            } else if inputOffset < expandedChars.count {
+                result.append(expandedChars[inputOffset])
+            }
+            inputOffset += 1
+        }
+        result += expandedChars.dropFirst(min(inputOffset, expandedChars.count))
+        return ExpandedTranscript(text: result, snippets: expanded.snippets)
+    }
 }
 
 extension DictationCorrection {

@@ -20,6 +20,19 @@ struct TokenHealingTests {
         let allowed = vocabulary.allowed(owing: Array(" l".utf8), wordComplete: false)
         // The lone space is the start of the owed word, so it may be spelt on its own.
         #expect(allowed == [true, true, false, false, false, false, false, true])
+        #expect(vocabulary.allowedIDs(owing: Array(" l".utf8), wordComplete: false) == [0, 1, 7])
+        #expect(vocabulary.allowedIDs(owing: Array(" l".utf8), wordComplete: true) == [0, 7])
+    }
+
+    @Test("The indexed allowed ids match the full predicate for every mask state")
+    func indexedAllowedIdsMatchReferencePredicate() {
+        for owed in [Array(" l".utf8), Array("log".utf8), Array("x".utf8), []] {
+            for wordComplete in [false, true] {
+                let reference = vocabulary.allowed(owing: owed, wordComplete: wordComplete)
+                    .enumerated().compactMap { $0.element ? $0.offset : nil }
+                #expect(vocabulary.allowedIDs(owing: owed, wordComplete: wordComplete) == reference)
+            }
+        }
     }
 
     @Test(
@@ -102,6 +115,28 @@ struct TokenHealingTests {
         #expect(TokenHealing.Vocabulary.bytes(of: "<0x0A>") == [0x0A])
         #expect(TokenHealing.Vocabulary.bytes(of: "<0xF0>") == [0xF0])
         #expect(TokenHealing.Vocabulary.bytes(of: "<0xZZ>") == Array("<0xZZ>".utf8))
+    }
+
+    @Test("GPT byte-level spellings write their original bytes, including spaces, line breaks and controls.")
+    func byteLevelPiecesWriteBytes() {
+        #expect(TokenHealing.Vocabulary.bytes(of: "Ġhello") == Array(" hello".utf8))
+        #expect(TokenHealing.Vocabulary.bytes(of: "Ċ") == [0x0A])
+        #expect(TokenHealing.Vocabulary.bytes(of: "ĠĠ") == [0x20, 0x20])
+        #expect(TokenHealing.Vocabulary.bytes(of: "Ā") == [0x00])
+        #expect(TokenHealing.Vocabulary.bytes(of: "ĠÃ©") == [0x20, 0xC3, 0xA9])
+        #expect(TokenHealing.Vocabulary.bytes(of: "<|im_end|>") == Array("<|im_end|>".utf8))
+        #expect(TokenHealing.Vocabulary.bytes(of: "<|stopĊ|>") == Array("<|stop\n|>".utf8))
+        #expect(TokenHealing.Vocabulary.bytes(of: "▁word") == Array(" word".utf8))
+    }
+
+    @Test(
+        "A vocabulary marker selects byte decoding for ordinary and multibyte pieces without a model download."
+    )
+    func vocabularySelectsByteLevelDecoding() {
+        let byteLevel = TokenHealing.Vocabulary(texts: ["Ġ", "Ã©", "<|im_end|>"], ending: [])
+        #expect(byteLevel.bytes == [[0x20], [0xC3, 0xA9], Array("<|im_end|>".utf8)])
+        let sentencePiece = TokenHealing.Vocabulary(texts: ["▁", "é"], ending: [])
+        #expect(sentencePiece.bytes == [Array(" ".utf8), Array("é".utf8)])
     }
 
     @Test(

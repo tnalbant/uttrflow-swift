@@ -31,6 +31,10 @@ public enum DestinationRules {
             kind: .notes
         ),
         DestinationRule(
+            bundlePrefixes: ["com.apple.reminders", "com.apple.ical"],
+            destination: .document, terminalStop: .never
+        ),
+        DestinationRule(
             bundlePrefixes: [
                 "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp",
                 "net.kovidgoyal.kitty", "org.alacritty", "com.mitchellh.ghostty",
@@ -45,7 +49,11 @@ public enum DestinationRules {
         DestinationRule(
             bundlePrefixes: [
                 "com.apple.dt.Xcode", "com.todesktop.230313mzl4w4u92", "com.microsoft.VSCode",
-                "dev.zed.Zed", "com.jetbrains.", "com.sublimetext", "com.panic.Nova",
+                "dev.zed.Zed", "com.jetbrains.intellij", "com.jetbrains.pycharm",
+                "com.jetbrains.goland", "com.jetbrains.rider", "com.jetbrains.webstorm",
+                "com.jetbrains.phpstorm", "com.jetbrains.rubymine", "com.jetbrains.clion",
+                "com.jetbrains.datagrip", "com.jetbrains.appcode", "com.jetbrains.mps",
+                "com.sublimetext", "com.panic.Nova",
                 "com.visualstudio.code", "org.vim.MacVim",
             ],
             nameWords: [
@@ -60,6 +68,7 @@ public enum DestinationRules {
                 "org.telegram", "com.hnc.Discord", "com.apple.MobileSMS", "com.microsoft.teams",
                 "org.whispersystems.signal",
             ],
+            titleContains: ["Slack", "Discord", "Messages", "WhatsApp", "Telegram", "Teams", "Signal"],
             nameWords: [
                 "slack", "discord", "messages", "whatsapp", "telegram", "teams", "signal",
             ],
@@ -69,10 +78,19 @@ public enum DestinationRules {
             bundlePrefixes: [
                 "com.apple.mail", "com.microsoft.Outlook", "com.superhuman", "com.readdle.smartemail",
             ],
-            titleContains: ["Gmail"],
+            titleContains: ["Gmail", "Mail", "Outlook", "Spark", "Superhuman"],
             nameWords: ["mail", "outlook", "spark", "superhuman"],
             kind: .email
         ),
+    ]
+
+    /// The Chromium browsers, named here with every other app, for the reads that treat their engine differently.
+    public static let chromiumBrowsers: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+        "org.chromium.Chromium", "com.microsoft.edgemac", "com.microsoft.edgemac.Beta",
+        "com.microsoft.edgemac.Dev", "com.microsoft.edgemac.Canary", "com.brave.Browser",
+        "com.brave.Browser.beta", "com.brave.Browser.nightly", "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera", "company.thebrowser.Browser",
     ]
 
     /// Every bundle prefix the rows of these kinds name, lowercased, for a module that asks only by identifier.

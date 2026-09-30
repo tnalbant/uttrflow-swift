@@ -34,10 +34,16 @@ public struct AcceptKeys: Sendable, Equatable {
 
     /// The key that accepts in this application.
     public func key(forBundleIdentifier bundleIdentifier: String) -> AcceptKey {
-        let identifier = ApplicationKey.of(bundleIdentifier)
-        if let chosen = overrides[identifier] { return chosen }
-        if TerminalApplications.contains(identifier) { return .rightArrow }
-        if Self.editors.contains(where: identifier.hasPrefix) { return .optionTab }
+        key(for: AppContext(bundleIdentifier: bundleIdentifier))
+    }
+
+    /// The key that accepts in this application, including browser tab titles when they identify a spreadsheet.
+    public func key(for application: AppContext) -> AcceptKey {
+        let identifier = application.bundleIdentifier.map(ApplicationKey.of)
+        if let identifier, let chosen = overrides[identifier] { return chosen }
+        if let identifier, TerminalApplications.contains(identifier) { return .rightArrow }
+        if let identifier, Self.editors.contains(where: identifier.hasPrefix) { return .optionTab }
+        if DestinationClassifier.kind(for: application) == .spreadsheet { return .optionTab }
         return .tab
     }
 
@@ -46,8 +52,9 @@ public struct AcceptKeys: Sendable, Equatable {
         key(forBundleIdentifier: surface.bundleIdentifier)
     }
 
-    /// The code and query editors in the destination table, matched on a lowercased prefix.
-    private static let editors = DestinationRules.bundlePrefixes(of: [.codeEditor, .sqlEditor])
+    /// The editors in the destination table, matched on a lowercased prefix.
+    private static let editors = DestinationRules.bundlePrefixes(
+        of: [.codeEditor, .sqlEditor, .documentEditor])
 }
 
 /// The applications whose text areas hold commands rather than prose, which Accessibility cannot tell by role alone.

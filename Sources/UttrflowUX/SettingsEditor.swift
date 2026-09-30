@@ -45,6 +45,11 @@ public enum SettingsEditor {
         case .appearance(let appearance):
             // No capability to check: every Mac can draw itself light or dark.
             updated.appearance = appearance
+        case .handsFreeDoubleTap(let milliseconds):
+            guard Settings.handsFreeDoubleTapChoices.contains(milliseconds) else {
+                throw SettingsRejection(reason: "Choose a listed hands-free interval.")
+            }
+            updated.handsFreeDoubleTapMilliseconds = milliseconds
         case .retention(let days):
             try applyRetention(days: days, to: &updated)
         case .cleaningStep(let step, let isOn):
@@ -62,7 +67,7 @@ public enum SettingsEditor {
         case .pauseSuggestions(let isOn):
             try requireSuggestionsAreOn(in: settings)
             updated.suggestions.setPaused(isOn, at: moment)
-        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions:
+        case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel, .openPage:
             // Named rather than left to a `default`, which would swallow the next case added.
             break
         }
@@ -84,13 +89,17 @@ public enum SettingsEditor {
         }
         switch field {
         case .dictationEnabled: settings.dictationEnabled = isOn
+        case .handsFreeEnabled: settings.handsFreeEnabled = isOn
         case .clipboardEnabled: settings.clipboardEnabled = isOn
         case .showsFloatingButton: settings.showsFloatingButton = isOn
         case .shrinksToGripWhenIdle: settings.shrinksToGripWhenIdle = isOn
         case .minimisesWhileDictating: settings.minimisesWhileDictating = isOn
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts = isOn
         case .opensAtLogin: settings.opensAtLogin = isOn
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically = isOn
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically = isOn
+        case .sharesUsageStatistics: settings.sharesUsageStatistics = isOn
+        case .sendsCrashReports: settings.sendsCrashReports = isOn
         case .suggestionsEnabled: settings.suggestions.isEnabled = isOn
         case .quietSuggestions: settings.suggestions.isQuiet = isOn
         }
@@ -112,7 +121,8 @@ public enum SettingsEditor {
         in settings: Settings
     ) -> String? {
         switch field {
-        case .dictationEnabled, .clipboardEnabled, .showsFloatingButton, .minimisesWhileDictating:
+        case .dictationEnabled, .handsFreeEnabled, .clipboardEnabled, .showsFloatingButton,
+            .minimisesWhileDictating, .sharesUsageStatistics:
             nil
         case .shrinksToGripWhenIdle:
             settings.showsFloatingButton
@@ -127,7 +137,11 @@ public enum SettingsEditor {
             capabilities.canCheckForUpdates
                 ? nil
                 : "This build has no update feed, so there is nothing for it to install."
-        case .suggestionsEnabled:
+        case .checksForUpdatesAutomatically:
+            capabilities.canCheckForUpdates
+                ? nil
+                : "This build has no update feed, so there is nothing to check."
+        case .suggestionsEnabled, .sendsCrashReports:
             nil
         case .quietSuggestions:
             settings.suggestions.isEnabled ? nil : suggestionsAreOff
@@ -161,7 +175,7 @@ public enum SettingsEditor {
 
     /// Said for ⌘, ⌥, ⌃ or ⇧ alone, naming Fn because it is the one key that can be held by itself.
     static let bareModifier =
-        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn."
+        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn after setting ‘Press 🌐 key to’ to Do Nothing in System Settings → Keyboard."
 
     /// Said for a held-modifier chord on an action Carbon registers, which cannot arm it. See `Docs/core-hotkeys.md`.
     static let heldChordNotClaimable =
@@ -193,8 +207,41 @@ public enum SettingsEditor {
             // Deliverable in general, but Carbon refuses every held-modifier-only combination.
             return SettingsRejection(reason: heldChordNotClaimable)
         }
+        if action == .dictate, binding.heldModifier == nil,
+            let reason = dictateCombinationConflict(binding)
+        {
+            return SettingsRejection(reason: reason)
+        }
         return nil
     }
+
+    /// Refuses Dictate key combinations that type into the focused app or invoke macOS actions.
+    private static func dictateCombinationConflict(_ binding: HotkeyBinding) -> String? {
+        if binding.modifiers.contains(.option), printableKeyCodes.contains(binding.keyCode) {
+            return
+                "Option with a character key can type into the app you are using. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 49, binding.modifiers.contains(.command) {
+            return
+                "⌘Space opens Spotlight, so it can take focus from the app you are dictating into. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 49, binding.modifiers.contains(.control) {
+            return
+                "⌃Space changes the input source, so it can interrupt dictation. Choose another Dictate shortcut."
+        }
+        if binding.keyCode == 48, binding.modifiers.contains(.command) {
+            return
+                "⌘Tab switches apps, so it can take focus from the app you are dictating into. Choose another Dictate shortcut."
+        }
+        return nil
+    }
+
+    /// ANSI key codes whose key can type a character with Option held.
+    private static let printableKeyCodes: Set<UInt16> = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17,
+        18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+        37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 49, 50,
+    ]
 
     // MARK: - Engines
 
@@ -217,7 +264,7 @@ public enum SettingsEditor {
         given capabilities: SettingsCapabilities
     ) -> String? {
         guard level == .standard, !capabilities.canTidyBeyondTheFloor else { return nil }
-        return "Full tidying is not available on this Mac yet, so Uttrflow will punctuate only."
+        return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
     }
 
     /// Throws when the engine behind this quality is not downloaded, then selects it.

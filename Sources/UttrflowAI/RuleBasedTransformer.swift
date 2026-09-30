@@ -26,7 +26,7 @@ public struct RuleBasedTransformer: TextTransformationEngine {
     public func transform(
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
-        let formatter = DestinationFormatter.standard(for: request.situation.destination)
+        let formatter = DestinationFormatter.standard(for: request.situation)
         let chosen = pipeline ?? Self.pipeline(for: request, under: formatter, steps: steps)
         // Romanised before the passes, so they read and write the Latin letters dictation inserts.
         let (draft, ran) = Self.audited(chosen, over: Draft(transcription: request.transcription.romanised))
@@ -60,7 +60,10 @@ public struct RuleBasedTransformer: TextTransformationEngine {
     ) -> CleaningPipeline {
         switch request.scope {
         case .message: .standard(for: formatter, situation: request.situation, steps: steps)
-        case .piece: .piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps)
+        case .piece:
+            .piece(
+                numbers: formatter.numbers, digits: formatter.digits,
+                layout: formatter.layout, steps: steps)
         }
     }
 }

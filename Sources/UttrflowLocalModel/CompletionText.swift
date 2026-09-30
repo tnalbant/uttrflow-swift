@@ -16,7 +16,7 @@ enum CompletionText {
     /// The fewest characters a continuation that opens a new word must have to be a word at all.
     static let shortestNewWord = 3
 
-    /// The line cut where its continuation takes up a part of a screen label — a comma-separated part, eight characters or more, repeated exactly, as "Received from Priya" is — its timestamp parts dropped, or nothing when that leaves no continuation; a reply may still quote the screen in its own words, a shell a file name, a query a column list.
+    /// The line cut where its continuation takes up a part of a screen label — a comma-separated part, eight characters or more, repeated exactly, as "Received from Priya" is — its trailing timestamp parts dropped, or nothing when that leaves no continuation; a reply may still quote the screen in its own words, a shell a file name, a query a column list.
     static func trimmed(_ line: String, typed: String, echoing context: [String]) -> String? {
         let continuation = String(line.dropFirst(typed.count))
         let known = Set(
@@ -26,9 +26,11 @@ enum CompletionText {
         if let copied = parts.indices.dropFirst().first(where: { known.contains(fold(parts[$0])) }) {
             parts.removeSubrange(copied...)
         }
-        let own = parts.joined(separator: ", ")
-        // A stamp the model wrote after its line is as little the answer as one it copied.
-        var kept = Substring(Timestamps.without(own))
+        // A stamp the model wrote after its line is as little the answer as one it copied; a time inside the line is its words.
+        while parts.count > 1, let last = parts.last, Timestamps.isTimestamp(Substring(last)) {
+            parts.removeLast()
+        }
+        var kept = Substring(parts.joined(separator: ", "))
         let changed = kept.count < continuation.count
         // The separator the copy or the stamp hung off is not part of the answer either.
         while changed, let last = kept.last, last.isWhitespace || last == "," || last == ";" {
@@ -39,6 +41,145 @@ enum CompletionText {
         // A new word of one or two characters is a model made to go on when it meant to stop, not a word.
         if kept.first?.isWhitespace == true, visible < Self.shortestNewWord { return nil }
         return changed ? typed + String(kept) : line
+    }
+
+    /// The fewest words in a row a continuation must share with the screen to be a copy rather than the person's own line.
+    static let copiedRun = 5
+
+    /// Whether the continuation repeats a run of screen words the person's own lines do not hold, counting only words the typed text does not finish.
+    static func copiesContext(_ line: String, typed: String, context: [String], ownLines: [String]) -> Bool {
+        let added = words(of: line).filter { $0.end > typed.count }.map(\.text)
+        guard added.count >= copiedRun else { return false }
+        let screen = Set(
+            context.flatMap { $0.split(whereSeparator: \.isNewline) }.flatMap {
+                runs(of: words(of: String($0)).map(\.text))
+            })
+        let own = Set(ownLines.flatMap { runs(of: words(of: $0).map(\.text)) })
+        return runs(of: added).contains { screen.contains($0) && !own.contains($0) }
+    }
+
+    /// Every run of `copiedRun` words in a row, each joined by one space.
+    private static func runs(of words: [String]) -> [String] {
+        guard words.count >= copiedRun else { return [] }
+        return (0...(words.count - copiedRun)).map { words[$0..<($0 + copiedRun)].joined(separator: " ") }
+    }
+
+    /// The words of a text lowercased, each with the character offset it ends at.
+    private static func words(of text: String) -> [(text: String, end: Int)] {
+        var found: [(text: String, end: Int)] = []
+        var word = ""
+        for (offset, character) in text.enumerated() {
+            if character.isLetter || character.isNumber || character == "'" || character == "’" {
+                word.append(contentsOf: character.lowercased())
+            } else if !word.isEmpty {
+                found.append((word, offset))
+                word = ""
+            }
+        }
+        if !word.isEmpty { found.append((word, text.count)) }
+        return found
+    }
+
+    /// Marks that end a sentence; an ellipsis trails off inside one, so it is read past.
+    static let sentenceEnds: Set<Character> = [".", "?", "!"]
+
+    /// Marks that may close a sentence after its end mark, a quote or a bracket.
+    private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
+
+    /// Short words a full stop follows without ending the sentence.
+    private static let abbreviations: Set<String> = [
+        "mr", "mrs", "ms", "dr", "st", "vs", "jr", "sr", "prof", "approx", "dept", "fig", "eg", "ie", "etc",
+    ]
+
+    /// The line ended at the first sentence end its continuation reaches, or the whole line when it reaches none.
+    static func firstSentence(of line: String, typed: String) -> String {
+        let characters = Array(line)
+        var index = typed.count
+        while index < characters.count {
+            guard sentenceEnds.contains(characters[index]) else {
+                index += 1
+                continue
+            }
+            var end = index
+            while end + 1 < characters.count, sentenceEnds.contains(characters[end + 1]) { end += 1 }
+            let isEllipsis = end > index && characters[index...end].allSatisfy { $0 == "." }
+            while end + 1 < characters.count, sentenceClosers.contains(characters[end + 1]) { end += 1 }
+            // A mark with no space after it is inside a number, a name or an address, not at a sentence's end.
+            let abbreviation = isAbbreviation(before: index, in: characters)
+            let abbreviationEndsSentence =
+                abbreviation
+                && canEndSentence(before: index, after: end, in: characters)
+            if end + 1 < characters.count, characters[end + 1].isWhitespace, !isEllipsis,
+                (!abbreviation || abbreviationEndsSentence)
+            {
+                return String(characters[...end])
+            }
+            index = end + 1
+        }
+        return line
+    }
+
+    /// Whether the full stop at this offset closes an abbreviation or an initial rather than a sentence.
+    private static func isAbbreviation(before stop: Int, in characters: [Character]) -> Bool {
+        guard characters[stop] == "." else { return false }
+        var start = stop
+        while start > 0, !characters[start - 1].isWhitespace { start -= 1 }
+        let word = String(characters[start..<stop]).lowercased()
+        // "e.g" and "U.S" carry a stop inside, and one letter before a stop is an initial.
+        if word.contains(".") { return true }
+        if word.count == 1, word.first?.isLetter == true { return true }
+        return abbreviations.contains(word)
+    }
+
+    /// Whether an abbreviation can end this sentence instead of introducing a name or example.
+    private static func canEndSentence(before stop: Int, after end: Int, in characters: [Character]) -> Bool {
+        var start = stop
+        while start > 0, !characters[start - 1].isWhitespace { start -= 1 }
+        let word = String(characters[start..<stop]).lowercased()
+        guard !["mr", "mrs", "ms", "dr", "prof", "st", "e.g", "i.e"].contains(word) else {
+            return false
+        }
+        var next = end + 1
+        while next < characters.count,
+            characters[next].isWhitespace
+                || ["\"", "'", "“", "‘", "(", "["].contains(String(characters[next]))
+        {
+            next += 1
+        }
+        return next < characters.count && characters[next].isUppercase
+    }
+
+    /// The lines a pass keeps once each is unsigned, ended at its first sentence where it is prose, grounded in its specifics and held to the register's length; prose that copies the screen is dropped.
+    static func finished(_ lines: [String], typed: String, in situation: GenerationSituation) -> [String] {
+        let register = Register.infer(from: situation, typed: typed)
+        let context = contextNeverCopied(in: situation)
+        var seen: Set<String> = []
+        return lines.compactMap { line in
+            var kept = line
+            // A command or a query reuses the paths and names on screen, so only prose is held to its own words.
+            if register.endsAtSentence {
+                kept = firstSentence(of: kept, typed: typed)
+                guard
+                    let unsigned = SignOff.unsigned(
+                        kept, typed: typed, ownLines: situation.recentLines)
+                else { return nil }
+                kept = unsigned
+                guard !copiesContext(kept, typed: typed, context: context, ownLines: situation.recentLines)
+                else { return nil }
+            } else {
+                guard let unsigned = SignOff.unsigned(kept, typed: typed, ownLines: situation.recentLines)
+                else { return nil }
+                kept = unsigned
+            }
+            // A number, an amount or an address the model added is kept only where someone already wrote it; code keeps its conventional literals.
+            let writesCode = !register.endsAtSentence && !register.answersFromHistoryAlone
+            guard Specifics.areGrounded(kept, typed: typed, in: situation, writesCode: writesCode) else {
+                return nil
+            }
+            guard kept.count - typed.count <= register.longestContinuation, seen.insert(kept).inserted
+            else { return nil }
+            return kept
+        }
     }
 
     /// The comma-separated parts of one screen label long enough to be a label's own, as they compare.
@@ -110,6 +251,8 @@ enum CompletionText {
             guard
                 let continuation = Self.continuation(of: text, past: unindented)
                     ?? Self.continuation(of: Self.unmarked(text), past: unindented),
+                !Self.closesTypedNumber(typed, with: continuation),
+                SuggestionTextSafety.allows(continuation),
                 Self.comparable(continuation).contains(where: { $0 != " " }),
                 !promptMarkers.contains(where: text.lowercased().contains),
                 !isDegenerate(continuation)
@@ -119,6 +262,23 @@ enum CompletionText {
             results.append(whole)
         }
         return results
+    }
+
+    /// Refuses a completion that ends a number the person may still be typing.
+    private static func closesTypedNumber(_ typed: String, with continuation: String) -> Bool {
+        guard typed.last?.isNumber == true, let first = continuation.first else { return false }
+        if first.isNumber { return false }
+        let remainder = Array(continuation.dropFirst())
+        switch first {
+        case ".", ",", "_":
+            return remainder.first?.isNumber != true
+        case "e", "E":
+            let exponent =
+                remainder.first == "+" || remainder.first == "-" ? Array(remainder.dropFirst()) : remainder
+            return exponent.first?.isNumber != true
+        default:
+            return true
+        }
     }
 
     /// Whether an answer repeated the typed line anywhere in it, read exactly as `parse` reads an echo.

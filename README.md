@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://uttrflow.com">
     <img src="Docs/media/readme-banner.png" width="880"
-         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌥Space and talk, let go, and the words land at your cursor, in any app.">
+         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌃⌥ (Control and Option) and talk, let go, and the words land at your cursor, in any app.">
   </a>
 </p>
 
@@ -34,11 +34,11 @@
        alt="A chat composer holding a dictated message, beside a card showing what was said, with um and uh struck out, and the cleaned sentence that landed.">
 </p>
 
-**Hold ⌥ Space** in any app and talk. Let go, and the words land at your cursor.
+**Hold ⌃ ⌥** (Control and Option) in any app and talk. Let go, and the words land at your cursor.
 
 - Recognition runs on your Mac.
 - Clean-up removes fillers, adds punctuation and applies your dictionary, matched by sound.
-- Works offline, with or without an account.
+- Works offline once you have signed in.
 
 **In the code:** `UttrflowAudio` → `UttrflowSpeech` → `UttrflowAI` → `UttrflowPipeline` →
 `UttrflowInput`, with the dock in `Sources/Uttrflow/Dock`. Read
@@ -151,14 +151,14 @@ Thank you to everyone who has sent a fix, filed an issue or asked a good questio
   alias you gave a clip. ↑↓ to choose, **⌘1** for All, **⌘2–⌘9** to choose a collection, ⏎ to paste where the caret already was, **⌘⏎** to
   paste as plain text however it was copied, **⌘Z** to undo a delete, Esc to close. The window underneath never loses
   focus.
-- **Hold ⌥Space** and talk. Let go, and the words land at the cursor in the app you were
+- **Hold ⌃⌥** and talk. Let go, and the words land at the cursor in the app you were
   already in. The floating button at the screen edge shows the microphone level while you
   hold it, and the shortcut can be changed in Settings.
 - **Dictionary.** A name the recogniser keeps getting wrong is fixed once; matching is by
   sound, so spellings you have not seen yet are caught too.
 - **Tab-to-complete**, once you turn it on in Settings → AI suggestions. The rest of the line
   appears in grey ahead of the caret as you type; **Tab** takes it, typing on ignores it,
-  and ↓ opens the alternatives when there is more than one. Tab is already spoken for in a
+  and **⌥↓** opens the alternatives when there is more than one. Tab is already spoken for in a
   terminal and in an editor, so those take a completion with **→** and **⌥Tab** instead,
   and the key can be set per application.
 
@@ -195,22 +195,21 @@ three completions typed past in one field are each reason enough to draw nothing
 editors ship switched off, because their own completion already reads the whole file.
 [`Docs/predict.md`](Docs/predict.md) is the full account.
 
-**Works offline.** Signing in needs a network exactly once, and "Continue on this Mac"
-needs none at all. After that every launch, every dictation and every paste works with
+**Works offline.** Signing in needs a network exactly once. After that every launch, every dictation and every paste works with
 Wi-Fi off — proven by a sandbox that fails any test touching the network.
 
 </details>
 
-## It runs without an account, and without anything of ours
+## A clone runs without anything of ours
 
 Worth saying early, because it is the question every reader of a client repository has:
-**you do not need an account, an API key, or access to any server we run.**
+**you do not need an API key or access to any server we run.**
 
 Dictation is on-device. The clipboard, history, dictionary and snippets live in Application
-Support and are never sent anywhere. The one screen that would need a network — sign-in —
-offers **"continue on this Mac"** beside the providers, which uses the name macOS already
-knows you by and needs nothing. An account buys the things that genuinely need one:
-carrying a dictionary between Macs, and a subscription to bill.
+Support and are never sent anywhere. The released app asks you to sign in before anything
+else opens; a development build signs in against an in-process stand-in, so its sign-in
+needs no network and no account of ours. An account buys the things that genuinely need
+one: carrying a dictionary between Macs, and a subscription to bill.
 
 So a clone builds, tests and runs, complete. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -254,7 +253,7 @@ no Xcode scheme.
 
 ```
 Sources/
-  UttrflowCore         Protocols, models, errors, metrics. Pure stdlib — no platform imports.
+  UttrflowCore         Shared protocols, models, errors and utilities; imports Foundation, Darwin and os.
   UttrflowAudio        Microphone capture, resampling, WAV encoding, file reading.
   UttrflowSpeech       Speech to text. One engine, two interchangeable recognisers.
   UttrflowAI           Turning a transcript into the words the speaker meant.
@@ -265,7 +264,7 @@ Sources/
   UttrflowHistory      What was dictated, kept between launches and aged out on a clock.
   UttrflowDictionary   Words you say that a general model does not know, found by sound.
   UttrflowAccount      Who is signed in, and what their subscription allows.
-  UttrflowClipboard    Clipboard history and the panel that shows it.
+  UttrflowClipboard    Clipboard history, classification and storage; panel UI lives in Uttrflow/Panel.
   UttrflowPredict      Finishing a line you have typed before: the turn, the gates, the ranking.
   UttrflowPredictStore The corpus of what you have typed, on this Mac, in SQLite.
   UttrflowPredictCapture
@@ -371,33 +370,32 @@ the top of the Dictation page with a Retry. Nothing about it leaves the Mac. See
 re-insert it, and deleted after its retention window. Your dictionary, your history and
 your settings are files on this Mac; signing out does not remove them, and only Reset does.
 
-**A clipboard manager records everything you copy, and this one is no exception.** Text,
-links, code and images all go into `~/Library/Application Support/Uttrflow` — plain JSON
-with the pictures as PNG files beside it, at ordinary file permissions. It is not
-encrypted, so anything running as you can read it. Clips age out after the retention
-window (seven days by default, five hundred clips) unless you pin them. None of it leaves
-this Mac: there is no clipboard sync.
+When you are signed in and Clipboard is enabled, Uttrflow records copies it can keep in
+`~/Library/Application Support/Uttrflow` — plain JSON, with copied pictures as PNG files
+beside it. The folder and files are owner-only (`0o700` folders and `0o600` files), but
+they are not encrypted, so anything running as you can still read them. Clips age out
+after the retention window (seven days by default, five hundred clips) unless you pin
+them. None of it leaves this Mac: there is no clipboard sync.
 
-Two things are owed here, and until they are done this is worth knowing:
-
-- **Uttrflow does not honour the concealed-pasteboard convention.** Password managers mark
-  a copied password so that clipboard managers skip it. Uttrflow does not read that mark
-  yet, so a password copied out of one is captured like anything else.
-- **There is no way to pause capture or exclude an application.** Every copy is recorded
-  while the app is running.
+- **Password managers' concealed mark is honoured.** Concealed text is treated as a secret
+  and is not written to clipboard history or saved clips. See
+  [`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md) for what the marker and secret
+  handling cover.
+- **The Clipboard switch in Settings pauses capture.** There is no per-application
+  exclusion.
 
 Clips that look like secrets are masked in the panel until you ask to see them, at a
-fixed width that does not reveal how long the token is, and they get no tooltip. That is
-a rule about the screen — about somebody reading over your shoulder, or a shared screen —
-and not about the disk. The text is stored in the clear like every other clip.
+fixed width that does not reveal how long the token is, and they get no tooltip. Secret
+text can appear in the running panel, but is not written to clipboard history or saved
+clips. See [`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md).
 
 **Tab-to-complete reads the text in and around the field you are typing in**, such as the
 thread above a reply box, and hands it to a model that runs on this Mac. None of it is
 uploaded.
 
 **Tab-to-complete learns from what you type, and that corpus is the most sensitive thing
-the app keeps.** It is `predict.v1.sqlite` in the same Application Support folder, at the
-same ordinary file permissions, unencrypted, and it is never uploaded. Nothing is written
+the app keeps.** It is `predict.v1.sqlite` in the same Application Support folder, with
+owner-only file permissions, unencrypted, and it is never uploaded. Nothing is written
 until you have been asked: the first time you finish a value in an application Uttrflow
 asks once whether it may learn there, keeps the answer in `predict-consent.v1.json`, and
 records nothing in the meantime — so the choice is per application, and an application you
@@ -408,21 +406,29 @@ data if they were ever completed and run, and anything shorter than two characte
 (`CaptureGate` in `Sources/UttrflowPredictCapture`). A field keeps at most 2,000 entries.
 You can forget one line, everything one application taught, or all of it.
 
-**There is an account, and the first run asks for it — but it is not required to
-dictate.** "Continue on this Mac", on that same page from the start, records the choice to
-do without one and permits dictation, with no network involved. Signing in instead needs a
-network exactly once; every launch after that works without one, and an entitlement that
-has aged out still lets you dictate rather than locking you out.
+**There is an account, and nothing opens until you sign in.** Signing in needs a network
+exactly once; every launch after that works without one, and an entitlement that has aged
+out still lets you dictate rather than locking you out. Signing out, or a session the
+server has ended, closes every window and stops dictation until you sign in again.
 
-**Nothing is sent, and the telemetry that will be sent can only carry numbers.** The app
-does not report anything today: the collector exists, is tested, and is wired to nothing,
-so no measurement leaves this Mac. What it is built to carry is counts, durations, words
-per minute, language mix, which stage failed, latency percentiles — and it is not that we
-choose not to send your words, it is that the type that gets encoded has no field capable
-of holding text at any depth, and a test walks it and fails on anything `String`-shaped.
-Audio, transcripts, dictionary contents, window titles and application names have nowhere
-to go. There is no opt-out switch, because there is nothing yet to opt out of. Before
-anything is ever sent there will be one, and a way to read exactly what was sent.
+**Usage statistics are sent, linked to your account while you are signed in; they can only
+carry numbers, and one switch turns them off.** Once an hour, and when the app quits, Uttrflow sends a report of counts and
+timings: how many dictations started, were cancelled or failed, total recording and waiting
+time, how many characters were inserted, latency percentiles, language mix, which stage
+failed, and the app and macOS versions. It is not that we choose not to send your words: the
+type that gets encoded has no field capable of holding text at any depth, and a test walks
+it and fails on anything `String`-shaped. Audio, transcripts, dictionary contents, window
+titles and application names have nowhere to go. It is on by default; Settings → Privacy →
+"Share usage statistics" turns it off, which also drops anything not yet sent.
+[`Docs/account-telemetry.md`](Docs/account-telemetry.md) has the detail.
+
+**Crash reports are off unless you turn them on.** Settings → Privacy → *Send crash
+reports* is the one exception to the paragraph above, and it starts off. When it is on, a
+crash or a freeze is reported to Sentry, the error tracker the project uses: the app and
+macOS versions, the Mac model and architecture, the exception, and the stack as binary
+names and addresses. No user or host name, no file paths (each is cut to its file name), no
+breadcrumbs, and nothing you dictated or copied. Builds made from source carry no reporting
+key and never send anything. [Docs/crash-reporting.md](Docs/crash-reporting.md) has the details.
 
 The app is not hermetic and does not claim to be: it downloads a speech model on first run,
 roughly 646 MB, and signs you in once. After that it dictates with no network at all. A

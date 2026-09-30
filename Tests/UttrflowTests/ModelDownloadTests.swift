@@ -58,7 +58,10 @@ struct ModelDownloadTests {
     func silenceCostsNothing() async {
         let asks = Asks()
         let sandbox = Sandbox()
-        let app = AppDelegate(container: sandbox.root, prepareModel: { _ in await asks.asked() })
+        let app = AppDelegate(
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            prepareModel: { _ in await asks.asked() })
+        app.drawsWindows = false
         app.settingsChanged(to: settings(suggesting: false))
         #expect(app.modelPreparation == nil)
         #expect(await asks.count == 0)
@@ -68,7 +71,10 @@ struct ModelDownloadTests {
     func askedForOnceWhenWanted() async {
         let asks = Asks()
         let sandbox = Sandbox()
-        let app = AppDelegate(container: sandbox.root, prepareModel: { _ in await asks.asked() })
+        let app = AppDelegate(
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            prepareModel: { _ in await asks.asked() })
+        app.drawsWindows = false
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
         app.settingsChanged(to: settings(suggesting: true))
@@ -87,8 +93,10 @@ struct ModelDownloadTests {
         let asks = Asks()
         let sandbox = Sandbox()
         let app = AppDelegate(
-            container: sandbox.root, prepareModel: { _ in await asks.asked() },
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            prepareModel: { _ in await asks.asked() },
             releaseModel: { await asks.released() })
+        app.drawsWindows = false
         app.settingsChanged(to: settings(suggesting: false))
         await app.modelPreparation?.value
         #expect(await asks.steps.isEmpty)
@@ -105,12 +113,13 @@ struct ModelDownloadTests {
         let gate = Gate()
         let sandbox = Sandbox()
         let app = AppDelegate(
-            container: sandbox.root,
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
             prepareModel: { _ in
                 await gate.pass()
                 await asks.asked()
             },
             releaseModel: { await asks.released() })
+        app.drawsWindows = false
         app.settingsChanged(to: settings(suggesting: true))
         app.settingsChanged(to: settings(suggesting: false))
         app.settingsChanged(to: settings(suggesting: true))
@@ -126,11 +135,12 @@ struct ModelDownloadTests {
         let gate = Gate()
         let sandbox = Sandbox()
         let app = AppDelegate(
-            container: sandbox.root,
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
             prepareModel: { _ in
                 await gate.pass()
                 throw HubRefused()
             })
+        app.drawsWindows = false
         app.settingsChanged(to: settings(suggesting: true))
         app.settingsChanged(to: settings(suggesting: false))
         await gate.open()
@@ -138,26 +148,30 @@ struct ModelDownloadTests {
         #expect(app.suggestionModel == .notAsked)
     }
 
-    @Test("A fetch that failed is asked for again, rather than leaving the feature dead until a relaunch.")
-    func aFailedFetchIsAskedForAgain() async {
+    @Test("Retry asks for a failed model again without toggling Suggestions.")
+    func retryAsksForFailedModelAgain() async {
         let asks = Asks()
         let sandbox = Sandbox()
+        let store = ModelDownloadSettingsStore(settings(suggesting: false))
         let app = AppDelegate(
-            container: sandbox.root,
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            settingsStore: store,
             prepareModel: { _ in
                 await asks.asked()
                 throw HubRefused()
             })
+        app.drawsWindows = false
 
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .fetchFailed)
         #expect(await asks.count == 1)
 
-        app.settingsChanged(to: settings(suggesting: false))
-        app.settingsChanged(to: settings(suggesting: true))
+        app.apply(.retrySuggestionModel)
         await app.modelPreparation?.value
         #expect(await asks.count == 2)
+        #expect(app.suggestionModel == .fetchFailed)
+        #expect(store.load().suggestions.isEnabled)
     }
 
     @Test(
@@ -167,14 +181,16 @@ struct ModelDownloadTests {
         let asks = Asks()
         let sandbox = Sandbox()
         let app = AppDelegate(
-            container: sandbox.root, prepareModel: { _ in await asks.asked() })
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            prepareModel: { _ in await asks.asked() })
+        app.drawsWindows = false
         app.suggestionModelWentMissing()
         #expect(app.suggestionModel == .notAsked)
 
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
         app.suggestionModelWentMissing()
-        #expect(app.suggestionModel == .failed)
+        #expect(app.suggestionModel == .fetchFailed)
         #expect(await asks.count == 1)
 
         app.settingsChanged(to: settings(suggesting: false))
@@ -188,11 +204,12 @@ struct ModelDownloadTests {
     func progressIsReadable() async {
         let sandbox = Sandbox()
         let app = AppDelegate(
-            container: sandbox.root,
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
             prepareModel: { report in
                 report(0.5)
                 report(1)
             })
+        app.drawsWindows = false
         #expect(app.suggestionModel == .notAsked)
 
         app.settingsChanged(to: settings(suggesting: true))

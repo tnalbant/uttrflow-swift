@@ -17,15 +17,27 @@ public protocol CandidateScoring: Sendable {
 
     /// The whole candidate line's mean log-likelihood per token past what is typed, in one pass, abandoned when cancelled.
     func logLikelihood(of candidate: String, following context: String) async -> Double?
+
+    /// How sure the pass that wrote a generated line was of it, read from that pass with no second one; nothing for a line no recent pass wrote.
+    func confidence(ofGenerated line: String) async -> Double?
+
+    /// Drops any text or model state retained for scoring, which forgetting suggestions requires.
+    func forgetEverything() async
+}
+
+public extension CandidateScoring {
+    /// Scorers without retained state have nothing to forget.
+    func forgetEverything() async {}
+
 }
 
 /// Marks a candidate wrong wherever it is remembered, so it stops accruing weight.
 public protocol SupersessionRecording: Sendable {
     /// Records that one text is replaced by another, which is what stops it being proposed again.
-    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async throws
 
     /// Records that one text is wrong with nothing on this machine to put in its place.
-    func recordRejection(of text: String, in surface: Surface) async
+    func recordRejection(of text: String, in surface: Surface) async throws
 }
 
 /// What the model managed to say about a candidate inside the budget.
@@ -56,6 +68,18 @@ public enum Verification {
     /// How unlikely, per token, a candidate may be before the model's objection counts, set from `uttrflow-bakeoff score`.
     public static let plausibilityFloor = -6.0
 
+    /// The mean log-probability per token its own pass must have given a generated line for it to be drawn alone, set from `uttrflow-bakeoff complete --fixtures`. See `Docs/predict-precision.md`, P6.
+    public static let certainFloor = -0.9
+
+    /// The same measure a generated line needs to be offered among alternatives, looser because the person picks from a list. See `Docs/predict-precision.md`, P6.
+    public static let choiceFloor = -1.5
+
+    /// Whether a generated line's score clears a floor; a line no pass scored never does.
+    public static func clears(_ score: Double?, floor: Double) -> Bool {
+        guard let score else { return false }
+        return score >= floor
+    }
+
     /// The dearest slip a correction may explain away, which is one plain insertion or deletion.
     public static let correctionCeiling = TypoModel.indelCost
 
@@ -63,14 +87,26 @@ public enum Verification {
     static let gitCommand = "git"
 
     /// The verdict the gates reach together, from what the machine knows and whether the model objects.
-    public static func verdict(word: String, known: Set<String>, modelObjects: Bool) -> Verdict {
-        guard !attests(word, known) else { return .attested }
-        if let neighbour = nearestNeighbour(of: word, among: known) { return .corrected(neighbour) }
+    public static func verdict(
+        word: String, known: Set<String>, modelObjects: Bool, caseSensitive: Bool = false
+    ) -> Verdict {
+        guard !attests(word, known, caseSensitive: caseSensitive) else { return .attested }
+        if caseSensitive {
+            let caseVariants = known.filter { $0.caseInsensitiveCompare(word) == .orderedSame }
+            if caseVariants.count == 1, let exactCaseMatch = caseVariants.first {
+                return .corrected(exactCaseMatch)
+            }
+            if !caseVariants.isEmpty { return .rejected }
+        }
+        if let neighbour = nearestNeighbour(of: word, among: known, caseSensitive: caseSensitive) {
+            return .corrected(neighbour)
+        }
         return modelObjects ? .rejected : .plausible
     }
 
-    /// Whether the machine vouches for a word, ignoring case, so a capitalised first letter still attests.
-    public static func attests(_ word: String, _ known: Set<String>) -> Bool {
+    /// Whether the machine vouches for a word, ignoring case only for names whose source does.
+    public static func attests(_ word: String, _ known: Set<String>, caseSensitive: Bool = false) -> Bool {
+        if caseSensitive { return known.contains(word) }
         let lowered = word.lowercased()
         return known.contains { $0.lowercased() == lowered }
     }
@@ -82,7 +118,9 @@ public enum Verification {
     }
 
     /// The nearest name the machine knows, when one slip cheap enough explains the difference.
-    public static func nearestNeighbour(of word: String, among known: Set<String>) -> String? {
+    public static func nearestNeighbour(
+        of word: String, among known: Set<String>, caseSensitive: Bool = false
+    ) -> String? {
         let typed = FuzzyMatch.units(word)
         guard FuzzyMatch.budget(forQueryOfLength: typed.count) > 0 else { return nil }
         let width = FuzzyMatch.maskWidth(forQueryOfLength: typed.count, within: 1)
@@ -92,8 +130,8 @@ public enum Verification {
         var bestScore = -Double.infinity
         let lowered = word.lowercased()
         for candidate in known.sorted() {
-            // A difference only of case is not a typo, so it is never corrected or superseded.
-            guard candidate.lowercased() != lowered else { continue }
+            // Filesystem names can differ only in case on a case-insensitive volume.
+            guard caseSensitive || candidate.lowercased() != lowered else { continue }
             let mask = FuzzyMatch.mask(FuzzyMatch.units(candidate).prefix(width))
             guard FuzzyMatch.couldMatch(query: queryMask, candidate: mask, within: 1) else { continue }
             let score = TypoModel.logLikelihood(typed: word, meant: candidate)
@@ -104,14 +142,15 @@ public enum Verification {
         return best
     }
 
-    /// Whether the kinds name everything there is, as programs and their verbs do and paths and branches never do.
+    /// Whether the kinds name everything there is, as programs and their verbs do and paths, branches and no kinds at all never do.
     static func isClosedVocabulary(_ kinds: [EnvironmentKind]) -> Bool {
-        !kinds.contains { kind in
-            switch kind {
-            case .branch, .entries, .directories: true
-            case .executable, .alias, .subcommand, .gitAlias: false
+        !kinds.isEmpty
+            && !kinds.contains { kind in
+                switch kind {
+                case .branch, .entries, .directories: true
+                case .executable, .alias, .subcommand, .gitAlias: false
+                }
             }
-        }
     }
 
     /// One name to look up among some kinds, and what stands before it in the word when the word is a path.

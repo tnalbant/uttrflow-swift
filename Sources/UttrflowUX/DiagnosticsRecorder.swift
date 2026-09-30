@@ -29,6 +29,14 @@ public actor DiagnosticsRecorder: MetricsRecording, CleaningRecording {
     /// What each recognised piece cost beyond one decode, newest last and bounded like the measurements.
     public private(set) var decoding: [DecodeEffort] = []
 
+    /// The last recogniser prompt, kept locally so the Dictionary page can explain what was offered.
+    public private(set) var vocabularyPrompt: [String] = []
+
+    public func recordVocabularyPrompt(_ words: [String]) async {
+        guard capacity > 0 else { return }
+        vocabularyPrompt = words
+    }
+
     public func recordDecoding(_ effort: DecodeEffort) async {
         guard capacity > 0 else { return }
         decoding.append(effort)
@@ -50,5 +58,6 @@ public actor DiagnosticsRecorder: MetricsRecording, CleaningRecording {
     /// Drops the last dictation's words, so a reset leaves none of them on the diagnostics page.
     public func forget() {
         lastCleaning = nil
+        vocabularyPrompt = []
     }
 }

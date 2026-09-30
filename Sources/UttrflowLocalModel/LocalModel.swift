@@ -118,6 +118,17 @@ extension LocalModel {
 
     /// The candidate that answers to `identifier`, by repository path or short name.
     public static func named(_ identifier: String) -> LocalModel? {
-        candidates.first { $0.identifier == identifier || $0.shortName == identifier }
+        let aliases: [String: LocalModel] = [
+            "gemma3Small": gemma3Small,
+            "llama32": llama32,
+            "qwen3": qwen3,
+            "ministral3": ministral3,
+            "gemma3": gemma3,
+        ]
+        return
+            aliases[identifier]
+            ?? candidates.first {
+                $0.identifier == identifier || $0.shortName == identifier
+            }
     }
 }

@@ -41,10 +41,56 @@ private func refusal(
 
 @Suite("The shortcut cannot be saved undeliverable")
 struct SettingsShortcutValidationTests {
+    @Test("warns for every Globe-key action except Do Nothing when hold-Fn is selected")
+    func holdFnWarnsForEveryAssignedGlobeAction() {
+        for (rawValue, title) in [
+            (1, "Change Input Source"), (2, "Show Emoji & Symbols"), (3, "Start Dictation"),
+        ] {
+            var capabilities = SettingsCapabilities.everything
+            capabilities.globeKeyAction = GlobeKeyAction(rawValue: rawValue)
+
+            #expect(capabilities.globeKeyWarning(for: .functionHold)?.contains(title) == true)
+            #expect(capabilities.globeKeyWarning(for: .controlOptionHold) == nil)
+        }
+        var noAction = SettingsCapabilities.everything
+        noAction.globeKeyAction = GlobeKeyAction(rawValue: 0)
+        #expect(noAction.globeKeyWarning(for: .functionHold) == nil)
+    }
+
     @Test("saves a shortcut macOS would deliver")
     func acceptsDeliverable() throws {
         let binding = HotkeyBinding(keyCode: 40, modifiers: [.command, .shift])
         #expect(try applied(.shortcut(.dictate, binding)).hotkey == binding)
+    }
+
+    @Test("refuses Option plus Space and printable keys because they can type into the focused app")
+    func refusesOptionCharacterShortcuts() {
+        for binding in [.optionSpace, HotkeyBinding(keyCode: 0, modifiers: [.option])] {
+            let reason = refusal(.shortcut(.dictate, binding))
+            #expect(reason?.contains("Option") == true, "\(binding)")
+            #expect(reason?.contains("type into the app") == true, "\(binding)")
+        }
+    }
+
+    @Test("refuses macOS shortcuts that open system UI or change the input source")
+    func refusesReservedDictateShortcuts() {
+        let spotlightReason = refusal(.shortcut(.dictate, HotkeyBinding(keyCode: 49, modifiers: [.command])))
+        #expect(spotlightReason?.contains("⌘Space opens Spotlight") == true)
+
+        let shortcuts = [
+            HotkeyBinding(keyCode: 49, modifiers: [.control]),
+            HotkeyBinding(keyCode: 48, modifiers: [.command]),
+        ]
+        for binding in shortcuts {
+            #expect(
+                refusal(.shortcut(.dictate, binding))?.contains("Choose another Dictate shortcut") == true)
+        }
+    }
+
+    @Test("keeps held modifier and Fn Dictate bindings available")
+    func acceptsListenOnlyBindings() {
+        #expect(refusal(.shortcut(.dictate, .controlOptionHold)) == nil)
+        #expect(refusal(.shortcut(.dictate, .functionHold)) == nil)
     }
 
     @Test("refuses a shortcut with no modifier, and says to add one")
@@ -80,7 +126,7 @@ struct SettingsShortcutValidationTests {
     }
 
     /// Issue 342: ⌘C, ⌥→ and ⌥A all fired a bare-modifier binding, so the sentence has to say why and what to do.
-    @Test("refuses ⌘, ⌥, ⌃ or ⇧ held on its own, and says to add a key or hold fn")
+    @Test("refuses ⌘, ⌥, ⌃ or ⇧ held on its own and caveats its Fn suggestion")
     func refusesABareModifier() {
         for binding in [
             HotkeyBinding(keyCode: 55, modifiers: [.command]),
@@ -90,6 +136,7 @@ struct SettingsShortcutValidationTests {
         ] {
             #expect(refusal(.shortcut(.dictate, binding)) == SettingsEditor.bareModifier, "\(binding)")
         }
+        #expect(SettingsEditor.bareModifier.contains("Do Nothing"))
     }
 
     @Test("choosing a shortcut again clears the note that it was returned to its default")
@@ -130,9 +177,22 @@ struct SettingsRetentionTests {
         }
     }
 
+    @Test("every finite period offered fits within the stored retention ceiling")
+    func offeredDaysFitWithinTheCeiling() {
+        #expect(SettingsRetention.finiteOfferedDays.allSatisfy { $0 <= Settings.maximumFiniteRetentionDays })
+    }
+
     @Test("the shipped default is one of the periods on offer")
     func defaultIsOffered() {
-        #expect(SettingsRetention.offeredDays.contains(Settings.defaultRetentionDays))
+        #expect(SettingsRetention.offeredDays.contains(Settings.defaultTranscriptRetentionDays))
+    }
+
+    @Test("offers Always first, and reads it as a word rather than a number of days")
+    func alwaysComesFirst() {
+        #expect(SettingsRetention.offeredDays.first == Settings.keepAlwaysDays)
+        #expect(SettingsRetention.title(days: Settings.keepAlwaysDays) == "Always")
+        #expect(SettingsRetention.isAlways(days: Settings.keepAlwaysDays))
+        #expect(!SettingsRetention.isAlways(days: 90))
     }
 
     @Test("refuses a period that is not on offer")

@@ -15,11 +15,18 @@ public struct ShortcutSet: Sendable, Equatable {
 
     /// What the product ships with; the shortcuts screen offers this back as "reset".
     public static let `default` = ShortcutSet([
-        .dictate: [.optionSpace],
+        .dictate: [.controlOptionHold],
         .clipboard: [.shiftCommandV],
         .pasteLastTranscript: [.controlCommandV],
         .copyLastTranscript: [.controlCommandC],
     ])
+
+    /// The defaults with ⌥Space for dictation, which an install onboarded before ⌃⌥ held keeps.
+    public static let earlierDefault: ShortcutSet = {
+        var set = ShortcutSet.default
+        set.replace(at: 0, with: .optionSpace, for: .dictate)
+        return set
+    }()
 
     /// Every binding for one action, which is empty when the user has bound none.
     public func bindings(for action: ShortcutAction) -> [HotkeyBinding] {
@@ -76,12 +83,20 @@ public struct ShortcutSet: Sendable, Equatable {
 // A forgiving shape on disk: unknown actions and unusable bindings are dropped, not fatal.
 extension ShortcutSet: Codable {
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let stored = (try? container.decode([String: [HotkeyBinding]].self)) ?? [:]
+        guard let container = try? decoder.container(keyedBy: ShortcutSetCodingKey.self) else {
+            self.init()
+            return
+        }
         var bound: [ShortcutAction: [HotkeyBinding]] = [:]
-        for (name, bindings) in stored {
-            // An action this build does not know is somebody else's; it is dropped rather than kept.
-            guard let action = ShortcutAction(rawValue: name) else { continue }
+        for key in container.allKeys {
+            guard let action = ShortcutAction(rawValue: key.stringValue),
+                var values = try? container.nestedUnkeyedContainer(forKey: key)
+            else { continue }
+            var bindings: [HotkeyBinding] = []
+            while !values.isAtEnd {
+                guard let value = try? values.superDecoder() else { break }
+                if let binding = try? HotkeyBinding(from: value) { bindings.append(binding) }
+            }
             bound[action] = bindings
         }
         self.init(bound)
@@ -108,5 +123,20 @@ extension ShortcutSet: Codable {
         var stored: [String: [HotkeyBinding]] = [:]
         for (action, bindings) in bound { stored[action.rawValue] = bindings }
         try container.encode(stored)
+    }
+}
+
+private struct ShortcutSetCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
     }
 }

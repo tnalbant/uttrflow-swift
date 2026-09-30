@@ -16,12 +16,18 @@ public protocol TextTransformationEngine: Sendable {
 
     /// How long this engine may take before the router steps to the next one. See `Docs/stuck-recording.md`.
     var budget: Duration { get }
+
+    /// How long this engine may take for this request. Engines whose work scales with input can shorten it.
+    func budget(for request: TransformationRequest) -> Duration
 }
 
 /// The defaults: nothing to warm, and a model's allowance.
 extension TextTransformationEngine {
     /// What an engine that has not said otherwise may take, which is what a model engine needs.
     public var budget: Duration { StageTimeout.engine }
+
+    /// Keeps the existing fixed allowance unless an engine makes it request-specific.
+    public func budget(for request: TransformationRequest) -> Duration { budget }
 
     /// Nothing to prepare, which is what a rule-based engine has.
     public func warm(for situation: Situation?) async {}

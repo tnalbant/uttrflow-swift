@@ -14,9 +14,11 @@ public enum SurfaceProbe {
 
     /// Asks system-wide first and the application second, because apps answer only one. See `Docs/insertion.md`.
     static func focusedField(of processIdentifier: pid_t) -> AXUIElement? {
+        guard processIdentifier != getpid() else { return nil }
         // Never set on the system-wide element: that is process-wide and would cut dictation's own writes short (#887).
         let system = AXUIElementCreateSystemWide()
         let systemWide = element(system, kAXFocusedUIElementAttribute, timeoutInSeconds: messagingTimeout)
+            .flatMap { field in owns(owner(of: field), processIdentifier) ? field : nil }
         return FocusedElementPreference.choose(
             systemWide: systemWide, systemWideRole: { string($0, kAXRoleAttribute) },
             application: {
@@ -27,9 +29,34 @@ public enum SurfaceProbe {
             applicationRole: { string($0, kAXRoleAttribute) })
     }
 
+    /// Whether a focused element's owner is the requested application and not Uttrflow's own nonactivating panel.
+    static func owns(
+        _ owner: pid_t?, _ processIdentifier: pid_t, current: pid_t = getpid()
+    ) -> Bool {
+        owner == processIdentifier && processIdentifier != current
+    }
+
+    /// The process that holds an element, or nothing where Accessibility will not say.
+    static func owner(of field: AXUIElement) -> pid_t? {
+        var pid: pid_t = 0
+        return AXUIElementGetPid(field, &pid) == .success ? pid : nil
+    }
+
     /// The caret as a range, which every parameterized read below is asked about.
     static func selectedRange(_ field: AXUIElement) -> CFRange? {
-        value(field, kAXSelectedTextRangeAttribute, .cfRange)
+        guard case .range(let range) = selection(field) else { return nil }
+        return range
+    }
+
+    /// The focused field's selection, refusing to guess at a multi-range caret.
+    static func selection(_ field: AXUIElement) -> AccessibilitySelection {
+        let plural = attribute(field, kAXSelectedTextRangesAttribute)
+        if let ranges = plural as? [AnyObject], ranges.count > 1 {
+            return .discontinuous
+        }
+        let pluralRanges = (plural as? [AnyObject])?.compactMap { unwrap($0, .cfRange) as CFRange? }
+        return AccessibilitySelection.resolve(
+            singular: value(field, kAXSelectedTextRangeAttribute, .cfRange), plural: pluralRanges)
     }
 
     /// The screen rectangle Accessibility reports for one text range, which decides whether a ghost can be drawn.
@@ -45,6 +72,12 @@ public enum SurfaceProbe {
     ) -> AnyObject? {
         var range = range
         guard let parameter = AXValueCreate(.cfRange, &range) else { return nil }
+        return parameterized(field, attribute, parameter)
+    }
+
+    /// One attribute read with any parameter, such as a text marker or an element.
+    static func parameterized(_ field: AXUIElement, _ attribute: String, _ parameter: AnyObject) -> AnyObject?
+    {
         var answer: AnyObject?
         guard
             AXUIElementCopyParameterizedAttributeValue(
@@ -75,12 +108,34 @@ public enum SurfaceProbe {
         return value as? String
     }
 
-    /// One `AXValue` attribute, unwrapped into the Core Graphics type it stands for.
-    static func value<T>(_ owner: AXUIElement, _ attribute: String, _ kind: AXValueType) -> T? {
+    /// One attribute read as a whole number, or nothing where the element answers something else.
+    static func integer(_ owner: AXUIElement, _ attribute: String) -> Int? {
         var value: AnyObject?
         guard AXUIElementCopyAttributeValue(owner, attribute as CFString, &value) == .success
         else { return nil }
-        return unwrap(value, kind)
+        return (value as? NSNumber)?.intValue
+    }
+
+    /// One attribute read as a boolean, or nothing where the element answers something else.
+    static func boolean(_ owner: AXUIElement, _ attribute: String) -> Bool? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(owner, attribute as CFString, &value) == .success
+        else { return nil }
+        return (value as? NSNumber)?.boolValue
+    }
+
+    /// One `AXValue` attribute, unwrapped into the Core Graphics type it stands for.
+    static func value<T>(_ owner: AXUIElement, _ attribute: String, _ kind: AXValueType) -> T? {
+        unwrap(self.attribute(owner, attribute), kind)
+    }
+
+    /// One attribute returned as an object, or nothing when the element will not say.
+    private static func attribute(_ owner: AXUIElement, _ attribute: String) -> AnyObject? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(owner, attribute as CFString, &value) == .success else {
+            return nil
+        }
+        return value
     }
 
     /// One `AXValue`, already fetched, unwrapped into the Core Graphics type it stands for.

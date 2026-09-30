@@ -8,6 +8,8 @@ public enum DictionaryStoreError: UttrflowFailure {
     case wordIsEmpty
     /// The word is already known; refused rather than replaced, which would zero its counters and origin.
     case wordAlreadyKnown
+    /// The spelling or pronunciation exceeds the lookup's bounded spoken span.
+    case entryHasTooManyWords(maximum: Int)
 
     /// A plain sentence per case.
     public var userMessage: String {
@@ -16,6 +18,8 @@ public enum DictionaryStoreError: UttrflowFailure {
         case .couldNotReadSeedRecord: "Your dictionary's setup record could not be read on this Mac."
         case .wordIsEmpty: "Type the word before saving it."
         case .wordAlreadyKnown: "That word is already in your dictionary."
+        case .entryHasTooManyWords(let maximum):
+            "The spelling and pronunciation can each have at most \(maximum) words."
         }
     }
 
@@ -26,7 +30,7 @@ public enum DictionaryStoreError: UttrflowFailure {
     public var severity: FailureSeverity {
         switch self {
         case .couldNotWrite, .couldNotReadSeedRecord: .degraded
-        case .wordIsEmpty, .wordAlreadyKnown: .informational
+        case .wordIsEmpty, .wordAlreadyKnown, .entryHasTooManyWords: .informational
         }
     }
 }

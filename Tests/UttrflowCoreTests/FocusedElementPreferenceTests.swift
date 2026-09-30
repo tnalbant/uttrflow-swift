@@ -44,10 +44,35 @@ import Testing
         #expect(chosen == nil)
     }
 
+    @Test func acceptsSystemWideOwnerWhenItMatchesTheRequestedApplication() {
+        #expect(FocusedElementPreference.belongsToRequestedApplication(owner: 42, requested: 42, current: 7))
+    }
+
+    @Test func rejectsSystemWideOwnerWhenItBelongsToAnotherApplication() {
+        #expect(!FocusedElementPreference.belongsToRequestedApplication(owner: 99, requested: 42, current: 7))
+    }
+
+    @Test func rejectsSystemWideOwnerWhenItIsTheCurrentProcessPanel() {
+        #expect(!FocusedElementPreference.belongsToRequestedApplication(owner: 7, requested: 7, current: 7))
+    }
+
+    @Test func rejectsUnknownOwnershipSoTheApplicationLookupCanBeUsedAsFallback() {
+        #expect(
+            !FocusedElementPreference.belongsToRequestedApplication(owner: nil, requested: 42, current: 7))
+        #expect(
+            !FocusedElementPreference.belongsToRequestedApplication(owner: 42, requested: nil, current: 7))
+
+        let chosen = FocusedElementPreference.choose(
+            systemWide: Optional<String>.none, systemWideRole: { _ in nil },
+            application: { "requested application" }, applicationRole: { _ in "AXTextField" })
+        #expect(chosen == "requested application")
+    }
+
     @Test func isTextEntryAcceptsEveryRoleAPersonTypesInto() {
-        for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField", "AXWebArea"] {
+        for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"] {
             #expect(FocusedElementPreference.isTextEntry(role))
         }
+        #expect(!FocusedElementPreference.isTextEntry("AXWebArea"))
         #expect(!FocusedElementPreference.isTextEntry("AXStaticText"))
         #expect(!FocusedElementPreference.isTextEntry(nil))
     }

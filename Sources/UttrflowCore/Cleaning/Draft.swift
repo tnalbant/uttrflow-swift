@@ -144,7 +144,36 @@ public struct Draft: Sendable, Equatable {
     }
 
     private static func split(_ text: String, confidence: Double) -> [Word] {
-        text.split(whereSeparator: \.isWhitespace).map { Word(String($0), confidence: confidence) }
+        text.split(whereSeparator: \.isWhitespace).flatMap { token in
+            splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence) }
+        }
+    }
+
+    /// Splits a pause ellipsis between words while keeping URL punctuation inside its token.
+    private static func splitPauseEllipses(in token: String) -> [String] {
+        let normalized = token.replacingOccurrences(of: "…", with: "...")
+        let lowercased = normalized.lowercased()
+        guard !lowercased.contains("://"), !lowercased.hasPrefix("www."), !lowercased.contains("@")
+        else { return [token] }
+
+        let characters = Array(normalized)
+        var parts = [""]
+        var index = 0
+        while index < characters.count {
+            if index > 0, index + 3 < characters.count,
+                characters[index] == ".", characters[index + 1] == ".", characters[index + 2] == ".",
+                characters[index + 3] != ".",
+                characters[index - 1].isLetter || characters[index - 1].isNumber,
+                characters[index + 3].isLetter || characters[index + 3].isNumber
+            {
+                parts.append("")
+                index += 3
+                continue
+            }
+            parts[parts.count - 1].append(characters[index])
+            index += 1
+        }
+        return parts
     }
 
     /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.
@@ -214,10 +243,12 @@ public struct Draft: Sendable, Equatable {
     /// Moves a word's closing marks back onto the previous word and its opening marks onto the next.
     private mutating func carryMarks(from index: Int, by pass: PassID) {
         let shape = WordShape(words[index].text)
-        // A comma is the pause the removed word stood in, so it goes with the word; every other mark is the sentence's.
+        // A comma or an ellipsis is the pause the removed word stood in, so it goes with the word; every other mark is the sentence's.
         let amount = shape.core.contains(where: \.isNumber)
+        let trailsOff = WordShape.trailsOff(shape.suffix)
         let closing = shape.suffix.filter {
             $0 != "," && !$0.isWhitespace && !(amount && Self.isOwnSymbol($0))
+                && !(trailsOff && ($0 == "." || $0 == "\u{2026}"))
         }
         let opening = shape.prefix.filter {
             $0 != "," && !$0.isWhitespace && !(amount && Self.isOwnSymbol($0))

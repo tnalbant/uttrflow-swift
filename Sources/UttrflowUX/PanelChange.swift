@@ -13,6 +13,8 @@ public enum PanelChange: Sendable, Equatable {
     case create(String)
     /// The clip with its text replaced by something the user agreed to, from a re-indenter or formatter.
     case rewriteText(Clip.ID, String)
+    /// Pinning prevents retention from removing the clip; unpinning puts it back under normal retention.
+    case setPinned(Clip.ID, Bool)
     /// The note form of a clip, replaced; ``Clip/text`` is left alone, which keeps the original recoverable.
     case setRichText(Clip.ID, String)
     /// A collection renamed; every clip in it moves with the name and no alias is touched.
@@ -171,13 +173,6 @@ extension PanelSnapshot {
         guard let clip = clip(id), clip.richText == nil, clip.image == nil else { return stayingOpen }
         return PanelResponse(
             state: self, outcome: .change(.setRichText(id, NotePromotion.note(from: clip.text))))
-    }
-
-    /// E5 — tick or untick one box, and write it.
-    func ticking(_ id: Clip.ID, box index: Int) -> PanelResponse {
-        guard let note = clip(id)?.richText, let ticked = NoteChecklist.toggling(index, in: note)
-        else { return stayingOpen }
-        return PanelResponse(state: self, outcome: .change(.setRichText(id, ticked)))
     }
 
     /// What the alias field opens showing: the clip's current alias, so renaming is the same gesture.

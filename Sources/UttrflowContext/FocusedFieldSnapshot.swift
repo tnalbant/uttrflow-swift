@@ -4,6 +4,28 @@ public import UttrflowPredict
 
 public import struct Foundation.NSRange
 
+public enum WritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+    case unknown
+}
+
+/// The focused Accessibility element and its selected text range, without reading its contents.
+public struct FocusedFieldSelection: Sendable, Equatable {
+    /// The process that owns the focused element.
+    public let processIdentifier: Int32
+    /// The focused element's Accessibility identity within its process.
+    public let elementHash: UInt
+    /// The selection in UTF-16 units.
+    public let range: NSRange
+
+    public init(processIdentifier: Int32, elementHash: UInt, range: NSRange) {
+        self.processIdentifier = processIdentifier
+        self.elementHash = elementHash
+        self.range = range
+    }
+}
+
 /// One reading of the focused field: what identifies it, what it holds, and where its caret is.
 public struct FocusedFieldSnapshot: Sendable, Equatable {
     /// The application the field belongs to.
@@ -28,6 +50,8 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let selection: NSRange?
     /// The caret's rectangle, in AppKit screen coordinates, or nothing when it cannot be read.
     public let caret: CGRect?
+    /// The direction at the caret, or nothing when the Accessibility bounds cannot establish one.
+    public let writingDirection: WritingDirection
     /// The window's rectangle, in AppKit screen coordinates, which the strip stands on.
     public let window: CGRect?
     /// The field's own rectangle, in AppKit screen coordinates, which a long ghost must not run past.
@@ -40,15 +64,23 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
     public let textColor: TextColor?
     /// Whether the field hides what is typed into it.
     public let isSecure: Bool
+    /// Whether the field reports that it accepts input, or nothing when Accessibility does not answer.
+    public let isEnabled: Bool?
+    /// Whether the field reports that its text is editable, or nothing when Accessibility does not answer.
+    public let isEditable: Bool?
     /// Whether an input method is mid-composition, which owns both the screen and the Tab key.
     public let isComposing: Bool
     /// What the field itself says about an input method's marked text, before any guess from the input source.
     public let markedText: MarkedText
+    /// Whether the field says its own list of choices is open, as an expanded combobox does, whose keys belong to that list.
+    public let showsOwnList: Bool
     /// How long the whole reading took, in microseconds.
     public let readMicroseconds: Int
     /// The title of the window holding the field, which names the conversation, the note or the thread the field belongs to.
     public let windowTitle: String?
-    /// The line the caret is on, up to the caret, less the shell prompt a terminal reports in front of it; read once, when the snapshot is taken.
+    /// The window number holding the field, when Accessibility publishes one.
+    public let windowNumber: UInt32?
+    /// The line the caret is on up to the caret, from a sentence start in prose too long to complete whole, less a terminal's shell prompt.
     public let currentLine: String
     /// Whether the caret's line ran past `lineReadLimit`, so `currentLine` is only its last stretch and too long to complete.
     public let isLineCut: Bool
@@ -65,16 +97,21 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         value: String? = nil,
         selection: NSRange? = nil,
         caret: CGRect? = nil,
+        writingDirection: WritingDirection = .unknown,
         window: CGRect? = nil,
         field: CGRect? = nil,
         pointSize: CGFloat? = nil,
         fontFamily: String? = nil,
         textColor: TextColor? = nil,
         isSecure: Bool = false,
+        isEnabled: Bool? = nil,
+        isEditable: Bool? = nil,
         isComposing: Bool = false,
         markedText: MarkedText = .unanswered,
+        showsOwnList: Bool = false,
         readMicroseconds: Int = 0,
-        windowTitle: String? = nil
+        windowTitle: String? = nil,
+        windowNumber: UInt32? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName
@@ -87,17 +124,24 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.value = value
         self.selection = selection
         self.caret = caret
+        self.writingDirection = writingDirection
         self.window = window
         self.field = field
         self.pointSize = pointSize
         self.fontFamily = fontFamily
         self.textColor = textColor
         self.isSecure = isSecure
+        self.isEnabled = isEnabled
+        self.isEditable = isEditable
         self.isComposing = isComposing
         self.markedText = markedText
+        self.showsOwnList = showsOwnList
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
-        let line = Self.caretLine(of: value, at: selection, in: bundleIdentifier)
+        self.windowNumber = windowNumber
+        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
+        let line = Self.caretLine(
+            of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
         self.currentLine = line.text
         self.isLineCut = line.isCut
     }
@@ -121,10 +165,24 @@ extension FocusedFieldSnapshot {
     var hasTypeStyle: Bool { pointSize != nil || fontFamily != nil || textColor != nil }
 
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
-    public var placement: SuggestionPlacement? { capability.placement }
+    public var placement: SuggestionPlacement? {
+        isEnabled == false || isEditable == false || isHeldByFullScreenProgram
+            || writingDirection == .unknown ? nil : capability.placement
+    }
 
-    /// The line capture may learn, which is nothing when the line was too long to read whole.
-    public var learnableLine: String { isLineCut ? "" : currentLine }
+    /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.
+    public var isHeldByFullScreenProgram: Bool {
+        TerminalApplications.contains(bundleIdentifier)
+            && FullScreenProgram.isNamed(inWindowTitle: windowTitle)
+    }
+
+    /// The line capture may learn, which is nothing when the line was too long to read whole or text follows the caret on it.
+    public var learnableLine: String { isLineCut || hasTextAfterCaret ? "" : currentLine }
+
+    /// Whether non-padding text follows the caret on its line, so capture does not learn a cut value.
+    public var hasTextAfterCaret: Bool {
+        rowAhead?.contains(where: { $0 != " " && $0 != "\t" }) ?? false
+    }
 
     /// How many characters back from the caret its line is read; a prompt and a line to complete both fit well inside it.
     public static let lineReadLimit = ShellPrompt.searchLimit + SuggestionSession.maximumTypedLength + 1
@@ -134,15 +192,20 @@ extension FocusedFieldSnapshot {
 
     /// The caret's line as `currentLine` holds it, and whether the read limit cut it.
     private static func caretLine(
-        of value: String?, at selection: NSRange?, in bundleIdentifier: String
+        of value: String?, at selection: NSRange?, in bundleIdentifier: String, prose: Bool,
+        windowTitle: String?
     ) -> (text: String, isCut: Bool) {
         guard let value else { return ("", false) }
+        let isTerminal = TerminalApplications.contains(bundleIdentifier)
+        // A full-screen program's line is not typed at the shell, so nothing of it is completed or learned.
+        if isTerminal, FullScreenProgram.isNamed(inWindowTitle: windowTitle) { return ("", false) }
         let caret = index(in: value, atUTF16Offset: selection?.location ?? value.utf16.count)
-        let start = lineStart(in: value, before: caret)
+        if isTerminal, ShellPrompt.isHereDocumentBody(in: value, before: caret) { return ("", false) }
+        let start = lineStart(in: value, before: caret, prose: prose)
         let line = String(value[start.index..<caret])
         // A cut line is kept whole, so its length alone refuses it.
         guard !start.isCut else { return (line, true) }
-        let input = TerminalApplications.contains(bundleIdentifier) ? ShellPrompt.input(in: line) : line
+        let input = isTerminal ? ShellPrompt.input(in: line) : line
         // Leading indentation is dropped so an indented line matches what capture stored, which is trimmed.
         return (droppingLeadingWhitespace(input), false)
     }
@@ -163,11 +226,63 @@ extension FocusedFieldSnapshot {
         return (index, false)
     }
 
+    /// Where the line a suggestion continues begins: in prose too long to complete whole, the earliest sentence within reach of the caret.
+    static func lineStart(
+        in value: String, before caret: String.Index, prose: Bool
+    ) -> (index: String.Index, isCut: Bool) {
+        let start = lineStart(in: value, before: caret)
+        guard prose,
+            start.isCut || value.distance(from: start.index, to: caret) > SuggestionSession.maximumTypedLength
+        else { return start }
+        return sentenceStart(in: value, after: start.index, before: caret).map { ($0, false) } ?? start
+    }
+
+    /// The earliest sentence start no more than `maximumTypedLength` characters before the caret, with something typed after it.
+    static func sentenceStart(
+        in value: String, after lineStart: String.Index, before caret: String.Index
+    ) -> String.Index? {
+        var index = caret
+        var read = 0
+        var found: String.Index?
+        defer { tally?.record(read) }
+        while index > lineStart, read < SuggestionSession.maximumTypedLength {
+            let before = value.index(before: index)
+            read += 1
+            if index < caret, value[before].isWhitespace, !value[index].isWhitespace,
+                endsASentence(value, at: before, after: lineStart)
+            {
+                found = index
+            }
+            index = before
+        }
+        return found
+    }
+
+    /// The marks that end a sentence, and the quotes and brackets that may close one after its mark.
+    private static let sentenceEnds: Set<Character> = [".", "?", "!"]
+    private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
+
+    /// Whether the whitespace at `space` follows a sentence's end mark, spaces, closing quotes and brackets stepped over.
+    private static func endsASentence(
+        _ value: String, at space: String.Index, after lineStart: String.Index
+    ) -> Bool {
+        var index = space
+        while index > lineStart {
+            index = value.index(before: index)
+            let character = value[index]
+            if sentenceClosers.contains(character) || character.isWhitespace { continue }
+            // An ellipsis trails off inside a sentence rather than ending it.
+            guard sentenceEnds.contains(character) else { return false }
+            return !(character == "." && index > lineStart && value[value.index(before: index)] == ".")
+        }
+        return false
+    }
+
     /// The text before the caret's line, at most this long, which is what the line is a continuation of; nothing when the line is too long to read whole.
     public func preceding(maxLength: Int) -> String? {
         guard let value else { return nil }
         let caret = Self.index(in: value, atUTF16Offset: selection?.location ?? value.utf16.count)
-        let start = Self.lineStart(in: value, before: caret)
+        let start = Self.lineStart(in: value, before: caret, prose: isProse)
         guard !start.isCut, start.index > value.startIndex else { return nil }
         var earlier = value[..<value.index(before: start.index)].suffix(maxLength)
         while let last = earlier.last, last.isWhitespace { earlier.removeLast() }
@@ -180,20 +295,47 @@ extension FocusedFieldSnapshot {
         String(text.drop { $0 == " " || $0 == "\t" })
     }
 
-    /// Whether the caret sits at the end of the line it is on, which completing presumes.
+    /// Whether only padding and closing punctuation follow the caret, which completing presumes.
     public var caretAtLineEnd: Bool {
+        guard let ahead = rowAhead else { return false }
+        return ahead.allSatisfy { $0 == " " || $0 == "\t" || Self.closingPunctuation.contains($0) }
+    }
+
+    /// Characters an editor may keep after the caret while it completes inside a pair.
+    private static let closingPunctuation: Set<Character> = [")", "]", "}", "'", "\"", "`"]
+
+    /// The fewest padding spaces that separate the caret from a terminal's right-side display text.
+    static let rightPromptPadding = 4
+
+    /// How many padding spaces separate the caret from a terminal's right-side display text, or nothing when the row has none.
+    public var rightPromptGap: Int? {
+        guard TerminalApplications.contains(bundleIdentifier), let ahead = rowAhead else { return nil }
+        let gap = ahead.prefix { $0 == " " }.count
+        let prompt = ahead.dropFirst(gap)
+        guard gap >= Self.rightPromptPadding, prompt.contains(where: { !$0.isWhitespace }) else { return nil }
+        return gap
+    }
+
+    /// The field's rectangle, ended before a padded terminal tail so the ghost does not draw over it.
+    public var ghostField: CGRect? {
+        guard let gap = rightPromptGap, let caret, let pointSize, let field else { return field }
+        let edge = caret.maxX + CGFloat(gap - 1) * pointSize * Self.monospacedAdvance
+        guard edge > field.minX, edge < field.maxX else { return field }
+        return CGRect(x: field.minX, y: field.minY, width: edge - field.minX, height: field.height)
+    }
+
+    /// A monospaced face's advance as a share of its point size, which is how wide a terminal cell is taken to be.
+    static let monospacedAdvance: CGFloat = 0.6
+
+    /// What follows the caret up to the end of its row, or nothing when the caret cannot be read.
+    private var rowAhead: Substring? {
         guard
             let selection, let value,
             let end = AccessibilityRange.end(location: selection.location, length: selection.length)
-        else { return false }
-        var index = Self.index(in: value, atUTF16Offset: end)
-        // Only whitespace ahead still counts as the line's end, since a terminal pads the line with spaces.
-        while index < value.endIndex {
-            if value[index].isNewline { return true }
-            guard value[index] == " " || value[index] == "\t" else { return false }
-            index = value.index(after: index)
-        }
-        return true
+        else { return nil }
+        let start = Self.index(in: value, atUTF16Offset: end)
+        let stop = value[start...].firstIndex(where: \.isNewline) ?? value.endIndex
+        return value[start..<stop]
     }
 
     /// The offset as a character index, clamped into the string and moved back off any split character.
@@ -213,9 +355,15 @@ extension FocusedFieldSnapshot {
     /// The role a multi-line field publishes, which a document and a shell both use.
     public static let proseRole = "AXTextArea"
 
+    private static func isProseApplication(_ bundleIdentifier: String) -> Bool {
+        guard !TerminalApplications.contains(bundleIdentifier) else { return false }
+        guard let kind = AppKind(bundleIdentifier: bundleIdentifier) else { return true }
+        return kind != .sqlEditor && kind != .codeEditor
+    }
+
     /// Whether the field holds prose rather than a command or an address.
     public var isProse: Bool {
-        role == Self.proseRole && !TerminalApplications.contains(bundleIdentifier)
+        role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
     }
 }
 

@@ -27,6 +27,43 @@ public enum FocusedFieldReader {
     /// Its own thread, because these calls block until the other application answers.
     private static let queue = LatestOnlyQueue(label: "com.uttrflow.focused-field", qos: .userInitiated)
 
+    /// Keeps armed-offer checks from replacing a full field read.
+    private static let selectionQueue = LatestOnlyQueue(
+        label: "com.uttrflow.focused-selection", qos: .utility)
+
+    /// Holds the stable answers for one focused field and window only.
+    private static let stableSnapshot = OneEntryCache<StableSnapshotKey, StableSnapshotValue>()
+
+    /// The process, field and window that give cached answers their identity.
+    private struct StableSnapshotKey: @unchecked Sendable, Equatable {
+        let processIdentifier: Int32
+        let field: AXUIElement
+        let window: AXUIElement?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.processIdentifier == rhs.processIdentifier && CFEqual(lhs.field, rhs.field)
+                && sameWindow(lhs.window, rhs.window)
+        }
+    }
+
+    /// Stable Accessibility answers, retained only for one focused field and window.
+    private struct StableSnapshotValue: @unchecked Sendable {
+        let identity: FieldIdentity
+        let document: String?
+        let fieldFrame: CGRect?
+        let windowFrame: CGRect?
+        let windowTitle: String?
+    }
+
+    /// The five field names fetched together because none changes while that field stays focused.
+    private struct FieldIdentity: Sendable {
+        let role: String?
+        let subrole: String?
+        let identifier: String?
+        let placeholder: String?
+        let description: String?
+    }
+
     /// The primary screen's top edge, cached because `NSScreen` is main-thread-only and this reads off it.
     private static let cachedPrimaryScreenMaxY = Mutex<CGFloat>(0)
 
@@ -75,8 +112,61 @@ public enum FocusedFieldReader {
         guard let app = await frontmostApp() else { return nil }
         // A field that stops answering costs the turn half a second at most, and no later turn waits behind it.
         return await queue.run(within: .milliseconds(500)) { isWanted in
-            snapshot(app: app, while: isWanted)
+            let reading = snapshot(app: app, while: isWanted)
+            // A browser engine answers zero-size caret bounds until its full tree is on.
+            if FullTreeSwitch.isNeeded(in: app.bundleIdentifier, after: reading) {
+                fullTree.switchOn(
+                    processIdentifier: app.processIdentifier, bundleIdentifier: app.bundleIdentifier,
+                    host: fullTreeHost(app.processIdentifier))
+            }
+            return reading
         }
+    }
+
+    /// Reads only the focused element and selection, for the short time a suggestion is armed.
+    public static func focusedSelection() async -> FocusedFieldSelection? {
+        guard let app = await frontmostApp() else { return nil }
+        return await selectionQueue.run(within: .milliseconds(250)) { isWanted in
+            guard isWanted(), AXIsProcessTrusted(),
+                let field = SurfaceProbe.focusedField(of: app.processIdentifier), isWanted()
+            else { return nil }
+            _ = AXUIElementSetMessagingTimeout(field, elementTimeoutInSeconds)
+            guard let range = SurfaceProbe.selectedRange(field), isWanted() else { return nil }
+            return FocusedFieldSelection(
+                processIdentifier: app.processIdentifier, elementHash: CFHash(field),
+                range: NSRange(location: range.location, length: range.length))
+        }
+    }
+
+    /// Cancels a selection poll when the offer is withdrawn.
+    public static func cancelFocusedSelectionRead() { selectionQueue.invalidate() }
+
+    /// Stops the current field read after its in-flight message, so a canceled turn sends no further questions.
+    public static func cancelRead() { queue.invalidate() }
+
+    /// The full Accessibility trees the suggestion loop turned on, kept so stopping the loop turns them off.
+    private static let fullTree = FullTreeSwitch()
+
+    /// Turns off every browser engine's full tree the suggestion loop turned on.
+    public static func releaseFullTrees() {
+        fullTree.switchOffEverything(host: fullTreeHost)
+    }
+
+    /// One application's full-tree switches, each message capped so a stalled application cannot hold the caller.
+    private static func fullTreeHost(_ processIdentifier: Int32) -> FullTreeSwitch.Host {
+        let application = AXUIElementCreateApplication(processIdentifier)
+        _ = AXUIElementSetMessagingTimeout(application, elementTimeoutInSeconds)
+        return FullTreeSwitch.Host(
+            read: { attribute in
+                var value: AnyObject?
+                guard AXUIElementCopyAttributeValue(application, attribute as CFString, &value) == .success
+                else { return nil }
+                return (value as? NSNumber)?.boolValue
+            },
+            write: { attribute, isOn in
+                AXUIElementSetAttributeValue(
+                    application, attribute as CFString, isOn ? kCFBooleanTrue : kCFBooleanFalse) == .success
+            })
     }
 
     /// Its own thread for the wider walk, so an application slow to describe its window never holds up a field read.
@@ -99,7 +189,11 @@ public enum FocusedFieldReader {
     /// The same read synchronously, for an application front or not, which is what a probe shows the operator.
     public static func surroundings(of app: FrontmostApp) -> Surroundings? {
         // A field with no window, or a window focused as a whole, has nothing around it worth a walk.
-        guard AXIsProcessTrusted(), let field = SurfaceProbe.focusedField(of: app.processIdentifier),
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier, at: now),
+            let field = SurfaceProbe.focusedField(of: app.processIdentifier),
+            !slowFields.isResting(
+                SlowFields.Key(process: app.processIdentifier, element: CFHash(field)), at: now),
             let window = element(field, kAXWindowAttribute), !CFEqual(field, window)
         else { return nil }
         let answers = AXNode(window).answers
@@ -108,59 +202,259 @@ public enum FocusedFieldReader {
         )
     }
 
+    /// The fields whose reads ran past their budget lately, which are left alone until their rest is over.
+    static let slowFields = SlowFields()
+
+    /// Lets an application quieted by a resting field be asked again, for a click, a switch or a key that may move focus.
+    public static func focusMayHaveMoved() {
+        slowFields.focusMayHaveMoved()
+        stableSnapshot.clear()
+    }
+
     /// The same reading, synchronously, for the queue above and for the capability probe; the identity is read on main.
     static func snapshot(
         app: FrontmostApp, while isWanted: @Sendable () -> Bool = { true }
     ) -> FocusedFieldSnapshot? {
         let started = DispatchTime.now().uptimeNanoseconds
-        guard AXIsProcessTrusted(), let field = SurfaceProbe.focusedField(of: app.processIdentifier)
+        // An application whose focused field rests is not even asked for its focus, which can itself be the slow part.
+        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier, at: started),
+            let field = SurfaceProbe.focusedField(of: app.processIdentifier)
         else { return nil }
+        let slow = SlowFields.Key(process: app.processIdentifier, element: CFHash(field))
+        // A field whose read ran over lately is asked nothing, so a heavy document does not stall its application every turn.
+        guard !slowFields.isResting(slow, at: started) else { return nil }
         // Every question to the field gives up quickly, so a field that stops answering costs a moment, not the loop.
         _ = AXUIElementSetMessagingTimeout(field, elementTimeoutInSeconds)
-        guard let role = SurfaceProbe.string(field, kAXRoleAttribute) else { return nil }
+        let budget = FieldReadBudget(started: started)
+        var ranOver = false
+        // Checked before every question after the first: a superseded read stops, and one past its budget stops and rests the field.
+        let goOn: () -> Bool = {
+            guard isWanted() else { return false }
+            guard budget.isSpent(at: DispatchTime.now().uptimeNanoseconds) else { return true }
+            ranOver = true
+            return false
+        }
+        let answer = read(field, of: app, started: started, while: goOn)
+        if ranOver {
+            slowFields.ranOver(slow, at: DispatchTime.now().uptimeNanoseconds)
+        } else if answer != nil {
+            slowFields.answered(slow)
+        }
+        return answer
+    }
 
-        let subrole = SurfaceProbe.string(field, kAXSubroleAttribute)
-        let identifier = SurfaceProbe.string(field, kAXIdentifierAttribute)
-        let placeholder = SurfaceProbe.string(field, kAXPlaceholderValueAttribute)
-        let description = SurfaceProbe.string(field, kAXDescriptionAttribute)
+    /// Everything the snapshot holds, each question asked once and none after `goOn` says stop.
+    private static func read(
+        _ field: AXUIElement, of app: FrontmostApp, started: UInt64, while goOn: () -> Bool
+    ) -> FocusedFieldSnapshot? {
+        let window = element(field, kAXWindowAttribute)
+        guard goOn() else { return nil }
+        let cacheKey = StableSnapshotKey(
+            processIdentifier: app.processIdentifier, field: field, window: window)
+        let cached = stableSnapshot.value(for: cacheKey)
+        let fieldIdentity = cached?.identity ?? identity(of: field)
+        guard let role = fieldIdentity.role else { return nil }
+        guard goOn() else { return nil }
+        let stable: StableSnapshotValue
+        if let cached {
+            stable = cached
+        } else {
+            let fieldDocument = SurfaceProbe.string(field, kAXDocumentAttribute)
+            guard goOn() else { return nil }
+            let document =
+                fieldDocument
+                ?? window.flatMap {
+                    goOn() ? SurfaceProbe.string($0, kAXDocumentAttribute) : nil
+                }
+            guard goOn() else { return nil }
+            let fieldFrame = frame(of: field)
+            guard goOn() else { return nil }
+            let windowFrame = window.flatMap { frame(of: $0) }
+            guard goOn() else { return nil }
+            let windowTitle = window.flatMap { SurfaceProbe.string($0, kAXTitleAttribute) }
+            guard goOn() else { return nil }
+            let value = StableSnapshotValue(
+                identity: fieldIdentity, document: document, fieldFrame: fieldFrame,
+                windowFrame: windowFrame, windowTitle: windowTitle)
+            stableSnapshot.insert(value, for: cacheKey)
+            stable = value
+        }
+        let identity = stable.identity
         // Decided before the value is fetched, so a declared secure field's contents are never read at all.
         let declaredSecure = SecureField.isDeclaredSecure(
-            role: role, subrole: subrole, identifier: identifier, placeholder: placeholder,
-            description: description)
-        let value = declaredSecure ? nil : SurfaceProbe.string(field, kAXValueAttribute)
+            role: role, subrole: identity.subrole, identifier: identity.identifier,
+            placeholder: identity.placeholder, description: identity.description)
+        guard goOn() else { return nil }
+        let selected = SurfaceProbe.selection(field)
+        if case .discontinuous = selected { return nil }
+        let range: CFRange?
+        if case .range(let value) = selected {
+            range = value
+        } else {
+            range = declaredSecure || !goOn() ? nil : markerSelection(field)
+        }
+        guard goOn() else { return nil }
+        let read = declaredSecure ? (value: nil, selection: nil) : boundedValue(of: field, at: range)
+        let value = read.value
         let secure = declaredSecure || (value.map(SecureField.looksMasked) ?? false)
-        // Checked between messages: a turn that has given up should not pay for the rest of them.
-        guard isWanted() else { return nil }
-        let range = SurfaceProbe.selectedRange(field)
-        let style = range.flatMap { typeStyle(field, at: $0) }
-        guard isWanted() else { return nil }
+        guard goOn() else { return nil }
+        // The attributed string carries the characters, so a secure field is never asked for its style.
+        let styleRange = range.flatMap { boundedStyleRange($0) }
+        let style = secure ? nil : styleRange.flatMap { typeStyle(field, at: $0) }
+        guard goOn() else { return nil }
         let flipped = cachedPrimaryScreenMaxY.withLock { $0 }
         let marked = CompositionProbe.markedText(of: field)
+        guard goOn() else { return nil }
+        // A combobox field says when its own list is open, one flag on the field itself.
+        let ownList = SurfaceProbe.integer(field, "AXExpanded") == 1
+        guard goOn() else { return nil }
+        let isEnabled = SurfaceProbe.boolean(field, kAXEnabledAttribute)
+        guard goOn() else { return nil }
+        let isEditable = SurfaceProbe.boolean(field, kAXIsEditableAttribute)
+        guard goOn() else { return nil }
+        let fieldRect = stable.fieldFrame
+        let paragraphDirection: WritingDirection
+        if let range, range.length == 0, range.location > 0,
+            read.selection?.length == 0, read.selection?.location == value?.utf16.count,
+            !secure, goOn(),
+            let attributed = SurfaceProbe.parameterized(
+                field, kAXAttributedStringForRangeParameterizedAttribute,
+                CFRange(location: range.location - 1, length: 1)),
+            CFGetTypeID(attributed) == CFAttributedStringGetTypeID()
+        {
+            paragraphDirection = Self.writingDirection(
+                inAttributed: unsafeDowncast(attributed, to: CFAttributedString.self))
+        } else {
+            paragraphDirection = .unknown
+        }
+        let caretResult = caret(
+            field, at: range, value: value, selection: read.selection, frame: fieldRect,
+            pointSize: style?.size, paragraphDirection: paragraphDirection, while: goOn)
+        guard goOn() else { return nil }
+        let windowRect = stable.windowFrame
+        let appPickerOpen =
+            ownList
+            || window.map {
+                FocusedWindowPicker.isOpen(
+                    in: AXNode($0), near: fieldRect, using: AXElementTree(), while: goOn)
+            } ?? false
+        guard goOn() else { return nil }
+        let title = stable.windowTitle
+        // An editor that draws its own text keeps an empty input at the caret, so its line is read off the rendered text.
+        let hidden =
+            secure ? nil : hiddenInputLine(field, role: role, value: value, frame: fieldRect, while: goOn)
+        let number = windowNumber(while: goOn) { windowNumber(of: field) }
+        guard goOn() else { return nil }
 
         return FocusedFieldSnapshot(
             bundleIdentifier: app.bundleIdentifier,
             applicationName: app.name,
             role: role,
-            subrole: subrole,
-            identifier: identifier,
-            placeholder: placeholder,
-            accessibilityDescription: description,
-            document: document(of: field),
-            value: secure ? nil : value,
-            selection: range.map { NSRange(location: $0.location, length: $0.length) },
-            caret: range.flatMap { caret(field, at: $0) }.map { flip($0, below: flipped) },
-            window: windowFrame(of: field).map { flip($0, below: flipped) },
-            field: fieldFrame(of: field).map { flip($0, below: flipped) },
+            subrole: identity.subrole,
+            identifier: identity.identifier,
+            placeholder: identity.placeholder,
+            accessibilityDescription: identity.description,
+            document: stable.document,
+            value: secure ? nil : hidden.map { $0.before + $0.after } ?? value,
+            selection: hidden.map { NSRange(location: $0.before.utf16.count, length: 0) } ?? read.selection,
+            caret: (hidden?.caret ?? caretResult?.caret).map { flip($0, below: flipped) },
+            writingDirection: hidden == nil ? caretResult?.direction ?? .unknown : .unknown,
+            window: windowRect.map { flip($0, below: flipped) },
+            field: (hidden?.line ?? fieldRect).flatMap {
+                FocusedFieldSnapshot.isCaretShaped($0) ? nil : flip($0, below: flipped)
+            },
             pointSize: style?.size,
             fontFamily: style?.family,
             textColor: style?.color,
             isSecure: secure,
+            isEnabled: isEnabled,
+            isEditable: isEditable,
             isComposing: Composition.isComposing(
                 markedText: marked, inputSource: CompositionProbe.inputSourceKind()),
             markedText: marked,
+            showsOwnList: appPickerOpen,
             readMicroseconds: Int((DispatchTime.now().uptimeNanoseconds - started) / 1000),
-            windowTitle: windowTitle(of: field)
+            windowTitle: title,
+            windowNumber: number
         )
+    }
+
+    /// Reads a window number only while this field snapshot is still wanted.
+    static func windowNumber(while isWanted: () -> Bool, read: () -> UInt32?) -> UInt32? {
+        guard isWanted() else { return nil }
+        let number = read()
+        guard isWanted() else { return nil }
+        return number
+    }
+
+    /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
+    private static func windowNumber(of field: AXUIElement) -> UInt32? {
+        var number: CGWindowID = 0
+        guard AXUIElementGetWindow(field, &number) == .success else { return nil }
+        return number
+    }
+
+    /// The caret's line read off an editor's rendered text, for the empty caret-sized input such an editor keeps focused.
+    private static func hiddenInputLine(
+        _ field: AXUIElement, role: String, value: String?, frame: CGRect?, while goOn: () -> Bool
+    ) -> HiddenInputLine.Reading? {
+        guard FocusedFieldSnapshot.isTextEntry(role), let frame,
+            HiddenInputLine.isStub(value: value, frame: frame, role: role)
+        else { return nil }
+        return HiddenInputLine.read(around: AXNode(field), at: frame, in: AXElementTree(), while: goOn)
+    }
+
+    /// What names the field, asked in one message: its role and the four names it may publish for itself.
+    private static func identity(of field: AXUIElement) -> FieldIdentity {
+        let attributes = [
+            kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute, kAXPlaceholderValueAttribute,
+            kAXDescriptionAttribute,
+        ]
+        var answers: CFArray?
+        let result = AXUIElementCopyMultipleAttributeValues(
+            field, attributes as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &answers)
+        // An element that will not answer the batch is asked one attribute at a time instead.
+        guard result == .success, let values = answers as? [AnyObject], values.count == attributes.count
+        else {
+            let named = attributes.map { SurfaceProbe.string(field, $0) }
+            return FieldIdentity(
+                role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
+                description: named[4])
+        }
+        let named = values.map { $0 as? String }
+        return FieldIdentity(
+            role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
+            description: named[4])
+    }
+
+    /// Whether both keys name the same window, including the absence of a window.
+    private static func sameWindow(_ lhs: AXUIElement?, _ rhs: AXUIElement?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): true
+        case (let lhs?, let rhs?): CFEqual(lhs, rhs)
+        default: false
+        }
+    }
+
+    /// The field's value around the caret, with the selection moved into it, so a long scrollback is never copied whole.
+    private static func boundedValue(
+        of field: AXUIElement, at range: CFRange?
+    ) -> (value: String?, selection: NSRange?) {
+        let selection = range.map { NSRange(location: $0.location, length: $0.length) }
+        let count: Int? = selection == nil ? nil : SurfaceProbe.integer(field, kAXNumberOfCharactersAttribute)
+        return ValueWindow.read(
+            count: count, selection: selection,
+            whole: { SurfaceProbe.string(field, kAXValueAttribute) },
+            part: { window in
+                SurfaceProbe.parameterized(
+                    field, kAXStringForRangeParameterizedAttribute,
+                    CFRange(location: window.location, length: window.length)) as? String
+            })
+    }
+
+    /// Bounds an attributed style read at the start of a selection.
+    private static func boundedStyleRange(_ range: CFRange) -> CFRange {
+        CFRange(location: range.location, length: min(range.length, ValueWindow.selectionLimit))
     }
 
     /// Accessibility measures from the top of the primary screen; AppKit measures from the bottom.
@@ -173,24 +467,6 @@ public enum FocusedFieldReader {
         SurfaceProbe.element(owner, attribute, timeoutInSeconds: elementTimeoutInSeconds)
     }
 
-    /// The page or the directory the field belongs to, which the window publishes when the field does not.
-    private static func document(of field: AXUIElement) -> String? {
-        if let own = SurfaceProbe.string(field, kAXDocumentAttribute) { return own }
-        guard let window = element(field, kAXWindowAttribute) else { return nil }
-        return SurfaceProbe.string(window, kAXDocumentAttribute)
-    }
-
-    /// The title of the window the field sits in, which is what names one conversation, note or thread apart from another.
-    private static func windowTitle(of field: AXUIElement) -> String? {
-        guard let window = element(field, kAXWindowAttribute) else { return nil }
-        return SurfaceProbe.string(window, kAXTitleAttribute)
-    }
-
-    /// The window's rectangle, which is what the strip stands on when no caret can be read.
-    private static func windowFrame(of field: AXUIElement) -> CGRect? {
-        element(field, kAXWindowAttribute).flatMap(frame(of:))
-    }
-
     /// An element's rectangle as Accessibility reports it, or nothing when it gives no position or no size.
     private static func frame(of element: AXUIElement) -> CGRect? {
         guard let origin: CGPoint = SurfaceProbe.value(element, kAXPositionAttribute, .cgPoint),
@@ -199,40 +475,17 @@ public enum FocusedFieldReader {
         return CGRect(origin: origin, size: size)
     }
 
-    /// The field's frame for the snapshot, returned only when the host published one wider than a caret.
-    private static func fieldFrame(of field: AXUIElement) -> CGRect? {
-        guard let frame = frame(of: field), !FocusedFieldSnapshot.isCaretShaped(frame)
-        else { return nil }
-        return frame
-    }
-
-    /// The caret's screen rectangle, read off the glyph beside it because its own zero-length bounds lies.
-    private static func caret(_ field: AXUIElement, at range: CFRange) -> CGRect? {
-        // A real selection, unlike a caret, reports its own bounds honestly.
-        if range.length > 0, let rect = SurfaceProbe.bounds(field, at: range), rect.height > 0 { return rect }
-        let location = range.location
-        // The caret sits at the trailing edge of the glyph before it, which is what typing just moved past.
-        if location > 0,
-            let before = SurfaceProbe.bounds(field, at: CFRange(location: location - 1, length: 1)),
-            before.height > 0
-        {
-            return CGRect(x: before.maxX, y: before.minY, width: 0, height: before.height)
-        }
-        // At the very start there is no glyph before, so the caret takes the leading edge of the one after.
-        if let at = SurfaceProbe.bounds(field, at: CFRange(location: location, length: 1)), at.height > 0 {
-            return CGRect(x: at.minX, y: at.minY, width: 0, height: at.height)
-        }
-        // An empty line has no glyph beside the caret, so its own bounds is all there is.
-        if let rect = SurfaceProbe.bounds(field, at: range), rect.height > 0 { return rect }
-        // A web field answers glyph bounds with a zero-size rectangle, but its selection's text-marker range still has a place on screen.
-        if let rect = markerBounds(field), rect.height > 0 {
-            return CGRect(x: rect.minX, y: rect.minY, width: 0, height: rect.height)
-        }
-        // An editor that draws its own text keeps a one-pixel field at the caret for input methods, so that field's frame is the caret.
-        if let frame = AXNode(field).answers.frame, FocusedFieldSnapshot.isCaretShaped(frame) {
-            return CGRect(x: frame.minX, y: frame.minY, width: 0, height: frame.height)
-        }
-        return nil
+    /// The caret's screen rectangle, from the selection where the field answers it and from the text marker where it does not; `frame` is the field's own, already read.
+    private static func caret(
+        _ field: AXUIElement, at range: CFRange?, value: String?, selection: NSRange?, frame: CGRect?,
+        pointSize: CGFloat?, paragraphDirection: WritingDirection, while goOn: () -> Bool
+    ) -> CaretLocator.Result? {
+        CaretLocator.result(
+            at: range.map { (location: $0.location, length: $0.length) }, frame: frame,
+            pointSize: pointSize, value: value, textSelectionLocation: selection?.location,
+            paragraphDirection: paragraphDirection,
+            bounds: { goOn() ? SurfaceProbe.bounds(field, at: CFRange(location: $0, length: $1)) : nil },
+            markerBounds: { goOn() ? markerBounds(field) : nil })
     }
 
     /// What a field says about its own type, either half of which it may leave out.
@@ -260,19 +513,30 @@ public enum FocusedFieldReader {
         static func == (lhs: AXNode, rhs: AXNode) -> Bool { CFEqual(lhs.element, rhs.element) }
     }
 
-    /// Everything the collector asks one element, fetched in a single message the first time any of it is needed.
+    /// What the collector asks one element: its shape in a single message, and its value apart, only when its text is read.
     final class Answers {
-        /// The attributes asked for, in the order the answers come back.
-        private static let attributes = [
-            kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXValueAttribute, kAXTitleAttribute,
-            kAXDescriptionAttribute, kAXChildrenAttribute, kAXParentAttribute,
+        /// The attributes asked for together, in the order the answers come back, the value left out since it can be a whole document.
+        static let attributes = [
+            kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute,
+            kAXDescriptionAttribute, kAXChildrenAttribute, kAXParentAttribute, kAXSubroleAttribute,
+            kAXIdentifierAttribute, kAXPlaceholderValueAttribute, kAXHiddenAttribute,
         ]
+
+        /// How many UTF-16 units of a long value are read from its end, twice the per-element cap so cleaning still leaves enough.
+        static let valueReadLimit = Surroundings.maximumCharactersPerElement * 2
 
         private let element: AXUIElement
         private var fetched: [AnyObject]?
+        private var valueRead: String??
 
         init(_ element: AXUIElement) {
             self.element = element
+        }
+
+        /// Answers already in hand, one per attribute, so a test can ask them without another application.
+        init(_ element: AXUIElement, fetched: [AnyObject]) {
+            self.element = element
+            self.fetched = fetched.count == Self.attributes.count ? fetched : []
         }
 
         /// The answers, one per attribute, an element that does not answer at all standing as none.
@@ -294,16 +558,61 @@ public enum FocusedFieldReader {
         }
 
         var role: String? { self[kAXRoleAttribute] as? String }
+        var subrole: String? { self[kAXSubroleAttribute] as? String }
         var title: String? { self[kAXTitleAttribute] as? String }
 
-        /// What the element says: its value, else its title, else its description, which is where a chat keeps its messages.
+        /// Whether the element declares itself secure by role or subrole, or as a field by name, asked of the answers already fetched.
+        var isSecure: Bool {
+            SecureField.isDeclaredSecureOnScreen(
+                role: role, subrole: self[kAXSubroleAttribute] as? String,
+                identifier: self[kAXIdentifierAttribute] as? String,
+                placeholder: self[kAXPlaceholderValueAttribute] as? String,
+                description: self[kAXDescriptionAttribute] as? String)
+        }
+
+        /// What the element says: the end of its value, else its title, else its description, and nothing for a secure element.
         var text: String? {
-            for attribute in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
-                if let text = self[attribute] as? String, text.contains(where: { !$0.isWhitespace }) {
-                    return text
-                }
+            guard !isSecure else { return nil }
+            let candidates: [() -> String?] = [
+                { self.value }, { self[kAXTitleAttribute] as? String },
+                { self[kAXDescriptionAttribute] as? String },
+            ]
+            for candidate in candidates {
+                if let text = candidate(), text.contains(where: { !$0.isWhitespace }) { return text }
             }
             return nil
+        }
+
+        /// The element's value, read once and only its last ``valueReadLimit`` units when the element can say how long it is.
+        private var value: String? {
+            if let valueRead { return valueRead }
+            let read = Self.tail(of: element)
+            valueRead = .some(read)
+            return read
+        }
+
+        /// The end of an element's value by range where it is long; unknown lengths and failed ranges are skipped.
+        private static func tail(of element: AXUIElement) -> String? {
+            var length: AnyObject?
+            guard
+                AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &length)
+                    == .success, let count = (length as? NSNumber)?.intValue, count >= 0
+            else { return nil }
+            if count > valueReadLimit {
+                let range = CFRange(location: count - valueReadLimit, length: valueReadLimit)
+                guard
+                    let tail = SurfaceProbe.parameterized(
+                        element, kAXStringForRangeParameterizedAttribute, range)
+                        as? String, tail.utf16.count == valueReadLimit
+                else { return nil }
+                return tail
+            }
+            var value: AnyObject?
+            guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success
+            else {
+                return nil
+            }
+            return value as? String
         }
 
         /// Where the element is, or nothing when it reports no position or no size.
@@ -315,6 +624,18 @@ public enum FocusedFieldReader {
         }
 
         var children: [AXUIElement] { self[kAXChildrenAttribute] as? [AXUIElement] ?? [] }
+
+        /// Whether a sibling list contains links, which identify other navigable conversations.
+        var isConversationLinkList: Bool {
+            guard role == "AXList" else { return false }
+            return children.contains { child in
+                let child = Answers(child)
+                return child.role == "AXLink"
+                    || child.children.contains { Answers($0).role == "AXLink" }
+            }
+        }
+
+        var isHidden: Bool { (self[kAXHiddenAttribute] as? NSNumber)?.boolValue ?? false }
 
         var parent: AXUIElement? {
             guard let value = self[kAXParentAttribute], CFGetTypeID(value) == AXUIElementGetTypeID() else {
@@ -328,6 +649,10 @@ public enum FocusedFieldReader {
     /// The other application's window as the surroundings collector walks it, one Accessibility message per element.
     struct AXElementTree: ElementTree {
         func role(of node: AXNode) -> String? { node.answers.role }
+        func subrole(of node: AXNode) -> String? { node.answers.subrole }
+        func isConversationLinkList(_ node: AXNode) -> Bool { node.answers.isConversationLinkList }
+        func isHidden(_ node: AXNode) -> Bool { node.answers.isHidden }
+        func isSecure(_ node: AXNode) -> Bool { node.answers.isSecure }
         func text(of node: AXNode) -> String? { node.answers.text }
         func frame(of node: AXNode) -> CGRect? { node.answers.frame }
         func children(of node: AXNode) -> [AXNode] { node.answers.children.map(AXNode.init) }
@@ -356,6 +681,25 @@ public enum FocusedFieldReader {
     /// The font size in an attributed string, from whichever form the application answered in.
     static func pointSize(inAttributed attributed: CFAttributedString) -> CGFloat? {
         typeStyle(inAttributed: attributed)?.size
+    }
+
+    static func writingDirection(inAttributed attributed: CFAttributedString) -> WritingDirection {
+        guard CFAttributedStringGetLength(attributed) > 0,
+            let attribute = CFAttributedStringGetAttribute(
+                attributed, 0, kCTParagraphStyleAttributeName, nil),
+            CFGetTypeID(attribute) == CTParagraphStyleGetTypeID()
+        else { return .unknown }
+        let style = unsafeDowncast(attribute, to: CTParagraphStyle.self)
+        var direction = CTWritingDirection.natural
+        guard
+            CTParagraphStyleGetValueForSpecifier(
+                style, .baseWritingDirection, MemoryLayout<CTWritingDirection>.size, &direction)
+        else { return .unknown }
+        switch direction {
+        case .leftToRight: .leftToRight
+        case .rightToLeft: .rightToLeft
+        default: .unknown
+        }
     }
 
     /// The font in an attributed string: a Core Text font where AppKit put one, else the `AXFont` dictionary most applications answer with.
@@ -411,6 +755,30 @@ public enum FocusedFieldReader {
     private static let axFontSizeKey = "AXFontSize"
     private static let axFontFamilyKey = "AXFontFamily"
     private static let axForegroundColorKey = "AXForegroundColor"
+
+    /// The selection as a character range, measured in text markers from the field's start, for a field that refuses `AXSelectedTextRange`.
+    private static func markerSelection(_ field: AXUIElement) -> CFRange? {
+        var selected: AnyObject?
+        guard
+            AXUIElementCopyAttributeValue(field, "AXSelectedTextMarkerRange" as CFString, &selected)
+                == .success,
+            let selected, CFGetTypeID(selected) == AXTextMarkerRangeGetTypeID(),
+            let whole = SurfaceProbe.parameterized(field, "AXTextMarkerRangeForUIElement", field),
+            CFGetTypeID(whole) == AXTextMarkerRangeGetTypeID()
+        else { return nil }
+        // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
+        let selection = unsafeDowncast(selected, to: AXTextMarkerRange.self)
+        let start = AXTextMarkerRangeCopyStartMarker(unsafeDowncast(whole, to: AXTextMarkerRange.self))
+        let before = AXTextMarkerRangeCreate(nil, start, AXTextMarkerRangeCopyStartMarker(selection))
+        guard let location = markerLength(field, before), let length = markerLength(field, selection)
+        else { return nil }
+        return CFRange(location: location, length: length)
+    }
+
+    /// How many characters a text-marker range spans, or nothing where the field will not count them.
+    private static func markerLength(_ field: AXUIElement, _ range: AXTextMarkerRange) -> Int? {
+        (SurfaceProbe.parameterized(field, "AXLengthForTextMarkerRange", range) as? NSNumber)?.intValue
+    }
 
     /// The screen rectangle of the selection's text-marker range, which web content answers where it answers nothing for a character range.
     private static func markerBounds(_ field: AXUIElement) -> CGRect? {

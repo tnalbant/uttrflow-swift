@@ -2,12 +2,20 @@
 public enum FocusedElementPreference {
     /// The roles a person types into; a static text, a group or a cell under the caret is none of these.
     private static let textEntryRoles: Set<String> = [
-        "AXTextArea", "AXTextField", "AXComboBox", "AXSearchField", "AXWebArea",
+        "AXTextArea", "AXTextField", "AXComboBox", "AXSearchField",
     ]
 
     /// Whether a role is one text is entered into.
     public static func isTextEntry(_ role: String?) -> Bool {
         role.map(textEntryRoles.contains) ?? false
+    }
+
+    /// Whether an element belongs to the requested application and not this process.
+    public static func belongsToRequestedApplication(
+        owner: Int32?, requested: Int32?, current: Int32
+    ) -> Bool {
+        guard let owner, let requested else { return false }
+        return owner == requested && owner != current
     }
 
     /// The system-wide answer if it is a text-entry role, else the application's, else whichever answered. See `Docs/insertion.md`.

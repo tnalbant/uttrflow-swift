@@ -22,6 +22,12 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Whether the dictation shortcut is held down or pressed twice.
     public var hotkeyActivation: HotkeyActivation
 
+    /// Whether double-tapping the held Dictate keys keeps the microphone open until they are tapped again.
+    public var handsFreeEnabled: Bool
+
+    /// How long two Dictate taps may be apart to start or stop hands-free dictation.
+    public var handsFreeDoubleTapMilliseconds: Int
+
     /// Shortcuts that were a modifier held alone and are back to their defaults, until the user chooses again.
     public var shortcutsReturnedToDefault: Set<ShortcutAction>
 
@@ -64,13 +70,21 @@ public struct Settings: Sendable, Equatable, Codable {
     /// Whether macOS launches Uttrflow when the user logs in.
     public var opensAtLogin: Bool
 
+    /// Whether Sparkle checks for releases on its own.
+    public var checksForUpdatesAutomatically: Bool
+
     /// Whether a found update installs itself or waits to be asked; `UpdateGate` picks the moment.
     public var installsUpdatesAutomatically: Bool
+
+    /// Whether counts and timings are sent, tied to the signed-in account. See `Docs/account-telemetry.md`.
+    public var sharesUsageStatistics: Bool
+    /// Whether crash and hang reports go to Uttrflow; off until the user turns it on. See `Docs/crash-reporting.md`.
+    public var sendsCrashReports: Bool
 
     /// Whether the interface is drawn light, dark, or however the Mac is set.
     public var appearance: AppAppearance
 
-    /// How many days finished text is kept before it is deleted automatically.
+    /// How many days finished text is kept before it is deleted automatically; ``keepAlwaysDays`` keeps it.
     public var transcriptRetentionDays: Int
 
     /// How many days an unkept clip survives; a clip with an alias, category or pin has no clock.
@@ -87,6 +101,8 @@ public struct Settings: Sendable, Equatable, Codable {
         destinations: DestinationOverrides = .none,
         shortcuts: ShortcutSet = .default,
         hotkeyActivation: HotkeyActivation = .holdToTalk,
+        handsFreeEnabled: Bool = true,
+        handsFreeDoubleTapMilliseconds: Int = 450,
         shortcutsReturnedToDefault: Set<ShortcutAction> = [],
         dictationEnabled: Bool = true,
         clipboardEnabled: Bool = true,
@@ -96,9 +112,12 @@ public struct Settings: Sendable, Equatable, Codable {
         minimisesWhileDictating: Bool = true,
         playsSoundWhenRecordingStarts: Bool = true,
         opensAtLogin: Bool = true,
+        checksForUpdatesAutomatically: Bool = true,
         installsUpdatesAutomatically: Bool = true,
+        sharesUsageStatistics: Bool = true,
+        sendsCrashReports: Bool = false,
         appearance: AppAppearance = .dark,
-        transcriptRetentionDays: Int = Settings.defaultRetentionDays,
+        transcriptRetentionDays: Int = Settings.defaultTranscriptRetentionDays,
         clipboardRetentionDays: Int = Settings.defaultRetentionDays,
         suggestions: SuggestionPreferences = .default
     ) {
@@ -108,6 +127,9 @@ public struct Settings: Sendable, Equatable, Codable {
         self.destinations = destinations
         self.shortcuts = shortcuts
         self.hotkeyActivation = hotkeyActivation
+        self.handsFreeEnabled = handsFreeEnabled
+        self.handsFreeDoubleTapMilliseconds = Self.validDoubleTapMilliseconds(
+            handsFreeDoubleTapMilliseconds)
         self.shortcutsReturnedToDefault = shortcutsReturnedToDefault
         self.dictationEnabled = dictationEnabled
         self.clipboardEnabled = clipboardEnabled
@@ -117,18 +139,42 @@ public struct Settings: Sendable, Equatable, Codable {
         self.minimisesWhileDictating = minimisesWhileDictating
         self.playsSoundWhenRecordingStarts = playsSoundWhenRecordingStarts
         self.opensAtLogin = opensAtLogin
+        self.checksForUpdatesAutomatically = checksForUpdatesAutomatically
         self.installsUpdatesAutomatically = installsUpdatesAutomatically
+        self.sharesUsageStatistics = sharesUsageStatistics
+        self.sendsCrashReports = sendsCrashReports
         self.appearance = appearance
         self.transcriptRetentionDays = transcriptRetentionDays
         self.clipboardRetentionDays = clipboardRetentionDays
         self.suggestions = suggestions
     }
 
-    /// A week: long enough to find yesterday's dictation, short enough not to hoard the user's words.
+    /// A week: how long an unkept clip lives unless the user chooses otherwise.
     public static let defaultRetentionDays = 7
+
+    /// The period that stands for "keep until I delete it", longer than anything can be kept waiting.
+    public static let keepAlwaysDays = 36_500
+
+    /// Bounds finite retention values read from settings files; the keep-always sentinel is separate.
+    public static let maximumFiniteRetentionDays = 365
+
+    /// Transcripts stay until the user deletes them or chooses a shorter period.
+    public static let defaultTranscriptRetentionDays = keepAlwaysDays
+
+    /// Accepted hands-free intervals, including the existing default.
+    public static let handsFreeDoubleTapChoices = [450, 600, 800]
+
+    /// Keeps decoded timing choices within the values the Settings UI offers.
+    public static func validDoubleTapMilliseconds(_ value: Int) -> Int {
+        handsFreeDoubleTapChoices.contains(value) ? value : 450
+    }
 
     /// What a user gets before they configure anything.
     public static let `default` = Settings()
+
+    /// The defaults an install onboarded on an earlier build keeps: ⌥Space, and transcripts kept for a week.
+    public static let earlierInstall = Settings(
+        shortcuts: .earlierDefault, transcriptRetentionDays: Settings.defaultRetentionDays)
 }
 
 extension Settings {
@@ -146,6 +192,8 @@ extension Settings {
         case destinations
         case shortcuts
         case hotkeyActivation
+        case handsFreeEnabled
+        case handsFreeDoubleTapMilliseconds
         case shortcutsReturnedToDefault
         case dictationEnabled
         case clipboardEnabled
@@ -155,7 +203,10 @@ extension Settings {
         case minimisesWhileDictating
         case playsSoundWhenRecordingStarts
         case opensAtLogin
+        case checksForUpdatesAutomatically
         case installsUpdatesAutomatically
+        case sharesUsageStatistics
+        case sendsCrashReports
         case appearance
         case transcriptRetentionDays
         case clipboardRetentionDays
@@ -174,10 +225,16 @@ extension Settings {
             profile: container.value(forKey: .profile, default: fallback.profile),
             cleaning: container.value(forKey: .cleaning, default: fallback.cleaning),
             destinations: container.value(forKey: .destinations, default: fallback.destinations),
-            shortcuts: Settings.shortcuts(from: decoder, default: fallback.shortcuts),
+            // A saved file with no dictation shortcut predates ⌃⌥ held, so it keeps ⌥Space.
+            shortcuts: Settings.shortcuts(from: decoder, default: .earlierDefault),
             hotkeyActivation: container.value(
                 forKey: .hotkeyActivation, default: fallback.hotkeyActivation
             ),
+            handsFreeEnabled: container.value(
+                forKey: .handsFreeEnabled, default: fallback.handsFreeEnabled),
+            handsFreeDoubleTapMilliseconds: container.value(
+                forKey: .handsFreeDoubleTapMilliseconds,
+                default: fallback.handsFreeDoubleTapMilliseconds),
             shortcutsReturnedToDefault: container.value(
                 forKey: .shortcutsReturnedToDefault, default: fallback.shortcutsReturnedToDefault
             ).union(Settings.shortcutsReturned(from: decoder)),
@@ -202,28 +259,43 @@ extension Settings {
                 default: fallback.playsSoundWhenRecordingStarts
             ),
             opensAtLogin: container.value(forKey: .opensAtLogin, default: fallback.opensAtLogin),
+            checksForUpdatesAutomatically: container.value(
+                forKey: .checksForUpdatesAutomatically,
+                default: fallback.checksForUpdatesAutomatically
+            ),
             installsUpdatesAutomatically: container.value(
                 forKey: .installsUpdatesAutomatically,
                 default: fallback.installsUpdatesAutomatically
             ),
+            sharesUsageStatistics: container.value(
+                forKey: .sharesUsageStatistics, default: fallback.sharesUsageStatistics
+            ),
+            sendsCrashReports: container.value(
+                forKey: .sendsCrashReports, default: fallback.sendsCrashReports),
             appearance: container.value(forKey: .appearance, default: fallback.appearance),
             transcriptRetentionDays: Settings.retention(
                 container.value(
                     forKey: .transcriptRetentionDays, default: fallback.transcriptRetentionDays
-                )
+                ),
+                default: fallback.transcriptRetentionDays, keepsAlways: true
             ),
             clipboardRetentionDays: Settings.retention(
                 container.value(
                     forKey: .clipboardRetentionDays, default: fallback.clipboardRetentionDays
-                )
+                ),
+                default: fallback.clipboardRetentionDays
             ),
             suggestions: container.value(forKey: .suggestions, default: fallback.suggestions)
         )
     }
 
-    /// The stored retention, or the default when it is zero or less and would wipe the history at once.
-    static func retention(_ days: Int) -> Int {
-        days > 0 ? days : defaultRetentionDays
+    /// The stored retention, or `fallback` when it is invalid. Finite periods cannot exceed a year.
+    static func retention(_ days: Int, default fallback: Int, keepsAlways: Bool = false) -> Int {
+        guard days > 0 else { return fallback }
+        guard keepsAlways, days == keepAlwaysDays else {
+            return min(days, maximumFiniteRetentionDays)
+        }
+        return keepAlwaysDays
     }
 
     /// The dictation shortcut, or Option+Space when macOS could never deliver it.

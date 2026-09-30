@@ -78,7 +78,7 @@ partitioned on the first read and written to their own file by the next ordinary
 above the store can tell the difference, and a read that writes is a surprise nobody at the call
 site would expect.
 
-This is why `persistedSaved` exists. It records what the saved file is known to hold, as opposed
+This is why `savedOnDisk` exists. It records what the saved file is known to hold, as opposed
 to what is in memory, and the two differ exactly once: after that first read, memory already holds
 the saved clips and the saved file does not exist. Comparing the write against memory would decide
 there was nothing to write, and the migration would never reach the disk.
@@ -105,6 +105,16 @@ from the new copy, because it genuinely was copied again, just now, from somewhe
 language and the rich text is what once quietly hollowed out a clip: a Swift snippet lost its
 language chip on the second copy and a formatted note lost its formatting, while the row looked
 identical.
+
+One exception to the kind: a kept clip (pinned, named or filed) that is on disk keeps its kind and
+language when the same text arrives again classified as a secret. A secret is never written to
+disk, so taking the arrival's kind would delete the one clip the store promises never to age out,
+and the text was already on disk and shown in the panel under the user's own decision to keep it.
+A clip that is not kept still becomes a secret and leaves the disk.
+
+The rich text comes from the new copy only when the new copy carries some. A plain copy of the
+same text keeps the clip's rich text, because that may be a note the user wrote or promoted in the
+panel, checklist state included, and a plain copy has nothing to replace it with.
 
 ## Rebuilding a clip
 
@@ -149,9 +159,9 @@ which keeps arrival order in one pass and without a sort.
 **Least recently used, not fewest copies.** The rule this replaced was "fewest copies, then
 oldest", and its known weakness turned out to be the common case rather than a corner: a value
 copied twenty times last month outranked one pasted twice this morning, so the clip somebody had
-leaned on all week was the first thing thrown away. `Clip.lastUsedAt` exists to make LRU possible,
-and `markUsed` is what keeps it honest — without it, `lastUsedAt` would only ever be the arrival
-time and the policy would be least-recently-*copied* wearing an LRU name.
+leaned on all week was the first thing thrown away. `Clip.lastUsedOrder` ranks eviction, while
+`Clip.lastUsedAt` records when the use happened; `markUsed` updates both so a paste moves the
+clip to the newest position even when the wall clock moves backward.
 
 **Memory and disk are weighed separately.** `weight(of:)` counts a clip's words and deliberately
 not its picture. It once added `image.bytes`, which is the size of a file on disk the process has

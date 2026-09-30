@@ -20,6 +20,13 @@ private final class RecordingModel: ReleasableModel, Sendable {
         return -1.5
     }
 
+    func confidence(ofGenerated line: String) async -> Double? {
+        note("confidence")
+        return -0.5
+    }
+
+    func forgetEverything() async { note("forget") }
+
     func completions(for typed: String, in situation: GenerationSituation) async throws -> [String] { [] }
 
     func alternatives(
@@ -79,6 +86,22 @@ struct DiscretionaryModelTests {
         try await model.prepare(onProgress: { _ in })
         await model.release()
         #expect(inner.seen.map(\.0) == ["prepare", "release"])
+    }
+
+    @Test("reads a generated line's confidence through the wrapper, since it is a lookup and runs no pass")
+    func forwardsConfidence() async {
+        let inner = RecordingModel()
+        #expect(
+            await DiscretionaryModel(inner, mayRun: { false }).confidence(ofGenerated: "see you soon") == -0.5
+        )
+        #expect(inner.seen.map(\.0) == ["confidence"])
+    }
+
+    @Test("forgets retained answers through the wrapper even when discretionary scoring is paused")
+    func forwardsForget() async {
+        let inner = RecordingModel()
+        await DiscretionaryModel(inner, mayRun: { false }).forgetEverything()
+        #expect(inner.seen.map(\.0) == ["forget"])
     }
 
     @Test("scores nothing while a dictation is under way, and scores again once it ends")

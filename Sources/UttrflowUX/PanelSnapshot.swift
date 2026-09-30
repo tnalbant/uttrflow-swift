@@ -26,7 +26,7 @@ public enum PanelScope: String, Sendable, Equatable, CaseIterable, Codable {
     /// What the tab is drawn with; ``uttrflow`` uses the mark itself, since no SF Symbol says "this app".
     public var glyph: PanelTabGlyph {
         switch self {
-        case .history: .symbol("doc.on.clipboard")
+        case .history: .symbol("clipboard")
         case .uttrflow: .brandMark
         // A pin, not a star: the row draws a pin for the same idea, and a star means "favourite" here.
         case .pinned: .symbol("pin")
@@ -117,11 +117,20 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var sheet: PanelSheet?
     /// Keeps the formatting sheet last drawn, shared by every copy of this snapshot so an update does not diff again.
     let formattingSheets = FormattingSheetMemo()
+
+    /// Hands the snapshot a sheet already drawn, so presenting it compares nothing on the caller's actor.
+    public func remember(_ prepared: PreparedFormattingSheet) { formattingSheets.remember(prepared) }
     /// Keeps the last list of rows found, shared by every copy of this snapshot so a keystroke searches the history once and an arrow key not at all.
     let searchMemo = PanelSearchMemo()
+    /// Keeps the rows last drawn, shared by every copy of this snapshot so an arrow key rebuilds none of them.
+    let rowMemo = PanelRowMemo()
+    /// Keeps note counts across copies of this snapshot, so typing does not parse formatted notes again.
+    let checklistProgresses = ChecklistProgresses()
 
     /// Whether a delete can still be taken back; set by the app, which alone still holds the clip.
     public var canUndoDelete: Bool = false
+    /// Identifies each delete that offers undo, including consecutive deletes with the same wording.
+    public var undoAnnouncementID: UUID = UUID()
 
     /// Whether the store has yet to answer, so an empty list is unknown rather than nothing. See `Docs/panel.md`.
     public var isAwaitingList: Bool = false
@@ -146,11 +155,13 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var formattableLanguages: Set<CodeLanguage> = []
     /// Remembers which code clips can be re-indented, shared across opens so neither a keystroke nor a reopen asks again.
     let reindentOffers = ReindentOffers.shared
+    /// Remembers each clip's search-folded text, shared by every copy of this snapshot so a keystroke does not fold again.
+    let foldedTexts = FoldedTexts()
     /// The secrets the user has deliberately unmasked; a reveal never outlives the panel that asked.
     public var revealed: Set<Clip.ID>
     /// The clock the timestamps are measured against, injected so "2 minutes ago" is testable.
     public var now: Date
-    /// Carried in the state because alias matching folds case and accents by it.
+    /// Carried in the state because alias matching folds case, accents and width by it.
     public var locale: Locale
 
     /// Builds a panel over these clips; the scope starts on History.
@@ -220,11 +231,15 @@ public struct PanelSnapshot: Sendable, Equatable {
 extension PanelSnapshot {
     /// Takes a new clip list with what the machine said about it, the one path for opening and refreshing.
     public mutating func install(
-        _ clips: [Clip], missingImages: Set<Clip.ID>, formattableLanguages: Set<CodeLanguage>
+        _ clips: [Clip], missingImages: Set<Clip.ID>, formattableLanguages: Set<CodeLanguage>,
+        now: Date
     ) {
         self.clips = clips
+        checklistProgresses.prune(to: Set(clips.map(\.id)))
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
+        reindentOffers.prune(to: Set(clips.map(\.id)))
+        self.now = now
         isAwaitingList = false
         // A3, A7 — the place the user left, restorable only now the list it has to exist in is here.
         if let resume = pendingResume {

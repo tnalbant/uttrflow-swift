@@ -93,6 +93,9 @@ struct ScoredSpanTests {
     func continuingTokens() {
         #expect(ScoredSpan.continuing(Array("gi".utf8), in: bytes) == [2, 3, 4])
         #expect(ScoredSpan.continuing([], in: bytes).isEmpty)
+        let vocabulary = TokenHealing.Vocabulary(bytes: bytes, ending: [])
+        #expect(ScoredSpan.continuing(Array("gi".utf8), in: vocabulary) == [2, 3, 4])
+        #expect(ScoredSpan.continuing(Array("absent".utf8), in: vocabulary).isEmpty)
     }
 
     @Test(
@@ -130,7 +133,7 @@ private let realCandidates: [(context: String, candidate: String)] = [
 struct ScoredSpanProofTests {
     /// The suggestion model's snapshot, when this Mac has it.
     static let gemmaSnapshot = CachedSnapshot.complete(
-        identifier: LocalModel.gemma3.identifier,
+        identifier: LocalModel.gemma3.identifier, revision: LocalModel.gemma3.revision,
         in: FileManager.default.homeDirectoryForCurrentUser.appending(path: ".cache/huggingface/hub"),
         minimumWeightBytes: 0)
 

@@ -8,6 +8,21 @@ struct SelfCorrectionPassTests {
     private let sut = SelfCorrectionPass()
 
     @Test(
+        "removes only a bare-hyphen cut-off when the next word completes it",
+        arguments: [
+            ("th- the build passed", "the build passed"),
+            ("w- we are late", "we are late"),
+            ("I was go- I went to the store", "I was I went to the store"),
+            ("a well-known bug", "a well-known bug"),
+            ("send an e-mail and re-run it", "send an e-mail and re-run it"),
+            ("say dash and keep going", "say dash and keep going"),
+        ]
+    )
+    func removesBareHyphenCutOff(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "replaces a restated phrase with its restatement",
         arguments: [
             ("let's meet at four no sorry at five on tuesday", "let's meet at five on tuesday"),
@@ -182,6 +197,24 @@ struct SelfCorrectionPassTests {
         ]
     )
     func leavesUnmatched(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    /// A contracted pronoun heads a fresh clause as the pronoun does, so it cannot anchor a correction either.
+    @Test(
+        "leaves a clause that opens on a contracted pronoun",
+        arguments: [
+            "he's in the kitchen, actually, he's cooking dinner",
+            "we're late, sorry, we're stuck in traffic",
+            "you're right, actually, you're always right",
+            "they'll call, I mean, they'll call if it rains",
+            "she\u{2019}s at home, actually, she\u{2019}s working",
+            "that's fine, sorry, that's what I meant",
+            "he is in the kitchen, actually, he is cooking",
+            "I'll drive, sorry, I'll take the train",
+        ]
+    )
+    func leavesContractedPronounClauses(input: String) {
         #expect(cleaned(input, by: sut) == input)
     }
 

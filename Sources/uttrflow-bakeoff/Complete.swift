@@ -39,6 +39,13 @@ struct Complete: AsyncParsableCommand {
     )
     var raw = false
 
+    @Flag(
+        name: .long,
+        help:
+            "Also time the scorer's second pass over each first line and record its score, beside the pass's own."
+    )
+    var judge = false
+
     @Option(name: .long, help: "Run only the fixtures that missed in this earlier run's JSON.")
     var failedIn: String?
 
@@ -48,6 +55,12 @@ struct Complete: AsyncParsableCommand {
             "Where the first pass leaves nothing, spend a second, wider pass and record what it rescues and what it costs."
     )
     var secondOpinion = false
+
+    func validate() throws {
+        if let limit, limit < 1 {
+            throw ValidationError("--limit must be at least 1.")
+        }
+    }
 
     func run() async throws {
         let generator: any CandidateGenerating
@@ -121,6 +134,9 @@ struct Complete: AsyncParsableCommand {
             var invented = false
             var rescued = false
             var secondMs: Int?
+            var confidence: Double?
+            var judgeScore: Double?
+            var judgeMs: Int?
             // A fixture on a machine is asked what the word may be first, and its answer is sieved after, as the app does both.
             let grounding = await Grounding(for: fixture)
             var situation = fixture.situation
@@ -158,18 +174,50 @@ struct Complete: AsyncParsableCommand {
             } catch {
                 failure = "error: \(error)"
             }
+            let scoring = scorer as? any CandidateScoring
+            var scores: [String: Double] = [:]
+            if let scoring {
+                for completion in completions {
+                    if let score = await scoring.confidence(ofGenerated: completion) {
+                        scores[completion] = score
+                    }
+                }
+            }
+            confidence = completions.first.flatMap { scores[$0] }
+            let decision = SuggestionSession.generatedDecision(
+                completions, typed: fixture.typed, scores: scores)
+            let drawn: [String]
+            switch decision {
+            case .noCandidate, .unsure:
+                drawn = []
+            case .certain(let line):
+                drawn = [line]
+            case .choice(let leader, let others):
+                drawn = [leader] + others
+            }
+            let held = !completions.isEmpty && decision == .unsure
             let elapsed = Int((ContinuousClock.now - started) / .milliseconds(1))
+            // The second pass the gate no longer spends is timed apart from the turn, to show what it would cost.
+            if judge, let scoring, let first = completions.first {
+                let judging = ContinuousClock.now
+                judgeScore = await scoring.logLikelihood(of: first, following: fixture.typed)
+                judgeMs = Int((ContinuousClock.now - judging) / .milliseconds(1))
+            }
             let result = FixtureResult(
                 name: fixture.name, category: fixture.category, typed: fixture.typed,
-                hit: fixture.hits(completions), judged: fixture.isJudged,
-                conforms: fixture.conforms(completions), elapsedMs: elapsed,
+                hit: fixture.hits(drawn), judged: fixture.isJudged,
+                conforms: fixture.conforms(drawn), elapsedMs: elapsed,
                 first: failure ?? completions.first, raw: words, invented: invented, rescued: rescued,
-                secondOpinionMs: secondMs)
+                secondOpinionMs: secondMs,
+                gate: FixtureResult.Gate(
+                    confidence: confidence, held: held, hitIfDrawn: fixture.hits(completions),
+                    judgeScore: judgeScore, judgeMs: judgeMs))
             results.append(result)
             print(result.row)
         }
         let report = FixtureReport(results: results)
         report.printSummary()
+        report.printFloors()
         report.printFailures()
         guard let json else { return }
         do {

@@ -1,4 +1,4 @@
-// The Settings window's observable state over `SettingsSession`.
+// The Settings page's observable state over `SettingsSession`.
 
 import UttrflowCore
 import UttrflowHistory
@@ -8,14 +8,11 @@ import SwiftUI
 
 import struct Foundation.Date
 
-/// The Settings window's observable state; every rule lives in `SettingsSession`.
+/// The Settings page's observable state; every rule lives in `SettingsSession`.
 @MainActor
 @Observable
 final class SettingsViewModel {
     var session: SettingsSession
-
-    /// Who is signed in, for the foot of the rail; set from outside, because the app already holds it.
-    var identity: AccountIdentity?
 
     private let store: any SettingsStore
     private let personalisation: any SettingsPersonalisationStore
@@ -25,6 +22,8 @@ final class SettingsViewModel {
     private let onReset: (SettingsReset) -> Void
     /// Told when the shortcut field starts and stops listening, so the live shortcut stands down meanwhile.
     private let onShortcutRecording: (Bool) -> Void
+    /// Re-reads the system preference when the user chooses hold-Fn.
+    private let readGlobeKeyAction: () -> GlobeKeyAction
 
     init(
         store: any SettingsStore,
@@ -34,7 +33,8 @@ final class SettingsViewModel {
         onChange: @escaping (UttrflowSettings.Settings) -> Void = { _ in },
         onRequest: @escaping (SettingsChange) -> Void = { _ in },
         onReset: @escaping (SettingsReset) -> Void = { _ in },
-        onShortcutRecording: @escaping (Bool) -> Void = { _ in }
+        onShortcutRecording: @escaping (Bool) -> Void = { _ in },
+        readGlobeKeyAction: @escaping () -> GlobeKeyAction = { .doNothing }
     ) {
         self.store = store
         self.personalisation = personalisation
@@ -42,12 +42,14 @@ final class SettingsViewModel {
         self.onRequest = onRequest
         self.onReset = onReset
         self.onShortcutRecording = onShortcutRecording
+        self.readGlobeKeyAction = readGlobeKeyAction
         session = SettingsSession(
             settings: store.load(), capabilities: capabilities, tab: tab)
     }
 
     /// Starts listening for a new shortcut, and stands the live one down while it does.
     func beginRecordingShortcut(_ action: ShortcutAction) {
+        session.capabilities.globeKeyAction = readGlobeKeyAction()
         session.beginRecordingShortcut(action)
         onShortcutRecording(true)
     }
@@ -61,19 +63,27 @@ final class SettingsViewModel {
         }
     }
 
-    /// Moves to `tab`, first ending any shortcut recording, since the field that owns it goes with the old tab.
+    /// Moves to `tab` and out of any search, first ending a recording, since the field that owns it goes too.
     func select(_ tab: SettingsTab) {
-        guard tab != session.tab else { return }
+        guard tab != session.tab || !session.query.isEmpty else { return }
         cancelRecordingShortcut()
+        session.query = ""
         session.tab = tab
     }
 
-    /// A local recorder owns only the Settings window; leaving that surface ends the attempt.
+    /// Filters every tab's rows by what is typed, ending a recording whose row the search may hide.
+    func search(_ query: String) {
+        guard query != session.query else { return }
+        cancelRecordingShortcut()
+        session.query = query
+    }
+
+    /// A local recorder owns only the Settings page; leaving that surface ends the attempt.
     func shortcutRecordingSurfaceDidLoseFocus() {
         cancelRecordingShortcut()
     }
 
-    /// Applies an authoritative change made outside the Settings window without replacing its UI state.
+    /// Applies an authoritative change made outside the Settings page without replacing its UI state.
     func synchronize(settings: UttrflowSettings.Settings) {
         session.synchronize(settings: settings)
     }
@@ -82,6 +92,9 @@ final class SettingsViewModel {
     func apply(_ change: SettingsChange) {
         // A request to act now is handed on whole, since saving it would store nothing and lose it.
         guard !change.isRequestToAct else { return onRequest(change) }
+        if case .shortcut(.dictate, let binding) = change, binding.isFunctionHold {
+            session.capabilities.globeKeyAction = readGlobeKeyAction()
+        }
         persist(session.apply(change))
     }
 

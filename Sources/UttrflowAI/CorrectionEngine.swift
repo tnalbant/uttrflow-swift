@@ -25,9 +25,8 @@ public struct WordCorrectionEngine: Sendable {
             .compactMap { proposal(for: $0, against: dictionary, given: evidence) }
         let chosen = Self.withoutOverlaps(wanted)
 
-        // The cap counts spoken words, not proposals: replacing a run of three changes three words.
-        let changed = chosen.reduce(0) { $0 + $1.wordRange.count }
-        guard changed <= Self.budget(for: utterance.words.count) else { return [] }
+        // Each dictionary entry is one proposal, even when it replaces a multi-word run.
+        guard chosen.count <= Self.budget(for: utterance.words.count) else { return [] }
         return chosen.sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound }
     }
 
@@ -63,10 +62,12 @@ public struct WordCorrectionEngine: Sendable {
         return nil
     }
 
-    /// Whether an entry may take a run of several words: it must spell them, or at least open as they do.
+    /// Whether an entry writes out a multi-word run, or a one-word reading opens alike.
     static func spells(_ entry: DictionaryEntry, asHeard heard: String) -> Bool {
-        // One word for one word is the ordinary case, and the evidence alone decides it.
-        guard heard.split(whereSeparator: \.isWhitespace).count > 1 else { return true }
+        if WordShape.words(heard).count > 1 {
+            return MeaningPreservationGuard.isWritten(heard, in: entry.word)
+                || MeaningPreservationGuard.isWritten(heard, in: entry.soundsLike)
+        }
         // Either the spelling or the pronunciation the user wrote for it, which is what that field is for.
         return [entry.word, entry.soundsLike].contains {
             ReadingRestraint.closedUp($0) == ReadingRestraint.closedUp(heard)
@@ -96,7 +97,9 @@ struct UncertainSpan: Sendable, Equatable {
 
     /// Every run up to the index's word limit in which every word is doubted, most deserving first.
     static func spans(in utterance: Utterance, below threshold: Double) -> [UncertainSpan] {
-        spans(in: utterance.words.map { ($0.text, $0.confidence) }, below: threshold)
+        spans(
+            in: utterance.words.map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
+            below: threshold)
     }
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
@@ -104,8 +107,15 @@ struct UncertainSpan: Sendable, Equatable {
         spans(
             in: draft.words
                 .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-                .map { ($0.text, $0.confidence) },
+                .map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
             below: threshold)
+    }
+
+    /// A word in a Homophones group is doubted regardless of recogniser confidence, so its partners can be tried.
+    private static func effectiveConfidence(
+        text: String, confidence: Double
+    ) -> (text: String, confidence: Double) {
+        Homophones.group(containing: text) == nil ? (text, confidence) : (text, -1)
     }
 
     /// The runs themselves, over anything that can name a word and how sure the recogniser was of it.

@@ -1,5 +1,9 @@
+import Foundation
+
 /// The measurable facts about where a line is written, computed the same way in every application and never from its name. See `Docs/predict-context.md`.
 public struct Register: Sendable, Equatable {
+    /// Whether the destination table classifies this as a SQL or code editor.
+    public let isCodeDestination: Bool
     /// Whether the field holds many lines, where paragraphs are written rather than commands or searches.
     public let isMultiline: Bool
     /// About how long this person's lines here are, in characters, or the screen's lines in a conversation.
@@ -18,8 +22,10 @@ public struct Register: Sendable, Equatable {
     /// The facts as a caller already holds them, for a register that is not inferred.
     public init(
         isMultiline: Bool, typicalLength: Int?, isConversational: Bool, symbolShare: Double,
-        usesSentenceCase: Bool?, writesAddresses: Bool = false, isSearchField: Bool = false
+        usesSentenceCase: Bool?, writesAddresses: Bool = false, isSearchField: Bool = false,
+        isCodeDestination: Bool = false
     ) {
+        self.isCodeDestination = isCodeDestination
         self.isMultiline = isMultiline
         self.typicalLength = typicalLength
         self.isConversational = isConversational
@@ -56,20 +62,26 @@ public struct Register: Sendable, Equatable {
             usesSentenceCase: own.isEmpty ? nil : sentenceCaseShare(of: own) >= 0.5,
             // The person's own lines decide where there are any; a combined search-and-address field takes queries too.
             writesAddresses: own.isEmpty ? namesAddressField(situation.field) : addressShare(of: own) >= 0.5,
-            isSearchField: namesSearchField(situation.field))
+            isSearchField: namesSearchField(situation.field),
+            isCodeDestination: situation.isCodeDestination)
     }
 
     /// Whether the field's own accessibility name says it takes web addresses: browsers publish "Address and search bar", "Search or enter website name", "Search or enter address" or a URL field, while a postal or email address field never pairs the word with search.
     static func namesAddressField(_ name: String?) -> Bool {
-        guard let name = name?.lowercased() else { return false }
-        return name.contains("url") || name.contains("website") || name.contains("web address")
-            || (name.contains("search") && name.contains("address"))
+        let words = fieldNameWords(name)
+        return words.contains("url") || words.contains("website")
+            || (words.contains("web") && words.contains("address"))
+            || (words.contains("search") && words.contains("address"))
     }
 
     /// Whether the field's own accessibility name says it searches: a box called a search or a find is answered from what this person has looked for, never from a guess at what they mean; a filter or a query is not counted, since an editor calls its own field one.
     static func namesSearchField(_ name: String?) -> Bool {
-        guard let name = name?.lowercased() else { return false }
-        return name.contains("search") || name.contains("find")
+        let words = fieldNameWords(name)
+        return words.contains("search") || words.contains("find")
+    }
+
+    private static func fieldNameWords(_ name: String?) -> Set<String> {
+        Set((name ?? "").lowercased().split { !$0.isLetter }.map(String.init))
     }
 
     /// Whether the line can only come from what this person has entered here before: a host and a search phrase are both known or unknowable, never inferred. See `Docs/predict-precision.md`.
@@ -78,8 +90,13 @@ public struct Register: Sendable, Equatable {
     /// What the line is, in the word the instruction at the line uses, so the register is stated once more where a small model weighs it most.
     public var kind: String {
         if writesAddresses { return "web address, a host and path and never a command," }
-        if symbolShare > Self.symbolicShare { return "command, query or line of code" }
+        if isCodeLike { return "command, query or line of code" }
         return isConversational ? "reply" : "line"
+    }
+
+    /// A known editor or a symbolic line tells the model it is writing code, a command or a query.
+    private var isCodeLike: Bool {
+        symbolShare > Self.symbolicShare || isCodeDestination
     }
 
     /// The share of the lines shaped like a web address: no spaces, a dot inside, letters after it.
@@ -96,22 +113,42 @@ public struct Register: Sendable, Equatable {
         return line[line.index(after: dot)].isLetter
     }
 
-    /// A reply is always given room for a whole message, however terse this person has been, since a reply cut to a word is no reply.
+    /// A reply with no typical length to follow is given room for a whole message.
     public static let replyTokens = 48
 
     /// Below this many characters a person's typical line says they write tersely, not how long a reply should be, so it is not quoted to the model.
     public static let terseLength = 24
 
-    /// How many tokens a pass may spend: enough for a line the length of this person's lines, never less than a short one, and never less than a whole reply.
+    /// How many tokens a pass may spend: enough for a line the length of this person's lines, never less than a short one.
     public var maxTokens: Int {
         // Half the typical character count is about twice the tokens the line needs, which leaves room for alternatives.
-        let budget: Int
         if let typicalLength {
-            budget = min(max(typicalLength / 2, Self.tokenRange.lowerBound), Self.tokenRange.upperBound)
-        } else {
-            budget = symbolShare > Self.symbolicShare ? 32 : (isConversational ? Self.replyTokens : 64)
+            return min(max(typicalLength / 2, Self.tokenRange.lowerBound), Self.tokenRange.upperBound)
         }
-        return isConversational ? max(budget, Self.replyTokens) : budget
+        return isCodeLike ? 32 : (isConversational ? Self.replyTokens : 64)
+    }
+
+    /// Whether a line here is prose, a reply or a document's sentence, which ends at its first sentence end.
+    public var endsAtSentence: Bool { !writesAddresses && !isCodeLike }
+
+    /// How many of this person's typical lines a continuation may run to before it is no line of theirs.
+    public static let lengthMultiple = 3
+
+    /// The fewest characters a continuation is allowed, so a terse person's line can still be finished by a word or two.
+    public static let shortestAllowance = 16
+
+    /// The most characters a continuation may add with no typical length to go by: a reply, a search or an address runs short, a command or a document's line longer.
+    public var registerContinuationLimit: Int {
+        if writesAddresses || isSearchField { return 80 }
+        if isCodeLike { return 120 }
+        return isConversational ? 80 : 160
+    }
+
+    /// The most characters a continuation may add here: a multiple of this person's typical line, never past the register's own limit.
+    public var longestContinuation: Int {
+        guard let typicalLength else { return registerContinuationLimit }
+        return min(
+            registerContinuationLimit, max(typicalLength * Self.lengthMultiple, Self.shortestAllowance))
     }
 
     /// The facts as short phrases the model reads, so it matches the register instead of guessing it.
@@ -128,7 +165,7 @@ public struct Register: Sendable, Equatable {
             hints.append("the lines here are web addresses, so the line continues into a host and path")
             return hints
         }
-        if symbolShare > Self.symbolicShare {
+        if isCodeLike {
             hints.append("the text here is commands, code or queries rather than prose")
             return hints
         }
@@ -177,10 +214,38 @@ public struct Register: Sendable, Equatable {
         let label = line[..<colon].trimmingCharacters(in: .whitespaces)
         guard let first = label.first, first.isLetter, label.count <= speakerLength,
             label.split(separator: " ").count <= speakerWords,
-            label.allSatisfy({ $0.isLetter || $0.isNumber || " ()._-'".contains($0) })
+            label.allSatisfy({ $0.isLetter || $0.isNumber || " ()._-'".contains($0) }),
+            !namesField(label), !isDateLabel(label)
         else { return nil }
         return label
     }
+
+    /// Whether a label is a calendar month or weekday followed by a day number.
+    static func isDateLabel(_ label: String) -> Bool {
+        let words = label.split(whereSeparator: \.isWhitespace)
+        guard words.count == 2, let day = Int(words[1]), (1...31).contains(day) else { return false }
+        let calendar = Calendar.current
+        let calendarNames =
+            calendar.monthSymbols + calendar.shortMonthSymbols + calendar.standaloneMonthSymbols
+            + calendar.weekdaySymbols + calendar.shortWeekdaySymbols + calendar.standaloneWeekdaySymbols
+        return calendarNames.contains { $0.caseInsensitiveCompare(String(words[0])) == .orderedSame }
+    }
+
+    /// Whether a label names a field, by its whole text or its head word, so "Expected result" and "Assigned to" are fields.
+    static func namesField(_ label: String) -> Bool {
+        let lowered = label.lowercased()
+        let head = lowered.prefix { $0.isLetter }
+        return fieldLabels.contains(lowered) || fieldLabels.contains(String(head))
+    }
+
+    /// Words a record, a form, a mail header or a report opens its repeated labels with, which name a field and never a person.
+    static let fieldLabels: Set<String> = [
+        "actual", "address", "amount", "assigned", "assignee", "attendees", "bcc", "category", "cc",
+        "created", "date", "deadline", "description", "due", "email", "end", "environment", "expected",
+        "from", "id", "location", "name", "note", "notes", "owner", "phone", "priority", "reported",
+        "reporter", "result", "sent", "severity", "start", "status", "steps", "subject", "summary", "tags",
+        "time", "title", "to", "total", "type", "updated", "version", "when", "where",
+    ]
 
     /// The longest a speaker's name may run, in characters, before the text before a colon reads as a sentence.
     static let speakerLength = 32
@@ -222,11 +287,16 @@ public struct Register: Sendable, Equatable {
         return sorted[sorted.count / 2]
     }
 
-    /// The share of the visible characters that are neither letters, digits nor whitespace.
+    /// Whether a character is drawn as an emoji, which decorates prose and is never a command's symbol.
+    static func isPictograph(_ character: Character) -> Bool {
+        character.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.value == 0xFE0F }
+    }
+
+    /// The share of the visible characters that are neither letters, digits nor whitespace, emoji left out.
     static func symbolShare(of texts: [String]) -> Double {
         var visible = 0
         var symbols = 0
-        for character in texts.joined() where !character.isWhitespace {
+        for character in texts.joined() where !character.isWhitespace && !isPictograph(character) {
             visible += 1
             if !character.isLetter, !character.isNumber { symbols += 1 }
         }

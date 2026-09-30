@@ -1,33 +1,54 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
 public struct LayoutWordsPass: CleaningPass {
     public static let id: PassID = .layoutWords
 
+    private let layout: LayoutPolicy
+    private let insertionState: InsertionPoint.SentenceState
+
     /// What each spoken phrase becomes; a bullet marker carries its own dash and space.
-    static let marks: [(words: [String], mark: String)] = [
-        (["new", "line"], "\n"), (["new", "paragraph"], "\n\n"), (["blank", "line"], "\n\n"),
-        (["bullet", "point"], "\n- "), (["next", "point"], "\n- "),
+    static let marks: [(words: [String], mark: String, requiresLists: Bool)] = [
+        (["new", "line"], "\n", false), (["new", "paragraph"], "\n\n", false),
+        (["blank", "line"], "\n\n", false), (["bullet", "point"], "\n- ", true),
+        (["next", "point"], "\n- ", true),
     ]
 
     /// The word that opens a numbered item. It is not in `marks` because the number after it picks the mark.
     static let numbering = "number"
 
-    public init() {}
+    public init(
+        layout: LayoutPolicy = [.paragraphs, .lists], insertionPoint: InsertionPoint = .unknown
+    ) {
+        self.layout = layout
+        self.insertionState = insertionPoint.sentenceState
+    }
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
         var live = draft.presentIndices
         let numbered = Set(live.indices.compactMap { itemValue(at: $0, in: live, of: draft) })
+        let labelledItems = labelledItems(in: live, of: draft, among: numbered)
         var position = 0
         while position < live.count {
             guard
                 let found = opening(mark(at: position, in: live, of: draft), at: position),
                 position + found.length < live.count,
-                isUsed(found, at: position, in: live, of: draft),
+                isUsed(found, at: position, in: live, of: draft, among: numbered),
                 isCorroborated(at: position, in: live, of: draft, among: numbered)
             else {
                 position += 1
+                continue
+            }
+            removeClauseMarkBeforeLayout(at: position, in: live, from: &draft)
+            if let label = labelledItems[live[position]],
+                let item = itemNumber(at: position + 1, in: live, of: draft)
+            {
+                let labelText = WordShape.capitalised(draft.shape(at: label).core)
+                draft.replace(at: label, with: "\n\(labelText) \(item.value): ", by: Self.id)
+                for index in live[position..<position + found.length] { draft.remove(at: index, by: Self.id) }
+                live.removeSubrange(position..<position + found.length)
                 continue
             }
             draft.replace(at: live[position], with: found.mark, by: Self.id)
@@ -40,39 +61,130 @@ public struct LayoutWordsPass: CleaningPass {
         return draft
     }
 
-    /// The mark with nothing to break from at the head of the text, where a break is no layout and only an item's number is.
+    /// Removes a comma or semicolon stranded before a layout mark.
+    private func removeClauseMarkBeforeLayout(at position: Int, in live: [Int], from draft: inout Draft) {
+        guard position > 0 else { return }
+        let previous = live[position - 1]
+        let shape = draft.shape(at: previous)
+        guard
+            !shape.core.isEmpty,
+            let clauseMark = shape.suffix.first(where: { ",;".contains($0) })
+        else { return }
+        let suffix = shape.suffix.filter { $0 != clauseMark }
+        draft.replace(at: previous, with: shape.prefix + shape.core + suffix, by: Self.id)
+    }
+
+    /// Labels that repeat before a corroborated, consecutive sequence of numbered items.
+    private func labelledItems(in live: [Int], of draft: Draft, among numbered: Set<Int>) -> [Int: Int] {
+        var groups: [String: [(marker: Int, label: Int, value: Int)]] = [:]
+        for position in live.indices {
+            guard let found = mark(at: position, in: live, of: draft), position + found.length < live.count,
+                isUsed(found, at: position, in: live, of: draft, among: numbered),
+                isCorroborated(at: position, in: live, of: draft, among: numbered),
+                position > 0,
+                let item = itemNumber(at: position + 1, in: live, of: draft),
+                !draft.shape(at: live[position - 1]).endsSentence
+            else { continue }
+            let label = live[position - 1]
+            groups[draft.shape(at: label).key, default: []].append(
+                (marker: live[position], label: label, value: item.value))
+        }
+        return groups.values.reduce(into: [:]) { labels, items in
+            guard items.count > 1,
+                zip(items, items.dropFirst()).allSatisfy({ pair in pair.1.value == pair.0.value + 1 })
+            else { return }
+            for item in items { labels[item.marker] = item.label }
+        }
+    }
+
+    /// At the head, a break depends on the insertion point; an item number keeps its existing behavior.
     private func opening(
         _ found: (length: Int, mark: String)?, at position: Int
     ) -> (length: Int, mark: String)? {
         guard let found, position == 0 else { return found }
-        let mark = String(found.mark.drop(while: \.isNewline))
-        return mark.isEmpty ? nil : (found.length, mark)
+        guard found.mark.allSatisfy(\.isNewline) else { return found }
+        switch insertionState {
+        case .startOfText:
+            return (found.length, "")
+        case .startOfSentence, .midSentence:
+            return found
+        case .unknown:
+            return nil
+        }
     }
 
     /// Whether the phrase is dictated layout rather than named; an item opening its sentence needs a mark. See `Docs/cleanup.md`.
     private func isUsed(
-        _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft
+        _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft,
+        among numbered: Set<Int>
     ) -> Bool {
         let length = found.length
+        if position == 0, found.mark.allSatisfy(\.isNewline), insertionState != .unknown { return true }
         // Asked of the sentence, not the text, so a sentence before it cannot turn "number one is broken" into an item.
         guard position == 0 || draft.shape(at: live[position - 1]).endsSentence else {
-            return !MentionGuard.isMentioned(at: position, spanning: length, in: live, of: draft)
+            return !MentionGuard.isMentioned(
+                at: position, spanning: length, in: live, of: draft, reach: MentionGuard.phraseReach,
+            )
         }
         // A break straight after a sentence's stop is how people dictate one: "full stop new paragraph".
         if position > 0, found.mark.allSatisfy(\.isNewline) { return true }
         let last = draft.shape(at: live[position + length - 1])
-        return last.endsClause && !last.endsSentence
+        return (last.endsClause && !last.endsSentence)
+            || isCorroborated(at: position, in: live, of: draft, among: numbered)
     }
 
     /// Whether a numbered item inside its sentence has a neighbouring item said beside it, since a lone one is a designator.
     private func isCorroborated(
         at position: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
     ) -> Bool {
-        guard position > 0, !draft.shape(at: live[position - 1]).endsSentence,
-            let value = itemValue(at: position, in: live, of: draft)
-        else { return true }
-        return (value > 1 && numbered.contains(value - 1))
-            || (value < Int.max && numbered.contains(value + 1))
+        let opensSentence = position == 0 || draft.shape(at: live[position - 1]).endsSentence
+        guard opensSentence, let value = itemValue(at: position, in: live, of: draft) else { return true }
+        guard
+            (value > 1 && numbered.contains(value - 1))
+                || (value < Int.max && numbered.contains(value + 1))
+        else { return false }
+        return isEligibleNumberedRun(at: value, in: live, of: draft, among: numbered)
+    }
+
+    /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
+    private func isEligibleNumberedRun(
+        at value: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
+    ) -> Bool {
+        let positionsByValue = Dictionary(
+            numbered.compactMap { position -> (Int, Int)? in
+                guard let item = itemValue(at: position, in: live, of: draft) else { return nil }
+                return (item, position)
+            }, uniquingKeysWith: { first, _ in first },
+        )
+        var first = value
+        while first > 1, positionsByValue[first - 1] != nil { first -= 1 }
+        var item = first
+        var firstMarker: Int?
+        var hasJoiningWord = false
+        while let marker = positionsByValue[item] {
+            if firstMarker == nil { firstMarker = marker }
+            if marker > 0 {
+                let previous = draft.shape(at: live[marker - 1]).key
+                hasJoiningWord = hasJoiningWord || previous == "and" || previous == "or"
+            }
+            guard item < Int.max else { return false }
+            item += 1
+        }
+        guard let firstMarker else { return false }
+        return !hasJoiningWord && isLeadInBefore(firstMarker, in: live, of: draft)
+    }
+
+    /// A mid-sentence list starts after a lead-in, not after a running clause.
+    private func isLeadInBefore(_ marker: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard marker > 0, !draft.shape(at: live[marker - 1]).endsSentence else { return true }
+        let previous = draft.shape(at: live[marker - 1])
+        guard !["and", "or"].contains(previous.key) else { return false }
+        if ["need", "are", "check"].contains(previous.key) { return true }
+        let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = context
+        guard let range = context.range(of: previous.core, options: .backwards) else { return false }
+        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.
@@ -85,10 +197,14 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// The layout the words at `position` become: one of the fixed phrases, or a numbered item.
     private func mark(at position: Int, in live: [Int], of draft: Draft) -> (length: Int, mark: String)? {
-        if let found = Self.marks.first(where: { matches($0.words, at: position, in: live, of: draft) }) {
+        if let found = Self.marks.first(where: {
+            matches($0.words, at: position, in: live, of: draft)
+                && (layout.contains(.lists) || !$0.requiresLists)
+        }) {
             return (found.words.count, found.mark)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
+            layout.contains(.lists),
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
         return (item.count + 1, "\n\(item.value). ")
@@ -108,7 +224,7 @@ public struct LayoutWordsPass: CleaningPass {
 
     private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
         position + words.count <= live.count
-            && draft.sentenceRun(from: position, in: live).count >= words.count
+            && draft.sentenceContains(words.count, from: position, in: live)
             && zip(words, live[position..<position + words.count]).allSatisfy {
                 $0 == draft.shape(at: $1).key
             }

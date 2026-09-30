@@ -86,28 +86,33 @@ neither a path nor a host — rather than as a directory. Three things follow fr
 stand behind one; and what is typed there is remembered under the session rather than under the
 directory this Mac was left in. Nothing is stat'ed on the strength of a remote prompt.
 
-**How the session is recognised, and how reliable that is.** Whether a terminal is remote is not
-knowable from outside it, so this reads the one signal the app already holds: the window title,
-which by default carries the name of the foreground process — `ssh`, `mosh`, `mosh-client` — as
-its own word. A word that only reads like one is not it: `~/.ssh`, `.ssh`, `ssh-keygen` and `scp`
-keep the directory.
+**How the session is recognised, and how reliable that is.** A title naming `ssh`, `mosh`,
+`mosh-client`, `autossh`, `docker exec`, `kubectl exec`, or `gcloud compute ssh` is scoped as
+remote. A `user@host` title is remote unless its host exactly matches this Mac's reported local
+host name (with an optional `.local` suffix). A path-like title such as `~/.ssh` is not a remote
+program name.
 
-The two other candidate signals were weighed and left alone:
+The title cannot prove locality in every terminal configuration. If it names neither a known
+remote command nor this Mac's exact host, it receives `RemoteSession.unknownScope`. That opaque
+scope is also refused by the verifier, so an overwritten remote title, a shell inside tmux or
+screen, or an unfamiliar command cannot use this Mac's files, branches, programs, or remembered
+lines. This may withhold suggestions in a local terminal whose title does not name its host; that
+is the cost of not treating an uncertain machine as this one.
 
-- **A `user@host` prompt or title that differs from this Mac's name.** It needs this Mac's names to
-  compare against, and it has several — the Bonjour name, the local hostname with and without
-  `.local`, the name the network hands out — so a local prompt reads as remote often enough to
-  lose the feature in ordinary local terminals. That is failing closed in the wrong place.
-- **A process check.** What a terminal is running is the terminal's child, not this app's, and
-  reading it means looking outside what the app is permitted to see. It is not worth a wider
-  permission.
+A process check is not used: the terminal process is the shell, not the program that shell runs,
+and inspecting its descendants would require access beyond the window title.
 
-**This detection fails open**, and deliberately: with no positive signal a terminal is read as
-local, so an `ssh` session whose title names no program — one the remote shell has overwritten,
-or a terminal configured not to show the process — is still read against this disk. Failing the
-other way means treating every terminal as possibly remote, which withdraws the feature from every
-local one. So this narrows the bug to the case where no signal exists rather than closing it; a
-session that announces itself is handled, and one that does not is where it stood before.
+## tmux and screen panes
+
+A tmux or GNU screen client presents its panes inside one terminal window and one Accessibility
+text area. The document directory exposed there belongs to the outer terminal process; it does not
+identify the pane currently under the caret. Pane switches therefore cannot safely reuse that
+directory for path checks, branch lookups, machine candidates, or corpus identity.
+
+When the terminal title names `tmux` or `screen`, or provides no trustworthy machine identity,
+the field receives `RemoteSession.unknownScope`. The verifier refuses terminal lines, no local
+directory index is queried, and observations stay outside the outer directory's corpus. A pane's
+filesystem cannot be inferred from the outer terminal's Accessibility document.
 
 ## What it never does
 
@@ -164,5 +169,3 @@ right answer as a hit, which is why they counted before.
 - A glob or a variable in a checked position refuses the line, even where it would match.
 - A remote session whose window title names no remote program is read as local, and a local
   directory named `ssh` or `mosh` is read as a remote session and offered nothing.
-- `FieldReading.directory(of:)` drops the last component of a document path with an extension, so
-  a terminal in a folder such as `site.example.io` is scoped to its parent (#766).

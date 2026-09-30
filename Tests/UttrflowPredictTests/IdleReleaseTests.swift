@@ -50,6 +50,10 @@ private actor RecordingModel: ReleasableModel {
     }
 
     func logLikelihood(of candidate: String, following context: String) async -> Double? { -1 }
+
+    func confidence(ofGenerated line: String) async -> Double? { -0.5 }
+
+    func forgetEverything() async { steps.append("forget") }
 }
 
 /// Every reload event in the order it was told, collected from whichever thread tells it.
@@ -82,6 +86,15 @@ private actor Told {
 struct IdleReleaseTests {
     private let situation = GenerationSituation(application: "Mail", surroundings: "the draft")
 
+    @Test("forgetting reaches the loaded model without releasing it")
+    func forgettingForwardsWithoutRelease() async {
+        let inner = RecordingModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        try? await model.prepare(onProgress: { _ in })
+        await model.forgetEverything()
+        #expect(await inner.steps == ["load", "forget"])
+    }
+
     @Test("a Mac under 16 GB gets the short window")
     func windowByMemory() {
         #expect(IdleRelease.window(physicalMemory: 8 * 1_073_741_824) == .seconds(180))
@@ -111,6 +124,7 @@ struct IdleReleaseTests {
         _ = try await model.completions(for: "Thanks", in: situation)
         _ = try await model.alternatives(for: "Thanks", in: situation, excluding: "Thanks done")
         #expect(await model.logLikelihood(of: "Thanks a lot", following: "Thanks") == -1)
+        #expect(await model.confidence(ofGenerated: "Thanks a lot") == -0.5)
         #expect(await model.releaseIfIdle(at: start + .seconds(599)))
     }
 
@@ -142,6 +156,30 @@ struct IdleReleaseTests {
         await told.waitForOne()
         try await model.reload()
         #expect(await inner.steps == ["load", "release", "reload", "reload"])
+    }
+
+    @Test("a failed idle reload is not retried by later readiness checks")
+    func failedIdleReloadIsNotRetriedUntilPrepare() async throws {
+        let inner = RecordingModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        let told = Told()
+        await model.whenReloadFails { Task { await told.note() } }
+        try await model.prepare(onProgress: { _ in })
+        #expect(await model.releaseIfIdle(at: .now + .seconds(700)) == false)
+        await inner.failNextLoad()
+
+        #expect(await model.isReady == false)
+        await model.pendingWork?.value
+        await told.waitForOne()
+        #expect(await model.holdsTheModel == false)
+
+        for _ in 0..<5 { #expect(await model.isReady == false) }
+        await model.pendingWork?.value
+        #expect(await inner.steps == ["load", "release", "reload"])
+
+        try await model.prepare(onProgress: { _ in })
+        #expect(await model.isReady)
+        #expect(await inner.steps == ["load", "release", "reload", "load"])
     }
 
     @Test("the discretionary wrapper passes the reload report through to the model inside it")

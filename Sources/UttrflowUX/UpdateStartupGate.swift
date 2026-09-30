@@ -8,7 +8,7 @@ public struct UpdateStartupGate: Sendable, Equatable {
 
     public init() {}
 
-    /// Records that ``begin(automatically:)`` has run; does not by itself allow a start.
+    /// Records that `UpdateController.begin` has run; does not by itself allow a start.
     public mutating func configure() {
         isConfigured = true
     }

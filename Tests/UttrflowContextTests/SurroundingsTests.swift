@@ -3,15 +3,30 @@ import Testing
 
 @testable import UttrflowContext
 
-/// A chat window: a sidebar of other conversations, a thread, and the compose box the caret is in.
+/// A chat window: page landmarks, a conversation list and the thread containing the compose box.
 private let compose = Node(id: 1, role: "AXTextArea", text: "on my w")
 private let chatWindow = Node(
     id: 0, role: "AXWindow",
     children: [
-        Node(id: 10, children: [label(11, "Priya"), label(12, "Design team"), label(13, "Mum")]),
+        Node(
+            id: 10, subrole: "AXLandmarkNavigation",
+            children: [
+                Node(
+                    id: 11, role: "AXList",
+                    children: [
+                        Node(id: 12, role: "AXLink", text: "Priya: call after lunch"),
+                        Node(id: 13, role: "AXLink", text: "Design team: review due"),
+                        Node(id: 14, role: "AXLink", text: "Mum: dinner at seven"),
+                    ])
+            ]),
         Node(
             id: 20,
             children: [
+                Node(
+                    id: 19, role: "AXList",
+                    children: [Node(id: 27, role: "AXLink", text: "Another chat: call at noon")]),
+                Node(id: 15, subrole: "AXLandmarkBanner", children: [label(16, "Sponsored")]),
+                Node(id: 17, subrole: "AXLandmarkComplementary", children: [label(18, "Related threads")]),
                 Node(
                     id: 21,
                     children: [
@@ -36,21 +51,35 @@ private func lines(_ read: Surroundings) -> [String] {
 
 @Suite("What is on screen around the field")
 struct SurroundingsTests {
-    @Test(
-        "The thread beside the compose box comes last, the sidebar first, and the field itself is left out.")
-    func nearestTextComesLast() {
+    @Test("Only the thread containing the compose box reaches the prompt.")
+    func onlyTheFocusedConversationIsRead() {
         let read = Surroundings.collect(
             around: compose, in: FakeTree(root: chatWindow), windowTitle: "Priya", deadline: unhurried)
         #expect(read.windowTitle == "Priya")
         let lines = lines(read)
-        #expect(lines.first == "Priya")
         #expect(lines.last == "Priya: are you coming tonight?")
+        #expect(
+            lines == [
+                "Priya: where did the notarisation log go?", "Me: in dist/, one sec",
+                "Priya: found it, thanks!", "Priya: are you coming tonight?",
+            ])
+        #expect(!lines.contains(where: { $0.contains("Sponsored") || $0.contains("Related") }))
+        #expect(
+            !lines.contains(where: {
+                $0.contains("call after lunch") || $0.contains("review due") || $0.contains("call at noon")
+            }))
         #expect(!lines.contains("on my w"))
         #expect(!lines.contains("Send"))
-        #expect(lines.firstIndex(of: "Mum")! < lines.firstIndex(of: "Priya: found it, thanks!")!)
-        #expect(
-            lines.firstIndex(of: "Priya: where did the notarisation log go?")!
-                < lines.firstIndex(of: "Me: in dist/, one sec")!)
+    }
+
+    @Test("The focused field's value never reaches the prompt as a line of text.")
+    func focusedFieldValueNeverReachesThePrompt() {
+        let reads = TextReadLog()
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: chatWindow, textReads: reads), windowTitle: nil,
+            deadline: unhurried)
+        #expect(!reads.ids.isEmpty)
+        #expect(read.text?.contains(compose.text ?? "") != true)
     }
 
     @Test("Hidden text, controls and menus are not what the user is looking at, so they are not read.")
@@ -168,11 +197,14 @@ struct SurroundingsTests {
         #expect(read.text == "Thread\nfirst\nsecond\nFooter\nthird\nfourth")
 
         // Two full lines leave room for 398 characters, so the 399-character third loses its last one.
-        let long = String(repeating: "ab", count: 200)
-        let third = "xyz" + String(repeating: "ab", count: 198)
+        let long1 = String(repeating: "ab", count: 200)
+        let long2 = "cd" + String(repeating: "ef", count: 199)
+        let third = "xyz" + String(repeating: "gh", count: 198)
         let full = Node(
             id: 0, role: "AXWindow",
-            children: [Node(id: 40, children: [compose, label(50, long), label(51, long), label(52, third)])])
+            children: [
+                Node(id: 40, children: [compose, label(50, long1), label(51, long2), label(52, third)])
+            ])
         let cut = Surroundings.collect(
             around: compose, in: FakeTree(root: full), windowTitle: nil, deadline: unhurried)
         #expect(cut.text?.count == Surroundings.maximumCharacters)
@@ -181,18 +213,20 @@ struct SurroundingsTests {
 
     @Test("Once the characters are gathered, no farther ring is walked at all.")
     func aFullReadStopsWalkingOutward() {
-        let wall = String(repeating: "w", count: Surroundings.maximumCharactersPerElement)
+        // Four distinct 400-character walls, so the budget runs out on the third and the fourth is unread.
+        let lines = (21..<25).map { String(repeating: "w\($0)", count: 133) + "w\($0)" }
         let near = Node(
-            id: 20, children: [label(21, wall), label(22, wall), label(23, wall), label(24, wall)])
+            id: 20, children: lines.enumerated().map { label(21 + $0.offset, $0.element) })
         let far = Node(id: 10, children: (100..<200).map { label($0, "preview \($0)") })
         let window = Node(id: 0, role: "AXWindow", children: [far, Node(id: 40, children: [near, compose])])
         let visits = VisitCounter()
         let read = Surroundings.collect(
             around: compose, in: FakeTree(root: window, visits: visits), windowTitle: nil, deadline: unhurried
         )
-        #expect(visits.count == 4)
         #expect(read.text?.contains("preview") == false)
         #expect(read.text?.count == Surroundings.maximumCharacters)
+        // The budget runs out partway through the third wall, so only three of the four are visited.
+        #expect(visits.count == 4)
     }
 
     @Test(
@@ -344,9 +378,124 @@ struct SurroundingsTests {
         #expect(Surroundings.trimmed("\n\tHi there\r\n") == "Hi there")
     }
 
+    @Test("Zero-width joiners survive, since they join an emoji or keep two letters apart.")
+    func joinersSurvive() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        #expect(Surroundings.cleaned(family) == family)
+        let word = "\u{645}\u{6CC}\u{200C}\u{631}\u{648}\u{645}"
+        #expect(Surroundings.cleaned(word) == word)
+        #expect(Surroundings.cleaned("\u{200E}" + word + "\u{200F}") == word)
+    }
+
     @Test("An element with no parent at all has no surroundings.")
     func anOrphanHasNoSurroundings() {
         let read = Surroundings.collect(around: compose, in: FakeTree(root: compose), windowTitle: "t")
         #expect(read == Surroundings(windowTitle: "t", text: nil))
+    }
+
+    /// #1947: a subtree the ring walk reaches from two ancestor levels is read once, not twice.
+    @Test("A subtree reachable from two ancestor levels is read once, not twice.")
+    func aReachableSubtreeIsReadOnce() {
+        // The chat list sits both beside the thread and inside it — the shape Chrome's AX tree has when the nav is mirrored under the conversation.
+        let chatListBesideThread = label(80, "Chats")
+        let chatListInsideThread = label(180, "Chats")
+        let thread = Node(
+            id: 20,
+            text: "Conversation with Riya",
+            children: [
+                chatListInsideThread,
+                Node(
+                    id: 21,
+                    children: [
+                        label(22, "Riya: are we still on for the design review on Friday?")
+                    ]),
+            ])
+        let page = Node(
+            id: 10,
+            children: [chatListBesideThread, thread])
+        let window = Node(
+            id: 0, role: "AXWindow",
+            children: [Node(id: 40, children: [page, compose])])
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: window), windowTitle: "Priya", deadline: unhurried)
+        let got = lines(read)
+        #expect(got.filter { $0 == "Chats" }.count == 1, "the chat list reads once, not twice: \(got)")
+    }
+
+    /// A substring of one line that also reads as a whole line elsewhere is kept whole once.
+    @Test("A short line that repeats in a long line drops only the repeat, not the long one.")
+    func aSubstringDoesNotCollapseIntoItsHost() {
+        let chats = label(80, "Chats")
+        let longLine = "Chats — see the conversations beside the threads you have open"
+        let thread = Node(
+            id: 20, text: "Conversation with Riya",
+            children: [
+                label(180, "Chats"),
+                label(181, longLine),
+            ])
+        let page = Node(
+            id: 10,
+            children: [chats, thread])
+        let window = Node(
+            id: 0, role: "AXWindow",
+            children: [Node(id: 40, children: [page, compose])])
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: window), windowTitle: nil, deadline: unhurried)
+        let got = lines(read)
+        #expect(got.filter { $0 == "Chats" }.count == 1, "the short label collapses once: \(got)")
+        #expect(got.contains(longLine), "the long line is not eaten by the substring match: \(got)")
+    }
+
+    @Test(
+        "A short message repeated as the newest line stays last, so the tail is still the message being answered."
+    )
+    func aRepeatedNewestLineStaysLast() {
+        let window = Node(
+            id: 0, role: "AXWindow",
+            children: [
+                Node(
+                    id: 60, children: [label(61, "ok"), label(62, "Can you send the file?"), label(63, "ok")]),
+                compose,
+            ])
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: window), windowTitle: nil, deadline: unhurried)
+        #expect(lines(read) == ["Can you send the file?", "ok"])
+    }
+
+    @Test("Of lines read twice, the copy nearest the field is kept in its place")
+    func theNearestCopyIsKept() {
+        #expect(Surroundings.deduplicated(["a", "b", "a", "c"], dropping: nil) == ["b", "a", "c"])
+        #expect(Surroundings.deduplicated(["a", "draft", "b"], dropping: "draft") == ["a", "b"])
+    }
+
+    /// #1947: the focused field's value must not be carried into its surroundings when a web view mirrors it.
+    @Test("The focused field's own value is not carried into its surroundings.")
+    func theFocusedFieldIsNotItsOwnSurroundings() {
+        // The textarea is also reachable as a sibling of the path — the shape Chrome's AX tree produces when a web view's contents are mirrored.
+        let mirror = Node(
+            id: 50, role: "AXTextArea", text: "on my w",
+            children: [label(51, "on my w")])
+        let window = Node(
+            id: 0, role: "AXWindow",
+            children: [Node(id: 40, children: [compose, mirror])])
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: window), windowTitle: nil, deadline: unhurried)
+        #expect(read.text?.contains("on my w") != true)
+    }
+
+    @Test("In a browser the walk stays inside the page, so other tabs' titles and infobars are never read")
+    func aBrowserWalkStaysInsideThePage() {
+        let tabStrip = Node(
+            id: 70, role: "AXTabGroup",
+            children: [label(71, "Quarterly plan – 2 Tabs"), label(72, "Holiday photos")])
+        let infobar = Node(id: 73, children: [label(74, "Infobar Container")])
+        let page = Node(
+            id: 80, role: "AXWebArea", text: "Sign in",
+            children: [Node(id: 81, children: [label(82, "Email"), compose])])
+        let window = Node(
+            id: 0, role: "AXWindow", children: [tabStrip, infobar, Node(id: 90, children: [page])])
+        let read = Surroundings.collect(
+            around: compose, in: FakeTree(root: window), windowTitle: "Sign in", deadline: unhurried)
+        #expect(lines(read) == ["Email"])
     }
 }

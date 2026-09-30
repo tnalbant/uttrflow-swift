@@ -13,6 +13,7 @@ struct SystemSettingsOpenerTests {
             (SystemSettingsPane.microphone, "Privacy_Microphone"),
             (.accessibility, "Privacy_Accessibility"),
             (.appleIntelligence, "com.apple.Siri-Settings.extension"),
+            (.keyboard, "com.apple.Keyboard-Settings.extension"),
         ])
     func opensAddress(pane: SystemSettingsPane, suffix: String) {
         let opened = Mutex<URL?>(nil)

@@ -13,6 +13,21 @@ struct DraftTests {
         #expect(draft.words.allSatisfy { $0.state == .kept && $0.confidence == 1 && $0.heard == $0.text })
     }
 
+    @Test("splits pause ellipses only between adjacent words")
+    func splitsPauseEllipses() {
+        let draft = Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+        #expect(
+            draft.words.map(\.text)
+                == ["Ah", "the", "um", "the", "invoice", "is", "ah", "overdue"])
+        #expect(draft.text == "Ah the um the invoice is ah overdue")
+    }
+
+    @Test("keeps abbreviations and URLs intact while splitting a pause")
+    func keepsAbbreviationsAndURLs() {
+        let draft = Draft(text: "e.g. https://example.com/a...b hello...world")
+        #expect(draft.words.map(\.text) == ["e.g.", "https://example.com/a...b", "hello", "world"])
+    }
+
     @Test(
         "keeps line breaks between words as layout marks when asked, and round-trips the text",
         arguments: [
@@ -118,6 +133,10 @@ struct DraftTests {
             ("the build, um, failed", 2, "the build, failed"),
             // Nothing stands before it, so there is nowhere for the mark to go.
             ("uh? yes", 0, "yes"),
+            // An ellipsis is a pause too, so it never lands as a full stop.
+            ("we should um... move", 2, "we should move"),
+            ("we should um\u{2026} move", 2, "we should move"),
+            ("is it um...? yes", 2, "is it? yes"),
         ]
     )
     func carriesMarksOnRemoval(input: String, index: Int, expected: String) {

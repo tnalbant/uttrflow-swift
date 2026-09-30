@@ -60,6 +60,46 @@ struct DictionaryLearningTests {
         #expect(entries.pronunciation == nil)
     }
 
+    @Test("Window chrome does not teach the dictionary while distinct spellings do")
+    func ignoresChromeAndKeepsDistinctSpellings() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let chrome = [
+            ("Inbox (12) — Mail", "clear the inbox before lunch"),
+            ("IMG_4821.HEIC", "the image is too dark"),
+            ("Screenshot 2026-09-21 at 10.14.33", "take a screenshot"),
+            ("q3-report-final-v2.docx", "the final report is ready"),
+            ("a3f9c2e1d — fix login", "fix the login bug"),
+            ("Slack | #general | Acme", "post it in general"),
+            ("README.md", "readme it later"),
+            ("localhost:3000", "local host is ready"),
+            ("Downloads", "open downloads"),
+            ("Notifications", "check notifications"),
+            ("Terminal — zsh", "terminal is ready"),
+            ("Spreadsheet1.xlsx", "the spreadsheet is ready"),
+        ]
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            for (title, heard) in chrome {
+                #expect(try await dictate(into: store, saying: heard, titled: title).isEmpty)
+            }
+        }
+        #expect(await store.allEntries().isEmpty)
+
+        let personal = [
+            ("Zorvane — notes", "use Zorvain for this", "Zorvane"),
+            ("PaymentSheet.swift", "add a total to the payment sheet", "PaymentSheet"),
+            ("Chandrashekhar — notes", "ask Chandra Shekhar about it", "Chandrashekhar"),
+            ("Bandra office", "kal Bandaraa office jaana hai", "Bandra"),
+            ("pgvector — notes", "we should use PG vector", "pgvector"),
+        ]
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            for (title, heard, _) in personal {
+                _ = try await dictate(into: store, saying: heard, titled: title)
+            }
+        }
+        #expect(Set(await store.allEntries().map(\.word)) == Set(personal.map(\.2)))
+    }
+
     /// A filter tuned only to English would learn half of Hinglish; the place name is the user's own.
     @Test("Learns a Hinglish speaker's own words and not their ordinary ones")
     func learnsHinglishWithoutTheFillers() async throws {
@@ -94,35 +134,98 @@ struct DictionaryLearningTests {
         #expect(await store.allEntries().isEmpty)
     }
 
-    /// A reset is the user asking to start again, deleted words included.
-    @Test("a reset lets a deleted word be learnt again")
-    func resettingLiftsTheRefusal() async throws {
+    /// Removing learned words clears sightings while a refusal remains stored.
+    @Test("removing learned words keeps a deleted word refused after three sightings")
+    func removingLearnedKeepsTheRefusal() async throws {
         let sandbox = Sandbox()
         let store = PersonalDictionaryStore(file: sandbox.file)
         for _ in 1...LearnableWords.sightingsBeforeLearning {
-            try await dictate(into: store, saying: "the pgvector migration", titled: "pgvector — notes")
+            try await dictate(
+                into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
         }
         try await store.remove(#require(await store.allEntries().first).id)
         try await store.removeLearned()
 
         for _ in 1...LearnableWords.sightingsBeforeLearning {
-            try await dictate(into: store, saying: "the pgvector migration", titled: "pgvector — notes")
+            try await dictate(
+                into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
         }
-        #expect(await store.allEntries().map(\.word) == ["pgvector"])
+        #expect(await store.allEntries().isEmpty)
     }
 
-    /// A word the user typed in and then deleted is theirs to change their mind about.
-    @Test("deleting a word you added yourself does not refuse it")
-    func deletingAnAddedWordDoesNotRefuseIt() async throws {
+    /// A word the user typed in and then deleted stays deleted until they type it in again.
+    @Test("deleting a word you added yourself refuses it, and typing it in again still works")
+    func deletingAnAddedWordRefusesIt() async throws {
         let sandbox = Sandbox()
         let store = PersonalDictionaryStore(file: sandbox.file)
         try await store.add(word: "pgvector", pronunciation: "", at: epoch)
         try await store.remove(#require(await store.allEntries().first).id)
 
-        for _ in 1...LearnableWords.sightingsBeforeLearning {
+        for _ in 1...(LearnableWords.sightingsBeforeLearning * 2) {
             try await dictate(into: store, saying: "the pgvector migration", titled: "pgvector — notes")
         }
-        #expect(await store.allEntries().map(\.word) == ["pgvector"])
+        #expect(await store.allEntries().isEmpty)
+
+        try await store.add(word: "pgvector", pronunciation: "", at: epoch)
+        #expect(await store.allEntries().map(\.origin) == [.added])
+    }
+
+    /// A relaunch is a new store on the same file, and a deleted word must still be refused there.
+    @Test("a word deleted before a relaunch is not learnt again after it")
+    func refusalOutlivesARelaunch() async throws {
+        let sandbox = Sandbox()
+        let before = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: before, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        try await before.remove(#require(await before.allEntries().first).id)
+
+        let after = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: after, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        #expect(await after.allEntries().isEmpty)
+    }
+
+    /// The refusal remains on disk when learned entries are removed.
+    @Test("removing learned words keeps a deleted word refused after a relaunch")
+    func learnedRemovalKeepsRefusalAcrossRelaunch() async throws {
+        let sandbox = Sandbox()
+        let before = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: before, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        try await before.remove(#require(await before.allEntries().first).id)
+        try await before.removeLearned()
+
+        let after = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: after, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        #expect(await after.allEntries().isEmpty)
+    }
+
+    /// Removing everything clears refusals so the user can start over completely.
+    @Test("removing everything lets a deleted word be learnt again")
+    func removingEverythingLiftsTheRefusal() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        try await store.remove(#require(await store.allEntries().first).id)
+        try await store.removeEverything()
+
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(
+                into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        #expect(await store.allEntries().map(\.word) == ["Zorvane"])
     }
 
     /// The one path where the user is telling us; one dictation is enough because it is deliberate.

@@ -24,6 +24,23 @@ struct PointSizeReadingTests {
         #expect(size == 17)
     }
 
+    @Test("The attributed paragraph style reports explicit right-to-left writing direction")
+    func readsParagraphWritingDirection() throws {
+        let string = try #require(CFAttributedStringCreateMutable(nil, 0))
+        CFAttributedStringReplaceString(string, CFRange(location: 0, length: 0), "אב" as CFString)
+        var direction = CTWritingDirection.rightToLeft
+        let style = withUnsafePointer(to: &direction) { directionPointer in
+            var setting = CTParagraphStyleSetting(
+                spec: .baseWritingDirection,
+                valueSize: MemoryLayout<CTWritingDirection>.size,
+                value: directionPointer)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
+        CFAttributedStringSetAttribute(
+            string, CFRange(location: 0, length: 2), kCTParagraphStyleAttributeName, style)
+        #expect(FocusedFieldReader.writingDirection(inAttributed: string) == .rightToLeft)
+    }
+
     @Test("An attributed string with no font at all yields nothing rather than a wrong size.")
     func withoutAFontYieldsNothing() throws {
         let string = try #require(CFAttributedStringCreateMutable(nil, 0))

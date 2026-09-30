@@ -46,6 +46,16 @@ struct WorkingSetTests {
                 > WorkingSet.value(of: stale, now: epoch, wanted: []))
     }
 
+    @Test("puts a word added this week ahead of older words used often")
+    func recentAdditionPriority() {
+        let recent = word("Maelis", from: .added, daysAgo: 1)
+        let older = (0..<40).map { word("Older\($0)", from: .learned, used: 1, daysAgo: 10) }
+
+        let ranked = WorkingSet.words(from: older + [recent], now: epoch)
+
+        #expect(ranked.first == "Maelis")
+    }
+
     /// Half the value at the half-life, which is the only thing the constant means.
     @Test("halves what a word is worth every thirty days")
     func halfLife() {

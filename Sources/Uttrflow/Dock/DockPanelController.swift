@@ -55,26 +55,37 @@ final class DockPanelController {
     var onToggle: (() -> Void)?
     /// The button offered alongside a failure was clicked.
     var onRecoveryAction: ((RecoveryAction) -> Void)?
+    var onAttentionChange: ((Bool) -> Void)?
 
     /// Where the microphone's level is pulled from on the main actor, keeping redraws off the audio thread.
     private var levelSource: (@Sendable () -> Float)?
     private var levelTimer: Timer?
+    private var appearanceObserver: (any NSObjectProtocol)?
 
     private let panel: DockPanel
     private let hostingView: DockHostingView<DockView>
     private let model: DockViewModel
+    private let notificationCenter: NotificationCenter
+    private let visibleFrameProvider: (@MainActor () -> CGRect?)?
+    private var screenParametersObserver: (any NSObjectProtocol)?
     private var anchor: DockAnchor
     private var panelSize: CGSize
 
     init(
         presentation: DockPresentation = DictationPresenter.dock(for: .idle),
-        shortcut: String = "⌥Space",
-        anchor: DockAnchor = .bottomRight
+        shortcut: String = "⌃⌥",
+        anchor: DockAnchor = .bottomRight,
+        notificationCenter: NotificationCenter = .default,
+        visibleFrameProvider: (@MainActor () -> CGRect?)? = nil
     ) {
         let model = DockViewModel(
             presentation: presentation, shortcut: shortcut, anchor: anchor)
+        // Empty until shown, so a button that is never put on screen never animates.
+        model.isShown = false
         self.model = model
         self.anchor = anchor
+        self.notificationCenter = notificationCenter
+        self.visibleFrameProvider = visibleFrameProvider
         self.panelSize = CGSize(
             width: DockMetrics.gripWidth + DockMetrics.gripHitPadding * 2,
             height: DockMetrics.gripHeight + DockMetrics.gripHitPadding * 2)
@@ -93,31 +104,67 @@ final class DockPanelController {
             onPressEnded: { [weak self] in self?.onPressEnded?() },
             onToggle: { [weak self] in self?.onToggle?() },
             onRecovery: { [weak self] action in self?.onRecoveryAction?(action) },
+            onAttentionChange: { [weak self] _ in
+                guard let self else { return }
+                self.onAttentionChange?(self.model.isEngaged)
+            },
             onDesiredSize: { [weak self] size in self?.resize(to: size) })
         hostingView.onHoverChange = { [weak self] isHovering in
-            self?.model.isHovering = isHovering
+            guard let self else { return }
+            self.model.isHovering = isHovering
+            self.onAttentionChange?(self.model.isEngaged)
         }
 
+        observeAppearance()
+        screenParametersObserver = notificationCenter.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reposition() }
+        }
         reposition()
+    }
+
+    isolated deinit {
+        if let appearanceObserver { NSWorkspace.shared.notificationCenter.removeObserver(appearanceObserver) }
+        if let screenParametersObserver { notificationCenter.removeObserver(screenParametersObserver) }
     }
 
     // MARK: - Lifecycle
 
     /// `orderFrontRegardless`, never `makeKeyAndOrderFront`, so the keyboard stays with the user's app.
     func show() {
+        model.isShown = true
+        if model.presentation.isRecording { startMetering() }
         reposition()
         panel.orderFrontRegardless()
     }
 
+    /// Orders the panel out and empties it, since a hidden panel's timeline views keep waking the app.
     func hide() {
         panel.orderOut(nil)
+        model.isShown = false
+        stopMetering()
     }
+
+    /// Whether the button is on screen.
+    var isVisible: Bool { panel.isVisible }
+
+    /// The panel's current frame, for placement checks.
+    var frame: CGRect { panel.frame }
+
+    /// Whether the button's view draws anything, which it does only while the panel is on screen.
+    var drawsContent: Bool { model.isShown }
+
+    /// Whether the microphone's level is being read for the meter.
+    var isMetering: Bool { levelTimer != nil }
 
     /// The only way the button's appearance ever changes.
     func update(with presentation: DockPresentation) {
         model.show(presentation)
         // Started and stopped where the state is known, so a meter cannot outlive its recording.
-        if presentation.isRecording { startMetering() } else { stopMetering() }
+        if presentation.isRecording, model.isShown { startMetering() } else { stopMetering() }
     }
 
     /// Says where to read the microphone's level from.
@@ -170,6 +217,18 @@ final class DockPanelController {
         model.shortcutUnheard = reason
     }
 
+    /// Keeps notice colours aligned with the system's current Increase Contrast setting.
+    private func observeAppearance() {
+        appearanceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.model.increasesContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            }
+        }
+    }
+
     // MARK: - Geometry
 
     /// Follows the size the view reports, so the resting grip claims no more of the screen than it draws.
@@ -187,8 +246,12 @@ final class DockPanelController {
     }
 
     private var visibleFrame: CGRect {
+        if let visibleFrame = visibleFrameProvider?() { return visibleFrame }
         // With no screen to place against, staying put beats moving somewhere arbitrary.
-        (panel.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? panel.frame
+        let screens = NSScreen.screens
+        let panelScreen = panel.screen.flatMap { current in screens.first { $0 == current } }
+        let mainScreen = NSScreen.main.flatMap { current in screens.first { $0 == current } }
+        return (panelScreen ?? mainScreen ?? screens.first)?.visibleFrame ?? panel.frame
     }
 
     private func configurePanel() {

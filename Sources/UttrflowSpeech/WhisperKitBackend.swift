@@ -126,14 +126,17 @@ public actor WhisperKitBackend: TranscriptionBackend {
         guard !effort.isPlain else { return }
         // Counted, not named: the log audit reads a name holding "prompt" as text somebody typed.
         let retried = effort.retriedWithoutPrompt ? 1 : 0
+        let unresolved = effort.capUnresolved ? 1 : 0
         log.info(
-            "decoded piece: fallbacks=\(effort.fallbacks, privacy: .public) fallbackSeconds=\(effort.fallbackSeconds, format: .fixed(precision: 2), privacy: .public) encoderRuns=\(effort.encoderRuns, privacy: .public) retried=\(retried, privacy: .public)"
+            "decoded piece: fallbacks=\(effort.fallbacks, privacy: .public) fallbackSeconds=\(effort.fallbackSeconds, format: .fixed(precision: 2), privacy: .public) encoderRuns=\(effort.encoderRuns, privacy: .public) retried=\(retried, privacy: .public) capUnresolved=\(unresolved, privacy: .public)"
         )
     }
 }
 
 /// Flattens WhisperKit's per-window results into one transcript.
-fileprivate func rawTranscript(from results: [TranscriptionResult]) -> RawTranscript {
+fileprivate func rawTranscript(
+    from results: [TranscriptionResult], vocabularyPrompt: [String] = []
+) -> RawTranscript {
     let flatSegments = results.flatMap(\.segments)
     let totalTokens = flatSegments.reduce(0) { $0 + $1.tokens.count }
     return RawTranscript(
@@ -153,7 +156,8 @@ fileprivate func rawTranscript(from results: [TranscriptionResult]) -> RawTransc
                 })
         },
         effort: effort(of: results),
-        tokensUsed: totalTokens
+        tokensUsed: totalTokens,
+        vocabularyPrompt: vocabularyPrompt
     )
 }
 
@@ -183,9 +187,9 @@ private struct RetryBackend: TranscriptionBackend {
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
     ) async throws(SpeechEngineError) -> RawTranscript {
         do {
-            let results = try await kit.transcribe(
+            let decoded = try await kit.transcribe(
                 samples, languageHint: languageHint, biasedTowards: vocabulary)
-            return rawTranscript(from: results)
+            return rawTranscript(from: decoded.results, vocabularyPrompt: decoded.vocabularyPrompt)
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -220,19 +224,24 @@ private final class LoadedKit: @unchecked Sendable {
 
     func transcribe(
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
-    ) async throws -> [TranscriptionResult] {
+    ) async throws -> (results: [TranscriptionResult], vocabularyPrompt: [String]) {
         // Passed through optional, so a half-loaded kit gives an unbiased dictation, not a crash.
         let tokenizer = kit.tokenizer
+        let promptTokenizer = tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
+        let packing = promptTokenizer.map { VocabularyPrompt.packing(for: vocabulary, using: $0) }
         let options = VocabularyPrompt.decodingOptions(
             languageHint: languageHint,
             vocabulary: vocabulary,
-            tokenizer: tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
+            tokenizer: promptTokenizer
         )
         // Reassigned on every call, including to nothing, so a rule never outlives the prompt it was measured for.
         kit.textDecoder.logitsFilters = Self.rules(for: options, tokenizer: tokenizer)
         // Reassigned with the rules, so word timings always read the rows this call's prompt left them.
         kit.segmentSeeker = Self.seeker(for: options, tokenizer: tokenizer)
-        return try await kit.transcribe(audioArray: samples, decodeOptions: options)
+        return (
+            try await kit.transcribe(audioArray: samples, decodeOptions: options),
+            packing?.words ?? []
+        )
     }
 
     /// The segment seeker for this call, lined up past the prompt that precedes the transcript in the alignment weights.

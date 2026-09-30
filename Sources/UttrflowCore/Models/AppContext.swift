@@ -14,6 +14,10 @@ public struct AppContext: Sendable, Equatable, Codable {
     public let followingText: String?
     /// Whether the focused field hides what is typed, so none of its text is carried and nothing is kept.
     public let isSecure: Bool
+    /// The focused field's Accessibility role, when the system reports one.
+    public let accessibilityRole: String?
+    /// Whether the focused field can hold multiple lines, when reported by Accessibility.
+    public let isMultiline: Bool?
 
     /// A context; anything not supplied is unknown.
     public init(
@@ -23,7 +27,9 @@ public struct AppContext: Sendable, Equatable, Codable {
         selectedText: String? = nil,
         precedingText: String? = nil,
         followingText: String? = nil,
-        isSecure: Bool = false
+        isSecure: Bool = false,
+        accessibilityRole: String? = nil,
+        isMultiline: Bool? = nil
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
@@ -32,11 +38,13 @@ public struct AppContext: Sendable, Equatable, Codable {
         self.precedingText = precedingText
         self.followingText = followingText
         self.isSecure = isSecure
+        self.accessibilityRole = accessibilityRole
+        self.isMultiline = isMultiline
     }
 
     private enum CodingKeys: String, CodingKey {
         case applicationName, bundleIdentifier, documentName, selectedText, precedingText
-        case followingText, isSecure
+        case followingText, isSecure, accessibilityRole, isMultiline
     }
 
     /// Reads a context written before ``isSecure`` existed as one that is not secure.
@@ -49,7 +57,9 @@ public struct AppContext: Sendable, Equatable, Codable {
             selectedText: try container.decodeIfPresent(String.self, forKey: .selectedText),
             precedingText: try container.decodeIfPresent(String.self, forKey: .precedingText),
             followingText: try container.decodeIfPresent(String.self, forKey: .followingText),
-            isSecure: try container.decodeIfPresent(Bool.self, forKey: .isSecure) ?? false)
+            isSecure: try container.decodeIfPresent(Bool.self, forKey: .isSecure) ?? false,
+            accessibilityRole: try container.decodeIfPresent(String.self, forKey: .accessibilityRole),
+            isMultiline: try container.decodeIfPresent(Bool.self, forKey: .isMultiline))
     }
 
     /// The context available when macOS tells us nothing.

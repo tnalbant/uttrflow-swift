@@ -35,6 +35,6 @@ public enum TextTransformers {
     ) -> TransformerRouter {
         TransformerRouter(
             engines: all(cloudEndpoint: cloudEndpoint, steps: steps, spellings: spellings),
-            configuration: configuration, rulesAlone: .shortReplies)
+            configuration: configuration, rulesAlone: .shortReplies, cleaningSteps: steps)
     }
 }

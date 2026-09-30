@@ -43,8 +43,15 @@ public enum EnvironmentKind: Sendable, Hashable {
 
 /// Reads one kind of fact off this machine, which only the system half can really do.
 public protocol EnvironmentReading: Sendable {
-    /// Every value of one kind for one directory: empty when there are none, absent when the read failed or was too slow.
-    func values(of kind: EnvironmentKind, in directory: String) async -> [String]?
+    /// Every value of one kind for one directory, narrowed to what has been typed so far where the kind lists names: empty when there are none, absent when the read failed or was too slow.
+    func values(of kind: EnvironmentKind, in directory: String, matching prefix: String) async -> [String]?
+}
+
+extension EnvironmentReading {
+    /// Every value of one kind for one directory, unnarrowed — what a caller with no typed word yet, or no use for one, asks for.
+    public func values(of kind: EnvironmentKind, in directory: String) async -> [String]? {
+        await values(of: kind, in: directory, matching: "")
+    }
 }
 
 /// What this machine last said, held briefly so a keystroke never waits on a read.
@@ -55,21 +62,35 @@ public actor EnvironmentIndex {
     /// How long an answer about programs and their verbs is believed, since those change when something is installed.
     public static let programLifetimeInSeconds = 60.0
 
-    /// One directory's answer about one kind of thing.
+    /// One directory's answer about one kind of thing, cached separately for each prefix it is asked with.
     struct Key: Hashable {
         let kind: EnvironmentKind
         let directory: String
+        let prefix: String
     }
+
+    /// How long past its lifetime an answer is still served, which covers the read that replaces it and no more.
+    public static let staleGraceInSeconds = 2.0
 
     /// The longest a listing that keeps failing is left alone, so a program that never answers is asked rarely.
     public static let longestBackoffInSeconds = 600.0
 
-    /// Values and the moment they stop being believed; a failed read is remembered too, so it is not repeated every keystroke.
+    /// The most answers held at once, so a day of visiting directories and typing paths cannot grow the index without bound.
+    public static let capacity = 256
+
+    /// How many of its own lifetimes an expired answer is kept for a refresh before it is dropped.
+    static let lifetimesKeptExpired = 4.0
+
+    /// The last answer, when it stops being believed, and when the machine is next asked; a failed read is remembered too, so it is not repeated every keystroke.
     private struct Cached {
         let values: [String]?
         let expires: Date
+        /// When the machine is next asked, which a failed read puts off without touching the answer before it.
+        let retry: Date
         /// How many reads in a row came back with nothing, which is what the backoff doubles on.
         let failures: Int
+        /// When the answer was last asked for, which decides what goes first once the index is full.
+        var asked: Date
     }
 
     /// The half that actually asks the machine.
@@ -101,13 +122,18 @@ public actor EnvironmentIndex {
         return Double(since.seconds) + Double(since.attoseconds) / 1e18
     }
 
-    /// What is known right now, asking the machine in the background when that is nothing or stale; absent until it has answered.
-    public func values(of kind: EnvironmentKind, in directory: String, now: Date) -> [String]? {
+    /// What is known right now, asking the machine in the background when that is nothing or stale; absent until it has answered or once long stale.
+    public func values(
+        of kind: EnvironmentKind, in directory: String, matching prefix: String = "", now: Date
+    ) -> [String]? {
         // A machine-wide answer is kept under one key, or every directory pays for its own PATH scan.
-        let key = Key(kind: kind, directory: kind.isMachineWide ? "" : directory)
+        let key = Key(kind: kind, directory: kind.isMachineWide ? "" : directory, prefix: prefix)
         let entry = cached[key]
-        if entry.map({ $0.expires <= now }) ?? true { refresh(key, now: now) }
-        return entry?.values
+        cached[key]?.asked = now
+        if entry.map({ $0.retry <= now }) ?? true { refresh(key, now: now) }
+        // An answer long past its lifetime is no fact about the machine now, so it is not served while the new one is read.
+        guard let entry, now < entry.expires.addingTimeInterval(Self.staleGraceInSeconds) else { return nil }
+        return entry.values
     }
 
     /// Waits for the reads in flight, which only a test has a reason to do.
@@ -122,19 +148,51 @@ public actor EnvironmentIndex {
         guard refreshing[key] == nil else { return }
         refreshing[key] = Task {
             let started = seconds()
-            let values = await reader.values(of: key.kind, in: key.directory)
+            let values = await reader.values(
+                of: key.kind, in: key.directory, matching: key.prefix)
             let landed = now.addingTimeInterval(max(0, seconds() - started))
             record(key, values: values, now: landed)
         }
     }
 
-    /// Believes an answer for the kind's lifetime, and leaves a read that keeps failing alone for longer each time.
+    /// Believes an answer for the kind's lifetime; a failed read keeps the answer before it and is retried later each time.
     private func record(_ key: Key, values: [String]?, now: Date) {
-        let failures = values == nil ? (cached[key]?.failures ?? 0) + 1 : 0
-        cached[key] = Cached(
-            values: values, expires: now.addingTimeInterval(Self.lifetime(of: key.kind, failures: failures)),
-            failures: failures)
+        let previous = cached[key]
+        let asked = max(previous?.asked ?? now, now)
+        if let values {
+            let expires = now.addingTimeInterval(key.kind.lifetimeInSeconds)
+            cached[key] = Cached(
+                values: values, expires: expires, retry: expires, failures: 0, asked: asked)
+        } else {
+            let failures = (previous?.failures ?? 0) + 1
+            cached[key] = Cached(
+                values: previous?.values, expires: previous?.expires ?? now,
+                retry: now.addingTimeInterval(Self.lifetime(of: key.kind, failures: failures)),
+                failures: failures, asked: asked)
+        }
         refreshing[key] = nil
+        prune(keeping: key, now: now)
+    }
+
+    /// How many answers the index holds, which only a test has a reason to ask.
+    var count: Int { cached.count }
+
+    /// Drops answers long past their lifetime, then the expired and the least recently asked while over ``capacity``.
+    private func prune(keeping kept: Key, now: Date) {
+        cached = cached.filter { key, entry in
+            key == kept
+                || now.timeIntervalSince(entry.expires) < Self.lifetimesKeptExpired
+                    * key.kind.lifetimeInSeconds
+        }
+        guard cached.count > Self.capacity else { return }
+        let victims = cached.filter { $0.key != kept }
+            .sorted {
+                ($0.value.expires > now ? 1 : 0, $0.value.asked) < (
+                    $1.value.expires > now ? 1 : 0, $1.value.asked
+                )
+            }
+            .prefix(cached.count - Self.capacity)
+        for victim in victims { cached[victim.key] = nil }
     }
 
     /// The kind's own lifetime, doubled per failure in a row up to ``longestBackoffInSeconds``.
@@ -172,7 +230,13 @@ public struct EnvironmentSource: Sendable {
         var seen: Set<String> = []
         for lookup in Verification.offerings(for: completing) {
             for kind in lookup.kinds {
-                let values = await index.values(of: kind, in: directory, now: now) ?? []
+                // Only a name listing is narrowed here: branches and verbs cost the same to read whole, so narrowing them would only fragment their cache.
+                let narrowing: String
+                switch kind {
+                case .entries, .directories: narrowing = lookup.word
+                case .branch, .executable, .alias, .subcommand, .gitAlias: narrowing = ""
+                }
+                let values = await index.values(of: kind, in: directory, matching: narrowing, now: now) ?? []
                 for value in Self.matches(values, completing: lookup.word).prefix(Self.maximumPerKind)
                 where seen.insert(lookup.prefix + value).inserted {
                     offered.append(lookup.prefix + value)
@@ -193,12 +257,20 @@ public struct EnvironmentSource: Sendable {
         return scope
     }
 
+    /// Whether a name could go on to finish what has been typed of it, case folded since the filesystem is not case sensitive here.
+    static func hasPrefix(_ name: String, _ token: String) -> Bool {
+        name.lowercased().hasPrefix(token.lowercased())
+    }
+
+    /// The names that could finish `prefix`, in whatever order they were given — the one filter a listing applies before anything is stat'ed.
+    static func matching(_ names: [String], prefix: String) -> [String] {
+        names.filter { Self.hasPrefix($0, prefix) }
+    }
+
     /// The values that finish the token, shortest first, since the nearest completion is the likeliest.
     static func matches(_ values: [String], completing token: String) -> [String] {
-        let folded = token.lowercased()
-        return
-            values
-            .filter { $0.count > token.count && $0.lowercased().hasPrefix(folded) }
+        values
+            .filter { $0.count > token.count && Self.hasPrefix($0, token) }
             .sorted { ($0.count, $0) < ($1.count, $1) }
     }
 }

@@ -29,9 +29,24 @@ struct ClipTests {
     @Test("summarises to a single line")
     func summary() {
         #expect(clip("one\ntwo\nthree").summary == "one")
-        #expect(clip("  padded  \nmore").summary == "padded")
         #expect(clip("").summary.isEmpty)
         #expect(clip("\n\nfirst real line").summary == "first real line")
+    }
+
+    @Test("caps a long first line")
+    func summaryCap() {
+        let text = String(repeating: "a", count: 400) + "\nignored"
+        #expect(clip(text).summary == String(repeating: "a", count: 300))
+    }
+
+    @Test("trims leading and trailing whitespace from the first line")
+    func summaryWhitespace() {
+        #expect(clip("  padded  \nmore").summary == "padded")
+    }
+
+    @Test("stops at a CRLF line break")
+    func summaryCRLF() {
+        #expect(clip("first\r\nsecond").summary == "first")
     }
 
     /// What goes back out must be exactly what came in; the summary is for display only.

@@ -221,6 +221,7 @@ struct DictationPipelineRecoveryTests {
         let transcript = try #require(
             failure.transcript, "losing the words at the final step is the worst outcome of all")
         #expect(transcript == tidiedWords)
+        #expect(failure.recovery == .showRecentDictations)
     }
 
     @Test("when tidying succeeds it is the cleaned text that is inserted, not the raw one")

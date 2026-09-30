@@ -10,6 +10,67 @@ let liked = Verification.plausibilityFloor + 1
 /// A score the model dislikes, which is well below the floor.
 let disliked = Verification.plausibilityFloor - 1
 
+private enum SupersessionWriteError: Error {
+    case unavailable
+}
+
+private actor ThrowingSupersession: SupersessionRecording {
+    private(set) var rejections = 0
+    private(set) var supersessions = 0
+    private(set) var successfulWrites = 0
+    private(set) var corpusClears = 0
+    private var failuresRemaining: Int
+    private let blocksSecondAttempt: Bool
+    private var waitingForSecondAttempt: CheckedContinuation<Void, Never>?
+    private var releaseSecondAttempt: CheckedContinuation<Void, Never>?
+
+    init(failuresBeforeSuccess: Int = .max, blocksSecondAttempt: Bool = false) {
+        failuresRemaining = failuresBeforeSuccess
+        self.blocksSecondAttempt = blocksSecondAttempt
+    }
+
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async throws {
+        supersessions += 1
+        try await write()
+    }
+
+    func recordRejection(of text: String, in surface: Surface) async throws {
+        rejections += 1
+        try await write()
+    }
+
+    func waitForSecondAttempt() async {
+        guard rejections + supersessions < 2 else { return }
+        await withCheckedContinuation { waitingForSecondAttempt = $0 }
+    }
+
+    func releaseSecondAttemptWrite() {
+        releaseSecondAttempt?.resume()
+        releaseSecondAttempt = nil
+    }
+
+    func clearCorpus() {
+        corpusClears += 1
+    }
+
+    private func write() async throws {
+        let attempts = rejections + supersessions
+        if attempts == 2 {
+            waitingForSecondAttempt?.resume()
+            waitingForSecondAttempt = nil
+            if blocksSecondAttempt {
+                await withCheckedContinuation { releaseSecondAttempt = $0 }
+            }
+        }
+        guard failuresRemaining > 0 else {
+            successfulWrites += 1
+            return
+        }
+        failuresRemaining -= 1
+        throw SupersessionWriteError.unavailable
+    }
+}
+
 /// A verifier over a machine that has already answered, since the first ask only starts the read.
 func warmed(
     _ machine: [EnvironmentKind: [String]], on text: String, in surface: Surface = terminal,
@@ -71,6 +132,100 @@ struct VerifierTests {
         #expect(await store.recorded == ["git comit → git commit"])
     }
 
+    @Test("A failed rejection write is retried and the refused line stays suppressed for the session.")
+    func failedRejectionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git zqxjw", scoring: ScriptedScoring(disliked),
+            supersession: store)
+        let candidate = Candidate(text: "git zqxjw", source: .personal)
+
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 1)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 2)
+    }
+
+    @Test("A failed supersede write is retried and the retired line stays suppressed for the session.")
+    func failedSupersessionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(await store.supersessions == 1)
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text)
+                .isEmpty)
+        #expect(await store.supersessions == 2)
+    }
+
+    @Test("A rejection write that fails once is retried successfully.")
+    func rejectionRetryRecovers() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 1)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git zqxjw", scoring: ScriptedScoring(disliked),
+            supersession: store)
+        let candidate = Candidate(text: "git zqxjw", source: .personal)
+
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 2)
+        #expect(await store.successfulWrites == 1)
+    }
+
+    @Test("A supersede write that fails once is retried successfully.")
+    func supersessionRetryRecovers() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 1)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text)
+                == ["git commit"])
+        #expect(await store.supersessions == 2)
+        #expect(await store.successfulWrites == 1)
+    }
+
+    @Test("Forgetting waits for an in-flight retry, then clears its pending suppression.")
+    func forgetDrainsInFlightRetry() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 2, blocksSecondAttempt: true)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+        _ = await verifier.verified([candidate], in: terminal, typed: "git com", now: moment)
+
+        let retry = Task {
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment)
+        }
+        await store.waitForSecondAttempt()
+        let forgetting = Task {
+            try? await verifier.forgetEverything(then: { await store.clearCorpus() })
+        }
+        while !(await verifier.isWaitingToForgetSupersessionWrites) { await Task.yield() }
+        #expect(await store.corpusClears == 0)
+
+        await store.releaseSecondAttemptWrite()
+        #expect(await retry.value.isEmpty)
+        await forgetting.value
+        #expect(await store.corpusClears == 1)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(await store.supersessions == 3)
+    }
+
     @Test("A candidate the machine has never heard of stands, because silence is not a denial.")
     func silenceLeavesACandidateAlone() async {
         #expect(await decided("git comit", typed: "git com") == .plausible)
@@ -101,6 +256,51 @@ struct VerifierTests {
             "git zqxjw", typed: "git z", machine: [.subcommand(of: "git"): ["commit"]],
             scoring: ScriptedScoring(disliked), supersession: store)
         #expect(await store.rejected == ["git zqxjw"])
+    }
+
+    @Test(
+        "A model objection to a free last word refuses the line this time only.",
+        arguments: [
+            "ls -la", "echo \"done\"", "echo done",
+        ])
+    func freeWordRejectionIsNotRecorded(line: String) async {
+        let store = RecordingSupersession()
+        let verdict = await decided(
+            line, typed: String(line.prefix(4)), scoring: ScriptedScoring(disliked), supersession: store)
+        #expect(verdict == .rejected)
+        #expect(await store.rejected.isEmpty)
+    }
+
+    @Test("A subcommand the machine never answered for is refused this time only.")
+    func unansweredClosedVocabularyIsNotRecorded() async {
+        let store = RecordingSupersession()
+        let verifier = Verifier(
+            index: EnvironmentIndex(reader: StubEnvironment([:])), scoring: ScriptedScoring(disliked),
+            supersession: store, budgetInMilliseconds: 200, clock: ManualClock())
+        let verdict = await verifier.verdict(
+            for: Candidate(text: "git zqxjw", source: .personal), in: terminal, typed: "git z", now: moment)
+        #expect(verdict == .rejected)
+        #expect(await store.rejected.isEmpty)
+    }
+
+    @Test("A git alias is not judged or cached while the alias listing is unanswered.")
+    func unansweredGitAliasIsNotJudgedOrCached() async {
+        let reader = StubEnvironment([.subcommand(of: "git"): ["checkout"]])
+        let index = EnvironmentIndex(reader: reader)
+        let store = RecordingSupersession()
+        let verifier = Verifier(
+            index: index, scoring: ScriptedScoring(disliked), supersession: store,
+            budgetInMilliseconds: 200, clock: ManualClock())
+        let candidate = Candidate(text: "git co", source: .personal)
+
+        _ = await verifier.verdict(for: candidate, in: terminal, typed: "git c", now: moment)
+        #expect(await store.recorded.isEmpty)
+        #expect(await store.rejected.isEmpty)
+
+        await index.settle()
+        #expect(
+            await verifier.verdict(for: candidate, in: terminal, typed: "git c", now: moment)
+                == .attested)
     }
 
     @Test("A candidate the model likes stands even where the machine cannot place it.")
@@ -135,18 +335,15 @@ struct VerifierTests {
         // On a clock the scorer itself pushes past the budget, so the deadline needs no real time to win the race.
         let budgetClock = ManualClock()
         let index = EnvironmentIndex(reader: StubEnvironment([:]))
-        let scoring = NoncooperativeScoring(
-            liked, holdingThreadForMilliseconds: 8_000, advancing: budgetClock)
+        let holding = ThreadHold()
+        let scoring = NoncooperativeScoring(liked, holding: holding, advancing: budgetClock)
         let verifier = Verifier(index: index, scoring: scoring, budgetInMilliseconds: 200, clock: budgetClock)
-        let wall = ContinuousClock()
-        let start = wall.now
         let verdict = await verifier.verdict(
             for: Candidate(text: "git zqxjw", source: .personal), in: terminal, typed: "git z", now: moment)
-        let elapsed = start.duration(to: wall.now)
+        let scorerStillHeld = !holding.hasEnded
+        holding.release()
         #expect(verdict == .rejected)
-        #expect(
-            elapsed < .seconds(4),
-            "the verdict must return once the deadline wins, not wait out an 8-second noncooperative scorer")
+        #expect(scorerStillHeld, "the verdict must return while the scorer still holds its thread")
     }
 
     @Test("A cancelled turn stops `verified` between candidates, not just after the whole loop.")
@@ -205,6 +402,7 @@ struct VerifierTests {
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         await verifier.forgetEverything()
         #expect(await verifier.rememberedCount == 0)
+        #expect(await scoring.forgotten == 1)
         _ = await verifier.verdict(for: candidate, in: terminal, typed: "git z", now: moment)
         #expect(await scoring.asked == 2)
     }
@@ -292,14 +490,92 @@ struct VerifiedCandidateTests {
             ], in: terminal, typed: "git c", now: moment)
         #expect(offered.map(\.text) == ["git commit"])
     }
+
+    @Test("Candidates that converge on one text keep the nearest source and sum their evidence.")
+    func convergedCandidatesMergeEvidence() async {
+        let verifier = await warmed([:], on: "git commit")
+        let earlier = moment.addingTimeInterval(-60)
+        let offered = await verifier.verified(
+            [
+                Candidate(
+                    text: "git commit", source: .environment, editDistance: 0),
+                Candidate(
+                    text: "git commit", source: .succession,
+                    evidence: Entry(
+                        text: "git commit", count: 9, accepted: 7, rejected: 1,
+                        selfSourced: 2, lastUsed: moment),
+                    editDistance: 1),
+                Candidate(
+                    text: "git commit", source: .personal,
+                    evidence: Entry(
+                        text: "git commit", count: 3, accepted: 1, rejected: 2,
+                        lastUsed: earlier),
+                    editDistance: 2),
+            ], in: terminal, typed: "git c", now: moment)
+
+        #expect(offered.count == 1)
+        #expect(offered.first?.source == .environment)
+        #expect(offered.first?.editDistance == 0)
+        #expect(
+            offered.first?.evidence
+                == Entry(
+                    text: "git commit", count: 12, accepted: 8, rejected: 3,
+                    selfSourced: 2, lastUsed: moment))
+    }
 }
 
 @Suite("A difference only of case is not a typo")
 struct VerifierCaseTests {
+    @Test("A git subcommand that differs only in case is corrected to git's spelling.")
+    func gitSubcommandsAreCaseSensitive() async {
+        let verdict = await decided(
+            "git Status", typed: "git S", machine: [.subcommand(of: "git"): ["status"]])
+        #expect(verdict == .corrected("git status"))
+    }
+
+    @Test("A git alias that differs only in case is corrected to its configured spelling.")
+    func gitAliasesAreCaseSensitive() async {
+        let verdict = await decided(
+            "git CM", typed: "git C", machine: [.gitAlias: ["cm"]])
+        #expect(verdict == .corrected("git cm"))
+    }
+
+    @Test("A branch that differs only in case is corrected to the branch name.")
+    func branchesAreCaseSensitive() async {
+        let verdict = await decided(
+            "git switch Main", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main"]])
+        #expect(verdict == .corrected("git switch main"))
+    }
+
+    @Test("An exact branch spelling is attested even when a case-folded variant also exists.")
+    func exactBranchSpellingWinsOverVariants() async {
+        let verdict = await decided(
+            "git switch Main", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .attested)
+    }
+
+    @Test("An ambiguous case-only branch mismatch is rejected instead of choosing arbitrarily.")
+    func ambiguousBranchCaseMismatchIsRejected() async {
+        let verdict = await decided(
+            "git switch MAIN", typed: "git switch M",
+            machine: [.subcommand(of: "git"): ["switch"], .branch: ["main", "Main"]])
+        #expect(verdict == .rejected)
+    }
+
     @Test("A filename that differs from disk only in case is attested, not corrected.")
     func caseOnlyIsAttested() async {
         let verdict = await decided(
-            "cat readme.md", typed: "cat r", machine: [.file: ["README.md"]])
+            "cat Readme.md", typed: "cat R", machine: [.file: ["README.md"]])
+        #expect(verdict == .attested)
+    }
+
+    @Test("A filesystem name stays case-insensitive when git also checks for a branch.")
+    func filesystemAttestationSurvivesMixedLookup() async {
+        let verdict = await decided(
+            "git log Readme.md", typed: "git log R",
+            machine: [.branch: [], .file: ["README.md"]])
         #expect(verdict == .attested)
     }
 
@@ -517,7 +793,9 @@ struct GeneratedLineTests {
 
     @Test("A program the machine has is drawn and one it has not is dropped, in the model's order.")
     func programsAreLookedUp() async {
-        let kept = await standing(["git status", "github"], after: "gi", machine: [.executable: ["git"]])
+        let kept = await standing(
+            ["git status", "github"], after: "gi",
+            machine: [.executable: ["git"], .subcommand(of: "git"): ["status"]])
         #expect(kept == ["git status"])
     }
 
@@ -525,7 +803,7 @@ struct GeneratedLineTests {
     func gitSubcommandsAreLookedUp() async {
         let kept = await standing(
             ["git checkout main", "git check"], after: "git chec",
-            machine: [.subcommand(of: "git"): ["checkout"]])
+            machine: [.subcommand(of: "git"): ["checkout"], .branch: ["main"]])
         #expect(kept == ["git checkout main"])
     }
 
@@ -537,9 +815,37 @@ struct GeneratedLineTests {
         #expect(kept.isEmpty)
     }
 
-    @Test("A machine that has not answered denies nothing, so the model's line stands.")
-    func silenceLetsTheLineStand() async {
-        #expect(await standing(["vim .env.vim"], after: "vim .env", machine: [:]) == ["vim .env.vim"])
+    @Test("A machine that has not answered vouches for nothing, so the model's line waits for the listing.")
+    func silenceHoldsTheLineBack() async {
+        #expect(await standing(["vim .env.vim"], after: "vim .env", machine: [:]).isEmpty)
+    }
+
+    @Test(
+        "A branch the model invented is held back while the branch listing is cold, and a real one stands once it answers."
+    )
+    func coldBranchListingVouchesForNothing() async {
+        let cold = await standing(["git checkout no-such-branch"], after: "git checkout ", machine: [:])
+        #expect(cold.isEmpty)
+        let warm: [EnvironmentKind: [String]] = [.branch: ["main"]]
+        #expect(
+            await standing(["git checkout no-such-branch"], after: "git checkout ", machine: warm).isEmpty)
+        #expect(
+            await standing(["git checkout main"], after: "git checkout ", machine: warm) == [
+                "git checkout main"
+            ])
+    }
+
+    @Test(
+        "An unanswered listing does not end the search early, so an answered one that denies the word decides."
+    )
+    func anUnansweredLookupDoesNotOutvoteAnAnsweredOne() async {
+        let machine: [EnvironmentKind: [String]] = [.entries(under: "docs"): ["guide.md"]]
+        #expect(
+            await standing(["git checkout docs/nowhere"], after: "git checkout d", machine: machine).isEmpty)
+        #expect(
+            await standing(["git checkout docs/guide.md"], after: "git checkout d", machine: machine) == [
+                "git checkout docs/guide.md"
+            ])
     }
 
     /// The listing names `guide.md`, and the candidate is the path that ends in it.

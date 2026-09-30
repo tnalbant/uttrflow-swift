@@ -21,8 +21,13 @@ so the real ceiling is 111.
 Truncating here rather than leaving it to the decoder is the whole point. WhisperKit keeps
 the *last* 111 tokens and drops the rest without a word, so a vocabulary ranked best-first
 would lose precisely the words worth having. It is not a rare case either: `WorkingSet`
-offers up to 96 words and a technical word is seldom one token, so the budget usually binds
-long before the word count does.
+offers up to 28 words, matching the measured vocabulary that usually fits this budget.
+Long technical words can still make the token budget bind before that word limit.
+
+Words manually added during the last seven days rank ahead of older entries, newest first.
+This keeps a just-corrected name in front of entries that have accumulated a few uses. The
+Diagnostics page shows the exact dictionary words kept by the latest Whisper prompt; that
+personal list stays on screen and is omitted from copied diagnostics.
 
 Packing is word by word rather than a truncation mid-sequence: half of `PaymentSheet` in the
 prompt biases the decoder towards something the user has never said. A word too long for what
@@ -107,6 +112,11 @@ Devanagari word, so a Hindi piece over ~23 words on a full prompt, or ~44 words 
 shipped prompt, runs out of room mid-word. Issue #961 is the user-visible form of this budget
 collision. `CappedDecodeRetry` recovers the audio past the cap by re-decoding the tail; the
 underlying budget is unchanged.
+
+Each retry is a fresh decode with the same prompt, so it advances by the same ~23 or ~44 Hindi
+words, and `CappedDecodeRetry.maxRetries` is 10: one dictation recovers at most roughly 230 to
+440 Hindi words past the cap. A dictation that is still capped when the retries run out is
+marked `DecodeEffort.capUnresolved` rather than returned as if it were complete (#1727).
 
 ## Two decoding options that cost something
 

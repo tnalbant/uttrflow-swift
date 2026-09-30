@@ -57,6 +57,7 @@ match-report: ## List the word matches still decided by shape, with the line.
 .PHONY: ratchet-test
 ratchet-test: ## Prove the comment and word-match baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
+	@python3 Scripts/loose_match_audit_test.py
 
 .PHONY: range-test
 range-test: ## Prove the disclosure audit reads every revision range the pre-push hook hands it. Needs no build.
@@ -120,6 +121,7 @@ offline-test: ## Prove the offline audit still refuses every way of reaching the
 
 .PHONY: docs-audit
 docs-audit: ## Prove the documentation still describes this tree, including that CLAUDE.md delegates to AGENTS.md. Needs no build.
+	@python3 Scripts/preview_gen_test.py
 	./Scripts/docs_audit.sh --self-test
 
 .PHONY: pii-audit
@@ -148,6 +150,10 @@ pasteboard-audit: ## Prove only the clipboard adapters touch NSPasteboard. Needs
 release-tag-test: ## Prove release tags come from main. Needs no build.
 	./Scripts/release_tag_ancestry_test.sh
 
+.PHONY: release-notes-test
+release-notes-test: ## Prove release notes render and the leading-dash printf regression fails. Needs no build.
+	./Scripts/release_notes_test.sh
+
 .PHONY: provider-mark-test
 provider-mark-test: ## Prove the Google mark selector recognises both the legacy and current archive layouts. Needs no build.
 	./Scripts/select_google_mark_test.sh
@@ -155,6 +161,14 @@ provider-mark-test: ## Prove the Google mark selector recognises both the legacy
 .PHONY: release-order-test
 release-order-test: ## Prove `make release` keeps its stages in order under -j. Dry-run only.
 	./Scripts/release_order_test.sh
+
+.PHONY: notarise-dmg-test
+notarise-dmg-test: ## Prove notarise-dmg refuses zero or multiple images and selects the only image without credentials.
+	./Scripts/notarise_dmg_test.sh
+
+.PHONY: soak-test
+soak-test: ## Prove soak.sh's growth report compares the union of two snapshots. Needs no build.
+	./Scripts/soak_test.sh
 
 .PHONY: e2e-predict-cleanup-test
 e2e-predict-cleanup-test: ## Prove the live prediction harness removes its scratch directory and helper on exit. Needs no build.
@@ -202,7 +216,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit ratchet-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test uitest-arguments uitest-result-path log-audit store-permissions pasteboard-audit bundle-requirement-test bundle-test release-tag-test provider-mark-test release-order-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget lint build coverage offline-audit ## The whole gate: PII, disclosure, issue template prompts, docs, comments, word matches, log privacy, clipboard, bundle signing, packaging checks, release tags, release stage order, publish resumability, publish cleanup, offline tokenizer gate, coverage exclusions, energy and memory budget, lint, build, tests, coverage floor, offline audit.
+verify: pii-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit ratchet-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test uitest-arguments uitest-result-path log-audit store-permissions pasteboard-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
@@ -225,7 +239,12 @@ uitest: ## Drive dist/Uttrflow.app through the UI suite. Needs a windowing sessi
 
 .PHONY: app
 app: ## Build and sign Uttrflow.app into dist/ for this Mac.
+	./Scripts/fetch-provider-marks.sh || echo "Continuing without the Google mark; the sign-in button shows its wording alone."
 	./Scripts/bundle.sh
+
+.PHONY: app-preflight
+app-preflight: app ## Build the app bundle and run CI's strict signature verification.
+	codesign --verify --deep --strict dist/Uttrflow.app
 
 # Its own identifier, so it runs beside the installed app and keeps its own settings,
 # stores and permission grants. Docs/development-build.md says what that costs.
@@ -241,6 +260,7 @@ app-hardened: ## Same, but under the hardened runtime. Rehearses a shippable bui
 # UTTRFLOW_SIGNING_IDENTITY; bundle.sh says how to find it if neither is set.
 .PHONY: app-dist
 app-dist: ## Build a notarisable Uttrflow.app. Needs a Developer ID certificate.
+	./Scripts/fetch-provider-marks.sh
 	./Scripts/bundle.sh distribution $(if $(IDENTITY),"$(IDENTITY)")
 
 .PHONY: notarise-check
@@ -260,7 +280,7 @@ dmg: ## Wrap dist/Uttrflow.app in a disk image. Works without a Developer accoun
 
 .PHONY: notarise-dmg
 notarise-dmg: ## Notarise and staple the disk image. Needs Apple credentials.
-	./Scripts/notarise.sh $(wildcard dist/Uttrflow-*.dmg)
+	./Scripts/notarise_dmg.sh
 
 # The whole chain, in the one order that produces an app which still opens after it has
 # been dragged out of the image and the image ejected: the app is notarised and stapled
@@ -312,4 +332,4 @@ clean: ## Remove build products.
 .PHONY: help
 help: ## List available targets.
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*?## "}; {names[NR] = $$1; descriptions[NR] = $$2; if (length($$1) > width) width = length($$1)} END {for (i = 1; i <= NR; i++) printf "  \033[36m%-*s\033[0m %s\n", width, names[i], descriptions[i]}'

@@ -58,10 +58,10 @@ it, so every shape is tested as a sequence of `KeyStroke`s.
 **Matching is by equality, not containment.** ⌃⌥ and ⌃⌥⌘ are different holds, and matching a
 superset would fire a ⌃⌥ binding on the way to every ⌃⌥⌘ shortcut.
 
-There was once a 250 ms timer that re-read the modifier state to catch a release the monitor
-had missed. It polled a source that cannot see Fn, read "up" while Fn was held, and cancelled
-the dictation the instant it started. It is gone: the tap delivers clean pairs, and the one
-release worth guaranteeing is the one below.
+The old modifier poll that could not see Fn is gone. Both hotkey monitors now start a
+250 ms reconciliation poll when they report a press and stop it when they report or
+reconcile the release; it checks the real key state only during that hold. See
+[`stuck-recording.md`](stuck-recording.md) for the lost-release cases it covers.
 
 ## Modifiers bound alone begin other shortcuts
 
@@ -73,12 +73,13 @@ so that app still gets K; what this app must not do is dictate as well.
 the binding does not have, marks the hold as used by another shortcut: a press already reported
 becomes `HotkeyEvent.cancelled` rather than `.released`, and nothing counts again until every
 modifier is up. So ⌃⌥⇧⌘K on a ⌃⌘⌥ binding reports one press and one withdrawal, not a press for
-each time ⇧ comes and goes. It applies only to holds of modifiers; Fn is read from its own flag
-and a combination such as ⌥Space or ⇧⌘V already names its key.
+each time ⇧ comes and goes. The same rule applies to Fn: a key pressed while Fn is held withdraws
+the Fn press. Fn is read from its own flag, so an arrow key's Fn flag alone does not start a hold;
+a combination such as ⌥Space or ⇧⌘V already names its key.
 
 A withdrawal alone would still open the microphone and play the start cue before K arrives, so
-`DictationController` also holds such a press back for `modifierSettle` — the same 200 ms as the
-minimum hold — before acting on it:
+`DictationController` also holds modifier-only presses back for `modifierSettle` — the same 200 ms
+as the minimum hold — before acting on them:
 
 - **Withdrawn inside the settle:** nothing happens at all. No microphone, no cue, no insertion.
 - **Held past the settle:** the press counts, measured from when the keys went down, so the
@@ -134,6 +135,19 @@ Whether a registration that succeeded is delivered is a window-server question n
 can answer: a key event posted from a test process did not fire a Carbon hot key even with a
 single registrant, so delivery is checked by pressing the key on a real build.
 
+## A dictation shortcut that could not be armed
+
+When `controller.start(binding:)` throws, because another app holds the combination or
+Accessibility access is off, `ShortcutArming` keeps the error as its own state. It is not a
+dictation, so it never goes through `render(_:)`: nothing is counted in telemetry, nothing is
+logged as a failed dictation, no sweep runs, and nothing dismisses it after a few seconds. The
+menu bar popover's header and the floating button's hover hint show the reason, the same places
+that report secure keyboard entry, and they keep showing it until an arming works. Secure input
+is shown first when both apply, since it blocks every binding. Arming is retried each time
+Uttrflow becomes active, and turning dictation off forgets the failure. A recording already under
+way keeps its own presentation, because the popover shows an unheard shortcut only while nothing
+is being dictated.
+
 ## Secure keyboard entry hides the shortcut
 
 While any process has secure event input on, macOS stops passing key down and key up events to
@@ -142,18 +156,18 @@ option turns it on while that terminal is frontmost, or for as long as the optio
 app that forgets to turn it off leaves it on for every app. The tap is not disabled, so nothing
 re-enables it and nothing is logged by the tap itself.
 
-What it affects is every dictation binding with a key in it, such as the default ⌥Space. A binding
+What it affects is every dictation binding with a key in it, such as ⌥Space. A binding
 made only of held modifiers is read from modifier changes rather than key presses, but the notice is
 shown whatever the binding, because the check says only that secure input is on. The Carbon hot keys the clipboard and other
 claimed shortcuts use are delivered anyway, so the clipboard panel can open while dictation cannot.
-Start Dictation in the menu bar and the floating button still work, because neither goes through
+Talk in the menu bar popover and the floating button still work, because neither goes through
 the tap.
 
 `SecureInputWatch` asks `IsSecureEventInputEnabled()` when another app becomes active and when the
-menu bar menu opens — never on a timer, which the energy budget in `Docs/performance.md` rules
-out. When the answer changes, the menu shows the reason under its status line and the floating
+menu bar popover opens — never on a timer, which the energy budget in `Docs/performance.md` rules
+out. When the answer changes, the popover shows the reason in its header and the floating
 button's hover hint says it in place of the keycap, until a later check finds it off again. An app
-that turns secure input on a moment after it becomes active is caught by the next menu open
+that turns secure input on a moment after it becomes active is caught by the next popover open
 rather than by the switch.
 
 ## What a shortcut is for
@@ -172,6 +186,21 @@ removing the setting would still take press-to-toggle away from everyone using i
 tap does not replace it: it is reached from `(.holdToTalk, .released)` only, and gives somebody
 who chose to hold what press-to-toggle already gave everybody else. See
 `Docs/pipeline-gestures.md`.
+
+## The dictation shortcut a new install gets
+
+A new install dictates with ⌃⌥ held: `HotkeyBinding.controlOptionHold`, a hold of two modifiers
+that `HotkeyRecogniser` reads like any other and that settles for `modifierSettle` before it
+counts. Installs onboarded before it keep ⌥Space, the earlier default, which is
+`ShortcutSet.earlierDefault`.
+
+The settings file is what tells the two apart, and it did not always exist: settings are saved
+when something is changed, so an install whose user never opened Settings has none. At launch,
+before the first read, `UserDefaultsSettingsStore.pinDefaults(onboarded:)` saves one when it is
+missing or is no JSON object — ⌥Space and a week of transcripts when the onboarding record says
+onboarding finished, the current defaults otherwise — so a later change of default never moves
+anybody. A saved file that names no dictation shortcut is read with ⌥Space for the same reason.
+Reset in Settings gives back ⌃⌥, the current default, to everybody.
 
 ## What is testable
 
@@ -224,3 +253,7 @@ clip.
 ⌫ and ⌘⌫ are left to the search field, which is why Delete takes ⇧ as well; ⌘C is the
 field's copy, so the row's is ⌘⇧C. A chord that acted on a row only while the field was
 empty would be a trap, so none of them does.
+
+The panel takes its row chords before the main menu sees them (`QuickPanel.performKeyEquivalent`).
+Window ▸ Minimise is also ⌘M, and the menu swallows a key equivalent even when its item is
+disabled, so without that ⌘M would never reach Move.

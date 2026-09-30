@@ -248,6 +248,9 @@ struct ClipKindDetectorTests {
         "does not call prose code",
         arguments: [
             "Use the {name} placeholder in your template.",
+            "Use \"name\": for the {template} field.",
+            "Chapter \"Two\": the arrival\n  it was raining all week",
+            "She asked \"why\": I had no answer.\n  I still do not.",
             "I bought apples, pears and figs; then I went home.",
             "The class starts at nine and the lecture is on Tuesday.",
             "Go to the shop and buy milk.",

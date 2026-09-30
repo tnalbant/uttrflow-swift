@@ -45,14 +45,17 @@ public struct PasteConfirmation: Sendable {
 
     /// Watches the caret until `text` sits behind it; `before` is the pre-paste tail, so an unchanged match does not count.
     public func waitFor(_ text: String, before: FieldTail? = nil) async -> Outcome {
-        let elapsed = Self.stopwatch(from: clock)
+        let elapsed = UttrflowCore.stopwatch(from: clock)
         guard !Task.isCancelled else { return .cancelled(.zero) }
         let wanted = Self.wanted(from: text)
         // A field that will not answer now will not answer in a second either, so nothing is waited for.
-        guard !wanted.isEmpty, await read() != .unreadable else { return .notReported }
+        guard !wanted.isEmpty else { return .notReported }
+        let firstRead = await read()
+        guard firstRead != .unreadable else { return .notReported }
         let priorText = Self.priorText(matching: wanted, before: before)
         // Set once the caret has read as anything but the pre-paste text, so a later match is trusted even if it settles back on it.
-        var hasChangedSincePaste = priorText == nil
+        var hasChangedSincePaste = priorText == nil && before != .unreadable
+        let unchangedText = priorText ?? (before == .unreadable ? Self.text(from: firstRead) : nil)
 
         var waited = Duration.zero
         while waited < budget {
@@ -64,7 +67,7 @@ public struct PasteConfirmation: Sendable {
             guard case .text(let seen) = read else { return .notReported }
             // Read from the clock rather than tallied from the sleeps, so each read is charged to the budget.
             waited = elapsed()
-            if seen != priorText { hasChangedSincePaste = true }
+            if let unchangedText, seen != unchangedText { hasChangedSincePaste = true }
             // A caret unchanged since before the paste proves nothing, however well it matches.
             if Self.collapsed(seen).hasSuffix(wanted), hasChangedSincePaste { return .landed(waited) }
         }
@@ -83,10 +86,10 @@ public struct PasteConfirmation: Sendable {
         return seen
     }
 
-    /// Opens the existential clock, which is what lets an instant be held on to.
-    private static func stopwatch(from clock: some Clock<Duration>) -> () -> Duration {
-        let start = clock.now
-        return { start.duration(to: clock.now) }
+    /// The text from a readable caret sample.
+    private static func text(from tail: FieldTail) -> String? {
+        guard case .text(let seen) = tail else { return nil }
+        return seen
     }
 
     /// The end of what was pasted, which is what sits against the caret once the application takes it.

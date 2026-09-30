@@ -5,6 +5,8 @@ public import Foundation
 public enum CaptureEvent: Sendable, Equatable {
     /// The line the caret is on after a key was pressed, which is what a completion matches.
     case keystroke(String, at: Date)
+    /// Characters the keyboard delivered since the last line read.
+    case typed(String?, at: Date)
     /// Return was pressed, which is the user saying the value is finished.
     case returnPressed(at: Date)
     /// The focus moved off this field.
@@ -13,14 +15,32 @@ public enum CaptureEvent: Sendable, Equatable {
     case applicationDeactivated(at: Date)
     /// Time passed, which is the only way this machine can notice a pause.
     case tick(at: Date)
+    /// Text reached the line without being typed, by a paste or a dictation, so the line is no longer only this person's typing.
+    case inserted(at: Date)
 
     /// When the event happened, which is the clock the detector runs on.
     public var moment: Date {
         switch self {
-        case .keystroke(_, let moment), .returnPressed(let moment), .focusLeft(let moment),
-            .applicationDeactivated(let moment), .tick(let moment):
+        case .keystroke(_, let moment), .typed(_, let moment), .returnPressed(let moment),
+            .focusLeft(let moment),
+            .applicationDeactivated(let moment), .tick(let moment), .inserted(let moment):
             moment
         }
+    }
+
+    /// Whether this event ends the field's life, and so commits whatever the line holds.
+    var endsTheField: Bool {
+        switch self {
+        case .returnPressed, .focusLeft, .applicationDeactivated: true
+        case .keystroke, .typed, .tick, .inserted: false
+        }
+    }
+
+    /// The events with an insertion marked after the line they read and before anything that would commit it.
+    public static func marking(_ events: [CaptureEvent], insertedAt moment: Date) -> [CaptureEvent] {
+        var marked = events
+        marked.insert(.inserted(at: moment), at: events.firstIndex(where: \.endsTheField) ?? events.endIndex)
+        return marked
     }
 }
 
@@ -68,6 +88,18 @@ public struct CommitDetector: Sendable, Equatable {
     private var committedPrior: String?
     /// The line an accepted completion already recorded, which an ending leaves alone unless it has changed since.
     private var acceptedLine: String?
+    /// Whether text that was not typed reached the line in this field's life, which keeps anything it ends from being learned.
+    private var holdsInsertion = false
+    /// Whether a line read established a baseline for checking later keyboard input.
+    private var hasObservedLine = false
+    /// The untrimmed last line read, needed to retain spaces typed before a later word.
+    private var observedLine = ""
+    /// Characters expected to have reached the line since its last read.
+    private var typedSinceRead = ""
+    /// Whether a key without printable characters may have edited the line.
+    private var hasUnverifiableKeySinceRead = false
+    /// Whether a host-app edit made the line differ from the delivered keyboard input.
+    private var holdsMutation = false
 
     /// A detector watching a field nothing has been typed into.
     public init() {}
@@ -83,7 +115,31 @@ public struct CommitDetector: Sendable, Equatable {
     ) -> Commit? {
         switch event {
         case .keystroke(let text, let moment):
-            pending = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if hasObservedLine, (!typedSinceRead.isEmpty || hasUnverifiableKeySinceRead) {
+                if text != observedLine + typedSinceRead { holdsMutation = true }
+            }
+            observedLine = text
+            pending = line
+            hasObservedLine = true
+            typedSinceRead = ""
+            hasUnverifiableKeySinceRead = false
+            lastKeystroke = moment
+            // A line emptied by hand holds nothing inserted, so what is typed into it next is learned again.
+            if pending.isEmpty {
+                holdsInsertion = false
+                holdsMutation = false
+            }
+            return nil
+        case .typed(let text, _):
+            if let text {
+                typedSinceRead += text
+            } else {
+                hasUnverifiableKeySinceRead = true
+            }
+            return nil
+        case .inserted(let moment):
+            holdsInsertion = true
             lastKeystroke = moment
             return nil
         case .returnPressed:
@@ -115,6 +171,12 @@ public struct CommitDetector: Sendable, Equatable {
         committed = nil
         committedPrior = nil
         acceptedLine = nil
+        holdsInsertion = false
+        hasObservedLine = false
+        observedLine = ""
+        typedSinceRead = ""
+        hasUnverifiableKeySinceRead = false
+        holdsMutation = false
     }
 
     /// Undoes the most recent idle commit, so a later tick can re-emit the value after a failed write.
@@ -125,13 +187,16 @@ public struct CommitDetector: Sendable, Equatable {
 
     /// Commits and then forgets, for the three events that end the field's life.
     private mutating func finish(_ reason: CommitReason, _ admits: (CommitReason) -> Bool) -> Commit? {
+        if !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead { holdsMutation = true }
         defer { reset() }
         return commit(reason, admits)
     }
 
-    /// Emits what is pending, unless it is nothing, is exactly what was emitted last, or ended in a way not admitted.
+    /// Emits what is pending, unless it is nothing, holds text that was not typed, is exactly what was emitted last, or ended in a way not admitted.
     private mutating func commit(_ reason: CommitReason, _ admits: (CommitReason) -> Bool) -> Commit? {
-        guard !pending.isEmpty, pending != committed, pending != acceptedLine, admits(reason) else {
+        guard !pending.isEmpty, !holdsInsertion, !holdsMutation, pending != committed,
+            pending != acceptedLine, admits(reason)
+        else {
             return nil
         }
         // An idle draft is retired by whatever the line became, even after it was backspaced away.

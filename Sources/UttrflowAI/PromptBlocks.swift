@@ -48,7 +48,9 @@ public struct PromptBlock: Sendable, Equatable {
 /// The shipped block for every destination. `Docs/bakeoff.md` records why an example is never a corpus case.
 public enum PromptBlocks {
     public static let standard: [PromptBlockID: PromptBlock] = Dictionary(
-        uniqueKeysWithValues: [document, spreadsheet, sqlEditor, codeEditor, messaging, email, plain].map {
+        uniqueKeysWithValues: [
+            document, spreadsheet, sqlEditor, codeEditor, terminal, messaging, email, plain,
+        ].map {
             ($0.id, $0)
         })
 
@@ -57,7 +59,8 @@ public enum PromptBlocks {
         rules: """
             In a document:
             - full sentences; keep the breaks given, and a list only where one was spoken
-            - fix a grammar slip: "there is three" → "there are three", "a apple" → "an apple", \
+            - fix a grammar slip: "the parcel arrive yesterday" → "the parcel arrived yesterday", \
+            "those report is ready" → "those reports are ready", \
             a drifting tense
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
@@ -110,13 +113,28 @@ public enum PromptBlocks {
                 cleaned: "Handle the timeout first\nthen retry once with backoff")
         ])
 
+    static let terminal = PromptBlock(
+        id: "terminal",
+        rules: """
+            In a terminal:
+            - keep the case of every command, flag and path; the shell is case-sensitive
+            - keep every line break in the input; do not join lines, and add none
+            - no full stop at the end
+            """,
+        examples: [
+            WorkedExample(
+                typedInto: "a terminal",
+                spoken: "docker compose up dash d",
+                cleaned: "docker compose up -d")
+        ])
+
     static let messaging = PromptBlock(
         id: "messaging",
         rules: """
             In a chat message:
             - commas and capitals, but no full stop after a message of one or two sentences
             - a question still ends with a question mark
-            - keep the greeting, the name and the tone exactly as spoken
+            - keep the greeting, the name and the tone exactly as spoken; keep closings inline and add no line breaks
             """,
         examples: [
             WorkedExample(
@@ -131,13 +149,22 @@ public enum PromptBlocks {
         id: "email",
         rules: """
             In an email:
-            - full sentences and paragraphs; keep the greeting, the sign-off and every break as given
-            - fix a grammar slip: "there is three" → "there are three", "have went" → \
-            "have gone", "a apple" → "an apple", a drifting tense
+            - full stops for body paragraphs; leave a greeting paragraph and a closing followed by a name open, keeping a spoken comma
+            - at the end only, put a spoken closing followed only by a name on its own lines: blank line, closing, name; use only thanks, best regards, regards, cheers or best, and keep every word in order
+            - fix a grammar slip: "the parcel arrive yesterday" → "the parcel arrived yesterday", \
+            "those report is ready" → "those reports are ready", "we have wrote" → "we have written", \
+            "have went" → "have gone", "a orange" → "an orange", "a banana" → "a banana", a drifting tense
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
-        examples: [])
+        examples: [
+            WorkedExample(
+                spoken: "good morning all the standup is cancelled today thanks kofi",
+                cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi"),
+            WorkedExample(
+                spoken: "thanks for the update cheers tom",
+                cleaned: "Thanks for the update.\n\nCheers,\nTom"),
+        ])
 
     static let plain = PromptBlock(
         id: "plain",
@@ -145,10 +172,17 @@ public enum PromptBlocks {
             In plain text:
             - full sentences; end with a full stop, question or exclamation mark
             - keep every line break given, and add none
-            - fix a grammar slip: "there is three" → "there are three", "have went" → \
-            "have gone", "a apple" → "an apple", a drifting tense
+            - fix a grammar slip: "the parcel arrive yesterday" → "the parcel arrived yesterday", \
+            "those report is ready" → "those reports are ready", a drifting tense, a lowercase name or acronym
             - change a word's form, never the word; dialect stays — "gonna", "ain't", \
             a double negative
             """,
-        examples: [])
+        examples: [
+            WorkedExample(
+                spoken: "one on one with rahul before friday",
+                cleaned: "One on one with Rahul before Friday."),
+            WorkedExample(
+                spoken: "review sprint goals then planning",
+                cleaned: "Review sprint goals, then planning."),
+        ])
 }

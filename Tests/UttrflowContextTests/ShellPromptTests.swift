@@ -29,6 +29,25 @@ struct ShellPromptTests {
         #expect(ShellPrompt.input(in: "➜  uttrflow git:(main) ✔ git status") == "git status")
     }
 
+    @Test("An arrow prompt is taken off in a clean repository and outside one, where it draws no git marker.")
+    func arrowPromptWithoutAMarker() {
+        #expect(ShellPrompt.input(in: "➜  uttrflow git:(main) git status") == "git status")
+        #expect(ShellPrompt.input(in: "➜  uttrflow git:(feature/login) git sta") == "git sta")
+        #expect(ShellPrompt.input(in: "➜  Downloads ls -la") == "ls -la")
+        #expect(ShellPrompt.input(in: "  ➜  Downloads ls -la") == "ls -la")
+        #expect(ShellPrompt.input(in: "➜  uttrflow git:(main) ") == "")
+        #expect(ShellPrompt.input(in: "➜  Downloads ") == "")
+        #expect(ShellPrompt.input(in: "➜  uttrflow git:(main) echo 50% done") == "echo 50% done")
+        #expect(ShellPrompt.input(in: "➜  uttrflow hg:(default) ✗ hg status") == "hg status")
+    }
+
+    @Test("An arrow anywhere but the start of the line is part of the command.")
+    func anArrowInsideACommandIsNotAPrompt() {
+        #expect(ShellPrompt.input(in: "echo ➜  done") == "echo ➜  done")
+        #expect(ShellPrompt.input(in: "user@host:~/dir$ echo ➜  done") == "echo ➜  done")
+        #expect(ShellPrompt.input(in: "➜ ls") == "➜ ls")
+    }
+
     @Test("A root prompt is a hash with nothing in front of it.")
     func rootPrompt() {
         #expect(ShellPrompt.input(in: "# apt update") == "apt update")
@@ -47,9 +66,31 @@ struct ShellPromptTests {
         #expect(ShellPrompt.input(in: "uttrflow=> select") == "select")
     }
 
-    @Test("A starship chevron ends a prompt too.")
-    func chevronPrompt() {
-        #expect(ShellPrompt.input(in: "~/dir on main ❯ ls") == "ls")
+    @Test("Starship prompt glyphs end a prompt after themed path segments.")
+    func starshipPromptGlyphs() {
+        #expect(
+            ShellPrompt.input(in: "~/code/uttrflow-swift on \u{e0a0} main [!] via \u{f0e7} v20 ❯ git status")
+                == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift on main ➜ git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift on main ➤ git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift \u{e0b0} git status") == "git status")
+    }
+
+    @Test("Nushell and PowerShell path prompts end at their directory chevron.")
+    func nushellAndPowerShellPathPrompts() {
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift> git status") == "git status")
+        #expect(ShellPrompt.input(in: "~/code/uttrflow-swift\n> git status") == "git status")
+        #expect(ShellPrompt.input(in: "PS /Users/dev/project> git status") == "git status")
+        #expect(
+            ShellPrompt.input(in: #"PS /Users/dev/project> Write-Output `"hello ❯ world`""#)
+                == #"Write-Output `"hello ❯ world`""#)
+        #expect(ShellPrompt.input(in: "PS /Users/dev/one`>two> Get-Location") == "Get-Location")
+    }
+
+    @Test("A directory-looking command still keeps its spaced redirection.")
+    func directoryRedirectionIsNotANushellPrompt() {
+        #expect(ShellPrompt.input(in: "echo / > file") == "echo / > file")
+        #expect(ShellPrompt.input(in: "/usr/bin/echo > file") == "/usr/bin/echo > file")
     }
 
     @Test("A terminator with nothing in front of it is a prompt in its own right.")
@@ -99,6 +140,20 @@ struct ShellPromptTests {
     func aRedirectionIsNotAPrompt() {
         #expect(ShellPrompt.input(in: "echo hi > file") == "echo hi > file")
         #expect(ShellPrompt.input(in: "user@host:~/dir$ echo hi > file") == "echo hi > file")
+        #expect(ShellPrompt.input(in: "grep foo file.txt> results.txt") == "grep foo file.txt> results.txt")
+        #expect(ShellPrompt.input(in: "cmd 2> error.log") == "cmd 2> error.log")
+        #expect(ShellPrompt.input(in: "cmd &> both.log") == "cmd &> both.log")
+    }
+
+    @Test("A fish shell default prompt ends after the home marker, not before it.")
+    func fishDefaultPrompt() {
+        #expect(ShellPrompt.input(in: "user@host ~> git status") == "git status")
+        #expect(ShellPrompt.input(in: "user@host ~/projects> git status") == "git status")
+    }
+
+    @Test("A fish shell vi-mode prompt is also taken off, including the mode indicator.")
+    func fishViModePrompt() {
+        #expect(ShellPrompt.input(in: "[I] user@host ~> git status") == "git status")
     }
 
     @Test("A trailing comment is not a root prompt.")
@@ -116,10 +171,39 @@ struct ShellPromptTests {
             ShellPrompt.input(in: "[root@host ~]# ssh user@host # jump box") == "ssh user@host # jump box")
     }
 
+    @Test("An unclosed command substitution cannot supply root-prompt evidence.")
+    func anUnclosedSubstitutionIsNotARootPrompt() {
+        let line = "echo $(printf user@host# apt update"
+        #expect(ShellPrompt.input(in: line) == line)
+        #expect(
+            ShellPrompt.input(in: "echo $(printf user@host# apt update) # note")
+                == "echo $(printf user@host# apt update) # note")
+    }
+
+    @Test("Nested and quoted command substitutions do not supply root-prompt evidence.")
+    func nestedSubstitutionsAreNotRootPrompts() {
+        let nested = "echo $(printf $(printf user@host# apt update)"
+        #expect(ShellPrompt.input(in: nested) == nested)
+        let quoted = #"echo "$(printf user@host# apt update)" # note"#
+        #expect(ShellPrompt.input(in: quoted) == quoted)
+    }
+
+    @Test("A genuine root prompt after a closed substitution still ends the prompt.")
+    func rootPromptAfterClosedSubstitution() {
+        #expect(ShellPrompt.input(in: "echo $(printf ready) root@host# apt update") == "apt update")
+    }
+
     @Test("An escaped quote does not open one, so a later prompt character is still seen.")
     func anEscapedQuoteOpensNothing() {
         #expect(ShellPrompt.input(in: #"user\@host:~/dir$ ls"#) == "ls")
         #expect(ShellPrompt.input(in: #"echo \" 50% done"#) == #"echo \" 50% done"#)
+    }
+
+    @Test("An escaped quote inside a double-quoted argument keeps the argument quoted.")
+    func anEscapedQuoteInsideAQuoteStaysQuoted() {
+        let line = #"git commit -m "fixed \"a@b# now\" done" # note"#
+        #expect(ShellPrompt.input(in: line) == line)
+        #expect(ShellPrompt.input(in: #"$ echo 'a\' # note"#) == #"echo 'a\' # note"#)
     }
 
     @Test("A quote left open swallows the rest of the line rather than guessing at a prompt.")

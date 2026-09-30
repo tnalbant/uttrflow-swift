@@ -163,7 +163,8 @@ struct TranscribeCorpus: AsyncParsableCommand {
             passage: sample.passage, recordedAt: Date(),
             durationSeconds: Double(sample.durationMs) / 1000, sampleRate: sample.sampleRateHz,
             cohort: sample.cohort.map { RecordingCohort(id: $0, speaker: $0, setting: "from the catalogue") },
-            recordingIdentity: RecordingIdentity.forCatalogueSample(s3Key: sample.s3Key))
+            recordingIdentity: RecordingIdentity.forCatalogueSample(s3Key: sample.s3Key),
+            recordID: sample.slug)
     }
 
     // MARK: Measuring one passage
@@ -421,7 +422,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
     /// Names why a stage has no timing, since a zero in a latency table reads as "instant".
     private func whyNotMeasured(_ stage: PipelineStage) -> String {
         switch stage {
-        case .microphoneOpen, .capture:
+        case .microphoneOpen, .keyDownToAudio, .capture:
             "audio is read from disk here; what the microphone costs is timed in the app"
         case .transcription: "no passage reached the recogniser"
         case .correction: "no dictionary is consulted here; corrections are the app's"

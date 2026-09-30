@@ -11,6 +11,7 @@ private final class FlakyDevice: InputDevice, @unchecked Sendable {
         var opens = 0
         var closes = 0
         var failuresLeft = 0
+        var failure: AudioCaptureError = .noInputDevice
     }
 
     let log = Mutex(Log())
@@ -20,13 +21,13 @@ private final class FlakyDevice: InputDevice, @unchecked Sendable {
     }
 
     func open() throws(AudioCaptureError) {
-        let refuse = log.withLock { log -> Bool in
+        let failure = log.withLock { log -> AudioCaptureError? in
             log.opens += 1
-            guard log.failuresLeft > 0 else { return false }
+            guard log.failuresLeft > 0 else { return nil }
             log.failuresLeft -= 1
-            return true
+            return log.failure
         }
-        if refuse { throw .noInputDevice }
+        if let failure { throw failure }
     }
 
     func close() {
@@ -179,6 +180,25 @@ struct InputDeviceSessionTests {
         #expect(session.health == .live)
         #expect(reported.first == .began)
         #expect(reported.firstError == nil, "going away is not yet a failure")
+    }
+
+    @Test("ends immediately with the permission error when access is revoked during a reopen")
+    func permissionRevokedDuringReopen() async throws {
+        let device = FlakyDevice(failing: 0)
+        let (session, reported) = session(device, delays: 5)
+        try session.open { interruption in reported.record(interruption) }
+
+        device.log.withLock {
+            $0.failuresLeft = 5
+            $0.failure = .microphoneDenied
+        }
+        await session.deviceChanged()?.value
+
+        #expect(session.health == .gone)
+        #expect(reported.count == 2)
+        #expect(reported.first == .began)
+        #expect(reported.firstError == .microphoneDenied)
+        #expect(device.log.withLock(\.opens) == 2, "permission denial does not consume the remaining retries")
     }
 
     /// The failure this exists to stop: one refusal used to end the recording with nobody told.

@@ -2,6 +2,7 @@
 
 import AppKit
 import UttrflowClipboard
+import UttrflowCore
 import UttrflowUX
 import SwiftUI
 
@@ -9,6 +10,50 @@ import SwiftUI
 final class QuickPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// Whether the footer offers ⌘Z to put a deleted clip back, kept current by the controller's draw.
+    var offersRestore = false
+
+    /// Set while a row chord is sent through the window, so the send cannot come back here.
+    private var isSendingChord = false
+
+    /// Sends a row chord to the panel's own key handler before the main menu can swallow it, as Minimise does ⌘M.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let claimed =
+            Self.isRowChord(event)
+            || Self.claimsUndo(event, offersRestore: offersRestore, fieldCanUndo: fieldCanUndo)
+        guard !isSendingChord, claimed else {
+            return super.performKeyEquivalent(with: event)
+        }
+        isSendingChord = true
+        defer { isSendingChord = false }
+        sendEvent(event)
+        return true
+    }
+
+    /// Whether the search field has typing to take back, which ⌘Z undoes before it restores a clip.
+    private var fieldCanUndo: Bool {
+        (firstResponder as? NSTextView)?.undoManager?.canUndo ?? false
+    }
+
+    /// Whether ⌘Z restores a clip rather than undo typing: the offer on screen first, then the field; ⇧⌘Z stays Redo.
+    static func claimsUndo(_ event: NSEvent, offersRestore: Bool, fieldCanUndo: Bool) -> Bool {
+        guard event.type == .keyDown, offersRestore || !fieldCanUndo else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return modifiers.subtracting(.capsLock) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "z"
+    }
+
+    /// Whether `event` is ⌘, with or without ⇧, on a key some row action is bound to.
+    static func isRowChord(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.contains(.command), modifiers.isDisjoint(with: [.option, .control]),
+            let character = event.charactersIgnoringModifiers?.lowercased().first
+        else { return false }
+        let chord = PanelChord(character, shifted: modifiers.contains(.shift))
+        return PanelRowAction.allCases.contains { $0.chord == chord }
+    }
 }
 
 /// The panel's content, with the two things AppKit will not give a hosted view for free.
@@ -113,9 +158,16 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     private var presentation: PanelPresentation
     private var openCount = 0
     private var lastAnnouncements: [String] = []
+    private var lastAnnouncementIDs: [UUID] = []
 
     /// Whose caret this is. Captured on the way in, reported on the way out.
     private var caretOwner: NSRunningApplication?
+
+    var insertionDestination: InsertionDestination? {
+        guard let caretOwner else { return nil }
+        return InsertionDestination(
+            applicationName: caretOwner.localizedName, bundleIdentifier: caretOwner.bundleIdentifier)
+    }
     /// Live only while the panel is on screen; see ``watchForLeaving()``.
     private var clicks: Any?
     private var switching: (any NSObjectProtocol)?
@@ -165,7 +217,8 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
         panel.orderFrontRegardless()
         panel.makeKey()
         lastAnnouncements = []
-        postNewAnnouncements(presentation.announcements)
+        lastAnnouncementIDs = []
+        postNewAnnouncements(presentation)
         watchForLeaving()
     }
 
@@ -173,7 +226,7 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     func update(_ presentation: PanelPresentation) {
         self.presentation = presentation
         draw()
-        if panel.isVisible { postNewAnnouncements(presentation.announcements) }
+        if panel.isVisible { postNewAnnouncements(presentation) }
     }
 
     /// Takes the panel away without activating anything, because nothing was activated on the way in.
@@ -191,17 +244,34 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     // MARK: - Drawing
 
     private func draw() {
+        panel.offersRestore = presentation.offersUndo
         hostingView.rootView = QuickPanelView(
             presentation: presentation,
-            onKey: { [weak self] key in self?.relay(key) },
-            onIntent: { [weak self] intent in self?.onIntent?(intent, self?.caretOwner) },
-            openCount: openCount)
+            onKey: keyRelay, onIntent: intentRelay, openCount: openCount)
     }
 
-    private func postNewAnnouncements(_ lines: [String]) {
+    /// Made once, so every root the panel draws carries the same callbacks.
+    private lazy var keyRelay: (PanelKey) -> Void = { [weak self] key in self?.relay(key) }
+    private lazy var intentRelay: (PanelIntent) -> Void = { [weak self] intent in
+        self?.onIntent?(intent, self?.caretOwner)
+    }
+
+    private func postNewAnnouncements(_ presentation: PanelPresentation) {
         let previous = lastAnnouncements
+        let previousIDs = lastAnnouncementIDs
+        let lines = presentation.announcements
+        let hasIDs = presentation.announcementIDs.count == lines.count
+        let ids = hasIDs ? presentation.announcementIDs : []
         lastAnnouncements = lines
-        for line in lines where !previous.contains(line) { announce(line) }
+        lastAnnouncementIDs = ids
+        for (index, line) in lines.enumerated() {
+            let wasAlreadyAnnounced =
+                previous.indices.contains(index) && previous[index] == line
+                && (hasIDs
+                    ? previousIDs.indices.contains(index) && previousIDs[index] == ids[index]
+                    : previousIDs.isEmpty)
+            if !wasAlreadyAnnounced { announce(line) }
+        }
     }
 
     /// Reports keys to the app; the resolved panel outcome decides whether Escape closes the window.
