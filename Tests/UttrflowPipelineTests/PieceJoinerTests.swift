@@ -138,6 +138,29 @@ struct PieceJoinerListTests {
 
 @Suite("PieceJoiner paragraphs")
 struct PieceJoinerParagraphTests {
+    @Test("turns spoken layout commands at a piece boundary into layout")
+    func layoutCommandsAtPieceBoundary() {
+        #expect(
+            joined(["Guide.", "New paragraph the next review is Friday."], .email)
+                == "Guide.\n\nThe next review is Friday.")
+        #expect(
+            joined(["Guide.", "Bullet point who owns the icon refresh"], .document)
+                == "Guide.\n- Who owns the icon refresh")
+        #expect(
+            joined(["Guide.", "Bullet point, do we need support team?"], .document)
+                == "Guide.\n- Do we need support team?")
+    }
+
+    @Test("recognizes punctuation between the words of a layout command at a piece boundary")
+    func punctuatedLayoutCommandsAtPieceBoundary() {
+        #expect(
+            joined(["Guide.", "New. Paragraph open questions."], .email)
+                == "Guide.\n\nOpen questions.")
+        #expect(
+            joined(["Guide.", "New, line check the build."], .email)
+                == "Guide.\nCheck the build.")
+    }
+
     @Test("opens a paragraph where the next piece opens a topic")
     func topicWordStartsAParagraph() {
         #expect(
