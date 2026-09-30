@@ -71,6 +71,30 @@ struct LayoutWordsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "uses known text at the caret to decide what a leading break means",
+        arguments: [
+            ("The numbers look fine. ", "\n\nthanks sam"),
+            ("I looked at the numbers ", "\n\nthanks sam"),
+        ]
+    )
+    func leadingBreakWithTextBeforeCaret(precedingText: String, expected: String) {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: precedingText))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == expected)
+    }
+
+    @Test("drops a leading break command in a known empty field")
+    func leadingBreakInEmptyField() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: ""))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == "thanks sam")
+    }
+
+    @Test("keeps the existing numbered item behavior at the caret")
+    func numberedItemAtCaret() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: "The numbers look fine. "))
+        #expect(cleaned("number one, thanks sam", by: pass) == "1. thanks sam")
+    }
+
     /// One spoken phrase cannot straddle a sentence end, so neither the phrase nor the item number reaches past one.
     @Test(
         "reads neither a layout phrase nor an item number across a sentence end",
