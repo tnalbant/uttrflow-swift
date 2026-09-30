@@ -6,6 +6,8 @@ public struct TransformerRouter: TranscriptCleaning {
     private let engines: [any TextTransformationEngine]
     /// The kinds to try, in order.
     private let preference: [TransformerKind]
+    /// The user's choices, also used by the pipeline when it joins pieces.
+    public let cleaningSteps: CleaningSteps
     /// What each engine's allowance is measured against; injected so a test need not wait out a hang.
     private let clock: any Clock<Duration>
     /// The requests handed straight to the rules when the rules are on the route.
@@ -14,10 +16,12 @@ public struct TransformerRouter: TranscriptCleaning {
     /// Keeps the engines and the kinds to try; the preference should end in one that never declines.
     public init(
         engines: [any TextTransformationEngine], preference: [TransformerKind],
-        clock: any Clock<Duration> = ContinuousClock(), rulesAlone: RulesAlone = .never
+        clock: any Clock<Duration> = ContinuousClock(), rulesAlone: RulesAlone = .never,
+        cleaningSteps: CleaningSteps = .default
     ) {
         self.engines = engines
         self.preference = preference
+        self.cleaningSteps = cleaningSteps
         self.clock = clock
         self.rulesAlone = rulesAlone
     }
@@ -25,11 +29,12 @@ public struct TransformerRouter: TranscriptCleaning {
     /// Builds a router from a stored configuration, keeping only kinds this build has.
     public init(
         engines: [any TextTransformationEngine], configuration: EngineConfiguration,
-        clock: any Clock<Duration> = ContinuousClock(), rulesAlone: RulesAlone = .never
+        clock: any Clock<Duration> = ContinuousClock(), rulesAlone: RulesAlone = .never,
+        cleaningSteps: CleaningSteps = .default
     ) {
         self.init(
             engines: engines, preference: configuration.resolvedTransformerPreference, clock: clock,
-            rulesAlone: rulesAlone)
+            rulesAlone: rulesAlone, cleaningSteps: cleaningSteps)
     }
 
     /// The engines that will be tried, in order.

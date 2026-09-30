@@ -285,6 +285,13 @@ struct TextTransformersTests {
         #expect(TextTransformers.router().route.last == .rules)
     }
 
+    @Test("carries the user's clean-up choices to the message pipeline")
+    func keepsCleaningSteps() {
+        let steps = CleaningSteps.default.setting(.selfCorrection, isOn: false)
+
+        #expect(TextTransformers.router(steps: steps).cleaningSteps == steps)
+    }
+
     @Test("leaves replies of three words or fewer to the rules")
     func shipsShortReplies() {
         #expect(TextTransformers.router().rulesAlone == .shortReplies)

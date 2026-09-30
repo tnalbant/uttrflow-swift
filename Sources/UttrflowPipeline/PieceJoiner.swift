@@ -37,7 +37,9 @@ enum PieceJoiner {
     }
 
     /// Every piece as one, with the corrections' word ranges moved to where their piece begins.
-    static func join(_ pieces: [Piece], under formatter: DestinationFormatter) -> Piece {
+    static func join(
+        _ pieces: [Piece], under formatter: DestinationFormatter, steps: CleaningSteps = .default
+    ) -> Piece {
         guard pieces.count > 1, let first = pieces.first else {
             return pieces.first
                 ?? Piece(
@@ -67,7 +69,8 @@ enum PieceJoiner {
             corrected: CorrectedTranscript(
                 text: correctedText.joined(separator: " "), corrections: corrections),
             cleaned: TransformationResult(
-                text: laidOut(seamed(pieces.map(\.cleaned.text), under: formatter), under: formatter),
+                text: laidOut(
+                    seamed(pieces.map(\.cleaned.text), under: formatter), under: formatter, steps: steps),
                 producedBy: producedBy, entriesTaken: pieces.flatMap(\.cleaned.entriesTaken)))
     }
 
@@ -172,7 +175,9 @@ enum PieceJoiner {
     }
 
     /// The cleaned pieces as one text: a spoken list, a paragraph at a topic, a restatement across the seam, else a space.
-    static func laidOut(_ pieces: [String], under formatter: DestinationFormatter) -> String {
+    static func laidOut(
+        _ pieces: [String], under formatter: DestinationFormatter, steps: CleaningSteps = .default
+    ) -> String {
         var draft = Draft(words: [])
         var starts: [Int] = []
         for text in pieces {
@@ -187,7 +192,8 @@ enum PieceJoiner {
 
         var marks: [Int: String] = [:]
         var absorbed: Set<Int> = []
-        for opening in starts.indices.dropFirst() where restate(&draft, at: starts[opening]) {
+        for opening in starts.indices.dropFirst()
+        where steps.runs(.selfCorrection) && restate(&draft, at: starts[opening]) {
             absorbed.insert(opening)
         }
         let items = formatter.layout.contains(.lists) ? listItems(in: draft, starts: starts) : []

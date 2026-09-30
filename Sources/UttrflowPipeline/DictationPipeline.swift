@@ -775,7 +775,8 @@ public actor DictationPipeline {
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         let joiningFormatter = DestinationFormatter.standard(for: joining)
-        let joined = PieceJoiner.join(pieces, under: joiningFormatter)
+        let joined = PieceJoiner.join(
+            pieces, under: joiningFormatter, steps: runningCleaner.cleaningSteps)
         let correctedAtSeams = await correctAcrossSeams(
             pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
         let whole = await finishMessage(
