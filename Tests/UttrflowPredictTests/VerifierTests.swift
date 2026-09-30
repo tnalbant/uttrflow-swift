@@ -10,6 +10,25 @@ let liked = Verification.plausibilityFloor + 1
 /// A score the model dislikes, which is well below the floor.
 let disliked = Verification.plausibilityFloor - 1
 
+private enum SupersessionWriteError: Error {
+    case unavailable
+}
+
+private actor ThrowingSupersession: SupersessionRecording {
+    private(set) var rejections = 0
+    private(set) var supersessions = 0
+
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) throws {
+        supersessions += 1
+        throw SupersessionWriteError.unavailable
+    }
+
+    func recordRejection(of text: String, in surface: Surface) throws {
+        rejections += 1
+        throw SupersessionWriteError.unavailable
+    }
+}
+
 /// A verifier over a machine that has already answered, since the first ask only starts the read.
 func warmed(
     _ machine: [EnvironmentKind: [String]], on text: String, in surface: Surface = terminal,
@@ -69,6 +88,36 @@ struct VerifierTests {
         _ = await decided(
             "git comit", typed: "git com", machine: [.subcommand(of: "git"): ["commit"]], supersession: store)
         #expect(await store.recorded == ["git comit → git commit"])
+    }
+
+    @Test("A failed rejection write is retried and the refused line stays suppressed for the session.")
+    func failedRejectionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git zqxjw", scoring: ScriptedScoring(disliked),
+            supersession: store)
+        let candidate = Candidate(text: "git zqxjw", source: .personal)
+
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 1)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 2)
+    }
+
+    @Test("A failed supersede write is retried and the retired line stays suppressed for the session.")
+    func failedSupersessionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(await store.supersessions == 1)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).isEmpty)
+        #expect(await store.supersessions == 2)
     }
 
     @Test("A candidate the machine has never heard of stands, because silence is not a denial.")

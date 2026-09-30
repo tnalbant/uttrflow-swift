@@ -1,8 +1,13 @@
+import Foundation
 public import struct Foundation.Date
+import class Foundation.NSError
+import OSLog
 private import Synchronization
 
 /// Runs the gates in order, remembers what they decided, and never makes a keystroke wait.
 public actor Verifier {
+    private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
+    private static let supersessionLimit = 32
     /// What this machine says it has, which is the gate nothing below may overrule.
     private let index: EnvironmentIndex
     /// The model that judges a candidate's likelihood, absent where there is none.
@@ -17,6 +22,12 @@ public actor Verifier {
     private var cache = VerdictCache()
     /// Invalidates verdicts still being computed when a forget action arrives.
     private var forgetGeneration: UInt64 = 0
+    /// Candidate lines whose durable refusal has not yet landed.
+    private var pendingSupersessions: [PendingSupersession] = []
+    private var nextSupersessionID: UInt64 = 0
+    private var isRetryingSupersessions = false
+    /// Candidate lines kept out of this session while their refusal write is pending.
+    private var refusedThisSession: Set<RefusedCandidate> = []
     /// What a terminal line has to name on disk before it is shown, asked by stat and never by running a program.
     private let lines: TerminalLineCheck
 
@@ -40,12 +51,13 @@ public actor Verifier {
     public func verified(
         _ candidates: [Candidate], in surface: Surface, typed: String, now: Date
     ) async -> [Candidate] {
+        await retryPendingSupersessions()
         let deadline = deadline()
         var kept: [Candidate] = []
         for candidate in candidates {
             // A keystroke that cancelled this turn's task makes every candidate after this one moot.
             guard !Task.isCancelled else { break }
-            guard
+            guard !refusedThisSession.contains(RefusedCandidate(text: candidate.text, surface: surface)),
                 let allowed = await allowed(
                     candidate, in: surface, typed: typed, now: now, before: deadline)
             else { continue }
@@ -129,20 +141,86 @@ public actor Verifier {
         case .corrected(let word):
             let corrected = leading + word
             // A file or branch the machine does not know today may exist tomorrow, so only a closed vocabulary supersedes.
-            if forGood { await supersession?.recordSupersession(of: text, by: corrected, in: surface) }
+            if forGood { await record(.supersede(text, corrected), candidate: text, in: surface) }
             return .corrected(corrected)
         case .rejected:
-            if forGood { await supersession?.recordRejection(of: text, in: surface) }
+            if forGood { await record(.reject(text), candidate: text, in: surface) }
             return .rejected
         case .attested, .plausible:
             return verdict
         }
     }
 
+    /// Writes a final refusal and holds it for retry when the store fails.
+    private func record(_ write: SupersessionWrite, candidate: String, in surface: Surface) async {
+        guard let supersession else { return }
+        do {
+            try await apply(write, using: supersession, in: surface)
+        } catch {
+            pendingSupersessions.append(
+                PendingSupersession(
+                    id: claimSupersessionID(), write: write, surface: surface))
+            if pendingSupersessions.count > Self.supersessionLimit { pendingSupersessions.removeFirst() }
+            refusedThisSession.insert(RefusedCandidate(text: candidate, surface: surface))
+            Self.log.error(
+                "A refused suggestion's corpus write failed and is held for retry: \(Self.failure(error), privacy: .public)"
+            )
+        }
+    }
+
+    /// Retries held refusals in order and leaves them suppressed at the first repeated failure.
+    private func retryPendingSupersessions() async {
+        guard let supersession, !isRetryingSupersessions else { return }
+        isRetryingSupersessions = true
+        defer { isRetryingSupersessions = false }
+        while let pending = pendingSupersessions.first {
+            do {
+                try await apply(pending.write, using: supersession, in: pending.surface)
+                if pendingSupersessions.first?.id == pending.id { pendingSupersessions.removeFirst() }
+            } catch {
+                Self.log.error(
+                    "A refused suggestion's corpus retry failed: \(Self.failure(error), privacy: .public)"
+                )
+                return
+            }
+        }
+    }
+
+    /// Gives each held write an identity so an in-flight retry survives a forget or queue trim.
+    private func claimSupersessionID() -> UInt64 {
+        defer { nextSupersessionID &+= 1 }
+        return nextSupersessionID
+    }
+
+    /// Applies one pending supersession or rejection.
+    private func apply(
+        _ write: SupersessionWrite, using store: any SupersessionRecording, in surface: Surface
+    ) async throws {
+        switch write {
+        case .supersede(let text, let replacement):
+            try await store.recordSupersession(of: text, by: replacement, in: surface)
+        case .reject(let text):
+            try await store.recordRejection(of: text, in: surface)
+        }
+    }
+
+    /// Names an error type and case without exposing a text payload.
+    private static func failure(_ error: any Error) -> String {
+        let type = String(describing: Swift.type(of: error))
+        let mirror = Mirror(reflecting: error)
+        if mirror.displayStyle == .enum, let label = mirror.children.first?.label {
+            return "\(type).\(label)"
+        }
+        let bridged = error as NSError
+        return "\(type) domain=\(bridged.domain) code=\(bridged.code)"
+    }
+
     /// Forgets every verdict, which forgetting learned suggestions in Settings asks for.
     public func forgetEverything() async {
         forgetGeneration &+= 1
         cache.forgetEverything()
+        pendingSupersessions = []
+        refusedThisSession = []
         await scoring?.forgetEverything()
     }
 
@@ -343,6 +421,22 @@ public actor Verifier {
             surface.bundleIdentifier, surface.role, surface.locator ?? "", surface.scope ?? "", typed,
         ].joined(separator: "\u{0}")
     }
+}
+
+private enum SupersessionWrite: Sendable {
+    case supersede(String, String)
+    case reject(String)
+}
+
+private struct PendingSupersession: Sendable {
+    let id: UInt64
+    let write: SupersessionWrite
+    let surface: Surface
+}
+
+private struct RefusedCandidate: Hashable, Sendable {
+    let text: String
+    let surface: Surface
 }
 
 /// One keystroke's budget on the verifier's clock: whether it has run out, and a wait until it does.
