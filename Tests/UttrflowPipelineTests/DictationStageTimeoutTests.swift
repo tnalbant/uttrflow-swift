@@ -80,6 +80,14 @@ private struct NeverAnsweringInserter: TextInserting {
     }
 }
 
+/// A ``TextInserting`` that never confirms a copy.
+private struct NeverAnsweringClipboard: TextInserting {
+    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
+        await suspendUntilCancelled()
+        return InsertionAttempt(.clipboard)
+    }
+}
+
 private final class TimeoutPasteboard: Pasteboard, Sendable {
     private let stored = Mutex<String?>("older copied text")
 
@@ -248,6 +256,35 @@ struct DictationStageTimeoutTests {
         // A hung application must not take the next dictation down with the one it never answered.
         await pipeline.startRecording()
         #expect(await pipeline.currentState == .recording)
+    }
+
+    @Test("a copy that never answers reports a clipboard failure, not an application timeout")
+    func copyThatNeverAnswers() async {
+        let clock = ManualClock()
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(2))
+        let recordings = FakeRecordingKeeper(
+            waiting: [recording], audioOutcome: .success(.silence(seconds: 2)))
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(),
+            speech: FakeSpeechEngine(
+                transcribeOutcome: .success(Transcription(text: "what I said"))),
+            cleaner: TimeoutTestCleaner(),
+            context: FakeContextEngine(),
+            inserter: TimeoutTestInserter(),
+            recordings: recordings,
+            clipboard: NeverAnsweringClipboard(),
+            clock: clock)
+
+        let retrying = Task { await pipeline.retry(recording.id) }
+        await expire(.seconds(2), at: .inserting, of: pipeline, on: clock)
+        await retrying.value
+
+        guard case .failed(let failure) = await pipeline.currentState else {
+            Issue.record("expected the copy to fail, got \(await pipeline.currentState)")
+            return
+        }
+        #expect(failure.message == TextInsertionError.clipboardUnavailable.userMessage)
+        #expect(failure.recovery == .showRecentDictations)
     }
 
     /// The words are the only thing left when the application will not take them, so the failure carries them.

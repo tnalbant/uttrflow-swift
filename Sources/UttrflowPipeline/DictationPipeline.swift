@@ -944,7 +944,8 @@ public actor DictationPipeline {
     ) async throws -> Transcription? {
         let whole = window == audio.samples.indices
         // Reuse the full recording when this window already covers it.
-        let slice = whole
+        let slice =
+            whole
             ? audio
             : AudioSamples(samples: Array(audio.samples[window]), sampleRate: audio.sampleRate) ?? .empty
         var heard = try await decode(slice, whole: whole, biasedTowards: words, recording: metrics)
@@ -1224,7 +1225,9 @@ public actor DictationPipeline {
             guard !wasCancelled(mine) else { return nil }
             // Either way the dictation has to end, so the next one can begin.
             guard let attempt = inserted else {
-                throw TextInsertionError.insertionTimedOut
+                throw delivery == .copy
+                    ? TextInsertionError.clipboardUnavailable
+                    : TextInsertionError.insertionTimedOut
             }
             // A field found secure at the write counts from here on, before anything is learnt from it.
             if attempt.intoSecureField { destinationIsSecure = true }
