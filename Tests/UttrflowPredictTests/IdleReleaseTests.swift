@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowPredict
 
@@ -104,28 +105,28 @@ struct IdleReleaseTests {
 
     @Test("a model asked for within the window is kept, and one left alone past it is let go")
     func idleReleases() async throws {
+        let clock = ManualClock()
         let inner = RecordingModel()
-        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600), clock: clock)
         try await model.prepare(onProgress: { _ in })
-        let asked = ContinuousClock.now
         #expect(await model.isReady)
-        #expect(await model.releaseIfIdle(at: asked + .seconds(599)))
-        #expect(await model.releaseIfIdle(at: asked + .seconds(601)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(599)))
+        #expect(await model.releaseIfIdle(at: .seconds(601)) == false)
         #expect(await inner.steps == ["load", "release"])
         #expect(await model.holdsTheModel == false)
     }
 
     @Test("every way into the model counts as asking")
     func usingCounts() async throws {
+        let clock = ManualClock()
         let inner = RecordingModel()
-        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600), clock: clock)
         try await model.prepare(onProgress: { _ in })
-        let start = ContinuousClock.now
         _ = try await model.completions(for: "Thanks", in: situation)
         _ = try await model.alternatives(for: "Thanks", in: situation, excluding: "Thanks done")
         #expect(await model.logLikelihood(of: "Thanks a lot", following: "Thanks") == -1)
         #expect(await model.confidence(ofGenerated: "Thanks a lot") == -0.5)
-        #expect(await model.releaseIfIdle(at: start + .seconds(599)))
+        #expect(await model.releaseIfIdle(at: .seconds(599)))
     }
 
     @Test("a query after an idle release loads it again in the background")
@@ -133,7 +134,7 @@ struct IdleReleaseTests {
         let inner = RecordingModel()
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
         try await model.prepare(onProgress: { _ in })
-        await model.releaseIfIdle(at: .now + .seconds(700))
+        await model.releaseIfIdle(at: .seconds(700))
         #expect(await model.isReady == false)
         await model.pendingWork?.value
         #expect(await model.isReady)
@@ -147,7 +148,7 @@ struct IdleReleaseTests {
         let told = Told()
         await model.whenReloadFails { Task { await told.note() } }
         try await model.prepare(onProgress: { _ in })
-        await model.releaseIfIdle(at: .now + .seconds(700))
+        await model.releaseIfIdle(at: .seconds(700))
         await inner.failNextLoad()
         #expect(await model.isReady == false)
         await model.pendingWork?.value
@@ -165,7 +166,7 @@ struct IdleReleaseTests {
         let told = Told()
         await model.whenReloadFails { Task { await told.note() } }
         try await model.prepare(onProgress: { _ in })
-        #expect(await model.releaseIfIdle(at: .now + .seconds(700)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(700)) == false)
         await inner.failNextLoad()
 
         #expect(await model.isReady == false)
@@ -189,7 +190,7 @@ struct IdleReleaseTests {
         let told = Told()
         await DiscretionaryModel(model, mayRun: { true }).whenReloadFails { Task { await told.note() } }
         try await model.prepare(onProgress: { _ in })
-        await model.releaseIfIdle(at: .now + .seconds(700))
+        await model.releaseIfIdle(at: .seconds(700))
         await inner.failNextLoad()
         #expect(await model.isReady == false)
         await model.pendingWork?.value
@@ -203,7 +204,7 @@ struct IdleReleaseTests {
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600)) { reloads.record($0) }
         try await model.prepare(onProgress: { _ in })
         #expect(reloads.all.isEmpty)
-        await model.releaseIfIdle(at: .now + .seconds(700))
+        await model.releaseIfIdle(at: .seconds(700))
         #expect(await model.isReady == false)
         #expect(reloads.all == [.started])
         await model.pendingWork?.value
@@ -216,7 +217,7 @@ struct IdleReleaseTests {
         let reloads = Reloads()
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600)) { reloads.record($0) }
         try await model.prepare(onProgress: { _ in })
-        await model.releaseIfIdle(at: .now + .seconds(700))
+        await model.releaseIfIdle(at: .seconds(700))
         await inner.failNextLoad()
         #expect(await model.isReady == false)
         await model.pendingWork?.value
@@ -232,14 +233,14 @@ struct IdleReleaseTests {
         #expect(await model.isReady == false)
         await model.pendingWork?.value
         #expect(await inner.steps == ["load", "release"])
-        #expect(await model.releaseIfIdle(at: .now + .seconds(700)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(700)) == false)
     }
 
     @Test("a model never loaded is not released for idling")
     func nothingHeld() async {
         let inner = RecordingModel()
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
-        #expect(await model.releaseIfIdle(at: .now + .seconds(700)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(700)) == false)
         #expect(await model.isReady == false)
         #expect(await inner.steps.isEmpty)
     }
@@ -263,17 +264,20 @@ struct IdleReleaseTests {
 
     @Test("the watch lets the model go by itself once the window passes")
     func watchReleases() async throws {
+        let clock = ManualClock()
         let inner = RecordingModel()
-        let model = IdleReleasingModel(model: inner, idleAfter: .milliseconds(40))
+        let model = IdleReleasingModel(model: inner, idleAfter: .milliseconds(40), clock: clock)
         try await model.prepare(onProgress: { _ in })
+        await clock.advanceWhenSomethingIsWaiting(by: .milliseconds(40))
         await model.watching?.value
         #expect(await inner.steps == ["load", "release"])
     }
 
     @Test("the watch next wakes when the window would run out, not on a fixed fraction of it")
     func waitsForTheRestOfTheWindow() async throws {
-        let model = IdleReleasingModel(model: RecordingModel(), idleAfter: .seconds(600))
-        let now = ContinuousClock.now
+        let clock = ManualClock()
+        let model = IdleReleasingModel(model: RecordingModel(), idleAfter: .seconds(600), clock: clock)
+        let now = clock.now.offset
         let left = await model.timeUntilIdle(at: now)
         #expect(left <= .seconds(600))
         #expect(left > .seconds(590))

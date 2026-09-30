@@ -120,7 +120,7 @@ struct IdleReleaseInterleavingTests {
         await drain(model)
         #expect(await inner.isLoaded)
         #expect(await model.holdsTheModel)
-        #expect(await model.releaseIfIdle(at: .now + .seconds(7_200)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(7_200)) == false)
         #expect(await inner.isLoaded == false)
     }
 
@@ -129,7 +129,7 @@ struct IdleReleaseInterleavingTests {
         let inner = InterleavedModel()
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(3_600))
         try await model.prepare(onProgress: { _ in })
-        #expect(await model.releaseIfIdle(at: .now + .seconds(7_200)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(7_200)) == false)
         await inner.holdNextLoad(failing: true)
         #expect(await model.isReady == false)
         try await arrival(of: inner.gateHeld.fired)
@@ -143,7 +143,7 @@ struct IdleReleaseInterleavingTests {
         await drain(model)
         #expect(await inner.isLoaded)
         #expect(await model.holdsTheModel)
-        #expect(await model.releaseIfIdle(at: .now + .seconds(7_200)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(7_200)) == false)
         #expect(await inner.isLoaded == false)
     }
 
@@ -152,7 +152,7 @@ struct IdleReleaseInterleavingTests {
         let inner = InterleavedModel()
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(3_600))
         try await model.prepare(onProgress: { _ in })
-        #expect(await model.releaseIfIdle(at: .now + .seconds(7_200)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(7_200)) == false)
         await inner.holdNextLoad(failing: false)
         #expect(await model.isReady == false)
         try await arrival(of: inner.gateHeld.fired)
@@ -174,7 +174,7 @@ struct IdleReleaseInterleavingTests {
         await inner.openGate()
         await #expect(throws: CancellationError.self) { try await failing.value }
         #expect(await model.holdsTheModel)
-        #expect(await model.releaseIfIdle(at: .now + .seconds(7_200)) == false)
+        #expect(await model.releaseIfIdle(at: .seconds(7_200)) == false)
         #expect(await inner.isLoaded == false)
     }
 
@@ -225,8 +225,8 @@ struct IdleReleaseInterleavingTests {
         case 2: return ("release", Task { await model.release() })
         case 3: return ("isReady", Task { _ = await model.isReady })
         case 4: return ("pass", Task { _ = try? await model.completions(for: "he", in: situation) })
-        case 5: return ("idle", Task { await model.releaseIfIdle(at: .now + .seconds(7_200)) })
-        default: return ("notIdle", Task { await model.releaseIfIdle(at: .now) })
+        case 5: return ("idle", Task { await model.releaseIfIdle(at: .seconds(7_200)) })
+        default: return ("notIdle", Task { await model.releaseIfIdle(at: .zero) })
         }
     }
 }

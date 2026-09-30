@@ -88,7 +88,7 @@ struct IdleReleaseCancellationTests {
         let inner = SlowLoad(slowFirst: false)
         let model = IdleReleasingModel(model: inner, idleAfter: .seconds(3_600))
         try await model.prepare(onProgress: { _ in })
-        await model.releaseIfIdle(at: .now + .seconds(7_200))
+        await model.releaseIfIdle(at: .seconds(7_200))
         await inner.slowNextLoad()
         #expect(await !model.isReady)
         try await arrival(of: inner.slowLoadStarted.fired)

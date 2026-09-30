@@ -1,6 +1,7 @@
 // Lets a loaded model go when nothing has asked for it in a while, and loads it again when something does.
 
 import Foundation
+import UttrflowCore
 
 /// A model that can be loaded and let go, which is all an idle release needs of one.
 public protocol ReleasableModel: CandidateScoring, CandidateGenerating {
@@ -39,6 +40,8 @@ public enum IdleReload: Sendable, Equatable {
 public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private let model: Model
     private let idleAfter: Duration
+    private let clock: any Clock<Duration>
+    private let elapsed: () -> Duration
     /// Whether the caller wants the model, which only ``prepare(onProgress:)`` and ``release()`` change.
     private var isWanted = false
     /// Whether an idle reload has failed and needs an explicit prepare before retrying.
@@ -47,7 +50,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private var isHeld = false
     /// The latest prepare, release or reload; a step that finishes under an older one changes nothing.
     private var generation = 0
-    private var lastAsked = ContinuousClock.now
+    private var lastAsked = Duration.zero
     /// The latest load or release, which the next one waits for so they land in the order they were asked.
     private var work: Task<Void, Never>?
     /// Stops the load in flight, so a release reads no more weights and fetches no more bytes for it.
@@ -59,10 +62,13 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private var onReloadFailed: @Sendable () -> Void = {}
 
     public init(
-        model: Model, idleAfter: Duration, onReload: @escaping @Sendable (IdleReload) -> Void = { _ in }
+        model: Model, idleAfter: Duration, clock: any Clock<Duration> = ContinuousClock(),
+        onReload: @escaping @Sendable (IdleReload) -> Void = { _ in }
     ) {
         self.model = model
         self.idleAfter = idleAfter
+        self.clock = clock
+        self.elapsed = stopwatch(from: clock)
         self.onReload = onReload
     }
 
@@ -73,7 +79,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         isWanted = true
         reloadFailedUntilPrepare = false
         isHeld = true
-        lastAsked = .now
+        lastAsked = elapsed()
         let asked = advance()
         let previous = work
         let model = model
@@ -138,7 +144,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     /// Whether the model can answer now, loading it again in the background when an idle release let it go.
     public var isReady: Bool {
         get async {
-            lastAsked = .now
+            lastAsked = elapsed()
             if await model.isReady { return true }
             if isWanted, !isHeld, !reloadFailedUntilPrepare { reloadInBackground() }
             return false
@@ -146,19 +152,19 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     }
 
     public func completions(for typed: String, in situation: GenerationSituation) async throws -> [String] {
-        lastAsked = .now
+        lastAsked = elapsed()
         return try await model.completions(for: typed, in: situation)
     }
 
     public func alternatives(
         for typed: String, in situation: GenerationSituation, excluding leader: String
     ) async throws -> [String] {
-        lastAsked = .now
+        lastAsked = elapsed()
         return try await model.alternatives(for: typed, in: situation, excluding: leader)
     }
 
     public func logLikelihood(of candidate: String, following context: String) async -> Double? {
-        lastAsked = .now
+        lastAsked = elapsed()
         return await model.logLikelihood(of: candidate, following: context)
     }
 
@@ -173,9 +179,9 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
 
     /// Lets the model go when it has not been asked for in the window; returns whether it is still held.
     @discardableResult
-    func releaseIfIdle(at now: ContinuousClock.Instant) async -> Bool {
+    func releaseIfIdle(at now: Duration) async -> Bool {
         guard isHeld else { return false }
-        guard isWanted, lastAsked.duration(to: now) >= idleAfter else { return true }
+        guard isWanted, now - lastAsked >= idleAfter else { return true }
         isHeld = false
         advance()
         let previous = work
@@ -258,15 +264,15 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         watch = Task { [weak self] in
             var wait = first
             while !Task.isCancelled {
-                try? await Task.sleep(for: wait)
-                guard !Task.isCancelled, let self, await releaseIfIdle(at: .now) else { return }
-                wait = await timeUntilIdle(at: .now)
+                try? await clock.sleep(for: wait)
+                guard !Task.isCancelled, let self, await releaseIfIdle(at: elapsed()) else { return }
+                wait = await timeUntilIdle(at: elapsed())
             }
         }
     }
 
     /// How long until the window runs out if nothing asks again, never less than a tenth of it.
-    func timeUntilIdle(at now: ContinuousClock.Instant) -> Duration {
-        max(idleAfter - lastAsked.duration(to: now), idleAfter / 10)
+    func timeUntilIdle(at now: Duration) -> Duration {
+        max(idleAfter - (now - lastAsked), idleAfter / 10)
     }
 }
