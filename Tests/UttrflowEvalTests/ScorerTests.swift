@@ -535,14 +535,21 @@ struct CorpusIndependenceTests {
             + prompt.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.flatMap(\.examples).flatMap(
                 \.sentences)
         return EvaluationCorpus.all.flatMap { testCase in
-            let corpusText = [normalise(testCase.spoken), normalise(testCase.expected)]
+            let corpusText = [testCase.spoken, testCase.expected].map { Scorer.tokens($0) }
             return fragments.compactMap { fragment in
-                let normalised = normalise(fragment)
-                guard fragment.contains(where: \.isWhitespace),
-                    corpusText.contains(where: { $0.contains(normalised) })
+                let fragmentWords = Scorer.tokens(fragment)
+                guard fragmentWords.count >= 3,
+                    corpusText.contains(where: { containsRun(fragmentWords, in: $0) })
                 else { return nil }
                 return (testCase.id, fragment)
             }
+        }
+    }
+
+    private func containsRun(_ words: [String], in corpus: [String]) -> Bool {
+        guard words.count <= corpus.count else { return false }
+        return (0...(corpus.count - words.count)).contains { start in
+            Array(corpus[start..<(start + words.count)]) == words
         }
     }
 
@@ -584,6 +591,24 @@ struct CorpusIndependenceTests {
             knownContamination(in: prompt).contains {
                 $0.caseID == "agreement-there-is"
                     && normalise($0.fragment) == "there is three of them waiting outside"
+            })
+    }
+
+    @Test("finds a worked example that restates a run inside a longer corpus case")
+    func detectsWorkedExampleRunLeak() {
+        let prompt = PromptBuilder(
+            contract: "",
+            contractExamples: [
+                WorkedExample(
+                    spoken: "I'll probably be about twenty minutes late to the meeting",
+                    cleaned: "I'll probably be about twenty minutes late to the meeting.")
+            ],
+            blocks: [:])
+
+        #expect(
+            knownContamination(in: prompt).contains {
+                $0.caseID == "late-to-meeting"
+                    && normalise($0.fragment) == "i ll probably be about twenty minutes late to the meeting"
             })
     }
 
