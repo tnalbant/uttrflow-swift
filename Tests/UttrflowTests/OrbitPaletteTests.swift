@@ -65,6 +65,40 @@ struct OrbitPaletteTests {
         (channels[0] + channels[1] + channels[2]) / 3
     }
 
+    @Test("high contrast appearances resolve stronger text, separators, control edges and selection")
+    func resolvesHighContrastPalette() {
+        for (appearance, dark) in [
+            (NSAppearance.Name.accessibilityHighContrastAqua, false),
+            (.accessibilityHighContrastDarkAqua, true),
+        ] {
+            let ordinary = dark ? NSAppearance.Name.darkAqua : .aqua
+            let separator = components(.orbit(BrandPalette.Line.separator), in: appearance)
+            let ordinarySeparator = components(.orbit(BrandPalette.Line.separator), in: ordinary)
+            let dim = components(.orbit(BrandPalette.Text.dim), in: appearance)
+            let ordinaryDim = components(.orbit(BrandPalette.Text.dim), in: ordinary)
+            let muted = components(.orbit(BrandPalette.Text.muted), in: appearance)
+            let ordinaryMuted = components(.orbit(BrandPalette.Text.muted), in: ordinary)
+            let wash = components(
+                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18), in: appearance)
+            let ordinaryWash = components(
+                .orbitAlpha(BrandPalette.Surface.wash, alpha: 0.07, highContrastAlpha: 0.18), in: ordinary)
+            let cardHex = dark ? BrandPalette.Surface.card.dark : BrandPalette.Surface.card.light
+            let card = components(NSColor(rgb: cardHex), in: appearance)
+            let control = components(.orbit(BrandPalette.Redesign.controlEdge), in: appearance)
+            let ordinaryControl = components(.orbit(BrandPalette.Redesign.controlEdge), in: ordinary)
+
+            #expect(separator != ordinarySeparator)
+            #expect(dim != ordinaryDim)
+            #expect(muted != ordinaryMuted)
+            #expect(wash != ordinaryWash)
+            #expect(control != ordinaryControl)
+            #expect(contrastRatio(separator[0], card[0]) >= 3)
+            #expect(contrastRatio(control[0], card[0]) >= 3)
+            #expect(contrastRatio(dim[0], card[0]) > contrastRatio(ordinaryDim[0], card[0]))
+            #expect(contrastRatio(muted[0], card[0]) > contrastRatio(ordinaryMuted[0], card[0]))
+        }
+    }
+
     /// #147 shipped a fixed near-white here, so `.secondary` ink in the dark was invisible on it.
     @Test("a callout's ground darkens with the theme, or the ink on it cannot be read")
     func calloutGroundFollowsTheTheme() {

@@ -64,7 +64,7 @@ public struct InsightsCalendarDay: Sendable, Equatable, Identifiable {
     /// "1,284 words · 26 Sept", shown on hover and read aloud.
     public let detail: String
 
-    /// The day, which is unique within the range.
+    /// The start of this calendar day, unique across a multi-month range even when day numbers repeat.
     public var id: Date { date }
     /// A day with nothing said, drawn as a bare tile.
     public var isSilent: Bool { words == 0 }

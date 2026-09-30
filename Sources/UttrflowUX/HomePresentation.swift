@@ -474,7 +474,13 @@ public enum HomePresenter {
         let timeOfDay = HomeMood.at(hour: calendar.component(.hour, from: snapshot.now)).salutation
         guard let name, !name.isEmpty else { return timeOfDay }
         // The first name only. "Good morning, Naveen Bhatt" is a form letter.
-        return "\(timeOfDay), \(firstWord(of: name))"
+        return "\(timeOfDay), \(capitalizedFirstGrapheme(of: firstWord(of: name)))"
+    }
+
+    /// Uppercases the first grapheme for display while preserving the rest of the name.
+    static func capitalizedFirstGrapheme(of name: String) -> String {
+        guard let first = name.first else { return name }
+        return first.uppercased() + name.dropFirst()
     }
 
     /// One sentence saying where things stand today.

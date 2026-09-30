@@ -153,6 +153,28 @@ struct PanelThumbnailsTests {
         #expect(PanelThumbnails.maxPixel <= 96, "a 34-point square on a Retina screen")
     }
 
+    @Test("waits until a prepared thumbnail is committed before returning")
+    func waitForIdleIncludesCacheCommit() async {
+        let decoding = DecodeHold()
+        let image = Self.bitmap()
+        let source = PanelThumbnailSource { _, _ in
+            decoding.hold()
+            return image
+        }
+        let thumbnails = PanelThumbnails(source: source, retryAfter: .seconds(3600))
+
+        thumbnails.prepare(file)
+        while decoding.calls == 0 { await Task.yield() }
+        let waiting = Task { await thumbnails.waitForIdle(file: file) }
+        await Task.yield()
+        decoding.release()
+        await waiting.value
+
+        #expect(thumbnails.cached(file) === image)
+        #expect(thumbnails.thumbnail(for: file) === image)
+        #expect(decoding.calls == 1)
+    }
+
     @Test("keeps different pictures apart")
     func separateFiles() async {
         let other = URL(fileURLWithPath: "/tmp/uttrflow-other.png")

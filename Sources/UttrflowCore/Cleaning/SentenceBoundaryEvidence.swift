@@ -10,6 +10,7 @@ public enum SentenceBoundaryEvidence {
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
         if nextWordWasLowercase { return true }
+        if text.last == ".", subordinators.contains(previous[0].key) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(following)
             || completesFinalPhrase(previous, following)
         {
@@ -64,4 +65,5 @@ public enum SentenceBoundaryEvidence {
     private static let seamObjectEndings: [[String]] = [
         ["could", "finish"], ["pick", "up"], ["look"], ["covers"],
     ]
+    private static let subordinators: Set<String> = ["although", "because", "if", "when"]
 }

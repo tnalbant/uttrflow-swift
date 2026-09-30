@@ -82,7 +82,10 @@ public struct SpeechWindowing: Sendable, Equatable {
     }
 
     /// Every window in a finished recording; a last one holding only a word or two joins the window before it.
-    public func windows(in samples: [Float], sampleRate: Int, from start: Int = 0) -> [Range<Int>] {
+    public func windows(
+        in samples: [Float], sampleRate: Int, from start: Int = 0,
+        joiningPreviousWindowFrom previousStart: Int? = nil
+    ) -> [Range<Int>] {
         var windows: [Range<Int>] = []
         var cursor = start
         while let end = nextCut(in: samples, sampleRate: sampleRate, from: cursor), end > cursor {
@@ -90,10 +93,19 @@ public struct SpeechWindowing: Sendable, Equatable {
             cursor = end
         }
         guard cursor < samples.count else { return windows }
-        if let before = windows.last, isFragment(samples[cursor...], sampleRate: sampleRate),
-            Double(samples.count - before.lowerBound) <= maximumLength * Double(sampleRate)
-        {
-            windows[windows.count - 1] = before.lowerBound..<samples.count
+        if isFragment(samples[cursor...], sampleRate: sampleRate) {
+            let previous = windows.last?.lowerBound ?? previousStart
+            if let previous, previous >= 0, previous <= samples.count,
+                Double(samples.count - previous) <= maximumLength * Double(sampleRate)
+            {
+                if windows.isEmpty {
+                    windows.append(previous..<samples.count)
+                } else {
+                    windows[windows.count - 1] = previous..<samples.count
+                }
+            } else {
+                windows.append(cursor..<samples.count)
+            }
         } else {
             windows.append(cursor..<samples.count)
         }

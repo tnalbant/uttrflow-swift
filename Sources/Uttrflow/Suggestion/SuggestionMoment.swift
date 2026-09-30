@@ -1,5 +1,6 @@
 import Foundation
 import UttrflowContext
+import UttrflowCore
 import UttrflowPredict
 import UttrflowPredictCapture
 
@@ -58,8 +59,14 @@ enum SuggestionMoment {
         of snapshot: FocusedFieldSnapshot, surroundings around: Surroundings?, recentLines recent: [String]
     ) -> GenerationSituation {
         let isTerminal = TerminalApplications.contains(snapshot.bundleIdentifier)
+        let destination = DestinationClassifier.classify(
+            AppContext(
+                applicationName: snapshot.applicationName, bundleIdentifier: snapshot.bundleIdentifier,
+                documentName: snapshot.windowTitle ?? snapshot.document))
+        let isCodeDestination = ["sqlEditor", "codeEditor"].contains(destination.rawValue)
         return GenerationSituation(
             application: snapshot.applicationName,
+            isCodeDestination: isCodeDestination,
             field: snapshot.accessibilityDescription ?? snapshot.placeholder ?? snapshot.role,
             document: snapshot.document,
             preceding: snapshot.preceding(maxLength: precedingContextLength),

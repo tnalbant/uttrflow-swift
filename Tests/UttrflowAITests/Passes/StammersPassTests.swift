@@ -21,6 +21,21 @@ struct StammersPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "removes a doubled Hindi or Hinglish grammar word",
+        arguments: [
+            ("ki ki baat", "ki baat"),
+            ("haan hai hai", "haan hai"),
+            ("mujh ko ko bolo", "mujh ko bolo"),
+            ("ghar ke ke paas", "ghar ke paas"),
+            ("kaam se se pehle", "kaam se pehle"),
+            ("woh par par baitha", "woh par baitha"),
+        ]
+    )
+    func removesHindiGrammarWordStammer(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     /// "this" and "what" are function words, so the restart reading wins over the emphatic one by design.
     @Test(
         "still removes a doubled function word English also emphasises",

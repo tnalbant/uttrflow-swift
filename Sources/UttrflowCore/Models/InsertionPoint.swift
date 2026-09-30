@@ -43,13 +43,17 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         guard let text else { return .unknown }
         // Any line break ends the line, and a CRLF pair is one `Character`, so it is one break.
         let line = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        guard let last = withoutOpeningMarker(line).last(where: { !$0.isWhitespace }) else {
+        let body = withoutOpeningMarker(line)
+        guard body.contains(where: { !$0.isWhitespace }) else {
             // Only a marker, a blank line or an empty field stands here; a line break still opened a line.
             let isBlank = line.allSatisfy(\.isWhitespace)
             return isBlank && text.contains(where: \.isNewline) ? .startOfSentence : .startOfText
         }
-        if sentenceEnds.contains(last) {
-            let word = line.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
+        let terminal = body.reversed().drop(while: Self.isTrailingSentenceDecoration).first
+        if let terminal, sentenceEnds.contains(terminal) {
+            let word =
+                body.dropLast(while: Self.isTrailingSentenceDecoration)
+                .split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
             let normalizedWord = String(
                 word.lowercased().reversed()
                     .drop(while: { ".!?…,:;\"'”’)]}".contains($0) })
@@ -93,8 +97,19 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     private static let openingMarkers: [String] =
         Draft.bulletTokens.sorted() + ["#", ">", "\"", "'", "\u{201C}", "\u{2018}", "(", "[", "{"]
 
-    /// The marks after which a new sentence begins.
-    private static let sentenceEnds: Set<Character> = [".", "!", "?"]
+    /// The marks after which a new sentence begins, including the system's single-character ellipsis substitution.
+    private static let sentenceEnds: Set<Character> = [".", "!", "?", "…"]
+
+    /// Whether one trailing character does not change the sentence end before it.
+    private static func isTrailingSentenceDecoration(_ character: Character) -> Bool {
+        character.isWhitespace || closingSentenceCharacters.contains(character)
+            || character.unicodeScalars.contains {
+                $0.properties.isEmojiPresentation || $0.properties.isEmoji && $0.value >= 0x1F000
+            }
+    }
+
+    /// Closing quotes and brackets may follow a sentence end without changing it.
+    private static let closingSentenceCharacters: Set<Character> = ["\"", "'", "”", "’", ")", "]", "}"]
 
     /// Dotted forms that keep the current sentence open, shared with first-word casing.
     public static let sentenceAbbreviations: Set<String> = ["e.g", "i.e", "vs", "etc", "p.m", "a.m"]

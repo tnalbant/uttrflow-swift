@@ -788,10 +788,20 @@ public enum SettingsPresenter {
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
+        let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
+        let explanation: String? =
+            if key == .tab,
+                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
+                    || kind == .sqlEditor
+            {
+                "Tab also has a job in this app."
+            } else {
+                key.explanation
+            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: key.explanation,
+            explanation: explanation,
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(

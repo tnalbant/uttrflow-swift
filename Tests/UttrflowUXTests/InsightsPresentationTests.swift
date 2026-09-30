@@ -69,12 +69,20 @@ struct InsightsCalendarBucketingTests {
                 entries: HistoryFixture.aWeek(), settings: HistoryFixture.keeping(30)
             ).calendar)
         #expect(month.days.count == 30)
+        #expect(Set(month.days.map(\.id)).count == 30)
+        #expect(month.days.first?.number == "17")
+        #expect(month.days.last?.number == "15")
 
         let quarter = try #require(
             HistoryFixture.insights(
                 entries: HistoryFixture.aWeek(), settings: HistoryFixture.keeping(90), range: .quarter
             ).calendar)
         #expect(quarter.days.count == 90)
+        #expect(Set(quarter.days.map(\.id)).count == 90)
+        #expect(
+            quarter.days.map(\.number).contains { number in
+                quarter.days.filter { $0.number == number }.count > 1
+            })
     }
 
     @Test("an oversized saved retention cannot expand the Insights calendar")

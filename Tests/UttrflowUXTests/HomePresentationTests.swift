@@ -46,6 +46,20 @@ struct HomeGreetingTests {
         #expect(page.greeting == "Good morning, Naveen")
     }
 
+    @Test("capitalizes only the first grapheme of the displayed first name")
+    func firstGraphemeDisplayCase() {
+        #expect(
+            HistoryFixture.home(
+                account: HistoryFixture.account(name: "nAVEEN Bhatt"),
+                at: HistoryFixture.atHour(9)
+            ).greeting == "Good morning, NAVEEN")
+        #expect(
+            HistoryFixture.home(
+                account: HistoryFixture.account(name: "e\u{301}lodie Martin"),
+                at: HistoryFixture.atHour(9)
+            ).greeting == "Good morning, E\u{301}lodie")
+    }
+
     /// The Mac's own name for this person is used when there is no account; it never leaves the machine.
     @Test("falls back to the name macOS knows")
     func systemName() {

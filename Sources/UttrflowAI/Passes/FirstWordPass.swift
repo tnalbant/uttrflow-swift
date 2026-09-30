@@ -55,7 +55,10 @@ public struct FirstWordPass: WholeTextCleaningPass {
             }
             draft.replace(at: index, with: cased, by: Self.id)
             // A word trailing off in an ellipsis is a pause, so the next keeps the case it was heard in.
-            startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+            let next = draft.presentIndices.drop(while: { $0 <= index }).first
+                .map { draft.words[$0].text }
+            startOfSentence =
+                Self.endsSentence(cased, followedBy: next) && !WordShape.trailsOff(WordShape(cased).suffix)
             isFirst = false
         }
         return draft
@@ -91,8 +94,31 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Whether the word closes a sentence; a dotted abbreviation such as "p.m." carries a stop of its own.
     static func endsSentence(_ text: String) -> Bool {
         let shape = WordShape(text)
-        let abbreviation = InsertionPoint.sentenceAbbreviations.contains(shape.core.lowercased())
-        return shape.endsSentence && !abbreviation && !shape.core.contains(".")
+        guard shape.endsSentence else { return false }
+        guard shape.core.last == "." else { return true }
+        let abbreviation = String(shape.core.dropLast()).lowercased()
+        return !isAbbreviation(abbreviation)
+    }
+
+    static func endsSentence(_ text: String, followedBy next: String?) -> Bool {
+        let shape = WordShape(text)
+        guard shape.endsSentence else { return false }
+        guard shape.core.last == "." else { return true }
+        let abbreviation = String(shape.core.dropLast()).lowercased()
+        guard isAbbreviation(abbreviation) else { return true }
+        guard let next, let first = next.first else { return false }
+        if isTitle(abbreviation) { return !first.isUppercase }
+        return first.isUppercase
+    }
+
+    private static func isTitle(_ word: String) -> Bool {
+        ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof"].contains(word)
+    }
+
+    private static func isAbbreviation(_ word: String) -> Bool {
+        InsertionPoint.sentenceAbbreviations.contains(word) || word.contains(".") || word.count == 1
+            || ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "approx", "dept", "fig", "eg", "ie"]
+                .contains(word)
     }
 
     /// "i" and "i'll" become "I" and "I'll"; nothing else changes.

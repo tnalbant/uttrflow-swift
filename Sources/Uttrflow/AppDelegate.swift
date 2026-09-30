@@ -213,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var lastTranscript: String?
     /// The history record the last transcript came from, so deleting that record forgets it too.
     private(set) var lastTranscriptID: UUID?
+    private var lastTranscriptGeneration = 0
     /// Asked when the panel opens whether a paste can be placed, held so the answer costs one call.
     private let accessibility = AccessibilityPermissionGate()
     private let microphone = MicrophonePermissionGate()
@@ -226,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         willWritePicture: { [clipboardWatcher] in clipboardWatcher.ignoreNextPicture($0) })
 
     /// Puts a chosen clip where the caret is, announcing the write so it is not read as a copy.
-    private lazy var clipInserter = TextInsertion.coordinator(
+    lazy var clipInserter: any TextInserting = TextInsertion.coordinator(
         pasteboard: announcingPasteboard)
 
     /// The same for a secret clip, whose words reach the clipboard only with the concealed marker.
@@ -306,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         crashReports.follow(isEnabled: settings.sendsCrashReports)
         buildPipeline()
         seedTheDictionary()
+        Task { await restoreLastTranscript() }
         sweepExpired()
         wireInterface()
         CGEventKeystrokeSender.startObservingLayout()
@@ -1059,6 +1061,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
         )
+        DictationIntentBridge.toggle = { [weak self] in
+            await self?.controller?.toggleFromControl()
+        }
     }
 
     /// Redraws the menu bar and the floating button as a recording nears its cap.
@@ -1274,6 +1279,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func pasteLastTranscript() async {
         guard let text = lastTranscript, !text.isEmpty else {
             Self.log.notice("paste last transcript: nothing dictated yet")
+            let message = "There is no transcript to paste yet."
+            actionNotice = MainNotice(
+                message: message, symbolName: "info.circle", tone: .neutral)
+            announce(message, urgently: false)
             return
         }
         do {
@@ -2208,8 +2217,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Drops the words the paste and copy shortcuts put back, with the record they came from.
     private func forgetLastTranscript() {
+        lastTranscriptGeneration += 1
         lastTranscript = nil
         lastTranscriptID = nil
+    }
+
+    /// Restores the newest retained dictation so paste-last works after relaunch.
+    func restoreLastTranscript() async {
+        let generation = lastTranscriptGeneration
+        let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+        let newest = await history.records(keeping: retention).first
+        guard generation == lastTranscriptGeneration, lastTranscript == nil, let newest else {
+            return
+        }
+        lastTranscript = newest.text
+        lastTranscriptID = newest.id
     }
 
     /// Redraws from a fresh snapshot, reading everything on one hop so the pages agree.
@@ -2219,7 +2241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task { [weak self] in
             guard let self else { return }
             let measurements = await diagnostics.recorded
+            let decoding = await diagnostics.decoding
             lastMeasurements = measurements
+            lastDecoding = decoding
             lastCleaning = await diagnostics.lastCleaning
             let kept = await history.records(
                 keeping: Retention(days: settings.transcriptRetentionDays, now: Date()))
@@ -2310,7 +2334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     dictationShortcutArmed: surfaces.listensForDictation
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
-                    measurements: measurements, cleaning: lastCleaning,
+                    measurements: measurements, decoding: lastDecoding, cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),
@@ -2400,6 +2424,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var knownPicture: (path: String, bytes: Data)?
     /// The timings last read, so a keystroke redraws without hopping to the actor.
     private var lastMeasurements: [StageMeasurement] = []
+    /// The decode effort last read, so a keystroke redraw uses the same bounded session window.
+    private var lastDecoding: [DecodeEffort] = []
     /// Whether the main window's pages were last skipped because it was out of sight.
     private var mainWindowIsBehind = false
     /// Everything the store keeps, which is not ``recents`` — that is the menu's five.
