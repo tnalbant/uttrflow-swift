@@ -213,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var lastTranscript: String?
     /// The history record the last transcript came from, so deleting that record forgets it too.
     private(set) var lastTranscriptID: UUID?
+    private var lastTranscriptGeneration = 0
     /// Asked when the panel opens whether a paste can be placed, held so the answer costs one call.
     private let accessibility = AccessibilityPermissionGate()
     private let microphone = MicrophonePermissionGate()
@@ -226,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         willWritePicture: { [clipboardWatcher] in clipboardWatcher.ignoreNextPicture($0) })
 
     /// Puts a chosen clip where the caret is, announcing the write so it is not read as a copy.
-    private lazy var clipInserter = TextInsertion.coordinator(
+    lazy var clipInserter: any TextInserting = TextInsertion.coordinator(
         pasteboard: announcingPasteboard)
 
     /// The same for a secret clip, whose words reach the clipboard only with the concealed marker.
@@ -306,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         crashReports.follow(isEnabled: settings.sendsCrashReports)
         buildPipeline()
         seedTheDictionary()
+        Task { await restoreLastTranscript() }
         sweepExpired()
         wireInterface()
         CGEventKeystrokeSender.startObservingLayout()
@@ -1274,6 +1276,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func pasteLastTranscript() async {
         guard let text = lastTranscript, !text.isEmpty else {
             Self.log.notice("paste last transcript: nothing dictated yet")
+            let message = "There is no transcript to paste yet."
+            actionNotice = MainNotice(
+                message: message, symbolName: "info.circle", tone: .neutral)
+            announce(message, urgently: false)
             return
         }
         do {
@@ -2208,8 +2214,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Drops the words the paste and copy shortcuts put back, with the record they came from.
     private func forgetLastTranscript() {
+        lastTranscriptGeneration += 1
         lastTranscript = nil
         lastTranscriptID = nil
+    }
+
+    /// Restores the newest retained dictation so paste-last works after relaunch.
+    func restoreLastTranscript() async {
+        let generation = lastTranscriptGeneration
+        let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+        let newest = await history.records(keeping: retention).first
+        guard generation == lastTranscriptGeneration, lastTranscript == nil, let newest else {
+            return
+        }
+        lastTranscript = newest.text
+        lastTranscriptID = newest.id
     }
 
     /// Redraws from a fresh snapshot, reading everything on one hop so the pages agree.
