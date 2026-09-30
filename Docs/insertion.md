@@ -147,11 +147,12 @@ Every question insertion and the screen read ask about the focused field — wha
 caret, whether it is masked, whether a write changed anything — prefers a bounded stretch read
 with `kAXStringForRangeParameterizedAttribute`. `kAXValueAttribute` returns the whole document
 and is built on the target app's main thread, so it is used only when a field cannot answer by
-range or the range cannot safely cover enough whole characters. `CaretWindow`
+range and the field reports at most 1,024 UTF-16 units. `CaretWindow`
 chooses the range: four UTF-16 units per character wanted plus sixteen, with the first
 character of a window that does not start at the field's start thrown away because the range
-may have cut it in half. The mask check reads the first 64 units. A field that will not read by
-range, or whose window holds too few whole characters, falls back to the whole value.
+may have cut it in half. The mask check reads the first 64 units. A failed range read falls
+back to the whole value only when Accessibility reports at most 1,024 UTF-16 units; a range
+that returns malformed or too-short text stays unreadable.
 
 Measured on a 1,008,000-unit document with the caret at the end, one paste-confirmation poll
 copied 1,008,000 units and spent 1.28 ms walking them locally; by range it copies 400 units and
@@ -174,10 +175,13 @@ default — `isBusy` the whole time, so no further dictation can start either. T
 here is generous next to the context engine's 100 ms, because this read *is* the
 dictation rather than a nicety alongside it.
 
-The 2 s is set on the focused element itself, never on the system-wide element. A timeout set
+The ordinary 2 s is set on the focused element itself, never on the system-wide element. A timeout set
 on the system-wide element is process-wide and read when each message is sent, so an AI
 suggestion read on another queue setting its own 100 ms would cut the insertion's write short
 mid-dictation (#887). The system-wide focus query itself runs under the system default.
+
+Suggestion acceptance sets the focused element to 100 ms before reading the caret and its
+bounded text. This keeps the blocking field read well inside `KeyHold`'s one-second limit.
 
 Every one of those calls blocks the thread that sends it for as long as the target takes to
 answer. Swift's cooperative pool has about one thread per core, so a call made from `async`

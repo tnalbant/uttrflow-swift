@@ -2,6 +2,8 @@ import Foundation
 
 /// The measurable facts about where a line is written, computed the same way in every application and never from its name. See `Docs/predict-context.md`.
 public struct Register: Sendable, Equatable {
+    /// Whether the destination table classifies this as a SQL or code editor.
+    public let isCodeDestination: Bool
     /// Whether the field holds many lines, where paragraphs are written rather than commands or searches.
     public let isMultiline: Bool
     /// About how long this person's lines here are, in characters, or the screen's lines in a conversation.
@@ -20,8 +22,10 @@ public struct Register: Sendable, Equatable {
     /// The facts as a caller already holds them, for a register that is not inferred.
     public init(
         isMultiline: Bool, typicalLength: Int?, isConversational: Bool, symbolShare: Double,
-        usesSentenceCase: Bool?, writesAddresses: Bool = false, isSearchField: Bool = false
+        usesSentenceCase: Bool?, writesAddresses: Bool = false, isSearchField: Bool = false,
+        isCodeDestination: Bool = false
     ) {
+        self.isCodeDestination = isCodeDestination
         self.isMultiline = isMultiline
         self.typicalLength = typicalLength
         self.isConversational = isConversational
@@ -58,7 +62,8 @@ public struct Register: Sendable, Equatable {
             usesSentenceCase: own.isEmpty ? nil : sentenceCaseShare(of: own) >= 0.5,
             // The person's own lines decide where there are any; a combined search-and-address field takes queries too.
             writesAddresses: own.isEmpty ? namesAddressField(situation.field) : addressShare(of: own) >= 0.5,
-            isSearchField: namesSearchField(situation.field))
+            isSearchField: namesSearchField(situation.field),
+            isCodeDestination: situation.isCodeDestination)
     }
 
     /// Whether the field's own accessibility name says it takes web addresses: browsers publish "Address and search bar", "Search or enter website name", "Search or enter address" or a URL field, while a postal or email address field never pairs the word with search.
@@ -85,8 +90,13 @@ public struct Register: Sendable, Equatable {
     /// What the line is, in the word the instruction at the line uses, so the register is stated once more where a small model weighs it most.
     public var kind: String {
         if writesAddresses { return "web address, a host and path and never a command," }
-        if symbolShare > Self.symbolicShare { return "command, query or line of code" }
+        if isCodeLike { return "command, query or line of code" }
         return isConversational ? "reply" : "line"
+    }
+
+    /// A known editor or a symbolic line tells the model it is writing code, a command or a query.
+    private var isCodeLike: Bool {
+        symbolShare > Self.symbolicShare || isCodeDestination
     }
 
     /// The share of the lines shaped like a web address: no spaces, a dot inside, letters after it.
@@ -115,11 +125,11 @@ public struct Register: Sendable, Equatable {
         if let typicalLength {
             return min(max(typicalLength / 2, Self.tokenRange.lowerBound), Self.tokenRange.upperBound)
         }
-        return symbolShare > Self.symbolicShare ? 32 : (isConversational ? Self.replyTokens : 64)
+        return isCodeLike ? 32 : (isConversational ? Self.replyTokens : 64)
     }
 
     /// Whether a line here is prose, a reply or a document's sentence, which ends at its first sentence end.
-    public var endsAtSentence: Bool { !writesAddresses && symbolShare <= Self.symbolicShare }
+    public var endsAtSentence: Bool { !writesAddresses && !isCodeLike }
 
     /// How many of this person's typical lines a continuation may run to before it is no line of theirs.
     public static let lengthMultiple = 3
@@ -130,7 +140,7 @@ public struct Register: Sendable, Equatable {
     /// The most characters a continuation may add with no typical length to go by: a reply, a search or an address runs short, a command or a document's line longer.
     public var registerContinuationLimit: Int {
         if writesAddresses || isSearchField { return 80 }
-        if symbolShare > Self.symbolicShare { return 120 }
+        if isCodeLike { return 120 }
         return isConversational ? 80 : 160
     }
 
@@ -155,7 +165,7 @@ public struct Register: Sendable, Equatable {
             hints.append("the lines here are web addresses, so the line continues into a host and path")
             return hints
         }
-        if symbolShare > Self.symbolicShare {
+        if isCodeLike {
             hints.append("the text here is commands, code or queries rather than prose")
             return hints
         }

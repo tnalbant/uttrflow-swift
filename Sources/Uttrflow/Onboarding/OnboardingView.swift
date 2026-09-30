@@ -107,7 +107,6 @@ struct OnboardingCard: View {
                     .shadow(color: .black.opacity(0.65), radius: 30, y: 30)
             }
             .animation(.smooth(duration: 0.26), value: page.title)
-            .help(page.explanation ?? "")
     }
 
     /// The welcome and the first try put their heading first; every other page leads with its picture.

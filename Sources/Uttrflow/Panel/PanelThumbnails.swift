@@ -118,10 +118,11 @@ final class PanelThumbnails {
             queued.removeValue(forKey: next)
             let source = self.source
             let maxPixel = Self.maxPixel
-            inflight[next] = Task.detached(priority: .utility) { [weak self] in
+            let task = Task.detached(priority: .utility) { [weak self] in
                 let image = source.load(next, maxPixel)
                 await self?.record(next, bytes: Loaded(image: image))
             }
+            inflight[next] = task
         }
     }
 
@@ -142,6 +143,7 @@ final class PanelThumbnails {
         while queued[file] != nil || inflight[file] != nil {
             if let task = inflight[file] {
                 await task.value
+                if inflight[file] != nil { await Task.yield() }
             } else {
                 await Task.yield()
             }

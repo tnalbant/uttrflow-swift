@@ -10,7 +10,8 @@ struct TokenHealing {
         let startsNewWord: [Bool]
 
         init(texts: [String], ending: Set<Int>) {
-            self.init(bytes: texts.map { Array($0.utf8) }, ending: ending)
+            let byteLevelBPE = Self.usesByteLevelBPE(texts)
+            self.init(bytes: texts.map { Self.bytes(of: $0, byteLevelBPE: byteLevelBPE) }, ending: ending)
         }
 
         init(bytes: [[UInt8]], ending: Set<Int>) {
@@ -20,13 +21,45 @@ struct TokenHealing {
         }
 
         /// What a piece writes: the word-start mark as a space, and a byte-fallback piece such as `<0x0A>` as the one byte it names.
-        static func bytes(of piece: String) -> [UInt8] {
+        static func bytes(of piece: String, byteLevelBPE: Bool = false) -> [UInt8] {
             if piece.count == 6, piece.hasPrefix("<0x"), piece.hasSuffix(">"),
                 let byte = UInt8(piece.dropFirst(3).dropLast(), radix: 16)
             {
                 return [byte]
             }
+            let scalars = Array(piece.unicodeScalars)
+            if byteLevelBPE || scalars.contains(where: ByteLevelBPE.isEscapedScalar) {
+                let bytes = scalars.compactMap(ByteLevelBPE.byte(for:))
+                if bytes.count == scalars.count { return bytes }
+            }
             return Array(piece.replacingOccurrences(of: "\u{2581}", with: " ").utf8)
+        }
+
+        /// Whether any piece identifies the tokenizer's vocabulary as GPT-2 byte-level BPE.
+        static func usesByteLevelBPE(_ pieces: [String]) -> Bool {
+            pieces.contains { $0.unicodeScalars.contains(where: ByteLevelBPE.isEscapedScalar) }
+        }
+
+        /// Reverses the byte alphabet used by GPT-2 byte-level BPE vocabularies.
+        private enum ByteLevelBPE {
+            private static let escapedBytes: [UInt8] =
+                Array(0...32).map { UInt8($0) }
+                + [127] + Array(128...160).map { UInt8($0) } + [173]
+
+            static func isEscapedScalar(_ scalar: Unicode.Scalar) -> Bool {
+                (256..<(256 + escapedBytes.count)).contains(Int(scalar.value))
+            }
+
+            static func byte(for scalar: Unicode.Scalar) -> UInt8? {
+                let value = Int(scalar.value)
+                if value >= 256, value < 256 + escapedBytes.count {
+                    return escapedBytes[value - 256]
+                }
+                if (33...126).contains(value) || (161...172).contains(value) || (174...255).contains(value) {
+                    return UInt8(value)
+                }
+                return nil
+            }
         }
 
         /// The tokens a step may produce: those that keep to what is owed, or when nothing is owed any that adds a visible character without ending the line; a word the person finished is never overshot, and what follows it begins with a space.

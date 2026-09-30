@@ -67,6 +67,14 @@ final class SuggestionPanelController {
     private var appearanceObserver: (any NSObjectProtocol)?
     private var screenParametersObserver: (any NSObjectProtocol)?
     private var announcer = SuggestionAnnouncer()
+    var announcementCoalescer = SuggestionAnnouncementCoalescer()
+    private var announcementTask: Task<Void, Never>?
+    private let announcementClock = ContinuousClock()
+    private let announcementStartedAt = ContinuousClock().now
+    var announcementNow: (@MainActor () -> Duration)?
+    var announcementSleep: @MainActor (Duration) async -> Void = { duration in
+        try? await Task.sleep(for: duration)
+    }
     /// Reads an announcement aloud to VoiceOver; a test swaps it to hear what would be said.
     var announce: @MainActor (String) -> Void = SuggestionPanelController.post
     private var isActuallyShowing = false
@@ -191,6 +199,9 @@ final class SuggestionPanelController {
     /// Takes the panel off screen, and says so to VoiceOver.
     private func withdraw() {
         announcer.surfaceWithdrawn()
+        announcementTask?.cancel()
+        announcementTask = nil
+        announcementCoalescer.reset()
         isActuallyShowing = false
         withdrawals += 1
         panel.orderOut(nil)
@@ -240,8 +251,35 @@ final class SuggestionPanelController {
         if !isActuallyShowing || !panel.isVisible { panel.orderFrontRegardless() }
         isActuallyShowing = true
         // The panel is out of VoiceOver's reach, so the offer and its accept key are spoken once as it appears.
-        if let text = announcer.announcement(for: presentation) { announce(text) }
+        scheduleAnnouncement(announcer.announcement(for: presentation))
         return true
+    }
+
+    /// Coalesces changing offers while keeping a quiet offer prompt and a changing stream bounded.
+    private func scheduleAnnouncement(_ text: String?) {
+        guard let text else { return }
+        let instant = announcementNow?() ?? announcementStartedAt.duration(to: announcementClock.now)
+        if let ready = announcementCoalescer.offer(text, at: instant) { announce(ready); return }
+        guard announcementTask == nil else { return }
+        scheduleAnnouncementFlush(after: SuggestionAnnouncer.coalescingInterval)
+    }
+
+    /// Waits for quiet, then flushes the latest pending label.
+    private func scheduleAnnouncementFlush(after interval: Duration) {
+        announcementTask = Task { @MainActor [weak self] in
+            await self?.announcementSleep(interval)
+            guard let self, !Task.isCancelled else { return }
+            let now =
+                self.announcementNow?() ?? self.announcementStartedAt.duration(to: self.announcementClock.now)
+            if let ready = self.announcementCoalescer.flushIfReady(at: now) {
+                self.announce(ready)
+            } else {
+                let remaining = self.announcementCoalescer.remainingQuietInterval(at: now) ?? .zero
+                self.scheduleAnnouncementFlush(after: remaining)
+                return
+            }
+            self.announcementTask = nil
+        }
     }
 
     /// Asks VoiceOver to speak at low priority, so the echo of the user's own typing is not cut off.

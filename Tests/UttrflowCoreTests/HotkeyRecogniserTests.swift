@@ -68,6 +68,38 @@ struct HotkeyRecogniserTests {
         #expect(r.receive(held([])) == .released)
     }
 
+    @Test("modifier changes do not release a held combination key")
+    func modifierChangesKeepCombinationHeld() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([.option, .shift], keyCode: 56)) == nil)
+        #expect(r.receive(held([.option, .command], keyCode: 55)) == nil)
+        #expect(r.receive(held([.option, .control], keyCode: 59)) == nil)
+        #expect(r.isDown)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [.option], phase: .up)) == .released)
+        #expect(r.receive(held([])) == nil)
+    }
+
+    @Test("Caps Lock changes and repeated key-downs do not end or restart a combination")
+    func capsLockAndAutoRepeatKeepCombinationStable() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([.option], keyCode: 57)) == nil)
+        for _ in 0..<5 { #expect(r.receive(down(49, [.option])) == nil) }
+        #expect(r.isDown)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [.option], phase: .up)) == .released)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [], phase: .up)) == nil)
+    }
+
+    @Test("releasing a required modifier ends the combination once")
+    func requiredModifierReleaseEndsCombination() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([], keyCode: 58)) == .released)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [], phase: .up)) == nil)
+        #expect(!r.isDown)
+    }
+
     @Test("a combination does not fire for the right key with the wrong modifiers")
     func combinationRefusesWrongModifiers() {
         var r = HotkeyRecogniser(binding: .optionSpace)

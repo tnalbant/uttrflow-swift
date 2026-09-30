@@ -97,6 +97,30 @@ struct FillersPassTests {
         #expect(cleaned("we waited er for hours", by: sut) == "we waited for hours")
     }
 
+    @Test(
+        "removes um and uh after determiners while keeping a determiner-led er noun",
+        arguments: [
+            ("check the uh logs", "check the logs"),
+            ("the uh the database is down", "the database is down"),
+            ("the er ward is full", "the er ward is full"),
+        ]
+    )
+    func removesFillerSoundsAndKeepsErNoun(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps ER when it is a noun after a determiner or a common noun cue",
+        arguments: [
+            ("the ER is full", "the ER is full"),
+            ("take me to the ER now", "take me to the ER now"),
+            ("the er ward is full", "the er ward is full"),
+        ]
+    )
+    func keepsNounSpelledLikeFiller(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("records which pass removed the word")
     func provenance() {
         let draft = sut.apply(Draft(text: "um hello"))

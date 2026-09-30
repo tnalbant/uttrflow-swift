@@ -48,7 +48,7 @@ public enum SentenceCount {
         return count + (openSentence ? 1 : 0)
     }
 
-    private static let ends: Set<Character> = [".", "!", "?"]
+    private static let ends: Set<Character> = [".", "!", "?", "।", "॥"]
 }
 
 /// Which spoken numbers a place wants written as numerals.

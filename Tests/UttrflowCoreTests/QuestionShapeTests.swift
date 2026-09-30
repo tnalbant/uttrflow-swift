@@ -20,10 +20,14 @@ struct QuestionShapeTests {
             "you know the answer don\u{2019}t you",
             "so did you finish the slides", "okay can we start the call", "I sent the file, did you get it",
             "did the tests pass should i merge it now",
+            "papa did you take your medicine",
+            "didi can you ask jiju if he's free on saturday",
+            "hey quick question do we support ios sixteen or only seventeen and above",
             "is the meeting at ten or eleven do we need the projector",
             "where did you park the car i cannot find it anywhere",
             "what happens if the call fails", "what changed", "who owns the notification service",
-            "are you around yet i should be there in ten",
+            "the meeting is at three right", "you sent the invoice right", "the file is saved right",
+            "we leave at noon right",
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
             "This duplicates the logic in the helper class can we reuse that instead",
@@ -42,12 +46,42 @@ struct QuestionShapeTests {
             "where I put the keys is a mystery",
             "I don't know why the build failed", "when the build finishes we ship",
             "do the dishes before you leave",
+            "papa did the shopping",
+            "papa are you around yet i should be there in ten",
             "have a great weekend", "tell me what you think", "that's right", "turn right at the station",
+            "turn right", "you should turn right", "everything is right", "it feels right", "I have no right",
+            "you got the answer right", "I think it is right",
             "if it rains, we stay in", "", "kya baat hai",
             "the printer is jammed again who used it last",
             "please close the door will you be home tonight",
+            "are you around yet i should be there in ten",
         ])
     func leaves(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
+        "keeps reported content inside an inverted question",
+        arguments: [
+            "did she say that", "did she say we're late", "did she really say we're late",
+            "did you know we lost", "did he say she was coming", "do you think we should wait",
+            "can you tell me they arrived",
+        ])
+    func reportedContent(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
+    }
+
+    @Test("leaves an unrelated declarative run-on unpunctuated")
+    func unrelatedRunOn() {
+        #expect(!QuestionShape.asks(shapes("are you around yet i should be there")))
+    }
+
+    @Test(
+        "keeps dependent clauses inside an inverted question",
+        arguments: [
+            "is it okay if i leave at five", "is it fine if we start late", "is it okay when i call later",
+        ])
+    func dependentClauses(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
     }
 }

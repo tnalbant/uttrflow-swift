@@ -80,15 +80,20 @@ public actor DictationPipeline {
     private var openRecording: UUID?
     /// Destination facts read for audio kept for a retry.
     private var recordingDestination: AppContext?
+    /// The formatter destination read for that recording, retained even if app rules later change.
+    private var recordingFieldKind: Destination?
 
     /// Spans the early loop reached while the key was held, and where the audio it consumed ends. See `Docs/early-transcription.md`.
     private var earlySpans: [Span] = []
     private var earlyCut = 0
+    private var earlyLastWindowStart: Int?
     private var earlyWork: Task<Void, Never>?
     /// A tidy the early loop started but has not yet folded into `earlySpans`, picked up by the release pass at key-up.
     private var earlyTidyTask: Task<Piece, Never>?
     /// Whether a piece is being recognised or tidied right now, which is what makes the drain a wait worth timing.
     private var pieceInFlight = false
+    /// Early recogniser calls still running after their cancelled task has returned.
+    private var earlyDecodesInFlight = 0
     private var earlyContext: AppContext?
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     private(set) var earlyReadsSettled = 0
@@ -264,7 +269,7 @@ public actor DictationPipeline {
     // MARK: The sequence
 
     /// Whether a new dictation can begin, counting one that holds the turn before its state has moved.
-    private var isBusy: Bool { hasTurn || state.isBusy }
+    private var isBusy: Bool { hasTurn || state.isBusy || earlyDecodesInFlight > 0 }
 
     /// Begins listening. Does nothing if a dictation is already under way.
     public func startRecording() async {
@@ -418,7 +423,11 @@ public actor DictationPipeline {
             hasTurn = false
             // A cancel during the read leaves the pipeline at rest, so no failure is published over it.
             guard !wasCancelled(mine) else { return false }
-            transition(to: .failed(DictationFailure(error)))
+            transition(
+                to: .failed(
+                    DictationFailure(
+                        message: "That recording couldn't be read, so it can't be retried.",
+                        recovery: nil, severity: .recoverable)))
             return true
         }
         hasTurn = false
@@ -427,9 +436,9 @@ public actor DictationPipeline {
         stopwatch = nil
         takeSettings()
         spokenFor = audio.duration
-        recordingDestination =
-            (await recordings.waiting(now: Date()))
-            .first(where: { $0.id == recording })?.destination
+        let kept = (await recordings.waiting(now: Date())).first(where: { $0.id == recording })
+        recordingDestination = kept?.destination
+        recordingFieldKind = kept?.fieldKind
         insertedInto = recordingDestination?.applicationName
         insertedIntoIdentifier = recordingDestination?.bundleIdentifier
         destinationIsSecure = false
@@ -459,6 +468,7 @@ public actor DictationPipeline {
         earlyTidyTask = nil
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         pieceInFlight = false
         earlyContext = nil
         await capture.cancel()
@@ -484,8 +494,10 @@ public actor DictationPipeline {
     private func beginWorkingAhead(_ mine: Int) {
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         earlyTidyTask = nil
         earlyContext = nil
+        recordingFieldKind = nil
         forgetTheLastAttempt()
         earlyWork = Task { [cleaner = runningCleaner, overrides = runningOverrides] in
             let seeing = await self.earlyContextRead(mine)
@@ -500,7 +512,10 @@ public actor DictationPipeline {
         _ app: AppContext, cleaner: any TranscriptCleaning, overrides: DestinationOverrides
     ) async {
         recordingDestination = app
-        let situation = SituationResolver.resolve(from: app, overrides: overrides)
+        let situation =
+            recordingFieldKind.map {
+                Situation(app: app, insertion: app.insertionPoint, destination: $0)
+            } ?? SituationResolver.resolve(from: app, overrides: overrides)
         let words = await speechWords(app)
         dictationWords = words
         dictationContext = DictationContext(
@@ -524,6 +539,7 @@ public actor DictationPipeline {
                 let cut = windowing.nextCut(
                     in: audio.samples, sampleRate: audio.sampleRate, from: lead)
             else { continue }
+            let start = earlyCut
             let end = earlyCut - lead + cut
 
             // A leftover tidy is folded in only once there is a next piece to recognise.
@@ -541,12 +557,15 @@ public actor DictationPipeline {
             }
             // Recognition only; a key released mid-tidy is not held to this, since the tidy runs on past it.
             pieceInFlight = true
+            earlyDecodesInFlight += 1
             let heard: Transcription?
             do {
                 heard = try await transcribe(
                     audio, lead..<cut, biasedTowards: await vocabulary(mine, seeing: seeing),
                     recording: NoOpMetricsRecorder(), skippingAMiss: false, for: mine)
             } catch {
+                earlyDecodesInFlight -= 1
+                wakeWhatWaitsForRest()
                 guard generation == mine, !wasCancelled(mine) else { return }
                 // A failed piece is left for the end, where it is reported; the rest still work ahead.
                 earlySpans.append(.pending(earlyCut..<end))
@@ -554,9 +573,12 @@ public actor DictationPipeline {
                 pieceInFlight = false
                 continue
             }
+            earlyDecodesInFlight -= 1
+            wakeWhatWaitsForRest()
             guard generation == mine, !wasCancelled(mine) else { return }
             // Cut here, before the tidy, so a key-up mid-tidy still knows what audio is left to recognise.
             earlyCut = end
+            earlyLastWindowStart = start
             if let heard {
                 let correctionContext = await readContext()
                 let tidy = Task {
@@ -653,9 +675,11 @@ public actor DictationPipeline {
         pieceInFlight = false
         var spans = earlySpans
         var cut = earlyCut
+        let previousWindowStart = earlyLastWindowStart
         let earlyContext = self.earlyContext
         earlySpans = []
         earlyCut = 0
+        earlyLastWindowStart = nil
         self.earlyContext = nil
         // A tidy still running when the key came up is not waited on here; it joins the release pass below.
         if let earlyTidyTask {
@@ -669,7 +693,13 @@ public actor DictationPipeline {
             cleaningRecords = []
         }
 
-        var remainder = windowing.windows(in: audio.samples, sampleRate: audio.sampleRate, from: cut)
+        var remainder = windowing.windows(
+            in: audio.samples, sampleRate: audio.sampleRate, from: cut,
+            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil)
+        if let first = remainder.first, first.lowerBound < cut {
+            if !spans.isEmpty { spans.removeLast() }
+            self.earlyTidyTask = nil
+        }
         // Nothing at all still goes to the recogniser, whose refusal names the reason.
         if spans.isEmpty, remainder.isEmpty { remainder = [cut..<audio.samples.count] }
 
@@ -850,8 +880,13 @@ public actor DictationPipeline {
             destinationIsSecure = read.isSecure
             let recordedDestination = earlyContext ?? dictationContext?.app ?? read
             recordingDestination = recordedDestination
+            let fieldKind =
+                dictationContext?.situation.destination
+                ?? SituationResolver.resolve(from: recordedDestination, overrides: runningOverrides)
+                .destination
             if let openRecording {
-                await recordings.setDestination(recordedDestination, for: openRecording)
+                await recordings.setDestination(
+                    recordedDestination, fieldKind: fieldKind, for: openRecording)
             }
             return read
         case .copy:
@@ -1210,7 +1245,10 @@ public actor DictationPipeline {
         }
         openRecording = kept?.id
         if let destination = earlyContext ?? dictationContext?.app, let id = kept?.id {
-            await recordings.setDestination(destination, for: id)
+            let fieldKind =
+                dictationContext?.situation.destination
+                ?? SituationResolver.resolve(from: destination, overrides: runningOverrides).destination
+            await recordings.setDestination(destination, fieldKind: fieldKind, for: id)
         }
     }
 
