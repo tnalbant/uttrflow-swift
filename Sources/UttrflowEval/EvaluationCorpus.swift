@@ -682,6 +682,14 @@ public enum EvaluationCorpus {
             expected: "The API returns a JSON payload over HTTPS."
         ),
         .init(
+            id: "acronym-whole-word", category: .technical,
+            spoken:
+                "check the api and json, deploy through ecs over https, call the rest api, and use aws for the rapid response",
+            expected:
+                "Check the API and JSON, deploy through ECS over HTTPS, call the REST API, and use AWS for the rapid response.",
+            mustKeep: ["API", "JSON", "ECS", "HTTPS", "REST", "AWS", "rapid"]
+        ),
+        .init(
             id: "port-number", category: .technical,
             spoken: "the gateway listens on port eight thousand eighty in staging",
             expected: "The gateway listens on port 8080 in staging.",
