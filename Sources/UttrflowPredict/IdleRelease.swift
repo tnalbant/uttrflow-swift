@@ -43,6 +43,8 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private var isWanted = false
     /// Whether the weights are loaded or loading, so a query does not start a second load.
     private var isHeld = false
+    /// Whether a query may reload weights after they were released.
+    private var canReload = false
     /// The latest prepare, release or reload; a step that finishes under an older one changes nothing.
     private var generation = 0
     private var lastAsked = ContinuousClock.now
@@ -69,6 +71,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
 
     public func prepare(onProgress: @escaping @Sendable (Double) -> Void) async throws {
         isWanted = true
+        canReload = false
         isHeld = true
         lastAsked = .now
         let asked = advance()
@@ -108,6 +111,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
 
     public func release() async {
         isWanted = false
+        canReload = false
         isHeld = false
         advance()
         watch?.cancel()
@@ -128,6 +132,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     public func allowReloadAfterRelease() {
         guard !isHeld else { return }
         isWanted = true
+        canReload = true
     }
 
     /// Whether the model can answer now, loading it again in the background when an idle release let it go.
@@ -135,7 +140,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         get async {
             lastAsked = .now
             if await model.isReady { return true }
-            if isWanted, !isHeld { reloadInBackground() }
+            if isWanted, canReload, !isHeld { reloadInBackground() }
             return false
         }
     }
@@ -216,6 +221,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         onReloadFailed()
         await settle(asked)
         guard isCurrent(asked) else { return }
+        canReload = false
         onReload(.failed)
     }
 
@@ -232,6 +238,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     /// Watches a background load that succeeded, unless something newer was asked for since.
     private func loaded(_ asked: Int) {
         guard isCurrent(asked) else { return }
+        canReload = false
         onReload(.finished)
         watchForIdle()
     }
@@ -242,6 +249,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         let ready = await model.isReady
         guard isCurrent(asked) else { return }
         isHeld = ready
+        canReload = false
         if ready { watchForIdle() }
     }
 
