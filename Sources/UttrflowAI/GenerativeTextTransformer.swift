@@ -72,9 +72,10 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                situation: request.situation, heard: request.transcription.text)
+                situation: request.situation, heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
-                for: formatter, situation: request.situation, heard: request.transcription.text)
+                for: formatter, situation: request.situation, heard: request.transcription.text,
+                spoken: spoken)
         let polished = finishing.run(Draft(keepingLineBreaks: TextTidy.collapseSpacing(unwrapped)))
         let finished = polished.text
 
