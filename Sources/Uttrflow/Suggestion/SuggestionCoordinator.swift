@@ -916,6 +916,7 @@ final class SuggestionCoordinator {
         var invented = false
         var reused = false
         var reusedListed: Set<String> = []
+        var reusedScores: [String: Double] = [:]
         let place = SuggestionMoment.place(of: snapshot)
         // A deletion, another line or changed text before it leaves the last answer describing a line that is gone.
         modelPass.follow(query, at: place)
@@ -926,6 +927,7 @@ final class SuggestionCoordinator {
             completions = await attested(kept, for: query)
             guard turns.isCurrent(number) else { return }
             reusedListed = listed
+            reusedScores = modelPass.scores(for: completions)
             reused = true
         case .skip:
             return
@@ -960,7 +962,6 @@ final class SuggestionCoordinator {
                 let standing = await attested(lines, for: query)
                 guard turns.isCurrent(number) else { return }
                 invented = !lines.isEmpty && standing.isEmpty
-                modelPass.remember(standing, for: query, at: place)
                 completions = standing
             }
         }
@@ -969,7 +970,13 @@ final class SuggestionCoordinator {
         )
         // Every generated line carries the score its own pass gave it, so a low or missing score leaves the turn quiet.
         entering(.score, turn: number)
-        let scores = await verifier.scoreCompletions(completions)
+        let scores: [String: Double]
+        if reused {
+            scores = reusedScores
+        } else {
+            scores = await verifier.scoreCompletions(completions)
+            modelPass.remember(completions, for: query, at: place, scores: scores)
+        }
         guard turns.isCurrent(number) else { return }
         guard
             let update = session.resolveGenerated(
@@ -998,7 +1005,7 @@ final class SuggestionCoordinator {
                 let expanded = session.expandGenerated(others, for: query, scores: nil)
             else { return }
             modelPass.remember(
-                [leader] + others, for: query, at: place, listed: Set(others))
+                [leader] + others, for: query, at: place, listed: Set(others), scores: scores)
             return await drawFresh(expanded, for: snapshot, turn: number)
         }
         let more = Task { [generator, store, contextCache] in
@@ -1026,7 +1033,9 @@ final class SuggestionCoordinator {
         guard turns.isCurrent(number), !standing.isEmpty,
             let expanded = session.expandGenerated(standing, for: query, scores: standingScores)
         else { return }
-        modelPass.remember([leader] + standing, for: query, at: place)
+        modelPass.remember(
+            [leader] + standing, for: query, at: place,
+            scores: scores.merging(standingScores) { _, new in new })
         Self.log.debug(
             "\(SuggestionLog.alternatives(typed: query.typed, got: others.count, elapsedMilliseconds: self.since(started)), privacy: .public)"
         )
