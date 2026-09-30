@@ -161,6 +161,13 @@ struct PieceJoinerParagraphTests {
                 == "Guide.\nCheck the build.")
     }
 
+    @Test("does not capitalize the next piece when a layout command ends its piece")
+    func layoutCommandWithoutBodyInItsPiece() {
+        #expect(
+            joined(["Guide.", "New paragraph", "open questions."], .email)
+                == "Guide.\n\nopen questions.")
+    }
+
     @Test("opens a paragraph where the next piece opens a topic")
     func topicWordStartsAParagraph() {
         #expect(

@@ -234,9 +234,11 @@ enum PieceJoiner {
                 })
             else { continue }
             let body = live[position + found.words.count]
-            let shape = draft.shape(at: body)
-            draft.replace(
-                at: body, with: shape.replacingCore(with: WordShape.capitalised(shape.core)), by: id)
+            if body < end {
+                let shape = draft.shape(at: body)
+                draft.replace(
+                    at: body, with: shape.replacingCore(with: WordShape.capitalised(shape.core)), by: id)
+            }
             draft.replace(at: start, with: found.mark, by: id)
             for index in live[(position + 1)..<(position + found.words.count)] {
                 draft.remove(at: index, by: id)
