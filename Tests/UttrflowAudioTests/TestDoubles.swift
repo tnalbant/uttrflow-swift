@@ -9,6 +9,7 @@ import Synchronization
 final class FakeMicrophoneSource: MicrophoneSource {
     private struct State {
         var handler: (@Sendable ([Float]) -> Void)?
+        var handedOut: [@Sendable ([Float]) -> Void] = []
         var interrupted: (@Sendable (CaptureInterruption) -> Void)?
         var startCount = 0
         var stopCount = 0
@@ -31,6 +32,7 @@ final class FakeMicrophoneSource: MicrophoneSource {
             state.startCount += 1
             if state.startError == nil {
                 state.handler = onSamples
+                state.handedOut.append(onSamples)
                 state.interrupted = onInterruption
             }
             return state.startError
@@ -71,6 +73,11 @@ final class FakeMicrophoneSource: MicrophoneSource {
     /// Delivers samples the way a real tap would, from outside the engine's actor.
     func emit(_ samples: [Float]) {
         state.withLock(\.handler)?(samples)
+    }
+
+    /// Calls the sink a given start handed over, as a render callback already in flight at teardown does.
+    func emitLate(_ samples: [Float], toStart index: Int) {
+        state.withLock { $0.handedOut[index] }(samples)
     }
 
     var isDelivering: Bool { state.withLock { $0.handler != nil } }
@@ -121,14 +128,28 @@ enum SyntheticAudio {
     static func tone(
         frequency: Double, frames: AVAudioFrameCount, format: AVAudioFormat, amplitude: Float = 0.5
     ) -> AVAudioPCMBuffer? {
+        tone(
+            frequency: frequency, frames: frames, format: format,
+            channelAmplitudes: Array(repeating: amplitude, count: Int(format.channelCount)))
+    }
+
+    /// A sine wave with explicit per-channel amplitudes for channel mapping tests.
+    static func tone(
+        frequency: Double, frames: AVAudioFrameCount, format: AVAudioFormat,
+        channelAmplitudes: [Float]
+    ) -> AVAudioPCMBuffer? {
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
-            let channels = buffer.floatChannelData
+            let channels = buffer.floatChannelData,
+            channelAmplitudes.count == Int(format.channelCount)
         else { return nil }
         buffer.frameLength = frames
         let step = 2 * Double.pi * frequency / format.sampleRate
-        for frame in 0..<Int(frames) {
-            let value = amplitude * Float(Foundation.sin(step * Double(frame)))
-            for channel in 0..<Int(format.channelCount) { channels[channel][frame] = value }
+        for channel in channelAmplitudes.indices {
+            for frame in 0..<Int(frames) {
+                channels[channel][frame] =
+                    channelAmplitudes[channel]
+                    * Float(Foundation.sin(step * Double(frame)))
+            }
         }
         return buffer
     }

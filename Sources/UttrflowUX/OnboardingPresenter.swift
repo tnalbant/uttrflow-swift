@@ -1,335 +1,288 @@
-// Turns onboarding state into the page the window draws, plus permission wording and keycaps.
+// Turns onboarding state into the card the window draws, plus permission wording and keycaps.
 internal import UttrflowAccount
 public import UttrflowCore
 
 /// Turns where the user is into what the window draws; the one place the approved designs live.
 public enum OnboardingPresenter {
-    /// The page for a state, with the shortcut drawn on the last one.
-    public static func page(for state: OnboardingState, hotkey: HotkeyBinding) -> OnboardingPage {
+    /// The page for a state, with the shortcut and how it is pressed drawn on the last one.
+    public static func page(
+        for state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation = .holdToTalk,
+        signsInAsStandIn: Bool = false
+    ) -> OnboardingPage {
         switch state.step {
-        case .signIn: signIn(state)
-        case .welcome: welcome(state)
+        case .signIn: signIn(state, standIn: signsInAsStandIn)
         case .microphone: permission(.microphone, state)
         case .accessibility: permission(.accessibility, state)
         case .setup: setup(state)
-        case .ready: ready(state, hotkey: hotkey)
+        case .ready: ready(state, hotkey: hotkey, activation: activation)
         }
     }
 
-    // MARK: Pages
+    // MARK: Sign-in
 
-    /// What the one online step costs, said only on the sign-in page.
-    private static let onlyThisStepNeedsTheInternet = OnboardingNote(
-        symbolName: "globe",
-        text: """
-            This step needs the internet. After it, Uttrflow runs entirely on this Mac — \
-            your speech is transcribed here and works with Wi-Fi off.
-            """)
+    /// What Uttrflow is for, said on the page that asks who you are.
+    static let pitch = """
+        Hold one key, say what you mean, and Uttrflow writes it into whatever app you’re in — \
+        punctuated, tidied, and without the “um”s. Sign in once, and after that it runs \
+        entirely on this Mac.
+        """
 
-    /// The offline banner, drawn above the buttons it is explaining.
-    private static let noConnection = OnboardingNote(
-        symbolName: "wifi.slash",
-        text: """
-            No internet connection. Signing in is the one thing Uttrflow cannot do \
-            offline. Connect and try again — nothing else is waiting on this.
-            """,
-        tone: .warning)
+    /// Said under the providers in a development build, whose sign-in asks nobody.
+    static let standInHint = "Development build: signs in as a stand-in, no browser"
 
-    /// The sign-in page in its four forms: offering, unreachable, signing in, and entering a code.
-    private static func signIn(_ state: OnboardingState) -> OnboardingPage {
+    /// The sign-in page in its six forms: offering, unreachable, in the browser, entering a code, refused, welcomed.
+    private static func signIn(_ state: OnboardingState, standIn: Bool = false) -> OnboardingPage {
         let signIn = state.detail.signIn
-        return page(
-            state,
-            symbolName: nil,
-            emphasis: .brand,
-            title: "Sign in to Uttrflow",
-            subtitle: subtitle(for: signIn),
-            note: note(for: signIn),
-            code: code(for: signIn),
-            providers: SignInProvider.offered.map {
-                OnboardingProviderButton(provider: $0, isEnabled: signIn.acceptsAProvider)
-            },
-            buttons: buttons(for: signIn),
-            fineprint: "By continuing you agree to the Terms of Use and the Privacy Policy."
-        )
-    }
-
-    /// Why this Mac is being asked for a code: it cannot listen for the browser's hand-back.
-    private static let theCodeIsTheFallback = OnboardingNote(
-        symbolName: "arrow.uturn.down",
-        text: """
-            Uttrflow usually hands you straight back from the browser. This Mac would not \
-            let it listen for that, so the code does the same job.
-            """)
-
-    /// The banner for a sign-in state.
-    private static func note(for signIn: OnboardingSignInState) -> OnboardingNote {
-        switch signIn {
-        case .unreachable: noConnection
-        case .enterCode: theCodeIsTheFallback
-        default: onlyThisStepNeedsTheInternet
+        let providers = SignInProvider.offered.map {
+            OnboardingProviderButton(provider: $0, isEnabled: signIn.acceptsAProvider)
         }
-    }
-
-    /// The sentence under the sign-in title.
-    private static func subtitle(for signIn: OnboardingSignInState) -> String {
+        let waiting = [
+            OnboardingButton.plain("Reopen", "macwindow", .reopenBrowser),
+            .plain("Cancel", "xmark", .cancelSignIn),
+        ]
         switch signIn {
-        case .offering, .unreachable:
-            """
-            Uttrflow keeps your dictionary, your corrections and your snippets under one \
-            account. It needs to know which one is yours.
-            """
-        case .signingIn(let provider):
-            "Finish signing in with \(AccountPagePresenter.title(for: provider)) in your browser."
-        // The code is the instruction, so the sentence says what to do with it and that the browser is open.
-        case .enterCode(let provider, _):
-            """
-            Your browser is open. Type this code there to finish signing in with \
-            \(AccountPagePresenter.title(for: provider)).
-            """
-        // The provider's own words; the buttons come back live, since another attempt is the remedy.
+        case .offering:
+            return page(
+                state, mood: .brand, picture: .waveform(.talking, badge: nil), title: "Just talk.",
+                providers: providers, hint: standIn ? standInHint : nil, showsTerms: true,
+                explanation: pitch)
         case .refused(let message):
-            message
-        }
-    }
-
-    /// The code to read off the screen, on the one page that has one.
-    private static func code(for signIn: OnboardingSignInState) -> String? {
-        guard case .enterCode(_, let code) = signIn else { return nil }
-        return code
-    }
-
-    /// The way past this page without an account, plain and second, and present from the start.
-    private static let workOnThisMac = OnboardingButton.plain(
-        "Continue on this Mac", .continueOnThisMac)
-
-    /// The buttons under the providers.
-    private static func buttons(for signIn: OnboardingSignInState) -> [OnboardingButton] {
-        switch signIn {
-        // The providers are the controls; the only other verb is the way past the page.
-        case .offering, .refused:
-            [workOnThisMac]
+            return page(
+                state, mood: .failure, picture: .waveform(.still, badge: .symbol("xmark", .failure)),
+                title: "That didn’t work.", providers: providers, hint: message, showsTerms: true,
+                explanation: message)
         case .unreachable:
-            [.prominent("Try Again", .recover(.retry)), workOnThisMac]
-        // Waiting on a browser that may never come back, so giving up stays possible.
-        case .signingIn, .enterCode:
-            [.plain("Cancel", .cancelSignIn)]
+            return page(
+                state, mood: .offline,
+                picture: .waveform(.still, badge: .symbol("wifi.slash", .neutral)),
+                title: "You’re offline.",
+                buttons: [.prominent("Try again", "arrow.clockwise", .recover(.retry))],
+                explanation: """
+                    Signing in is the one thing Uttrflow needs the internet for. Connect and \
+                    try again.
+                    """)
+        case .signingIn(let provider):
+            return page(
+                state, mood: .waiting, picture: .waveform(.idle, badge: .waitingOn(provider)),
+                title: "Check your browser.", buttons: waiting,
+                explanation:
+                    "Finish signing in with \(AccountPagePresenter.title(for: provider)) in your browser.")
+        case .welcomed(let welcome):
+            return welcomed(state, welcome)
+        case .enterCode(let provider, let code):
+            return page(
+                state, mood: .waiting, picture: .code(code), title: "Type this code.", buttons: waiting,
+                hint: "In your browser, to finish with \(AccountPagePresenter.title(for: provider))",
+                explanation: """
+                    Your browser is open. Type this code there to finish signing in with \
+                    \(AccountPagePresenter.title(for: provider)).
+                    """)
         }
     }
 
-    /// The pitch page.
-    private static func welcome(_ state: OnboardingState) -> OnboardingPage {
-        page(
-            state,
-            symbolName: nil,
-            emphasis: .brand,
-            title: "Speak naturally.",
-            subtitle: "Get the words you actually meant.",
-            body: """
-                Hold one key, say what you mean, and Uttrflow writes it into whatever app \
-                you’re in — punctuated, tidied, and without the “um”s.
-                """,
-            buttons: [.prominent("Continue", .advance)]
-        )
+    /// How long the welcome shows before onboarding moves on by itself.
+    public static let welcomeLinger = Duration.seconds(3)
+
+    /// The moment after signing in: the circle, a greeting, the account, and Continue.
+    private static func welcomed(_ state: OnboardingState, _ welcome: OnboardingWelcome) -> OnboardingPage {
+        let greeting = welcome.firstName.map { "You’re in, \($0)!" } ?? "You’re in!"
+        var page = page(
+            state, mood: .done, picture: .welcome(initials: welcome.initials, provider: welcome.provider),
+            title: greeting, explanation: "Signed in. Welcome to Uttrflow.")
+        page.subtitle = "Welcome to Uttrflow. Let’s get you talking."
+        page.account = OnboardingAccountChip(
+            provider: welcome.provider,
+            text: welcome.emailAddress ?? AccountPagePresenter.title(for: welcome.provider))
+        page.action = OnboardingAction(
+            title: "Continue", intent: .advance, isProminent: true, countdown: welcomeLinger,
+            caption: "Next: \(nextStep(welcome.next))")
+        return page
     }
 
-    /// Both permission pages from one shape; the buttons follow the status, and neither page can be skipped.
+    /// What the page after the welcome asks for, finishing "Next: …".
+    static func nextStep(_ step: OnboardingStep) -> String {
+        switch step {
+        case .signIn, .microphone: "allow the microphone"
+        case .accessibility: "let Uttrflow type for you"
+        case .setup: "download the speech model"
+        case .ready: "try your first dictation"
+        }
+    }
+
+    // MARK: Permissions
+
+    /// Both permission pages from one shape; neither can be left until it is granted.
     private static func permission(
         _ kind: PermissionKind, _ state: OnboardingState
     ) -> OnboardingPage {
         let wording = PermissionWording.of(kind)
-        let isBlocked = state.detail == .permission(.restricted)
-        return page(
-            state,
-            symbolName: wording.symbolName,
-            emphasis: isBlocked ? .caution : .neutral,
-            title: wording.title,
-            subtitle: subtitle(for: state.detail, asking: wording),
-            body: wording.body,
-            note: note(for: state.detail, asking: wording, about: kind),
-            buttons: buttons(for: state.detail, asking: kind)
-        )
+        let pane = OnboardingIntent.recover(.openSystemSettings(kind.settingsPane))
+        let settings = OnboardingButton.plain("Settings", "gearshape", pane)
+        let allow = OnboardingButton.pointed("Allow", wording.symbolName, .requestPermission(kind))
+        switch state.detail {
+        case .permission(.granted):
+            return page(
+                state, mood: .done, picture: wording.picture(.talking, .granted),
+                title: wording.grantedTitle, buttons: [.prominent("Continue", "arrow.right", .advance)])
+        case .permission(.restricted):
+            return page(
+                state, mood: .warning, picture: wording.picture(.still, .blocked),
+                title: wording.blockedTitle,
+                buttons: [.prominent("Continue", "arrow.right", .advance)],
+                hint: "A device policy turns this off", explanation: wording.refused)
+        case .awaitingSystemSettings:
+            return page(
+                state, mood: .waiting, picture: wording.picture(.idle, .waiting),
+                title: "Flip the switch.",
+                buttons: [settings, .prominent("Check", "arrow.clockwise", .recover(.retry))],
+                hint: "Privacy & Security › \(wording.paneName)", explanation: wording.refused)
+        // Accessibility reads as refused before anyone has been asked, so its first answer is still the ask.
+        case .permission(.denied) where kind.reportsNotDetermined:
+            return page(
+                state, mood: .warning, picture: wording.picture(.still, .refused),
+                title: wording.refusedTitle,
+                buttons: [.pointed("Settings", "gearshape", pane)], explanation: wording.refused)
+        default:
+            return page(
+                state, mood: .brand, picture: wording.picture(.still, .asking), title: wording.askTitle,
+                buttons: [allow], hint: wording.askHint, explanation: wording.why)
+        }
     }
 
-    /// What is not possible until this is granted, shown only once the user has been asked.
-    private static func note(
-        for detail: OnboardingDetail, asking wording: PermissionWording, about kind: PermissionKind
-    ) -> OnboardingNote? {
-        switch detail {
-        case .permission(.notDetermined): nil
-        // Accessibility reads as refused before anyone has been asked, so a first visit has refused nothing.
-        case .permission(.denied) where !kind.reportsNotDetermined: nil
-        default: wording.blocked
+    // MARK: The download
+
+    /// The download page: running, stopped, or done; it cannot be left until the model is on disk.
+    private static func setup(_ state: OnboardingState) -> OnboardingPage {
+        switch state.detail {
+        case .installing(let fraction):
+            page(
+                state, mood: .live, picture: .download(fraction, .running), title: "Tuning in.",
+                buttons: [.plain("Cancel", "xmark", .cancelInstall), .disabled("Continue", "arrow.right")],
+                hint: "One-time download · stays on this Mac", explanation: staysOnThisMac)
+        case .installFailed(let message, let reached):
+            page(
+                state, mood: .failure, picture: .download(reached, .stopped), title: "Download stopped.",
+                buttons: [.prominent("Try again", "arrow.clockwise", .recover(.downloadSpeechModel))],
+                hint: message, explanation: message)
+        // Nothing left to wait for: the model is on disk, so the user is let past.
+        default:
+            page(
+                state, mood: .done, picture: .download(1, .finished), title: "Ready to listen.",
+                buttons: [.prominent("Continue", "arrow.right", .advance)], explanation: staysOnThisMac)
         }
     }
 
     /// Why the wait is worth it, said on every form of the download page.
-    private static let staysOnThisMac = OnboardingNote(
-        symbolName: "lock",
-        text: """
-            Once this finishes, dictation runs on this Mac — it keeps working with \
-            Wi-Fi off, on a plane, anywhere.
-            """)
+    static let staysOnThisMac = """
+        A one-time download. Once it finishes, dictation runs on this Mac — it keeps working \
+        with Wi-Fi off, on a plane, anywhere.
+        """
 
-    /// The download page: in progress, failed, or already done.
-    private static func setup(_ state: OnboardingState) -> OnboardingPage {
-        switch state.detail {
-        case .installing(let fraction):
-            settingUp(
-                state, progress: fraction,
-                buttons: [.plain("Cancel", .cancelInstall), .disabled("Continue")])
-        case .installFailed(let message):
-            page(
-                state,
-                symbolName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90",
-                emphasis: .caution,
-                title: "That download stopped",
-                subtitle: message,
-                note: staysOnThisMac,
-                buttons: [
-                    .plain("Not now", .advance),
-                    .prominent("Try Again", .recover(.downloadSpeechModel)),
-                ]
-            )
-        // Nothing left to wait for: the model is already on disk, so the user is let past.
-        default:
-            settingUp(state, progress: nil, buttons: [.prominent("Continue", .advance)])
-        }
-    }
+    // MARK: The last page
 
-    /// The download page, mid-download or with the model already on disk; only progress and buttons differ.
-    private static func settingUp(
-        _ state: OnboardingState, progress: Double?, buttons: [OnboardingButton]
+    /// The last page: a first try when dictation can work, else what still stands in the way.
+    private static func ready(
+        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation
     ) -> OnboardingPage {
-        page(
-            state,
-            symbolName: "arrow.down.circle",
-            emphasis: .neutral,
-            title: "Setting things up",
-            subtitle: "A one-time download, then you can start talking.",
-            note: staysOnThisMac,
-            progress: progress,
-            buttons: buttons
-        )
-    }
-
-    /// The last page, which says what the user ended up with, in four endings rather than one.
-    private static func ready(_ state: OnboardingState, hotkey: HotkeyBinding) -> OnboardingPage {
         switch state.detail.readiness ?? .ready {
-        case .ready:
-            page(
-                state,
-                symbolName: "checkmark",
-                emphasis: .success,
-                title: "You’re all set",
-                subtitle: "Try it right now, in this window or any other.",
-                body: """
-                    Hold it, talk, let go. Uttrflow lives in your menu bar whenever you \
-                    need it.
-                    """,
-                keys: OnboardingKeys.of(hotkey),
-                buttons: [.prominent("Start Using Uttrflow", .finish)]
-            )
-        case .pastesManually:
-            page(
-                state,
-                symbolName: "doc.on.clipboard",
-                emphasis: .neutral,
-                title: "You’re set, with one catch",
-                subtitle: "Uttrflow will copy your words rather than type them.",
-                body: """
-                    Hold the shortcut, talk, let go — then paste. Turn on Accessibility \
-                    whenever you like and it will start inserting at your cursor instead.
-                    """,
-                keys: OnboardingKeys.of(hotkey),
-                buttons: [
-                    .plain("Open System Settings", .recover(.openSystemSettings(.accessibility))),
-                    .prominent("Start Using Uttrflow", .finish),
-                ]
-            )
+        case .ready, .pastesManually:
+            trying(state, hotkey: hotkey, activation: activation)
         case .needsSpeechModel:
             page(
-                state,
-                symbolName: "arrow.down.circle",
-                emphasis: .neutral,
-                title: "One thing still to download",
-                subtitle: SpeechEngineError.modelNotInstalled.userMessage,
-                body: """
-                    You can leave it for now. Uttrflow will not be able to recognise \
-                    anything until the download has finished.
-                    """,
+                state, mood: .warning, picture: .download(0, .stopped),
+                title: "One thing left to download.",
                 buttons: [
-                    .plain("Download Now", .recover(.downloadSpeechModel)),
-                    .prominent("Start Using Uttrflow", .finish),
-                ]
-            )
+                    .plain("Download", "arrow.down", .recover(.downloadSpeechModel)),
+                    .prominent("Close", "xmark", .finish),
+                ],
+                hint: "Nothing is recognised until it finishes",
+                explanation: SpeechEngineError.modelNotInstalled.userMessage)
         case .needsMicrophone:
             page(
-                state,
-                symbolName: "mic.slash",
-                emphasis: .caution,
-                title: "Uttrflow cannot hear you yet",
-                subtitle: PermissionError.microphoneDenied.userMessage,
-                body: """
-                    Nothing will happen when you hold the shortcut until the microphone \
-                    is on. Uttrflow stays in your menu bar until you are ready.
-                    """,
+                state, mood: .warning, picture: .waveform(.still, badge: .symbol("mic.slash", .caution)),
+                title: "Can’t hear you yet.",
                 buttons: [
-                    .plain("Open System Settings", .recover(.openSystemSettings(.microphone))),
-                    .prominent("Close", .finish),
-                ]
-            )
+                    .plain("Settings", "gearshape", .recover(.openSystemSettings(.microphone))),
+                    .prominent("Close", "xmark", .finish),
+                ],
+                hint: "Turn on the microphone to dictate",
+                explanation: PermissionError.microphoneDenied.userMessage)
         }
     }
 
-    // MARK: Permission pieces
+    /// How long the words from the first try show before onboarding closes.
+    public static let heardLinger = Duration.seconds(3)
 
-    /// The sentence under a permission page's title.
-    private static func subtitle(
-        for detail: OnboardingDetail, asking wording: PermissionWording
-    ) -> String {
-        switch detail {
-        case .awaitingSystemSettings:
-            "Waiting for you to allow it in System Settings."
-        case .permission(.restricted):
-            "A device policy blocks this, so it cannot be turned on here."
-        default:
-            wording.subtitle
+    /// The first try: the keyboard's corner with the shortcut lit, the field the words land in, and Skip.
+    private static func trying(
+        _ state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation
+    ) -> OnboardingPage {
+        let keys = OnboardingKeys.of(hotkey)
+        let lit = OnboardingKeys.corner(of: hotkey)
+        let holds = activation == .holdToTalk
+        let named = OnboardingKeys.spoken(keys)
+        let skip = OnboardingAction(
+            title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil, caption: nil)
+        let copies = state.detail.readiness == .pastesManually
+        let bracket = keys.count > 1 ? (holds ? "HOLD BOTH" : "PRESS BOTH") : (holds ? "HOLD" : "PRESS")
+        var page: OnboardingPage
+        switch state.detail.trial {
+        case .waiting:
+            page = self.page(
+                state, mood: .brand,
+                picture: .keyboard(
+                    OnboardingKeyboard(
+                        lit: lit, keys: keys, bracket: bracket, isHeld: false, demonstrates: true,
+                        field: .placeholder("Your words appear here"), isListening: false, celebrates: false)),
+                title: "Try it now.",
+                hint: copies ? "Without Accessibility, words are copied for you to paste" : nil,
+                explanation: "Try it now. Uttrflow lives in your menu bar whenever you need it.")
+            page.subtitle =
+                holds
+                ? "Hold \(named), say anything, then let go."
+                : "Press \(named), say anything, then press again."
+            page.action = skip
+        case .listening:
+            page = self.page(
+                state, mood: .live,
+                picture: .keyboard(
+                    OnboardingKeyboard(
+                        lit: lit, keys: keys, bracket: holds ? "HOLDING" : "LISTENING", isHeld: holds,
+                        demonstrates: false, field: .placeholder("Say anything…"), isListening: true,
+                        celebrates: false)),
+                title: "Listening…")
+            page.subtitle =
+                holds
+                ? "Keep holding while you talk. Let go when you’re done." : "Press again when you’re done."
+            page.action = skip
+        case .stillLoading:
+            page = self.page(
+                state, mood: .brand,
+                picture: .keyboard(
+                    OnboardingKeyboard(
+                        lit: lit, keys: keys, bracket: bracket, isHeld: false, demonstrates: true,
+                        field: .placeholder("Your words appear here"), isListening: false, celebrates: false)),
+                title: "Try it now.", hint: SpeechModelLoad.loading(elapsed: .zero).detail,
+                explanation: "Try it now. Uttrflow lives in your menu bar whenever you need it.")
+            page.subtitle =
+                holds
+                ? "Hold \(named), say anything, then let go."
+                : "Press \(named), say anything, then press again."
+            page.action = skip
+        case .heard(let words):
+            page = self.page(
+                state, mood: .done,
+                picture: .keyboard(
+                    OnboardingKeyboard(
+                        lit: [], keys: keys, bracket: nil, isHeld: false, demonstrates: false,
+                        field: .filled(words), isListening: false, celebrates: true)),
+                title: "It works!")
+            page.subtitle = "That’s all there is to it. Opening your dashboard…"
+            page.action = OnboardingAction(
+                title: "Open dashboard", intent: .finish, isProminent: true, countdown: heardLinger,
+                caption: nil)
         }
-    }
-
-    /// The way on from a permission page, which is never only the way that grants it. See `Docs/ux-onboarding.md`.
-    static let carryOn = "Continue Without It"
-
-    /// One answer on every form of these pages, and beside it the way past a refusal.
-    private static func buttons(
-        for detail: OnboardingDetail, asking kind: PermissionKind
-    ) -> [OnboardingButton] {
-        let pane = OnboardingIntent.recover(.openSystemSettings(kind.settingsPane))
-        let without = OnboardingButton.plain(carryOn, .advance)
-        switch detail {
-        case .permission(.notDetermined):
-            return [.prominent(PermissionWording.of(kind).allow, .requestPermission(kind)), without]
-        // Accessibility arrives here unasked, so its first answer is still the ask, not System Settings.
-        case .permission(.denied) where !kind.reportsNotDetermined:
-            return [
-                .prominent(PermissionWording.of(kind).allow, .requestPermission(kind)), without,
-            ]
-        case .permission(.denied):
-            return [.prominent("Open System Settings", pane), without]
-        case .awaitingSystemSettings:
-            // Look again, with the settings pane still reachable beside it.
-            return [
-                .plain("Open System Settings", pane), .prominent("Check Again", .recover(.retry)),
-                without,
-            ]
-        case .permission(.restricted):
-            // A device policy has decided this, so going on is the only thing left that is true.
-            return [.prominent(carryOn, .advance)]
-        default:
-            // Granted, or nothing left to ask for.
-            return [.prominent("Continue", .advance)]
-        }
+        return page
     }
 
     // MARK: Assembly
@@ -337,36 +290,30 @@ public enum OnboardingPresenter {
     /// Fills in everything a page has in common, so each page says only what makes it different.
     private static func page(
         _ state: OnboardingState,
-        symbolName: String?,
-        emphasis: OnboardingEmphasis,
+        mood: OnboardingMood,
+        picture: OnboardingPicture,
         title: String,
-        subtitle: String,
-        body: String? = nil,
-        note: OnboardingNote? = nil,
-        code: String? = nil,
-        keys: [String] = [],
-        progress: Double? = nil,
         providers: [OnboardingProviderButton] = [],
-        buttons: [OnboardingButton],
-        fineprint: String? = nil
+        buttons: [OnboardingButton] = [],
+        link: OnboardingLink? = nil,
+        hint: String? = nil,
+        showsTerms: Bool = false,
+        explanation: String? = nil
     ) -> OnboardingPage {
         OnboardingPage(
-            symbolName: symbolName,
-            emphasis: emphasis,
+            mood: mood,
+            picture: picture,
             title: title,
-            subtitle: subtitle,
-            body: body,
-            note: note,
-            code: code,
-            keys: keys,
-            progress: progress,
             providers: providers,
             buttons: buttons,
-            fineprint: fineprint,
+            link: link,
+            hint: hint,
+            showsTerms: showsTerms,
+            explanation: explanation,
             position: state.step.position,
             stepCount: OnboardingStep.count,
             // Spoken as one sentence, so a screen reader says what the page is and what it wants.
-            accessibilityLabel: "\(title). \(subtitle)"
+            accessibilityLabel: [title, explanation ?? hint].compactMap(\.self).joined(separator: " ")
         )
     }
 }
@@ -375,18 +322,29 @@ public enum OnboardingPresenter {
 
 /// Everything that differs between the two permission pages, as data so a third is a row here.
 private struct PermissionWording {
-    /// The SF Symbol on the page.
+    /// Which answer a permission page is drawing.
+    enum Moment { case asking, waiting, refused, granted, blocked }
+
+    /// Which permission this is.
+    let kind: PermissionKind
+    /// The SF Symbol on the Allow button and the badge.
     let symbolName: String
-    /// The heading.
-    let title: String
-    /// The sentence under it.
-    let subtitle: String
-    /// The paragraph explaining why.
-    let body: String
-    /// The button that asks macOS.
-    let allow: String
-    /// What Uttrflow cannot do until this is granted: the reason the page will not move on.
-    let blocked: OnboardingNote
+    /// The heading before anything is granted.
+    let askTitle: String
+    /// The heading once it is granted.
+    let grantedTitle: String
+    /// The heading after a refusal.
+    let refusedTitle: String
+    /// The heading when a device policy decides.
+    let blockedTitle: String
+    /// The line under the Allow button.
+    let askHint: String
+    /// The name of the list it is switched on in, under Privacy & Security.
+    let paneName: String
+    /// Why it is asked for, read by VoiceOver and shown on hover.
+    let why: String
+    /// What is not possible until it is granted.
+    let refused: String
 
     /// The wording for a permission.
     static func of(_ kind: PermissionKind) -> PermissionWording {
@@ -396,36 +354,61 @@ private struct PermissionWording {
         }
     }
 
+    /// The card's picture for one moment: the microphone badges the waveform, Accessibility fills a field.
+    func picture(_ wave: OnboardingWave, _ moment: Moment) -> OnboardingPicture {
+        guard kind == .microphone else {
+            return .typing(wave, field: Self.field(for: moment))
+        }
+        switch moment {
+        case .granted: return .waveform(wave, badge: nil)
+        case .asking: return .waveform(wave, badge: .symbol(symbolName, .neutral))
+        case .waiting: return .waveform(wave, badge: .symbol("gearshape", .neutral))
+        case .refused, .blocked: return .waveform(wave, badge: .symbol("mic.slash", .caution))
+        }
+    }
+
+    /// What the Accessibility page's field says at each moment.
+    private static func field(for moment: Moment) -> OnboardingField {
+        switch moment {
+        case .asking: .placeholder("Your words go here")
+        case .waiting: .placeholder("Waiting for access…")
+        case .granted: .typing("See you Thursday at 10.")
+        case .refused, .blocked: .placeholder("Typing is turned off")
+        }
+    }
+
     /// The microphone page's words.
     private static let microphone = PermissionWording(
+        kind: .microphone,
         symbolName: "mic",
-        title: "Let Uttrflow hear you",
-        subtitle: "It needs your microphone to do anything at all.",
-        body: "\(SettingsPresenter.recordingsPromise) Nothing you say is uploaded.",
-        allow: "Allow Microphone Access",
-        blocked: OnboardingNote(
-            symbolName: "exclamationmark.triangle",
-            text: PermissionError.microphoneDenied.userMessage,
-            tone: .warning)
+        askTitle: "Let me hear you.",
+        grantedTitle: "Loud and clear.",
+        refusedTitle: "Mic is off.",
+        blockedTitle: "Mic is blocked.",
+        askHint: "Stays on this Mac",
+        paneName: "Microphone",
+        why: "\(SettingsPresenter.recordingsPromise) Nothing you say is uploaded.",
+        refused: PermissionError.microphoneDenied.userMessage
     )
 
     /// The Accessibility page's words.
     private static let accessibility = PermissionWording(
+        kind: .accessibility,
         symbolName: "accessibility",
-        title: "Let Uttrflow type for you",
-        subtitle: "Accessibility access is how text reaches other apps.",
-        body: """
-            macOS asks for this because Uttrflow types into apps you have open. It only \
-            ever inserts at your cursor — it never reads or changes anything else.
+        askTitle: "Let me type for you.",
+        grantedTitle: "Ready to type.",
+        refusedTitle: "Typing is off.",
+        blockedTitle: "Typing is blocked.",
+        askHint: "Words land where your cursor is",
+        paneName: "Accessibility",
+        why: """
+            macOS asks for this because Uttrflow types into apps you have open. It only ever \
+            inserts at your cursor — it never reads or changes anything else.
             """,
-        allow: "Allow Accessibility Access",
-        blocked: OnboardingNote(
-            symbolName: "exclamationmark.triangle",
-            text: """
-                Until this is on, Uttrflow cannot type into another app. It will put your \
-                words on the clipboard instead, for you to paste.
-                """,
-            tone: .warning)
+        refused: """
+            Until this is on, Uttrflow cannot type into another app. It will put your words on \
+            the clipboard instead, for you to paste.
+            """
     )
 }
 
@@ -435,18 +418,35 @@ private struct PermissionWording {
 enum OnboardingKeys {
     /// Modifiers in the order macOS draws them, then the key itself.
     static func of(_ binding: HotkeyBinding) -> [String] {
-        // A key that is itself a modifier, or Fn, is drawn exactly as Settings draws it.
-        guard binding.heldModifier == nil else { return SettingsShortcut.keycaps(for: binding) }
-        return SettingsShortcut.modifierCaps(for: binding) + [name(for: binding.keyCode)]
+        SettingsShortcut.keycaps(for: binding)
     }
 
-    /// The keys a shortcut is realistically bound to; a key code becomes a letter only through the layout.
-    private static let names: [UInt16: String] = [
-        36: "Return", 48: "Tab", 49: "Space", 51: "Delete", 53: "Escape",
+    /// The shortcut lit on the keyboard's bottom-left corner, or `nil` when it uses a key the corner lacks.
+    static func corner(of binding: HotkeyBinding) -> Set<OnboardingCornerKey>? {
+        if binding.keyCode == HotkeyBinding.functionKeyCode, binding.modifiers.isEmpty { return [.function] }
+        guard let named = HotkeyBinding.modifier(ofKeyCode: binding.keyCode) else { return nil }
+        var lit = Set<OnboardingCornerKey>()
+        for modifier in binding.modifiers.union([named]) {
+            switch modifier {
+            case .control: lit.insert(.control)
+            case .option: lit.insert(.option)
+            case .command: lit.insert(.command)
+            case .shift: return nil
+            }
+        }
+        return lit
+    }
+
+    /// The keys as words for a sentence: "control and option".
+    static func spoken(_ keys: [String]) -> String {
+        let words = keys.map { spokenNames[$0] ?? $0 }
+        guard words.count > 1, let last = words.last else { return words.first ?? "the shortcut" }
+        return words.dropLast().joined(separator: ", ") + " and " + last
+    }
+
+    /// Each modifier's glyph as the word printed on the key.
+    private static let spokenNames = [
+        "⌃": "control", "⌥": "option", "⇧": "shift", "⌘": "command", "fn": "fn",
     ]
 
-    /// The key's name, or its code when the name is unknown.
-    private static func name(for keyCode: UInt16) -> String {
-        names[keyCode] ?? "Key \(keyCode)"
-    }
 }

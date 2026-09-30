@@ -16,9 +16,12 @@ public enum Quieting {
         if !context.isEnabledHere { return .turnedOffHere }
         if context.isSecure { return .secureField }
         if context.markedText == .present { return .composing }
+        if !context.writingDirectionKnown { return .unknownWritingDirection }
         if !context.canDraw { return .nowhereToDraw }
         if context.hasSelection { return .textSelected }
         if !context.caretAtLineEnd { return .caretInsideText }
+        if context.showsOwnList { return .applicationPicker }
+        if !context.isCommandLine, AppPicker.isOpen(after: context.typed) { return .applicationPicker }
         if context.rejectionsThisSession >= rejectionsBeforeSilence { return .rejectedTooOften }
         if context.isProse, context.millisecondsSinceKeystroke < proseHesitationInMilliseconds {
             return .writingFluently
@@ -34,12 +37,16 @@ public enum Quieting {
         case secureField
         /// The field reports marked text, so an input method owns the line, Escape and the arrows.
         case composing
+        /// The adjacent glyph bounds do not establish which side the continuation belongs on.
+        case unknownWritingDirection
         /// The field reports no caret, so there is no place on its line to draw.
         case nowhereToDraw
         /// Text is selected, which the next keystroke would replace.
         case textSelected
         /// The caret is not at the end of its line.
         case caretInsideText
+        /// The application's own picker or list is open over the line, by the word typed or by the field's word, and owns Tab and Escape.
+        case applicationPicker
         /// Enough suggestions were typed past in this field to silence it.
         case rejectedTooOften
         /// A prose writer is still in flow and has not paused.
@@ -48,6 +55,8 @@ public enum Quieting {
         case nothingFocused
         /// An empty line is not a prefix of anything.
         case emptyLine
+        /// A list line holding only its marker, so nothing of the item has been typed yet.
+        case listMarkerOnly
         /// A line past `SuggestionSession.maximumTypedLength` is a document, not a prefix.
         case lineTooLong
         /// The line holds another script, where nothing Uttrflow may write belongs. See `Docs/predict.md`.
@@ -60,7 +69,9 @@ public enum Quieting {
         case notOnThisMachine
         /// The leader has less evidence than `PredictionEngine.supportFloor`.
         case evidenceTooThin
-        /// The leader cannot be undone, so nothing is offered in its place.
+        /// The model's own line scored under the floor it needed, or could not be scored at all. See `Docs/predict-precision.md`, P6.
+        case modelUnsure
+        /// The leader, or every close rival to it, cannot be undone, so nothing is offered.
         case irreversibleNotCertain
         /// The turn ran past `SuggestionSession.turnBudgetInMilliseconds`.
         case overBudget

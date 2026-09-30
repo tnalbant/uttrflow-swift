@@ -17,7 +17,21 @@ public struct TextInsertionCoordinator: TextInserting {
     /// Inserts `text` and reports how it got there, throwing only when every strategy refused.
     @discardableResult
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        try await insert(text, richText: nil)
+        try await insert(text, richText: nil, targeting: nil)
+    }
+
+    @discardableResult
+    public func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt {
+        try await insert(text, richText: nil, targeting: destination)
+    }
+
+    @discardableResult
+    public func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionAttempt {
+        try await insert(text, richText: richText, targeting: Optional(destination))
     }
 
     /// The same insertion carrying the formatted form, which skips Accessibility so no heading is dropped.
@@ -25,18 +39,36 @@ public struct TextInsertionCoordinator: TextInserting {
     public func insert(
         _ text: String, richText: String?
     ) async throws(TextInsertionError) -> InsertionAttempt {
+        try await insert(text, richText: richText, targeting: nil)
+    }
+
+    private func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) -> InsertionAttempt {
         let usable =
             richText == nil ? strategies : strategies.filter { $0.method != .accessibility }
         // Asked before the write, since the field that takes the words is the one to judge.
         let focus = focus
         let secure = await AccessibilityThread.run(orElse: true) { focus?.focusedFieldIsSecure() ?? false }
-        let outcome = await FallbackRunner.firstSuccess(among: usable) { strategy in
+        let outcome = await FallbackRunner.firstSuccess(
+            among: usable, stopAfterFailure: { ($0 as? TextInsertionError)?.stopsFallback == true }
+        ) { strategy in
             guard await strategy.canInsert() else { throw TextInsertionError.noFocusedTextField }
             // Passed through rather than dropped, so what the strategy found out survives the fallback.
-            let arrival = try await strategy.insert(text, richText: richText)
-            // Read after the write and not before it, so a switch during the insertion names the app that has it.
+            let arrival: InsertionArrival
+            if let destination {
+                if let richText {
+                    arrival = try await strategy.insert(text, richText: richText, targeting: destination)
+                } else {
+                    arrival = try await strategy.insert(text, targeting: destination)
+                }
+            } else {
+                arrival = try await strategy.insert(text, richText: richText)
+            }
+            // The strategy's own reading at the moment of sending wins; otherwise read the app after the write.
+            let landed = await strategy.destinationAtLanding()
             return InsertionAttempt(
-                strategy.method, arrival: arrival, destination: focus?.frontmostApplication(),
+                strategy.method, arrival: arrival, destination: landed ?? focus?.frontmostApplication(),
                 intoSecureField: secure)
         }
 

@@ -90,6 +90,13 @@ struct HTTPAuthenticationServiceTests {
         #expect(!challenge.authorisationURL.absoluteString.contains(verifier))
     }
 
+    @Test("is a real provider, so the page it returns is opened in the browser")
+    func isNotAStandIn() async throws {
+        let backend = service(transport: signingIn(), listener: answering())
+        #expect(!backend.signsInAsStandIn)
+        #expect(try await backend.beginSignIn(with: .google).method == .browser)
+    }
+
     /// Failing to bind falls back to the device code, a path `DeviceGrantTests` covers in full.
     @Test("does not fail when no port can be bound")
     func aPortThatCannotBeBound() async throws {
@@ -176,6 +183,37 @@ struct HTTPAuthenticationServiceTests {
         _ = try await backend.beginSignIn(with: .google)
         _ = try await backend.beginSignIn(with: .google)
         #expect(abandoned.wasClosed)
+    }
+
+    /// A challenge from a replaced attempt must not consume the attempt that replaced it.
+    @Test("keeps the current attempt when completed with a stale challenge")
+    func aStaleChallengeLeavesTheCurrentAttempt() async throws {
+        let draws = Mutex(0)
+        let counting: @Sendable (Int) -> Data = { count in
+            let draw = draws.withLock { value in
+                value += 1
+                return UInt8(value)
+            }
+            return Data(repeating: draw, count: count)
+        }
+        let second = StubLoopbackListener(
+            returning: LoopbackCallback(
+                code: "the-code", state: PKCEPair.base64URL(Data(repeating: 4, count: 24))))
+        let listeners = Mutex([StubLoopbackListener(returning: nil), second])
+        let backend = HTTPAuthenticationService(
+            baseURL: Stub.baseURL, transport: signingIn(), tokens: InMemoryTokenStore(),
+            verifier: Fixture.verifier,
+            makeListener: { listeners.withLock { $0.removeFirst() } },
+            randomBytes: counting,
+            now: { Fixture.noon })
+
+        let stale = try await backend.beginSignIn(with: .google)
+        let current = try await backend.beginSignIn(with: .google)
+        await #expect(throws: AccountError.self) { try await backend.completeSignIn(stale) }
+
+        #expect(!second.wasClosed)
+        let profile = try await backend.completeSignIn(current)
+        #expect(profile.account == signedIn.account)
     }
 
     @Test("sends the machine's own description, when it has one")
@@ -351,10 +389,15 @@ struct HTTPAuthenticationServiceTests {
             if request.url.path().hasSuffix("/me") { return BackendResponse(status: 401) }
             return Stub.json(Stub.IssuedSession())
         }
-        let service = service(transport: transport, tokens: InMemoryTokenStore(refreshToken: "r"))
+        let tokens = InMemoryTokenStore(refreshToken: "r")
+        let service = service(transport: transport, tokens: tokens)
 
         #expect(try await service.currentProfile(ifChangedFrom: nil) == .signedOut)
         #expect(transport.requests(to: "/me").count == 2)
+        #expect(tokens.refreshToken() == nil)
+        let refreshes = transport.requests(to: "/refresh").count
+        #expect(try await service.currentProfile(ifChangedFrom: nil) == .noCredential)
+        #expect(transport.requests(to: "/refresh").count == refreshes)
     }
 
     /// A refresh token the server rejects is dead; keeping it means asking the same question for ever.

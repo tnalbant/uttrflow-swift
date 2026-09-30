@@ -154,10 +154,19 @@ public final class InputDeviceSession: Sendable {
                     device.close()
                     return
                 }
-            } catch {
+            } catch let error {
+                if error == .microphoneDenied {
+                    endReopen(with: .microphoneDenied)
+                    return
+                }
                 continue
             }
         }
+        endReopen(
+            with: .engineFailed(description: "The microphone did not come back after the device changed."))
+    }
+
+    private func endReopen(with error: AudioCaptureError) {
         let report = state.withLock { state -> (@Sendable (CaptureInterruption) -> Void)? in
             guard state.health == .reopening else { return nil }
             state.health = .gone
@@ -165,9 +174,6 @@ public final class InputDeviceSession: Sendable {
             defer { state.report = nil }
             return state.report
         }
-        // Said out loud, because the alternative is a recording that ends early and reads as complete.
-        report?(
-            .ended(
-                .engineFailed(description: "The microphone did not come back after the device changed.")))
+        report?(.ended(error))
     }
 }

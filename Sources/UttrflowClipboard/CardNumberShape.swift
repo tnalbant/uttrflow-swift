@@ -5,20 +5,70 @@ enum CardNumberShape {
     /// Whether a card number stands anywhere in the text, on its own rather than inside a longer number.
     static func matches(_ text: String) -> Bool {
         CardNumberRuns.candidates(in: text, tally: SecretShapes.patternTally).contains { run in
-            text[run].matches(of: candidate).contains { match in
-                standsAlone(match.range, in: text) && isCardNumber(match.output.0.filter(\.isNumber))
+            // The run with two characters either side, which is all `standsAlone` looks at.
+            let lower = text.index(run.lowerBound, offsetBy: -2, limitedBy: text.startIndex)
+            let upper = text.index(run.upperBound, offsetBy: 2, limitedBy: text.endIndex)
+            let context = (lower ?? text.startIndex)..<(upper ?? text.endIndex)
+            guard let printed = printedForm(of: text[context]) else {
+                return hasCardNumber(in: text[run], of: text)
             }
+            let before = text.distance(from: context.lowerBound, to: run.lowerBound)
+            let after = text.distance(from: run.upperBound, to: context.upperBound)
+            let start = printed.index(printed.startIndex, offsetBy: before)
+            let end = printed.index(printed.endIndex, offsetBy: -after)
+            return hasCardNumber(in: printed[start..<end], of: printed)
+        }
+    }
+
+    /// Whether the pattern finds a card number in `run` that stands alone in `text`, which holds it.
+    static func hasCardNumber(in run: Substring, of text: String) -> Bool {
+        run.matches(of: candidate).contains { match in
+            standsAlone(match.range, in: text) && isCardNumber(match.output.0.filter(\.isNumber))
         }
     }
 
     /// Digits unbroken, or in printed groups with one separator throughout; `issuers` rules on length.
     nonisolated(unsafe) static let candidate =
         #/
-        [0-9]{4}([\x20\-])[0-9]{4}\1[0-9]{4}\1[0-9]{4}(?:\1[0-9]{3})?   # 4-4-4-4 and 4-4-4-4-3
-        | [0-9]{4}([\x20\-])[0-9]{6}\2[0-9]{4,5}                     # 4-6-5 and 4-6-4
-        | [0-9]{4}([\x20\-])[0-9]{3}\3[0-9]{3}\3[0-9]{3}              # 4-3-3-3
+        [0-9]{4}([\x20\n\-.])[0-9]{4}\1[0-9]{4}\1[0-9]{4}(?:\1[0-9]{3})?   # 4-4-4-4 and 4-4-4-4-3
+        | [0-9]{4}([\x20\n\-.])[0-9]{6}\2[0-9]{4,5}                     # 4-6-5 and 4-6-4
+        | [0-9]{4}([\x20\n\-.])[0-9]{3}\3[0-9]{3}\3[0-9]{3}              # 4-3-3-3
         | [0-9]{13,19}
         /#
+
+    /// Fullwidth digits zero to nine, which some input methods type.
+    static let fullwidthDigits: ClosedRange<UInt32> = 0xFF10...0xFF19
+
+    /// The fullwidth forms of the printable ASCII characters, each 0xFEE0 above its ASCII form.
+    static let fullwidthASCII: ClosedRange<UInt32> = 0xFF01...0xFF5E
+
+    /// Whether this scalar separates a card's groups: any Unicode space or line break, or a fullwidth hyphen or full stop.
+    static func isSeparator(_ value: UInt32) -> Bool {
+        value == 0xFF0D || value == 0xFF0E || Unicode.Scalar(value)?.properties.isWhitespace == true
+    }
+
+    /// The text with fullwidth forms as ASCII, line breaks as `\n` and other spaces as U+0020, character for character; `nil` when nothing changes.
+    static func printedForm(of text: Substring) -> String? {
+        guard text.unicodeScalars.contains(where: { isRewritten($0.value) }) else { return nil }
+        return String(text.map(printed))
+    }
+
+    /// The character as the pattern reads it; a character carrying a combining mark stays as it is.
+    private static func printed(_ character: Character) -> Character {
+        let scalars = character.unicodeScalars
+        guard scalars.count == 1 || character == "\r\n", let value = scalars.first?.value else {
+            return character
+        }
+        if character.isNewline { return "\n" }
+        if character.isWhitespace { return " " }
+        guard fullwidthASCII.contains(value) else { return character }
+        return Character(Unicode.Scalar(UInt8(value - 0xFEE0)))
+    }
+
+    private static func isRewritten(_ value: UInt32) -> Bool {
+        guard value != 0x20, value != 0x0A else { return false }
+        return fullwidthASCII.contains(value) || Unicode.Scalar(value)?.properties.isWhitespace == true
+    }
 
     /// What joins a number to more of itself in a date, a decimal, a time or an id; a space does not.
     private static let joiners: Set<Character> = ["-", ".", "/", ":", "_"]

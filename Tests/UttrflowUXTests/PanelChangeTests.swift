@@ -220,7 +220,26 @@ struct PanelChangeEffectTests {
 
         #expect(PanelOutcome.change(.delete(id)).effect == .applyAndRedraw(.delete(id)))
         #expect(PanelOutcome.change(.setAlias(id, "x")).effect == .applyAndRedraw(.setAlias(id, "x")))
+        #expect(
+            PanelOutcome.change(.setPinned(id, true)).effect
+                == .applyAndRedraw(.setPinned(id, true)))
         #expect(PanelOutcome.change(.delete(id)).effect != .close)
+    }
+
+    @Test("pin and unpin row actions use the write path")
+    func pinActionsBecomeStoreChanges() {
+        let id = UUID()
+        let pin = PanelIntent.pin(id).immediateChange
+        let unpin = PanelIntent.unpin(id).immediateChange
+
+        #expect(pin == .setPinned(id, true))
+        #expect(unpin == .setPinned(id, false))
+        #expect(
+            pin.map { PanelOutcome.change($0).effect }
+                == .some(.applyAndRedraw(.setPinned(id, true))))
+        #expect(
+            unpin.map { PanelOutcome.change($0).effect }
+                == .some(.applyAndRedraw(.setPinned(id, false))))
     }
 }
 
@@ -243,6 +262,23 @@ struct PanelSheetWithoutFieldTests {
             let response = panel.applying(key)
             #expect(response.state == panel, "\(key)")
             #expect(response.outcome == .open)
+        }
+    }
+
+    @Test("row shortcuts neither replace the sheet nor change a clip (#1702)", arguments: sheets)
+    func rowShortcutsAreHeld(sheet: PanelSheet) {
+        var panel = PanelFixture.panel(Self.clips)
+        panel.sheet = sheet
+        let id = PanelDeleteTests.pinned.id
+        let keys: [PanelKey] = [
+            .alias(id), .move(id), .reindent(id), .makeNote(id), .renameCategory("Work"),
+            .deleteCategory("Work"), .delete(id), .choose(id), .choosePlain(id), .reveal(id),
+            .filter(.links), .scope(.pinned), .category(number: 1),
+        ]
+        for key in keys {
+            let response = panel.applying(key)
+            #expect(response.state == panel, "\(key)")
+            #expect(response.outcome == .open, "\(key)")
         }
     }
 

@@ -12,6 +12,11 @@ public struct SelfCorrectionPass: CleaningPass {
         var live = draft.presentIndices
         var position = 0
         while position < live.count {
+            if isCutOff(at: position, in: live, of: draft) {
+                draft.remove(at: live[position], by: Self.id)
+                live.remove(at: position)
+                continue
+            }
             guard let (discarded, through) = discarded(at: position, in: live, of: draft) else {
                 position += 1
                 continue
@@ -29,6 +34,26 @@ public struct SelfCorrectionPass: CleaningPass {
             position = discarded.lowerBound
         }
         return draft
+    }
+
+    /// Whether a bare-hyphen word is a cut-off of the word immediately after it.
+    private func isCutOff(at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard position + 1 < live.count else { return false }
+        let fragment = draft.shape(at: live[position])
+        guard fragment.suffix == "-", !fragment.core.isEmpty else { return false }
+        if MeaningPreservationGuard.sameForm(
+            fragment.key, draft.shape(at: live[position + 1]).key, whenCutOff: true)
+        {
+            return true
+        }
+        guard position + 2 < live.count else { return false }
+        let restart = draft.shape(at: live[position + 1]).key
+        let completesCutOff = MeaningPreservationGuard.sameForm(
+            fragment.key, draft.shape(at: live[position + 2]).key, whenCutOff: true)
+        return completesCutOff
+            && live[..<position].contains {
+                MeaningPreservationGuard.sameForm(draft.shape(at: $0).key, restart)
+            }
     }
 
     /// Words that open a clause a comma must close, so a comma after the restatement is the sentence's own.

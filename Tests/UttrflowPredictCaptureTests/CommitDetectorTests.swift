@@ -234,4 +234,71 @@ struct CommitDetectorTests {
         detector.forgetLastIdleCommit()
         #expect(detector == CommitDetector())
     }
+
+    @Test("A line that took a paste or a dictation is not learned, however it ends.")
+    func insertedTextIsNotLearned() {
+        for ending in [
+            CaptureEvent.returnPressed(at: start), .focusLeft(at: start), .applicationDeactivated(at: start),
+        ] {
+            var detector = CommitDetector()
+            _ = typing("see ", into: &detector)
+            #expect(detector.receive(.inserted(at: start)) == nil)
+            #expect(detector.receive(.keystroke("see can we move the review to thursday?", at: start)) == nil)
+            #expect(detector.receive(ending) == nil, "\(ending)")
+        }
+    }
+
+    @Test("A host-app rewrite that differs from delivered typing is not learned.")
+    func appMutatedTextIsNotLearned() {
+        var detector = CommitDetector()
+        _ = detector.receive(.keystroke("", at: start))
+        _ = detector.receive(.typed("teh ", at: start.addingTimeInterval(1)))
+        _ = detector.receive(.keystroke("the ", at: start.addingTimeInterval(2)))
+        _ = detector.receive(.typed("meeting", at: start.addingTimeInterval(3)))
+        _ = detector.receive(.keystroke("the meeting", at: start.addingTimeInterval(4)))
+        #expect(detector.receive(.returnPressed(at: start.addingTimeInterval(5))) == nil)
+    }
+
+    @Test("Text matching delivered typing remains eligible for learning.")
+    func unmodifiedTypingIsLearned() {
+        var detector = CommitDetector()
+        _ = detector.receive(.keystroke("", at: start))
+        _ = detector.receive(.typed("team ", at: start.addingTimeInterval(1)))
+        _ = detector.receive(.keystroke("team ", at: start.addingTimeInterval(2)))
+        _ = detector.receive(.typed("lunch", at: start.addingTimeInterval(3)))
+        _ = detector.receive(.keystroke("team lunch", at: start.addingTimeInterval(4)))
+        #expect(detector.receive(.returnPressed(at: start.addingTimeInterval(5)))?.text == "team lunch")
+    }
+
+    @Test("An idle does not learn a line that took inserted text either.")
+    func insertedTextIsNotLearnedFromAnIdle() {
+        var detector = CommitDetector()
+        _ = detector.receive(.keystroke("https://example.com/a/long/link", at: start))
+        _ = detector.receive(.inserted(at: start))
+        #expect(detector.receive(.tick(at: start.addingTimeInterval(60))) == nil)
+    }
+
+    @Test("A line emptied by hand, or a field begun afresh, is learned again.")
+    func typingAfreshIsLearnedAgain() {
+        var detector = CommitDetector()
+        _ = detector.receive(.inserted(at: start))
+        _ = detector.receive(.keystroke("", at: start))
+        _ = typing("on my way", into: &detector)
+        #expect(detector.receive(.returnPressed(at: start))?.text == "on my way")
+        _ = detector.receive(.inserted(at: start))
+        _ = detector.receive(.keystroke("pasted words", at: start))
+        #expect(detector.receive(.returnPressed(at: start)) == nil)
+        _ = typing("typed words", into: &detector)
+        #expect(detector.receive(.returnPressed(at: start))?.text == "typed words")
+    }
+
+    @Test("An insertion is marked after the line a turn read and before anything that ends the field.")
+    func anInsertionIsMarkedBeforeTheEnding() {
+        let read = CaptureEvent.keystroke("line", at: start)
+        let sent = CaptureEvent.returnPressed(at: start)
+        let mark = CaptureEvent.inserted(at: start)
+        #expect(CaptureEvent.marking([read], insertedAt: start) == [read, mark])
+        #expect(CaptureEvent.marking([read, sent], insertedAt: start) == [read, mark, sent])
+        #expect(CaptureEvent.marking([sent], insertedAt: start) == [mark, sent])
+    }
 }

@@ -42,18 +42,25 @@ extension PanelPresenter {
         guard isSearching else { return [] }
 
         var groups: [PanelResultGroup] = []
+        // Each run is gathered in place and built once, so a long run costs its length and not its square.
+        var run: [PanelRow] = []
+        var runField: PanelMatchField?
+        func close() {
+            guard let field = runField else { return }
+            groups.append(
+                PanelResultGroup(
+                    field: field, title: heading(for: field), rows: run, more: omitted[field, default: 0]))
+        }
         for row in rows {
             guard let field = row.matched else { continue }
-            if let last = groups.last, last.field == field {
-                groups[groups.count - 1] = PanelResultGroup(
-                    field: field, title: last.title, rows: last.rows + [row], more: last.more)
-            } else {
-                groups.append(
-                    PanelResultGroup(
-                        field: field, title: heading(for: field), rows: [row],
-                        more: omitted[field, default: 0]))
+            if field != runField {
+                close()
+                run = []
+                runField = field
             }
+            run.append(row)
         }
+        close()
         return groups
     }
 
@@ -80,7 +87,7 @@ extension PanelPresenter {
     /// The one thing worth doing about a search that found nothing: keep what was typed as a clip.
     static func emptyAction(for snapshot: PanelSnapshot) -> PanelAction? {
         let query = snapshot.needle
-        guard !query.isEmpty else { return nil }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return PanelAction(
             title: "Keep “\(query)” as a clip", symbolName: "plus.circle",
             intent: .keepQuery(query))

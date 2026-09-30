@@ -1,3 +1,5 @@
+private import Synchronization
+
 /// Holds the first tokens of a pass to the word the person is in the middle of, so a line cut inside a token is continued rather than started over. See `Docs/predict-context.md`, G5.
 struct TokenHealing {
     /// Every token as the bytes it writes, read once per model, so a step can be masked by comparing bytes; a byte-fallback piece is its one byte, which is how an emoji or a mark is spelt.
@@ -8,25 +10,106 @@ struct TokenHealing {
         let ending: Set<Int>
         /// Whether each token, by id, starts something new rather than lengthening the word before it, read once per model beside the bytes.
         let startsNewWord: [Bool]
+        /// Token ids keyed by every nonempty byte prefix, built once with the model vocabulary.
+        private let idsByPrefix: [[UInt8]: [Int]]
+        private let idsByBytes: [[UInt8]: [Int]]
+        private let unrestricted: [Int]
+        private let unrestrictedWordComplete: [Int]
+        private let entriesExamined = Mutex(0)
 
         init(texts: [String], ending: Set<Int>) {
-            self.init(bytes: texts.map { Array($0.utf8) }, ending: ending)
+            let byteLevelBPE = Self.usesByteLevelBPE(texts)
+            self.init(bytes: texts.map { Self.bytes(of: $0, byteLevelBPE: byteLevelBPE) }, ending: ending)
         }
 
         init(bytes: [[UInt8]], ending: Set<Int>) {
             self.bytes = bytes
             self.ending = ending
             startsNewWord = bytes.map(Self.startsNewWord)
+            var idsByPrefix: [[UInt8]: [Int]] = [:]
+            var idsByBytes: [[UInt8]: [Int]] = [:]
+            for (id, token) in bytes.enumerated() where !token.isEmpty {
+                idsByBytes[token, default: []].append(id)
+                for length in 1...token.count {
+                    idsByPrefix[Array(token.prefix(length)), default: []].append(id)
+                }
+            }
+            self.idsByPrefix = idsByPrefix
+            self.idsByBytes = idsByBytes
+            unrestricted = bytes.indices.filter { id in
+                let written = bytes[id]
+                return !written.isEmpty && !ending.contains(id)
+                    && written.contains { !Self.isSpace($0) }
+            }
+            unrestrictedWordComplete = unrestricted.filter { Self.isSpace(bytes[$0][0]) }
         }
 
+        /// Tokens whose bytes start with `prefix`, without searching unrelated vocabulary entries.
+        func ids(startingWith prefix: [UInt8]) -> [Int] {
+            let ids = idsByPrefix[prefix] ?? []
+            entriesExamined.withLock { $0 += ids.count }
+            return ids
+        }
+
+        /// The vocabulary entries inspected to answer indexed prefix lookups.
+        var examinedEntries: Int { entriesExamined.withLock { $0 } }
+
+        /// Resets the lookup counter between operations under test.
+        func resetExaminedEntries() { entriesExamined.withLock { $0 = 0 } }
+
+        /// Tokens whose complete byte sequence equals `written`.
+        func ids(writing written: [UInt8]) -> [Int] { idsByBytes[written] ?? [] }
+
+        /// Token ids whose bytes equal one of the supplied prefixes.
+        func ids(writingAny prefixes: [[UInt8]]) -> [Int] {
+            let ids = Set(prefixes.flatMap { idsByBytes[$0] ?? [] })
+            entriesExamined.withLock { $0 += ids.count }
+            return ids.sorted()
+        }
+
+        /// The entries examined for each query are the matching ids only, never unrelated tokens.
+        func continuing(_ prefix: [UInt8]) -> [Int] { ids(startingWith: prefix) }
+
         /// What a piece writes: the word-start mark as a space, and a byte-fallback piece such as `<0x0A>` as the one byte it names.
-        static func bytes(of piece: String) -> [UInt8] {
+        static func bytes(of piece: String, byteLevelBPE: Bool = false) -> [UInt8] {
             if piece.count == 6, piece.hasPrefix("<0x"), piece.hasSuffix(">"),
                 let byte = UInt8(piece.dropFirst(3).dropLast(), radix: 16)
             {
                 return [byte]
             }
+            let scalars = Array(piece.unicodeScalars)
+            if byteLevelBPE || scalars.contains(where: ByteLevelBPE.isEscapedScalar) {
+                let bytes = scalars.compactMap(ByteLevelBPE.byte(for:))
+                if bytes.count == scalars.count { return bytes }
+            }
             return Array(piece.replacingOccurrences(of: "\u{2581}", with: " ").utf8)
+        }
+
+        /// Whether any piece identifies the tokenizer's vocabulary as GPT-2 byte-level BPE.
+        static func usesByteLevelBPE(_ pieces: [String]) -> Bool {
+            pieces.contains { $0.unicodeScalars.contains(where: ByteLevelBPE.isEscapedScalar) }
+        }
+
+        /// Reverses the byte alphabet used by GPT-2 byte-level BPE vocabularies.
+        private enum ByteLevelBPE {
+            private static let escapedBytes: [UInt8] =
+                Array(0...32).map { UInt8($0) }
+                + [127] + Array(128...160).map { UInt8($0) } + [173]
+
+            static func isEscapedScalar(_ scalar: Unicode.Scalar) -> Bool {
+                (256..<(256 + escapedBytes.count)).contains(Int(scalar.value))
+            }
+
+            static func byte(for scalar: Unicode.Scalar) -> UInt8? {
+                let value = Int(scalar.value)
+                if value >= 256, value < 256 + escapedBytes.count {
+                    return escapedBytes[value - 256]
+                }
+                if (33...126).contains(value) || (161...172).contains(value) || (174...255).contains(value) {
+                    return UInt8(value)
+                }
+                return nil
+            }
         }
 
         /// The tokens a step may produce: those that keep to what is owed, or when nothing is owed any that adds a visible character without ending the line; a word the person finished is never overshot, and what follows it begins with a space.
@@ -40,6 +123,27 @@ struct TokenHealing {
                 }
                 return owed.starts(with: written) || (!wordComplete && written.starts(with: owed))
             }
+        }
+
+        /// The same token predicate as `allowed`, narrowed by exact bytes and prefix lookups when a remainder is owed.
+        func allowedIDs(owing owed: [UInt8], wordComplete: Bool) -> [Int] {
+            guard !owed.isEmpty else {
+                return wordComplete ? unrestrictedWordComplete : unrestricted
+            }
+            var candidates = Set(ids(startingWith: owed))
+            candidates.formUnion(ids(writingAny: (1...owed.count).map { Array(owed.prefix($0)) }))
+            return candidates.filter { allowedToken($0, owing: owed, wordComplete: wordComplete) }.sorted()
+        }
+
+        /// Candidate vocabulary entries examined when constructing the current cache-hit rival set.
+        private func allowedToken(_ id: Int, owing owed: [UInt8], wordComplete: Bool) -> Bool {
+            let written = bytes[id]
+            guard !written.isEmpty else { return false }
+            if owed.isEmpty {
+                return !ending.contains(id) && written.contains { !Self.isSpace($0) }
+                    && (!wordComplete || Self.isSpace(written[0]))
+            }
+            return owed.starts(with: written) || (!wordComplete && written.starts(with: owed))
         }
 
         /// Whether a byte is a space or a tab, the whitespace a line can hold.
@@ -62,6 +166,8 @@ struct TokenHealing {
     let mayEnd: Bool
     /// What the model must still write before it is free: the rest of the typed word, then one visible character more.
     private(set) var owed: [UInt8]
+    /// The indexed token ids that can still write the owed bytes.
+    private var allowedIDs: [Int]
     /// Whether the word is complete and continued, after which every token is the model's own.
     private(set) var isFree = false
     /// Whether the person stopped inside a word, so a token starting a new word after it would split what they are typing.
@@ -70,6 +176,7 @@ struct TokenHealing {
     init(vocabulary: Vocabulary, owed: String, wordComplete: Bool, mayEnd: Bool = false) {
         self.vocabulary = vocabulary
         self.owed = Array(owed.utf8)
+        allowedIDs = vocabulary.allowedIDs(owing: Array(owed.utf8), wordComplete: wordComplete)
         self.wordComplete = wordComplete
         self.mayEnd = mayEnd
         isMidWord = !wordComplete && (owed.last.map { $0.isLetter || $0.isNumber } ?? false)
@@ -78,14 +185,14 @@ struct TokenHealing {
     /// What a step adds to the logits: nothing for an allowed token, minus infinity for the rest, and the new-word penalty where a break would split the typed word; nothing at all once the model is free or when no token could keep to the word.
     func mask(width: Int) -> [Float]? {
         guard !isFree else { return nil }
-        let allowed = vocabulary.allowed(owing: owed, wordComplete: wordComplete)
+        let allowed = allowedIDs
         // With no token able to keep to the word, the model is left free rather than made to choose among nothing.
-        guard allowed.contains(true) else { return nil }
+        guard !allowed.isEmpty else { return nil }
         // The typed word is written out, so this one step is where the model either lengthens it or breaks it.
         let maySplit = isMidWord && owed.isEmpty
         // The model's head may be wider than the vocabulary; the padding beyond it is never a token to pick.
         var mask = [Float](repeating: -.infinity, count: width)
-        for (id, isAllowed) in allowed.enumerated() where isAllowed && id < width {
+        for id in allowed where id < width {
             mask[id] = maySplit && vocabulary.startsNewWord[id] ? -Self.newWordPenalty : 0
         }
         return mask
@@ -103,14 +210,17 @@ struct TokenHealing {
         }
         if written.count > owed.count, written.starts(with: owed) {
             owed = []
+            allowedIDs = []
             isFree = true
         } else if owed.starts(with: written) {
             owed.removeFirst(written.count)
+            allowedIDs = vocabulary.allowedIDs(owing: owed, wordComplete: wordComplete)
             // A word that closes the line owes nothing more once written, so the model may stop there.
             if owed.isEmpty, mayEnd { isFree = true }
         } else {
             // A token the mask should have refused: the word cannot be held any longer, so the model is left free.
             owed = []
+            allowedIDs = []
             isFree = true
         }
     }
@@ -132,12 +242,18 @@ struct TokenChoice {
     /// What a step adds to the logits: nothing for a token that keeps to some choice, minus infinity for the rest; nothing at all once a choice is written or when no token could keep to one.
     func mask(width: Int) -> [Float]? {
         guard !isFree else { return nil }
-        let allowed = vocabulary.bytes.indices.map { id in
-            Self.keeps(vocabulary.bytes[id], toOneOf: remaining)
+        var candidates = Set<Int>()
+        for choice in remaining {
+            for length in 1...choice.count {
+                candidates.formUnion(vocabulary.ids(writing: Array(choice.prefix(length))))
+            }
+            candidates.formUnion(vocabulary.ids(startingWith: choice + [0x20]))
+            candidates.formUnion(vocabulary.ids(startingWith: choice + [0x09]))
         }
-        guard allowed.contains(true) else { return nil }
+        let allowed = candidates.filter { Self.keeps(vocabulary.bytes[$0], toOneOf: remaining) }
+        guard !allowed.isEmpty else { return nil }
         var mask = [Float](repeating: -.infinity, count: width)
-        for (id, isAllowed) in allowed.enumerated() where isAllowed && id < width { mask[id] = 0 }
+        for id in allowed where id < width { mask[id] = 0 }
         return mask
     }
 

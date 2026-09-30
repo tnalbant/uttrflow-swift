@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 
 ROOTS = ("Sources",)
@@ -25,6 +26,22 @@ PREFIX_COMPARED = re.compile(
 # A fixed-width prefix kept as a String, which is a stem being named: `String(word.prefix(3))`.
 PREFIX_KEPT = re.compile(r"String\([^()]*\.prefix\(([0-9]+)\)\)")
 
+# A named width still bounds a word to a short stem: `prefix(openingLettersShared)`.
+NAMED_PREFIX = re.compile(
+    r"\.(?:prefix|suffix)\(\s*([A-Za-z_$][\w$]*)\s*\)"
+    r"(?=.*(?:hasPrefix\(|hasSuffix\(|==|!=))"
+    r"|(?:hasPrefix\(|hasSuffix\(|==|!=).*\.(?:prefix|suffix)"
+    r"\(\s*([A-Za-z_$][\w$]*)\s*\)"
+)
+
+# A suffix table is a set of endings, not a whole-word equality test.
+SUFFIX_TABLE = re.compile(r"(?:\w+Endings|endings)\.map\s*\{[^}]*\+\s*\$0")
+
+# Repeated-letter collapse changes a word's spelling before comparing it.
+REPEAT_COLLAPSE = re.compile(
+    r"(?:withoutStammers|collapseRepeats|deduplicateRepeats|removeRepeated)\w*"
+)
+
 # Asking a collection of strings whether any of them swallows mine: `pool.contains(where: { $0.contains(word) })`.
 SWALLOWS = re.compile(
     r"\.(?:contains|first|firstIndex|last|lastIndex|allSatisfy|filter)"
@@ -34,7 +51,9 @@ SWALLOWS = re.compile(
 
 def findings_in(path):
     """Yields (line_number, tell, text) for every loose word match in the file."""
-    for number, line in enumerate(open(path, errors="ignore").read().split("\n"), start=1):
+    with open(path, errors="ignore") as source:
+        lines = source.read().split("\n")
+    for number, line in enumerate(lines, start=1):
         code = line.split("//")[0]
         for match in PREFIX_COMPARED.finditer(code):
             width = int(match.group(1) or match.group(2))
@@ -43,8 +62,37 @@ def findings_in(path):
         for match in PREFIX_KEPT.finditer(code):
             if int(match.group(1)) <= STEM_WIDTH:
                 yield number, "a fixed-width prefix is kept as a word", line.strip()
+        for match in NAMED_PREFIX.finditer(code):
+            widths = {candidate for candidate in match.groups() if candidate}
+            if any(
+                (declared_width(width) or STEM_WIDTH + 1) <= STEM_WIDTH for width in widths
+            ) and not ("limit" in widths and "Array(" in code and ".sorted()" in code):
+                yield number, "a named short width bounds a text comparison", line.strip()
+                break
+        if SUFFIX_TABLE.search(code):
+            yield number, "a suffix table decides a text comparison", line.strip()
+        if REPEAT_COLLAPSE.search(code) or (
+            re.search(r"\.key\s*!=\s*\$0\.element\.key", code)
+            and re.search(r"enumerated\(\)\.filter", code)
+        ):
+            yield number, "repeated letters are collapsed before a text comparison", line.strip()
         if SWALLOWS.search(code):
             yield number, "a word is matched by being swallowed by another", line.strip()
+
+
+def declared_width(name):
+    """Returns a named integer width declared in Sources, when it is statically known."""
+    try:
+        result = subprocess.run(
+            ["rg", "-n", rf"(?:static\s+)?let\s+{re.escape(name)}\s*=\s*([0-9]+)", *ROOTS],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+    match = re.search(r"(?:static\s+)?let\s+" + re.escape(name) + r"\s*=\s*([0-9]+)", result.stdout)
+    return int(match.group(1)) if match else None
 
 
 def swift_files():

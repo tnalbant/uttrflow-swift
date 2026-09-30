@@ -1,5 +1,3 @@
-import struct Foundation.Date
-
 /// Verdicts already reached, so that most keystrokes cost nothing at all.
 struct VerdictCache: Sendable {
     /// How many verdicts are kept, which is a few keystrokes' worth of candidates and no more.
@@ -19,7 +17,7 @@ struct VerdictCache: Sendable {
     /// One verdict and the moment it stops being believed.
     private struct Held {
         let verdict: Verdict
-        let expires: Date
+        let expires: ContinuousClock.Instant
     }
 
     /// Each verdict against the key it answers.
@@ -34,16 +32,18 @@ struct VerdictCache: Sendable {
     var count: Int { held.count }
 
     /// The verdict on this key, absent when there is none or the one there has expired.
-    func verdict(for key: Key, now: Date) -> Verdict? {
+    func verdict(for key: Key, now: ContinuousClock.Instant = .now) -> Verdict? {
         guard let entry = held[key], entry.expires > now else { return nil }
         return entry.verdict
     }
 
     /// Remembers one verdict, dropping what has expired and then the oldest to stay within capacity.
-    mutating func remember(_ verdict: Verdict, for key: Key, now: Date) {
+    mutating func remember(
+        _ verdict: Verdict, for key: Key, now: ContinuousClock.Instant = .now
+    ) {
         discardExpired(now: now)
         if held[key] == nil { order.append(key) }
-        held[key] = Held(verdict: verdict, expires: now.addingTimeInterval(Self.lifetimeInSeconds))
+        held[key] = Held(verdict: verdict, expires: now + .seconds(Self.lifetimeInSeconds))
         while order.count > Self.capacity {
             held.removeValue(forKey: order.removeFirst())
         }
@@ -56,7 +56,7 @@ struct VerdictCache: Sendable {
     }
 
     /// Drops the expired verdicts, so capacity is spent on the ones that still count.
-    private mutating func discardExpired(now: Date) {
+    private mutating func discardExpired(now: ContinuousClock.Instant) {
         guard held.contains(where: { $0.value.expires <= now }) else { return }
         order.removeAll { key in held[key].map { $0.expires <= now } ?? true }
         held = held.filter { $0.value.expires > now }

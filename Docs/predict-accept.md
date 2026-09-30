@@ -9,14 +9,18 @@ for it.
 
 Tab by default. The right arrow in terminals, because Tab there is the shell's own
 completion and taking it would break the thing the user is actually trying to do.
-Option-Tab in editors, because Tab there is indentation and the language server's
-completion is already bound to it. The user can override any application, and the
-override wins over the kind.
+Option-Tab in editors and spreadsheets, because Tab there is indentation, native
+completion, text navigation, or cell navigation. This includes code editors, query editors,
+document editors such as Word, Pages, and TextEdit, Numbers or Excel, and browser-based
+Google Sheets when its window title identifies it. The user can override any application,
+and the override wins over the kind.
 
-`AcceptKeys` recognises editors from a bundle-identifier prefix. Terminals are recognised
-by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell the right
-arrow, and `FocusedFieldSnapshot` in `UttrflowContext`, to keep a shell's `AXTextArea` out
-of the prose rule and to strip its prompt from the line. Until recently those were two
+`AcceptKeys` recognises editors from bundle-identifier prefixes and spreadsheets through the
+destination table, which can identify Google Sheets from its window title. Terminals are
+recognised by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell
+the right arrow, and `FocusedFieldSnapshot` in `UttrflowContext`, to keep a shell's
+`AXTextArea` out of the prose rule and to strip its prompt from the line. Until recently
+those were two
 tables — a prefix list in `UttrflowPredict` and an exact-match set in `UttrflowContext` —
 and they disagreed: the prefix list knew Hyper and Tabby, the set did not, and Warp matched
 under one and not the other. There is one table now: the terminal, code editor and query editor rows of
@@ -31,13 +35,15 @@ terminal or an editor to dictation and to AI suggestions at once.
 A suggestion on screen does **not** entitle us to Return. Stealing it runs a command in a
 terminal and sends a half-written message in a chat box, and both are unrecoverable in a
 way that a missed completion is not. So Return passes through untouched until the user has
-pressed Down at least once — the moment they are demonstrably navigating our list rather
+pressed ⌥↓ at least once — the moment they are demonstrably navigating our list rather
 than finishing their own line. `SuggestionSelection.hasMoved` is that fact and nothing
 else.
 
-The same reasoning applies to Up, which is shell history before it is anything of ours: it
-is claimed only once the list is being walked. A single suggestion is not a list at all,
-so neither arrow nor Return is ever claimed for one — Tab is the only way to take it.
+**A bare ↓ or ↑ is never ours.** In a multi-line editor Down moves to the next line, and in
+an IDE it walks the IDE's own completion popup; a choice looks exactly like a single ghost,
+so nothing on screen would say Down had been taken. The list opens and walks on ⌥↓, and ⌥↑
+walks back once it is open. A single suggestion is not a list at all, so neither arrow nor
+Return is ever claimed for one — Tab is the only way to take it.
 
 ## The escape ladder
 
@@ -46,6 +52,12 @@ so neither arrow nor Return is ever claimed for one — Tab is the only way to t
 | ⎋ | The suggestion goes; the dot stays |
 | ⎋⎋ | This field offers nothing more |
 | ⌥⎋ | AI suggestions stop everywhere until turned back on |
+
+The bare ⎋ rungs apply where the accept key is Tab or ⌥⇥. In a terminal, whose accept key is
+→, a bare ⎋ is never armed: the shell reads it as the Meta prefix (⎋ then `.`, `b`, `f`) or
+as vi's normal mode, so a suggestion there is dismissed by typing on. ⌥⎋ still turns
+suggestions off in a terminal. A terminal set to send Option as Meta loses Meta-⎋ while a
+suggestion is drawn; with nothing drawn it passes through untouched.
 
 ⎋ with nothing drawn is not ours: it closes the application's own dialog, and a tap that
 swallows it is a tap the user has to quit the app to escape from.
@@ -70,7 +82,7 @@ posts the same key with the same modifiers, tagged so the tap lets it through.
 
 A swallowed keystroke is written into a fixed ring buffer of 64 entries and a dispatch
 source is signalled; the decision runs on that source's queue. The ring is what keeps two
-quick presses of Down from coalescing into one, which a source's own OR-ed data would do.
+quick presses of ⌥↓ from coalescing into one, which a source's own OR-ed data would do.
 
 The tap gets its own thread with its own run loop. A tap serviced by the main run loop is
 a tap that stalls behind whatever the app is drawing, and the system's answer to a stalled
@@ -108,12 +120,15 @@ with nothing beneath, and a completion that lands nowhere is simply not accepted
 immediately before the caret that go, and the text that replaces them. An append is that
 edit with nothing replaced, so the common case stays trivial and destroys nothing.
 
-The edit is the difference from the longest opening the two strings share. `git com` →
-`git commit` shares all seven typed characters, so nothing is replaced and `mit` is typed.
-`gti c` → `git commit -m` shares only `g`, so four characters go and `it commit -m`
-arrives. Two features produce exactly that second shape and both used to draw a suggestion
-and then do nothing when Tab was pressed: the store's fuzzy fallback, and verification's
-correction of what was typed.
+The edit starts at the longest scalar prefix the two strings share. If that prefix ends
+inside a character already typed, it moves back to that character's start and replays the
+suggestion's suffix from there. The delete count and the preview therefore use the same
+whole-character boundary, while a scalar prefix that ends at a whole typed character stays
+untouched. `git com` → `git commit` shares all seven typed characters, so nothing is replaced
+and `mit` is typed. `gti c` → `git commit -m` shares only `g`, so four characters go and
+`it commit -m` arrives. Two features produce exactly that second shape and both used to draw
+a suggestion and then do nothing when Tab was pressed: the store's fuzzy fallback, and
+verification's correction of what was typed.
 
 What is replaced is always a suffix of what the user typed — it is cut from that string
 and no other — so the count cannot exceed what they have entered, and the edit can never
@@ -126,11 +141,11 @@ will not report or set its selection, `TypedTextInsertionEngine` presses Delete 
 character and then types — which works everywhere and costs what the next section says.
 
 The typed route reads before it deletes. A blind backspace could eat a shell prompt, so
-`TypedTextInsertionEngine.write` asks the focused field for the characters before the caret
-(`precedingText`) and, when the field answers with something other than what would be
-replaced, throws `.insertionRejected` and types nothing. A field that will not say what
-precedes the caret is not held up by the check: the deletions go ahead, since a Tab that
-does nothing is the worse failure.
+`TypedTextInsertionEngine.write` checks the suffix already read by suggestion acceptance and,
+when the field answers with something other than what would be replaced, throws
+`.insertionRejected` and types nothing. A direct typed write makes its own `precedingText`
+read. A field that will not say what precedes the caret is not held up by the check: the
+deletions go ahead, since a Tab that does nothing is the worse failure.
 
 The Accessibility route checks too. Before it widens the selection, `AXTextField` compares
 the characters that selection would cover with what the edit replaces
@@ -197,8 +212,8 @@ the list's footer and the VoiceOver label — it is built from the field's `Acce
 terminal reads `→` and an editor `⌥⇥`. A `⇥` once drawn in a terminal sent the user to
 press the shell's own completion key and conclude accepting was broken.
 
-**A choice is one line until Down is pressed.** A `.choice` draws only the leader's
-continuation on the caret's line, exactly like a `.certain`. The first ↓ opens the list
+**A choice is one line until ⌥↓ is pressed.** A `.choice` draws only the leader's
+continuation on the caret's line, exactly like a `.certain`. The first ⌥↓ opens the list
 under the line — every candidate as `↳ text`, the highlighted one at ghost strength and
 the rest dimmer, then `take · next · dismiss` — and the list stays open while the highlight
 walks round, collapsing again only when the suggestion changes.

@@ -50,12 +50,15 @@ heard-space range shifted by the other corrections, as above.
 
 ## When the words do not line up
 
-When the words at the computed position are not the ones that were written, the text is
-left exactly as it is rather than overwritten with a guess — but the change is still marked
-undone and the entry still answers for it, because the user's judgement of the change holds
-whether or not the sentence can be repaired. A range that does not fit the text is refused
-the same way. With the index recorded this happens only when the tidier changed the word
-itself (its spelling, or punctuation attached to it), or on the fallback path.
+When the word cores at the computed position are not the ones that were written, the text
+is left exactly as it is rather than overwritten with a guess — but the change is still
+marked undone and the entry still answers for it, because the user's judgement of the
+change holds whether or not the sentence can be repaired. Punctuation around matching
+cores and the first letter's case may differ. Undo replaces matching cores and keeps the
+stored punctuation and spacing when both forms have the same number of words; when the
+heard form has a different count, its words keep the stored outer punctuation. A range that
+does not fit the text is refused the same way. With the index recorded, this happens when
+the tidier changed the word itself or on the fallback path.
 
 ## The result is a copy, not a rebuild
 

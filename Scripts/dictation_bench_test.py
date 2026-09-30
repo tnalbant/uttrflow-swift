@@ -11,6 +11,8 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BENCH = os.path.join(HERE, "dictation_bench.py")
+sys.path.insert(0, HERE)
+import dictation_bench as bench  # noqa: E402
 
 CLIP = {
     "id": "known",
@@ -64,6 +66,37 @@ class BenchTests(unittest.TestCase):
             for line in lines:
                 handle.write(line + "\n")
         return path
+
+    def test_devanagari_marks_remain_inside_words_when_punctuation_is_removed(self):
+        self.assertEqual(
+            bench.normalise("मैं नहीं आऊँगा, पचास लाख।"),
+            ["मैं", "नहीं", "आऊँगा", "पचास", "लाख"],
+        )
+
+    def test_devanagari_matra_errors_are_counted_as_word_edits(self):
+        self.assertEqual(
+            bench.errors(
+                ["कल शाम को मैं घर जल्दी पहुँच गया"],
+                "कल शाम को मै घर जल्दी पहुंच गया",
+            ),
+            (2, 8),
+        )
+
+    def test_an_extra_devanagari_word_is_counted(self):
+        self.assertEqual(
+            bench.errors(["मैं नहीं आऊँगा"], "मैं नहीं आऊँगा बिल्कुल"),
+            (1, 3),
+        )
+
+    def test_english_normalisation_and_scoring_are_unchanged(self):
+        self.assertEqual(
+            bench.normalise("Hello, WORLD! I paid 3 dollars."),
+            ["hello", "world", "i", "paid", "three", "dollars"],
+        )
+        self.assertEqual(
+            bench.errors(["Hello, world! I paid three dollars."], "Hello world, I paid four dollars."),
+            (1, 6),
+        )
 
     # jobs
 

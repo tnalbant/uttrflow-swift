@@ -105,6 +105,13 @@ left the commonest dictation length one piece — which is what #917 was. A piec
 recogniser's own window, and with no pause at all it is cut there — which is exactly
 what the recogniser would have done to it anyway.
 
+**A pause ends a piece only once the piece holds 0.8 s of speech.** After a long pause the
+silence alone passes five seconds, so one word said between two long pauses became a piece
+of its own, and the recogniser, given one function word in seconds of silence, wrote "the"
+as "Duh!", "a" as "Ah." and "and" as nothing (#2319). The word now stays with the next
+phrase, and a last window at key-up holding only a word or two joins the one before it.
+A lone word after a piece already recognised while recording still goes alone.
+
 The longer early pause protects a repeated-sentence case. The default recogniser returned
 one copy from a 6.65 s English clip containing two identical sentences separated by 1.1 s
 of silence, while it returned one copy from each half decoded separately. With the early
@@ -154,9 +161,13 @@ on as usual; the release pass then does every unfinished span in its own place, 
 failure still gets reported and still costs only that piece's words rather than the whole
 recording's wait.
 
-If that release pass still gets no words for audio `VoiceActivity` judges speech-bearing,
-the dictation fails instead of inserting only the other pieces. A kept recording can be
-retried; a window holding genuine silence is still skipped.
+A window `VoiceActivity` judges speech-bearing that decodes to no words is decoded once more,
+without the vocabulary bias, since a short piece set off by pauses (a greeting, a sign-off)
+decodes blank now and then (issue 2099). If the second decode is blank too, the release pass
+leaves that piece out, inserts every other piece, and counts the gap in the outcome's
+`missedPieces`. Only when no piece has words, or the whole recording was one window, does the
+dictation fail as untranscribed; a kept recording can then be retried. A window holding
+genuine silence is still skipped.
 
 The pieces are then joined with a space. Corrections keep their word ranges by being
 shifted past the words of the pieces before them. If any piece fell back to the rules,
@@ -176,17 +187,12 @@ be assembled across a piece boundary any more than across a sentence.
 
 How each piece gets its language follows the Languages setting, `ListeningLanguages`:
 
-- **Hindi alone ticked**: every piece is decoded as Hindi, so a short reply cannot be heard as
-  English syllables.
-- **English and Hindi ticked**: every piece detects its own language among the two. A speaker
+- **English and Hindi ticked, or the default English profile**: every piece detects its own
+  language among the product's supported languages. A speaker
   who ticks both switches between sentences, and holding a Hindi sentence to the English of
   the first piece has Whisper translate it or drop it (issue 698).
-- **Hindi not ticked**, which is also the default: the first piece that reports a language
-  sets it for the dictation and every later piece is given it as a hint, and the next
-  dictation detects afresh. A piece that is short, quiet or heavy with proper nouns can
-  otherwise be detected as the other language. English alone cannot pin English, because it
-  is everybody's default, and pinning it would end Hindi dictation for anyone who never opened
-  Settings.
+- **Hindi alone ticked**: every piece is decoded as Hindi, so a short reply cannot be heard as
+  English syllables.
 
 Whatever is ticked, dictation is written in Latin letters: the setting steers what
 recognition listens for, never the script.
@@ -209,17 +215,20 @@ one and treats anything older than a minute as it would a session made for other
 key-down makes a fresh one, and a stale one is never handed out (#876).
 
 It is still a fresh session per utterance — one sentence's context must not bleed into the
-next — but no longer only one per *dictation*. `WarmSupply` hands its session out once and
-then makes another for the same instructions, so the second and third pieces cost what the
-first did. Warming once while the unit of work was the piece meant every piece after the
-first built its own session, and the piece that paid for it was the last one, which is the
-only one the user is waiting on.
+next — but no longer only one per *dictation*. `WarmSupply` hands its session out once, and
+the pipeline warms again after each piece tidied while the key is still held, so the second
+and third pieces cost what the first did.
 
 The replacement is made **after** the response returns, not beside it. This model serialises
 its work — four tidying sessions started at once took exactly as long as four in a row, as
 measured above — so prewarming during a rewrite would move the cost into the wait rather than
 out of it. The instructions come from the destination and are read once per dictation, so
 there is one key to make against and no extra model call: still one call per piece.
+
+Nothing is warmed after the last piece. A session made then would be used only by a dictation
+starting within the minute, and key-down warms for that one anyway; for anyone dictating every
+few minutes it was a second prewarm per dictation, thrown away as stale (#1513). A one-piece
+dictation now makes one session, and a dictation of *n* pieces at most *n*.
 
 ## What a ten-second dictation gains, and what it cannot
 

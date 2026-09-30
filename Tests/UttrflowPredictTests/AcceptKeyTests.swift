@@ -11,6 +11,30 @@ struct AcceptKeyTests {
     }
 
     @Test(
+        "Spreadsheets keep native cell navigation by accepting with Option-Tab.",
+        arguments: [
+            "com.apple.iWork.Numbers", "com.microsoft.Excel",
+        ])
+    func spreadsheetsGetOptionTab(bundleIdentifier: String) {
+        #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .optionTab)
+    }
+
+    @Test("Google Sheets gets Option-Tab when its browser window title identifies it.")
+    func googleSheetsGetsOptionTab() {
+        let application = AppContext(documentName: "Quarterly plan - Google Sheets")
+        #expect(AcceptKeys.standard.key(for: application) == .optionTab)
+    }
+
+    @Test("A browser override wins when its window title identifies Google Sheets.")
+    func browserSpreadsheetOverrideWins() {
+        let keys = AcceptKeys(overrides: ["com.google.Chrome": .rightArrow])
+        let application = AppContext(
+            bundleIdentifier: "com.google.Chrome", documentName: "Quarterly plan - Google Sheets")
+
+        #expect(keys.key(for: application) == .rightArrow)
+    }
+
+    @Test(
         "A terminal gets the right arrow, because Tab there is the shell's own completion.",
         arguments: [
             "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty",
@@ -51,9 +75,23 @@ struct AcceptKeyTests {
     }
 
     @Test(
+        "A launcher gets Tab because it is not an editor.",
+        arguments: ["com.jetbrains.toolbox"])
+    func nonEditorsGetTab(bundleIdentifier: String) {
+        #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .tab)
+    }
+
+    @Test(
         "A query editor gets Option-Tab too, since its Tab indents or completes SQL.",
         arguments: ["com.jetbrains.datagrip", "com.tinyapp.TablePlus", "org.jkiss.dbeaver.core.product"])
     func queryEditorsGetOptionTab(bundleIdentifier: String) {
+        #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .optionTab)
+    }
+
+    @Test(
+        "Document editors get Option-Tab so Tab remains available for their native editing behavior.",
+        arguments: ["com.microsoft.Word", "com.apple.iWork.Pages", "com.apple.TextEdit"])
+    func documentEditorsGetOptionTab(bundleIdentifier: String) {
         #expect(AcceptKeys.standard.key(forBundleIdentifier: bundleIdentifier) == .optionTab)
     }
 
@@ -80,7 +118,9 @@ struct AcceptKeyTests {
         for prefix in editors {
             #expect(AcceptKeys.standard.key(forBundleIdentifier: prefix) == .optionTab)
             let kind = DestinationClassifier.rule(for: AppContext(bundleIdentifier: prefix))?.kind
-            #expect(kind == .codeEditor || kind == .sqlEditor, "\(prefix) is an editor to suggestions only")
+            #expect(
+                kind == .codeEditor || kind == .sqlEditor || kind == .documentEditor,
+                "\(prefix) is an editor to suggestions only")
         }
     }
 
@@ -93,6 +133,18 @@ struct AcceptKeyTests {
     func overrideWins() {
         let keys = AcceptKeys(overrides: ["com.apple.Terminal": .optionTab])
         #expect(keys.key(forBundleIdentifier: "com.apple.Terminal") == .optionTab)
+    }
+
+    @Test("A user's choice still wins for a document editor.")
+    func documentEditorOverrideWins() {
+        let keys = AcceptKeys(overrides: ["com.microsoft.Word": .tab])
+        #expect(keys.key(forBundleIdentifier: "com.microsoft.Word") == .tab)
+    }
+
+    @Test("A user's choice still wins for a spreadsheet.")
+    func spreadsheetOverrideWins() {
+        let keys = AcceptKeys(overrides: ["com.microsoft.Excel": .rightArrow])
+        #expect(keys.key(forBundleIdentifier: "com.microsoft.Excel") == .rightArrow)
     }
 
     @Test("An override is found however the user's own file spelled the identifier.")

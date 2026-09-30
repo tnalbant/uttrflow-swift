@@ -109,7 +109,7 @@ enum CodeShapes {
         .anchorsMatchLineEndings()
 
     /// A quoted key against a colon, which is what a one-line JSON object has instead of the punctuation the other signals look for.
-    nonisolated(unsafe) static let quotedMember = #/"[^"\n]*"\s*:/#
+    nonisolated(unsafe) static let quotedMember = #/\{[^{}\n]*"[^"\n]*"\s*:/#
 
     /// SQL, which has none of the punctuation the other signals look for.
     nonisolated(unsafe) static let query =

@@ -15,7 +15,10 @@ struct SuggestionView: View {
             } action: {
                 onDesiredSize($0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(
+                maxWidth: .infinity, maxHeight: .infinity,
+                alignment: presentation.direction == .rightToLeft ? .topTrailing : .topLeading
+            )
             .accessibilityElement(children: .combine)
             .accessibilityLabel(presentation.accessibilityLabel)
     }
@@ -52,7 +55,7 @@ struct SuggestionView: View {
     /// All that is left after the user presses escape.
     private var dot: some View {
         Circle()
-            .fill(ink(SuggestionPresentation.ghostOpacity))
+            .fill(ink(presentation.opacity))
             .frame(
                 width: SuggestionPresentation.dotDiameter,
                 height: SuggestionPresentation.dotDiameter)
@@ -60,21 +63,33 @@ struct SuggestionView: View {
 
     /// The continuation on the caret's own line, and the list of every candidate under it only once it is opened.
     private var ghost: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        HStack {
+            if presentation.direction == .rightToLeft { Spacer(minLength: 0) }
+            ghostContent
+            if presentation.direction == .leftToRight { Spacer(minLength: 0) }
+        }
+    }
+
+    private var ghostContent: some View {
+        VStack(alignment: presentation.direction == .rightToLeft ? .trailing : .leading, spacing: 0) {
             if let inline = presentation.inline { inlineLine(inline) }
             if presentation.isExpanded { list }
         }
+        .environment(\.layoutDirection, presentation.direction == .rightToLeft ? .rightToLeft : .leftToRight)
     }
 
     /// What the accept key will add, finishing the user's line, and nothing else: the grey, or its underline, is the hint.
     private func inlineLine(_ row: SuggestionPresentation.Row) -> some View {
-        offer(row)
+        SuggestionGhostLine(presentation: presentation, row: row)
             .foregroundStyle(ink(presentation.opacity))
     }
 
     /// Every candidate as a whole line, the one Tab takes at ghost strength and the rest dimmer, then the keys.
     private var list: some View {
-        VStack(alignment: .leading, spacing: presentation.pointSize * 0.2) {
+        VStack(
+            alignment: presentation.direction == .rightToLeft ? .trailing : .leading,
+            spacing: presentation.pointSize * 0.2
+        ) {
             ForEach(Array(presentation.list.enumerated()), id: \.offset) { _, row in
                 listRow(row)
             }
@@ -90,7 +105,8 @@ struct SuggestionView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .font(font(at: presentation.pointSize))
+        .font(presentation.font(at: presentation.pointSize))
+        .fontWeight(row.isSelected ? .semibold : .regular)
         .foregroundStyle(ink(rowOpacity(row)))
     }
 
@@ -99,42 +115,48 @@ struct SuggestionView: View {
         Text(verbatim: presentation.footer)
             .lineLimit(1)
             .truncationMode(.tail)
-            .font(font(at: presentation.pointSize * 0.82))
-            .foregroundStyle(ink(presentation.opacity * SuggestionPresentation.dimmedShare))
+            .font(presentation.font(at: presentation.pointSize * 0.82))
+            .foregroundStyle(ink(presentation.unselectedListOpacity))
             .accessibilityHidden(true)
     }
 
-    /// Full ghost strength for the row Tab would take, and a dimmed share for the ones it would not.
+    /// The selected row reads at full strength; unselected rows use their contrast-safe list opacity.
     private func rowOpacity(_ row: SuggestionPresentation.Row) -> Double {
-        row.isSelected ? presentation.opacity : presentation.opacity * SuggestionPresentation.dimmedShare
+        presentation.listOpacity(for: row)
     }
+}
+
+/// The ghost on the caret's line, the one view both drawn and measured, so what fits is what is shown.
+struct SuggestionGhostLine: View {
+    let presentation: SuggestionPresentation
+    let row: SuggestionPresentation.Row
 
     /// The ghost continuation, preceded by the typed characters struck through only when Tab would consume any.
-    private func offer(_ row: SuggestionPresentation.Row) -> some View {
-        var text = AttributedString(row.ghost)
-        // At full strength the grey no longer marks the offer, so a dotted underline does.
-        if presentation.underlinesGhost { text.underlineStyle = Text.LineStyle(pattern: .dot) }
-        if row.isReplacement {
-            var consumed = AttributedString(row.consumed)
-            // The strike is the whole signal, so it takes the colour of the style around it.
-            consumed.strikethroughStyle = .single
-            text = consumed + text
-        }
-        return Text(text)
-            .font(font(at: presentation.pointSize))
+    var body: some View {
+        Text(text)
+            .font(presentation.font(at: presentation.pointSize))
             .lineLimit(1)
             .truncationMode(.tail)
     }
 
-    /// The field's own face where it names one, else the system face, monospaced where even the size is unknown.
-    private func font(at size: CGFloat) -> Font {
-        if let family = presentation.fontFamily { return .custom(family, size: size) }
-        return .system(size: size, design: fontDesign)
+    /// The ghost in the field's style, with what Tab takes back struck through ahead of it.
+    private var text: AttributedString {
+        var text = AttributedString(row.ghost)
+        // At full strength the grey no longer marks the offer, so a dotted underline does.
+        if presentation.underlinesGhost { text.underlineStyle = Text.LineStyle(pattern: .dot) }
+        guard row.isReplacement else { return text }
+        var consumed = AttributedString(row.consumed)
+        // The strike is the whole signal, so it takes the colour of the style around it.
+        consumed.strikethroughStyle = .single
+        return consumed + text
     }
+}
 
-    /// Monospaced where the field would not say what its own font is, so a terminal ghost still lines up.
-    private var fontDesign: Font.Design {
-        presentation.prefersMonospaced ? .monospaced : .default
+extension SuggestionPresentation {
+    /// The field's own face where it names one, else the system face, monospaced where even the size is unknown.
+    func font(at size: CGFloat) -> Font {
+        if let fontFamily { return .custom(fontFamily, size: size) }
+        return .system(size: size, design: prefersMonospaced ? .monospaced : .default)
     }
 }
 

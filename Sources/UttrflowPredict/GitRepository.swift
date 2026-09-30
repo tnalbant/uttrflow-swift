@@ -1,9 +1,13 @@
+private import Synchronization
+
 /// A git repository read straight off disk — `.git`, `refs` and `packed-refs` — so a branch is checked without running git.
 struct GitRepository: Sendable {
     /// The directory that holds the refs, shared by every worktree of the repository.
     let commonDirectory: String
     /// The disk it is read from.
     let files: any FileSystemProbing
+    /// The packed refs parsed lazily once for this repository lookup.
+    private let packedRefsCache: PackedRefsCache
 
     /// How far up from the working directory `.git` is looked for.
     static let deepestSearch = 64
@@ -46,7 +50,10 @@ struct GitRepository: Sendable {
             }
             ?? gitDirectory
         guard files.kind(atPath: TerminalPath.joined(common, "reftable")) == .missing else { return nil }
-        return GitRepository(commonDirectory: common, files: files)
+        return GitRepository(
+            commonDirectory: common,
+            files: files,
+            packedRefsCache: PackedRefsCache(path: TerminalPath.joined(common, "packed-refs"), files: files))
     }
 
     /// The text after a `key:` line's key, trimmed.
@@ -73,17 +80,47 @@ struct GitRepository: Sendable {
     }
 
     /// Every ref `packed-refs` names, absent when it cannot be read whole.
-    private var packedRefs: Set<String>? {
-        let path = TerminalPath.joined(commonDirectory, "packed-refs")
-        guard files.kind(atPath: path) != .missing else { return [] }
-        guard let text = files.contents(ofFile: path, limit: Self.packedRefsLimit) else { return nil }
-        return Set(
-            text.split(whereSeparator: \.isNewline).compactMap { line in
-                guard !line.hasPrefix("#"), !line.hasPrefix("^"), let space = line.firstIndex(of: " ") else {
-                    return nil
-                }
-                return String(line[line.index(after: space)...])
-            })
+    private var packedRefs: Set<String>? { packedRefsCache.value }
+
+    /// A per-lookup memo that is discarded when the next repository verification starts.
+    private final class PackedRefsCache: Sendable {
+        private enum State: Sendable {
+            case unread
+            case read(Set<String>?)
+        }
+
+        private let path: String
+        private let files: any FileSystemProbing
+        private let state = Mutex<State>(.unread)
+
+        init(path: String, files: any FileSystemProbing) {
+            self.path = path
+            self.files = files
+        }
+
+        var value: Set<String>? {
+            state.withLock { state in
+                if case .read(let refs) = state { return refs }
+                let refs = Self.read(path: path, files: files)
+                state = .read(refs)
+                return refs
+            }
+        }
+
+        private static func read(path: String, files: any FileSystemProbing) -> Set<String>? {
+            guard files.kind(atPath: path) != .missing else { return [] }
+            guard let text = files.contents(ofFile: path, limit: GitRepository.packedRefsLimit) else {
+                return nil
+            }
+            return Set(
+                text.split(whereSeparator: \.isNewline).compactMap { line in
+                    guard !line.hasPrefix("#"), !line.hasPrefix("^"), let space = line.firstIndex(of: " ")
+                    else {
+                        return nil
+                    }
+                    return String(line[line.index(after: space)...])
+                })
+        }
     }
 
     /// The namespaces a ref's short name is read from, as `git for-each-ref` shortens them.
@@ -132,21 +169,32 @@ struct GitRepository: Sendable {
         Self.isRefName(name) && has("refs/heads/\(name)")
     }
 
-    /// Whether any remote has a branch of this name, which `checkout` and `switch` turn into a local one.
+    /// Whether exactly one remote has a branch of this name, which is when `checkout` and `switch` turn it into a local one.
     func hasRemoteBranch(named name: String) -> Bool {
-        guard Self.isRefName(name) else { return false }
-        let remotes = TerminalPath.joined(commonDirectory, "refs/remotes")
-        for remote in files.names(inDirectory: remotes, limit: Self.remoteLimit) ?? []
-        where has("refs/remotes/\(remote)/\(name)") {
-            return true
-        }
-        return packedRefs?.contains { ref in
-            guard ref.hasPrefix("refs/remotes/") else { return false }
-            return ref.dropFirst("refs/remotes/".count).drop { $0 != "/" }.dropFirst() == name
-        } ?? false
+        remotes(holdingBranch: name)?.count == 1
     }
 
-    /// Whether a name is anything `checkout` could take as a commit: `HEAD` and its relatives, a branch, a tag, a remote's branch or a loose object's id.
+    /// The remotes with a branch of this name, loose or packed, each counted once; absent when `packed-refs` cannot be read whole.
+    func remotes(holdingBranch name: String) -> Set<String>? {
+        guard Self.isRefName(name) else { return [] }
+        guard let packed = packedRefs else { return nil }
+        var holding: Set<String> = []
+        let remotes = TerminalPath.joined(commonDirectory, "refs/remotes")
+        for remote in files.names(inDirectory: remotes, limit: Self.remoteLimit) ?? [] {
+            let ref = TerminalPath.joined(commonDirectory, "refs/remotes/\(remote)/\(name)")
+            if case .file = files.kind(atPath: ref) { holding.insert(remote) }
+        }
+        for ref in packed where ref.hasPrefix("refs/remotes/") {
+            let rest = ref.dropFirst("refs/remotes/".count)
+            guard let slash = rest.firstIndex(of: "/"), rest[rest.index(after: slash)...] == name else {
+                continue
+            }
+            holding.insert(String(rest[..<slash]))
+        }
+        return holding
+    }
+
+    /// Whether a name is a commit ref or `HEAD`, with optional parent and ancestor selectors.
     func hasCommit(named name: String) -> Bool {
         let base = String(name.prefix { $0 != "~" && $0 != "^" })
         guard
@@ -158,25 +206,6 @@ struct GitRepository: Sendable {
         if ["refs/heads/", "refs/tags/", "refs/remotes/", "refs/"].contains(where: { has($0 + base) }) {
             return true
         }
-        return hasLooseObject(abbreviated: base)
-    }
-
-    /// The fewest hex digits git takes as an object id.
-    static let shortestObjectID = 4
-
-    /// The most names read from one loose-object folder, past which an id is not believed.
-    static let looseFolderLimit = 4_096
-
-    /// Whether exactly one loose object begins with this hex id; a packed object is not read, so it is not vouched for.
-    func hasLooseObject(abbreviated id: String) -> Bool {
-        let hex = id.lowercased()
-        guard (Self.shortestObjectID...64).contains(hex.count), hex.allSatisfy(\.isHexDigit) else { return false }
-        let folder = TerminalPath.joined(commonDirectory, "objects/" + hex.prefix(2))
-        guard let names = files.names(inDirectory: folder, limit: Self.looseFolderLimit) else { return false }
-        let rest = hex.dropFirst(2)
-        let matches = names.filter { $0.count >= 38 && $0.hasPrefix(rest) }
-        guard matches.count == 1, let only = matches.first else { return false }
-        if case .file = files.kind(atPath: TerminalPath.joined(folder, only)) { return true }
         return false
     }
 }

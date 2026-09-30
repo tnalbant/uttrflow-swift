@@ -24,14 +24,44 @@ enum DiagnosticsFixture {
         availability: [TransformerKind: Bool] = [:],
         model: DiagnosticsModelPresence? = nil,
         permissions: [PermissionKind: PermissionStatus] = [:],
+        dictationShortcutArmed: Bool? = true,
+        hasDefaultInputDevice: Bool? = true,
         measurements: [StageMeasurement] = [],
-        cleaning: CleaningRecord? = nil
+        cleaning: CleaningRecord? = nil,
+        lastCleanedBy: TransformerKind? = nil
     ) -> DiagnosticsPresentation {
         DiagnosticsPresenter.page(
             for: DiagnosticsSnapshot(
                 engines: engines, transformerAvailability: availability, speechModel: model,
-                permissions: permissions, measurements: measurements, cleaning: cleaning),
+                permissions: permissions, dictationShortcutArmed: dictationShortcutArmed,
+                hasDefaultInputDevice: hasDefaultInputDevice,
+                measurements: measurements, cleaning: cleaning,
+                lastCleanedBy: lastCleanedBy),
             locale: locale)
+    }
+}
+
+@Suite("Diagnostics timing accessibility labels")
+struct DiagnosticsAccessibilityTests {
+    @Test("one timing row uses the singular measurement label")
+    func singularMeasurementLabel() throws {
+        let page = DiagnosticsFixture.page(measurements: [
+            DiagnosticsFixture.timing(.transcription, 1)
+        ])
+
+        let row = try #require(page.latency?.stages.first)
+        #expect(row.accessibilityLabel.hasSuffix("over 1 measurement."))
+    }
+
+    @Test("multiple timings use the plural measurement label")
+    func pluralMeasurementLabel() throws {
+        let page = DiagnosticsFixture.page(measurements: [
+            DiagnosticsFixture.timing(.transcription, 1),
+            DiagnosticsFixture.timing(.transcription, 2),
+        ])
+
+        let row = try #require(page.latency?.stages.first)
+        #expect(row.accessibilityLabel.hasSuffix("over 2 measurements."))
     }
 }
 
@@ -200,6 +230,20 @@ struct DiagnosticsLatencyTests {
     }
 }
 
+@Suite("Diagnostics reports the local recogniser prompt")
+struct DiagnosticsVocabularyPromptTests {
+    @Test("shows the last prompt words locally and leaves them out of copied diagnostics")
+    func vocabularyPromptIsLocalOnly() {
+        let snapshot = DiagnosticsSnapshot(vocabularyPrompt: ["Maelis", "Yuvraaj"])
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.vocabularyPrompt.detail == "Maelis, Yuvraaj")
+        #expect(!report.contains("Maelis"))
+        #expect(!report.contains("Yuvraaj"))
+    }
+}
+
 @Suite("Diagnostics reports how often things worked")
 struct DiagnosticsReliabilityTests {
     @Test("a stage's success rate comes from the successes recorded against it")
@@ -251,6 +295,124 @@ struct DiagnosticsEngineTests {
         #expect(page.engines.first?.detail == "Downloaded speech model")
     }
 
+    @Test("the speech row is not green while the model it needs is missing")
+    func speechRowAgreesWithTheMissingModel() {
+        let missing = DiagnosticsModelPresence(isInstalled: false, bytesOnDisk: nil, isMultilingual: true)
+        let page = DiagnosticsFixture.page(model: missing)
+
+        #expect(page.engines.first?.state == .attention)
+        #expect(page.engines.first?.detail == "Speech model to download")
+        #expect(page.storage.first?.detail == "Not downloaded")
+
+        let installed = DiagnosticsFixture.page(
+            model: DiagnosticsModelPresence(isInstalled: true, bytesOnDisk: nil, isMultilingual: true))
+        #expect(installed.engines.first?.state == .good)
+
+        let system = DiagnosticsFixture.page(
+            engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
+            model: missing)
+        #expect(system.engines.first?.state == .good)
+        #expect(system.engines.first?.detail == "Built-in speech recognition")
+    }
+
+    /// The shared readiness decides the words, so Diagnostics never says "In use" while Home says it failed.
+    @Test(
+        "the speech model card and row say the model's real state",
+        arguments: [
+            (SpeechModelReadiness.notInstalled, "Not downloaded", "Not downloaded"),
+            (.incomplete, "Damaged", "Damaged, download it again"),
+            (.downloading(fractionCompleted: 0.4), "Downloading", "Downloading"),
+            (.loading, "Loading", "on this Mac, every language, loading"),
+            (.loadFailed, "Failed to load", "On this Mac, but it failed to load"),
+            (.loadFailedAgain, "Damaged", "Damaged, download it again"),
+            (.ready, "In use", "on this Mac, every language"),
+        ])
+    func speechModelSaysItsRealState(
+        readiness: SpeechModelReadiness, status: String, detail: String
+    ) throws {
+        let onDisk = readiness != .notInstalled && readiness != .incomplete
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(
+                speechModel: DiagnosticsModelPresence(
+                    isInstalled: onDisk, bytesOnDisk: nil, isMultilingual: true),
+                speechReadiness: readiness),
+            locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech" })
+
+        #expect(card.status == status)
+        #expect(page.storage.first?.detail == detail)
+        let broken = [SpeechModelReadiness.notInstalled, .incomplete, .loadFailed, .loadFailedAgain]
+        #expect((card.state == .attention) == broken.contains(readiness))
+    }
+
+    @Test("a failed load of the recogniser not in use leaves the downloaded model's card alone")
+    func failedLoadOfTheOtherRecogniser() throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(
+                engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
+                speechModel: DiagnosticsModelPresence(
+                    isInstalled: true, bytesOnDisk: nil, isMultilingual: true),
+                speechReadiness: .loadFailed),
+            locale: DiagnosticsFixture.locale)
+
+        #expect(try #require(page.models.first { $0.title == "Speech" }).status == "Ready")
+    }
+
+    @Test(
+        "the built-in speech card and report reflect locale asset readiness",
+        arguments: [
+            (DiagnosticsAppleSpeechStatus.unchecked, "Not checked yet", DiagnosticsState.unknown),
+            (.needsDownload, "Needs download", .attention),
+            (.unsupported, "Unsupported", .attention),
+            (.downloading, "Downloading", .unknown),
+            (.installed, "Ready", .good),
+        ])
+    func appleSpeechAssetStatus(
+        status: DiagnosticsAppleSpeechStatus, label: String, state: DiagnosticsState
+    ) throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(appleSpeechStatus: status), locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+
+        #expect(card.status == label)
+        #expect(card.state == state)
+        #expect(
+            DiagnosticsPresenter.report(
+                for: DiagnosticsSnapshot(appleSpeechStatus: status), locale: DiagnosticsFixture.locale
+            ).contains("  Speech (Faster): \(label)"))
+    }
+
+    @Test("a Whisper model load failure does not mark installed Apple Speech as failed")
+    func otherEngineLoadFailureDoesNotAffectAppleSpeech() throws {
+        let page = DiagnosticsPresenter.page(
+            for: DiagnosticsSnapshot(
+                engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
+                speechInUse: .appleSpeech, speechReadiness: .loadFailed,
+                appleSpeechStatus: .installed),
+            locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+        let row = try #require(page.engines.first { $0.title == "Speech" })
+
+        #expect(card.status == "In use")
+        #expect(card.state == .good)
+        #expect(row.detail == "In use")
+    }
+
+    @Test("the typed Apple Speech load failure appears in the card and report")
+    func appleSpeechLoadFailureReachesDiagnostics() throws {
+        let snapshot = DiagnosticsSnapshot(
+            speechInUse: .appleSpeech, appleSpeechStatus: .installed,
+            appleSpeechLoadFailure: .modelLoadFailed(description: "unsupported locale"))
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let card = try #require(page.models.first { $0.title == "Speech (Faster)" })
+
+        #expect(card.status == "Failed to load")
+        #expect(card.state == .attention)
+        #expect(
+            DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+                .contains("Speech (Faster): Failed to load"))
+    }
+
     /// The first one that can run is the one that runs; the rest are standing by.
     @Test("only the first available clean-up engine is in use")
     func firstAvailableIsInUse() {
@@ -260,6 +422,39 @@ struct DiagnosticsEngineTests {
 
         #expect(details == ["Not available on this Mac", "In use"])
         #expect(page.engines.dropFirst().map(\.state) == [.attention, .good])
+    }
+
+    @Test("the clean-up card names the engine used for the last dictation")
+    func lastDictationNamesTheEngineThatRan() throws {
+        let page = DiagnosticsFixture.page(
+            availability: [.foundationModels: true, .rules: true], lastCleanedBy: .rules)
+        let card = try #require(page.models.first { $0.title == "Clean-up" })
+
+        #expect(card.name == "Built-in rules")
+        #expect(card.status == "Last dictation")
+    }
+
+    @Test("a last-used engine that is no longer available is not green")
+    func lastUsedUnavailableEngineNeedsAttention() throws {
+        let page = DiagnosticsFixture.page(
+            availability: [.foundationModels: false, .rules: true],
+            lastCleanedBy: .foundationModels)
+        let card = try #require(page.models.first { $0.title == "Clean-up" })
+
+        #expect(card.name == "Built-in language model")
+        #expect(card.status == "Last dictation")
+        #expect(card.state == .attention)
+    }
+
+    @Test("a dictation no engine could tidy is not reported as in use")
+    func untidiedIsReported() throws {
+        let page = DiagnosticsFixture.page(
+            availability: [.foundationModels: true, .rules: true], lastCleanedBy: .untidied)
+        let card = try #require(page.models.first { $0.title == "Clean-up" })
+
+        #expect(card.name == "No clean-up ran")
+        #expect(card.status == "Last dictation")
+        #expect(card.state == .attention)
     }
 
     /// "No" and "nobody has asked yet" are different answers, and conflating them ends in an untruth.
@@ -340,6 +535,45 @@ struct DiagnosticsPermissionTests {
     }
 }
 
+@Suite("Diagnostics reports whether dictation can start")
+struct DiagnosticsAvailabilityTests {
+    @Test("a shortcut with no dictation listener is shown as unarmed and raises attention")
+    func unarmedShortcutNeedsAttention() {
+        let page = DiagnosticsFixture.page(dictationShortcutArmed: false)
+        let shortcut = page.availability.first
+
+        #expect(shortcut?.title == "Dictation shortcut")
+        #expect(shortcut?.detail == "Not armed")
+        #expect(shortcut?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Dictation shortcut: Not armed")
+    }
+
+    @Test("a missing default input device is shown and raises the attention summary")
+    func missingInputNeedsAttention() {
+        let page = DiagnosticsFixture.page(hasDefaultInputDevice: false)
+        let input = page.availability.last
+
+        #expect(input?.title == "Input device")
+        #expect(input?.detail == "No default input device")
+        #expect(input?.state == .attention)
+        #expect(page.summary.needsAttention)
+        #expect(page.summary.text == "Input device: No default input device")
+    }
+
+    @Test("both availability rows appear in copied diagnostics")
+    func reportIncludesAvailability() {
+        let report = DiagnosticsPresenter.report(
+            for: DiagnosticsSnapshot(
+                dictationShortcutArmed: false, hasDefaultInputDevice: false),
+            locale: DiagnosticsFixture.locale)
+
+        #expect(
+            report.contains(
+                "Availability\n  Dictation shortcut: Not armed\n  Input device: No default input device"))
+    }
+}
+
 @Suite("Diagnostics reports what is on the disk")
 struct DiagnosticsStorageTests {
     @Test("an installed model reports its size and what it covers")
@@ -380,6 +614,23 @@ struct DiagnosticsStorageTests {
 
 @Suite("Diagnostics can be copied out")
 struct DiagnosticsReportTests {
+    @Test("the report counts pieces that needed extra decodes and empty-result retries")
+    func reportsRecordedDecodeEffort() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordDecoding(DecodeEffort(fallbacks: 2, encoderRuns: 3))
+        await recorder.recordDecoding(DecodeEffort(retriedWithoutPrompt: true))
+        await recorder.recordDecoding(.none)
+
+        let snapshot = DiagnosticsSnapshot(decoding: await recorder.decoding)
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.decoding.map(\.detail) == ["2 of 3 pieces", "1 retry"])
+        #expect(report.contains("Decode effort (3 pieces)"))
+        #expect(report.contains("Pieces needing more than one decode: 2 of 3 pieces"))
+        #expect(report.contains("Empty-result retries: 1 retry"))
+    }
+
     /// What is copied must not say something different from what was on screen.
     @Test("the report carries the same numbers the page shows")
     func reportMatchesThePage() {
@@ -470,6 +721,17 @@ struct DiagnosticsRecorderTests {
         #expect(value == 42)
         #expect(await recorder.recorded.map(\.stage) == [.transformation])
         #expect(await recorder.recorded.allSatisfy(\.succeeded))
+    }
+
+    @Test("keeps the latest recogniser prompt locally and clears it on reset")
+    func recordsAndForgetsVocabularyPrompt() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordVocabularyPrompt(["Maelis", "Yuvraaj"])
+        #expect(await recorder.vocabularyPrompt == ["Maelis", "Yuvraaj"])
+
+        await recorder.forget()
+
+        #expect(await recorder.vocabularyPrompt.isEmpty)
     }
 }
 

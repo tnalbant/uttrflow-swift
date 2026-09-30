@@ -18,6 +18,13 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   the asset, and a readiness check that consults it, would replace a slow first dictation with
   a dead end. Both of those live outside the module, so the change belongs in one piece.
 - Audio is fed to the analyser in 4096-frame chunks, matching how a live microphone delivers.
+- The asset check and the analyser's audio format are settled once, in `load()`, and again only
+  after a transcription fails. An analyser is finished after one clip, so each piece takes a fresh
+  transcriber and analyser; the next pair is built and given `prepareToAnalyze(in:)` as soon as a
+  piece answers, off the wait for the words. `Docs/performance.md` has the measurement.
+- The analyser has offered 16 kHz mono 16-bit on every Mac measured. When it asks for anything
+  else, `AnalyserInput` converts through `AVAudioConverter`, fed in 2048-frame slices within one
+  conversion so neither the converter's truncation nor its filter delay drops audio.
 - Excluded from the coverage gate: it can only be exercised by real speech.
 
 ## Keeping WhisperKit off the network
@@ -74,10 +81,11 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   both read it back off the options.
 - The detector's constraint is the product's languages, not the profile's. Every language
   Settings offers is in the transcribed set, so the profile narrows detection by the hint
-  instead: a profile that speaks only Hindi decodes every piece as Hindi, and one that speaks
-  both detects every piece (`ListeningLanguages`, `Docs/early-transcription.md`). English alone
-  narrows nothing, because `UserProfile.preferredLanguages` starts as English for everyone and
-  pinning it would force every Hindi speaker who never opened Settings into English.
+  instead: a profile that speaks only Hindi decodes every piece as Hindi, while the default
+  English profile and profiles that speak both detect every piece
+  (`ListeningLanguages`, `Docs/early-transcription.md`). English alone narrows nothing, because
+  `UserProfile.preferredLanguages` starts as English for everyone and pinning it would force
+  every Hindi speaker who never opened Settings into English.
 - WhisperKit re-runs detection for every fallback temperature and samples it the same way it
   samples text, top-k at that temperature. The allowed sampler ignores the temperature, so one
   window cannot change its language between retries.
@@ -100,6 +108,25 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   Devanagari word, 1 was translated into English, and overall WER moved between runs from
   12.3% to 18.4%. With both, none of those, every run gives identical text, and overall WER is
   11.8%. English transcripts are unchanged byte for byte.
+
+## A short piece the recogniser wrote twice
+
+- In noise, a short clip can come back as its sentence written twice, often with each copy in
+  quotes. For example, a 2.76 s clip of a 7-word Hinglish sentence came back as 14 words. A
+  sentence said twice does not compress anywhere near 2.4, so the compression check above cannot
+  catch this.
+- `RecognitionLoop.undone`, run on every piece `BackedSpeechEngine` transcribes, keeps one copy
+  of a repeated run when at least three copies of three or more words differ by no more than 20%
+  word error rate and the words come faster than 4.5 a second of speech. A matching trailing
+  partial copy is removed with the run. The existing two-copy check still applies when there are
+  exactly two copies. A piece that fails the speech-rate or copy-match check is left as heard. So
+  a sentence really said twice at a speaking rate keeps both.
+- 4.5 words a second is set above the corpus recorder's own "this take was cut off" line (a
+  passage read faster than 2.5 / 0.6, about 4.2 words a second) and below the 5.1 of the looped
+  clip. It is not yet measured against recorded speech. Measure it with the eval corpus before
+  lowering it.
+- Double quotes that open the first word and close the last are taken off when there are no
+  other quotes in the piece. The recogniser writes these; the speaker did not say them.
 
 ## What Devanagari costs, and why Hindi is still decoded in it
 

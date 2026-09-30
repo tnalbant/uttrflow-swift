@@ -6,6 +6,20 @@ import Testing
 @testable import UttrflowCore
 @testable import UttrflowInput
 
+/// The attribute probes for a focused accessibility element.
+private struct MockFocusedAccessibilityElement {
+    let role: String
+    let selectedTextIsReadable: Bool
+    let selectedTextIsSettable: Bool
+
+    func isEligibleForTextInsertion() -> Bool {
+        FocusedTextFieldEligibility.accepts(
+            role: role,
+            selectedTextIsReadable: { selectedTextIsReadable },
+            selectedTextIsSettable: { selectedTextIsSettable })
+    }
+}
+
 /// A text field held in memory that answers its selection attributes as scripted and records every write.
 final class FakeSelectionField: SelectionAttributes, Sendable {
     struct State: Sendable {
@@ -14,16 +28,17 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
         var length: Int
         var reportsValue = true
         var reportsSelection = true
+        var readsByRange = true
+        var wholeReads = 0
+        var unitsRead = 0
         var refusesText = false
         var ignoresText = false
         var refusesSelection = false
         var textWrites: [String] = []
         var selectionWrites: [Range<Int>] = []
-        /// How many `value()` calls after a write still report the pre-write text, so a fake can go stale-then-fresh.
-        var staleReadsAfterWrite = 0
-        /// The value `value()` reports while stale reads remain, set the moment a write lands.
-        var staleValue: String?
-        /// False models a field whose reported caret lags the write along with its value.
+        /// Text another writer inserts immediately before this write is applied.
+        var concurrentTextBeforeWrite: String?
+        /// False models a field that leaves the original selection in place after writing.
         var collapsesSelectionAfterWrite = true
     }
 
@@ -38,10 +53,23 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
     func value() -> String? {
         state.withLock { state in
             guard state.reportsValue else { return nil }
-            guard state.staleReadsAfterWrite > 0, let stale = state.staleValue else { return state.text }
-            state.staleReadsAfterWrite -= 1
-            if state.staleReadsAfterWrite == 0 { state.staleValue = nil }
-            return stale
+            state.wholeReads += 1
+            state.unitsRead += state.text.utf16.count
+            return state.text
+        }
+    }
+
+    func length() -> Int? {
+        state.withLock { $0.reportsValue && $0.readsByRange ? $0.text.utf16.count : nil }
+    }
+
+    func text(in range: Range<Int>) -> String? {
+        state.withLock { state in
+            guard state.reportsValue, state.readsByRange, range.upperBound <= state.text.utf16.count
+            else { return nil }
+            state.unitsRead += range.count
+            return (state.text as NSString).substring(
+                with: NSRange(location: range.lowerBound, length: range.count))
         }
     }
 
@@ -54,14 +82,20 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
             state.textWrites.append(text)
             guard !state.refusesText else { return .cannotComplete }
             guard !state.ignoresText else { return .success }
-            let beforeWrite = state.text
+            if let concurrentText = state.concurrentTextBeforeWrite {
+                let concurrentRange = NSRange(location: state.location, length: state.length)
+                state.text = (state.text as NSString).replacingCharacters(
+                    in: concurrentRange, with: concurrentText)
+                state.location += concurrentText.utf16.count
+                state.length = 0
+                state.concurrentTextBeforeWrite = nil
+            }
             let replaced = NSRange(location: state.location, length: state.length)
             state.text = (state.text as NSString).replacingCharacters(in: replaced, with: text)
             if state.collapsesSelectionAfterWrite {
                 state.location += text.utf16.count
                 state.length = 0
             }
-            if state.staleReadsAfterWrite > 0 { state.staleValue = beforeWrite }
             return .success
         }
     }
@@ -79,6 +113,8 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
     var text: String { state.withLock { $0.text } }
     var selection: Range<Int> { state.withLock { $0.location..<($0.location + $0.length) } }
     var textWrites: [String] { state.withLock { $0.textWrites } }
+    var wholeReads: Int { state.withLock { $0.wholeReads } }
+    var unitsRead: Int { state.withLock { $0.unitsRead } }
     var selectionWrites: [Range<Int>] { state.withLock { $0.selectionWrites } }
 }
 
@@ -89,6 +125,13 @@ private func isRejection(_ error: TextInsertionError?) -> Bool {
 
 @Suite("Writing into a field through its Accessibility attributes")
 struct SelectionWriterTests {
+    @Test func rejectsReadableSelectionOnANonSettableElement() {
+        let element = MockFocusedAccessibilityElement(
+            role: "AXTextField", selectedTextIsReadable: true, selectedTextIsSettable: false)
+
+        #expect(!element.isEligibleForTextInsertion())
+    }
+
     @Test("replaces the selection with the text")
     func replacesTheSelection() throws {
         let field = FakeSelectionField("Hello earth", caret: 6, length: 5)
@@ -106,59 +149,68 @@ struct SelectionWriterTests {
         #expect(field.textWrites == ["same"], "no fallback should have written a second time")
     }
 
-    @Test("refuses a field that accepts the text and does not change")
+    @Test("does not claim a write landed when the field still reports its old value")
     func acceptedButUnchangedIsAFailure() {
         let field = FakeSelectionField("Hello") { $0.ignoresText = true }
         let error = #expect(throws: TextInsertionError.self) {
             try SelectionWriter(field: field).replaceSelection(with: " world")
         }
-        #expect(
-            error == .insertionRejected(description: "the field accepted the text and did not change"))
+        #expect(error == .insertionUnconfirmed)
     }
 
-    @Test("does not report a late-applied write as unchanged, since the value catches up on a later read")
-    func lateAppliedWriteIsNotAFailure() throws {
+    @Test("marks a successful write ambiguous when the resulting selection is unavailable")
+    func unknownResultingSelectionIsAmbiguous() {
         let field = FakeSelectionField("Hello") {
-            $0.reportsSelection = false
-            $0.staleReadsAfterWrite = 2
-        }
-        try SelectionWriter(field: field, sleep: { _ in }).replaceSelection(with: " world")
-        #expect(field.text == "Hello world")
-        #expect(field.textWrites == [" world"], "no fallback should have written a second time")
-    }
-
-    @Test("still refuses a write that never changes the value, once the re-reads are exhausted")
-    func lateReadBudgetStillCatchesAGenuineRefusal() {
-        let field = FakeSelectionField("Hello") {
-            $0.ignoresText = true
             $0.reportsSelection = false
         }
         let error = #expect(throws: TextInsertionError.self) {
-            try SelectionWriter(field: field, sleep: { _ in }).replaceSelection(with: " world")
+            try SelectionWriter(field: field).replaceSelection(with: " world")
         }
-        #expect(
-            error == .insertionRejected(description: "the field accepted the text and did not change"))
+        #expect(error == .insertionUnconfirmed)
+        #expect(field.text == "Hello world")
+        #expect(field.textWrites == [" world"])
     }
 
-    @Test("does not delete the replaced characters when the write applies a moment late")
-    func completionRouteDoesNotUnwindALateWrite() throws {
+    @Test("marks an accepted write ambiguous when the resulting caret is unexpected")
+    func unexpectedResultingCaretIsAmbiguous() {
+        let field = FakeSelectionField("Hello") { $0.collapsesSelectionAfterWrite = false }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: " world")
+        }
+        #expect(error == .insertionUnconfirmed)
+    }
+
+    @Test("does not move the selection after an accepted write has an unexpected result")
+    func completionRouteDoesNotUnwindAnAmbiguousWrite() {
         let field = FakeSelectionField("I want") {
-            $0.staleReadsAfterWrite = 2
             $0.collapsesSelectionAfterWrite = false
         }
-        try SelectionWriter(field: field, sleep: { _ in }).replaceSelection(replacing: "want", with: "need")
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(replacing: "want", with: "need")
+        }
+        #expect(error == .insertionUnconfirmed)
         #expect(field.text == "I need")
         #expect(
             field.selectionWrites == [2..<6],
-            "a caret restore would add a second selection write after the failure it does not hit")
+            "an ambiguous write must not restore the old caret over its resulting selection")
     }
 
-    @Test("passes a field that will not report its value, since the write cannot be checked")
-    func unreadableFieldIsTrusted() throws {
-        let field = FakeSelectionField("Hello") {
-            $0.ignoresText = true
-            $0.reportsValue = false
+    @Test("marks a concurrent selection move ambiguous after Accessibility accepts the write")
+    func concurrentSelectionMoveIsAmbiguous() {
+        let field = FakeSelectionField("Hello earth", caret: 6, length: 5) {
+            $0.concurrentTextBeforeWrite = "neighbor"
         }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: "world")
+        }
+        #expect(error == .insertionUnconfirmed)
+        #expect(field.text == "Hello neighborworld")
+        #expect(field.textWrites == ["world"], "the accepted text write is never repeated")
+    }
+
+    @Test("confirms a write by its resulting selection even when the whole value is unreadable")
+    func unreadableValueCanBeConfirmedBySelection() throws {
+        let field = FakeSelectionField("Hello") { $0.reportsValue = false }
         try SelectionWriter(field: field).replaceSelection(with: " world")
         #expect(field.textWrites == [" world"])
     }
@@ -259,5 +311,33 @@ struct SelectionWriterTests {
         try SelectionWriter(field: field).replaceSelection(replacing: "", with: " want")
         #expect(field.text == "I want")
         #expect(field.selectionWrites.isEmpty)
+    }
+
+    @Test("reads only around the caret in a long field, never its whole value")
+    func longFieldIsReadByRange() throws {
+        let long = String(repeating: "word ", count: 200_000) + "I want"
+        let field = FakeSelectionField(long)
+        try SelectionWriter(field: field).replaceSelection(replacing: "want", with: "need")
+        #expect(field.text.hasSuffix("I need"))
+        #expect(field.wholeReads == 0)
+        #expect(field.unitsRead < 1_000)
+    }
+
+    @Test("still catches an unchanged write when the check reads by range")
+    func unchangedWriteIsCaughtByRange() {
+        let field = FakeSelectionField(String(repeating: "word ", count: 1_000)) { $0.ignoresText = true }
+        #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: " world")
+        }
+        #expect(field.wholeReads == 0)
+    }
+
+    @Test("falls back to the whole value for a field that will not read by range")
+    func noRangedReadFallsBackToTheValue() throws {
+        let field = FakeSelectionField("I want it", caret: 6, length: 3) { $0.readsByRange = false }
+        try SelectionWriter(field: field).replaceSelection(replacing: "want", with: "need")
+        #expect(field.text == "I need")
+        #expect(field.selectionWrites == [2..<9])
+        #expect(field.wholeReads > 0)
     }
 }

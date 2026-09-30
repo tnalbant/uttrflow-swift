@@ -5,6 +5,8 @@ public enum Scorer {
     public static func score(_ rewritten: String, against reference: EvaluationCase) -> CaseScore {
         let produced = tokens(rewritten)
         let wanted = tokens(reference.expected)
+        let producedSurface = surfaceWords(rewritten)
+        let wantedSurface = surfaceWords(reference.expected)
         // A phrase is one run inside one sentence, so the run it is sought in keeps the sentence ends.
         let sentences = tokens(rewritten, keepingSentenceEnds: true)
         // Matched on words only; a wordless requirement is reported as lost rather than quietly satisfied.
@@ -19,12 +21,94 @@ public enum Scorer {
         return CaseScore(
             caseID: reference.id,
             similarity: overlap(produced, wanted),
+            markAccuracy: markAccuracy(rewritten, reference.expected),
+            caseAccuracy: caseAccuracy(producedSurface, wantedSurface),
             keptEverythingRequired: lost.isEmpty,
             lost: lost,
-            isExact: produced == wanted,
+            isExact: normalisedWhitespace(rewritten) == normalisedWhitespace(reference.expected),
             invented: invented,
             brokeShape: brokenShape(of: rewritten, against: reference)
         )
+    }
+
+    /// Measures shared words whose original capitalisation is preserved.
+    static func caseAccuracy(_ produced: [String], _ wanted: [String]) -> Double {
+        let alignment = WordErrorRate.measure(
+            reference: wanted.map { $0.lowercased() }, hypothesis: produced.map { $0.lowercased() })
+        let matches = alignment.hits
+        guard matches > 0 else { return 1 }
+        var producedIndex = 0
+        var wantedIndex = 0
+        var correct = 0
+        for operation in alignment.alignment {
+            switch operation {
+            case .match:
+                if produced[producedIndex] == wanted[wantedIndex] { correct += 1 }
+                producedIndex += 1
+                wantedIndex += 1
+            case .substitution:
+                producedIndex += 1
+                wantedIndex += 1
+            case .deletion:
+                wantedIndex += 1
+            case .insertion:
+                producedIndex += 1
+            }
+        }
+        return Double(correct) / Double(matches)
+    }
+
+    /// Measures comma and sentence-end placement with an F1 score over word boundaries.
+    static func markAccuracy(_ produced: String, _ wanted: String) -> Double {
+        let producedMarks = marks(produced)
+        let wantedMarks = marks(wanted)
+        guard !producedMarks.isEmpty || !wantedMarks.isEmpty else { return 1 }
+        let shared = producedMarks.intersection(wantedMarks).count
+        let precision = producedMarks.isEmpty ? 0 : Double(shared) / Double(producedMarks.count)
+        let recall = wantedMarks.isEmpty ? 0 : Double(shared) / Double(wantedMarks.count)
+        guard precision + recall > 0 else { return 0 }
+        return 2 * precision * recall / (precision + recall)
+    }
+
+    private static func marks(_ text: String) -> Set<String> {
+        var result: Set<String> = []
+        var word = ""
+        var wordCount = 0
+        func flush() {
+            guard !word.isEmpty else { return }
+            wordCount += 1
+            word = ""
+        }
+        for character in text {
+            if character.isLetter || character.isNumber {
+                word.append(character)
+                continue
+            }
+            flush()
+            if character == "," { result.insert("\(wordCount):comma") }
+            if ".!?".contains(character) { result.insert("\(wordCount):sentence") }
+        }
+        flush()
+        return result
+    }
+
+    private static func surfaceWords(_ text: String) -> [String] {
+        var words: [String] = []
+        var word = ""
+        for character in text {
+            if character.isLetter || character.isNumber {
+                word.append(character)
+            } else if !word.isEmpty {
+                words.append(word)
+                word = ""
+            }
+        }
+        if !word.isEmpty { words.append(word) }
+        return words
+    }
+
+    private static func normalisedWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     /// The beginning and ending checked literally, because case and a final mark are what these cases are about.

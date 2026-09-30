@@ -58,11 +58,11 @@ struct DockContrastTests {
         #expect(ratio(ink.dark, darkKeycap) >= 4.5)
     }
 
-    @Test("the inserted tick clears 3:1 on a light desktop and a dark one")
-    func insertedTick() {
-        let tick = BrandPalette.Semantic.successInk
-        #expect(ratio(tick.light, lightGlass) >= 3)
-        #expect(ratio(tick.dark, darkGlass) >= 3)
+    @Test("the inserted return arrow clears 3:1 on a light desktop and a dark one")
+    func insertedArrow() {
+        let arrow = BrandPalette.Redesign.dictationAccent
+        #expect(ratio(arrow.light, lightGlass) >= 3)
+        #expect(ratio(arrow.dark, darkGlass) >= 3)
     }
 
     /// The tones these replace on the dock, which is the failure the issue measured.
@@ -71,5 +71,23 @@ struct DockContrastTests {
         #expect(ratio(white, BrandPalette.Semantic.warning) < 3)
         #expect(ratio(BrandPalette.Semantic.warning, lightGlass) < 4.5)
         #expect(ratio(BrandPalette.Semantic.success, lightGlass) < 3)
+    }
+
+    @Test("Increase Contrast makes notice text fully opaque over solid glass")
+    func increasedContrastNotices() {
+        let standard = DockNoticeAppearance(increasedContrast: false)
+        #expect(standard.textOpacity(normal: 0.58) == 0.58)
+        #expect(standard.textOpacity(normal: 0.72) == 0.72)
+        #expect(!standard.usesOpaqueGlass)
+
+        let increased = DockNoticeAppearance(increasedContrast: true)
+        #expect(increased.textOpacity(normal: 0.58) == 1)
+        #expect(increased.textOpacity(normal: 0.72) == 1)
+        #expect(increased.usesOpaqueGlass)
+
+        let glass = BrandPalette.Redesign.dockGlass.tone
+        let ink = BrandPalette.Redesign.textStrong
+        #expect(ratio(ink.dark, glass.dark) >= 4.5)
+        #expect(ratio(ink.light, glass.light) >= 4.5)
     }
 }

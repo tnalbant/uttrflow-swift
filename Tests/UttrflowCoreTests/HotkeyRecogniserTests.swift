@@ -68,6 +68,38 @@ struct HotkeyRecogniserTests {
         #expect(r.receive(held([])) == .released)
     }
 
+    @Test("modifier changes do not release a held combination key")
+    func modifierChangesKeepCombinationHeld() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([.option, .shift], keyCode: 56)) == nil)
+        #expect(r.receive(held([.option, .command], keyCode: 55)) == nil)
+        #expect(r.receive(held([.option, .control], keyCode: 59)) == nil)
+        #expect(r.isDown)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [.option], phase: .up)) == .released)
+        #expect(r.receive(held([])) == nil)
+    }
+
+    @Test("Caps Lock changes and repeated key-downs do not end or restart a combination")
+    func capsLockAndAutoRepeatKeepCombinationStable() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([.option], keyCode: 57)) == nil)
+        for _ in 0..<5 { #expect(r.receive(down(49, [.option])) == nil) }
+        #expect(r.isDown)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [.option], phase: .up)) == .released)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [], phase: .up)) == nil)
+    }
+
+    @Test("releasing a required modifier ends the combination once")
+    func requiredModifierReleaseEndsCombination() {
+        var r = HotkeyRecogniser(binding: .optionSpace)
+        #expect(r.receive(down(49, [.option])) == .pressed)
+        #expect(r.receive(held([], keyCode: 58)) == .released)
+        #expect(r.receive(KeyStroke(keyCode: 49, modifiers: [], phase: .up)) == nil)
+        #expect(!r.isDown)
+    }
+
     @Test("a combination does not fire for the right key with the wrong modifiers")
     func combinationRefusesWrongModifiers() {
         var r = HotkeyRecogniser(binding: .optionSpace)
@@ -92,18 +124,27 @@ struct HotkeyRecogniserTests {
         #expect(!r.isDown)
     }
 
-    @Test("an arrow key pressed during a hold neither starts nor ends it")
-    func arrowKeyDuringAHoldChangesNothing() {
+    @Test("a key pressed during Fn hold withdraws it")
+    func keyDuringFunctionHoldWithdraws() {
         var r = HotkeyRecogniser(binding: .functionHold)
         #expect(r.receive(held([], fn: true)) == .pressed)
-        #expect(r.receive(key(Self.rightArrow, .down)) == nil)
+        #expect(r.receive(key(51, .down, fn: true)) == .cancelled)
         #expect(r.receive(key(Self.rightArrow, .up)) == nil)
-        #expect(r.isDown)
-        #expect(r.receive(held([])) == .released)
+        #expect(!r.isDown)
+        #expect(r.receive(held([], fn: true)) == nil)
+        #expect(r.receive(held([])) == nil)
     }
 
-    @Test("only the flags change ends a hold, so no later keystroke can end it early")
-    func onlyAFlagsChangeEndsAHold() {
+    @Test("Fn arrow events without a reported Fn hold still do not start a hold")
+    func arrowKeyWithoutFunctionHoldChangesNothing() {
+        var r = HotkeyRecogniser(binding: .functionHold)
+        #expect(r.receive(key(Self.rightArrow, .down)) == nil)
+        #expect(r.receive(key(Self.rightArrow, .up)) == nil)
+        #expect(!r.isDown)
+    }
+
+    @Test("a key event without Fn does not end an Fn hold")
+    func keyWithoutFunctionFlagDoesNotEndHold() {
         var r = HotkeyRecogniser(binding: .functionHold)
         #expect(r.receive(held([], fn: true)) == .pressed)
         #expect(r.receive(key(0, .down, fn: false)) == nil)

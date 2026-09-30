@@ -97,6 +97,23 @@ public struct TerminalLineCheck: Sendable {
         }
     }
 
+    /// Whether the disk itself shows a looked-up name exists, for a listing that has not answered; a program's verbs and aliases are never read this way.
+    func confirms(_ lookup: Verification.Lookup, in scope: String?) -> Bool {
+        guard !lookup.word.isEmpty else { return false }
+        let directory = workingDirectory(scope)
+        let path = ShellWord(lookup.prefix + lookup.word)
+        return lookup.kinds.contains { kind in
+            switch kind {
+            case .entries: exists(path, as: .anything, from: directory)
+            case .directories: exists(path, as: .directory, from: directory)
+            case .branch:
+                directory.flatMap { GitRepository.holding($0, files: files) }?.hasBranch(lookup.word) ?? false
+            case .executable: isCommand(ShellWord(lookup.word), from: directory, aliases: [])
+            case .alias, .subcommand, .gitAlias: false
+            }
+        }
+    }
+
     /// Whether every word names a path of the required kind, `-` standing for the standard input.
     func allExist(
         _ words: some Collection<ShellWord>, as requirement: Requirement, from directory: String?
@@ -108,7 +125,8 @@ public struct TerminalLineCheck: Sendable {
     func landing(of name: String, _ arguments: [ShellWord], from directory: String?) -> Landing? {
         let flags = Self.valueFlags[name] ?? []
         let operands = Self.operands(
-            of: arguments, valueFlags: flags, plusIsFlag: Self.editors.contains(name))
+            of: arguments, valueFlags: flags, plusIsFlag: Self.editors.contains(name),
+            dashModeIsOperand: name == "chmod")
         switch name {
         case "cd", "pushd":
             return changeDirectory(arguments, from: directory)
@@ -126,9 +144,8 @@ public struct TerminalLineCheck: Sendable {
                 ? .stays : nil
         case "chmod", "chown", "chgrp":
             return allExist(operands.dropFirst(), as: .anything, from: directory) ? .stays : nil
-        case _ where Self.interpreters.contains(name):
-            guard let script = arguments.first, !script.text.hasPrefix("-") else { return .stays }
-            return exists(script, as: .file, from: directory) ? .stays : nil
+        case _ where Self.interpreters[name] != nil:
+            return interpreted(name, arguments, from: directory)
         case _ where Self.searchers.contains(name):
             return searched(arguments, from: directory)
         case "git":
@@ -136,6 +153,27 @@ public struct TerminalLineCheck: Sendable {
         default:
             return .stays
         }
+    }
+
+    /// Where an interpreter leaves the shell once its script is found past its flags, absent when the script is not here.
+    func interpreted(_ name: String, _ arguments: [ShellWord], from directory: String?) -> Landing? {
+        let grammar = Self.interpreters[name] ?? InterpreterFlags()
+        var rest = arguments[...]
+        while let word = rest.first, word.text.count > 1,
+            word.text.hasPrefix("-") || grammar.plusFlags && word.text.hasPrefix("+")
+        {
+            rest.removeFirst()
+            if word.text == "--" { break }
+            guard !word.isUnresolved else { return nil }
+            switch grammar.reading(word.text) {
+            case .inline, .external: return .stays
+            case .valued: if rest.popFirst() == nil { return .stays }
+            case .alone: continue
+            }
+        }
+        // No operand, or `-`, runs what the standard input holds.
+        guard let script = rest.first, script.text != "-" else { return .stays }
+        return exists(script, as: .file, from: directory) ? .stays : nil
     }
 
     /// Where `cd` or `pushd` leaves the shell: home with no argument, a directory that exists, or nowhere to follow for the directory stack.
@@ -179,7 +217,7 @@ public struct TerminalLineCheck: Sendable {
                 patternGiven = true
                 patternFiles.append(ShellWord(String(flag.dropFirst(7)), isUnresolved: word.isUnresolved))
                 position += 1
-            } else if flag.hasPrefix("-e"), flag.count > 2 || flag.hasPrefix("--regexp=") {
+            } else if (flag.hasPrefix("-e") && flag.count > 2) || flag.hasPrefix("--regexp=") {
                 patternGiven = true
                 position += 1
             } else if Self.searchValueFlags.contains(flag) {
@@ -285,8 +323,10 @@ public struct TerminalLineCheck: Sendable {
     }
 
     /// The words that are not flags or a flag's value, everything after `--` included.
-    static func operands(of arguments: [ShellWord], valueFlags: Set<String>, plusIsFlag: Bool) -> [ShellWord]
-    {
+    static func operands(
+        of arguments: [ShellWord], valueFlags: Set<String>, plusIsFlag: Bool,
+        dashModeIsOperand: Bool = false
+    ) -> [ShellWord] {
         var operands: [ShellWord] = []
         var afterDashes = false
         var skipNext = false
@@ -297,13 +337,35 @@ public struct TerminalLineCheck: Sendable {
                 operands.append(word)
             } else if word.text == "--" {
                 afterDashes = true
-            } else if word.text.count > 1, word.text.hasPrefix("-") {
+            } else if word.text.count > 1, word.text.hasPrefix("-"),
+                !(dashModeIsOperand && operands.isEmpty && isSymbolicChmodMode(word.text))
+            {
                 skipNext = valueFlags.contains(word.text)
             } else if !(plusIsFlag && word.text.hasPrefix("+")) {
                 operands.append(word)
             }
         }
         return operands
+    }
+
+    /// Whether a leading dash-prefixed word is a symbolic chmod mode rather than an option.
+    static func isSymbolicChmodMode(_ text: String) -> Bool {
+        text.split(separator: ",", omittingEmptySubsequences: false).allSatisfy { clause in
+            let characters = Array(clause)
+            var operationIndex = 0
+            while operationIndex < characters.count, "ugoa".contains(characters[operationIndex]) {
+                operationIndex += 1
+            }
+            guard operationIndex < characters.count,
+                "+-=".contains(characters[operationIndex])
+            else {
+                return false
+            }
+            let operation = characters[operationIndex]
+            let permissions = characters.dropFirst(operationIndex + 1)
+            return permissions.allSatisfy { "rwxXstugo".contains($0) }
+                && (operation == "=" || !permissions.isEmpty)
+        }
     }
 
     /// Whether a word sets a variable for the command after it.
@@ -364,10 +426,66 @@ public struct TerminalLineCheck: Sendable {
     /// Editors, which read a `+` word as a line to open at.
     static let editors: Set<String> = ["vim", "vi", "nvim", "nano", "emacs"]
 
-    /// Interpreters, whose first operand is the script they run unless a flag came first.
-    static let interpreters: Set<String> = [
-        "python", "python3", "node", "ruby", "perl", "php", "sh", "bash", "zsh",
-    ]
+    /// How an interpreter reads its flags before looking for a local script.
+    struct InterpreterFlags: Sendable {
+        /// Flags that give the code inline, a module or the standard input instead of a script, short ones as `-c`.
+        var inline: Set<String> = []
+        /// Flags whose target is resolved outside the current directory, as with `ruby -S`.
+        var external: Set<String> = []
+        /// Flags whose value is the next word unless it is written against the flag.
+        var valued: Set<String> = []
+        /// Short letters whose optional value can only be written against them, so the rest of the word is theirs.
+        var attached: Set<Character> = []
+        /// Whether `+o` and its kin are flags too, as a shell's are.
+        var plusFlags = false
+
+        /// How a flag reads: inline code, an external target, a next-word value, or nothing.
+        enum Reading { case inline, external, valued, alone }
+
+        /// How a flag word reads, a cluster of short letters read up to the first whose value runs on in the word.
+        func reading(_ word: String) -> Reading {
+            if word.hasPrefix("--") {
+                let flag = String(word.prefix { $0 != "=" })
+                if inline.contains(flag) { return .inline }
+                if external.contains(flag) { return .external }
+                return valued.contains(word) ? .valued : .alone
+            }
+            let letters = Array(word.dropFirst())
+            for (offset, letter) in letters.enumerated() {
+                let flag = "-\(letter)"
+                if inline.contains(flag) { return .inline }
+                if external.contains(flag) { return .external }
+                if attached.contains(letter) { return .alone }
+                if valued.contains(flag) { return offset == letters.count - 1 ? .valued : .alone }
+            }
+            return .alone
+        }
+    }
+
+    /// Interpreters, whose first operand is the script they run unless a flag gives the code another way.
+    static let interpreters: [String: InterpreterFlags] = {
+        let python = InterpreterFlags(inline: ["-c", "-m"], valued: ["-W", "-X", "--check-hash-based-pycs"])
+        let shell = InterpreterFlags(
+            inline: ["-c", "-s"], valued: ["-o", "-O", "+o", "+O", "--rcfile", "--init-file"], plusFlags: true
+        )
+        return [
+            "python": python, "python3": python,
+            "node": InterpreterFlags(
+                inline: ["-e", "--eval", "-p", "--print"], external: ["--run"],
+                valued: [
+                    "-r", "--require", "--import", "--loader", "--experimental-loader", "--env-file", "-C",
+                    "--conditions", "--input-type", "--title",
+                ]),
+            "ruby": InterpreterFlags(
+                inline: ["-e"], external: ["-S"], valued: ["-I", "-r", "-C", "-E", "--encoding"],
+                attached: ["x", "i", "0", "F", "T", "W", "K"]),
+            "perl": InterpreterFlags(
+                inline: ["-e", "-E"], external: ["-S"],
+                attached: ["i", "I", "M", "m", "l", "0", "x", "C", "d", "D"]),
+            "php": InterpreterFlags(inline: ["-r", "-a"], valued: ["-c", "-d", "-z"]),
+            "sh": shell, "bash": shell, "zsh": shell,
+        ]
+    }()
 
     /// Searches, whose first operand is the pattern and the rest files.
     static let searchers: Set<String> = ["grep", "egrep", "fgrep", "rg", "ag"]

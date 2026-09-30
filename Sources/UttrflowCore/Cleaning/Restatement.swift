@@ -16,10 +16,19 @@ public enum Restatement {
     ]
 
     /// Words a restated phrase may not anchor on, because a fresh clause starts with them far more often.
-    public static let weakAnchors = Set([
-        "i", "i'm", "i'll", "i've", "i'd", "we", "you", "he", "she", "they", "it", "it's", "that",
-        "this", "there", "yes", "yeah", "ok", "okay", "oh", "well",
-    ]).union(hindiSubjects)
+    public static let weakAnchors = Set(subjects + ["yes", "yeah", "ok", "okay", "oh", "well"])
+        .union(contractedSubjects).union(hindiSubjects)
+
+    /// English subject words, each of which heads a fresh clause.
+    static let subjects = ["i", "we", "you", "he", "she", "they", "it", "that", "this", "there"]
+
+    /// Every contracted form of a subject word ("he's", "we're", "they'll"), in either apostrophe.
+    static let contractedSubjects = Set(
+        subjects.flatMap { subject in
+            ["s", "m", "re", "ll", "ve", "d"].flatMap { ending in
+                ["'", "\u{2019}"].map { subject + $0 + ending }
+            }
+        })
 
     /// Hindi pronouns and subject words, romanised and in Devanagari, which start a fresh clause as English ones do.
     static let hindiSubjects: Set<String> = [
@@ -65,7 +74,7 @@ public enum Restatement {
         }
         guard !weakAnchors.contains(firstAfter) else { return nil }
         for candidate in stride(from: trigger - 1, through: earliest, by: -1) {
-            if draft.shape(at: live[candidate]).key == firstAfter {
+            if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
                     !coordinates(candidate, before: trigger, in: live, of: draft)
                 else { return nil }
@@ -76,6 +85,18 @@ public enum Restatement {
             }
         }
         return nil
+    }
+
+    /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.
+    private static func anchors(_ heard: String, the written: String) -> Bool {
+        guard heard != written, heard.count >= 3 else { return heard == written }
+        let characters = Array(written)
+        var start = characters.startIndex
+        for index in characters.indices where index > start && characters[index].isUppercase {
+            if String(characters[start..<index]).lowercased() == heard { return true }
+            start = index
+        }
+        return String(characters[start...]).lowercased() == heard
     }
 
     /// Whether the trigger is a sentence of its own after a full stop ("Tuesday. Scratch that. Wednesday"), which is a pause rather than two sentences.

@@ -1,4 +1,5 @@
 public import UttrflowCore
+import UttrflowDictionary
 
 // The verdict on a rewrite, and the guard that reaches it.
 /// Whether a rewrite may be shown to the user.
@@ -38,6 +39,14 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
+            draft: draft, rewritten: rewritten)
+        {
+            return .rejected(reason: reason, kind: kind)
+        }
+        if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
+            return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
+        }
         let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
         if case .rejected(let reason, let kind) = Self.removalVerdict(
             restored, kept: draft.text, rewritten: rewritten, echoed: echoed)
@@ -49,6 +58,9 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = readings.verdict {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.confidentHomophoneVerdict(draft, aligned: alignment) {
+            return .rejected(reason: reason, kind: kind)
+        }
         if case .rejected(let reason, let kind) = Self.layoutVerdict(
             kept: draft.text, rewritten: rewritten, layout: layout)
         {
@@ -57,6 +69,48 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token))
+    }
+
+    /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
+    static func spokenPunctuationVerdict(draft: Draft, rewritten: String) -> GuardVerdict {
+        let marks = Set(SpokenPunctuationPass.marks.flatMap { Array($0.mark) } + Array("()[]{}"))
+        var required: [Character: Int] = [:]
+        for word in draft.words {
+            for edit in word.edits where edit.by == .spokenPunctuation && edit.kind == .replaced {
+                guard !edit.to.contains("@") else { continue }
+                for mark in marks {
+                    let added = edit.to.filter { $0 == mark }.count - edit.from.filter { $0 == mark }.count
+                    if added > 0 { required[mark, default: 0] += added }
+                }
+            }
+        }
+        for (mark, count) in required where rewritten.filter({ $0 == mark }).count < count {
+            return .rejected(
+                reason: "the rewrite dropped a spoken punctuation mark", kind: .layout)
+        }
+        return .accepted
+    }
+
+    /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
+    private static func confidentHomophoneVerdict(_ draft: Draft, aligned: RewriteAlignment) -> GuardVerdict {
+        guard draft.confidencesAreReal else { return .accepted }
+        let heard = draft.words
+            .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
+            .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
+        for change in aligned.changes {
+            for index in change.kept where index < heard.count {
+                let token = aligned.kept[index]
+                guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
+                if change.rewritten.contains(where: {
+                    Homophones.share(token.matching, aligned.rewritten[$0].matching)
+                }) {
+                    return .rejected(
+                        reason: "the rewrite replaced high-confidence '\(token.text)' with a sound-alike",
+                        kind: .lostWord)
+                }
+            }
+        }
+        return .accepted
     }
 
     /// The content words and negations among removals no grant covers, each with the pass that took it.
@@ -245,9 +299,10 @@ public struct MeaningPreservationGuard: Sendable {
         if !originalWords.isEmpty, rewrittenWords.isEmpty {
             return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
         }
-        // A speaker who opens with "I have" gets their words, not a preamble check.
+        // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
         if let preamble = Self.preambles.first(where: {
-            rewritten.lowercased().hasPrefix($0) && !original.lowercased().hasPrefix($0)
+            rewritten.lowercased().hasPrefix($0)
+                && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
         }) {
             return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
         }
@@ -266,7 +321,68 @@ public struct MeaningPreservationGuard: Sendable {
         if let changed = Self.changedQuantity(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
+        if let changed = Self.changedIndianGrouping(original: original, rewritten: rewritten) {
+            return .rejected(
+                reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
+        }
+        if Self.addsQuotationPair(original: original, rewritten: rewritten) {
+            return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
+        }
         return .accepted
+    }
+
+    /// Whether the rewrite adds a quoted word span that has no counterpart in the draft.
+    private static func addsQuotationPair(original: String, rewritten: String) -> Bool {
+        var originalSpans = quotationSpans(in: original)
+        for span in quotationSpans(in: rewritten) {
+            guard let match = originalSpans.firstIndex(of: span) else { return true }
+            originalSpans.remove(at: match)
+        }
+        return false
+    }
+
+    /// The word spans held by straight and curly quotation pairs.
+    private static func quotationSpans(in text: String) -> [String] {
+        let characters = Array(text)
+        let pairs: [(Character, Character)] = [
+            ("\"", "\""), ("\u{201C}", "\u{201D}"), ("\u{2018}", "\u{2019}"),
+            ("'", "'"),
+        ]
+        return pairs.flatMap { open, close in
+            let openings = characters.indices.filter { characters[$0] == open }
+                .filter { !isApostropheDelimiter(at: $0, in: characters) }
+            let closings = characters.indices.filter { characters[$0] == close }
+                .filter { !isApostropheDelimiter(at: $0, in: characters) }
+            var unmatched = openings
+            var spans: [String] = []
+            for closing in closings {
+                guard let index = unmatched.firstIndex(where: { $0 < closing }) else { continue }
+                let opening = unmatched.remove(at: index)
+                let content = String(characters[(opening + 1)..<closing])
+                spans.append(grammarTokens(content).map(\.matching).joined(separator: " "))
+            }
+            return spans
+        }
+    }
+
+    /// Whether a single quote mark is an apostrophe or a decade elision rather than a delimiter.
+    private static func isApostropheDelimiter(at index: Int, in characters: [Character]) -> Bool {
+        (characters[index] == "'" || characters[index] == "\u{2019}")
+            && (isWordApostrophe(at: index, in: characters) || isDecadeElision(at: index, in: characters))
+    }
+
+    /// Whether an apostrophe stands between two letters in one word.
+    private static func isWordApostrophe(at index: Int, in characters: [Character]) -> Bool {
+        index > 0 && index + 1 < characters.count
+            && characters[index - 1].isLetter && characters[index + 1].isLetter
+    }
+
+    /// Whether an apostrophe abbreviates the leading digits of a decade such as ’90s.
+    private static func isDecadeElision(at index: Int, in characters: [Character]) -> Bool {
+        guard index + 2 < characters.count, characters[index + 1].isNumber,
+            characters[index + 2].isNumber
+        else { return false }
+        return index + 3 == characters.count || !characters[index + 3].isNumber
     }
 
     // MARK: Grammar
@@ -277,13 +393,23 @@ public struct MeaningPreservationGuard: Sendable {
         let text: String
         /// Lowercased with curly apostrophes straightened, the form the function-word set is keyed by.
         let lookup: String
-        /// The lookup form with apostrophes removed, the form words are matched for survival by.
+        /// Lowercased with curly apostrophes straightened, the exact spelling used for survival checks.
         let matching: String
         /// Whether the word opens the text or follows a sentence-closing mark.
         let startsSentence: Bool
 
-        /// Whether the checks can read the word at all; Devanagari and the like are left to the base checks.
-        var isPlain: Bool { matching.allSatisfy(\.isASCII) }
+        /// Whether the checks can read the word at all: Latin script, accents included; Devanagari and the like are left to the base checks.
+        var isPlain: Bool { matching.unicodeScalars.allSatisfy(Self.isLatin) }
+
+        /// Whether a scalar is ASCII, a Latin letter with or without its accent, or an accent written apart.
+        static func isLatin(_ scalar: Unicode.Scalar) -> Bool {
+            switch scalar.value {
+            case 0x00...0x7F: true
+            case 0x00C0...0x024F, 0x1E00...0x1EFF: scalar.properties.isAlphabetic
+            case 0x0300...0x036F: true
+            default: false
+            }
+        }
     }
 
     /// A repair may change a word's form, never which content words are there, either way round, or the order they came in. See `Docs/cleanup.md`.
@@ -310,7 +436,11 @@ public struct MeaningPreservationGuard: Sendable {
         let composed = composedNumbers(keptTokens, in: Set(written.map(\.matching)))
         let carried = keptTokens.indices.filter { index in
             let token = keptTokens[index]
-            return token.isPlain && isContent(token) && !composed.contains(index) && !excused.contains(index)
+            return token.isPlain && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup))
+                && !composed.contains(index) && !excused.contains(index)
+        }
+        if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
+            return .rejected(reason: reason, kind: kind)
         }
         if case .rejected(let reason, let kind) = survivalVerdict(carried.map { keptTokens[$0] }, in: written)
         {
@@ -335,13 +465,13 @@ public struct MeaningPreservationGuard: Sendable {
         if added > 0 {
             return .rejected(reason: "the rewrite added a negation", kind: .negationAdded)
         }
-        let churn = functionWordChurn(keptTokens, rewrittenTokens)
+        let churn = alignedFunctionWordChurn(alignment)
         if churn > 3 * sentenceCount(alignment.rewrittenText) {
             return .rejected(reason: "the rewrite changed \(churn) small words", kind: .smallWordChurn)
         }
         // A word put back where a pass took it without the grant to is the speaker's, not the model's.
         return inventionVerdict(
-            kept: keptTokens, rewritten: rewrittenTokens, echo: echoTokens + restored, allowing: doubtful)
+            alignment, echo: echoTokens + restored, allowing: doubtful)
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
@@ -364,24 +494,60 @@ public struct MeaningPreservationGuard: Sendable {
         kept: [GrammarToken], rewritten: [GrammarToken], echo: [GrammarToken],
         allowing doubtful: [DoubtfulSpan]
     ) -> GuardVerdict {
+        inventionVerdict(
+            RewriteAlignment(
+                kept: kept.map(\.text).joined(separator: " "),
+                rewritten: rewritten.map(\.text).joined(separator: " ")),
+            echo: echo, allowing: doubtful)
+    }
+
+    /// Refuses a content or meaning-bearing word with no origin in the same aligned run or an offered reading for it.
+    static func inventionVerdict(
+        _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan]
+    ) -> GuardVerdict {
         // A draft the checks cannot read romanises into words with no counterpart here, so the base checks keep it.
-        guard kept.allSatisfy(\.isPlain) else { return .accepted }
-        let origins = (kept + echo).filter(\.isPlain)
-        // A reading offered for a doubtful word is by definition not what was said, and `candidateVerdict` judges it.
-        let readings = Set(
-            doubtful
-                .flatMap { $0.candidates }
-                .flatMap { $0.spelling.split(whereSeparator: \.isWhitespace) }
-                .map { DoubtfulSpan.closedUp(String($0)) })
-        for token in rewritten
-        where token.isPlain && isContent(token) && !readings.contains(DoubtfulSpan.closedUp(token.text)) {
-            if !origins.contains(where: { survives(token.matching, as: $0) })
-                && !isSpelled(token.text, from: origins)
+        guard alignment.kept.allSatisfy(\.isPlain) else { return .accepted }
+        let origins = (alignment.kept + echo).filter(\.isPlain)
+        let originIndex = WordOccurrenceIndex(origins)
+        for index in alignment.rewritten.indices
+        where alignment.rewritten[index].isPlain
+            && (isContent(alignment.rewritten[index])
+                || FunctionWords.isMeaningBearing(alignment.rewritten[index].lookup))
+        {
+            let token = alignment.rewritten[index]
+            if originIndex.contains(token.matching) || originIndex.spells(token.text)
+                || origins.contains(where: { sameIrregularVerbForm($0.matching, token.matching) })
             {
+                continue
+            }
+            let offeredHere = doubtful.contains { span in
+                alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
+                    alignment.changes.contains { change in
+                        change.kept.overlaps(source) && change.rewritten.contains(index)
+                            && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
+                    }
+                }
+            }
+            if !offeredHere {
                 return .rejected(reason: "the rewrite invented '\(token.text)'", kind: .inventedWord)
             }
         }
         return .accepted
+    }
+
+    /// Matches one offered spelling without treating a substring or unrelated occurrence as provenance.
+    private static func survivesCandidate(_ token: GrammarToken, candidate: String) -> Bool {
+        let parts = grammarTokens(candidate)
+        return parts.count == 1 && survives(parts[0].matching, as: token)
+    }
+
+    /// Counts changed function words inside aligned runs, so a swap cannot cancel against another sentence.
+    static func alignedFunctionWordChurn(_ alignment: RewriteAlignment) -> Int {
+        alignment.changes.reduce(0) { total, change in
+            let before = alignment.kept[change.kept].filter { $0.isPlain && !isContent($0) }
+            let after = alignment.rewritten[change.rewritten].filter { $0.isPlain && !isContent($0) }
+            return total + functionWordChurn(before, after)
+        }
     }
 
     /// Refuses a negator that moved to a different content-word neighbourhood, while allowing contractions and punctuation changes.
@@ -517,7 +683,7 @@ public struct MeaningPreservationGuard: Sendable {
             tokens.append(
                 GrammarToken(
                     text: String(word), lookup: lookup,
-                    matching: lookup.replacingOccurrences(of: "'", with: ""),
+                    matching: lookup,
                     startsSentence: startsSentence))
             startsSentence = endsSentence
         }
@@ -561,16 +727,47 @@ public struct MeaningPreservationGuard: Sendable {
         return !FunctionWords.holds(token.lookup)
     }
 
+    /// Refuses a word the model moved, using the shared word alignment while leaving edits to the other guard checks.
+    static func wordOrderVerdict(kept: [GrammarToken], written: [GrammarToken]) -> GuardVerdict {
+        let alignment = WordErrorRate.measure(
+            reference: kept.filter(\.isPlain).map(\.matching),
+            hypothesis: written.filter(\.isPlain).map(\.matching))
+        var deleted: Set<String> = []
+        var inserted: Set<String> = []
+        var substitutedFrom: Set<String> = []
+        var substitutedTo: Set<String> = []
+        for operation in alignment.alignment {
+            switch operation {
+            case .match:
+                break
+            case .deletion(let word):
+                deleted.insert(word)
+            case .insertion(let word):
+                inserted.insert(word)
+            case .substitution(let reference, let hypothesis):
+                substitutedFrom.insert(reference)
+                substitutedTo.insert(hypothesis)
+            }
+        }
+        guard deleted.isDisjoint(with: inserted), substitutedFrom.isDisjoint(with: substitutedTo) else {
+            return .rejected(reason: "the rewrite moved a word", kind: .movedWord)
+        }
+        return .accepted
+    }
+
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
     static func survivalVerdict(_ kept: [GrammarToken], in written: [GrammarToken]) -> GuardVerdict {
         var reached = 0
         for token in kept {
-            let places = written.indices.filter { survives(token.matching, as: written[$0]) }
-            guard !places.isEmpty else {
+            let matchingPlaces = written.indices.filter {
+                token.matching == written[$0].matching
+                    || sameIrregularVerbForm(token.matching, written[$0].matching)
+            }
+            guard !matchingPlaces.isEmpty else {
                 return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
             }
             // The earliest place still open is taken, which is the most room the words after it can be left.
-            guard let place = places.first(where: { $0 >= reached }) else {
+            guard let place = matchingPlaces.first(where: { $0 >= reached }) else {
                 return .rejected(reason: "the rewrite moved '\(token.text)'", kind: .movedWord)
             }
             reached = place
@@ -578,24 +775,204 @@ public struct MeaningPreservationGuard: Sendable {
         return .accepted
     }
 
-    /// Whether one rewritten word is the kept word: exact, as its numeral or its word, in an inflected form, in an identifier, or as a verb form.
+    /// Maps every spelling accepted by `survives` to its token positions, preserving their original order.
+    private struct WordOccurrenceIndex {
+        private let places: [String: [Int]]
+
+        init(_ tokens: [GrammarToken]) {
+            var indexed: [String: [Int]] = [:]
+            for (index, token) in tokens.enumerated() {
+                var spellings: Set<String> = [token.matching]
+                if let spoken = MeaningPreservationGuard.numberWordsByNumeral[token.matching] {
+                    spellings.formUnion(spoken)
+                }
+                if let numeral = MeaningPreservationGuard.numberWords[token.matching] {
+                    spellings.insert(numeral)
+                }
+                if let homophones = Homophones.group(containing: token.matching) {
+                    spellings.formUnion(homophones)
+                }
+                if MeaningPreservationGuard.auxContractionRoots.contains(token.matching) {
+                    spellings.insert("\(token.matching)nt")
+                }
+                if MeaningPreservationGuard.auxContractionRoots.contains(where: {
+                    "\($0)nt" == token.matching
+                }) {
+                    spellings.insert(String(token.matching.dropLast(2)))
+                }
+                spellings.formUnion(Self.identifierSpellings(token.text))
+                for spelling in spellings {
+                    indexed[spelling, default: []].append(index)
+                }
+            }
+            places = indexed
+        }
+
+        private static func identifierSpellings(_ identifier: String) -> Set<String> {
+            let characters = Array(identifier)
+            let lowered = Array(identifier.lowercased())
+            guard lowered.count == characters.count else { return [] }
+            var spellings: Set<String> = []
+            for start in characters.indices {
+                let opens = start == 0 || characters[start].isUppercase || !characters[start - 1].isLetter
+                guard opens else { continue }
+                for end in (start + 1)...characters.count {
+                    let closes =
+                        end == characters.count || characters[end].isUppercase || !characters[end].isLetter
+                    if closes, end - start >= 3 {
+                        spellings.insert(String(lowered[start..<end]))
+                    }
+                }
+            }
+            return spellings
+        }
+
+        func occurrences(of word: String) -> [Int] { places[word] ?? [] }
+
+        func firstOccurrence(of word: String, atOrAfter lowerBound: Int) -> Int? {
+            guard let candidates = places[word] else { return nil }
+            var low = 0
+            var high = candidates.count
+            while low < high {
+                let middle = (low + high) / 2
+                if candidates[middle] < lowerBound { low = middle + 1 } else { high = middle }
+            }
+            return low < candidates.count ? candidates[low] : nil
+        }
+
+        func contains(_ word: String) -> Bool { places[word] != nil }
+
+        func spells(_ identifier: String) -> Bool {
+            let parts = MeaningPreservationGuard.identifierParts(identifier)
+            guard parts.count > 1 else { return false }
+            var next = 0
+            for part in parts {
+                guard let place = firstOccurrence(of: part, atOrAfter: next) else { return false }
+                next = place + 1
+            }
+            return true
+        }
+    }
+
+    /// Number spellings grouped by their numeral so occurrence indexes can add reverse matches in one lookup.
+    private static let numberWordsByNumeral: [String: Set<String>] = numberWords.reduce(into: [:]) {
+        index, entry in
+        index[entry.value, default: []].insert(entry.key)
+    }
+
+    /// Whether a rewritten word preserves the kept word as a listed form, numeral, homophone, identifier spelling, or contracted auxiliary.
     static func survives(_ word: String, as candidate: GrammarToken) -> Bool {
-        if word == candidate.matching { return true }
+        if word == candidate.matching || sameIrregularVerbForm(word, candidate.matching) { return true }
+        if equivalentClockTime(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
-        if sameForm(word, candidate.matching) { return true }
+        // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
+        if Homophones.share(word, candidate.matching) { return true }
         // A word spelled into an identifier — "invoices" inside "fetchInvoices" — is still there.
         if spelledInto(word, candidate.text) { return true }
-        if let index = IrregularVerbForms.setIndex[word] {
-            return IrregularVerbForms.setIndex[candidate.matching] == index
+        // An auxiliary the rewrite contracted to its "n't" form is the same word.
+        if Self.auxContractionRoots.contains(word), candidate.matching == "\(word)nt" { return true }
+        if Self.auxContractionRoots.contains(candidate.matching), word == "\(candidate.matching)nt" {
+            return true
         }
         return false
     }
 
-    /// Whether two words are one word in two forms: the same word, or one of them inflected from the other.
+    /// Treats a two digit dotted hour and minute as the same clock token as its colon form.
+    private static func equivalentClockTime(_ first: String, _ second: String) -> Bool {
+        func clockParts(_ token: String) -> (hour: String, minute: String)? {
+            let parts = token.split(whereSeparator: { $0 == "." || $0 == ":" })
+            guard parts.count == 2, parts[0].allSatisfy(\.isNumber), parts[1].count == 2,
+                parts[1].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+                let minute = Int(parts[1]), (0...59).contains(minute)
+            else { return nil }
+            return (String(hour), String(parts[1]))
+        }
+        guard let left = clockParts(first), let right = clockParts(second) else { return false }
+        return left.hour == right.hour && left.minute == right.minute
+    }
+
+    /// Aux verbs the rewrite can still contract to the same word; a dropped or substituted one is a rewrite.
+    static let auxContractionRoots: Set<String> = [
+        "do", "does", "did",
+        "is", "are", "was", "were",
+        "have", "has", "had",
+        "will", "would", "shall", "should",
+        "can", "could", "may", "might", "must",
+    ]
+
+    /// Whether two words are the same form, a regular inflection, or a reviewed irregular verb form.
     static func sameForm(_ word: String, _ other: String) -> Bool {
         word == other || inflections(of: word).contains(other) || inflections(of: other).contains(word)
+            || sameIrregularVerbForm(word, other)
     }
+
+    /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
+    static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
+        sameForm(fragment, word) || (whenCutOff && spelledInto(fragment, word, atCutOff: true))
+    }
+
+    /// Whether both words belong to the same listed English verb paradigm.
+    private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
+        guard let group = irregularVerbFormGroups[word] else { return false }
+        return irregularVerbFormGroups[other] == group
+    }
+
+    /// Reviewed English verb paradigms whose past and participle forms do not follow the regular endings.
+    private static let irregularVerbFormGroups: [String: String] = Dictionary(
+        uniqueKeysWithValues: [
+            ("begin", ["began", "begun"]),
+            ("break", ["broke", "broken"]),
+            ("drive", ["drove", "driven"]),
+            ("eat", ["ate", "eaten"]),
+            ("go", ["went", "gone"]),
+            ("speak", ["spoke", "spoken"]),
+            ("take", ["took", "taken"]),
+            ("write", ["wrote", "written"]),
+        ].flatMap { root, forms in
+            ([root] + forms).map { ($0, root) }
+        })
+
+    /// Whether two romanised Hindi words are one word in two forms: by `sameForm`, a verb and its stem ("aata" and "aa"), or two cases of one pronoun ("yah" and "is").
+    static func sameRomanisedForm(_ word: String, _ other: String) -> Bool {
+        if sameForm(word, other) { return true }
+        let (first, second) = (Romaniser.soundKey(word), Romaniser.soundKey(other))
+        if hindiIrregularVerbForms[first] == second || hindiIrregularVerbForms[second] == first {
+            return true
+        }
+        if hindiVerbStems.contains(first), hindiForms(of: first).contains(second) { return true }
+        if hindiVerbStems.contains(second), hindiForms(of: second).contains(first) { return true }
+        guard let pronoun = hindiPronouns[first] else { return false }
+        return hindiPronouns[second] == pronoun
+    }
+
+    /// Verb stems whose listed endings have inflected forms in common romanisation.
+    static let hindiVerbStems: Set<String> = Set(
+        [
+            "aa", "a", "ja", "kar", "kh", "de", "le", "ho", "bol", "chal", "mil",
+            "dekh", "sun", "likh", "padh", "bhej", "bata", "samajh", "rakh", "uth", "baith",
+            "so", "pi", "ban", "mang", "khel", "khil", "la", "pa", "nikal", "dikh",
+        ].map(Romaniser.soundKey))
+
+    /// Common verb forms that do not follow the regular stem endings.
+    static let hindiIrregularVerbForms: [String: String] = ["kha": "khila"]
+
+    /// The forms Hindi inflects a known verb stem into, as sound keys.
+    static func hindiForms(of stem: String) -> Set<String> {
+        guard !stem.isEmpty else { return [] }
+        let endings = [
+            "ta", "ti", "te", "na", "ne", "ni", "ya", "yi", "ye", "a", "i", "e", "o", "on", "kar",
+            "unga", "ungi", "enge", "oge", "ega", "egi", "iye",
+        ]
+        return Set(endings.map { Romaniser.soundKey(stem + $0) })
+    }
+
+    /// The cases of the Hindi demonstratives by sound key, to the one they are: "yah" is "is" before a postposition, "vah" is "us".
+    static let hindiPronouns: [String: String] = Dictionary(
+        uniqueKeysWithValues: [
+            ("yah", ["yah", "yeh", "ye", "is", "in", "ise", "inhe"]),
+            ("vah", ["vah", "woh", "wo", "us", "un", "use", "unhe"]),
+        ].flatMap { pronoun, cases in Set(cases.map(Romaniser.soundKey)).map { ($0, pronoun) } })
 
     /// The forms speech inflects a word into: plural, third person, past and progressive.
     static func inflections(of word: String) -> Set<String> {
@@ -627,6 +1004,12 @@ public struct MeaningPreservationGuard: Sendable {
         }
     }
 
+    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
+    private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
+        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
+        return word.lowercased().hasPrefix(fragment.lowercased())
+    }
+
     /// How many words in `tokens` turn a sentence's meaning around.
     static func negators(in tokens: [GrammarToken]) -> Int {
         tokens.filter { negatingWords.contains($0.matching) }.count
@@ -649,7 +1032,7 @@ public struct MeaningPreservationGuard: Sendable {
         "nahi", "nahin", "nahee", "na", "mat",
     ]
 
-    /// Function words added plus removed, counted as multisets over the whole text.
+    /// Function words added plus removed, counted as multisets over the supplied runs.
     static func functionWordChurn(_ kept: [GrammarToken], _ rewritten: [GrammarToken]) -> Int {
         func counts(_ tokens: [GrammarToken]) -> [String: Int] {
             var result: [String: Int] = [:]
@@ -665,9 +1048,10 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Sentences in the rewrite, counted by closing marks followed by space or end, never below one.
     static func sentenceCount(_ text: String) -> Int {
-        // A word carrying a stop inside itself — "p.m.", "e.g." — ends no sentence, as FirstWordPass reads it.
-        let count = text.split(whereSeparator: \.isWhitespace)
-            .count { FirstWordPass.endsSentence(String($0)) }
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let count = words.indices.count { index in
+            FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
+        }
         return max(1, count)
     }
 
@@ -688,16 +1072,62 @@ public struct MeaningPreservationGuard: Sendable {
     static func changedQuantity(original: String, rewritten: String) -> String? {
         let spoken = Quantities.read(in: original)
         let written = Quantities.read(in: rewritten)
-        // Matched by digits, so a number the rewrite left alone is compared with the one it came from.
-        var remaining = written
-        for quantity in spoken {
-            guard let place = remaining.firstIndex(where: { $0.digits == quantity.digits }) else {
-                continue
+        guard !spoken.isEmpty, !written.isEmpty else { return nil }
+        for (quantity, found) in zip(spoken, written) {
+            if quantity.digits != found.digits || quantity.sign != found.sign
+                || quantity.symbol != found.symbol
+            {
+                return quantity.written
             }
-            let found = remaining.remove(at: place)
-            if found.sign != quantity.sign || found.symbol != quantity.symbol { return quantity.written }
+        }
+        return written.count < spoken.count ? spoken[written.count].written : nil
+    }
+
+    /// Refuses a rewrite that changes an amount already written with Indian digit grouping.
+    static func changedIndianGrouping(original: String, rewritten: String) -> String? {
+        let spoken = numericSpellings(in: original)
+        let written = numericSpellings(in: rewritten)
+        for (index, spelling) in spoken.enumerated() where isIndianGrouped(spelling) {
+            guard written.indices.contains(index), written[index] == spelling else { return spelling }
         }
         return nil
+    }
+
+    /// The digit runs and comma separators as they appear, kept in text order.
+    private static func numericSpellings(in text: String) -> [String] {
+        let characters = Array(text)
+        var spellings: [String] = []
+        var index = 0
+        while index < characters.count {
+            guard characters[index].isNumber else {
+                index += 1
+                continue
+            }
+            let start = index
+            index += 1
+            while index < characters.count {
+                if characters[index].isNumber {
+                    index += 1
+                } else if characters[index] == ",", index + 1 < characters.count,
+                    characters[index + 1].isNumber
+                {
+                    index += 1
+                } else {
+                    break
+                }
+            }
+            spellings.append(String(characters[start..<index]))
+        }
+        return spellings
+    }
+
+    /// Indian grouping has a one or two digit leading group, two digit middle groups, and a three digit final group.
+    private static func isIndianGrouped(_ spelling: String) -> Bool {
+        let groups = spelling.split(separator: ",")
+        guard groups.count >= 3, (1...2).contains(groups[0].count), groups.last?.count == 3 else {
+            return false
+        }
+        return groups.dropFirst().dropLast().allSatisfy { $0.count == 2 }
     }
 
     /// The numbers a text states, in order and with repeats kept, each number word read through `table` and every run of them composed after it.
@@ -754,7 +1184,7 @@ public struct MeaningPreservationGuard: Sendable {
     }
 
     /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
-    private static let numberWords: [String: String] = Dictionary(
+    static let numberWords: [String: String] = Dictionary(
         uniqueKeysWithValues: Array(englishNumberWords) + Array(hindiNumberWords))
 
     /// Hindi number words in both scripts, without which every Hindi utterance with a number fails the guard.

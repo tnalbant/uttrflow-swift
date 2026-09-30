@@ -76,6 +76,19 @@ struct RecordingTests {
         #expect(found.first?.evidence?.count == 3)
     }
 
+    @Test("A line differing only by case is offered once.")
+    func caseVariantsAreDeduplicated() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("Hello", in: terminal, at: moment)
+        try await store.record("hello", in: terminal, at: moment.addingTimeInterval(1))
+
+        let found = try await store.candidates(for: terminal, matching: "h")
+        #expect(found.map(\.text).count == 1)
+        #expect(found.first?.text == "hello")
+        #expect(found.first?.evidence?.count == 2)
+    }
+
     @Test("An empty value is not worth remembering.")
     func ignoresEmpty() async throws {
         let corpus = Corpus()
@@ -283,6 +296,19 @@ struct StoreMatchingTests {
         #expect(found.first?.editDistance == 1)
     }
 
+    @Test(
+        "A typed amount is never matched to a different learned amount.",
+        arguments: [
+            ("12.60", "12.50"), ("1,250", "1,350.00"), ("$130", "$120"),
+        ])
+    func amountsAreNotCorrected(typed: String, learned: String) async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record(learned, in: terminal, at: moment)
+        #expect(try await store.candidates(for: terminal, matching: typed).isEmpty)
+        #expect(try await store.candidates(for: terminal, matching: String(learned.prefix(3))).count == 1)
+    }
+
     @Test("A query that matches exactly never reaches the fuzzy tier, so its neighbours stay out.")
     func exactSuppressesFuzzy() async throws {
         let corpus = Corpus()
@@ -304,6 +330,25 @@ struct StoreMatchingTests {
         let found = try await store.candidates(for: terminal, matching: "gti ")
         #expect(found.count == 16)
         #expect(found.first?.text == "git status")
+    }
+
+    @Test("A line used lately reaches ranking however many older, more frequent lines share its opening.")
+    func aRecentLineOutranksStaleFrequentOnes() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let monthsAgo = moment - 200 * 86_400
+        for index in 0..<(PredictStore.candidateLimit + 4) {
+            for _ in 0..<5 {
+                try await store.record(
+                    String(format: "git stash-%03d end", index), in: terminal, at: monthsAgo)
+            }
+        }
+        for _ in 0..<2 { try await store.record("git switch feature-x", in: terminal, at: moment) }
+        let found = try await store.candidates(for: terminal, matching: "git s")
+        #expect(found.count == PredictStore.candidateLimit)
+        #expect(found.first?.text == "git switch feature-x")
+        let scores = found.map { Frecency.score($0, now: moment) }
+        #expect(scores.first == scores.max())
     }
 
     @Test("Two characters are too few to correct, or everything would match.")
@@ -378,6 +423,23 @@ struct ForgettingTests {
         try await store.record("git pull", in: terminal, at: moment)
         try await store.forget("git push", in: terminal)
         #expect(try await store.candidates(for: terminal, matching: "git p").map(\.text) == ["git pull"])
+    }
+
+    @Test("Forgetting a borrowed entry retires it in this scope and leaves the other scope intact.")
+    func borrowedEntryStaysForgottenInScope() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let folderOne = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/one")
+        let folderTwo = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/two")
+        try await store.record("git push origin main", in: folderOne, at: moment)
+        try await store.record("git push origin main", in: folderTwo, at: moment + 1)
+
+        try await store.forget("git push origin main", in: folderOne)
+
+        #expect(try await store.candidates(for: folderOne, matching: "git p").isEmpty)
+        #expect(try await store.recent(in: folderOne, limit: 5).isEmpty)
+        let remaining = try await store.candidates(for: folderTwo, matching: "git p")
+        #expect(remaining.map(\.text) == ["git push origin main"])
     }
 
     @Test("Everything learned in one application goes together, and other applications stay.")
@@ -473,14 +535,15 @@ struct RetentionTests {
         #expect(try await store.candidates(for: terminal, matching: "kept").count == 1)
     }
 
-    @Test("A superseded entry goes before any live one, however much it once had behind it.")
-    func evictsSupersededFirst() async throws {
+    @Test(
+        "A fragment a longer line grew out of goes before any live one, however much it once had behind it.")
+    func evictsFragmentsFirst() async throws {
         let corpus = Corpus()
         let store = try store(corpus)
-        for _ in 0..<50 { try await store.record("git comit", in: terminal, at: moment) }
-        try await store.supersede("git comit", with: "git commit", in: terminal)
+        for _ in 0..<50 { try await store.record("git comm", in: terminal, at: moment) }
+        try await store.record("git commit --amend", in: terminal, at: moment)
         // Each filler ends in a word so none is a fragment of another, which would supersede it too.
-        for index in 0..<(PredictStore.entriesPerSurface + 1) {
+        for index in 0..<(PredictStore.entriesPerSurface) {
             try await store.record("filler \(index) end", in: terminal, at: moment)
         }
         let superseded = try Database(path: corpus.path).rows(
@@ -488,6 +551,26 @@ struct RetentionTests {
         ) { $0.integer(0) }
         #expect(superseded == [0])
         #expect(try await store.entryCount() == PredictStore.entriesPerSurface)
+    }
+
+    @Test("A correction or a refusal outlasts every live entry, so a full field never brings the line back.")
+    func retirementsOutlastLiveEntries() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("deploy prod", in: folderTwo, at: moment)
+        for index in 0..<(PredictStore.entriesPerSurface - 1) {
+            try await store.record("filler \(index) end", in: folderOne, at: moment)
+        }
+        try await store.record("git comit", in: folderOne, at: moment + 10)
+        try await store.supersede("deploy prod", with: "deploy staging", in: folderOne)
+        try await store.recordRejection(of: "git comit", in: folderOne)
+        #expect(try await store.candidates(for: folderOne, matching: "dep").isEmpty)
+        for index in 0..<5 {
+            try await store.record("another \(index) end", in: folderOne, at: moment + 20)
+        }
+        #expect(try await store.candidates(for: folderOne, matching: "dep").isEmpty)
+        #expect(try await store.candidates(for: folderOne, matching: "git c").isEmpty)
+        #expect(try await store.candidates(for: folderTwo, matching: "dep").count == 1)
     }
 
     @Test("What follows what stops growing at the same cap, and keeps the pairs followed most.")
@@ -702,6 +785,17 @@ struct QueryPlanTests {
         #expect(!plan.contains("SCAN entry"), "the plan was: \(plan)")
     }
 
+    @Test("The newest-first prefix query narrows on the text as well as the field.")
+    func recentPrefixUsesBothIndexColumns() throws {
+        let corpus = Corpus()
+        try seed(corpus.path, surfaces: 4, each: 500)
+        let database = try Database(path: corpus.path)
+        let plan = try database.plan(of: PredictStore.recentPrefixQuery).joined(separator: " | ")
+        #expect(plan.contains("USING INDEX entry_prefix"), "the plan was: \(plan)")
+        #expect(plan.contains("text_lower>?"), "the plan was: \(plan)")
+        #expect(!plan.contains("SCAN entry"), "the plan was: \(plan)")
+    }
+
     @Test("The recency read has an index of its own, so it does not walk the field's rows by hand.")
     func recentReadUsesItsIndex() throws {
         let corpus = Corpus()
@@ -749,7 +843,7 @@ struct StoreSupersessionTests {
         let store = try store(corpus)
         try await store.record("git comit", in: terminal, at: moment)
         let recording: any SupersessionRecording = store
-        await recording.recordSupersession(of: "git comit", by: "git commit", in: terminal)
+        try await recording.recordSupersession(of: "git comit", by: "git commit", in: terminal)
         #expect(try await store.candidates(for: terminal, matching: "git c").isEmpty)
     }
 
@@ -759,7 +853,7 @@ struct StoreSupersessionTests {
         let store = try store(corpus)
         try await store.record("git zqxjw", in: terminal, at: moment)
         let recording: any SupersessionRecording = store
-        await recording.recordRejection(of: "git zqxjw", in: terminal)
+        try await recording.recordRejection(of: "git zqxjw", in: terminal)
         #expect(try await store.candidates(for: terminal, matching: "git z").isEmpty)
     }
 }
@@ -801,6 +895,20 @@ struct BorrowedFeedbackTests {
         #expect(found.first?.evidence?.accepted == 1)
     }
 
+    @Test("A line refused in another folder keeps its refusals until the person types it again by hand.")
+    func typingALineByHandForgivesItsRefusals() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        for _ in 0..<3 { try await store.record("git status --short", in: folderOne, at: moment) }
+        for _ in 0..<3 { try await store.recordRejected("git status --short", in: folderTwo) }
+        #expect(try await store.candidates(for: folderTwo, matching: "git s").first?.evidence?.rejected == 3)
+        try await store.record("git status --short", in: folderOne, selfSourced: true, at: moment)
+        #expect(try await store.candidates(for: folderTwo, matching: "git s").first?.evidence?.rejected == 3)
+        try await store.record("git status --short", in: folderTwo, at: moment)
+        #expect(try await store.candidates(for: folderTwo, matching: "git s").first?.evidence?.rejected == 0)
+        #expect(try await store.candidates(for: folderOne, matching: "git s").first?.evidence?.rejected == 0)
+    }
+
     @Test("A line known in both folders is counted once, against this folder's own entry.")
     func aLineInBothFoldersCountsOnce() async throws {
         let corpus = Corpus()
@@ -823,11 +931,41 @@ struct BorrowedFeedbackTests {
         let corpus = Corpus()
         let store = try store(corpus)
         try await store.record("git status", in: folderOne, at: moment)
-        await store.recordRejection(of: "git status", in: folderTwo)
+        try await store.recordRejection(of: "git status", in: folderTwo)
         #expect(try await store.candidates(for: folderTwo, matching: "git s").isEmpty)
         #expect(try await store.candidates(for: folderTwo, matching: "gti s").isEmpty)
         #expect(try await store.recent(in: folderTwo, limit: 5).isEmpty)
         #expect(try await store.candidates(for: folderOne, matching: "git s").count == 1)
+    }
+
+    @Test("Typing a retired line by hand makes it available in that folder again.")
+    func typingARetiredLineByHandBringsItBack() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("meeting at 3", in: folderOne, at: moment)
+        try await store.supersede("meeting at 3", with: "meeting at 4", in: folderOne)
+
+        for index in 1...3 {
+            try await store.record(
+                "meeting at 3", in: folderOne, at: moment.addingTimeInterval(Double(index)))
+        }
+
+        let found = try await store.candidates(for: folderOne, matching: "meeting at")
+        #expect(found.map(\.text) == ["meeting at 3"])
+        #expect(found.first?.evidence?.count == 4)
+        #expect(try await store.recent(in: folderOne, limit: 5) == ["meeting at 3"])
+    }
+
+    @Test("Accepting a retired line does not make it available again.")
+    func acceptingARetiredLineDoesNotBringItBack() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("meeting at 3", in: folderOne, at: moment)
+        try await store.supersede("meeting at 3", with: "meeting at 4", in: folderOne)
+        try await store.record("meeting at 3", in: folderOne, selfSourced: true, at: moment)
+
+        #expect(try await store.candidates(for: folderOne, matching: "meeting at").isEmpty)
+        #expect(try await store.recent(in: folderOne, limit: 5).isEmpty)
     }
 
     @Test("A line known in both folders and retired in one is not brought back by the other.")
@@ -836,7 +974,7 @@ struct BorrowedFeedbackTests {
         let store = try store(corpus)
         try await store.record("git status", in: folderOne, at: moment)
         try await store.record("git status", in: folderTwo, at: moment)
-        await store.recordRejection(of: "git status", in: folderTwo)
+        try await store.recordRejection(of: "git status", in: folderTwo)
         #expect(try await store.candidates(for: folderTwo, matching: "git s").isEmpty)
         #expect(try await store.candidates(for: folderOne, matching: "git s").count == 1)
     }
@@ -848,5 +986,27 @@ struct BorrowedFeedbackTests {
         try await store.record("git status", in: folderOne, at: moment)
         try await store.supersede("git stash", with: "git status", in: folderTwo)
         #expect(try await store.entryCount() == 1)
+    }
+}
+
+@Suite("Recovering from a corrupt corpus")
+struct CorruptCorpusTests {
+    @Test("a file that is not a database is set aside, not deleted, and a fresh corpus opens")
+    func corruptFileIsSetAside() async throws {
+        let folder = URL(filePath: NSTemporaryDirectory())
+            .appending(path: "uttrflow-corrupt-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: "predict.v1.sqlite")
+        let bytes = Data(repeating: 0xA5, count: 4_096)
+        try bytes.write(to: file)
+
+        let opened = try PredictStore(path: file.path(percentEncoded: false))
+        _ = try await opened.candidates(for: terminal, matching: "")
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))
+        let aside = try #require(names.first { $0.hasPrefix("predict.v1.sqlite.unreadable-") })
+        #expect(try Data(contentsOf: folder.appending(path: aside)) == bytes)
+        #expect(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
     }
 }

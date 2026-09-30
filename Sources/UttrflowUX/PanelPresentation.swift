@@ -23,8 +23,6 @@ public enum PanelIntent: Sendable, Equatable {
     case format(Clip.ID)
     /// E6 — make this plain clip a note, so it can be given formatting.
     case makeNote(Clip.ID)
-    /// E5 — tick or untick a box in a note.
-    case tickBox(Clip.ID, index: Int)
     /// F9 — put back the clip the last delete removed, which only the app still holds.
     case undoDelete
     /// H3 — keep the text of a search that found nothing.
@@ -52,7 +50,6 @@ public enum PanelIntent: Sendable, Equatable {
         case .delete(let id): .delete(id)
         case .reindent(let id): .reindent(id)
         case .makeNote(let id): .makeNote(id)
-        case .tickBox(let id, let index): .tickBox(id, index: index)
         case .renameCategory(let name): .renameCategory(name)
         case .deleteCategory(let name): .deleteCategory(name)
         // D5 — no key: running a formatter is another program, which only the app can do.
@@ -60,6 +57,15 @@ public enum PanelIntent: Sendable, Equatable {
         case .format, .copy, .pin, .unpin, .undoDelete, .keepQuery, .openAccessibilitySettings,
             .openSettings, .dictate:
             nil
+        }
+    }
+
+    /// A row action that writes directly to the store without first asking a question.
+    public var immediateChange: PanelChange? {
+        switch self {
+        case .pin(let id): .setPinned(id, true)
+        case .unpin(let id): .setPinned(id, false)
+        default: nil
         }
     }
 }
@@ -130,17 +136,17 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
     public let isPinned: Bool
     /// Whether bullets are drawn rather than the clip, so nothing mistakes one for the other.
     public let isMasked: Bool
-    public let isSelected: Bool
+    public internal(set) var isSelected: Bool
     /// Why this row is in the list. `nil` when nothing was typed and every clip is here.
     public let matched: PanelMatchField?
     /// K4 — what a picture row says about itself, since it has no text. See `Docs/panel.md`.
     public let measurements: String?
+    /// How many boxes are checked in a note, when its formatted form contains a checklist.
+    public let checklist: String?
     /// K4 — the picture to draw beside the row, or `nil` when there is none to draw.
     public let imageFile: URL?
     /// B8 — the picture has gone from disk, though the row stays. See `Docs/panel.md`.
     public let isImageMissing: Bool
-    /// E5 — how much of a checklist is done, as "2 of 5", or `nil` when it has no boxes.
-    public let checklist: String?
     /// D1 — the language chip, short enough for a 420-point row: "ts", not "TypeScript".
     public let language: String?
     /// Whether the summary is monospaced, decided here so the view has no judgement to get wrong.
@@ -166,9 +172,9 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
         isSelected: Bool,
         matched: PanelMatchField?,
         measurements: String? = nil,
+        checklist: String? = nil,
         imageFile: URL? = nil,
         isImageMissing: Bool = false,
-        checklist: String? = nil,
         language: String? = nil,
         isMonospaced: Bool,
         actions: [PanelAction]
@@ -186,9 +192,9 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
         self.isSelected = isSelected
         self.matched = matched
         self.measurements = measurements
+        self.checklist = checklist
         self.imageFile = imageFile
         self.isImageMissing = isImageMissing
-        self.checklist = checklist
         self.language = language
         self.isMonospaced = isMonospaced
         self.actions = actions
@@ -266,6 +272,8 @@ public struct PanelPresentation: Sendable, Equatable {
     public let scope: String?
     /// What VoiceOver is told when each line appears in the open panel.
     public let announcements: [String]
+    /// Stable identities for the corresponding lines, changed only when a new announcement event occurs.
+    public let announcementIDs: [UUID]
     /// What VoiceOver says choosing a row will do, which is a copy when the panel cannot paste.
     public let rowHint: String
 
@@ -285,6 +293,7 @@ public struct PanelPresentation: Sendable, Equatable {
         microphone: PanelMicrophone = PanelPresenter.microphone(for: .ready),
         scope: String? = nil,
         announcements: [String] = [],
+        announcementIDs: [UUID] = [],
         rowHint: String = PanelPresenter.pasteRowHint
     ) {
         self.rows = rows
@@ -302,8 +311,12 @@ public struct PanelPresentation: Sendable, Equatable {
         self.microphone = microphone
         self.scope = scope
         self.announcements = announcements
+        self.announcementIDs = announcementIDs
         self.rowHint = rowHint
     }
+
+    /// Whether the footer is offering ⌘Z to put a deleted clip back, which is then what ⌘Z does.
+    public var offersUndo: Bool { hint == PanelPresenter.undoHint }
 
     /// The row Return would insert, so neither the view nor the app counts rows itself.
     public var selectedRow: PanelRow? { rows.first { $0.isSelected } }
@@ -334,6 +347,12 @@ public enum PanelPresenter {
         [snapshot.notice?.message, snapshot.canUndoDelete ? undoAnnouncement : nil].compactMap { $0 }
     }
 
+    /// Event identities parallel to `announcements`, so a repeated action is spoken after a redraw.
+    static func announcementIDs(for snapshot: PanelSnapshot) -> [UUID] {
+        [snapshot.notice?.announcementID, snapshot.canUndoDelete ? snapshot.undoAnnouncementID : nil]
+            .compactMap { $0 }
+    }
+
     /// What VoiceOver says a row does, so a copy-only panel never promises a paste.
     static func rowHint(for insertion: PanelInsertion) -> String {
         insertion == .atCaret ? pasteRowHint : copyRowHint
@@ -351,8 +370,20 @@ public enum PanelPresenter {
 
     public static func present(_ snapshot: PanelSnapshot) -> PanelPresentation {
         let results = snapshot.results
+        let context = PanelRowMemo.Context(
+            needle: snapshot.needle, locale: snapshot.locale, now: snapshot.now,
+            imagesFolder: snapshot.imagesFolder, formattableLanguages: snapshot.formattableLanguages)
         let rows = results.rows.enumerated().map { position, result in
-            row(for: result, in: snapshot, isSelected: position == results.selectedIndex)
+            let clip = result.clip
+            let key = PanelRowMemo.Key(
+                result: result,
+                isMasked: clip.kind == .secret && !snapshot.revealed.contains(clip.id),
+                isGone: clip.image != nil && snapshot.missingImages.contains(clip.id))
+            return snapshot.rowMemo.row(
+                for: key, in: context, isSelected: position == results.selectedIndex
+            ) {
+                row(for: result, in: snapshot, isSelected: false)
+            }
         }
         // An unread list is an unknown, not a nothing, so neither sentence below is said yet.
         let saysNothing = rows.isEmpty && !snapshot.isAwaitingList
@@ -379,6 +410,7 @@ public enum PanelPresenter {
             microphone: microphone(for: snapshot.dictation),
             scope: scope(for: snapshot),
             announcements: announcements(for: snapshot),
+            announcementIDs: announcementIDs(for: snapshot),
             rowHint: rowHint(for: snapshot.insertion)
         )
     }
@@ -413,18 +445,13 @@ public enum PanelPresenter {
             isSelected: isSelected,
             matched: result.match,
             measurements: measurements(of: clip, in: snapshot),
+            checklist: isMasked ? nil : checklistProgress(of: clip, in: snapshot),
             imageFile: isGone
                 ? nil
                 : clip.image.flatMap { image in
                     snapshot.imagesFolder?.appending(path: image.file, directoryHint: .notDirectory)
                 },
             isImageMissing: isGone,
-            // E5 — a ticked box is content, so its count belongs on the row.
-            checklist: isMasked
-                ? nil
-                : clip.richText.flatMap(NoteChecklist.progress(in:)).map {
-                    "\($0.done) of \($0.total)"
-                },
             // Never on a masked row, which says as little as possible until asked.
             language: isMasked ? nil : clip.language?.chip,
             isMonospaced: isMonospaced(clip.kind),
@@ -438,7 +465,7 @@ public enum PanelPresenter {
         case .text: "text.alignleft"
         case .link: "link"
         case .code: "chevron.left.forwardslash.chevron.right"
-        case .secret: "key.fill"
+        case .secret: "key"
         case .colour: "paintpalette"
         case .filePath: "folder"
         case .image: "photo"
@@ -529,6 +556,12 @@ public enum PanelPresenter {
             return "\(image.dimensions) · \(weight)"
         }
         return "\(from) · \(weight)"
+    }
+
+    /// How many checklist boxes are checked, without copying any note text into the row.
+    static func checklistProgress(of clip: Clip, in snapshot: PanelSnapshot) -> String? {
+        guard let progress = snapshot.checklistProgresses.progress(of: clip) else { return nil }
+        return "\(progress.done) of \(progress.total)"
     }
 
     /// What the ⋯ menu says under the clip's words: kind, age and source, where each exists.

@@ -22,8 +22,16 @@ struct CleaningScopeTests {
         #expect(!ids.contains(FirstWordPass.id))
         #expect(!ids.contains(TerminalStopPass.id))
         #expect(
-            CleaningPipeline.message(for: .standard(for: .messaging), situation: .unknown).ids
-                == [FirstWordPass.id, TerminalStopPass.id])
+            CleaningPipeline.wholeText(for: .standard(for: .messaging), situation: .unknown).ids
+                == [SpelledInitialismPass.id, FirstWordPass.id, TerminalStopPass.id])
+        #expect(
+            CleaningPipeline.piece(numbers: .fromTen, digits: .thousands).passes
+                .allSatisfy { !($0 is any WholeTextCleaningPass) })
+        #expect(
+            CleaningPipeline.wholeText(
+                for: .standard(for: .messaging), situation: .unknown
+            ).passes
+                .allSatisfy { $0 is any WholeTextCleaningPass })
     }
 
     @Test("the rules leave a piece's stop and case as the recogniser gave them")
@@ -69,7 +77,7 @@ struct CleaningScopeTests {
             "", seeing: .fixture(applicationName: "TextEdit", bundleIdentifier: "com.apple.TextEdit"),
             scope: .message)
 
-        #expect(await router.finishMessage("git status", for: terminal) == "Git status")
+        #expect(await router.finishMessage("git status", for: terminal) == "git status")
         #expect(await router.finishMessage("the build failed", for: document) == "The build failed.")
     }
 

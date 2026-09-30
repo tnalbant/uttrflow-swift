@@ -59,6 +59,22 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test("masks generated passwords with every symbol the byte scanner accepts")
+    func generatedPasswordsWithPunctuation() {
+        let token = "K9x" + "$+<=>^|~`\\" + "Qz7Tr2Bn8LmVa"
+        #expect(SecretShapes.hasHighEntropyTokenByCharacter(token))
+        #expect(ClipKindDetector.kind(of: token) == .secret)
+        #expect(ClipKindDetector.kind(of: "K9x$Qz7^Tr2=Bn8<") == .secret)
+        #expect(ClipKindDetector.kind(of: "K9x$Qz7Tr2Bn8LmVa") == .secret)
+
+        for symbol in Array("$+<=>^|~`\\") {
+            let userinfo = "K9x" + String(symbol) + "Qz7Tr2Bn8LmVa"
+            #expect(
+                SecretShapes.hasTokenUserinfoURL("https://\(userinfo)@host.example/repo"),
+                "URL userinfo containing \(symbol) must use the same generated-token alphabet")
+        }
+    }
+
     /// The prefix on its own is prose about keys, not a key.
     @Test(
         "does not mask talk about keys",
@@ -103,9 +119,145 @@ struct SecretDetectionTests {
             "  \"privateKey\": \"MIIEvQIBADANBg\",",
             "password: contraseñasecreta",
             "password: ⱡⱡⱡⱡⱡⱡⱡⱡⱡⱡⱡⱡ",
+            "SECRET_KEY = \"django-insecure-abcdefghijklmnop\"",
+            "secret_key: \"abcd1234efgh5678\"",
+            "secret-keys = abcd1234efgh5678",
+            "SECRETKEY=abcd1234efgh5678",
         ])
     func namedSecrets(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test(
+        "masks a passphrase, as SSH, GPG and Wi-Fi files call it",
+        arguments: [
+            "passphrase: Zx9kLmQ2rT7p",
+            "PASSPHRASE=Zx9kLmQ2rT7p",
+            "wpa_passphrase=correcthorsebattery",
+            "GPG_PASSPHRASES = \"Zx9kLmQ2rT7p\"",
+        ])
+    func passphrases(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test(
+        "masks a named secret followed by a comment, or inside a one-line object",
+        arguments: [
+            "password = \"Zx9kLmQ2rT7p\"  # rotate monthly",
+            "export API_KEY=\"abc123def456\" # dev",
+            "API_KEY=abc123def456 // staging",
+            "token: 'Zx9kLmQ2rT7p', // old one",
+            "{\"apiKey\":\"Zx9kLmQ2rT7p\"}",
+            "{\"user\": \"deploy\", \"password\": \"Zx9kLmQ2rT7p\"}",
+            "const config = { apiKey: \"Zx9kLmQ2rT7p\", region: \"us\" };",
+            "[{'secret': 'Zx9kLmQ2rT7p'}]",
+        ])
+    func commentsAndObjects(_ text: String) {
+        #expect(SecretShapes.hasNamedSecret(text))
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    /// A quoted value followed by more of an expression, or a bare value run into a `#`, is not a value that ended.
+    @Test(
+        "does not mask a quoted string that only starts an expression",
+        arguments: [
+            "log(\"token: \" + t + \" done\")",
+            "print(\"password: \", pw)",
+            "password = \"a\" + suffix",
+            "token=abc#def more",
+        ])
+    func quotedExpressions(_ text: String) {
+        #expect(SecretShapes.hasNamedSecret(text) == false)
+    }
+
+    @Test(
+        "masks a webhook or signed address, which works for whoever holds it",
+        arguments: [
+            "https://hooks.slack.com/services/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",
+            "https://discord.com/api/webhooks/123456789012345678/Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf",
+            "https://example.webhook.office.com/webhookb2/0000-1111@2222-3333/IncomingWebhook/abcd/4444",
+            "https://example.blob.core.windows.net/c/f?sv=2022-11-02&se=2026-01-01&sp=r&sig=Zx9kLmQ2rT7p%3D",
+            "https://bucket.s3.amazonaws.com/f?X-Amz-Expires=300&X-Amz-Signature=0a1b2c3d4e5f6a7b",
+            "https://example.com/reset?token=Zx9kLmQ2rT7pQ3vB",
+            "https://example.com/callback#access_token=Zx9kLmQ2rT7pQ3vB&type=bearer",
+            "Post to \"https://hooks.slack.com/services/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\" today",
+        ])
+    func bearerAddresses(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test(
+        "masks generated query credentials and shaped webhooks",
+        arguments: [
+            "https://api.example.com/v1?token=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?access_token=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?sig=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?signature=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/v1?X-Goog-Signature=Zx9kLmQ2rT7pQ3vB",
+            "https://hooks.slack.com/services/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",
+            "hooks.slack.com/services/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",
+            "https://discord.com/api/webhooks/123456789012345678/Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf",
+        ])
+    func generatedBearerAddresses(_ text: String) {
+        #expect(SecretShapes.matches(text))
+    }
+
+    @Test(
+        "leaves URL placeholders and webhook documentation pages alone",
+        arguments: [
+            "https://api.example.com/v1?token=YOUR_TOKEN_HERE",
+            "https://api.example.com/v1?access_token=ACCESS_TOKEN",
+            "https://api.example.com/v1?token=REPLACE_ME_PLEASE",
+            "https://api.example.com/v1?token=${TOKEN}",
+            "https://api.example.com/v1?token=$API_TOKEN",
+            "https://api.example.com/v1?token=<YOUR_TOKEN>",
+            "https://api.example.com/v1?token=xxxxxxxxxxxx",
+            "https://api.example.com/v1?sig=00000000",
+            "https://api.example.com/v1?X-Goog-Signature=REDACTED",
+            "https://api.example.com/v1?token=unsubscribe",
+            "https://api.example.com/v1?token=undefined",
+            "https://api.example.com/v1?signature=required",
+            "https://hooks.slack.com/services/apps/overview",
+            "https://discord.com/api/webhooks/docs/overview",
+        ])
+    func placeholderBearerAddresses(_ text: String) {
+        #expect(!SecretShapes.matches(text))
+        #expect(ClipKindDetector.kind(of: text) == .link)
+    }
+
+    @Test(
+        "masks a webhook nested in another address, a percent-encoded token name, and a host with a closing dot",
+        arguments: [
+            "https://example.com/r?next=https://hooks.slack.com/services/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",
+            "https://example.com/r?a=1&redirect=https://hooks.slack.com/services/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#x",
+            "https://web.archive.org/web/2024/https://discord.com/api/webhooks/123456789012345678/Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf",
+            "https://api.example.com/x?access%5Ftoken=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/x?ACCESS%5ftoken=Zx9kLmQ2rT7pQ3vB",
+            "https://api.example.com/x?%74oken=Zx9kLmQ2rT7pQ3vB",
+            "https://hooks.slack.com./services/T0AB1CD2E/B0FG3HI4J/Zx9kLmQ2rT7pQ3vB8nW4yH6s",
+            "https://discord.com./api/webhooks/123456789012345678/Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf",
+        ])
+    func disguisedBearerAddresses(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test(
+        "leaves an ordinary address with a query alone",
+        arguments: [
+            "https://hooks.slack.com/",
+            "https://discord.com/api/webhooks",
+            "https://example.com/search?q=token&page=2",
+            "https://example.com/login?token=",
+            "https://example.com/login?token={token}",
+            "https://example.com/watch?v=dQw4w9WgXcQ&t=42",
+            "https://example.com/r?next=https://hooks.slack.com/",
+            "https://example.com/r?next=https://example.org/services/a/b/c",
+            "https://example.com/x?q%5Fx=Zx9kLmQ2rT7pQ3vB",
+            "https://example.com/x?%zztoken=Zx9kLmQ2rT7pQ3vB",
+            "https://hooks.slack.com../services/a/b/c",
+        ])
+    func ordinaryAddresses(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) == .link)
     }
 
     @Test("masks quoted named secrets whose value contains an escaped quote")
@@ -279,12 +431,21 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test("masks standalone generated passwords with symbols from twelve characters")
+    func standaloneGeneratedPasswords() {
+        for password in ["q7#Vx!2mR$9kLp@4Wz&n", "Tr0ub4dor&3xK!9z", "q7hVxd2mRt9kLpe4Wzbn"] {
+            #expect(ClipKindDetector.kind(of: password) == .secret)
+        }
+    }
+
     /// The statistical rule is the loosest one, so its gates matter.
     @Test(
         "does not reach for the entropy rule where it has no business",
         arguments: [
             "shortenough123",
             "abcdefghijklmnopqrstuvwxyz",
+            "123456789012",
+            "123e4567-e89b-12d3-a456-426614174000",
             "com.uttrflow.clipboard.watcher.queue1",
             "/Users/naveen/Library/Application1",
             "~/Developer/uttrflow/Sources/Clipboard2",

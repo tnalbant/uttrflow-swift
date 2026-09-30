@@ -14,6 +14,15 @@ struct LayoutWordsPassTests {
             ("thanks new paragraph the second issue", "thanks\n\nthe second issue"),
             ("thanks blank line the second issue", "thanks\n\nthe second issue"),
             ("we need bullet point milk bullet point eggs", "we need\n- milk\n- eggs"),
+            (
+                "Shopping list, bullet point milk, bullet point eggs, bullet point bread.",
+                "Shopping list\n- milk\n- eggs\n- bread."
+            ),
+            ("milk, new line eggs", "milk\neggs"),
+            ("milk; next point eggs", "milk\n- eggs"),
+            ("milk,\" bullet point eggs", "milk\"\n- eggs"),
+            ("milk... bullet point eggs", "milk...\n- eggs"),
+            ("milk, bullet point eggs?", "milk\n- eggs?"),
             ("first next point second", "first\n- second"),
         ]
     )
@@ -24,6 +33,7 @@ struct LayoutWordsPassTests {
     @Test(
         "numbers the items a spoken number opens",
         arguments: [
+            ("number one call mom number two pay rent", "\n1. call mom\n2. pay rent"),
             ("we need number one milk number two eggs", "we need\n1. milk\n2. eggs"),
             ("we need number twenty one milk number twenty two eggs", "we need\n21. milk\n22. eggs"),
             (
@@ -31,10 +41,49 @@ struct LayoutWordsPassTests {
                 "then\n2. call the landlord\n3. pay the rent"
             ),
             ("we need number 1 milk number 2 eggs", "we need\n1. milk\n2. eggs"),
+            (
+                "agenda number one budget number two hiring number three offsite",
+                "agenda\n1. budget\n2. hiring\n3. offsite"
+            ),
+            (
+                "the steps are number one gather the files number two check the names",
+                "the steps are\n1. gather the files\n2. check the names"
+            ),
+            ("number one budget number two hiring", "1. budget\n2. hiring"),
         ]
     )
     func numbersItems(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps a repeated label with each numbered item")
+    func keepsRepeatedLabelsWithNumberedItems() {
+        #expect(
+            cleaned(
+                "reason number one it is cheap reason number two it is fast reason number three it works",
+                by: sut)
+                == "\nReason 1: it is cheap\nReason 2: it is fast\nReason 3: it works")
+    }
+
+    @Test("does not turn repeated numbered labels into lists where lists are unavailable")
+    func leavesRepeatedLabelsAsProseWithoutListLayout() {
+        let input = "reason number one it is cheap reason number two it is fast"
+        #expect(cleaned(input, by: LayoutWordsPass(layout: .paragraphs)) == input)
+    }
+
+    @Test(
+        "keeps connected number words in a sentence when an item ends in a conjunction",
+        arguments: [
+            "the list includes number one speed number two cost and number three quality all of which matter",
+            "we ranked number one on speed number two on price and number three on support last year",
+            "we ranked number one on speed number two on price number three on support last year",
+            "she said number one was the plan and number two was the backup which we never used",
+            "they named number one Ada and number two Lin before the vote closed",
+            "we need number one milk number two eggs or number three bread",
+        ]
+    )
+    func keepsConjoinedNumbersInSentences(input: String) {
+        #expect(cleaned(input, by: sut) == input)
     }
 
     /// Issue 254: with no lookback to ask, a phrase opening its sentence is an item only if the speaker set it off.
@@ -44,6 +93,8 @@ struct LayoutWordsPassTests {
             ("the build failed. number one is broken", "the build failed. number one is broken"),
             ("here is the plan. number one, fix the build", "here is the plan.\n1. fix the build"),
             ("number one, fix the build", "1. fix the build"),
+            ("number one check logs number two restart the server", "\n1. check logs\n2. restart the server"),
+            ("number one is broken", "number one is broken"),
             ("bullet point, the milk", "- the milk"),
             ("we shipped. bullet point, the milk", "we shipped.\n- the milk"),
             // A break at the head of the text has nothing to break from, so the words stay.
@@ -69,6 +120,30 @@ struct LayoutWordsPassTests {
     )
     func readsABreakAfterAStop(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "uses known text at the caret to decide what a leading break means",
+        arguments: [
+            ("The numbers look fine. ", "\n\nthanks sam"),
+            ("I looked at the numbers ", "\n\nthanks sam"),
+        ]
+    )
+    func leadingBreakWithTextBeforeCaret(precedingText: String, expected: String) {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: precedingText))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == expected)
+    }
+
+    @Test("drops a leading break command in a known empty field")
+    func leadingBreakInEmptyField() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: ""))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == "thanks sam")
+    }
+
+    @Test("keeps the existing numbered item behavior at the caret")
+    func numberedItemAtCaret() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: "The numbers look fine. "))
+        #expect(cleaned("number one, thanks sam", by: pass) == "1. thanks sam")
     }
 
     /// One spoken phrase cannot straddle a sentence end, so neither the phrase nor the item number reaches past one.
@@ -107,6 +182,67 @@ struct LayoutWordsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "leaves a layout phrase an opener heads across modifiers",
+        arguments: [
+            "her first new line was funny", "our best new line got a laugh",
+            "his first new paragraph was long", "the very last new line matters",
+            "that final new paragraph needs work", "the opening new line got applause",
+            "her next new paragraph starts badly", "a great new line got a laugh",
+            "the funniest new line was hers", "our tallest new line got a laugh",
+            "the brightest new paragraph needs work",
+            "her new line manager is kind", "every new line counts",
+        ]
+    )
+    func leavesModifiedMentions(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("preserves every reported adjective mention and still follows a spoken line break command")
+    func preservesIssue2458AcceptanceCases() {
+        let mentions = [
+            "our best new line got a laugh",
+            "her last new line, honestly, flopped",
+            "that final new paragraph needs work",
+            "the opening new line got applause",
+            "her next new paragraph starts badly",
+            "a great new line got a laugh",
+            "the funniest new line was hers",
+        ]
+        for input in mentions {
+            #expect(cleaned(input, by: sut) == input)
+        }
+        #expect(cleaned("write the date new line then sign it", by: sut) == "write the date\nthen sign it")
+    }
+
+    @Test(
+        "leaves a layout phrase opened by a plural determiner",
+        arguments: [
+            "strip those new line characters from the file",
+            "remove these new line breaks",
+            "delete those new paragraph markers",
+        ]
+    )
+    func leavesPluralDeterminerMentions(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "still lays out commands and phrases whose nearest opener heads a noun before it",
+        arguments: [
+            ("we need eggs new line milk", "we need eggs\nmilk"),
+            ("write the date new line then sign it", "write the date\nthen sign it"),
+            ("retry the request new line log the failure", "retry the request\nlog the failure"),
+            (
+                "thanks for the update new paragraph the second issue",
+                "thanks for the update\n\nthe second issue"
+            ),
+        ]
+    )
+    func laysOutAfterANoun(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     /// Issue 238: a numbered item inside its sentence is laid out only when an item numbered next to it is said too.
     @Test(
         "leaves a lone number inside its sentence as the designator it is",
@@ -142,6 +278,20 @@ struct LayoutWordsPassTests {
     )
     func leavesNonItems(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "does not turn spoken layout phrases into marks when the destination has no list layout",
+        arguments: [
+            LayoutPolicy.singleLine, LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
+        ]
+    )
+    func respectsLayoutPolicy(layout: LayoutPolicy) {
+        let pass = LayoutWordsPass(layout: layout)
+        let input = "number one buy milk number two walk the dog"
+        #expect(cleaned(input, by: pass) == input)
+        #expect(cleaned("we need bullet point milk", by: pass) == "we need bullet point milk")
+        #expect(cleaned("first line new line second line", by: pass) == "first line\nsecond line")
     }
 
     @Test("records the layout mark as a replacement and the second word as removed")

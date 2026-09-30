@@ -394,6 +394,39 @@ struct ClipboardStoreTests {
         #expect(try await store.setAlias(nil, of: subject.id, keeping: week())[0].alias == nil)
     }
 
+    @Test("restoring a deleted clip does not reclaim an alias assigned to another clip")
+    func restoringDeletedClipDoesNotDuplicateAlias() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let deleted = clip("first", alias: "x")
+        let renamed = clip("second")
+        try await store.record(deleted, keeping: week())
+        try await store.delete(deleted.id, keeping: week())
+        try await store.record(renamed, keeping: week())
+        try await store.setAlias("x", of: renamed.id, keeping: week())
+
+        let restored = try await store.record(deleted, keeping: week())
+
+        #expect(restored.first { $0.id == renamed.id }?.alias == "x")
+        #expect(restored.first { $0.id == deleted.id }?.alias == nil)
+        #expect(restored.compactMap(\.alias) == ["x"])
+    }
+
+    @Test("refuses to assign an alias already held by another clip")
+    func duplicateAliasIsRefused() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let first = clip("first", alias: "x")
+        let second = clip("second")
+        try await store.record(first, keeping: week())
+        try await store.record(second, keeping: week())
+
+        await #expect(throws: ClipboardStoreError.aliasAlreadyInUse) {
+            try await store.setAlias("x", of: second.id, keeping: week())
+        }
+        #expect(await store.clips(keeping: week()).compactMap(\.alias) == ["x"])
+    }
+
     @Test("files a clip and takes it out of the collection again")
     func categorising() async throws {
         let file = TemporaryFile()
@@ -422,6 +455,49 @@ struct ClipboardStoreTests {
         #expect(noted[0].timesCopied == 3)
     }
 
+    @Test("rewriting a secret as ordinary text removes secret masking")
+    func rewritingSecretAsOrdinaryTextReclassifies() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = Clip(text: "api_key = ff00aa11ff00aa11ff00aa11", kind: .secret, copiedAt: noon)
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(
+            "Deployment notes for Friday", of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .text)
+        #expect(rewritten[0].id == subject.id)
+        #expect(rewritten[0].copiedAt == subject.copiedAt)
+    }
+
+    @Test("rewriting ordinary text as a secret classifies and masks it")
+    func rewritingOrdinaryTextAsSecretReclassifies() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = clip("Deployment notes for Friday")
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(
+            "api_key = ff00aa11ff00aa11ff00aa11", of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .secret)
+        #expect(rewritten[0].id == subject.id)
+        #expect(rewritten[0].copiedAt == subject.copiedAt)
+    }
+
+    @Test("rewriting text with the same content preserves its classification")
+    func rewritingUnchangedTextKeepsClassification() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let subject = Clip(text: "https://example.com/docs", kind: .link, copiedAt: noon)
+        try await store.record(subject, keeping: week())
+
+        let rewritten = try await store.setText(subject.text, of: subject.id, keeping: week())
+
+        #expect(rewritten[0].kind == .link)
+        #expect(rewritten[0].id == subject.id)
+    }
+
     /// The same rebuild one field along: a clip that lost its picture would be swept as an orphan.
     @Test("and keeps the picture it is a picture of")
     func editsKeepThePicture() async throws {
@@ -436,17 +512,38 @@ struct ClipboardStoreTests {
         #expect(try await store.setText("alt text", of: shot.id, keeping: week())[0].image != nil)
     }
 
-    /// Un-naming makes a clip history again from that moment, so the window applies at once.
-    @Test("lets an unnamed clip fall back under the window")
-    func unKeepingRestoresTheWindow() async throws {
+    /// Un-naming resets the clip's age, so the window applies from the un-keep rather than the original copy.
+    @Test("an unnamed clip starts a fresh window from the un-keep")
+    func unKeepingResetsTheWindow() async throws {
         let file = TemporaryFile()
         let store = ClipboardStore(file: file.url)
         let subject = clip("was saved", alias: "/a")
         try await store.record(subject, keeping: week())
 
         let fortnight = noon.addingTimeInterval(14 * 86_400)
-        let clips = try await store.setAlias(nil, of: subject.id, keeping: week(from: fortnight))
-        #expect(clips.isEmpty)
+        let kept = try await store.setAlias(nil, of: subject.id, keeping: week(from: fortnight))
+        #expect(kept.map(\.id) == [subject.id], "the un-keep does not also delete the clip")
+        #expect(kept.first?.copiedAt == fortnight, "the clip's age is reset from the un-keep")
+
+        let eightDaysOn = ClipRetention(days: 7, now: fortnight.addingTimeInterval(8 * 86_400))
+        let after = await ClipboardStore(file: file.url).clips(keeping: eightDaysOn)
+        #expect(after.isEmpty, "the reset window still applies after the un-keep")
+    }
+
+    /// An un-kept clip survives the same write under the item cap, instead of being evicted at its old position.
+    @Test("an un-kept clip survives a full pool by moving to the front")
+    func unKeepingSurvivesAFullPool() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url, budget: .standard.limiting(items: 2))
+        let old = clip("old", pinned: true)
+        try await store.record(old, keeping: week())
+        try await store.record(clip("a", at: 60), keeping: week())
+        try await store.record(clip("b", at: 120), keeping: week())
+
+        let after = try await store.setPinned(false, of: old.id, keeping: week())
+
+        #expect(after.contains { $0.id == old.id }, "the unpin does not also evict the clip")
+        #expect(after.first?.id == old.id, "the un-kept clip moves to the front of its pool")
     }
 
     /// An identifier that is not there is not an error; afterwards it is neither present nor changed.

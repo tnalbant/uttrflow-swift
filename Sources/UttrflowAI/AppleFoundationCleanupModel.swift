@@ -15,7 +15,7 @@ public struct AppleFoundationCleanupModel: CleanupModel {
     /// Zero temperature keeps the model tidying rather than composing.
     private static let options = GenerationOptions(temperature: 0.0)
 
-    /// One session made ahead of its request and remade after each one, shared by every copy of this value.
+    /// One session made ahead of its request when the pipeline warms, shared by every copy of this value.
     private static let warmed = WarmSupply<LanguageModelSession> { instructions in
         let session = LanguageModelSession(instructions: instructions)
         session.prewarm()
@@ -59,16 +59,49 @@ public struct AppleFoundationCleanupModel: CleanupModel {
         // A fresh session per utterance, so one sentence's context cannot bleed into the next.
         let session =
             await Self.warmed.take(for: instructions) ?? LanguageModelSession(instructions: instructions)
+        guard await Self.fitsContext(text, instructions: instructions) else {
+            throw .transformFailed(kind: kind, description: "request exceeds the model context window")
+        }
         do {
             let response = try await session.respond(
                 to: text, generating: CleanedDictation.self, options: Self.options
             )
-            // After the answer and never beside it: this model serialises. See Docs/early-transcription.md.
-            await Self.warmed.replenish(for: instructions)
             return response.content.text
         } catch {
-            await Self.warmed.replenish(for: instructions)
             throw .transformFailed(kind: kind, description: error.localizedDescription)
         }
+    }
+
+    /// Counts both sides of the exchange before sending it, leaving room for the generated structure.
+    private static func fitsContext(_ prompt: String, instructions: String) async -> Bool {
+        let model = SystemLanguageModel.default
+        let counts: (instructions: Int, prompt: Int, schema: Int, output: Int)
+        if #available(macOS 26.4, *) {
+            do {
+                let promptTokens = try await model.tokenCount(for: Prompt(prompt))
+                counts = (
+                    try await model.tokenCount(for: Instructions(instructions)), promptTokens,
+                    try await model.tokenCount(for: CleanedDictation.generationSchema), promptTokens
+                )
+            } catch {
+                counts = estimatedCounts(prompt, instructions: instructions)
+            }
+        } else {
+            counts = estimatedCounts(prompt, instructions: instructions)
+        }
+        return FoundationModelRequestBudget.fits(
+            contextSize: model.contextSize, instructions: counts.instructions, prompt: counts.prompt,
+            schema: counts.schema, expectedOutput: counts.output)
+    }
+
+    /// Older OS releases lack the tokenizer API, so estimate ASCII high and count every other scalar individually.
+    private static func estimatedCounts(
+        _ prompt: String, instructions: String
+    ) -> (instructions: Int, prompt: Int, schema: Int, output: Int) {
+        let promptTokens = FoundationModelRequestBudget.estimatedTokens(in: prompt)
+        return (
+            FoundationModelRequestBudget.estimatedTokens(in: instructions), promptTokens,
+            128, promptTokens
+        )
     }
 }

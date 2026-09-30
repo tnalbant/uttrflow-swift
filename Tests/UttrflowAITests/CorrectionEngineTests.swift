@@ -127,6 +127,24 @@ struct CorrectionEngineTests {
 
     // MARK: The one-in-five cap
 
+    @Test("one three-word dictionary proposal fits under a fifteen-word budget")
+    func multiwordProposalCountsOnceAgainstTheCap() throws {
+        let utterance = CorrectionFixtures.spoken(
+            "we should run the ?s ?q ?l migration tonight before the release goes out")
+        #expect(utterance.words.count == 15)
+        let only = try #require(engine.proposals(for: utterance, against: index).only)
+        #expect(only.replacement == "SQL")
+        #expect(only.wordRange.count == 3)
+    }
+
+    @Test("two distinct proposals still exceed the one-in-five budget")
+    func distinctProposalsRespectTheCap() {
+        let utterance = CorrectionFixtures.spoken(
+            "?s ?q ?l and ?x ?m ?l")
+        #expect(utterance.words.count == 7)
+        #expect(engine.proposals(for: utterance, against: index).isEmpty)
+    }
+
     /// Four stray-letter runs in twenty-two words want twelve changes where four are allowed.
     @Test("abandons the whole utterance rather than change more than one word in five")
     func capAbandonsAnOverEagerUtterance() {
@@ -251,9 +269,31 @@ extension Array {
 struct MultiWordCorrectionTests {
     // MARK: - A run of several words
 
-    /// Measured on this corpus: two signals clear the margin, and at length nothing else stopped them.
+    @Test("does not replace a spoken phrase with a name that only shares its opening")
+    func refusesMadisonForMadSon() {
+        let madison = DictionaryEntry(word: "Madison", origin: .added, firstSeen: .now)
+        let proposals = WordCorrectionEngine().proposals(
+            for: CorrectionFixtures.spoken("we should tell the ?mad ?son of the king about it tomorrow"),
+            against: PhoneticIndex(entries: [madison]),
+            seeing: CorrectionFixtures.showing("Madison marketing plan"))
+
+        #expect(proposals.isEmpty)
+    }
+
+    @Test("corrects a spoken Kubernetes pronunciation when the entry says it sounds that way")
+    func correctsKubernetesPronunciation() throws {
+        let kubernetes = DictionaryEntry(
+            word: "Kubernetes", pronunciation: "kuber netes", origin: .added, firstSeen: .now)
+        let proposals = WordCorrectionEngine().proposals(
+            for: CorrectionFixtures.spoken("we should restart the ?kuber ?netes pod after the deploy"),
+            against: PhoneticIndex(entries: [kubernetes]),
+            seeing: CorrectionFixtures.showing("Kubernetes deployment"))
+
+        #expect(try #require(proposals.only).replacement == "Kubernetes")
+    }
+
     @Test(
-        "refuses an entry that neither spells a multi-word run nor opens as it does",
+        "refuses an entry that neither spells a multi-word run nor writes out its pronunciation",
         arguments: [
             ("URL", "air well"), ("Aditi", "it to"),
         ])
@@ -265,10 +305,10 @@ struct MultiWordCorrectionTests {
     }
 
     @Test(
-        "keeps a run the entry spells, or opens as",
+        "keeps a run the entry writes out",
         arguments: [
             ("PaymentSheet", "payment sheet"), ("setUserPrefs", "set user prefs"),
-            ("Uttrflow", "utter flow"), ("SQL", "s q l"), ("Grafana", "graf an a"),
+            ("SQL", "s q l"), ("Grafana", "graf an a"),
         ])
     func keepsARunItSpells(entry: String, heard: String) {
         #expect(
@@ -276,12 +316,22 @@ struct MultiWordCorrectionTests {
                 DictionaryEntry(word: entry, origin: .added, firstSeen: .now), asHeard: heard))
     }
 
-    /// One word for one word is the ordinary case, and the evidence decides it as it always did.
-    @Test("says nothing about a run of one word")
-    func saysNothingAboutOneWord() {
+    /// A shared sound key cannot make two unrelated spellings plausible readings.
+    @Test("refuses a single-word phonetic collision that does not open alike")
+    func refusesAnUnrelatedSingleWordReading() {
+        let colin = DictionaryEntry(word: "Colin", origin: .added, firstSeen: .now)
+        #expect(PhoneticIndex(entries: [colin]).candidates(soundingLike: "Kaelin").contains(colin))
+        #expect(!ReadingRestraint.opensAlike(colin.word, heard: "Kaelin"))
+        #expect(WordCorrectionEngine.spells(colin, asHeard: "Kaelin") == false)
+    }
+
+    @Test(
+        "keeps a single-word spelling that is exact or opens alike",
+        arguments: [("Colin", "Colin"), ("Cache", "cash")])
+    func keepsAResemblingSingleWordReading(entry: String, heard: String) {
         #expect(
             WordCorrectionEngine.spells(
-                DictionaryEntry(word: "Cache", origin: .added, firstSeen: .now), asHeard: "cash"))
+                DictionaryEntry(word: entry, origin: .added, firstSeen: .now), asHeard: heard))
     }
 
     /// The pronunciation field exists for exactly this: a spelling that does not open as the sound does.

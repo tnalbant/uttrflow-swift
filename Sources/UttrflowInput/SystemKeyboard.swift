@@ -6,10 +6,18 @@ public import UttrflowCore
 
 /// The one place the product asks the window server what the keyboard is doing. See `Docs/shortcuts.md`.
 public final class SystemKeyboard: KeyboardEventSource {
-    private let delivery = Delivery()
+    /// The sink the tap reads; internal so tests can see a restart forget the old tap's disables.
+    let delivery = Delivery()
     private let running = Mutex<RunningTap?>(nil)
+    /// Builds the tap's port; `nil` is the real session tap, and tests pass a plain port.
+    private let makePort: (@Sendable (UnsafeMutableRawPointer, Bool) -> CFMachPort?)?
 
-    public init() {}
+    public init() { makePort = nil }
+
+    /// Takes the port maker, so a test can run the real tap thread without Accessibility.
+    init(makePort: @escaping @Sendable (UnsafeMutableRawPointer, Bool) -> CFMachPort?) {
+        self.makePort = makePort
+    }
 
     public func start(
         _ deliver: @escaping @Sendable (KeyStroke) -> Void,
@@ -18,41 +26,38 @@ public final class SystemKeyboard: KeyboardEventSource {
         stop()
         delivery.set(deliver)
         delivery.setConsumeKeyDown(consumeKeyDown)
-        guard let tap = RunningTap.create(delivery: delivery, consume: consumeKeyDown)
+        guard let tap = RunningTap.create(delivery: delivery, consume: consumeKeyDown, makePort: makePort)
         else { throw .refused }
         tap.run()
         running.withLock { $0 = tap }
     }
 
     public func stop() {
-        running.withLock { current in
-            current?.stop()
-            current = nil
+        TeardownGuard.once(for: self) {
+            running.withLock { current in
+                current?.stop()
+                current = nil
+            }
+            delivery.set(nil)
+            delivery.forgetDisables()
         }
-        delivery.set(nil)
+    }
+
+    public func onGaveUp(_ handler: @escaping @Sendable () -> Void) {
+        delivery.setGaveUpHandler(handler)
     }
 
     deinit { stop() }
 
     /// The domain reading of a CoreGraphics event, kept here so nothing else decodes flags.
     static func stroke(keyCode: UInt16, flags: CGEventFlags, phase: KeyPhase) -> KeyStroke {
-        let (modifiers, isFunctionDown) = Self.modifiers(from: flags)
+        let modifiers = Set(HotkeyModifier.held(in: flags))
+        let isFunctionDown = flags.contains(.maskSecondaryFn)
         return KeyStroke(
             keyCode: keyCode, modifiers: modifiers, isFunctionDown: isFunctionDown, phase: phase,
             isKeyDown: isDown(
                 keyCode: keyCode, phase: phase, modifiers: modifiers,
                 isFunctionDown: isFunctionDown))
-    }
-
-    /// The modifiers and Fn state a raw flags mask carries, the one place that decodes it.
-    static func modifiers(from flags: CGEventFlags) -> (modifiers: Set<HotkeyModifier>, isFunctionDown: Bool)
-    {
-        var modifiers: Set<HotkeyModifier> = []
-        if flags.contains(.maskCommand) { modifiers.insert(.command) }
-        if flags.contains(.maskAlternate) { modifiers.insert(.option) }
-        if flags.contains(.maskControl) { modifiers.insert(.control) }
-        if flags.contains(.maskShift) { modifiers.insert(.shift) }
-        return (modifiers, flags.contains(.maskSecondaryFn))
     }
 
     /// Whether the named key is down, which for a flags change is whether its own modifier survived.
@@ -90,6 +95,8 @@ final class Delivery: @unchecked Sendable {
     private let lastDisable = Atomic<UInt64>(0)
     /// The port, kept where the callback can revive the tap without taking a lock.
     private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
+    /// Told when the tap is left off for good, so the caller can notice and recover.
+    private let gaveUpHandler = Mutex<(@Sendable () -> Void)?>(nil)
 
     deinit {
         if let held = tapPointer.load(ordering: .relaxed) {
@@ -99,6 +106,7 @@ final class Delivery: @unchecked Sendable {
 
     func set(_ value: (@Sendable (KeyStroke) -> Void)?) { sink.withLock { $0 = value.map(Sink.init) } }
     func setConsumeKeyDown(_ value: Bool) { consumeKeyDown.store(value, ordering: .relaxed) }
+    func setGaveUpHandler(_ value: @escaping @Sendable () -> Void) { gaveUpHandler.withLock { $0 = value } }
     /// Hands the stroke to the sink and reports whether the callback should swallow the event.
     @discardableResult
     func send(_ stroke: KeyStroke) -> Bool {
@@ -121,6 +129,12 @@ final class Delivery: @unchecked Sendable {
         return Unmanaged<CFMachPort>.fromOpaque(held).takeUnretainedValue()
     }
 
+    /// Clears the disable history, so a newly built tap is judged only on its own disables.
+    func forgetDisables() {
+        disables.store(0, ordering: .relaxed)
+        lastDisable.store(0, ordering: .relaxed)
+    }
+
     /// Whether to turn the tap back on, which it is unless it keeps being disabled in a short window.
     func shouldReEnable() -> Bool {
         let now = DispatchTime.now().uptimeNanoseconds
@@ -128,6 +142,9 @@ final class Delivery: @unchecked Sendable {
         let (count, reEnable) = TapDisableWindow.decide(
             last: last, now: now, count: disables.load(ordering: .relaxed))
         disables.store(count, ordering: .relaxed)
+        if !reEnable {
+            gaveUpHandler.withLock { $0 }?()
+        }
         return reEnable
     }
 }
@@ -267,8 +284,8 @@ final class RunningTap: @unchecked Sendable {
     }
 }
 
-/// The tap's callback, which reads an event into the domain and hands it on.
-private func systemKeyboardCallback(
+/// The tap's callback, which reads an event into the domain and hands it on; internal so tests can drive it.
+func systemKeyboardCallback(
     proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     guard let userInfo else { return Unmanaged.passUnretained(event) }
@@ -280,6 +297,7 @@ private func systemKeyboardCallback(
         }
         return Unmanaged.passUnretained(event)
     }
+    guard !SyntheticEvent.isOurs(event) else { return Unmanaged.passUnretained(event) }
     let phase: KeyPhase? =
         switch type {
         case .flagsChanged: .modifiersChanged

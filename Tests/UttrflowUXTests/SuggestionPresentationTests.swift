@@ -117,13 +117,22 @@ struct SuggestionPresentationTests {
         #expect(presentation.inline?.candidate == "Sydenham")
     }
 
+    @Test("Filtering unusable rows preserves the arrow-key selection of the next candidate")
+    func filteringRowsPreservesSelectionIndex() throws {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "", others: ["Sydney", "Soho"]), typed: "S",
+            selection: SuggestionSelection(index: 1, hasMoved: true))
+
+        #expect(presentation.rows.map(\.candidate) == ["Sydney", "Soho"])
+        #expect(try #require(presentation.inline).candidate == "Sydney")
+    }
+
     @Test("The list's fixed text is what the design shows: a branch per row and the three keys under it")
     func theListTextIsTheDesigns() {
         let presentation = SuggestionPresentation(.certain("Sydney"))
         #expect(SuggestionPresentation.listPrefix == "↳")
-        #expect(presentation.acceptGlyph == "⇥")
-        #expect(presentation.footer == "⇥ take   ↓ next   ⎋ dismiss")
-        #expect(SuggestionPresentation.dimmedShare > 0 && SuggestionPresentation.dimmedShare < 1)
+        #expect(presentation.footer == "⇥ take   ⌥↓ next   ⎋ dismiss")
+        #expect(SuggestionPresentation.unselectedListOpacity > 0)
     }
 
     @Test("A field that names its face is drawn in it; one that names nothing gets the monospaced default")
@@ -140,11 +149,9 @@ struct SuggestionPresentationTests {
     @Test("The hint names the key that actually accepts: → in a terminal, ⌥⇥ in an editor, never a lie")
     func theHintFollowsTheAcceptKey() {
         let terminal = SuggestionPresentation(.certain("ls -l"), typed: "ls ", acceptKey: .rightArrow)
-        #expect(terminal.acceptGlyph == "→")
-        #expect(terminal.footer == "→ take   ↓ next   ⎋ dismiss")
+        #expect(terminal.footer == "→ take   ⌥↓ next   ⎋ dismiss")
         #expect(terminal.accessibilityLabel == "AI suggestion: ls -l. Right Arrow to accept.")
         let editor = SuggestionPresentation(.certain("Sydney"), acceptKey: .optionTab)
-        #expect(editor.acceptGlyph == "⌥⇥")
         #expect(editor.accessibilityLabel == "AI suggestion: Sydney. Option-Tab to accept.")
         #expect(SuggestionPresentation(.certain("Sydney")).acceptKey == .tab)
     }
@@ -279,6 +286,15 @@ struct SuggestionPresentationTests {
     }
 
     @Test(
+        "The Escape dot is opaque under Increase Contrast and Reduce Transparency",
+        arguments: [highContrast, opaque])
+    func settingMakesTheEscapeDotOpaque(appearance: SuggestionAppearance) {
+        let dot = SuggestionPresentation(.minimised, appearance: appearance)
+        #expect(dot.style == .dot)
+        #expect(dot.opacity == SuggestionPresentation.opaqueGhostOpacity)
+    }
+
+    @Test(
         "At full strength under a display setting the ghost is underlined, so it never looks typed",
         arguments: [highContrast, opaque])
     func opaqueGhostIsUnderlined(appearance: SuggestionAppearance) {
@@ -304,6 +320,13 @@ struct SuggestionPresentationTests {
             SuggestionPresentation(.certain("Sydney")).opacity
                 == SuggestionPresentation.ghostOpacity)
         #expect(SuggestionPresentation(.certain("Sydney")).style == .ghost)
+    }
+
+    @Test("The Escape dot keeps its faint opacity with standard appearance")
+    func plainEscapeDotIsFaint() {
+        let dot = SuggestionPresentation(.minimised)
+        #expect(dot.style == .dot)
+        #expect(dot.opacity == SuggestionPresentation.ghostOpacity)
     }
 
     @Test("Neither setting turns a silent suggestion into anything")
@@ -384,6 +407,14 @@ struct SuggestionPresentationTests {
                 == "AI suggestion: Sydney. Tab to accept. Alternatives: Sydenham, Soho.")
     }
 
+    @Test("A choice keeps alternatives available on the navigable surface, separate from its announcement")
+    func choiceSeparatesAnnouncementFromNavigableLabel() {
+        let presentation = SuggestionPresentation(.choice(leader: "Sydney", others: ["Sydenham", "Soho"]))
+
+        #expect(presentation.announcementLabel == "AI suggestion: Sydney. Tab to accept.")
+        #expect(presentation.accessibilityLabel.contains("Sydenham, Soho"))
+    }
+
     @Test("A replacement says out loud how much of the user's own typing it takes back")
     func labelForAReplacement() {
         #expect(
@@ -435,6 +466,52 @@ struct SuggestionPresentationTests {
             green: text.green * share + background.green * (1 - share),
             blue: text.blue * share + background.blue * (1 - share))
         return TextColor.contrast(seen, background)
+    }
+
+    /// The contrast of list and footer text, whose opacity is independent of the inline ghost.
+    private static func listContrast(
+        of presentation: SuggestionPresentation, on background: TextColor
+    ) -> Double {
+        guard case .field(let text) = presentation.ink else {
+            Issue.record("the list did not take the field's colour")
+            return 1
+        }
+        let share = presentation.unselectedListOpacity
+        let seen = TextColor(
+            red: text.red * share + background.red * (1 - share),
+            green: text.green * share + background.green * (1 - share),
+            blue: text.blue * share + background.blue * (1 - share))
+        return TextColor.contrast(seen, background)
+    }
+
+    @Test("Unselected rows and footer use contrast-safe direct opacity for every appearance")
+    func listAndFooterOpacityMeetContrastTargets() {
+        for appearance in [SuggestionAppearance.standard, highContrast, opaque] {
+            let presentation = SuggestionPresentation(
+                .choice(leader: "Sydney", others: ["Sydenham"]), appearance: appearance,
+                fieldTextColor: .black)
+            let target = appearance.demandsOpaqueGhost ? 4.5 : 3.0
+            #expect(presentation.unselectedListOpacity == (appearance.demandsOpaqueGhost ? 0.9 : 0.72))
+            #expect(Self.listContrast(of: presentation, on: .white) >= target)
+
+            let darkPresentation = SuggestionPresentation(
+                .choice(leader: "Sydney", others: ["Sydenham"]), appearance: appearance,
+                fieldTextColor: .white)
+            #expect(Self.listContrast(of: darkPresentation, on: Self.darkField) >= target)
+        }
+    }
+
+    @Test("Selected list row remains stronger than unselected rows")
+    func selectedListRowHasDistinctAppearance() throws {
+        let presentation = SuggestionPresentation(
+            .choice(leader: "Sydney", others: ["Sydenham"]),
+            selection: SuggestionSelection(index: 1, hasMoved: true))
+        let selected = try #require(presentation.list.first(where: \.isSelected))
+        let unselected = try #require(presentation.list.first(where: { !$0.isSelected }))
+        #expect(selected.isSelected)
+        #expect(!unselected.isSelected)
+        #expect(presentation.listOpacity(for: selected) == 1)
+        #expect(presentation.listOpacity(for: unselected) < presentation.listOpacity(for: selected))
     }
 
     @Test(

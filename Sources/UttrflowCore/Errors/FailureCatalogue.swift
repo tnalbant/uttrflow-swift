@@ -89,7 +89,8 @@ extension DictionaryStoreError: CataloguedFailure {
         case .couldNotWrite: .couldNotReadSeedRecord
         case .couldNotReadSeedRecord: .wordIsEmpty
         case .wordIsEmpty: .wordAlreadyKnown
-        case .wordAlreadyKnown: nil
+        case .wordAlreadyKnown: .entryHasTooManyWords(maximum: 3)
+        case .entryHasTooManyWords: nil
         }
     }
 }
@@ -124,9 +125,12 @@ extension TextInsertionError: CataloguedFailure {
         switch self {
         case .noFocusedTextField: .accessibilityDenied
         case .accessibilityDenied: .clipboardUnavailable
-        case .clipboardUnavailable: .insertionTimedOut
+        case .clipboardUnavailable: .clipboardChanged
+        case .clipboardChanged: .insertionTimedOut
         case .insertionTimedOut: .insertionRejected(description: "")
-        case .insertionRejected: nil
+        case .insertionRejected: .insertionUnconfirmed
+        case .insertionUnconfirmed: .insertionTargetChanged
+        case .insertionTargetChanged: nil
         }
     }
 }

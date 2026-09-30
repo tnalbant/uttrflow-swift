@@ -15,13 +15,20 @@ private import Synchronization
 /// Counts the files a store writes while this is bound to `ClipboardStore.writes`.
 package final class StoreWriteTally: Sendable {
     private let files = Mutex(0)
+    private let bytes = Mutex<[Data]>([])
 
     package init() {}
 
     /// Answers how many files have been written or removed so far.
     package var count: Int { files.withLock { $0 } }
 
-    func record() { files.withLock { $0 += 1 } }
+    /// Every encoded list written so far, in order; a removal adds nothing here.
+    package var written: [Data] { bytes.withLock { $0 } }
+
+    func record(_ data: Data? = nil) {
+        files.withLock { $0 += 1 }
+        if let data { bytes.withLock { $0.append(data) } }
+    }
 }
 
 /// Everything the user has copied, kept on this Mac between launches. See `Docs/clipboard-store.md`.
@@ -38,8 +45,14 @@ public actor ClipboardStore {
     /// What the saved file is known to hold, which the migration off one file makes differ from memory.
     private var savedOnDisk: [Clip]?
 
+    /// What the history file is known to hold, so an edit to a kept clip leaves it unwritten.
+    private var historyOnDisk: [Clip]?
+
     /// The history and the saved clips as one list, or `nil` before the files have been read.
     private var wholeList: [Clip]?
+
+    /// The latest persisted eviction order assigned by this store.
+    private var lastUsedOrder: UInt64 = 0
 
     /// Whether this process has already reconciled the pictures folder; see ``sweepOnce()``.
     private var hasSwept = false
@@ -104,13 +117,19 @@ public actor ClipboardStore {
             return retained(loaded(), keeping: retention)
         }
         // Refused rather than truncated: one copied log file would be rewritten on every later ⌘C.
-        guard budget.largestClip <= 0 || Self.weight(of: clip) <= budget.largestClip else {
+        guard fitsLargestClipBound(clip) else {
             return retained(loaded(), keeping: retention)
         }
 
         let existing = loaded()
         let previous = Self.previous(for: clip, in: existing)
-        let arrival = previous.map { inheriting($0, from: clip) } ?? clip
+        var arrival = previous.map { inheriting($0, from: clip) } ?? clip
+        if let alias = arrival.alias,
+            existing.contains(where: { $0.id != arrival.id && $0.alias == alias })
+        {
+            arrival.alias = nil
+        }
+        arrival = arrival.orderedForEviction(nextUseOrder())
 
         // Prepended, not sorted in: a machine whose clock moved must not shuffle what the user sees.
         let displaced = previous.map { [$0.id] } ?? []
@@ -127,7 +146,7 @@ public actor ClipboardStore {
         guard let index = clips.firstIndex(where: { $0.id == id }) else {
             return retained(clips, keeping: retention)
         }
-        clips[index] = clips[index].used(at: moment)
+        clips[index] = clips[index].used(at: moment, order: nextUseOrder())
         let onDisk = keptOnDisk(clips, keeping: retention)
         // A clip that aged out is a real change, written now; a use alone is bookkeeping for a later eviction.
         guard onDisk.count == clips.count else {
@@ -157,6 +176,12 @@ public actor ClipboardStore {
             guard !Task.isCancelled else { return }
             await self?.flushUse()
         }
+    }
+
+    /// Advances the store's persisted LRU sequence independently of wall-clock time.
+    private func nextUseOrder() -> UInt64 {
+        if lastUsedOrder < .max { lastUsedOrder += 1 }
+        return lastUsedOrder
     }
 
     /// Forgets one clip and answers with what is left; an identifier that is not there is not an error.
@@ -191,8 +216,15 @@ public actor ClipboardStore {
         ofDictation id: UUID, saying spoken: String?, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
         let stored = loaded()
-        let left = stored.filter { !$0.isCopy(ofDictation: id, saying: spoken) }
-        guard left.count != stored.count else { return retained(stored, keeping: retention) }
+        var changed = false
+        let left: [Clip] = stored.compactMap { clip in
+            guard clip.isCopy(ofDictation: id, saying: spoken) else { return clip }
+            changed = true
+            let others = clip.dictations.filter { $0 != id }
+            // A clip another dictation still copies loses only this dictation's link.
+            return others.isEmpty ? nil : Self.relinking(clip, to: others)
+        }
+        guard changed else { return retained(stored, keeping: retention) }
         return try settled(left, keeping: retention)
     }
 
@@ -220,7 +252,10 @@ public actor ClipboardStore {
     public func setAlias(
         _ alias: String?, of id: UUID, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try change(id, keeping: retention) { $0.alias = alias }
+        if let alias, loaded().contains(where: { $0.id != id && $0.alias == alias }) {
+            throw .aliasAlreadyInUse
+        }
+        return try change(id, keeping: retention) { $0.alias = alias }
     }
 
     /// Replaces a clip's plain text, keeping its identity and leaving its formatted note alone.
@@ -313,6 +348,13 @@ public actor ClipboardStore {
         SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Whether a clip's picture file is still present without opening the file.
+    public func hasImage(for image: ClipImage) -> Bool {
+        FileManager.default.fileExists(
+            atPath: imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
+                .path(percentEncoded: false))
+    }
+
     /// The bytes of a clip's picture, or `nil` when the file has gone from under the app.
     public func imageData(for image: ClipImage) -> Data? {
         try? Data(
@@ -371,8 +413,18 @@ public actor ClipboardStore {
         _ name: String, to destination: String?, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
         var clips = loaded()
+        var freshlyUnkept: Set<UUID> = []
         for index in clips.indices where clips[index].category == name {
+            let wasKept = clips[index].isKept
             clips[index].category = destination
+            if resetAgeIfUnkept(&clips[index], wasKept: wasKept, keeping: retention) {
+                freshlyUnkept.insert(clips[index].id)
+            }
+        }
+        if !freshlyUnkept.isEmpty {
+            clips =
+                clips.filter { freshlyUnkept.contains($0.id) }
+                + clips.filter { !freshlyUnkept.contains($0.id) }
         }
         return try settled(clips, keeping: retention)
     }
@@ -402,25 +454,45 @@ public actor ClipboardStore {
     static func rebuilding(
         _ clip: Clip, text: String, richText: String?, image: ClipImage?
     ) -> Clip {
+        let classified =
+            image == nil
+            ? ClipKindDetector.classification(of: text)
+            : ClipClassification(kind: .image, language: nil)
         Clip(
-            id: clip.id, text: text, kind: clip.kind, copiedAt: clip.copiedAt,
+            id: clip.id, text: text, kind: classified.kind, copiedAt: clip.copiedAt,
             source: clip.source, origin: clip.origin, dictations: clip.dictations,
             // An unlinked dictation copy keeps its first words, the only thing deleting its dictation can match.
             dictatedText: clip.dictatedText ?? (clip.isUnlinkedDictationCopy ? clip.text : nil),
             lastUsedAt: clip.lastUsedAt,
-            language: clip.language, richText: richText, image: image,
+            lastUsedOrder: clip.lastUsedOrder,
+            language: classified.language, richText: richText, image: image,
+            alias: clip.alias, category: clip.category, isPinned: clip.isPinned,
+            timesCopied: clip.timesCopied)
+    }
+
+    /// The same clip, copying only `dictations`.
+    static func relinking(_ clip: Clip, to dictations: [UUID]) -> Clip {
+        Clip(
+            id: clip.id, text: clip.text, kind: clip.kind, copiedAt: clip.copiedAt,
+            source: clip.source, origin: clip.origin, dictations: dictations,
+            dictatedText: clip.dictatedText, lastUsedAt: clip.lastUsedAt,
+            lastUsedOrder: clip.lastUsedOrder,
+            language: clip.language, richText: clip.richText, image: clip.image,
             alias: clip.alias, category: clip.category, isPinned: clip.isPinned,
             timesCopied: clip.timesCopied)
     }
 
     /// Carries what the user chose about a clip onto the copy that has just replaced it.
     private func inheriting(_ previous: Clip, from arrival: Clip) -> Clip {
-        Clip(
-            id: previous.id, text: arrival.text, kind: arrival.kind, copiedAt: arrival.copiedAt,
+        // A kept clip the user chose to keep on disk is never made a memory-only secret by a repeat of the same text.
+        let staysKept = previous.isKept && Self.isPersistable(previous) && !Self.isPersistable(arrival)
+        let classified = staysKept ? previous : arrival
+        return Clip(
+            id: previous.id, text: arrival.text, kind: classified.kind, copiedAt: arrival.copiedAt,
             source: arrival.source,
             // Named rather than defaulted, so a repeat cannot quietly become a ⌘C.
             origin: previous.origin,
-            // Both dictations, so deleting either one still takes this clip with it.
+            // Both dictations, so the clip goes only once neither of them is left.
             dictations: previous.dictations
                 + arrival.dictations.filter {
                     !previous.dictations.contains($0)
@@ -428,8 +500,10 @@ public actor ClipboardStore {
             dictatedText: previous.dictatedText,
             // Copying something again is reaching for it, so the eviction clock moves too.
             lastUsedAt: arrival.copiedAt,
-            // The arrival's, detected from the text recorded now and from this pasteboard.
-            language: arrival.language, richText: arrival.richText,
+            // Detected from the text recorded now and from this pasteboard, unless the kind stayed the kept clip's.
+            language: classified.language,
+            // A plain repeat keeps the clip's rich text, which may be a note the user wrote in the panel.
+            richText: arrival.richText ?? previous.richText,
             // The file already on disk, not the one just written; the arrival's would strand it.
             image: previous.image ?? arrival.image,
             // Everything the user decided stays with the clip they decided it about.
@@ -443,16 +517,48 @@ public actor ClipboardStore {
         _ id: UUID, keeping retention: ClipRetention, _ edit: (inout Clip) -> Void
     ) throws(ClipboardStoreError) -> [Clip] {
         var clips = loaded()
-        if let index = clips.firstIndex(where: { $0.id == id }) { edit(&clips[index]) }
+        if let index = clips.firstIndex(where: { $0.id == id }) {
+            let wasKept = clips[index].isKept
+            edit(&clips[index])
+            guard fitsLargestClipBound(clips[index]) else { throw .couldNotWrite }
+            if resetAgeIfUnkept(&clips[index], wasKept: wasKept, keeping: retention) {
+                let fresh = clips.remove(at: index)
+                clips.insert(fresh, at: 0)
+            }
+        }
         return try settled(clips, keeping: retention)
+    }
+
+    /// Resets a clip's age when this edit removes its last keeping marker.
+    private func resetAgeIfUnkept(
+        _ clip: inout Clip, wasKept: Bool, keeping retention: ClipRetention
+    ) -> Bool {
+        guard wasKept && !clip.isKept else { return false }
+        clip = clip.recopied(at: retention.now, order: nextUseOrder())
+        return true
     }
 
     /// Writes what may stay on the disk and answers with what may be shown. See `Docs/retention-clock.md`.
     private func settled(
         _ clips: [Clip], keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
-        try save(keptOnDisk(clips, keeping: retention))
-        return retained(clips, keeping: retention)
+        let unique = Self.uniqueAliases(in: clips)
+        try save(keptOnDisk(unique, keeping: retention))
+        return retained(unique, keeping: retention)
+    }
+
+    /// Keeps the first clip holding an alias and removes that alias from later clips.
+    private static func uniqueAliases(in clips: [Clip]) -> [Clip] {
+        var aliases: Set<String> = []
+        return clips.map { clip in
+            guard let alias = clip.alias else { return clip }
+            guard aliases.insert(alias).inserted else {
+                var unnamed = clip
+                unnamed.alias = nil
+                return unnamed
+            }
+            return clip
+        }
     }
 
     /// Spares every kept clip, then applies the window and the per-pool caps to the history.
@@ -497,6 +603,11 @@ public actor ClipboardStore {
         clip.text.utf8.count + (clip.richText?.utf8.count ?? 0)
     }
 
+    /// Applies the same text-and-rich-text bound to copied clips and every stored edit.
+    private func fitsLargestClipBound(_ clip: Clip) -> Bool {
+        budget.largestClip <= 0 || Self.weight(of: clip) <= budget.largestClip
+    }
+
     /// What a list of clips costs this process to hold.
     static func weight(of clips: [Clip]) -> Int {
         clips.reduce(0) { $0 + weight(of: $1) }
@@ -514,7 +625,8 @@ public actor ClipboardStore {
             let list = clips.filter { ClipClass(of: $0) == pool }
             var weight = Self.weight(of: list)
             guard weight > tier.bytes else { continue }
-            for clip in list.sorted(by: { $0.lastUsedAt < $1.lastUsedAt }) where weight > tier.bytes {
+            for clip in list.sorted(by: { ($0.lastUsedOrder ?? 0) < ($1.lastUsedOrder ?? 0) })
+            where weight > tier.bytes {
                 dropped.insert(clip.id)
                 weight -= Self.weight(of: clip)
             }
@@ -525,11 +637,17 @@ public actor ClipboardStore {
     /// Drops the least recently used pictures until the folder fits its disk budget.
     private func withinDisk(_ clips: [Clip]) -> [Clip] {
         guard budget.disk > 0 else { return clips }
-        let pictures = clips.filter { ClipClass(of: $0) == .images }
+        // Pinned pictures count toward the budget so pinning many of them cannot push the unpinned pool past the bound.
+        let pictures = clips.filter { $0.kind == .image || $0.image != nil }
         var weight = pictures.reduce(0) { $0 + ($1.image?.bytes ?? 0) }
         guard weight > budget.disk else { return clips }
         var dropped: Set<UUID> = []
-        for clip in pictures.sorted(by: { $0.lastUsedAt < $1.lastUsedAt }) where weight > budget.disk {
+        // Only the un-kept pictures may be evicted; kept ones are exempt by the kept pool's rule.
+        let evictable =
+            pictures
+            .filter { !$0.isKept }
+            .sorted { ($0.lastUsedOrder ?? 0) < ($1.lastUsedOrder ?? 0) }
+        for clip in evictable where weight > budget.disk {
             dropped.insert(clip.id)
             weight -= clip.image?.bytes ?? 0
         }
@@ -568,14 +686,38 @@ public actor ClipboardStore {
         savedOnDisk = fromSavedFile
         // A move interrupted between the two writes leaves a clip in both files, and the saved copy wins.
         let savedIDs = Set(fromSavedFile.map(\.id))
-        let stored =
-            fromSavedFile
-            + read(file).filter { Self.isPersistable($0) && !savedIDs.contains($0.id) }
-        let list = Self.interleaving(
-            saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept })
-        wholeList = list
+        let fromHistoryFile = read(file).filter(Self.isPersistable)
+        // An unreplaceable file is unknown rather than empty, so every save still meets its refusal.
+        historyOnDisk = unreplaceable.contains(file) ? nil : fromHistoryFile
+        let stored = fromSavedFile + fromHistoryFile.filter { !savedIDs.contains($0.id) }
+        let list = Self.uniqueAliases(
+            in: Self.interleaving(
+                saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept }))
+        let ordered = list.enumerated().sorted { left, right in
+            switch (left.element.lastUsedOrder, right.element.lastUsedOrder) {
+            case (let leftOrder?, let rightOrder?):
+                return leftOrder == rightOrder ? left.offset < right.offset : leftOrder < rightOrder
+            case (nil, nil):
+                let leftDate = left.element.lastUsedAt
+                let rightDate = right.element.lastUsedAt
+                return leftDate == rightDate ? left.offset < right.offset : leftDate < rightDate
+            case (nil, .some):
+                return true
+            case (.some, nil):
+                return false
+            }
+        }
+        var orderByIndex = Array(repeating: UInt64(0), count: list.count)
+        for (order, clip) in ordered.enumerated() {
+            orderByIndex[clip.offset] = UInt64(order + 1)
+        }
+        let normalized = list.enumerated().map { pair in
+            pair.element.orderedForEviction(orderByIndex[pair.offset])
+        }
+        lastUsedOrder = UInt64(normalized.count)
+        wholeList = normalized
         sweepOnce()
-        return list
+        return normalized
     }
 
     /// The two lists as one, newest first; a merge rather than a sort, so two draws cannot disagree.
@@ -643,12 +785,15 @@ public actor ClipboardStore {
         useFlush = nil
 
         // Every clip reaches its new file before leaving its old one, so a refusing disk never loses one.
-        let bridge = Self.bridging(clips, from: wasSaved, into: nowHistory)
+        let bridge = Self.bridging(persistable, from: wasSaved, into: nowHistory)
         if bridge != wasSaved {
             try persist(bridge, to: savedFile)
             savedOnDisk = bridge
         }
-        try persist(nowHistory, to: file)
+        if nowHistory != historyOnDisk {
+            try persist(nowHistory, to: file)
+            historyOnDisk = nowHistory
+        }
         if nowSaved != bridge {
             try persist(nowSaved, to: savedFile)
             savedOnDisk = nowSaved
@@ -672,13 +817,15 @@ public actor ClipboardStore {
     private func persist(_ clips: [Clip], to url: URL) throws(ClipboardStoreError) {
         // A file that could be neither read nor moved aside is the user's only copy, so it is not replaced.
         guard !unreplaceable.contains(url) else { throw .couldNotWrite }
-        Self.writes?.record()
         do {
             guard !clips.isEmpty else {
+                Self.writes?.record()
                 try removeFile(url)
                 return
             }
-            try PrivateFile.write(JSONEncoder().encode(clips), to: url)
+            let data = try JSONEncoder().encode(clips)
+            Self.writes?.record(data)
+            try PrivateFile.write(data, to: url)
         } catch {
             throw .couldNotWrite
         }

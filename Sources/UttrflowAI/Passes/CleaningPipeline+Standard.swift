@@ -8,7 +8,9 @@ extension CleaningPipeline {
     public static func beforeModel(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps)
+        piece(
+            numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
+            insertionPoint: situation.insertion, steps: steps)
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -16,38 +18,49 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps).passes
+            passes: piece(
+                numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
+                steps: steps
+            ).passes
+                + [SpelledInitialismPass()]
                 + message(for: formatter, situation: situation).passes)
     }
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
     public static func piece(
-        numbers: NumberPolicy, digits: DigitGrouping, steps: CleaningSteps = .default
+        numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
+        insertionPoint: InsertionPoint = .unknown, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         let cleanings: [any CleaningPass] = [
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
-            SpokenPunctuationPass(), LayoutWordsPass(),
+            SpokenPunctuationPass(), LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
-            ContractionsPass(), SpacingPass(),
+            ContractionsPass(), SpelledInitialismPass(), SpacingPass(),
         ]
         return CleaningPipeline(passes: cleanings.filter { steps.runs($0.id) })
     }
 
     /// The passes that finish a model's answer to a whole message: the caret's echo taken back, then the message's.
     public static func afterModel(
-        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
+        spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: afterModelPiece(situation: situation, heard: heard).passes
+            passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
+                + [SpelledInitialismPass()]
                 + message(for: formatter, situation: situation, heard: heard).passes)
     }
 
-    /// What finishes a model's answer to one piece: only the caret's echo, since each piece's prompt quotes the caret.
-    public static func afterModelPiece(situation: Situation, heard: String? = nil) -> CleaningPipeline {
+    /// What finishes a model's answer to one piece before the final message-wide passes run.
+    public static func afterModelPiece(
+        situation: Situation, heard: String? = nil, spoken: String? = nil
+    ) -> CleaningPipeline {
         CleaningPipeline(passes: [
+            SpokenPunctuationPass(),
             CaretEchoPass(
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
-                spokenText: heard)
+                spokenText: heard),
+            CaretCloserPass(precedingText: situation.insertion.precedingText, spokenText: spoken),
         ])
     }
 
@@ -56,11 +69,23 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(passes: [
+            SentenceBoundaryPass(),
             FirstWordPass(
                 policy: formatter.firstWord, state: situation.insertion.sentenceState,
-                onScreen: situation.app.textOnScreen, heard: heard),
-            TerminalStopPass(policy: terminalStop(formatter, in: situation), layout: formatter.layout),
+                onScreen: situation.app.textOnScreen, heard: heard,
+                capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                    && formatter.destination != .codeEditor),
+            TerminalStopPass(
+                policy: terminalStop(formatter, in: situation), layout: formatter.layout,
+                insertionPoint: situation.insertion, destination: formatter.destination),
         ])
+    }
+
+    /// The typed whole-text rules that apply once the pieces have been laid out.
+    public static func wholeText(
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+    ) -> CleaningPipeline {
+        message(for: formatter, situation: situation, heard: heard)
     }
 
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.

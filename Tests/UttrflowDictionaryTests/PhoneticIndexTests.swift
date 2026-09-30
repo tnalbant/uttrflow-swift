@@ -127,6 +127,16 @@ struct PhoneticIndexTests {
         #expect(Set(index.candidates(for: heard).map(\.word)) == ["PaymentSheet", "setUserPrefs"])
     }
 
+    @Test("shows that four spoken pronunciation words cannot fit a lookup span")
+    func fourWordPronunciationCannotMatch() {
+        let entry = word("DBMS", saying: "dee bee em ess", from: .added)
+        let index = PhoneticIndex(entries: [entry])
+        let heard = Utterance(heard: "the dee bee em ess is down", confidence: 1)
+
+        #expect(PhoneticIndex.wordCount(in: "dee bee em ess") == 4)
+        #expect(index.candidates(for: heard).isEmpty)
+    }
+
     @Test("offers nothing for an utterance with nothing of the user's in it")
     func nothingRelevant() {
         let index = PhoneticIndex(entries: [word("Claude", from: .added)])

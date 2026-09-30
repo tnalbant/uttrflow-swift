@@ -4,6 +4,7 @@ import Synchronization
 import Testing
 
 @testable import UttrflowCore
+@testable import UttrflowAI
 @testable import UttrflowPipeline
 @testable import UttrflowTestSupport
 
@@ -146,16 +147,21 @@ private final class FakeInserter: TextInserting, Sendable {
     private let state = Mutex<[String]>([])
     private let refuses: Bool
     private let arrival: InsertionArrival
+    private let destination: InsertionDestination?
 
-    init(refuses: Bool = false, arrival: InsertionArrival = .notReported) {
+    init(
+        refuses: Bool = false, arrival: InsertionArrival = .notReported,
+        destination: InsertionDestination? = nil
+    ) {
         self.refuses = refuses
         self.arrival = arrival
+        self.destination = destination
     }
 
     func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
         state.withLock { $0.append(text) }
         guard !refuses else { throw .clipboardUnavailable }
-        return InsertionAttempt(.accessibility, arrival: arrival)
+        return InsertionAttempt(.accessibility, arrival: arrival, destination: destination)
     }
 
     var received: [String] { state.withLock { $0 } }
@@ -174,7 +180,7 @@ private let paymentSheet = DictationCorrection(
 
 private func makePipeline(
     spoken: String = heard,
-    cleaner: FakeCleaner = FakeCleaner(),
+    cleaner: any TranscriptCleaning = FakeCleaner(),
     inserter: FakeInserter = FakeInserter(),
     corrector: any WordCorrecting = NoTextChanges(),
     snippets: any SnippetExpanding = NoTextChanges(),
@@ -281,6 +287,49 @@ struct DictationPipelineCorrectionTests {
     }
 }
 
+@Suite("Dictation pipeline: dictionary terms in restatements")
+struct DictationPipelineDictionaryRestatementTests {
+    private func correctedPipeline(for spoken: String) -> DictationPipeline {
+        makePipeline(
+            spoken: spoken, cleaner: RuleBasedTransformer(),
+            corrector: FakeCorrector(proposing: [
+                DictationCorrection(
+                    heard: "payment sheet", wrote: "PaymentSheet", wordRange: 5..<7,
+                    entryID: entry, reason: "heardAsSeveralWords", heardConfidence: 0.2)
+            ]))
+    }
+
+    @Test("removes the old phrase after sorry and keeps the corrected word index")
+    func sorryBeforeDictionaryTerm() async {
+        let pipeline = correctedPipeline(for: "open the payment form sorry payment sheet")
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open the PaymentSheet")
+        #expect(await pipeline.outcome?.changes.corrections.first?.writtenWordIndex == 2)
+    }
+
+    @Test("removes the old phrase after i mean and keeps the corrected word index")
+    func meanBeforeDictionaryTerm() async {
+        let pipeline = correctedPipeline(for: "open payment form I mean payment sheet")
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open PaymentSheet")
+        #expect(await pipeline.outcome?.changes.corrections.first?.writtenWordIndex == 1)
+    }
+
+    @Test("keeps the control restatement when its heard anchor matches")
+    func matchingSpokenAnchorControl() async {
+        let pipeline = makePipeline(
+            spoken: "open the payment form sorry payment page", cleaner: RuleBasedTransformer())
+
+        await dictate(with: pipeline)
+
+        #expect(await pipeline.outcome?.text == "Open the payment page")
+    }
+}
+
 @Suite("Dictation pipeline: the user's own snippets")
 struct DictationPipelineSnippetTests {
     /// The matcher tolerates the tidier's punctuation but refuses a trigger assembled across a full stop.
@@ -314,6 +363,45 @@ struct DictationPipelineSnippetTests {
 
         #expect(inserter.received == ["open the payment sheet and send 12 Some Street"])
         #expect(await pipeline.outcome?.changes.snippets.map(\.snippetID) == [snippet])
+    }
+
+    /// A line break is Return in a single-line field, so it would submit the words half-written.
+    @Test("A multi-line expansion goes into a single-line field on one line")
+    func flattensAnExpansionForOneLine() async {
+        let inserter = FakeInserter()
+        let pipeline = makePipeline(
+            inserter: inserter, snippets: signingExpander(),
+            context: FakeContextEngine(
+                context: .fixture(
+                    applicationName: "Numbers", bundleIdentifier: "com.apple.iWork.Numbers",
+                    documentName: "Budget")))
+
+        await dictate(with: pipeline)
+
+        #expect(inserter.received == ["send Regards, Asha"])
+        #expect(inserter.received.allSatisfy { !$0.contains(where: \.isNewline) })
+        #expect(await pipeline.outcome?.changes.snippets.map(\.expansion) == ["Regards, Asha"])
+    }
+
+    @Test("A multi-line expansion keeps its line breaks where the field takes them")
+    func keepsAnExpansionsLinesWhereTheyFit() async {
+        let inserter = FakeInserter()
+        let pipeline = makePipeline(inserter: inserter, snippets: signingExpander())
+
+        await dictate(with: pipeline)
+
+        #expect(inserter.received == ["send Regards,\n  Asha"])
+    }
+
+    /// An expander that signs off over two lines, the second indented.
+    private func signingExpander() -> FakeExpander {
+        FakeExpander(answering: { _ in
+            ExpandedTranscript(
+                text: "send Regards,\n  Asha",
+                snippets: [
+                    SnippetUse(snippetID: snippet, matched: "my signature", expansion: "Regards,\n  Asha")
+                ])
+        })
     }
 
     /// §19 again, and the same rule the tidier is held to.
@@ -529,6 +617,26 @@ struct DictationPipelineVocabularyTests {
                 FakeVocabulary.Lesson(
                     heard: heard, wrote: heard.capitalisedFirst, context: .fixture())
             ])
+    }
+
+    @Test("Does not learn private title words from a stale app context after insertion lands elsewhere")
+    func doesNotLearnAgainstStaleApplicationContext() async {
+        let vocabulary = FakeVocabulary()
+        let appA = AppContext(
+            applicationName: "Private App", bundleIdentifier: "com.example.a",
+            documentName: "Secret project title")
+        let landedInB = InsertionDestination(
+            applicationName: "Public App", bundleIdentifier: "com.example.b")
+        let pipeline = makePipeline(
+            vocabulary: vocabulary,
+            inserter: FakeInserter(destination: landedInB),
+            context: FakeContextEngine(context: appA))
+
+        await dictate(with: pipeline)
+
+        #expect(vocabulary.lessons.isEmpty)
+        #expect(await pipeline.outcome?.insertedInto == "Public App")
+        #expect(await pipeline.outcome?.insertedIntoIdentifier == "com.example.b")
     }
 
     /// The question this path asks is what the user *said*, before anything rewrote it.

@@ -135,6 +135,32 @@ struct PanelSearchTests {
         #expect(PanelFixture.panel(clips, query: "bengaluru").results.rows.count == 1)
     }
 
+    @Test("full-width and half-width text match their usual spelling")
+    func widthInsensitive() {
+        let clips = [PanelFixture.clip("ABC123"), PanelFixture.clip("カタカナ", minutesAgo: 1)]
+
+        #expect(PanelFixture.panel(clips, query: "ＡＢＣ１２３").results.rows.map(\.clip) == [clips[0]])
+        #expect(PanelFixture.panel(clips, query: "ｶﾀｶﾅ").results.rows.map(\.clip) == [clips[1]])
+    }
+
+    @Test("a nukta-free Hindi spelling keeps its alias ranking")
+    func nuktaInsensitiveAlias() {
+        let exact = PanelFixture.clip("ज़िंदगी की कहानी", alias: "ज़िंदगी")
+        let partial = PanelFixture.clip("मेरी ज़िंदगी", minutesAgo: 1, alias: "मेरी ज़िंदगी")
+
+        let rows = PanelFixture.panel([partial, exact], query: "जिंदगी").results.rows
+
+        #expect(rows.map(\.clip) == [exact, partial])
+        #expect(rows.map(\.isExactAlias) == [true, false])
+    }
+
+    @Test("Arabic hamza remains significant in search")
+    func arabicHamzaRemainsSignificant() {
+        let clip = PanelFixture.clip("أحمد", alias: "أحمد")
+
+        #expect(PanelFixture.panel([clip], query: "احمد").results.rows.isEmpty)
+    }
+
     @Test("an alias typed in full sorts to the top and takes the selection")
     func exactAlias() {
         let clips = [

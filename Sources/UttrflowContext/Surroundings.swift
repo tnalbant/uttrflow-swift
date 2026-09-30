@@ -8,14 +8,31 @@ public protocol ElementTree {
 
     /// The element's Accessibility role, or nothing when it will not say.
     func role(of element: Element) -> String?
+    /// The element's semantic Accessibility subrole, or nothing when it will not say.
+    func subrole(of element: Element) -> String?
+    /// Whether this element is a list of links to other conversations.
+    func isConversationLinkList(_ element: Element) -> Bool
+    /// Whether the element hides what is typed into it, judged without reading its text.
+    func isSecure(_ element: Element) -> Bool
     /// The text a person reads on the element: its value, or its title where it has no value.
     func text(of element: Element) -> String?
     /// The element's children in the order they are laid out, which is the order they are read in.
     func children(of element: Element) -> [Element]
+    /// Whether the element is hidden from the user.
+    func isHidden(_ element: Element) -> Bool
     /// The element this one sits in, or nothing at the window.
     func parent(of element: Element) -> Element?
     /// Where the element is on screen, or nothing when it will not say, which is trusted.
     func frame(of element: Element) -> CGRect?
+}
+
+extension ElementTree {
+    /// A tree without subroles has no landmark boundary to apply.
+    public func subrole(of element: Element) -> String? { nil }
+    /// A tree without link semantics has no conversation list to prune.
+    public func isConversationLinkList(_ element: Element) -> Bool { false }
+    /// A tree that has no hidden-state signal treats its elements as visible.
+    public func isHidden(_ element: Element) -> Bool { false }
 }
 
 /// What is on screen around the focused field, read for one pass and written nowhere. See `Docs/predict-context.md`.
@@ -63,17 +80,29 @@ public struct Surroundings: Sendable, Equatable {
         "AXValueIndicator", "AXSplitter", "AXListMarker",
     ]
 
+    /// The roles that hold a web page, beyond which a browser's own tab strip, toolbar and infobars sit.
+    static let pageRoles: Set<String> = ["AXWebArea"]
+
+    /// The page landmarks whose text is outside the conversation that owns the focused field.
+    static let unrelatedLandmarkSubroles: Set<String> = [
+        "AXLandmarkNavigation", "AXLandmarkComplementary", "AXLandmarkBanner",
+    ]
+
     /// Collects the text around the focused element, nearest first, within the budget and the caps.
     public static func collect<Tree: ElementTree>(
         around focused: Tree.Element, in tree: Tree, windowTitle: String?, windowFrame: CGRect? = nil,
         deadline: ContinuousClock.Instant = .now + .milliseconds(budgetInMilliseconds)
     ) -> Surroundings {
+        // Nothing is gathered around a secure field, so its own value is never read to be left out.
+        guard !tree.isSecure(focused) else { return Surroundings(windowTitle: windowTitle, text: nil) }
         var walk = Walk<Tree>(tree: tree, window: windowFrame, deadline: deadline)
         var levels: [[String]] = []
         var child = focused
         var climbed = 0
-        // Each ancestor's other children are one ring further out, so the message list beside a compose box comes first.
-        while climbed < maximumAncestors, !walk.isExhausted, let parent = tree.parent(of: child) {
+        // Each ancestor's other children are one ring further out, so the message list beside a compose box comes first; a page is never left.
+        while climbed < maximumAncestors, !walk.isExhausted, !pageRoles.contains(tree.role(of: child) ?? ""),
+            let parent = tree.parent(of: child)
+        {
             climbed += 1
             let siblings = tree.children(of: parent)
             let position = siblings.firstIndex(of: child) ?? siblings.count
@@ -88,10 +117,25 @@ public struct Surroundings: Sendable, Equatable {
             child = parent
         }
         // Farthest first and nearest last, so the tail of the text is what sits closest to the field.
-        let joined = levels.reversed().flatMap { $0 }.joined(separator: "\n")
+        let raw = levels.reversed().flatMap { $0 }
+        // Drops text reached twice, and the focused field's own draft, so neither spends the prompt budget.
+        let focusedText = Self.trimmed(tree.text(of: focused))
+        let joined = Self.deduplicated(raw, dropping: focusedText).joined(separator: "\n")
         return Surroundings(
             windowTitle: windowTitle, text: joined.isEmpty ? nil : joined,
             timedTurnLines: walk.clockOnlyElements)
+    }
+
+    /// The copy of every line nearest the field (the last) wins, so the tail still ends on the newest message; the focused element's own text is dropped too.
+    static func deduplicated(_ lines: [String], dropping duplicate: String?) -> [String] {
+        var seen: Set<String> = []
+        var kept: [String] = []
+        for line in lines.reversed() {
+            if let duplicate, !duplicate.isEmpty, line == duplicate { continue }
+            guard seen.insert(line).inserted else { continue }
+            kept.append(line)
+        }
+        return kept.reversed()
     }
 
     /// One read's running state: how much it has visited and gathered, and when it has to stop.
@@ -155,9 +199,16 @@ public struct Surroundings: Sendable, Equatable {
             visited += 1
             guard isOnScreen(element) else { return }
             let role = tree.role(of: element) ?? ""
-            guard !skippedRoles.contains(role) else { return }
+            guard !skippedRoles.contains(role),
+                !unrelatedLandmarkSubroles.contains(tree.subrole(of: element) ?? ""),
+                !tree.isConversationLinkList(element)
+            else { return }
+            // A secure field is passed over whole, its text never asked for and its children never walked.
+            guard !tree.isSecure(element) else { return }
             let raw = tree.text(of: element)
             let text = Surroundings.trimmed(raw)
+            // Text of mask characters alone is a password field that does not declare itself, so it is passed over too.
+            guard !(text.map(SecureField.looksMasked) ?? false) else { return }
             // A stamp on its own line, "10:31 AM" beside a name rather than glued to a message, is gone once trimmed.
             if text == nil, Surroundings.isClockOnly(raw) { clockOnlyElements += 1 }
             // A child that only repeats its container's label, as a sticker row does, adds nothing.
@@ -241,6 +292,9 @@ public struct Surroundings: Sendable, Equatable {
             case .control where scalar.properties.isWhitespace:
                 if !separated { kept.append(" ") }
                 separated = true
+            case .format where scalar.value == 0x200C || scalar.value == 0x200D:
+                kept.append(scalar)  // joiners change what the text is, so they stay
+                separated = false
             case .control, .format:
                 continue
             default:

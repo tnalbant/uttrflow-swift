@@ -5,6 +5,9 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     /// Which engine this stands for.
     public let kind: TransformerKind
 
+    /// The longest allowance this transformer may use; individual requests scale down with their word count.
+    public var budget: Duration { .seconds(15) }
+
     /// The model that rewrites.
     private let model: any CleanupModel
     private let prompts: PromptBuilder
@@ -40,11 +43,22 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         await model.warm(instructions: prompts.instructions(for: situation?.destination ?? .plain))
     }
 
+    /// Reserves the warm slot for the last piece after earlier model requests have consumed theirs.
+    public func reserveFinalPiece(_ situation: Situation?) async {
+        await warm(for: situation)
+    }
+
+    /// Gives short requests a short turn and prevents oversized input from spending the full engine allowance.
+    public func budget(for request: TransformationRequest) -> Duration {
+        FoundationModelRequestBudget.allowance(
+            for: request.transcription.text.split(whereSeparator: \.isWhitespace).count)
+    }
+
     /// Rewrites, unwraps and tidies, then throws `outputRejected` when the meaning guard refuses.
     public func transform(
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
-        let formatter = DestinationFormatter.standard(for: request.situation.destination)
+        let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
             for: formatter, situation: request.situation, steps: steps)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
@@ -53,18 +67,26 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
         let rewritten = try await model.rewrite(
-            prompts.userPrompt(for: request, spoken: spoken, doubtful: readings),
+            prompts.userPrompt(
+                for: request, spoken: spoken, doubtful: readings,
+                preserving: steps.switchedOff),
             instructions: prompts.instructions(for: request.situation.destination), kind: kind
         )
 
         // Models echo the shape of the worked examples, so the answer is unwrapped before it is judged.
         let unwrapped = ResponseUnwrapper.unwrap(rewritten, spoken: spoken)
+        // A model that hands the input back unchanged did no work and leaves the rules engine to format it.
+        if Self.isUnchangedAnswer(unwrapped, spoken: spoken) {
+            throw .outputRejected(
+                reason: "the model returned the input unchanged", kind: .unchangedAnswer)
+        }
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                situation: request.situation, heard: request.transcription.text)
+                situation: request.situation, heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
-                for: formatter, situation: request.situation, heard: request.transcription.text)
+                for: formatter, situation: request.situation, heard: request.transcription.text,
+                spoken: spoken)
         let polished = finishing.run(Draft(keepingLineBreaks: TextTidy.collapseSpacing(unwrapped)))
         let finished = polished.text
 
@@ -93,5 +115,19 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     private static func echo(in draft: Draft) -> String {
         draft.words.filter { $0.state == .removed(by: CaretEchoPass.id) }.map(\.text)
             .joined(separator: " ")
+    }
+
+    /// Whether the model's answer, once unwrapped, is byte-identical to what the speaker said and the input still needs formatting.
+    private static func isUnchangedAnswer(_ rewritten: String, spoken: String) -> Bool {
+        let collapsed = TextTidy.collapseSpacing(rewritten)
+        let spokenCollapsed = TextTidy.collapseSpacing(spoken)
+        guard collapsed == spokenCollapsed else { return false }
+        // A short reply or one that already carries a capital and a mark needs no rule formatting on top.
+        let wordCount = spokenCollapsed.split(whereSeparator: \.isWhitespace).count
+        guard wordCount > 3 else { return false }
+        let first = spokenCollapsed.first.map(String.init) ?? ""
+        let startsCapital = first != first.lowercased() && first == first.uppercased()
+        let hasMark = spokenCollapsed.contains(where: { ".!?;,".contains($0) })
+        return !startsCapital && !hasMark
     }
 }

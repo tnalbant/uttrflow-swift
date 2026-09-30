@@ -164,6 +164,17 @@ struct PasteConfirmationTests {
         #expect(InsertionArrival(outcome) == .unconfirmed)
     }
 
+    /// An unreadable pre-paste caret cannot establish whether identical words were already present.
+    @Test("does not confirm an identical match after an unreadable pre-paste read")
+    func unreadableBeforeDoesNotConfirmAnIdenticalExistingMatch() async {
+        let focus = SlowFocus(answer: "dictated words")
+
+        let outcome = await confirming(focus).waitFor("dictated words", before: .unreadable)
+
+        #expect(outcome == .gaveUp(.milliseconds(10)))
+        #expect(InsertionArrival(outcome) == .unconfirmed)
+    }
+
     /// A caret that changes after the paste, even to the same words, is genuine evidence it landed.
     @Test("confirms once the caret changes, even when it settles back on words seen before the paste")
     func confirmsOnceTheCaretActuallyChanges() async {

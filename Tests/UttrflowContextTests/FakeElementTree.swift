@@ -6,8 +6,11 @@ import CoreGraphics
 struct Node: Equatable {
     let id: Int
     var role: String? = "AXGroup"
+    var subrole: String? = nil
     var text: String? = nil
     var visible = true
+    /// Whether the node declares itself a field that hides what is typed.
+    var secure = false
     /// Where the node sits on screen, or nothing for one that does not say and is trusted.
     var frame: CGRect? = nil
     var children: [Node] = []
@@ -21,14 +24,29 @@ final class VisitCounter {
     var count = 0
 }
 
+/// Which nodes a read asked for their text, which is the one question that can copy a whole document.
+final class TextReadLog {
+    var ids: [Int] = []
+}
+
 /// The tree the collector walks, with parents found by search since a fixture has no back-pointers.
 struct FakeTree: ElementTree {
     let root: Node
     var visits: VisitCounter? = nil
+    var textReads: TextReadLog? = nil
 
     func role(of element: Node) -> String? { element.role }
-    func text(of element: Node) -> String? { element.text }
+    func subrole(of element: Node) -> String? { element.subrole }
+    func isConversationLinkList(_ element: Node) -> Bool {
+        element.role == "AXList" && element.children.contains { $0.role == "AXLink" }
+    }
+    func isSecure(_ element: Node) -> Bool { element.secure }
+    func text(of element: Node) -> String? {
+        textReads?.ids.append(element.id)
+        return element.text
+    }
     func children(of element: Node) -> [Node] { element.children }
+    func isHidden(_ element: Node) -> Bool { !element.visible }
     /// A hidden node reports no size, which is how a collapsed pane's text looks through Accessibility.
     func frame(of element: Node) -> CGRect? {
         visits?.count += 1

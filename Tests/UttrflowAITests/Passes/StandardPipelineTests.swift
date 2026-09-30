@@ -10,7 +10,7 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.standard.ids == [
                 "fillers", "stammers", "repeatedPhrase", "selfCorrection", "spokenPunctuation", "layoutWords",
-                "numberForms", "contractions", "spacing", "firstWord", "terminalStop",
+                "numberForms", "contractions", "spelledInitialism", "spacing", "firstWord", "terminalStop",
             ])
     }
 
@@ -19,6 +19,45 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown).ids
                 == Array(CleaningPipeline.standard.ids.dropLast(2)))
+    }
+
+    @Test("joins spoken initialisms after the whole message is assembled")
+    func wholeTextInitialisms() {
+        let pipeline = CleaningPipeline.wholeText(for: .standard(for: .plain), situation: .unknown)
+        #expect(pipeline.ids == [.spelledInitialism, .firstWord, .terminalStop])
+        #expect(pipeline.run(Draft(text: "the a p i is down")).text == "The API is down.")
+    }
+
+    @Test("uses the formatter's list policy for piece clean-up")
+    func pieceRespectsDestinationLists() {
+        let spreadsheet = DestinationFormatter.standard(for: .spreadsheet)
+        let spreadsheetPipeline = CleaningPipeline.beforeModel(
+            for: spreadsheet, situation: .unknown)
+        #expect(
+            spreadsheetPipeline.run(Draft(text: "number one buy milk number two walk the dog")).text
+                == "number 1 buy milk number 2 walk the dog")
+
+        let document = DestinationFormatter.standard(for: .document)
+        let documentPipeline = CleaningPipeline.beforeModel(for: document, situation: .unknown)
+        #expect(
+            documentPipeline.run(Draft(text: "we need number one milk number two eggs")).text
+                == "we need\n1. milk\n2. eggs")
+    }
+
+    @Test("uses the caret text for a leading paragraph command")
+    func leadingParagraphAtCaret() {
+        let formatter = DestinationFormatter.standard(for: .email)
+        let existingText = AppContext(precedingText: "The numbers look fine. ")
+        let existingSituation = Situation(
+            app: existingText, insertion: existingText.insertionPoint, destination: .email)
+        let existing = CleaningPipeline.beforeModel(for: formatter, situation: existingSituation)
+        #expect(existing.run(Draft(text: "new paragraph thanks sam")).text == "\n\nthanks sam")
+
+        let emptyField = AppContext(precedingText: "")
+        let emptySituation = Situation(
+            app: emptyField, insertion: emptyField.insertionPoint, destination: .email)
+        let empty = CleaningPipeline.beforeModel(for: formatter, situation: emptySituation)
+        #expect(empty.run(Draft(text: "new paragraph thanks sam")).text == "thanks sam")
     }
 
     @Test("is the plain formatter at a caret that says nothing")
@@ -46,6 +85,18 @@ struct StandardPipelineTests {
         #expect(stop?.policy == .never)
         #expect(stop?.layout == .singleLine)
         #expect(pipeline.passes.contains { $0 is CaretEchoPass } == false)
+    }
+
+    @Test(
+        "leaves a dictated list item open when the caret sits after its marker",
+        arguments: ["- ", "* ", "\u{2022} ", "2. "])
+    func listItemAtCaret(marker: String) {
+        let app = AppContext(precedingText: "notes\n" + marker)
+        let situation = Situation(app: app, insertion: app.insertionPoint, destination: .document)
+        let pipeline = CleaningPipeline.standard(for: .standard(for: .document), situation: situation)
+
+        #expect(pipeline.run(Draft(text: "buy milk")).text == "Buy milk")
+        #expect(pipeline.run(Draft(text: "is it ready?")).text == "Is it ready?")
     }
 
     @Test("hands the caret's text to the echo pass after the model")
@@ -85,7 +136,7 @@ struct StandardPipelineTests {
     func afterModel() {
         let cell = CleaningPipeline.afterModel(
             for: .standard(for: .spreadsheet), situation: .unknown, heard: "uh total revenue")
-        #expect(cell.ids == ["caretEcho", "firstWord", "terminalStop"])
+        #expect(cell.ids == ["spokenPunctuation", "caretEcho", "firstWord", "terminalStop"])
         #expect(cell.run(Draft(text: "Total revenue.")).text == "total revenue")
 
         let app = AppContext(documentName: "Chat with John", precedingText: "because ")
@@ -105,7 +156,9 @@ struct StandardPipelineTests {
             ("let's meet at four no sorry at five on tuesday", "Let's meet at five on tuesday."),
             ("we still need milk comma eggs comma and bread", "We still need milk, eggs, and bread."),
             ("we're on postgres sixteen point two right now", "We're on postgres 16.2 right now."),
-            ("first line new line second line", "First line\nsecond line."),
+            ("first line new line second line", "First line\nSecond line."),
+            ("what do you think question mark new line thanks", "What do you think?\nThanks."),
+            ("agenda new line one intro new line two demo", "Agenda\nOne intro\nTwo demo."),
             ("thanks new paragraph the second issue", "Thanks\n\nThe second issue."),
             ("is it ready question mark", "Is it ready?"),
             ("i think i'll take the earlier train", "I think I'll take the earlier train."),
@@ -117,6 +170,15 @@ struct StandardPipelineTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
+    @Test("splits fillers glued to their neighbours by pause ellipses")
+    func splitsGluedFillers() {
+        #expect(
+            CleaningPipeline.standard.run(
+                Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+            ).text == "The invoice is overdue."
+        )
+    }
+
     @Test("keeps the record of every pass that touched a word")
     func provenance() {
         let draft = CleaningPipeline.standard.run(Draft(text: "um at four no sorry at five"))
@@ -126,6 +188,22 @@ struct StandardPipelineTests {
         #expect(draft.words[1].state == .removed(by: SelfCorrectionPass.id))
         #expect(draft.words[5].state == .replaced(by: FirstWordPass.id, from: "at"))
         #expect(draft.words[6].state == .replaced(by: TerminalStopPass.id, from: "five"))
+    }
+
+    @Test(
+        "keeps the comma the sentence needs when a filler between commas goes",
+        arguments: [
+            ("The deadline is, um, Friday.", "The deadline is Friday."),
+            ("Well, um, I think so.", "Well, I think so."),
+            ("I think, uh, that's right, uh, yeah.", "I think that's right, yeah."),
+            ("Um, so, I think we should go.", "So, I think we should go."),
+            ("Yes, um, I agree.", "Yes, I agree."),
+            ("Okay, uh, let's start.", "Okay, let's start."),
+            ("We should, uh, ship it.", "We should ship it."),
+        ]
+    )
+    func fillerBetweenCommas(spoken: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: spoken)).text == expected)
     }
 
     @Test(
@@ -142,5 +220,23 @@ struct StandardPipelineTests {
         let pieces = CleaningPipeline.piece(numbers: plain.numbers, digits: plain.digits).passes
         let pipeline = CleaningPipeline(passes: pieces + [FirstWordPass(state: state), TerminalStopPass()])
         #expect(pipeline.run(Draft(text: input)).text == expected)
+    }
+
+    /// Measured on dictated hesitations: the filler's pause decided where the sentence broke. Issue #2243.
+    @Test(
+        "reads a hesitation's pause through, before the model and after it",
+        arguments: [
+            ("I think we should um... move the meeting.", "I think we should move the meeting."),
+            ("The problem is um. We don't have enough time.", "The problem is we don't have enough time."),
+            ("Let's um. Order pizza for the team.", "Let's order pizza for the team."),
+            ("We are going to... Um. Ship it next week.", "We are going to... ship it next week."),
+            ("we are done um. Next item", "We are done. Next item."),
+        ]
+    )
+    func readsAHesitationThrough(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+        let before = CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown)
+        let after = CleaningPipeline.afterModel(for: .standard(for: .plain), situation: .unknown)
+        #expect(after.run(before.run(Draft(text: input))).text == expected)
     }
 }

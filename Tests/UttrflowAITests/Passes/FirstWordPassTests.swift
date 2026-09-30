@@ -17,6 +17,20 @@ struct FirstWordPassTests {
         cleaned(text, by: FirstWordPass(policy: .asSpoken, heard: heard))
     }
 
+    /// An ellipsis is a pause inside the sentence, so the word after it keeps the case it was heard in.
+    @Test(
+        "leaves the word after an ellipsis as it was heard",
+        arguments: [
+            ("we should... move the meeting", "We should... move the meeting"),
+            ("we should\u{2026} move it", "We should\u{2026} move it"),
+            ("wait... What happened", "Wait... What happened"),
+            ("really...? yes", "Really...? Yes"),
+        ]
+    )
+    func leavesTheWordAfterAnEllipsis(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test(
         "capitalises the start of every sentence",
         arguments: [
@@ -32,6 +46,16 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "keeps mixed-case product names at sentence starts and insertion points",
+        arguments: ["iPhone", "eBay", "macOS", "iOS", "WiFi", "YouTube"]
+    )
+    func keepsMixedCaseProductNames(text: String) {
+        #expect(cleaned(text, by: sut) == text)
+        #expect(fromCaret(text, state: .midSentence) == text)
+        #expect(asSpoken(text, heard: text) == text)
+    }
+
     /// An abbreviation carries a stop of its own, and the word after it is still inside the sentence.
     @Test(
         "does not start a sentence after a dotted abbreviation",
@@ -39,10 +63,27 @@ struct FirstWordPassTests {
             ("call me at 5 p.m. tomorrow", "Call me at 5 p.m. tomorrow"),
             ("we meet at 9 a.m. sharp", "We meet at 9 a.m. sharp"),
             ("bring a laptop e.g. the old one", "Bring a laptop e.g. the old one"),
+            ("etc. and drinks", "Etc. and drinks"),
+            ("apples vs. oranges", "Apples vs. oranges"),
+            ("dr. lee is here", "Dr. lee is here"),
+            ("mr. smith left", "Mr. smith left"),
+            ("mrs. jones left", "Mrs. jones left"),
+            ("ms. singh left", "Ms. singh left"),
+            ("st. paul is nearby", "St. paul is nearby"),
+            ("see dr. lee tomorrow", "See Dr. lee tomorrow"),
+            ("we finished etc. And then left", "We finished etc. And then left"),
         ]
     )
     func abbreviationsDoNotEndASentence(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("a capitalized word after a terminal abbreviation starts a new sentence")
+    func terminalAbbreviationCanEndSentence() {
+        #expect(
+            cleaned("we brought snacks, etc. And then we left", by: sut)
+                == "We brought snacks, etc. And then we left")
+        #expect(cleaned("we met Dr. Lee. Then we left", by: sut) == "We met Dr. Lee. Then we left")
     }
 
     @Test(
@@ -50,6 +91,7 @@ struct FirstWordPassTests {
         arguments: [
             ("i think so", "I think so"),
             ("well i think", "Well I think"),
+            ("i e the main one", "I e the main one"),
             ("i", "I"),
             ("i, therefore", "I, therefore"),
             ("well i'll go", "Well I'll go"),
@@ -63,11 +105,83 @@ struct FirstWordPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
-    @Test("starts a sentence after a paragraph or a bullet, but not after a plain line break")
+    @Test("capitalises unambiguous weekday and month names without changing May or March")
+    func capitalisesCalendarWords() {
+        #expect(cleaned("we meet on tuesday in august", by: sut) == "We meet on Tuesday in August")
+        #expect(cleaned("it may happen in march", by: sut) == "It may happen in march")
+        #expect(cleaned("sat and sun are short", by: sut) == "Sat and sun are short")
+    }
+
+    @Test("capitalises unambiguous place, language and nationality names")
+    func capitalisesProperNames() {
+        #expect(cleaned("we went to london and tokyo", by: sut) == "We went to London and Tokyo")
+        #expect(cleaned("he lives in new york", by: sut) == "He lives in New York")
+        #expect(cleaned("she speaks french and spanish", by: sut) == "She speaks French and Spanish")
+        #expect(cleaned("she moved to india", by: sut) == "She moved to India")
+        #expect(cleaned("we speak hindi at home", by: sut) == "We speak Hindi at home")
+        #expect(cleaned("we drove through texas", by: sut) == "We drove through Texas")
+        #expect(cleaned("the germans won", by: sut) == "The Germans won")
+        #expect(cleaned("we flew to paris last june", by: sut) == "We flew to Paris last June")
+    }
+
+    @Test("leaves ambiguous common nouns and ordinary uses of new and york alone")
+    func leavesAmbiguousWordsAlone() {
+        #expect(cleaned("we ate turkey in china", by: sut) == "We ate turkey in china")
+        #expect(cleaned("this is a new idea about york", by: sut) == "This is a new idea about york")
+    }
+
+    @Test("keeps a known proper name capital at a mid-sentence caret")
+    func properNameAtCaret() {
+        #expect(fromCaret("london is lovely", state: .midSentence) == "London is lovely")
+        #expect(fromCaret("new york is crowded", state: .midSentence) == "New York is crowded")
+    }
+
+    @Test("keeps weekdays and unambiguous months capitalised at a mid-sentence caret")
+    func calendarWordsAtMidSentenceCaret() {
+        #expect(fromCaret("Friday is good", state: .midSentence) == "Friday is good")
+        #expect(fromCaret("March is busy", state: .midSentence) == "March is busy")
+        #expect(fromCaret("May is busy", state: .midSentence) == "may is busy")
+    }
+
+    @Test("calendar casing follows prose destinations and leaves terminal and code case spoken")
+    func calendarWordsRespectDestination() {
+        let situation = Situation.unknown
+        for destination: Destination in [.plain, .document, .email, .messaging, .sqlEditor] {
+            let pipeline = CleaningPipeline.standard(
+                for: .standard(for: destination), situation: situation)
+            #expect(
+                pipeline.run(Draft(text: "we meet on tuesday in august")).text
+                    == "We meet on Tuesday in August.")
+        }
+        for destination: Destination in [.terminal, .codeEditor, .spreadsheet] {
+            let pipeline = CleaningPipeline.standard(
+                for: .standard(for: destination), situation: situation)
+            #expect(
+                pipeline.run(Draft(text: "we meet on tuesday in august")).text
+                    == "We meet on tuesday in august")
+        }
+    }
+
+    @Test("starts a sentence after every line break, paragraph, or bullet")
     func layout() {
         let paragraph = Draft(
             words: ["hello", "\n\n", "there", "\n- ", "milk", "\n", "eggs"].map { Draft.Word($0) })
-        #expect(sut.apply(paragraph).text == "Hello\n\nThere\n- Milk\neggs")
+        #expect(sut.apply(paragraph).text == "Hello\n\nThere\n- Milk\nEggs")
+    }
+
+    @Test("a line starts a sentence even when no punctuation precedes it")
+    func lineStartsSentenceWithoutPunctuation() {
+        let line = Draft(words: ["first", "line", "\n", "second", "line"].map { Draft.Word($0) })
+        let paragraph = Draft(words: ["first", "line", "\n\n", "second", "line"].map { Draft.Word($0) })
+        #expect(sut.apply(line).text == "First line\nSecond line")
+        #expect(sut.apply(paragraph).text == "First line\n\nSecond line")
+    }
+
+    @Test("the same known abbreviations do not end a sentence inside a dictation")
+    func sharedAbbreviationsStayInsideSentence() {
+        for abbreviation in InsertionPoint.sentenceAbbreviations {
+            #expect(!FirstWordPass.endsSentence(abbreviation + "."))
+        }
     }
 
     @Test(
@@ -92,6 +206,20 @@ struct FirstWordPassTests {
     func capitalElsewhere(state: InsertionPoint.SentenceState) {
         #expect(fromCaret("the build failed.", state: state) == "The build failed.")
         #expect(fromCaret("The build failed.", state: state) == "The build failed.")
+    }
+
+    /// A terminal's caret is reported as `.unknown`; with `.asSpoken` the heard case is what survives.
+    @Test(
+        "as spoken keeps the heard case of a terminal command at an unknown caret",
+        arguments: [
+            ("ls dash la", "ls dash la"),
+            ("npm run build", "npm run build"),
+            ("git commit dash m fix the login bug", "git commit dash m fix the login bug"),
+        ]
+    )
+    func asSpokenForTerminalAtUnknownCaret(text: String, expected: String) {
+        let pass = FirstWordPass(policy: .asSpoken, state: .unknown, heard: text)
+        #expect(cleaned(text, by: pass) == expected)
     }
 
     @Test(

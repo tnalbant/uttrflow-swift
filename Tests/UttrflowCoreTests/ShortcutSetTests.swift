@@ -10,8 +10,25 @@ import Testing
 struct ShortcutSetTests {
     @Test("ships a dictation and a clipboard shortcut")
     func shipsBoth() {
-        #expect(ShortcutSet.default.first(for: .dictate) == .optionSpace)
+        #expect(ShortcutSet.default.first(for: .dictate) == .controlOptionHold)
         #expect(ShortcutSet.default.first(for: .clipboard) == .shiftCommandV)
+    }
+
+    @Test("ships ⌃⌥ held as a hold the dictation monitor can deliver")
+    func theDefaultIsADeliverableHold() {
+        let hold = HotkeyBinding.controlOptionHold
+        #expect(hold.heldModifier != nil)
+        #expect(hold.isDeliverable)
+        #expect(!hold.isBareModifier)
+    }
+
+    @Test("keeps ⌥Space for an earlier install and every other default as shipped")
+    func earlierDefaultDiffersOnlyInDictation() {
+        #expect(ShortcutSet.earlierDefault.bindings(for: .dictate) == [.optionSpace])
+        for action in ShortcutAction.allCases where action != .dictate {
+            let shipped = ShortcutSet.default.bindings(for: action)
+            #expect(ShortcutSet.earlierDefault.bindings(for: action) == shipped)
+        }
     }
 
     @Test("keeps every way into one action, in the order they were added")
@@ -89,11 +106,11 @@ struct ShortcutSetTests {
 
     @Test("leaves the action unbound when its default is already another action's")
     func returnToDefaultRespectsAClash() {
-        var set = ShortcutSet([.clipboard: [.optionSpace]])
+        var set = ShortcutSet([.clipboard: [.controlOptionHold]])
         set.returnToDefault(.dictate)
 
         #expect(!set.isBound(.dictate))
-        #expect(set.first(for: .clipboard) == .optionSpace)
+        #expect(set.first(for: .clipboard) == .controlOptionHold)
     }
 
     @Test("names only the actions bound to nothing but bare modifiers")
@@ -113,5 +130,15 @@ struct ShortcutSetTests {
         let set = try JSONDecoder().decode(ShortcutSet.self, from: Data(json.utf8))
         #expect(set.bindings(for: .dictate) == [.functionHold])
         #expect(ShortcutAction.allCases.allSatisfy { $0 == .dictate || !set.isBound($0) })
+    }
+
+    @Test("drops unreadable bindings without losing valid shortcuts")
+    func unreadableBindingsAreDroppedIndividually() throws {
+        let json =
+            #"{"dictate": [{"keyCode": 58, "modifiers": ["banana"]}, {"keyCode": 49, "modifiers": ["option"]}], "clipboard": [{"keyCode": 9, "modifiers": ["control"]}, {"keyCode": 10, "modifiers": ["banana"]}]}"#
+        let set = try JSONDecoder().decode(ShortcutSet.self, from: Data(json.utf8))
+
+        #expect(set.bindings(for: .dictate) == [.optionSpace])
+        #expect(set.bindings(for: .clipboard) == [HotkeyBinding(keyCode: 9, modifiers: [.control])])
     }
 }

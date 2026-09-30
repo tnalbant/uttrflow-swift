@@ -1,6 +1,11 @@
 public import CoreGraphics
 public import UttrflowPredict
 
+public enum SuggestionWritingDirection: Sendable, Equatable {
+    case leftToRight
+    case rightToLeft
+}
+
 /// What the user's accessibility settings ask the suggestion surface to do differently.
 public struct SuggestionAppearance: Sendable, Equatable {
     /// Increase Contrast, under which grey text on the user's own line fails to read.
@@ -75,8 +80,11 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The backing behind a ghost whose field would not say its text colour is drawn at this share of the window colour.
     public static let backingOpacity = 0.9
 
-    /// An unselected row of the list, and the footer, are drawn at this share of the ghost's own strength.
-    public static let dimmedShare = 0.55
+    /// Unselected rows and the footer must remain readable against the field in the default appearance.
+    public static let standardListOpacity = 0.72
+
+    /// Unselected rows and the footer stay readable when an accessibility display setting is enabled.
+    public static let accessibleListOpacity = 0.9
 
     /// What opens each row of the list, so it reads as a branch off the caret's line.
     public static let listPrefix = "↳"
@@ -101,8 +109,12 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let prefersMonospaced: Bool
     /// The widest the surface may draw, the room from the caret to the field's or screen's edge, past which text ends in an ellipsis.
     public let maximumWidth: CGFloat?
+    /// The direction used to lay out the continuation.
+    public let direction: SuggestionWritingDirection
     /// The share of the line's colour the ghost is drawn at, raised to full under a contrast setting.
     public let opacity: Double
+    /// The direct opacity for unselected list rows and the footer, independent of the inline ghost.
+    public let unselectedListOpacity: Double
     /// Whether the ghost is underlined, which is what tells it from typed text once it is drawn at full strength.
     public let underlinesGhost: Bool
     /// The key that takes the suggestion in this field, which the hint after the ghost must name truthfully.
@@ -121,7 +133,8 @@ public struct SuggestionPresentation: Sendable, Equatable {
         acceptKey: AcceptKey = .tab,
         fontFamily: String? = nil,
         fieldTextColor: TextColor? = nil,
-        maximumWidth: CGFloat? = nil
+        maximumWidth: CGFloat? = nil,
+        direction: SuggestionWritingDirection = .leftToRight
     ) {
         self.acceptKey = acceptKey
         self.fontFamily = fontFamily
@@ -140,8 +153,13 @@ public struct SuggestionPresentation: Sendable, Equatable {
         // A field that reports neither size nor face is most often a terminal, where a monospaced default lines up.
         prefersMonospaced = fieldPointSize == nil && fontFamily == nil
         self.maximumWidth = maximumWidth.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        self.direction = direction
         // Faint grey is the intent; a contrast setting keeps the text but drops the transparency.
         opacity = appearance.demandsOpaqueGhost ? Self.opaqueGhostOpacity : Self.ghostOpacity
+        unselectedListOpacity =
+            appearance.demandsOpaqueGhost
+            ? Self.accessibleListOpacity
+            : Self.standardListOpacity
         underlinesGhost = appearance.demandsOpaqueGhost
     }
 
@@ -151,21 +169,30 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// The rows listed under the caret's line, which is every candidate once the list is open and none before.
     public var list: [Row] { isExpanded ? rows : [] }
 
-    /// The accept key as a glyph, which opens the list's footer so a terminal reads →, not ⇥; the ghost line carries none.
-    public var acceptGlyph: String { acceptKey.glyph }
-
     /// The keys that work the open list, drawn under it in the dimmed style.
-    public var footer: String { "\(acceptKey.glyph) take   ↓ next   ⎋ dismiss" }
+    public var footer: String { "\(acceptKey.glyph) take   ⌥↓ next   ⎋ dismiss" }
 
-    /// What VoiceOver is told the surface is offering, and what taking it costs.
-    public var accessibilityLabel: String {
-        guard let leader = inline else { return "" }
-        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
-        let take = "\(acceptKey.spokenName) to accept\(Self.cost(of: leader))."
-        guard !alternatives.isEmpty else { return "AI suggestion: \(leader.candidate). \(take)" }
-        return "AI suggestion: \(leader.candidate). \(take) Alternatives: "
-            + alternatives.joined(separator: ", ") + "."
+    /// The selected candidate keeps full strength; other rows use the contrast-safe list opacity.
+    public func listOpacity(for row: Row) -> Double {
+        row.isSelected ? 1 : unselectedListOpacity
     }
+
+    /// What VoiceOver hears automatically when the offer changes, without exposing unselected candidates.
+    var announcementLabel: String {
+        guard let leader = inline else { return style == .dot ? Self.dotLabel : "" }
+        let take = "\(acceptKey.spokenName) to accept\(Self.cost(of: leader))."
+        return "AI suggestion: \(leader.candidate). \(take)"
+    }
+
+    /// What VoiceOver can read while navigating the surface, including alternatives in an open list.
+    public var accessibilityLabel: String {
+        let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
+        guard !alternatives.isEmpty else { return announcementLabel }
+        return "\(announcementLabel) Alternatives: \(alternatives.joined(separator: ", "))."
+    }
+
+    /// What VoiceOver is told the dot left by Escape is, and what a second Escape does.
+    public static let dotLabel = "AI suggestion hidden. Escape again to turn suggestions off in this field."
 
     /// Says how much of the user's own typing a row takes back, and nothing when it only adds.
     private static func cost(of row: Row) -> String {
@@ -183,15 +210,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
             case .choice(let leader, let others): [leader] + others
             }
         // The edit is the one acceptance applies, so drawing and doing cannot disagree.
-        let usable: [(candidate: String, edit: Acceptance.Edit)] = offered.compactMap {
-            guard !$0.allSatisfy(\.isWhitespace),
-                let edit = Acceptance.edit(accepting: $0, after: typed)
+        let usable: [(index: Int, candidate: String, edit: Acceptance.Edit)] = offered.enumerated().compactMap
+        {
+            guard !$1.allSatisfy(\.isWhitespace),
+                let edit = Acceptance.edit(accepting: $1, after: typed)
             else { return nil }
-            return ($0, edit)
+            return ($0, $1, edit)
         }
         guard !usable.isEmpty else { return [] }
-        // The highlight can be moved with the arrow keys, so it follows the chosen row, not always the leader.
-        let chosen = min(max(selected, 0), usable.count - 1)
+        // Arrow-key selection counts original candidates, including ones this field cannot accept.
+        let chosen = usable.firstIndex { $0.index >= selected } ?? usable.count - 1
         return usable.enumerated().map {
             Row(candidate: $1.candidate, edit: $1.edit, isSelected: $0 == chosen)
         }

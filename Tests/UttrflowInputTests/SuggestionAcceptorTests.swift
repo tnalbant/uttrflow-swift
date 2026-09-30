@@ -1,5 +1,6 @@
 import Synchronization
 import Testing
+import Foundation
 
 @testable import UttrflowCore
 @testable import UttrflowInput
@@ -62,6 +63,27 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
         deleted.withLock { $0.append(count) }
         if let error { throw error }
     }
+}
+
+/// Pauses after Delete has landed, so quit can be interleaved before the replacement is typed.
+private final class PausingTypist: KeystrokeTyping, @unchecked Sendable {
+    private let deleted = Mutex(false)
+    private let typedValues = Mutex<[String]>([])
+    private let resumeTyping = DispatchSemaphore(value: 0)
+
+    var didDelete: Bool { deleted.withLock { $0 } }
+    var typed: [String] { typedValues.withLock { $0 } }
+
+    func type(_ text: String) throws(TextInsertionError) {
+        resumeTyping.wait()
+        typedValues.withLock { $0.append(text) }
+    }
+
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) {
+        deleted.withLock { $0 = true }
+    }
+
+    func allowTyping() { resumeTyping.signal() }
 }
 
 @Suite("Typing a completion in")
@@ -178,6 +200,30 @@ struct TypedTextInsertionEngineTests {
         #expect(typist.text == ["it commit"])
     }
 
+    @Test("quit waits through the gap between deleting and typing a replacement")
+    func quitWaitsForReplacement() async throws {
+        let typist = PausingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(preceding: "git "), typist: typist)
+        let writing = Task { try await engine.write("it commit", replacing: "git ") }
+        while !typist.didDelete { try await Task.sleep(for: .milliseconds(1)) }
+
+        let draining = Task { await engine.finishWrites() }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(!draining.isCancelled)
+        #expect(typist.typed.isEmpty)
+
+        typist.allowTyping()
+        try await writing.value
+        await draining.value
+        #expect(typist.typed == ["it commit"])
+
+        await #expect(
+            throws: TextInsertionError.insertionRejected(description: "the application is terminating")
+        ) {
+            try await engine.write("late", replacing: "")
+        }
+    }
+
     @Test(
         "A replacement ending in an emoji passes the guard, since the field is read in characters, not UTF-16 units."
     )
@@ -189,6 +235,50 @@ struct TypedTextInsertionEngineTests {
 
         #expect(typist.deletions == [2], "one Delete per character, and the emoji is one character")
         #expect(typist.text == ["🚀 launch"])
+    }
+
+    @Test("Acceptance reuses its bounded read for a large replacement field")
+    func acceptanceDoesNotReadTheLargeFieldAgain() async throws {
+        let focus = LargeValueFocus()
+        let typist = RecordingTypist()
+        let acceptor = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+
+        try await acceptor.accept(.certain("git commit"), after: "gti ")
+
+        #expect(focus.boundedReads == 1)
+        #expect(focus.largestBoundedRequest < 100)
+        #expect(focus.wholeValueReads == 0)
+        #expect(typist.deletions == [3])
+    }
+}
+
+/// A million-character field that counts bounded reads separately from whole-value reads.
+private final class LargeValueFocus: AccessibilityFocus, Sendable {
+    private struct State {
+        var boundedRequests: [Int] = []
+        var wholeValueReads = 0
+    }
+    private let state = Mutex(State())
+    private let value = String(repeating: "z", count: 999_996) + "gti "
+
+    var boundedReads: Int { state.withLock { $0.boundedRequests.count } }
+    var largestBoundedRequest: Int { state.withLock { $0.boundedRequests.max() ?? 0 } }
+    var wholeValueReads: Int { state.withLock { $0.wholeValueReads } }
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func focusedFieldIsSecure() -> Bool { false }
+    func tail(upTo count: Int) -> FieldTail {
+        state.withLock { $0.boundedRequests.append(count) }
+        return .text(String(value.suffix(count)))
+    }
+    func precedingText(_ count: Int) -> String? {
+        state.withLock { $0.wholeValueReads += 1 }
+        return String(value.suffix(count))
+    }
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (nil, tail(upTo: count))
     }
 }
 
@@ -355,6 +445,17 @@ struct SuggestionAcceptorTests {
         try await acceptor(field: field).accept(.certain("git commit"), after: "git comi")
 
         #expect(field.text == ["mit"])
+        #expect(field.replaced == [1])
+    }
+
+    @Test("A normalization split inside a grapheme still accepts the complete edit.")
+    func acceptsADecomposedGraphemeWithoutSplittingIt() async throws {
+        let field = RecordingField()
+        let typed = "e\u{301}"
+
+        try await acceptor(field: field).accept(.certain("e"), after: typed)
+
+        #expect(field.text == ["e"])
         #expect(field.replaced == [1])
     }
 
@@ -550,5 +651,111 @@ struct LaggingReadAcceptTests {
             try await acceptor(field, before: "gti cx").accept(.certain("git commit -m"), after: "gti c")
         }
         #expect(field.text.isEmpty)
+    }
+}
+
+/// Focus whose field has stopped answering, or hides what is typed, at the moment of acceptance.
+private struct ChangedFocus: AccessibilityFocus {
+    let field: any FocusedTextField
+    let isSecure: Bool
+    let tail: FieldTail
+    var windowNumber: UInt32? = nil
+    func focusedTextField() -> (any FocusedTextField)? { field }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedFieldIsSecure() -> Bool { isSecure }
+    func tail(upTo count: Int) -> FieldTail { tail }
+    func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        (windowNumber, tail)
+    }
+}
+
+@Suite("Accepting into a field that changed under the ghost")
+struct ChangedFieldAcceptTests {
+    private func acceptor(
+        _ field: RecordingField, typist: RecordingTypist, isSecure: Bool = false, tail: FieldTail
+    ) -> SuggestionAcceptor {
+        let focus = ChangedFocus(field: field, isSecure: isSecure, tail: tail)
+        return SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+    }
+
+    @Test("A field that cannot be read at acceptance is refused, and an add-only edit writes nothing.")
+    func refusesAnUnreadableAppend() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let accepting = acceptor(field, typist: typist, tail: .unreadable)
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com")
+                == .refused("the focused field cannot be read"))
+        await #expect(throws: TextInsertionError.self) {
+            try await accepting.accept(.certain("git commit"), after: "git com")
+        }
+        #expect(field.text.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A field that cannot be read at acceptance is refused, and a replacing edit sends no backspace.")
+    func refusesAnUnreadableReplacement() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        await #expect(throws: TextInsertionError.self) {
+            try await acceptor(field, typist: typist, tail: .unreadable)
+                .accept(.certain("git commit -m"), after: "gti c")
+        }
+        #expect(field.text.isEmpty)
+        #expect(field.replaced.isEmpty)
+        #expect(typist.deletions.isEmpty)
+    }
+
+    @Test("A field that hides what is typed is refused even when its line reads as the one drawn.")
+    func refusesASecureField() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let accepting = acceptor(field, typist: typist, isSecure: true, tail: .text("git com"))
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com")
+                == .refused("the focused field hides what is typed"))
+        await #expect(throws: TextInsertionError.self) {
+            try await accepting.accept(.certain("git commit"), after: "git com")
+        }
+        #expect(field.text.isEmpty)
+    }
+
+    @Test("A readable field that is the drawn line is aimed at the edit drawn.")
+    func aimsAtAReadableField() async {
+        let field = RecordingField()
+        let accepting = acceptor(field, typist: RecordingTypist(), tail: .text("git com"))
+        let aim = await accepting.aim(.certain("git commit"), after: "git com")
+        #expect(aim == .write(Acceptance.Edit(replaced: "", inserted: "mit")))
+    }
+
+    @Test("Matching text in a different window is refused before any insertion is attempted.")
+    func refusesMatchingTextInAnotherWindow() async {
+        let field = RecordingField()
+        let typist = RecordingTypist()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"), windowNumber: 42)
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: typist), focus: focus)
+
+        let aim = await accepting.aim(
+            .certain("git commit"), after: "git com", expectedWindowNumber: 41)
+
+        #expect(aim == .refused("the focused field is in a different or unidentified window"))
+        #expect(field.text.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("An unidentified focused window cannot authorize an acceptance for a known window.")
+    func refusesUnidentifiedWindow() async {
+        let field = RecordingField()
+        let focus = ChangedFocus(field: field, isSecure: false, tail: .text("git com"))
+        let accepting = SuggestionAcceptor(
+            completion: TextInsertion.completion(focus: focus, typist: RecordingTypist()), focus: focus)
+
+        #expect(
+            await accepting.aim(.certain("git commit"), after: "git com", expectedWindowNumber: 41)
+                == .refused("the focused field is in a different or unidentified window"))
     }
 }

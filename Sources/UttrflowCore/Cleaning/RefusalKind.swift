@@ -6,6 +6,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case lostWord
     /// A word nobody said appears in the rewrite.
     case inventedWord
+    /// The rewrite adds quotation marks the speaker did not say.
+    case inventedQuotation
     /// A word the speaker said appears somewhere else in the rewrite.
     case movedWord
     /// A word a pass took out is not put back, so the rewrite is missing it too.
@@ -40,12 +42,15 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case echoedExample
     /// The rewrite translated what was said instead of romanising it.
     case translated
+    /// The answer the model gave back was byte-identical to the input it was handed, so the rules engine should take over.
+    case unchangedAnswer
 
     /// What a pasted report calls this, which names the kind and never the words.
     public var summary: String {
         switch self {
         case .lostWord: "a word was lost or replaced"
         case .inventedWord: "a word was invented"
+        case .inventedQuotation: "quotation marks were added"
         case .movedWord: "a word was moved"
         case .removedWordNotRestored: "a word a step removed was not put back"
         case .unofferedReading: "a reading was used that was not offered"
@@ -63,6 +68,7 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .notLatinScript: "the answer was not in the Latin alphabet"
         case .echoedExample: "the answer repeated a worked example"
         case .translated: "the answer was translated rather than romanised"
+        case .unchangedAnswer: "the answer was identical to what was said"
         }
     }
 }
