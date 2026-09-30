@@ -29,7 +29,15 @@ struct LineShape: Equatable, Sendable {
         while let first = words.first, CommandGrammar.wrappers.contains(first) {
             words.removeFirst()
             // A wrapper's own flags belong to it, not to the command it runs.
-            while let flag = words.first, flag.hasPrefix("-") { words.removeFirst() }
+            while let flag = words.first, flag.hasPrefix("-") {
+                words.removeFirst()
+                if CommandGrammar.wrapperValueFlags[first]?.contains(flag) == true, !words.isEmpty {
+                    words.removeFirst()
+                }
+            }
+            while first == "env", let assignment = words.first, CommandGrammar.isAssignment(assignment) {
+                words.removeFirst()
+            }
         }
         guard let command = words.first else { return LineShape(command: nil, kind: .program) }
         let rest = words.dropFirst()
@@ -50,7 +58,22 @@ struct LineShape: Equatable, Sendable {
 /// What the common commands take, of the kind a shell's completion keeps: data in one place, read by position.
 enum CommandGrammar {
     /// Programs that run another command, whose own name says nothing about the arguments.
-    static let wrappers: Set<String> = ["sudo", "time", "nohup", "env", "exec", "command", "builtin", "nice"]
+    static let wrapperValueFlags: [String: Set<String>] = [
+        "sudo": ["-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T"],
+        "doas": ["-u", "-C"], "env": ["-u", "-S", "-P", "-C"], "nice": ["-n"], "exec": ["-a"],
+    ]
+
+    /// Programs that run another command, whose flags and option values precede that command.
+    static let wrappers: Set<String> = [
+        "sudo", "doas", "time", "nohup", "env", "exec", "command", "builtin", "nice", "noglob", "nocorrect",
+    ]
+
+    /// Whether a word assigns a value to a shell variable.
+    static func isAssignment(_ word: String) -> Bool {
+        guard let equals = word.firstIndex(of: "="), let first = word.first, first.isLetter || first == "_"
+        else { return false }
+        return word[..<equals].allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
 
     /// The operators after which a new simple command begins.
     static let separators: Set<String> = ["&&", "||", "|", ";"]

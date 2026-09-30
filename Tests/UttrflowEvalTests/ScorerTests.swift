@@ -1,4 +1,5 @@
 // Tests the clean-up scorer, runner, report and corpus hygiene.
+import Foundation
 import UttrflowAI
 import Synchronization
 import Testing
@@ -23,7 +24,7 @@ struct ScorerTests {
             mustBeginWith: begin, mustEndWith: end)
     }
 
-    /// Case and a final mark are what the destination cases are about, so they are looked at literally.
+    /// Case and a final mark are measured separately from word agreement.
     @Test("checks a required beginning and ending exactly, case included")
     func checksShape() {
         let reference = shaped(expected: "the report is attached.", begin: "the report", end: ".")
@@ -53,7 +54,35 @@ struct ScorerTests {
         #expect(score.passed)
     }
 
-    /// Several phrasings of a sentence are correct; punctuation and case are not measured.
+    @Test("reports word, mark, and case accuracy independently")
+    func scoresSurfaceMetrics() {
+        let score = Scorer.score("i know the answer", against: reference(expected: "I know the answer."))
+        #expect(score.similarity == 1)
+        #expect(score.markAccuracy == 0)
+        #expect(score.caseAccuracy < 1)
+        #expect(!score.isExact)
+    }
+
+    @Test("exactness preserves punctuation and case but normalises whitespace")
+    func exactnessNormalisesOnlyWhitespace() {
+        #expect(Scorer.score("Hello   there.\n", against: reference(expected: "Hello there.")).isExact)
+        #expect(!Scorer.score("hello there.", against: reference(expected: "Hello there.")).isExact)
+        #expect(!Scorer.score("Hello there", against: reference(expected: "Hello there.")).isExact)
+    }
+
+    @Test("mark accuracy detects misplaced commas and extra sentence endings")
+    func markAccuracyFindsPunctuationRegressions() {
+        #expect(Scorer.score("Wait, now.", against: reference(expected: "Wait now.")).markAccuracy < 1)
+        #expect(Scorer.score("400. And $20.", against: reference(expected: "400 And $20.")).markAccuracy < 1)
+    }
+
+    @Test("case accuracy catches altered word casing")
+    func caseAccuracyFindsCaseRegression() {
+        #expect(
+            Scorer.score("YOY increased.", against: reference(expected: "YoY increased.")).caseAccuracy < 1)
+    }
+
+    /// Several phrasings of a sentence can keep full word similarity while surface scores differ.
     @Test(
         "ignores case and punctuation",
         arguments: ["hello there", "HELLO THERE!", "Hello, there.", "  hello   there  "]
@@ -486,16 +515,52 @@ struct CorpusIndependenceTests {
         Scorer.tokens(text).joined(separator: " ")
     }
 
-    /// A worked example that is a verbatim corpus case scores the model on answers it has been shown.
-    @Test("no corpus case appears among any block's worked examples")
-    func corpusIsNotInThePrompt() {
-        let examples = Set(PromptBuilder.standard.allWorkedExamples.map(normalise))
-        for testCase in EvaluationCorpus.all {
-            #expect(!examples.contains(normalise(testCase.spoken)), "\(testCase.id) is in the prompt")
-            #expect(
-                !examples.contains(normalise(testCase.expected)),
-                "\(testCase.id)'s answer is in the prompt")
+    private func quotedFragments(in text: String) -> [String] {
+        let pattern = #""([^"]+)""#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let range = Range(match.range(at: 1), in: text) else { return nil }
+            return String(text[range])
         }
+    }
+
+    private func knownContamination(in prompt: PromptBuilder) -> [(caseID: String, fragment: String)] {
+        let instructions = [prompt.contract] + prompt.blocks.values.map(\.rules)
+        let fragments = instructions.flatMap(quotedFragments(in:)) + prompt.allWorkedExamples
+        return EvaluationCorpus.all.flatMap { testCase in
+            let corpusText = [normalise(testCase.spoken), normalise(testCase.expected)]
+            return fragments.compactMap { fragment in
+                let normalised = normalise(fragment)
+                guard fragment.contains(where: \.isWhitespace),
+                    corpusText.contains(where: { $0.contains(normalised) })
+                else { return nil }
+                return (testCase.id, fragment)
+            }
+        }
+    }
+
+    /// Quoted rule fragments and worked examples cannot give a case's answer away.
+    @Test("no corpus case appears in prompt rules or worked examples")
+    func corpusIsNotInThePrompt() {
+        #expect(knownContamination(in: .standard).isEmpty)
+    }
+
+    @Test("finds an exact corpus leak quoted in a rule")
+    func detectsKnownRuleLeak() {
+        let prompt = PromptBuilder(
+            contract: "",
+            contractExamples: [],
+            blocks: [
+                "plain": PromptBlock(
+                    id: "plain", rules: #"Fix the slip: "there is three" → "there are three"."#,
+                    examples: [])
+            ])
+
+        #expect(
+            knownContamination(in: prompt).contains {
+                $0.caseID == "agreement-there-is" && $0.fragment == "there is three"
+            })
     }
 
     /// An input that closely matches an example can make a model answer with a different example's text.
@@ -565,9 +630,9 @@ struct GrammarRepairTests {
         #expect(!score.passed, "\(testCase.id) passes with the slip left in")
     }
 
-    @Test("counts eight grammar cases as asking for a repair, so the check above is not vacuous")
+    @Test("counts sixteen grammar cases as asking for a repair, so the check above is not vacuous")
     func repairCasesAreCounted() {
-        #expect(EvaluationCorpus.cases(in: .grammar).filter(Self.asksForARepair).count == 8)
+        #expect(EvaluationCorpus.cases(in: .grammar).filter(Self.asksForARepair).count == 16)
     }
 
     @Test(

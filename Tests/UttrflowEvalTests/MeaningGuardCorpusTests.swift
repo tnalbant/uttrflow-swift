@@ -16,4 +16,17 @@ struct MeaningGuardCorpusTests {
             }
         }
     }
+
+    @Test("the cleanup corpus keeps Indian grouping as written")
+    func corpusKeepsIndianGrouping() {
+        for sample in EvaluationCorpus.all where sample.id.hasPrefix("indian-grouping-") {
+            #expect(
+                MeaningPreservationGuard.changedIndianGrouping(
+                    original: sample.spoken, rewritten: sample.expected
+                ) == nil,
+                "\(sample.id) changes its numeric grouping"
+            )
+        }
+    }
+
 }

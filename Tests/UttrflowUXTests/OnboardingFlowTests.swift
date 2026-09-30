@@ -1,5 +1,6 @@
 // Tests for the onboarding flow: starting, permissions, the download, the first try, finishing, and stray intents.
 import Testing
+import UttrflowCore
 
 @testable import UttrflowCore
 @testable import UttrflowSettings
@@ -446,6 +447,20 @@ struct OnboardingFlowTests {
         await harness.flow.tried(.heard("  "))
         #expect(harness.detail == .finishing(.ready, trial: .waiting))
         #expect(harness.finishedWith == nil)
+    }
+
+    @Test("a dictation refused while the speech model loads shows its detail until the next try")
+    func stillLoadingTryShowsDetailAndNextTryWaits() async {
+        let harness = Harness(microphone: .granted, accessibility: .granted)
+        await harness.flow.start()
+
+        await harness.flow.tried(.stillLoading)
+        #expect(harness.detail == .finishing(.ready, trial: .stillLoading))
+        #expect(harness.page.hint == SpeechModelLoad.loading(elapsed: .zero).detail)
+
+        await harness.flow.tried(.listening)
+        #expect(harness.detail == .finishing(.ready, trial: .listening))
+        #expect(harness.page.hint == nil)
     }
 
     @Test("a dictation away from the last page, or after the words arrived, changes nothing")

@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://uttrflow.com">
     <img src="Docs/media/readme-banner.png" width="880"
-         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌥Space and talk, let go, and the words land at your cursor, in any app.">
+         alt="Uttrflow. You just talk. It writes at the speed of sound. A glowing U-shaped line carries the words: hold ⌃⌥ (Control and Option) and talk, let go, and the words land at your cursor, in any app.">
   </a>
 </p>
 
@@ -158,7 +158,7 @@ Thank you to everyone who has sent a fix, filed an issue or asked a good questio
   sound, so spellings you have not seen yet are caught too.
 - **Tab-to-complete**, once you turn it on in Settings → AI suggestions. The rest of the line
   appears in grey ahead of the caret as you type; **Tab** takes it, typing on ignores it,
-  and ↓ opens the alternatives when there is more than one. Tab is already spoken for in a
+  and **⌥↓** opens the alternatives when there is more than one. Tab is already spoken for in a
   terminal and in an editor, so those take a completion with **→** and **⌥Tab** instead,
   and the key can be set per application.
 

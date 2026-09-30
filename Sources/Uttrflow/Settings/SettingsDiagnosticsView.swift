@@ -22,7 +22,7 @@ struct SettingsDiagnosticsView: View {
                 }
             }
             section("This Mac") {
-                rows(presentation.system + presentation.permissions)
+                rows(presentation.system + presentation.permissions + presentation.availability)
             }
             timings
             if !presentation.reliability.isEmpty {
@@ -84,6 +84,8 @@ struct SettingsDiagnosticsView: View {
         case "macOS": .symbol("macbook", .neutral)
         case "Microphone": .symbol("mic", .dictation)
         case "Accessibility": .symbol("hand.raised", .info)
+        case "Dictation shortcut": .symbol("keyboard", .dictation)
+        case "Input device": .symbol("mic", .dictation)
         default: nil
         }
     }

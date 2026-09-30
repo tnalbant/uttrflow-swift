@@ -7,11 +7,29 @@ public enum QuestionShape {
         guard !words.isEmpty else { return false }
         if endsOnATag(words) { return true }
         // The last clause is where "I sent it, did you see it" asks.
-        let lastClause = shapes.dropLast().lastIndex { $0.suffix.contains(",") }.map {
-            Array(words[($0 + 1)...])
-        }
+        let lastClause = trailingQuestionStart(in: shapes).map { Array(words[$0...]) }
         return ([words] + (lastClause.map { [$0] } ?? [])).contains {
             let clause = Array($0.drop(while: openers.contains))
+            return opensAQuestion(clause) && !runsOn(clause)
+        }
+    }
+
+    /// The start of a trailing question after a comma or an inverted request modal.
+    static func trailingQuestionStart(in shapes: [WordShape]) -> Int? {
+        if let comma = shapes.dropLast().lastIndex(where: { $0.suffix.contains(",") }) {
+            return comma + 1
+        }
+        return trailingRequestStart(in: shapes)
+    }
+
+    /// The start of a trailing inverted request without a spoken comma.
+    public static func trailingRequestStart(in shapes: [WordShape]) -> Int? {
+        let words = shapes.map(\.key)
+        return words.indices.dropFirst().first { index in
+            guard index + 1 < words.count, requestModals.contains(words[index]),
+                requestSubjects.contains(words[index + 1])
+            else { return false }
+            let clause = Array(words[index...].drop(while: openers.contains))
             return opensAQuestion(clause) && !runsOn(clause)
         }
     }
@@ -78,6 +96,12 @@ public enum QuestionShape {
         "hadn't",
         "can't", "couldn't", "won't", "wouldn't", "shouldn't",
     ]
+
+    /// Modals that commonly start a request after a spoken statement.
+    private static let requestModals: Set<String> = ["can", "could"]
+
+    /// Subjects used by short trailing requests.
+    private static let requestSubjects: Set<String> = ["you", "we", "someone"]
 
     /// Verbs that also start a command, so they ask only before a pronoun: "do you", not "do the dishes".
     static let pronounVerbs: Set<String> = ["do", "have", "don't", "haven't"]

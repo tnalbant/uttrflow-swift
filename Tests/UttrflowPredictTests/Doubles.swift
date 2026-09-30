@@ -163,12 +163,12 @@ actor RecordingSupersession: SupersessionRecording {
     private(set) var rejected: [String] = []
 
     /// Notes one supersession without doing anything else about it.
-    func recordSupersession(of text: String, by replacement: String, in surface: Surface) {
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) throws {
         recorded.append("\(text) → \(replacement)")
     }
 
     /// Notes one rejection without doing anything else about it.
-    func recordRejection(of text: String, in surface: Surface) {
+    func recordRejection(of text: String, in surface: Surface) throws {
         rejected.append(text)
     }
 }

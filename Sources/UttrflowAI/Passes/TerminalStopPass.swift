@@ -21,6 +21,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         var draft = draft
         if layout.contains(.singleLine) { Self.flatten(&draft) }
         if layout.contains(.paragraphs), policy != .never { Self.stopParagraphs(&draft) }
+        Self.separateTrailingRequest(&draft, layout: layout)
         guard let last = draft.presentIndices.last, !draft.words[last].isLayoutMark else { return draft }
         let word = draft.words[last].text
         let finished: String
@@ -38,13 +39,39 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         return draft
     }
 
+    /// Separates an unmarked trailing request from the statement before it.
+    private static func separateTrailingRequest(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices
+        let shapes = live.map { draft.shape(at: $0) }
+        guard let start = QuestionShape.trailingRequestStart(in: shapes), start > 0,
+            !draft.words[live[start - 1]].isLayoutMark,
+            !shapes[start - 1].suffix.contains(where: { ".!?;,:".contains($0) })
+        else { return }
+        let index = live[start - 1]
+        draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
+        if followingTextContinuesSentence { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)
-        return WordShape.finished(word, with: asks ? "?" : ".")
+        return asks
+            ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?")
+            : WordShape.finished(word)
+    }
+
+    /// Whether text after the replacement already ends or continues the sentence.
+    private var followingTextContinuesSentence: Bool {
+        guard let followingText = insertionPoint.followingText else { return false }
+        let leadingWhitespace = followingText.prefix(while: \.isWhitespace)
+        guard !leadingWhitespace.contains(where: \.isNewline),
+            let next = followingText.dropFirst(leadingWhitespace.count).first
+        else { return false }
+        return ".!?…,:;".contains(next) || next.isLowercase
     }
 
     /// Whether the sentence the draft ends on asks a direct question by its word order.

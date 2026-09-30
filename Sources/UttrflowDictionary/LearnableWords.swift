@@ -32,12 +32,27 @@ enum LearnableWords {
             spoken = spans
             guard
                 spans.contains(where: {
-                    sound.sounds(like: $0.sound) && ReadingRestraint.opensAlike(term, heard: $0.text)
+                    isDistinctSpelling(term, from: $0.text)
+                        && sound.sounds(like: $0.sound)
+                        && ReadingRestraint.opensAlike(term, heard: $0.text)
                 })
             else { continue }
             found.append(term)
         }
         return found
+    }
+
+    /// Whether a title term is a distinct written form of a heard span, not an identical word or abbreviation.
+    private static func isDistinctSpelling(_ term: String, from heard: String) -> Bool {
+        let titleLetters = ReadingRestraint.closedUp(term).filter(\.isLetter)
+        let spokenLetters = ReadingRestraint.closedUp(heard).filter(\.isLetter)
+        guard !term.contains(where: \.isNumber) else { return false }
+        let uppercase = term.filter(\.isLetter)
+        guard !(uppercase.count <= 5 && uppercase.count >= 2 && uppercase.allSatisfy(\.isUppercase)) else {
+            return false
+        }
+        guard titleLetters.lowercased() != spokenLetters.lowercased() else { return false }
+        return true
     }
 
     // MARK: - Corrected by the user

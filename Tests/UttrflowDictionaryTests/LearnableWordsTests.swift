@@ -172,6 +172,48 @@ struct SeenAndSaidTests {
             heard: "pgvector again", seeing: .fixture(documentName: "pgvector — pgvector"))
         #expect(found == ["pgvector"])
     }
+
+    @Test("Ignores title words already written correctly")
+    func ignoresAlreadyCorrectSpellings() {
+        #expect(
+            LearnableWords.seenAndSaid(
+                heard: "clear the inbox before lunch",
+                seeing: .fixture(documentName: "Inbox (12) — Mail")
+            ).isEmpty)
+        #expect(
+            LearnableWords.seenAndSaid(
+                heard: "take a screenshot",
+                seeing: .fixture(documentName: "Screenshot 2026-09-21")
+            ).isEmpty)
+    }
+
+    @Test("Requires a changed spelling and rejects title abbreviations")
+    func requiresDistinctSpelling() {
+        for (title, heard) in [
+            ("Inbox (12) — Mail", "clear the inbox before lunch"),
+            ("IMG_4821.HEIC", "the image is too dark"),
+            ("Spreadsheet1.xlsx", "the spreadsheet is ready"),
+            ("Screenshot 2026-09-21", "take a screenshot"),
+            ("a3f9c2e1d — fix login", "fix the login bug"),
+        ] {
+            #expect(LearnableWords.seenAndSaid(heard: heard, seeing: .fixture(documentName: title)).isEmpty)
+        }
+    }
+
+    @Test("Learns distinct real terms from a window title")
+    func keepsDistinctPersonalSpellings() {
+        for (title, heard, expected) in [
+            ("Zorvane — notes", "use Zorvain for this", "Zorvane"),
+            ("PaymentSheet.swift", "add a total to the payment sheet", "PaymentSheet"),
+            ("Chandrashekhar — notes", "ask Chandra Shekhar about it", "Chandrashekhar"),
+            ("pgvector — README", "we use PG vector here", "pgvector"),
+            ("Bandra office", "kal Bandaraa office jaana hai", "Bandra"),
+        ] {
+            #expect(
+                LearnableWords.seenAndSaid(heard: heard, seeing: .fixture(documentName: title))
+                    == [expected])
+        }
+    }
 }
 
 /// The comparison as it reads with nothing reused: every span encoded again for every title term.
@@ -435,10 +477,14 @@ struct DigitBearingWordTests {
         #expect(LearnableWords.corrected(over: "gpt", wrote: "GPT4") == "GPT4")
     }
 
-    @Test("Considers a digit-bearing title term whole")
-    func titleTermKeepsDigits() {
-        let found = LearnableWords.seenAndSaid(
-            heard: "ask about pgvector", seeing: .fixture(documentName: "pgvector2 notes"))
-        #expect(found == ["pgvector2"])
+    @Test("Rejects digits attached to a spoken title word")
+    func titleTermRejectsAttachedDigits() {
+        for (title, heard) in [
+            ("pgvector2 notes", "ask about pgvector"),
+            ("Spreadsheet1.xlsx", "the spreadsheet is ready"),
+            ("IMG_4821.HEIC", "the image is too dark"),
+        ] {
+            #expect(LearnableWords.seenAndSaid(heard: heard, seeing: .fixture(documentName: title)).isEmpty)
+        }
     }
 }

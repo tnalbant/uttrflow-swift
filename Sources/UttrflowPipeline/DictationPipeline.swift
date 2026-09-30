@@ -1,5 +1,6 @@
 // The whole product in one actor: from the key going down to the text landing.
 public import UttrflowCore
+public import struct Foundation.Date
 public import struct Foundation.UUID
 
 /// Speak, and the words appear where you were typing. See `Docs/pipeline.md`.
@@ -77,6 +78,8 @@ public actor DictationPipeline {
 
     /// The kept audio of the dictation under way, deleted or left for a retry as it ends.
     private var openRecording: UUID?
+    /// Destination facts read for audio kept for a retry.
+    private var recordingDestination: AppContext?
 
     /// Spans the early loop reached while the key was held, and where the audio it consumed ends. See `Docs/early-transcription.md`.
     private var earlySpans: [Span] = []
@@ -424,8 +427,11 @@ public actor DictationPipeline {
         stopwatch = nil
         takeSettings()
         spokenFor = audio.duration
-        insertedInto = nil
-        insertedIntoIdentifier = nil
+        recordingDestination =
+            (await recordings.waiting(now: Date()))
+            .first(where: { $0.id == recording })?.destination
+        insertedInto = recordingDestination?.applicationName
+        insertedIntoIdentifier = recordingDestination?.bundleIdentifier
         destinationIsSecure = false
         cleaningRecords = []
         openRecording = recording
@@ -493,6 +499,7 @@ public actor DictationPipeline {
     private func resolveDictationContext(
         _ app: AppContext, cleaner: any TranscriptCleaning, overrides: DestinationOverrides
     ) async {
+        recordingDestination = app
         let situation = SituationResolver.resolve(from: app, overrides: overrides)
         let words = await speechWords(app)
         dictationWords = words
@@ -767,7 +774,8 @@ public actor DictationPipeline {
             dictationContext?.situation
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
-        let joined = PieceJoiner.join(pieces, under: .standard(for: joining.destination))
+        let joiningFormatter = DestinationFormatter.standard(for: joining)
+        let joined = PieceJoiner.join(pieces, under: joiningFormatter)
         let whole = await finishMessage(joined, going: joining, seeing: appContext ?? AppContext())
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
@@ -780,8 +788,8 @@ public actor DictationPipeline {
 
         // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
         let snippetInput = PieceJoiner.snippetInput(
-            pieces, under: .standard(for: joining.destination), using: written)
-        let layout = DestinationFormatter.standard(for: joining.destination).layout
+            pieces, under: joiningFormatter, using: written)
+        let layout = joiningFormatter.layout
         let expanded = await expand(
             written, matching: snippetInput, laidOut: layout)
         guard !wasCancelled(mine) else { return }
@@ -831,9 +839,14 @@ public actor DictationPipeline {
             insertedInto = read.applicationName
             insertedIntoIdentifier = read.bundleIdentifier
             destinationIsSecure = read.isSecure
+            let recordedDestination = earlyContext ?? dictationContext?.app ?? read
+            recordingDestination = recordedDestination
+            if let openRecording {
+                await recordings.setDestination(recordedDestination, for: openRecording)
+            }
             return read
         case .copy:
-            return AppContext()
+            return recordingDestination ?? AppContext()
         }
     }
 
@@ -841,7 +854,7 @@ public actor DictationPipeline {
     private func correctionContext(for delivery: Delivery) async -> AppContext {
         switch delivery {
         case .insert: await readContext()
-        case .copy: AppContext()
+        case .copy: recordingDestination ?? AppContext()
         }
     }
 
@@ -1114,6 +1127,9 @@ public actor DictationPipeline {
             return
         }
         openRecording = kept?.id
+        if let destination = earlyContext ?? dictationContext?.app, let id = kept?.id {
+            await recordings.setDestination(destination, for: id)
+        }
     }
 
     /// Deletes the kept audio of the dictation under way, if there is one.

@@ -31,6 +31,10 @@ public enum DestinationRules {
             kind: .notes
         ),
         DestinationRule(
+            bundlePrefixes: ["com.apple.reminders", "com.apple.ical"],
+            destination: .document, terminalStop: .never
+        ),
+        DestinationRule(
             bundlePrefixes: [
                 "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp",
                 "net.kovidgoyal.kitty", "org.alacritty", "com.mitchellh.ghostty",
@@ -60,6 +64,7 @@ public enum DestinationRules {
                 "org.telegram", "com.hnc.Discord", "com.apple.MobileSMS", "com.microsoft.teams",
                 "org.whispersystems.signal",
             ],
+            titleContains: ["Slack", "Discord", "Messages", "WhatsApp", "Telegram", "Teams", "Signal"],
             nameWords: [
                 "slack", "discord", "messages", "whatsapp", "telegram", "teams", "signal",
             ],
