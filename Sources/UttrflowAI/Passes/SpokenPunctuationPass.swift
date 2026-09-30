@@ -129,7 +129,7 @@ public struct SpokenPunctuationPass: CleaningPass {
         return Self.particles.contains(draft.shape(at: live[position + 1]).key)
     }
 
-    /// A full stop is used only where the text closes; a hyphen or dash is used only where it does not.
+    /// A full stop is used where the text closes or commas bracket its name; a hyphen or dash is used only where it does not.
     private func isPlaced(
         _ mark: String, before next: Int, spanning length: Int, in live: [Int], of draft: Draft
     ) -> Bool {
