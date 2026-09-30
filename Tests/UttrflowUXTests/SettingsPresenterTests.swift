@@ -400,6 +400,36 @@ struct SettingsLanguagesPaneTests {
 
 // MARK: - Dictation
 
+@Suite("Suggestion model failures in Settings")
+struct SettingsSuggestionModelFailureTests {
+    private func pane(for readiness: SuggestionModelReadiness) -> SettingsPane {
+        var settings = Settings.default
+        settings.suggestions.isEnabled = true
+        var capabilities = SettingsCapabilities.everything
+        capabilities.suggestionModel = readiness
+        return SettingsPresenter.pane(for: .suggestions, settings: settings, capabilities: capabilities)
+    }
+
+    @Test("names a failed fetch and offers connection advice")
+    func fetchFailure() {
+        let pane = pane(for: .fetchFailed)
+        #expect(pane.banner?.title == "The model could not be fetched")
+        #expect(pane.banner?.message.contains("Check your connection") == true)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be fetched")
+        #expect(pane.row("retrySuggestionModel")?.explanation?.contains("connection") == true)
+    }
+
+    @Test("names a failed disk load without connection advice")
+    func diskLoadFailure() {
+        let pane = pane(for: .loadFailed)
+        #expect(pane.banner?.title == "The model could not be loaded")
+        #expect(pane.banner?.message.contains("loading it again") == true)
+        #expect(pane.banner?.message.contains("connection") == false)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be loaded")
+        #expect(pane.row("retrySuggestionModel")?.explanation == "Try loading the model again.")
+    }
+}
+
 @Suite("The Dictation tab")
 struct SettingsDictationPaneTests {
     private func dictation(

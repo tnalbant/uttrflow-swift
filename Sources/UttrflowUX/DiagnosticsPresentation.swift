@@ -488,7 +488,8 @@ public enum DiagnosticsPresenter {
             case .loading: ("Loading", .unknown)
             case .ready: ("Loaded", .good)
             case .releasedForMemory: ("Set aside for memory", .unknown)
-            case .failed: ("Could not be fetched", .attention)
+            case .fetchFailed, .failed: ("Could not be fetched", .attention)
+            case .loadFailed: ("Could not be loaded", .attention)
             }
         return DiagnosticsModelCard(
             title: "AI suggestions", symbolName: "sparkles", tint: .amber,
