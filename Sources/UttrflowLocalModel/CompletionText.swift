@@ -229,6 +229,7 @@ enum CompletionText {
             guard
                 let continuation = Self.continuation(of: text, past: unindented)
                     ?? Self.continuation(of: Self.unmarked(text), past: unindented),
+                !Self.closesTypedNumber(typed, with: continuation),
                 SuggestionTextSafety.allows(continuation),
                 Self.comparable(continuation).contains(where: { $0 != " " }),
                 !promptMarkers.contains(where: text.lowercased().contains),
@@ -239,6 +240,23 @@ enum CompletionText {
             results.append(whole)
         }
         return results
+    }
+
+    /// Refuses a completion that ends a number the person may still be typing.
+    private static func closesTypedNumber(_ typed: String, with continuation: String) -> Bool {
+        guard typed.last?.isNumber == true, let first = continuation.first else { return false }
+        if first.isNumber { return false }
+        let remainder = Array(continuation.dropFirst())
+        switch first {
+        case ".", ",", "_":
+            return remainder.first?.isNumber != true
+        case "e", "E":
+            let exponent =
+                remainder.first == "+" || remainder.first == "-" ? Array(remainder.dropFirst()) : remainder
+            return exponent.first?.isNumber != true
+        default:
+            return true
+        }
     }
 
     /// Whether an answer repeated the typed line anywhere in it, read exactly as `parse` reads an echo.
