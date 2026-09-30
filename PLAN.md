@@ -659,8 +659,9 @@ earns its place by saying what the app is doing rather than what it is called.
   absent one. Capture has no row either — the pipeline does not measure it. The table
   is built from `PipelineStage.allCases`, so that row appears by itself the day
   something does.
-- **Nothing writes audio to disk** — settled in Phase 8 by rewording the promise rather
-  than building the storage. See the §29 entry above.
+- **Audio is written to disk during every dictation.** Successful recordings are deleted
+  when their words land; recordings whose words were lost are kept for a day for retry.
+  See the §29 entry above.
 - **History persists** as of Phase 8: a file, pruned on read and on write, bounded, with
   single-entry and whole-history deletion. It records the application dictated into and
   how long the speaker talked, both of which the artboard had always drawn and nothing
@@ -941,13 +942,9 @@ the work.
   claimed all three existed and has been corrected. Found by grepping for public API the
   app never calls, which is the same sweep that caught the login item.
 
-- **No bound on recording length.** A twenty-minute dictation is ~77 MB of samples handed
-  whole to WhisperKit, with no cancel and no progress. Toggle mode invites it. A soft cap
-  with a warning was specified and built as `DictationLimit` — see Phase 10's list of what
-  is not built — but nothing calls it, so the situation on this line is unchanged.
-- **A partial weights download can still count as installed.** The tokenizer half is now
-  checked; a crash midway through the 632 MB fetch can still leave a directory that
-  `isInstalled` accepts. A `.complete` sentinel would settle it.
+- **A partial weights download cannot count as installed.** Weights are staged under
+  `.partial/<variant>` and moved into the model directory only after verification. See
+  `Docs/speech-model-install.md`.
 - **`AppleSpeechBackend` downloads its locale asset on the dictation path.** Off the
   default route but one setting away, and Settings compounds it by calling the engine
   ready. Its failure is at least honest and recoverable, which is why it was left.
