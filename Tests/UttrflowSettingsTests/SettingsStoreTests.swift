@@ -277,6 +277,15 @@ struct SettingsTests {
         #expect(settings == Settings(shortcuts: .earlierDefault, opensAtLogin: false))
     }
 
+    @Test("hands-free double-tap setting defaults, persists, and rejects unknown values")
+    func handsFreeDoubleTapSetting() throws {
+        #expect(try decode("{} ").handsFreeDoubleTapMilliseconds == 450)
+        let slower = try decode(#"{"handsFreeDoubleTapMilliseconds": 800}"#)
+        let unknown = try decode(#"{"handsFreeDoubleTapMilliseconds": 601}"#)
+        #expect(slower.handsFreeDoubleTapMilliseconds == 800)
+        #expect(unknown.handsFreeDoubleTapMilliseconds == 450)
+    }
+
     @Test("keeps a retention the user actually chose", arguments: [1, 30, 365])
     func acceptedRetention(days: Int) {
         #expect(Settings.retention(days, default: Settings.defaultRetentionDays) == days)

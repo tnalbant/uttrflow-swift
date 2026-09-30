@@ -105,8 +105,12 @@ enum CompletionText {
             let isEllipsis = end > index && characters[index...end].allSatisfy { $0 == "." }
             while end + 1 < characters.count, sentenceClosers.contains(characters[end + 1]) { end += 1 }
             // A mark with no space after it is inside a number, a name or an address, not at a sentence's end.
+            let abbreviation = isAbbreviation(before: index, in: characters)
+            let abbreviationEndsSentence =
+                abbreviation
+                && canEndSentence(before: index, after: end, in: characters)
             if end + 1 < characters.count, characters[end + 1].isWhitespace, !isEllipsis,
-                !isAbbreviation(before: index, in: characters)
+                (!abbreviation || abbreviationEndsSentence)
             {
                 return String(characters[...end])
             }
@@ -125,6 +129,24 @@ enum CompletionText {
         if word.contains(".") { return true }
         if word.count == 1, word.first?.isLetter == true { return true }
         return abbreviations.contains(word)
+    }
+
+    /// Whether an abbreviation can end this sentence instead of introducing a name or example.
+    private static func canEndSentence(before stop: Int, after end: Int, in characters: [Character]) -> Bool {
+        var start = stop
+        while start > 0, !characters[start - 1].isWhitespace { start -= 1 }
+        let word = String(characters[start..<stop]).lowercased()
+        guard !["mr", "mrs", "ms", "dr", "prof", "st", "e.g", "i.e"].contains(word) else {
+            return false
+        }
+        var next = end + 1
+        while next < characters.count,
+            characters[next].isWhitespace
+                || ["\"", "'", "“", "‘", "(", "["].contains(String(characters[next]))
+        {
+            next += 1
+        }
+        return next < characters.count && characters[next].isUppercase
     }
 
     /// The lines a pass keeps once each is unsigned, ended at its first sentence where it is prose, grounded in its specifics and held to the register's length; prose that copies the screen is dropped.

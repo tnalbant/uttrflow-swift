@@ -135,6 +135,34 @@ struct MeaningPreservationGuardTests {
         accepted(original, rewritten)
     }
 
+    @Test(
+        "refuses changes to Indian grouping while allowing the same amount to keep its written form",
+        arguments: [
+            ("1,00,000 rupaye transfer kar do", "100000 rupaye transfer kar do."),
+            ("Rs. 2,50,000 ka quote aaya", "Rs. 250,000 ka quote aaya."),
+            ("total bill 3,45,000 rupaye aaya", "Total bill 345000 rupaye aaya."),
+        ]
+    )
+    func refusesChangedIndianGrouping(original: String, rewritten: String) {
+        rejected(original, rewritten)
+        accepted(original, original + ".")
+    }
+
+    @Test("only locks valid Indian group shapes")
+    func indianGroupingShape() {
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,00,000", rewritten: "100000")
+                == "1,00,000")
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(
+                original: "12,00,00,000", rewritten: "12,00,00,000") == nil)
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,234,567", rewritten: "1234567") == nil
+        )
+        #expect(
+            MeaningPreservationGuard.changedIndianGrouping(original: "1,2,000", rewritten: "12000") == nil)
+    }
+
     @Test("still refuses a different number behind a separator, and keeps a list of digits apart")
     func separatorsHideNothing() {
         rejected("the spend is 12,000", "The spend is 12,500.")
@@ -621,6 +649,40 @@ struct GrammarGuardTests {
 
     private func draft(_ text: String) -> Draft {
         Draft(words: text.split(separator: " ").map { Draft.Word(String($0)) }, confidencesAreReal: true)
+    }
+
+    @Test("refuses a sound-alike replacement of a high-confidence word")
+    func refusesConfidentHomophoneReplacement() {
+        let their = Draft(
+            words: "put it over their".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+        let hear = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+
+        #expect(
+            sut.verdict(draft: their, rewritten: "Put it over there.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'their' with a sound-alike",
+                    kind: .lostWord))
+        #expect(
+            sut.verdict(draft: hear, rewritten: "I can here you.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'hear' with a sound-alike",
+                    kind: .lostWord))
+    }
+
+    @Test("allows an offered homophone for a low-confidence word")
+    func allowsOfferedLowConfidenceHomophone() {
+        let draft = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
     }
 
     @Test("accepts a doubtful word written as one of the readings it was offered")

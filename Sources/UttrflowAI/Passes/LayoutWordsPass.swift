@@ -1,3 +1,4 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
@@ -28,6 +29,7 @@ public struct LayoutWordsPass: CleaningPass {
         var draft = draft
         var live = draft.presentIndices
         let numbered = Set(live.indices.compactMap { itemValue(at: $0, in: live, of: draft) })
+        let labelledItems = labelledItems(in: live, of: draft, among: numbered)
         var position = 0
         while position < live.count {
             guard
@@ -39,6 +41,15 @@ public struct LayoutWordsPass: CleaningPass {
                 position += 1
                 continue
             }
+            if let label = labelledItems[live[position]],
+                let item = itemNumber(at: position + 1, in: live, of: draft)
+            {
+                let labelText = WordShape.capitalised(draft.shape(at: label).core)
+                draft.replace(at: label, with: "\n\(labelText) \(item.value): ", by: Self.id)
+                for index in live[position..<position + found.length] { draft.remove(at: index, by: Self.id) }
+                live.removeSubrange(position..<position + found.length)
+                continue
+            }
             draft.replace(at: live[position], with: found.mark, by: Self.id)
             for index in live[position + 1..<position + found.length] {
                 draft.remove(at: index, by: Self.id)
@@ -47,6 +58,29 @@ public struct LayoutWordsPass: CleaningPass {
             position += 1
         }
         return draft
+    }
+
+    /// Labels that repeat before a corroborated, consecutive sequence of numbered items.
+    private func labelledItems(in live: [Int], of draft: Draft, among numbered: Set<Int>) -> [Int: Int] {
+        var groups: [String: [(marker: Int, label: Int, value: Int)]] = [:]
+        for position in live.indices {
+            guard let found = mark(at: position, in: live, of: draft), position + found.length < live.count,
+                isUsed(found, at: position, in: live, of: draft),
+                isCorroborated(at: position, in: live, of: draft, among: numbered),
+                position > 0,
+                let item = itemNumber(at: position + 1, in: live, of: draft),
+                !draft.shape(at: live[position - 1]).endsSentence
+            else { continue }
+            let label = live[position - 1]
+            groups[draft.shape(at: label).key, default: []].append(
+                (marker: live[position], label: label, value: item.value))
+        }
+        return groups.values.reduce(into: [:]) { labels, items in
+            guard items.count > 1,
+                zip(items, items.dropFirst()).allSatisfy({ pair in pair.1.value == pair.0.value + 1 })
+            else { return }
+            for item in items { labels[item.marker] = item.label }
+        }
     }
 
     /// At the head, a break depends on the insertion point; an item number keeps its existing behavior.
@@ -90,8 +124,52 @@ public struct LayoutWordsPass: CleaningPass {
         guard position > 0, !draft.shape(at: live[position - 1]).endsSentence,
             let value = itemValue(at: position, in: live, of: draft)
         else { return true }
-        return (value > 1 && numbered.contains(value - 1))
-            || (value < Int.max && numbered.contains(value + 1))
+        guard
+            (value > 1 && numbered.contains(value - 1))
+                || (value < Int.max && numbered.contains(value + 1))
+        else { return false }
+        return isEligibleNumberedRun(at: value, in: live, of: draft, among: numbered)
+    }
+
+    /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
+    private func isEligibleNumberedRun(
+        at value: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
+    ) -> Bool {
+        let positionsByValue = Dictionary(
+            numbered.compactMap { position -> (Int, Int)? in
+                guard let item = itemValue(at: position, in: live, of: draft) else { return nil }
+                return (item, position)
+            }, uniquingKeysWith: { first, _ in first },
+        )
+        var first = value
+        while first > 1, positionsByValue[first - 1] != nil { first -= 1 }
+        var item = first
+        var firstMarker: Int?
+        var hasJoiningWord = false
+        while let marker = positionsByValue[item] {
+            if firstMarker == nil { firstMarker = marker }
+            if marker > 0 {
+                let previous = draft.shape(at: live[marker - 1]).key
+                hasJoiningWord = hasJoiningWord || previous == "and" || previous == "or"
+            }
+            guard item < Int.max else { return false }
+            item += 1
+        }
+        guard let firstMarker else { return false }
+        return !hasJoiningWord && isLeadInBefore(firstMarker, in: live, of: draft)
+    }
+
+    /// A mid-sentence list starts after a lead-in, not after a running clause.
+    private func isLeadInBefore(_ marker: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard marker > 0, !draft.shape(at: live[marker - 1]).endsSentence else { return true }
+        let previous = draft.shape(at: live[marker - 1])
+        guard !["and", "or"].contains(previous.key) else { return false }
+        if ["need", "are", "check"].contains(previous.key) { return true }
+        let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = context
+        guard let range = context.range(of: previous.core, options: .backwards) else { return false }
+        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.
@@ -131,7 +209,7 @@ public struct LayoutWordsPass: CleaningPass {
 
     private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
         position + words.count <= live.count
-            && draft.sentenceRun(from: position, in: live).count >= words.count
+            && draft.sentenceContains(words.count, from: position, in: live)
             && zip(words, live[position..<position + words.count]).allSatisfy {
                 $0 == draft.shape(at: $1).key
             }

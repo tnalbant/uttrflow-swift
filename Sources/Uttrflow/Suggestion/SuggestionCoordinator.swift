@@ -152,6 +152,8 @@ final class SuggestionCoordinator {
     private let acceptances = AcceptanceQueue()
     /// Set when a paste or a dictation put text in the field that capture has not yet been told was never typed.
     private var insertionPending = false
+    /// Printable keyboard input not yet checked against the next accessibility read.
+    private var pendingCaptureTyping: [String?] = []
     private var again: SuggestionReason?
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
@@ -378,6 +380,15 @@ final class SuggestionCoordinator {
             // A key this app inserted must not wake another turn, or the feature types on its own.
             if let cgEvent = event.cgEvent, SyntheticEvent.isOurs(cgEvent) { return }
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
+            if !pastes, let self {
+                MainActor.assumeIsolated {
+                    if let text {
+                        self.pendingCaptureTyping.append(text)
+                    } else if Key(keyCode: event.keyCode) != .return {
+                        self.pendingCaptureTyping.append(nil)
+                    }
+                }
+            }
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
                 MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
@@ -1098,7 +1109,13 @@ final class SuggestionCoordinator {
     ) async {
         // The acceptance is recorded off the key path, and capture still hears of it before this event.
         await acceptances.drained()
+        var typed = pendingCaptureTyping
+        pendingCaptureTyping = []
         if case .applicationChanged = reason, let leaving = lastReading, leaving != reading {
+            for input in typed {
+                _ = try? await capture.handle(.typed(input, at: moment), in: leaving)
+            }
+            typed = []
             _ = try? await capture.handle(.applicationDeactivated(at: moment), in: leaving)
         }
         let line = snapshot.learnableLine
@@ -1111,6 +1128,7 @@ final class SuggestionCoordinator {
             events = [reason.event(holding: line, at: moment)]
             if case .keystroke = events[0] { handed = (line, reading) }
         }
+        events.insert(contentsOf: typed.map { .typed($0, at: moment) }, at: 0)
         // Only a turn that read the line can tell capture the line holds inserted text.
         if insertionPending, reason != .tick {
             insertionPending = false

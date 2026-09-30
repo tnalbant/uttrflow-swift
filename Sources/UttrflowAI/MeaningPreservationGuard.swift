@@ -53,6 +53,9 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = readings.verdict {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.confidentHomophoneVerdict(draft, aligned: alignment) {
+            return .rejected(reason: reason, kind: kind)
+        }
         if case .rejected(let reason, let kind) = Self.layoutVerdict(
             kept: draft.text, rewritten: rewritten, layout: layout)
         {
@@ -61,6 +64,28 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token))
+    }
+
+    /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
+    private static func confidentHomophoneVerdict(_ draft: Draft, aligned: RewriteAlignment) -> GuardVerdict {
+        guard draft.confidencesAreReal else { return .accepted }
+        let heard = draft.words
+            .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
+            .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
+        for change in aligned.changes {
+            for index in change.kept where index < heard.count {
+                let token = aligned.kept[index]
+                guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
+                if change.rewritten.contains(where: {
+                    Homophones.share(token.matching, aligned.rewritten[$0].matching)
+                }) {
+                    return .rejected(
+                        reason: "the rewrite replaced high-confidence '\(token.text)' with a sound-alike",
+                        kind: .lostWord)
+                }
+            }
+        }
+        return .accepted
     }
 
     /// The content words and negations among removals no grant covers, each with the pass that took it.
@@ -270,6 +295,10 @@ public struct MeaningPreservationGuard: Sendable {
         }
         if let changed = Self.changedQuantity(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
+        }
+        if let changed = Self.changedIndianGrouping(original: original, rewritten: rewritten) {
+            return .rejected(
+                reason: "the rewrite changed the Indian grouping in \(changed)", kind: .changedNumber)
         }
         return .accepted
     }
@@ -912,6 +941,53 @@ public struct MeaningPreservationGuard: Sendable {
             }
         }
         return written.count < spoken.count ? spoken[written.count].written : nil
+    }
+
+    /// Refuses a rewrite that changes an amount already written with Indian digit grouping.
+    static func changedIndianGrouping(original: String, rewritten: String) -> String? {
+        let spoken = numericSpellings(in: original)
+        let written = numericSpellings(in: rewritten)
+        for (index, spelling) in spoken.enumerated() where isIndianGrouped(spelling) {
+            guard written.indices.contains(index), written[index] == spelling else { return spelling }
+        }
+        return nil
+    }
+
+    /// The digit runs and comma separators as they appear, kept in text order.
+    private static func numericSpellings(in text: String) -> [String] {
+        let characters = Array(text)
+        var spellings: [String] = []
+        var index = 0
+        while index < characters.count {
+            guard characters[index].isNumber else {
+                index += 1
+                continue
+            }
+            let start = index
+            index += 1
+            while index < characters.count {
+                if characters[index].isNumber {
+                    index += 1
+                } else if characters[index] == ",", index + 1 < characters.count,
+                    characters[index + 1].isNumber
+                {
+                    index += 1
+                } else {
+                    break
+                }
+            }
+            spellings.append(String(characters[start..<index]))
+        }
+        return spellings
+    }
+
+    /// Indian grouping has a one or two digit leading group, two digit middle groups, and a three digit final group.
+    private static func isIndianGrouped(_ spelling: String) -> Bool {
+        let groups = spelling.split(separator: ",")
+        guard groups.count >= 3, (1...2).contains(groups[0].count), groups.last?.count == 3 else {
+            return false
+        }
+        return groups.dropFirst().dropLast().allSatisfy { $0.count == 2 }
     }
 
     /// The numbers a text states, in order and with repeats kept, each number word read through `table` and every run of them composed after it.

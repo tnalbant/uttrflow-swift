@@ -34,6 +34,30 @@ struct SuggestionGeometryTests {
         #expect(anchor?.frame.maxY == caret.maxY)
     }
 
+    @Test("The ghost baseline follows the field baseline when the caret includes extra line spacing")
+    func ghostBaselineFollowsTallCaret() throws {
+        let fontAscent: CGFloat = 10
+        let fontDescent: CGFloat = 3
+        let tallCaret = CGRect(x: 620, y: 500, width: 2, height: 34)
+        let tallAnchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: tallCaret, window: documentWindow, screen: mainScreen,
+                size: strip, fontAscent: fontAscent, fontDescent: fontDescent))
+        let tallGhostBaseline = tallAnchor.frame.maxY - fontAscent
+        let tallFieldBaseline = tallCaret.minY + fontDescent
+        #expect(abs(tallGhostBaseline - tallFieldBaseline) <= 1)
+
+        let singleLineCaret = CGRect(x: 620, y: 500, width: 2, height: fontAscent - fontDescent)
+        let singleLineAnchor = try #require(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: singleLineCaret, window: documentWindow, screen: mainScreen,
+                size: strip, fontAscent: fontAscent, fontDescent: fontDescent))
+        let singleLineGhostBaseline = singleLineAnchor.frame.maxY - fontAscent
+        let singleLineFieldBaseline = singleLineCaret.minY + fontDescent
+        #expect(abs(singleLineGhostBaseline - singleLineFieldBaseline) <= 1)
+        #expect(abs(singleLineAnchor.frame.maxY - singleLineCaret.maxY) <= 1)
+    }
+
     @Test(
         "A ghost that would run off the right of the screen is cut at the edge, never pulled back over the typed text"
     )

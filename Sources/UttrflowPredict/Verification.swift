@@ -87,14 +87,26 @@ public enum Verification {
     static let gitCommand = "git"
 
     /// The verdict the gates reach together, from what the machine knows and whether the model objects.
-    public static func verdict(word: String, known: Set<String>, modelObjects: Bool) -> Verdict {
-        guard !attests(word, known) else { return .attested }
-        if let neighbour = nearestNeighbour(of: word, among: known) { return .corrected(neighbour) }
+    public static func verdict(
+        word: String, known: Set<String>, modelObjects: Bool, caseSensitive: Bool = false
+    ) -> Verdict {
+        guard !attests(word, known, caseSensitive: caseSensitive) else { return .attested }
+        if caseSensitive {
+            let caseVariants = known.filter { $0.caseInsensitiveCompare(word) == .orderedSame }
+            if caseVariants.count == 1, let exactCaseMatch = caseVariants.first {
+                return .corrected(exactCaseMatch)
+            }
+            if !caseVariants.isEmpty { return .rejected }
+        }
+        if let neighbour = nearestNeighbour(of: word, among: known, caseSensitive: caseSensitive) {
+            return .corrected(neighbour)
+        }
         return modelObjects ? .rejected : .plausible
     }
 
-    /// Whether the machine vouches for a word, ignoring case, so a capitalised first letter still attests.
-    public static func attests(_ word: String, _ known: Set<String>) -> Bool {
+    /// Whether the machine vouches for a word, ignoring case only for names whose source does.
+    public static func attests(_ word: String, _ known: Set<String>, caseSensitive: Bool = false) -> Bool {
+        if caseSensitive { return known.contains(word) }
         let lowered = word.lowercased()
         return known.contains { $0.lowercased() == lowered }
     }
@@ -106,7 +118,9 @@ public enum Verification {
     }
 
     /// The nearest name the machine knows, when one slip cheap enough explains the difference.
-    public static func nearestNeighbour(of word: String, among known: Set<String>) -> String? {
+    public static func nearestNeighbour(
+        of word: String, among known: Set<String>, caseSensitive: Bool = false
+    ) -> String? {
         let typed = FuzzyMatch.units(word)
         guard FuzzyMatch.budget(forQueryOfLength: typed.count) > 0 else { return nil }
         let width = FuzzyMatch.maskWidth(forQueryOfLength: typed.count, within: 1)
@@ -116,8 +130,8 @@ public enum Verification {
         var bestScore = -Double.infinity
         let lowered = word.lowercased()
         for candidate in known.sorted() {
-            // A difference only of case is not a typo, so it is never corrected or superseded.
-            guard candidate.lowercased() != lowered else { continue }
+            // Filesystem names can differ only in case on a case-insensitive volume.
+            guard caseSensitive || candidate.lowercased() != lowered else { continue }
             let mask = FuzzyMatch.mask(FuzzyMatch.units(candidate).prefix(width))
             guard FuzzyMatch.couldMatch(query: queryMask, candidate: mask, within: 1) else { continue }
             let score = TypoModel.logLikelihood(typed: word, meant: candidate)

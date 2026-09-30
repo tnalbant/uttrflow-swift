@@ -115,14 +115,18 @@ public actor Verifier {
         guard let token = CompletionToken(candidate.text) else { return .plausible }
 
         // Each lookup asks about its own word among its own kinds, so a path's name is not sought among whole paths.
-        var judged: (word: String, prefix: String, known: Set<String>)?
+        var judged: (word: String, prefix: String, known: Set<String>, caseSensitive: Bool)?
         for lookup in Verification.attestation(for: token)?.lookups ?? [] {
-            guard let known = await known(of: lookup.kinds, in: surface, now: now) else { continue }
-            guard !Verification.attests(lookup.word, known) else {
-                if generation == forgetGeneration { cache.remember(.attested, for: key) }
-                return .attested
+            for kind in lookup.kinds {
+                guard let known = await known(of: [kind], in: surface, now: now) else { continue }
+                let caseSensitive = Self.requiresCaseSensitiveMatch(kind)
+                guard !Verification.attests(lookup.word, known, caseSensitive: caseSensitive) else {
+                    if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
+                    return .attested
+                }
+                if judged == nil { judged = (lookup.word, lookup.prefix, known, caseSensitive) }
             }
-            if judged == nil { judged = (lookup.word, lookup.prefix, known) }
+            }
         }
 
         let plausibility = await self.plausibility(
@@ -133,7 +137,8 @@ public actor Verifier {
         let verdict = await reported(
             Verification.verdict(
                 word: judged?.word ?? token.token, known: judged?.known ?? [],
-                modelObjects: Verification.objects(to: plausibility)),
+                modelObjects: Verification.objects(to: plausibility),
+                caseSensitive: judged?.caseSensitive ?? false),
             on: candidate.text, leading: token.leading + (judged?.prefix ?? ""), in: surface,
             forGood: judged != nil && Verification.isClosedVocabulary(for: token),
             generation: generation)
@@ -344,7 +349,7 @@ public actor Verifier {
             answered = true
             if !complete { everyLookupComplete = false }
             // A word already whole and known may be continued freely; the model is held only while the word is open.
-            if Verification.attests(lookup.word, known) { return .open }
+            if await attests(lookup, in: surface, now: now) { return .open }
             var values = known.filter { Self.begins($0, as: lookup.word) }.map { lookup.prefix + $0 }
             // A runner's `run` takes a script, so where the scripts are listed each `run script` is offered whole and bare `run` is not.
             if case .subcommand(let program)? = lookup.kinds.first,
@@ -407,7 +412,7 @@ public actor Verifier {
             var vouched = false
             for lookup in attestation.lookups where !vouched {
                 let answer = await knownAndComplete(of: lookup.kinds, in: surface, now: now)
-                if let answer, Verification.attests(lookup.word, answer.known) {
+                if await attests(lookup, in: surface, now: now) {
                     vouched = true
                 } else if answer?.complete != true {
                     // A listing still out is no proof either way, so only the disk itself may vouch meanwhile.
@@ -436,6 +441,27 @@ public actor Verifier {
         of kinds: [EnvironmentKind], in surface: Surface, now: Date
     ) async -> Set<String>? {
         await knownAndComplete(of: kinds, in: surface, now: now)?.known
+    }
+
+    /// Git names are case-sensitive even on a case-insensitive filesystem.
+    private func attests(_ lookup: Verification.Lookup, in surface: Surface, now: Date) async -> Bool {
+        for kind in lookup.kinds {
+            guard let known = await known(of: [kind], in: surface, now: now) else { continue }
+            if Verification.attests(
+                lookup.word, known, caseSensitive: Self.requiresCaseSensitiveMatch(kind))
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func requiresCaseSensitiveMatch(_ kind: EnvironmentKind) -> Bool {
+        switch kind {
+        case .branch, .gitAlias: true
+        case .subcommand(of: "git"): true
+        case .entries, .directories, .executable, .alias, .subcommand: false
+        }
     }
 
     /// The same union, plus whether every kind asked has actually answered, so a still-refreshing kind is never read as a "no".

@@ -60,6 +60,46 @@ struct DictionaryLearningTests {
         #expect(entries.pronunciation == nil)
     }
 
+    @Test("Window chrome does not teach the dictionary while distinct spellings do")
+    func ignoresChromeAndKeepsDistinctSpellings() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let chrome = [
+            ("Inbox (12) — Mail", "clear the inbox before lunch"),
+            ("IMG_4821.HEIC", "the image is too dark"),
+            ("Screenshot 2026-09-21 at 10.14.33", "take a screenshot"),
+            ("q3-report-final-v2.docx", "the final report is ready"),
+            ("a3f9c2e1d — fix login", "fix the login bug"),
+            ("Slack | #general | Acme", "post it in general"),
+            ("README.md", "readme it later"),
+            ("localhost:3000", "local host is ready"),
+            ("Downloads", "open downloads"),
+            ("Notifications", "check notifications"),
+            ("Terminal — zsh", "terminal is ready"),
+            ("Spreadsheet1.xlsx", "the spreadsheet is ready"),
+        ]
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            for (title, heard) in chrome {
+                #expect(try await dictate(into: store, saying: heard, titled: title).isEmpty)
+            }
+        }
+        #expect(await store.allEntries().isEmpty)
+
+        let personal = [
+            ("Zorvane — notes", "use Zorvain for this", "Zorvane"),
+            ("PaymentSheet.swift", "add a total to the payment sheet", "PaymentSheet"),
+            ("Chandrashekhar — notes", "ask Chandra Shekhar about it", "Chandrashekhar"),
+            ("Bandra office", "kal Bandaraa office jaana hai", "Bandra"),
+            ("pgvector — notes", "we should use PG vector", "pgvector"),
+        ]
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            for (title, heard, _) in personal {
+                _ = try await dictate(into: store, saying: heard, titled: title)
+            }
+        }
+        #expect(Set(await store.allEntries().map(\.word)) == Set(personal.map(\.2)))
+    }
+
     /// A filter tuned only to English would learn half of Hinglish; the place name is the user's own.
     @Test("Learns a Hinglish speaker's own words and not their ordinary ones")
     func learnsHinglishWithoutTheFillers() async throws {

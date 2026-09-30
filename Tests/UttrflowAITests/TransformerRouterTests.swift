@@ -84,6 +84,22 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.kind == .negationMoved)
     }
 
+    @Test("refuses regrouped Indian amounts and falls back to the rules")
+    func regroupedIndianAmountFallsBack() async throws {
+        let model = FakeCleanupModel { _ in "100000 rupaye transfer kar do." }
+        let generative = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let router = TransformerRouter(
+            engines: [generative, RuleBasedTransformer()], preference: [.foundationModels, .rules])
+        let spoken = TransformationRequest(
+            transcription: .fixture(text: "1,00,000 rupaye transfer kar do", language: .english))
+
+        let result = try await router.transform(spoken)
+
+        #expect(result.producedBy == .rules)
+        #expect(result.text.contains("1,00,000"))
+        #expect(result.cleaning?.refusals.first?.kind == .changedNumber)
+    }
+
     /// A user who suddenly gets rules-only text has no other way to learn why. See #193.
     @Test("records the refused answer on the record of the engine that did answer")
     func recordsARefusal() async throws {

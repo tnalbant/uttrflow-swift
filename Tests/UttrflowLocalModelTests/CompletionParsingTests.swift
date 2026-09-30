@@ -368,6 +368,33 @@ struct FirstSentenceTests {
         }
     }
 
+    @Test("An abbreviation ends a sentence before an uppercase word, except a title before a name")
+    func abbreviationsCanEndSentences() {
+        #expect(
+            CompletionText.firstSentence(
+                of: "The call is at 10 a.m. Please bring the slides.", typed: "The call is at 10")
+                == "The call is at 10 a.m.")
+        #expect(
+            CompletionText.firstSentence(
+                of: "Let's meet at 6 p.m. We can review the deck.", typed: "Let's meet at 6")
+                == "Let's meet at 6 p.m.")
+        #expect(
+            CompletionText.firstSentence(
+                of: "Bring pens, paper, etc. We start at nine.", typed: "Bring pens")
+                == "Bring pens, paper, etc.")
+        #expect(
+            CompletionText.firstSentence(of: "I got an A. It was hard.", typed: "I got an") == "I got an A.")
+        #expect(
+            CompletionText.firstSentence(of: "Mr. Smith will join us.", typed: "Mr")
+                == "Mr. Smith will join us.")
+        #expect(
+            CompletionText.firstSentence(of: "Please ask Dr. Rao tomorrow.", typed: "Please ask")
+                == "Please ask Dr. Rao tomorrow.")
+        #expect(
+            CompletionText.firstSentence(of: "Bring e.g. this example along.", typed: "Bring")
+                == "Bring e.g. this example along.")
+    }
+
     @Test("A sentence end the person typed is theirs, and the line goes on to the next")
     func aTypedStopIsNotCut() {
         #expect(

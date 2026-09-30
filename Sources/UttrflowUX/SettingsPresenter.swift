@@ -144,7 +144,7 @@ public enum SettingsPresenter {
     static func dictateExplanation(_ activation: HotkeyActivation, keys: String) -> String {
         switch activation {
         case .holdToTalk: "Hold \(keys) to talk, anywhere"
-        case .pressToToggle: "Press \(keys) to start talking, and again to stop"
+        case .pressToToggle: "Press \(keys) once to start talking, and again to stop"
         }
     }
 
@@ -214,6 +214,20 @@ public enum SettingsPresenter {
         var shortcuts = ShortcutRegistry.all.map { shortcutRow($0, settings, capabilities) }
         if let handsFree = handsFreeRow(settings) {
             shortcuts.insert(handsFree, at: 1)
+            shortcuts.insert(
+                SettingsRow(
+                    id: "handsFreeDoubleTapMilliseconds",
+                    label: "Double-tap speed",
+                    explanation: "Choose how far apart your taps can be.",
+                    control: .menu(
+                        options: [450, 600, 800].map { milliseconds in
+                            SettingsOption(
+                                id: String(milliseconds), title: "\(milliseconds) ms",
+                                change: .handsFreeDoubleTap(milliseconds: milliseconds))
+                        },
+                        selectedID: String(settings.handsFreeDoubleTapMilliseconds)),
+                    style: .inset),
+                at: 2)
         }
         shortcuts.append(
             SettingsRow(

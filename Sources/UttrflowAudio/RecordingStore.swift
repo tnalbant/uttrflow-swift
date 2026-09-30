@@ -13,6 +13,8 @@ public actor RecordingStore: RecordingKeeper {
     private var open: RecordingWriter?
     /// The recording written for the dictation that most recently stopped.
     private var last: KeptRecording?
+    /// Destination facts for recordings awaiting retry, keyed by their audio file identifier.
+    private var destinations: [UUID: AppContext] = [:]
     /// Writers whose bookkeeping is done and whose last bytes are still on their way to the disk.
     private var settling: [UUID: RecordingWriter] = [:]
 
@@ -82,7 +84,23 @@ public actor RecordingStore: RecordingKeeper {
     public func discard(_ id: UUID) async {
         await settle(id)
         try? FileManager.default.removeItem(at: url(of: id))
+        try? FileManager.default.removeItem(at: destinationURL(of: id))
         if last?.id == id { last = nil }
+        destinations[id] = nil
+    }
+
+    public func setDestination(_ destination: AppContext, for id: UUID) {
+        guard last?.id == id || FileManager.default.fileExists(atPath: url(of: id).path) else { return }
+        let safeDestination = AppContext(
+            applicationName: destination.applicationName, bundleIdentifier: destination.bundleIdentifier)
+        destinations[id] = safeDestination
+        if let data = try? PropertyListEncoder().encode(safeDestination) {
+            try? data.write(to: destinationURL(of: id), options: .atomic)
+        }
+        if last?.id == id, let last {
+            self.last = KeptRecording(
+                id: last.id, when: last.when, duration: last.duration, destination: safeDestination)
+        }
     }
 
     /// Deletes every recording kept for a retry, leaving only the one still being written.
@@ -91,7 +109,8 @@ public actor RecordingStore: RecordingKeeper {
         let files = try LocalStore.contents(of: directory)
             .map { directory.appending(path: $0, directoryHint: .notDirectory) }
             .filter { file in
-                guard file.pathExtension == "wav" else { return false }
+                guard file.pathExtension == "wav" || file.pathExtension == "context" else { return false }
+                if file.pathExtension == "context" { return true }
                 let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent)
                 return id == nil || id != open?.id
             }
@@ -123,7 +142,9 @@ public actor RecordingStore: RecordingKeeper {
             }
             let frames = WAVEncoder.frames(inFileOf: values?.fileSize ?? 0)
             kept.append(
-                KeptRecording(id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames)))
+                KeptRecording(
+                    id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames),
+                    destination: destination(for: id)))
         }
         return kept.sorted { $0.when > $1.when }
     }
@@ -135,5 +156,20 @@ public actor RecordingStore: RecordingKeeper {
 
     private func url(of id: UUID) -> URL {
         directory.appending(path: "\(id.uuidString).wav", directoryHint: .notDirectory)
+    }
+
+    private func destinationURL(of id: UUID) -> URL {
+        directory.appending(path: "\(id.uuidString).context", directoryHint: .notDirectory)
+    }
+
+    private func destination(for id: UUID) -> AppContext? {
+        if let cached = destinations[id] { return cached }
+        guard let data = try? Data(contentsOf: destinationURL(of: id)),
+            let decoded = try? PropertyListDecoder().decode(AppContext.self, from: data)
+        else { return nil }
+        let safe = AppContext(
+            applicationName: decoded.applicationName, bundleIdentifier: decoded.bundleIdentifier)
+        destinations[id] = safe
+        return safe
     }
 }

@@ -9,11 +9,13 @@ import UttrflowCore
 struct RulesCorpusTests {
     /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
     static let rulesMustPass: Set<String> = [
-        "false-start", "self-correction", "filler-heavy", "noun-spelled-like-a-filler",
+        "false-start", "self-correction", "filler-heavy", "ellipsis-glued-fillers",
+        "noun-spelled-like-a-filler",
         "pronoun-i", "number-words", "money-billion", "short-yes",
         "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
         "filler-between-commas",
-        "repeated-phrase", "i-mean-correction", "correction-between-commas", "actually-between-numbers",
+        "repeated-phrase", "repeated-intensifier-chain", "repeated-continuation-kept",
+        "i-mean-correction", "correction-between-commas", "actually-between-numbers",
         "number-correction-with-unit",
         "correction-between-amounts", "correction-between-percentages",
         "false-no-stays",
@@ -32,7 +34,7 @@ struct RulesCorpusTests {
         "percentage", "money",
         "period-as-a-word", "spoken-period",
         "period-after-new-line", "full-stop-new-paragraph", "question-mark-new-line",
-        "dates", "ordinal-not-date",
+        "dates", "ordinal-not-date", "compound-ordinal-above-one-hundred",
         "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",
         "spoken-email-address", "spoken-email-address-with-a-name",
         "spoken-email-address-ending-the-sentence", "spoken-email-addresses-in-a-list",
@@ -57,7 +59,8 @@ struct RulesCorpusTests {
         "numbered-items-for-a-trip", "numbered-items-three-of-them", "numbered-items-a-plan",
         "numbered-items-before-lunch", "numbered-items-as-digits", "numbered-items-an-agenda",
         "numbered-items-priorities", "numbered-items-steps", "numbered-items-continuing",
-        "numbered-items-reminders", "number-ring-not-an-item", "number-call-not-an-item",
+        "numbered-items-reminders", "numbered-items-repeated-label", "number-ring-not-an-item",
+        "number-call-not-an-item",
         "number-check-not-an-item", "number-bus-not-an-item", "number-row-not-an-item",
         "number-invoice-not-an-item", "number-gate-not-an-item", "number-platform-not-an-item",
         "number-flight-not-an-item", "number-room-not-an-item", "number-press-not-an-item",
@@ -184,6 +187,7 @@ struct RulesCorpusTests {
         "writes the exact reference for the cases that have one right answer",
         arguments: [
             ("self-correction", "Let's meet at five on tuesday."),
+            ("ellipsis-glued-fillers", "The invoice is overdue."),
             ("version-number", "We're on postgres 16.2 right now."),
             ("spoken-comma", "We still need milk, eggs, and bread from the shop."),
             ("new-paragraph", "Thanks for the update.\n\nThe second issue is the login timeout."),

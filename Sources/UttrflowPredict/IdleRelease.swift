@@ -124,6 +124,12 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         await step.value
     }
 
+    /// Lets a later query reload weights after memory pressure without loading them now.
+    public func allowReloadAfterRelease() {
+        guard !isHeld else { return }
+        isWanted = true
+    }
+
     /// Whether the model can answer now, loading it again in the background when an idle release let it go.
     public var isReady: Bool {
         get async {

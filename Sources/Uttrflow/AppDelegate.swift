@@ -117,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)?
     /// Frees that model's weights, run when tab-to-complete is turned off.
     private let releaseModel: (@Sendable () async -> Void)?
+    /// Makes a released model reloadable by its next query without fetching weights now.
+    private let allowModelReload: (@Sendable () async -> Void)?
+    /// Waits out calm so a test can advance the pressure timer without wall-clock delay.
+    private let waitForCalm: @Sendable (Duration) async throws -> Void
     /// Asks which clean-up engines can run, held as a seam so availability changes are testable.
     private let transformerReadiness: @Sendable (UserProfile) async -> Set<TransformerKind>
     /// Whether the weights have been asked for and not let go since, so turning the feature on twice does not ask twice.
@@ -161,6 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
         releaseModel: (@Sendable () async -> Void)? = nil,
+        allowModelReload: (@Sendable () async -> Void)? = nil,
+        waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
         }
@@ -173,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.generating = generating
         self.prepareModel = prepareModel
         self.releaseModel = releaseModel
+        self.allowModelReload = allowModelReload
+        self.waitForCalm = waitForCalm
         self.transformerReadiness = transformerReadiness
         history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: container))
         recordings = RecordingStore(directory: RecordingStore.defaultDirectory(in: container))
@@ -866,7 +874,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task { await speechEngine.release() }
     }
 
-    /// Releases the suggestion model when memory is pressed, and loads it again once calm has lasted. See `Docs/performance.md`.
+    /// Releases the suggestion model under pressure, then permits a query-driven reload after calm. See `Docs/performance.md`.
     func memoryPressureChanged(to level: MemoryPressureLevel) {
         switch level {
         case .warning, .critical:
@@ -879,15 +887,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             suggestionModel = .releasedForMemory
         case .normal:
             // A repeated calm keeps the countdown already running.
-            guard memoryPressure.isReleased, pressureReload == nil else { return }
+            guard memoryPressure.isReleased, pressureReload == nil,
+                let allowModelReload
+            else { return }
             let wait = memoryPressure.wait
+            let waitForCalm = waitForCalm
             pressureReload = Task { [weak self] in
-                try? await Task.sleep(for: wait)
+                try? await waitForCalm(wait)
                 guard !Task.isCancelled, let self, memoryPressure.isReleased,
                     settings.suggestions.isEnabled
                 else { return }
-                memoryPressure.reloaded(at: .now)
-                prepareTheModelIfNeeded()
+                await allowModelReload()
+                guard !Task.isCancelled, memoryPressure.isReleased,
+                    settings.suggestions.isEnabled
+                else { return }
+                isModelPreparing = true
             }
         }
     }
@@ -896,8 +910,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func suggestionModelReloaded(_ event: IdleReload) {
         guard isModelPreparing else { return }
         switch event {
-        case .started where suggestionModel == .ready:
-            suggestionModel = .loading
+        case .started:
+            if memoryPressure.isReleased { memoryPressure.reloaded(at: .now) }
+            if suggestionModel == .ready || suggestionModel == .releasedForMemory {
+                suggestionModel = .loading
+            }
         case .finished where suggestionModel == .loading:
             suggestionModel = .ready
         case .failed where suggestionModel == .loading:
@@ -1029,6 +1046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             cue: cue,
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
+            doubleTapWindow: .milliseconds(settings.handsFreeDoubleTapMilliseconds),
             clock: ContinuousClock(),
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
@@ -1887,11 +1905,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
-        if case .inserted = state { retryingRecording = nil }
-        if case .failed = state { retryingRecording = nil }
+        if state.hasEnded { retryingRecording = nil }
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
-        if case .inserted = state { sweepExpired() }
-        if case .failed = state { sweepExpired() }
+        if state.hasEnded { sweepExpired() }
 
         // Kept here, where every change already arrives, so the updater need not ask the pipeline.
         lastDictationState = state
@@ -2287,6 +2303,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     appleSpeechStatus: appleSpeechStatus,
                     appleSpeechLoadFailure: appleSpeechLoadFailure,
                     permissions: knownPermissions,
+                    dictationShortcutArmed: surfaces.listensForDictation
+                        && shortcutArming.failure == nil,
+                    hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
@@ -2681,6 +2700,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if updated.handsFreeEnabled != previous.handsFreeEnabled {
             let enabled = updated.handsFreeEnabled
             Task { [weak self] in await self?.controller?.setHandsFreeEnabled(enabled) }
+        }
+        if updated.handsFreeDoubleTapMilliseconds != previous.handsFreeDoubleTapMilliseconds {
+            Task { [weak self] in
+                await self?.controller?.setDoubleTapWindow(
+                    .milliseconds(updated.handsFreeDoubleTapMilliseconds))
+            }
         }
         telemetry?.setEnabled(updated.sharesUsageStatistics)
         // As above: a switch that drew itself and changed nothing.

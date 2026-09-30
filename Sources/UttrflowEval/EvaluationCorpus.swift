@@ -36,6 +36,21 @@ public enum EvaluationCorpus {
             mustKeep: ["John", "20"]
         ),
         .init(
+            id: "indian-grouping-lakh-transfer", category: .everyday,
+            spoken: "1,00,000 rupaye transfer kar do",
+            expected: "1,00,000 rupaye transfer kar do."
+        ),
+        .init(
+            id: "indian-grouping-quote", category: .everyday,
+            spoken: "Rs. 2,50,000 ka quote aaya",
+            expected: "Rs. 2,50,000 ka quote aaya."
+        ),
+        .init(
+            id: "indian-grouping-total-bill", category: .everyday,
+            spoken: "total bill 3,45,000 rupaye aaya",
+            expected: "Total bill 3,45,000 rupaye aaya."
+        ),
+        .init(
             id: "greeting-kept", category: .everyday,
             spoken: "hey sarah just checking in on the the design review",
             expected: "Hey Sarah, just checking in on the design review.",
@@ -57,6 +72,11 @@ public enum EvaluationCorpus {
             id: "filler-heavy", category: .everyday,
             spoken: "um so uh basically the the thing is we need more time",
             expected: "So basically the thing is, we need more time."
+        ),
+        .init(
+            id: "ellipsis-glued-fillers", category: .everyday,
+            spoken: "Ah...the...um...the invoice is...ah...overdue",
+            expected: "The invoice is overdue."
         ),
         .init(
             id: "filler-carrying-a-question-mark", category: .everyday,
@@ -171,6 +191,18 @@ public enum EvaluationCorpus {
             spoken: "can you can you send me the link to the doc again",
             expected: "Can you send me the link to the doc again?",
             mustKeep: ["link", "doc"]
+        ),
+        .init(
+            id: "repeated-intensifier-chain", category: .everyday,
+            spoken: "it went on and on and on",
+            expected: "It went on and on and on.",
+            mustKeep: ["on and on and on"]
+        ),
+        .init(
+            id: "repeated-continuation-kept", category: .everyday,
+            spoken: "blah blah blah and so on and so on",
+            expected: "Blah blah blah and so on and so on.",
+            mustKeep: ["and so on and so on"]
         ),
         .init(
             id: "i-mean-correction", category: .everyday,
@@ -548,6 +580,13 @@ public enum EvaluationCorpus {
             expected: "The twenty first may fail.",
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
+        ),
+        .init(
+            id: "compound-ordinal-above-one-hundred", category: .everyday,
+            spoken: "one hundred and twenty first",
+            expected: "One hundred and twenty first.",
+            mustKeep: ["one hundred and twenty first"],
+            mustNotAdd: ["120", "121"]
         ),
     ]
 
@@ -1272,6 +1311,14 @@ public enum EvaluationCorpus {
             mustKeep: ["water the plants", "feed the cat"], context: numberedNotes,
             mustNotAdd: ["number"], destination: .document,
             mustBeginWith: "Reminders\n"
+        ),
+        .init(
+            id: "numbered-items-repeated-label", category: .contextual,
+            spoken: "reason number one it is cheap reason number two it is fast reason number three it works",
+            expected: "Reason 1: It is cheap\nReason 2: It is fast\nReason 3: It works",
+            mustKeep: ["reason", "cheap", "fast", "works"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "Reason 1: It is cheap"
         ),
         // Issue 238: a designator spoken mid-sentence, which must keep its word and its number.
         .init(

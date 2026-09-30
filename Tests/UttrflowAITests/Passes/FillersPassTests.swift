@@ -24,6 +24,38 @@ struct FillersPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("removes fillers joined to neighboring words by an ellipsis")
+    func removesEllipsisJoinedFillers() {
+        #expect(
+            cleaned("Ah...the...um...the invoice is...ah...overdue", by: sut)
+                == "the...the invoice is...overdue")
+        #expect(cleaned("e.g. uh...hello", by: sut) == "e.g. hello")
+        #expect(
+            cleaned("https://example.com/uh...hello", by: sut)
+                == "https://example.com/uh...hello")
+    }
+
+    @Test(
+        "joins fixed assent and alarm replies",
+        arguments: [
+            ("uh huh", "Uh-huh"),
+            ("uh huh sounds good", "Uh-huh sounds good"),
+            ("uh oh", "Uh-oh"),
+            ("mm hmm", "Mm-hmm"),
+        ]
+    )
+    func joinsInterjections(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps hmm and mhm when they are the whole reply")
+    func keepsStandaloneReplies() {
+        #expect(cleaned("hmm", by: sut) == "hmm")
+        #expect(cleaned("mhm", by: sut) == "mhm")
+        #expect(cleaned("hello there hmm", by: sut) == "hello there")
+        #expect(cleaned("hello there mhm", by: sut) == "hello there")
+    }
+
     @Test(
         "keeps words that only sometimes act as filler",
         arguments: [

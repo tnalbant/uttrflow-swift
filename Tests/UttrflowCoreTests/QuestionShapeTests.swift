@@ -19,6 +19,10 @@ struct QuestionShapeTests {
             "Would you like some coffee", "it's a long weekend isn't it",
             "you know the answer don\u{2019}t you",
             "so did you finish the slides", "okay can we start the call", "I sent the file, did you get it",
+            "I'm blocked on the credentials for the sandbox account can someone help",
+            "I think this will break if the array is empty can you add a check",
+            "This duplicates the logic in the helper class can we reuse that instead",
+            "I don't have access to the production database can someone grant it",
             "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya",
         ])
     func asks(text: String) {
