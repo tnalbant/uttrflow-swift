@@ -93,11 +93,23 @@ struct SpeechWindowingTests {
         #expect(windowing.nextCut(in: audio, sampleRate: Take.rate, from: 0) == nil)
     }
 
-    @Test("takes a short pause once the window has grown past the comfortable length")
-    func takesShortPauseLater() throws {
+    @Test("does not cut on a breath just after the comfortable length")
+    func leavesShortPauseAfterComfortableLength() {
         let audio = Take.speech(16) + Take.silence(0.5) + Take.speech(2)
+        #expect(windowing.nextCut(in: audio, sampleRate: Take.rate, from: 0) == nil)
+    }
+
+    @Test("keeps a sentence pause sufficient while the window approaches its maximum")
+    func takesSentencePauseLater() throws {
+        let audio =
+            Take.speech(16) + Take.silence(0.5) + Take.speech(10) + Take.silence(0.9)
+            + Take.speech(2)
         let cut = try #require(windowing.nextCut(in: audio, sampleRate: Take.rate, from: 0))
-        #expect(abs(Take.seconds(cut) - 16.25) < 0.05)
+        #expect(Take.seconds(cut) > 26.5)
+        #expect(Take.seconds(cut) < 27)
+        let windows = windowing.windows(in: audio, sampleRate: Take.rate)
+        #expect(windows.count == 2)
+        #expect(windows.first?.upperBound == cut)
     }
 
     @Test("counts a pause the speaker is still in, so a cut need not wait for the next word")

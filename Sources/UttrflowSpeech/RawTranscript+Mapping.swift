@@ -42,45 +42,191 @@ extension RawTranscript {
         "plays", "ends",
     ]
 
+    /// Exact caption phrases reported by issue #2372 that need words outside `markerWords`.
+    static let markerPhrases: Set<String> = [
+        "door slams", "phone ringing", "clears throat", "sneezes", "speaking in foreign language",
+        "background conversations",
+    ]
+
     /// Whether every word between the brackets is one of those, which is the evidence that tells a marker from a parenthesis the speaker dictated.
     static func isMarker(_ inside: Substring) -> Bool {
         let words = inside.split(whereSeparator: { $0.isWhitespace || $0 == "_" || $0 == "-" })
-        guard !words.isEmpty, words.count <= 3 else { return false }
+        guard !words.isEmpty else { return false }
+        let phrase = words.map { $0.lowercased() }.joined(separator: " ")
+        if markerPhrases.contains(phrase) || isInaudibleTimestamp(phrase) { return true }
+        guard words.count <= 3 else { return false }
         return words.allSatisfy { markerWords.contains($0.lowercased()) }
+    }
+
+    /// Recognises the timestamped inaudible caption reported by issue #2372.
+    private static func isInaudibleTimestamp(_ phrase: String) -> Bool {
+        let parts = phrase.split(separator: " ")
+        guard parts.count == 2, parts[0] == "inaudible" else { return false }
+        let timestamp = parts[1].split(separator: ":", omittingEmptySubsequences: false)
+        return timestamp.count == 2 && timestamp.allSatisfy { $0.count == 2 && $0.allSatisfy(\.isNumber) }
+    }
+
+    /// Removes a leading music-caption run bounded by notes and containing only words or whitespace.
+    private static func removingMusicRuns(_ text: String) -> String {
+        let characters = Array(text)
+        var kept: [Character] = []
+        var index = 0
+
+        while index < characters.count {
+            guard characters[index] == "♪", isBoundary(characters, before: index) else {
+                kept.append(characters[index])
+                index += 1
+                continue
+            }
+
+            var cursor = index + 1
+            var lastNote = index
+            while cursor < characters.count {
+                while cursor < characters.count,
+                    characters[cursor].isWhitespace || characters[cursor].isLetter
+                {
+                    cursor += 1
+                }
+                guard cursor < characters.count, characters[cursor] == "♪" else { break }
+                lastNote = cursor
+                cursor += 1
+            }
+
+            guard lastNote > index, isBoundary(characters, after: lastNote) else {
+                kept.append(characters[index])
+                index += 1
+                continue
+            }
+            index = lastNote + 1
+        }
+        return String(kept)
+    }
+
+    /// A note run begins and ends at transcript boundaries, so inline musical symbols stay literal.
+    private static func isBoundary(_ characters: [Character], before index: Int) -> Bool {
+        index == 0 || characters[index - 1].isWhitespace || characters[index - 1].isPunctuation
+    }
+
+    /// A note run ends at transcript boundaries, so inline musical symbols stay literal.
+    private static func isBoundary(_ characters: [Character], after index: Int) -> Bool {
+        index + 1 == characters.count || characters[index + 1].isWhitespace
+            || characters[index + 1].isPunctuation
+    }
+
+    /// Removes a musical caption only when its bracket contains two or more notes and no punctuation.
+    private static func isMusicMarker(_ inside: Substring) -> Bool {
+        var notes = 0
+        for character in inside {
+            if character == "♪" {
+                notes += 1
+            } else if !character.isWhitespace && !character.isLetter {
+                return false
+            }
+        }
+        return notes >= 2 && inside.first(where: { !$0.isWhitespace }) == "♪"
+            && inside.reversed().first(where: { !$0.isWhitespace }) == "♪"
+    }
+
+    /// Removes a leading recogniser speaker marker while preserving the first spoken word's confidence.
+    private static func removingSpeakerPrefix(_ words: [TranscribedWord]) -> [TranscribedWord] {
+        guard let first = words.first else { return words }
+        let leadingTrimmed = first.text.drop(while: \.isWhitespace)
+        guard leadingTrimmed.hasPrefix(">>"),
+            leadingTrimmed.dropFirst(2).first.map({ $0.isWhitespace }) ?? true
+        else { return words }
+
+        let spoken = leadingTrimmed.dropFirst(2).drop(while: \.isWhitespace)
+        if spoken.isEmpty { return Array(words.dropFirst()) }
+        return [TranscribedWord(text: String(spoken), confidence: first.confidence)] + words.dropFirst()
     }
 
     /// The same removal over the recogniser's words, so the text and the word list cannot fall out of step.
     static func cleaned(_ words: [TranscribedWord]) -> [TranscribedWord] {
         var kept: [TranscribedWord] = []
-        var index = words.startIndex
+        let withoutSpeaker = removingSpeakerPrefix(words)
+        var index = withoutSpeaker.startIndex
 
-        while index < words.endIndex {
-            let opener = words[index].text.first
+        while index < withoutSpeaker.endIndex {
+            let opener = withoutSpeaker[index].text.first
             guard opener == "[" || opener == "(" else {
-                kept.append(words[index])
+                kept.append(withoutSpeaker[index])
                 index += 1
                 continue
             }
             let closer: Character = opener == "[" ? "]" : ")"
-            guard let close = words[index...].firstIndex(where: { $0.text.hasSuffix(String(closer)) })
+            guard
+                let close = withoutSpeaker[index...].firstIndex(where: { $0.text.hasSuffix(String(closer)) })
+            else {
+                kept.append(withoutSpeaker[index])
+                index += 1
+                continue
+            }
+            let inside = withoutSpeaker[index...close].map(\.text).joined(separator: " ").dropFirst()
+                .dropLast()
+            if !isMarker(inside) && !isMusicMarker(inside) {
+                kept.append(contentsOf: withoutSpeaker[index...close])
+            }
+            index = withoutSpeaker.index(after: close)
+        }
+        return removingMusicRuns(from: kept)
+    }
+
+    /// Removes note-delimited lyric runs from recognised words without disturbing retained confidences.
+    private static func removingMusicRuns(from words: [TranscribedWord]) -> [TranscribedWord] {
+        var kept: [TranscribedWord] = []
+        var index = 0
+        while index < words.count {
+            guard words[index].text.trimmingCharacters(in: .whitespaces) == "♪",
+                isBoundary(words, before: index)
             else {
                 kept.append(words[index])
                 index += 1
                 continue
             }
-            let inside = words[index...close].map(\.text).joined(separator: " ").dropFirst().dropLast()
-            if !isMarker(inside) {
-                kept.append(contentsOf: words[index...close])
+
+            var cursor = index + 1
+            var lastNote = index
+            while cursor < words.count {
+                let token = words[cursor].text.trimmingCharacters(in: .whitespaces)
+                if token == "♪" {
+                    lastNote = cursor
+                    cursor += 1
+                } else if !token.isEmpty && token.allSatisfy(\.isLetter) {
+                    cursor += 1
+                } else {
+                    break
+                }
             }
-            index = words.index(after: close)
+            if lastNote > index && isBoundary(words, after: lastNote) {
+                index = lastNote + 1
+            } else {
+                kept.append(words[index])
+                index += 1
+            }
         }
         return kept
     }
 
+    /// A word-level music run begins at the transcript start or after whitespace or punctuation.
+    private static func isBoundary(_ words: [TranscribedWord], before index: Int) -> Bool {
+        guard index > 0 else { return true }
+        let previous = words[index - 1].text.last
+        return words[index].text.first?.isWhitespace == true || previous?.isWhitespace == true
+            || previous?.isPunctuation == true
+    }
+
+    /// A word-level music run ends at the transcript end or before whitespace or punctuation.
+    private static func isBoundary(_ words: [TranscribedWord], after index: Int) -> Bool {
+        guard index + 1 < words.count else { return true }
+        let next = words[index + 1].text.first
+        return next?.isWhitespace == true || next?.isPunctuation == true
+    }
+
     /// Removes bracketed non-speech markers such as `[BLANK_AUDIO]`. See `Docs/silence.md`.
     static func cleaned(_ text: String) -> String {
+        let withoutSpeaker = removingSpeakerPrefix(from: text)
         var result: [Substring] = []
-        var remainder = Substring(text)
+        var remainder = Substring(withoutSpeaker)
 
         while let open = remainder.firstIndex(where: { $0 == "[" || $0 == "(" }) {
             let closer: Character = remainder[open] == "[" ? "]" : ")"
@@ -95,7 +241,7 @@ extension RawTranscript {
                 && (after == nil || after?.isWhitespace == true || after?.isPunctuation == true)
 
             let inside = remainder[remainder.index(after: open)..<close]
-            let looksLikeAMarker = standsAlone && isMarker(inside)
+            let looksLikeAMarker = standsAlone && (isMarker(inside) || isMusicMarker(inside))
 
             result.append(remainder[..<open])
             if !looksLikeAMarker {
@@ -105,10 +251,19 @@ extension RawTranscript {
         }
         result.append(remainder)
 
-        return result.joined()
+        return removingMusicRuns(result.joined())
             .split(separator: " ", omittingEmptySubsequences: true)
             .joined(separator: " ")
             .trimmingWhitespace()
+    }
+
+    /// Removes a leading `>>` speaker caption and its separating whitespace.
+    private static func removingSpeakerPrefix(from text: String) -> String {
+        let leadingTrimmed = text.drop(while: \.isWhitespace)
+        guard leadingTrimmed.hasPrefix(">>") else { return text }
+        let spoken = leadingTrimmed.dropFirst(2)
+        guard spoken.first.map({ $0.isWhitespace }) ?? true else { return text }
+        return String(spoken.drop(while: \.isWhitespace))
     }
 }
 

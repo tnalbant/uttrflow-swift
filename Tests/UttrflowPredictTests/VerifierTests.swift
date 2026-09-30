@@ -10,6 +10,67 @@ let liked = Verification.plausibilityFloor + 1
 /// A score the model dislikes, which is well below the floor.
 let disliked = Verification.plausibilityFloor - 1
 
+private enum SupersessionWriteError: Error {
+    case unavailable
+}
+
+private actor ThrowingSupersession: SupersessionRecording {
+    private(set) var rejections = 0
+    private(set) var supersessions = 0
+    private(set) var successfulWrites = 0
+    private(set) var corpusClears = 0
+    private var failuresRemaining: Int
+    private let blocksSecondAttempt: Bool
+    private var waitingForSecondAttempt: CheckedContinuation<Void, Never>?
+    private var releaseSecondAttempt: CheckedContinuation<Void, Never>?
+
+    init(failuresBeforeSuccess: Int = .max, blocksSecondAttempt: Bool = false) {
+        failuresRemaining = failuresBeforeSuccess
+        self.blocksSecondAttempt = blocksSecondAttempt
+    }
+
+    func recordSupersession(of text: String, by replacement: String, in surface: Surface) async throws {
+        supersessions += 1
+        try await write()
+    }
+
+    func recordRejection(of text: String, in surface: Surface) async throws {
+        rejections += 1
+        try await write()
+    }
+
+    func waitForSecondAttempt() async {
+        guard rejections + supersessions < 2 else { return }
+        await withCheckedContinuation { waitingForSecondAttempt = $0 }
+    }
+
+    func releaseSecondAttemptWrite() {
+        releaseSecondAttempt?.resume()
+        releaseSecondAttempt = nil
+    }
+
+    func clearCorpus() {
+        corpusClears += 1
+    }
+
+    private func write() async throws {
+        let attempts = rejections + supersessions
+        if attempts == 2 {
+            waitingForSecondAttempt?.resume()
+            waitingForSecondAttempt = nil
+            if blocksSecondAttempt {
+                await withCheckedContinuation { releaseSecondAttempt = $0 }
+            }
+        }
+        guard failuresRemaining > 0 else {
+            successfulWrites += 1
+            return
+        }
+        failuresRemaining -= 1
+        throw SupersessionWriteError.unavailable
+    }
+}
+
 /// A verifier over a machine that has already answered, since the first ask only starts the read.
 func warmed(
     _ machine: [EnvironmentKind: [String]], on text: String, in surface: Surface = terminal,
@@ -69,6 +130,100 @@ struct VerifierTests {
         _ = await decided(
             "git comit", typed: "git com", machine: [.subcommand(of: "git"): ["commit"]], supersession: store)
         #expect(await store.recorded == ["git comit → git commit"])
+    }
+
+    @Test("A failed rejection write is retried and the refused line stays suppressed for the session.")
+    func failedRejectionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git zqxjw", scoring: ScriptedScoring(disliked),
+            supersession: store)
+        let candidate = Candidate(text: "git zqxjw", source: .personal)
+
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 1)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 2)
+    }
+
+    @Test("A failed supersede write is retried and the retired line stays suppressed for the session.")
+    func failedSupersessionIsRetriedAndSuppressed() async {
+        let store = ThrowingSupersession()
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(await store.supersessions == 1)
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text)
+                .isEmpty)
+        #expect(await store.supersessions == 2)
+    }
+
+    @Test("A rejection write that fails once is retried successfully.")
+    func rejectionRetryRecovers() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 1)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git zqxjw", scoring: ScriptedScoring(disliked),
+            supersession: store)
+        let candidate = Candidate(text: "git zqxjw", source: .personal)
+
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await verifier.verified([candidate], in: terminal, typed: "git z", now: moment).isEmpty)
+        #expect(await store.rejections == 2)
+        #expect(await store.successfulWrites == 1)
+    }
+
+    @Test("A supersede write that fails once is retried successfully.")
+    func supersessionRetryRecovers() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 1)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text)
+                == ["git commit"])
+        #expect(await store.supersessions == 2)
+        #expect(await store.successfulWrites == 1)
+    }
+
+    @Test("Forgetting waits for an in-flight retry, then clears its pending suppression.")
+    func forgetDrainsInFlightRetry() async {
+        let store = ThrowingSupersession(failuresBeforeSuccess: 2, blocksSecondAttempt: true)
+        let verifier = await warmed(
+            [.subcommand(of: "git"): ["commit"]], on: "git comit", supersession: store)
+        let candidate = Candidate(text: "git comit", source: .personal)
+        _ = await verifier.verified([candidate], in: terminal, typed: "git com", now: moment)
+
+        let retry = Task {
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment)
+        }
+        await store.waitForSecondAttempt()
+        let forgetting = Task {
+            try? await verifier.forgetEverything(then: { await store.clearCorpus() })
+        }
+        while !(await verifier.isWaitingToForgetSupersessionWrites) { await Task.yield() }
+        #expect(await store.corpusClears == 0)
+
+        await store.releaseSecondAttemptWrite()
+        #expect(await retry.value.isEmpty)
+        await forgetting.value
+        #expect(await store.corpusClears == 1)
+
+        #expect(
+            await verifier.verified([candidate], in: terminal, typed: "git com", now: moment).map(\.text) == [
+                "git commit"
+            ])
+        #expect(await store.supersessions == 3)
     }
 
     @Test("A candidate the machine has never heard of stands, because silence is not a denial.")

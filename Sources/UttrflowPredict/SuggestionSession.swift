@@ -258,7 +258,8 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         // A candidate the user has already finished typing adds nothing, and one in another script is never written.
         let offerable = candidates.filter {
-            $0.text != pending.typed && LatinScript.writes($0.text) && isOfferable($0.text)
+            $0.text != pending.typed && LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text)
+                && isOfferable($0.text)
         }
         let decided = PredictionEngine.ranked(from: offerable, in: pending, now: now)
         // A turn with nothing on offer has nothing to be wrong about, so the gates are never troubled.
@@ -284,7 +285,9 @@ public struct SuggestionSession: Sendable, Equatable {
             return settle(.silent, silence: .overBudget)
         }
         let decided = PredictionEngine.decision(
-            from: verified.filter { LatinScript.writes($0.text) && isOfferable($0.text) }, in: pending,
+            from: verified.filter {
+                LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text) && isOfferable($0.text)
+            }, in: pending,
             now: now)
         return settle(decided.suggestion, silence: decided.silence)
     }
@@ -301,7 +304,7 @@ public struct SuggestionSession: Sendable, Equatable {
         guard elapsedMilliseconds <= Self.turnBudgetInMilliseconds else {
             return settle(.silent, silence: .overBudget)
         }
-        let offerable = completions.filter(isOfferable)
+        let offerable = completions.filter { SuggestionTextSafety.allows($0) && isOfferable($0) }
         let decision = Self.generatedDecision(offerable, typed: pending.typed, scores: scores, listed: listed)
         let suggestion: Suggestion
         switch decision {
@@ -379,6 +382,7 @@ public struct SuggestionSession: Sendable, Equatable {
         return lines.filter {
             let lower = $0.lowercased()
             return lower != lowered && lower.hasScalarPrefix(lowered) && LatinScript.writes($0)
+                && SuggestionTextSafety.allows($0)
                 && seen.insert(lower).inserted
         }
     }

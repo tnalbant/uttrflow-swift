@@ -268,6 +268,16 @@ struct AccessibilityTextInsertionEngineTests {
         #expect(field.contents == "Dear Alice, thanks for the note.")
     }
 
+    @Test("inserts a code completion before the editor's auto-closed parenthesis")
+    func completionLeavesTheAutoClosedParenthesisAfterInsertedText() async throws {
+        let field = FakeTextField(before: "COUNT(", selected: "", after: ")")
+        let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: field))
+
+        _ = try await engine.insert("users")
+
+        #expect(field.contents == "COUNT(users)")
+    }
+
     @Test("identifies itself as the accessibility method")
     func reportsItsMethod() {
         let engine = AccessibilityTextInsertionEngine(focus: FakeFocus(field: nil))

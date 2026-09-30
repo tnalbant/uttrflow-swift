@@ -59,6 +59,11 @@ public enum EvaluationCorpus {
             expected: "So basically the thing is, we need more time."
         ),
         .init(
+            id: "ellipsis-glued-fillers", category: .everyday,
+            spoken: "Ah...the...um...the invoice is...ah...overdue",
+            expected: "The invoice is overdue."
+        ),
+        .init(
             id: "filler-carrying-a-question-mark", category: .everyday,
             spoken: "so are we shipping today, uh?",
             expected: "So are we shipping today?",
@@ -171,6 +176,18 @@ public enum EvaluationCorpus {
             spoken: "can you can you send me the link to the doc again",
             expected: "Can you send me the link to the doc again?",
             mustKeep: ["link", "doc"]
+        ),
+        .init(
+            id: "repeated-intensifier-chain", category: .everyday,
+            spoken: "it went on and on and on",
+            expected: "It went on and on and on.",
+            mustKeep: ["on and on and on"]
+        ),
+        .init(
+            id: "repeated-continuation-kept", category: .everyday,
+            spoken: "blah blah blah and so on and so on",
+            expected: "Blah blah blah and so on and so on.",
+            mustKeep: ["and so on and so on"]
         ),
         .init(
             id: "i-mean-correction", category: .everyday,
@@ -528,6 +545,12 @@ public enum EvaluationCorpus {
             spoken: "the taxi cost five dollars",
             expected: "The taxi cost 5 dollars.",
             mustKeep: ["taxi", "5", "dollars"]
+        ),
+        .init(
+            id: "money-billion", category: .everyday,
+            spoken: "we raised two billion dollars",
+            expected: "We raised 2,000,000,000 dollars.",
+            mustKeep: ["raised", "2,000,000,000", "dollars"]
         ),
         .init(
             id: "dates", category: .everyday,
@@ -969,6 +992,36 @@ public enum EvaluationCorpus {
                 documentName: "SettingsView.swift — Uttrflow"
             ),
             mustNotAdd: ["func", "var", "TODO"]
+        ),
+        .init(
+            id: "reminders-title-no-stop", category: .contextual,
+            spoken: "water the plants",
+            expected: "Water the plants",
+            mustKeep: ["plants"],
+            context: AppContext(
+                applicationName: "Reminders",
+                bundleIdentifier: "com.apple.reminders",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Water",
+            mustEndWith: "plants"
+        ),
+        .init(
+            id: "calendar-title-keeps-question-mark", category: .contextual,
+            spoken: "should we move the dentist appointment to eleven thirty?",
+            expected: "Should we move the dentist appointment to 11:30?",
+            mustKeep: ["dentist", "11:30"],
+            context: AppContext(
+                applicationName: "Calendar",
+                bundleIdentifier: "com.apple.iCal",
+                documentName: "Dentist"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Should",
+            mustEndWith: "?"
         ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.
@@ -1750,6 +1803,126 @@ public enum EvaluationCorpus {
             destination: .document,
             mustBeginWith: "I have gone",
             mustEndWith: "twice."
+        ),
+        .init(
+            id: "participle-have-wrote", category: .grammar,
+            spoken: "I have wrote the summary already",
+            expected: "I have written the summary already.",
+            mustKeep: ["summary", "already"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Meeting notes.pages"
+            ),
+            mustNotAdd: ["wrote"],
+            destination: .document,
+            mustBeginWith: "I have written",
+            mustEndWith: "already."
+        ),
+        .init(
+            id: "participle-had-took", category: .grammar,
+            spoken: "I had took the wrong turn",
+            expected: "I had taken the wrong turn.",
+            mustKeep: ["wrong", "turn"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Travel notes.pages"
+            ),
+            mustNotAdd: ["took"],
+            destination: .document,
+            mustBeginWith: "I had taken",
+            mustEndWith: "turn."
+        ),
+        .init(
+            id: "participle-should-have-ate", category: .grammar,
+            spoken: "I should have ate before the call",
+            expected: "I should have eaten before the call.",
+            mustKeep: ["before", "call"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Call notes.pages"
+            ),
+            mustNotAdd: ["ate"],
+            destination: .document,
+            mustBeginWith: "I should have eaten",
+            mustEndWith: "call."
+        ),
+        .init(
+            id: "participle-was-wrote", category: .grammar,
+            spoken: "It was wrote in the notes",
+            expected: "It was written in the notes.",
+            mustKeep: ["notes"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Project notes.pages"
+            ),
+            mustNotAdd: ["wrote"],
+            destination: .document,
+            mustBeginWith: "It was written",
+            mustEndWith: "notes."
+        ),
+        .init(
+            id: "participle-has-began", category: .grammar,
+            spoken: "The project has began already",
+            expected: "The project has begun already.",
+            mustKeep: ["project", "already"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Project notes.pages"
+            ),
+            mustNotAdd: ["began"],
+            destination: .document,
+            mustBeginWith: "The project has begun",
+            mustEndWith: "already."
+        ),
+        .init(
+            id: "participle-have-spoke", category: .grammar,
+            spoken: "I have spoke with them",
+            expected: "I have spoken with them.",
+            mustKeep: ["them"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Project notes.pages"
+            ),
+            mustNotAdd: ["spoke"],
+            destination: .document,
+            mustBeginWith: "I have spoken",
+            mustEndWith: "them."
+        ),
+        .init(
+            id: "participle-was-broke", category: .grammar,
+            spoken: "The window was broke during transit",
+            expected: "The window was broken during transit.",
+            mustKeep: ["window", "transit"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Delivery notes.pages"
+            ),
+            mustNotAdd: ["broke"],
+            destination: .document,
+            mustBeginWith: "The window was broken",
+            mustEndWith: "transit."
+        ),
+        .init(
+            id: "participle-has-drove", category: .grammar,
+            spoken: "She has drove this route before",
+            expected: "She has driven this route before.",
+            mustKeep: ["route", "before"],
+            context: AppContext(
+                applicationName: "Pages",
+                bundleIdentifier: "com.apple.iWork.Pages",
+                documentName: "Travel notes.pages"
+            ),
+            mustNotAdd: ["drove"],
+            destination: .document,
+            mustBeginWith: "She has driven",
+            mustEndWith: "before."
         ),
         .init(
             id: "article-a-apple", category: .grammar,

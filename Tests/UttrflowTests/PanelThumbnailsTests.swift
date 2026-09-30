@@ -183,6 +183,60 @@ struct PanelThumbnailsTests {
         }
     }
 
+    /// Tracks real overlap while holding each fake decode until the test opens the gate.
+    private final class ConcurrentDecodeCounter: Sendable {
+        private let gate = DispatchSemaphore(value: 0)
+        private let state = Mutex((started: [URL](), active: 0, maximum: 0))
+        var started: [URL] { state.withLock { $0.started } }
+        var maximum: Int { state.withLock { $0.maximum } }
+        func release(_ count: Int) {
+            for _ in 0..<count { gate.signal() }
+        }
+        func decode(_ file: URL) {
+            state.withLock {
+                $0.started.append(file)
+                $0.active += 1
+                $0.maximum = max($0.maximum, $0.active)
+            }
+            _ = gate.wait(timeout: .now() + .seconds(60))
+            state.withLock { $0.active -= 1 }
+        }
+    }
+
+    @Test("bounds parallel decodes and drops queued rows that disappear")
+    func boundsParallelDecodes() async {
+        let counter = ConcurrentDecodeCounter()
+        let source = PanelThumbnailSource { file, _ in
+            counter.decode(file)
+            return Self.bitmap()
+        }
+        let thumbnails = PanelThumbnails(source: source)
+        let files = (0..<8).map { file("decode-\($0)") }
+
+        for file in files { thumbnails.prepare(file) }
+        thumbnails.cancel(files[7])
+        thumbnails.prepare(files[6], selected: true)
+
+        for _ in 0..<1_000 where counter.started.count < PanelThumbnails.maximumConcurrentDecodes {
+            await Task.yield()
+        }
+        #expect(counter.started.count == PanelThumbnails.maximumConcurrentDecodes)
+        #expect(counter.maximum <= PanelThumbnails.maximumConcurrentDecodes)
+
+        counter.release(PanelThumbnails.maximumConcurrentDecodes)
+        for _ in 0..<1_000 where counter.started.count < PanelThumbnails.maximumConcurrentDecodes + 2 {
+            await Task.yield()
+        }
+        #expect(counter.started[2] == files[6], "the selected row starts before ordinary queued rows")
+
+        counter.release(files.count)
+        for file in files.dropLast() { await thumbnails.waitForIdle(file: file) }
+        await thumbnails.waitForIdle(file: files[7])
+
+        #expect(counter.started.count == files.count - 1, "the queued row that disappeared is never decoded")
+        #expect(counter.maximum <= PanelThumbnails.maximumConcurrentDecodes)
+    }
+
     /// The cache miss returns nil immediately and the source load runs on a background queue, so the row draws the placeholder while the decode happens.
     @Test("miss does not block the caller while the source decodes")
     func missDoesNotBlockTheCaller() async {

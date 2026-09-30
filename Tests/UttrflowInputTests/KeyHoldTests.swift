@@ -51,6 +51,33 @@ struct KeyHoldTests {
         #expect(!hold.keep(try #require(Self.key(36)), now: 3))
     }
 
+    @Test("expiry discards earlier held keys before later keys pass through")
+    func expiryDiscardsHeldKeys() throws {
+        let hold = KeyHold()
+        hold.begin(now: 5)
+        #expect(hold.keep(try #require(Self.key(0)), now: 6))
+        #expect(hold.keep(try #require(Self.key(1)), now: 7))
+        #expect(!hold.keep(try #require(Self.key(36)), now: 5 + KeyHold.limitNanoseconds))
+
+        var posted: [Int64] = []
+        hold.release { posted.append($0.getIntegerValueField(.keyboardEventKeycode)) }
+        #expect(posted.isEmpty)
+        #expect(!hold.keep(try #require(Self.key(49)), now: 6 + KeyHold.limitNanoseconds))
+    }
+
+    @Test("a normal hold replays keys in arrival order")
+    func normalHoldReplaysInOrder() throws {
+        let hold = KeyHold()
+        hold.begin(now: 10)
+        for code: CGKeyCode in [1, 0, 36] {
+            #expect(hold.keep(try #require(Self.key(code)), now: 11))
+        }
+
+        var posted: [CGEvent] = []
+        hold.release { posted.append($0) }
+        #expect(Self.codes(posted) == [1, 0, 36])
+    }
+
     @Test("a hold that outlives its limit lets keys through again")
     func expires() throws {
         let hold = KeyHold()

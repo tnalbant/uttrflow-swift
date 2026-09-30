@@ -43,6 +43,7 @@ final class KeyHold: Sendable {
             guard start != 0 else { return false }
             guard now &- start < Self.limitNanoseconds else {
                 state.since = 0
+                state.kept.removeAll()
                 return false
             }
             afterEligibilityCheck()

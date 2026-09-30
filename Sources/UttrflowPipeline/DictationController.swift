@@ -255,6 +255,10 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// Handles one event, returning as soon as the microphone is closed.
     private func respond(to event: HotkeyEvent) async {
+        if case .escapePressed = event {
+            await cancelListening()
+            return
+        }
         if let unsettled = unsettledPress {
             await resolveUnsettledPress(unsettled, with: event)
             return
@@ -275,7 +279,23 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
         case (_, .cancelled):
             await withdrawPress()
+
+        case (_, .escapePressed):
+            await cancelListening()
+
         }
+    }
+
+    /// Discards the active recording when Escape is pressed, in either activation mode.
+    private func cancelListening() async {
+        forgetUnsettledPress()
+        pressedAt = nil
+        lastTapEndedAt = nil
+        pressOpenedTheMicrophone = false
+        setHandsFree(false)
+        guard await pipeline.currentState.isListening else { return }
+        stopWatchingTheLimit()
+        await pipeline.cancel()
     }
 
     /// Whether a press waits to settle, which modifier holds use before they can start dictation.
@@ -351,6 +371,10 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         case (.pressToToggle, .released):
             forgetUnsettledPress()
             await press(at: unsettled.at)
+
+        case (_, .escapePressed):
+            forgetUnsettledPress()
+            await cancelListening()
         }
     }
 

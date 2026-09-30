@@ -117,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)?
     /// Frees that model's weights, run when tab-to-complete is turned off.
     private let releaseModel: (@Sendable () async -> Void)?
+    /// Makes a released model reloadable by its next query without fetching weights now.
+    private let allowModelReload: (@Sendable () async -> Void)?
+    /// Waits out calm so a test can advance the pressure timer without wall-clock delay.
+    private let waitForCalm: @Sendable (Duration) async throws -> Void
     /// Asks which clean-up engines can run, held as a seam so availability changes are testable.
     private let transformerReadiness: @Sendable (UserProfile) async -> Set<TransformerKind>
     /// Whether the weights have been asked for and not let go since, so turning the feature on twice does not ask twice.
@@ -161,6 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
         releaseModel: (@Sendable () async -> Void)? = nil,
+        allowModelReload: (@Sendable () async -> Void)? = nil,
+        waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
         }
@@ -173,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.generating = generating
         self.prepareModel = prepareModel
         self.releaseModel = releaseModel
+        self.allowModelReload = allowModelReload
+        self.waitForCalm = waitForCalm
         self.transformerReadiness = transformerReadiness
         history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: container))
         recordings = RecordingStore(directory: RecordingStore.defaultDirectory(in: container))
@@ -830,7 +838,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 guard self?.modelAsk == ask else { return }
                 // Cleared, so turning the feature off and on tries again rather than staying dead all launch.
                 self?.isModelPreparing = false
-                self?.suggestionModel = .failed
+                self?.suggestionModel = self?.suggestionModel == .loading ? .loadFailed : .fetchFailed
             }
         }
     }
@@ -840,12 +848,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard settings.suggestions.isEnabled, isModelPreparing else { return }
         // Cleared, so turning the switch off and on fetches them, as it does after any failed fetch.
         isModelPreparing = false
-        suggestionModel = .failed
+        suggestionModel = .fetchFailed
     }
 
     /// Lets the weights go once the feature is off, stopping any load still in flight. See `Docs/performance.md`.
     private func releaseTheModel() {
-        guard isModelPreparing || suggestionModel == .failed else { return }
+        guard isModelPreparing || suggestionModel == .fetchFailed || suggestionModel == .loadFailed
+        else { return }
         isModelPreparing = false
         modelAsk += 1
         suggestionModel = .notAsked
@@ -865,7 +874,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task { await speechEngine.release() }
     }
 
-    /// Releases the suggestion model when memory is pressed, and loads it again once calm has lasted. See `Docs/performance.md`.
+    /// Releases the suggestion model under pressure, then permits a query-driven reload after calm. See `Docs/performance.md`.
     func memoryPressureChanged(to level: MemoryPressureLevel) {
         switch level {
         case .warning, .critical:
@@ -878,15 +887,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             suggestionModel = .releasedForMemory
         case .normal:
             // A repeated calm keeps the countdown already running.
-            guard memoryPressure.isReleased, pressureReload == nil else { return }
+            guard memoryPressure.isReleased, pressureReload == nil,
+                let allowModelReload
+            else { return }
             let wait = memoryPressure.wait
+            let waitForCalm = waitForCalm
             pressureReload = Task { [weak self] in
-                try? await Task.sleep(for: wait)
+                try? await waitForCalm(wait)
                 guard !Task.isCancelled, let self, memoryPressure.isReleased,
                     settings.suggestions.isEnabled
                 else { return }
-                memoryPressure.reloaded(at: .now)
-                prepareTheModelIfNeeded()
+                await allowModelReload()
+                guard !Task.isCancelled, memoryPressure.isReleased,
+                    settings.suggestions.isEnabled
+                else { return }
+                isModelPreparing = true
             }
         }
     }
@@ -895,14 +910,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func suggestionModelReloaded(_ event: IdleReload) {
         guard isModelPreparing else { return }
         switch event {
-        case .started where suggestionModel == .ready:
-            suggestionModel = .loading
+        case .started:
+            if memoryPressure.isReleased { memoryPressure.reloaded(at: .now) }
+            if suggestionModel == .ready || suggestionModel == .releasedForMemory {
+                suggestionModel = .loading
+            }
         case .finished where suggestionModel == .loading:
             suggestionModel = .ready
         case .failed where suggestionModel == .loading:
             // Cleared so that turning the feature off and on loads the model again.
             isModelPreparing = false
-            suggestionModel = .failed
+            suggestionModel = .loadFailed
         case .started, .finished, .failed:
             break
         }
@@ -1475,9 +1493,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.log.info(
                 "delete: undoable=\(held != nil, privacy: .public) flag=\(self.panel?.canUndoDelete == true, privacy: .public)"
             )
+            let deletion = Task { [clipboard, retention] in
+                await clipboard.forgetHeldPictures()
+                do {
+                    _ = try await clipboard.delete(
+                        id, keeping: retention, holdingPicture: held != nil)
+                    return .success(())
+                } catch {
+                    return .failure(error)
+                }
+            }
+            undoOffer.trackDelete(deletion, ticket: ticket)
             // Only the latest delete can be undone, so an earlier one's picture is let go first.
-            await clipboard.forgetHeldPictures()
-            _ = try await clipboard.delete(id, keeping: retention, holdingPicture: held != nil)
+            switch await deletion.value {
+            case .success:
+                break
+            case .failure(let error):
+                throw error
+            }
             // A later delete owns the offer and its timer, so a superseded one leaves both alone.
             guard undoOffer.isLatest(ticket) else { return }
             await startForgettingTheUndo()
@@ -1502,9 +1535,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .deleteCategoryAndClips(let name):
             _ = try await clipboard.deleteCategory(name, keeping: retention)
         case .restore(let clip):
+            let deletion = undoOffer.pendingDelete
+            undoOffer.withdraw()
+            if let deletion {
+                switch await deletion.value {
+                case .success:
+                    break
+                case .failure(let error):
+                    throw error
+                }
+            }
             _ = try await clipboard.record(clip, keeping: retention)
             await clipboard.forgetHeldPictures()
-            undoOffer.withdraw()
             panel?.canUndoDelete = false
         }
     }
@@ -1514,11 +1556,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         undoTask?.cancel()
         undoTask = Task { [weak self] in
             try? await Task.sleep(for: AppDelegate.undoWindow)
-            guard !Task.isCancelled else { return }
-            await self?.clipboard.forgetHeldPictures()
-            self?.undoOffer.withdraw()
-            self?.panel?.canUndoDelete = false
-            await self?.refreshPanelIfOpen()
+            guard let self, !Task.isCancelled else { return }
+            await PanelUndoExpiry.expire(
+                withdraw: {
+                    self.undoOffer.withdraw()
+                    self.panel?.canUndoDelete = false
+                },
+                releasingPictures: { await self.clipboard.forgetHeldPictures() })
+            await self.refreshPanelIfOpen()
         }
     }
 
@@ -1556,9 +1601,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { await openSettingsPane(.accessibility) }
         case .undoDelete:
             Self.log.info("undo requested: have=\(self.undoOffer.clip != nil, privacy: .public)")
-            guard let clip = undoOffer.clip else { return }
+            guard let claim = undoOffer.claimForRestore() else { return }
             undoTask?.cancel()
-            apply(.restore(clip))
+            panel?.canUndoDelete = false
+            intentWork = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await claim.waitForDelete()
+                    try await self.carryOut(.restore(claim.clip))
+                } catch let failure as ClipboardStoreError {
+                    self.panel?.notice = .writeFailed(failure.userMessage)
+                }
+                await self.refreshPanelIfOpen()
+            }
         case .format(let id):
             runFormatter(on: id)
         case .openSettings:
@@ -1849,11 +1904,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             break
         }
         // Whichever way it ended, the row that said "Retrying…" is not retrying any more.
-        if case .inserted = state { retryingRecording = nil }
-        if case .failed = state { retryingRecording = nil }
+        if state.hasEnded { retryingRecording = nil }
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
-        if case .inserted = state { sweepExpired() }
-        if case .failed = state { sweepExpired() }
+        if state.hasEnded { sweepExpired() }
 
         // Kept here, where every change already arrives, so the updater need not ask the pipeline.
         lastDictationState = state
@@ -2249,6 +2302,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     appleSpeechStatus: appleSpeechStatus,
                     appleSpeechLoadFailure: appleSpeechLoadFailure,
                     permissions: knownPermissions,
+                    dictationShortcutArmed: surfaces.listensForDictation
+                        && shortcutArming.failure == nil,
+                    hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
@@ -2522,7 +2578,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
             case .retrySuggestionModel:
-                guard settings.suggestions.isEnabled, suggestionModel == .failed else { return }
+                guard settings.suggestions.isEnabled,
+                    suggestionModel == .fetchFailed || suggestionModel == .loadFailed
+                else { return }
                 prepareTheModelIfNeeded()
             case .openPage(let page): show(.main(page))
             default: break

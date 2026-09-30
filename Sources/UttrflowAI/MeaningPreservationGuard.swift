@@ -282,7 +282,7 @@ public struct MeaningPreservationGuard: Sendable {
         let text: String
         /// Lowercased with curly apostrophes straightened, the form the function-word set is keyed by.
         let lookup: String
-        /// The lookup form with apostrophes removed, the form words are matched for survival by.
+        /// Lowercased with curly apostrophes straightened, the exact spelling used for survival checks.
         let matching: String
         /// Whether the word opens the text or follows a sentence-closing mark.
         let startsSentence: Bool
@@ -387,7 +387,7 @@ public struct MeaningPreservationGuard: Sendable {
             echo: echo, allowing: doubtful)
     }
 
-    /// Refuses a content word that has no origin in the same aligned run or an offered reading for it.
+    /// Refuses a content or meaning-bearing word with no origin in the same aligned run or an offered reading for it.
     static func inventionVerdict(
         _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan]
     ) -> GuardVerdict {
@@ -397,10 +397,15 @@ public struct MeaningPreservationGuard: Sendable {
         let originIndex = WordOccurrenceIndex(origins)
         for index in alignment.rewritten.indices
         where alignment.rewritten[index].isPlain
-            && isContent(alignment.rewritten[index])
+            && (isContent(alignment.rewritten[index])
+                || FunctionWords.isMeaningBearing(alignment.rewritten[index].lookup))
         {
             let token = alignment.rewritten[index]
-            if originIndex.contains(token.matching) || originIndex.spells(token.text) { continue }
+            if originIndex.contains(token.matching) || originIndex.spells(token.text)
+                || origins.contains(where: { sameIrregularVerbForm($0.matching, token.matching) })
+            {
+                continue
+            }
             let offeredHere = doubtful.contains { span in
                 alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
                     alignment.changes.contains { change in
@@ -564,7 +569,7 @@ public struct MeaningPreservationGuard: Sendable {
             tokens.append(
                 GrammarToken(
                     text: String(word), lookup: lookup,
-                    matching: lookup.replacingOccurrences(of: "'", with: ""),
+                    matching: lookup,
                     startsSentence: startsSentence))
             startsSentence = endsSentence
         }
@@ -610,15 +615,17 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
     static func survivalVerdict(_ kept: [GrammarToken], in written: [GrammarToken]) -> GuardVerdict {
-        let writtenIndex = WordOccurrenceIndex(written)
         var reached = 0
         for token in kept {
-            let places = writtenIndex.occurrences(of: token.matching)
-            guard !places.isEmpty else {
+            let matchingPlaces = written.indices.filter {
+                token.matching == written[$0].matching
+                    || sameIrregularVerbForm(token.matching, written[$0].matching)
+            }
+            guard !matchingPlaces.isEmpty else {
                 return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
             }
             // The earliest place still open is taken, which is the most room the words after it can be left.
-            guard let place = writtenIndex.firstOccurrence(of: token.matching, atOrAfter: reached) else {
+            guard let place = matchingPlaces.first(where: { $0 >= reached }) else {
                 return .rejected(reason: "the rewrite moved '\(token.text)'", kind: .movedWord)
             }
             reached = place
@@ -711,9 +718,9 @@ public struct MeaningPreservationGuard: Sendable {
         index[entry.value, default: []].insert(entry.key)
     }
 
-    /// Whether one rewritten word is the kept word: exact, as its numeral or its word, a homophone, an identifier spelling, or the aux the rewrite contracted.
+    /// Whether a rewritten word preserves the kept word as a listed form, numeral, homophone, identifier spelling, or contracted auxiliary.
     static func survives(_ word: String, as candidate: GrammarToken) -> Bool {
-        if word == candidate.matching { return true }
+        if word == candidate.matching || sameIrregularVerbForm(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
@@ -737,10 +744,32 @@ public struct MeaningPreservationGuard: Sendable {
         "can", "could", "may", "might", "must",
     ]
 
-    /// Whether two words are one word in two forms: the same word, or one of them inflected from the other.
+    /// Whether two words are the same form, a regular inflection, or a reviewed irregular verb form.
     static func sameForm(_ word: String, _ other: String) -> Bool {
         word == other || inflections(of: word).contains(other) || inflections(of: other).contains(word)
+            || sameIrregularVerbForm(word, other)
     }
+
+    /// Whether both words belong to the same listed English verb paradigm.
+    private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
+        guard let group = irregularVerbFormGroups[word] else { return false }
+        return irregularVerbFormGroups[other] == group
+    }
+
+    /// Reviewed English verb paradigms whose past and participle forms do not follow the regular endings.
+    private static let irregularVerbFormGroups: [String: String] = Dictionary(
+        uniqueKeysWithValues: [
+            ("begin", ["began", "begun"]),
+            ("break", ["broke", "broken"]),
+            ("drive", ["drove", "driven"]),
+            ("eat", ["ate", "eaten"]),
+            ("go", ["went", "gone"]),
+            ("speak", ["spoke", "spoken"]),
+            ("take", ["took", "taken"]),
+            ("write", ["wrote", "written"]),
+        ].flatMap { root, forms in
+            ([root] + forms).map { ($0, root) }
+        })
 
     /// Whether two romanised Hindi words are one word in two forms: by `sameForm`, a verb and its stem ("aata" and "aa"), or two cases of one pronoun ("yah" and "is").
     static func sameRomanisedForm(_ word: String, _ other: String) -> Bool {

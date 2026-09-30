@@ -134,6 +134,7 @@ struct RegisterTests {
         #expect(Register.namesAddressField("Address and search bar"))
         #expect(Register.namesAddressField("Search or enter address"))
         #expect(Register.namesAddressField("URL"))
+        #expect(!Register.namesAddressField("Message #curling"))
         #expect(!Register.namesAddressField("Address line 1"))
         #expect(!Register.namesAddressField("Email address"))
         #expect(!Register.namesAddressField(nil))
@@ -222,6 +223,10 @@ struct HistoryOnlyRegisterTests {
         for name in ["Search", "Search products", "Find in page", "Search this Mac"] {
             #expect(register(field: name).answersFromHistoryAlone, "\(name)")
         }
+        for name in ["Message #research", "Message #findings", "Message #user-research", "Reply to Kathurl"] {
+            #expect(!Register.namesSearchField(name), "\(name)")
+            #expect(!register(field: name).answersFromHistoryAlone, "\(name)")
+        }
     }
 
     @Test(
@@ -237,6 +242,7 @@ struct HistoryOnlyRegisterTests {
     @Test("An address bar answers from history too, whether it names addresses or the person writes them.")
     func addressBarsAnswerFromHistory() {
         #expect(register(field: "Address and search bar").answersFromHistoryAlone)
+        #expect(Register.namesAddressField("Address and search bar"))
         let ownAddresses = Register.infer(
             from: GenerationSituation(
                 application: "Browser", field: "Location",
