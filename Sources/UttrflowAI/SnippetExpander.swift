@@ -23,8 +23,8 @@ public struct SnippetExpander: Sendable {
         guard !candidates.isEmpty else { return .unchanged(transcript) }
 
         // Normalised once, so the quoting check does not re-tidy the transcript per snippet.
-        let spoken = TextTidy.collapseWhitespace(transcript).lowercased()
-        let eligible = candidates.filter { !spoken.contains($0.quoted) }
+        let spoken = transcript.snippetWordRuns().map { $0.text.lowercased() }
+        let eligible = candidates.filter { !Self.contains($0.quoted, in: spoken) }
 
         let runs = transcript.snippetWordRuns()
         var applied: [AppliedSnippet] = []
@@ -84,6 +84,15 @@ public struct SnippetExpander: Sendable {
     }
 
     // MARK: - Whether a trigger really was said
+
+    /// Whether every expansion word appears as a consecutive word run in the transcript.
+    private static func contains(_ phrase: [String], in words: [String]) -> Bool {
+        guard phrase.count <= words.count else { return false }
+        return words.indices.contains { start in
+            start + phrase.count <= words.count
+                && Array(words[start..<(start + phrase.count)]) == phrase
+        }
+    }
 
     /// Whether the trigger's words sit at `position` as one phrase, with neither end glued to a neighbour.
     private func fits(
@@ -158,8 +167,8 @@ extension SnippetExpander {
         let words: [String]
         /// Explicit joiners between trigger words; whitespace and tolerated pauses are `nil`.
         let joiners: [Character?]
-        /// The expansion tidied like a transcript, so "is the user quoting this?" is one substring search.
-        let quoted: String
+        /// The expansion's lower-cased word runs, used to recognize a quotation as a phrase.
+        let quoted: [String]
         /// The trigger rejoined; breaks ties so two equally long triggers cannot swap places between runs.
         let key: String
 
@@ -176,7 +185,7 @@ extension SnippetExpander {
                 else { return nil }
                 return character
             }
-            quoted = TextTidy.collapseWhitespace(snippet.expansion).lowercased()
+            quoted = snippet.expansion.snippetWordRuns().map { $0.text.lowercased() }
             key = words.joined(separator: " ")
         }
 

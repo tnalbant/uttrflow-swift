@@ -188,6 +188,16 @@ struct SnippetExpanderTests {
         #expect(!expander.expand("sign off with thanks, Naveen").didExpand)
     }
 
+    @Test("an expansion inside a longer word does not suppress its trigger")
+    func quotedSubstringDoesNotSuppressExpansion() {
+        let expander = SnippetExpander(snippets: [
+            makeSnippet(trigger: "sign off", expansion: "Thanks, Naveen")
+        ])
+        let result = expander.expand("The thanks, Naveenly sign off was timely.")
+        #expect(result.text == "The thanks, Naveenly Thanks, Naveen was timely.")
+        #expect(result.applied.count == 1)
+    }
+
     /// One snippet being quoted must not stop the others.
     @Test("only the quoted snippet is held back")
     func quotingIsPerSnippet() {
