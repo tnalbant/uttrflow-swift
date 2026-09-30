@@ -283,6 +283,26 @@ struct VerifierTests {
         #expect(await store.rejected.isEmpty)
     }
 
+    @Test("A git alias is not judged or cached while the alias listing is unanswered.")
+    func unansweredGitAliasIsNotJudgedOrCached() async {
+        let reader = StubEnvironment([.subcommand(of: "git"): ["checkout"]])
+        let index = EnvironmentIndex(reader: reader)
+        let store = RecordingSupersession()
+        let verifier = Verifier(
+            index: index, scoring: ScriptedScoring(disliked), supersession: store,
+            budgetInMilliseconds: 200, clock: ManualClock())
+        let candidate = Candidate(text: "git co", source: .personal)
+
+        _ = await verifier.verdict(for: candidate, in: terminal, typed: "git c", now: moment)
+        #expect(await store.recorded.isEmpty)
+        #expect(await store.rejected.isEmpty)
+
+        await index.settle()
+        #expect(
+            await verifier.verdict(for: candidate, in: terminal, typed: "git c", now: moment)
+                == .attested)
+    }
+
     @Test("A candidate the model likes stands even where the machine cannot place it.")
     func keepsWhatTheModelLikes() async {
         let verdict = await decided(
