@@ -814,7 +814,7 @@ public actor DictationPipeline {
             // The unrewritten sentence, which is the space the corrections' word ranges index.
             spokenWords: whole.heard.text.spokenWords.count)
         guard
-            let arrival = await insert(
+            let attempt = await insert(
                 toWrite, cleanedBy: whole.cleaned.producedBy, changes: changes,
                 delivery: delivery, generation: mine,
                 destination: InsertionDestination(
@@ -825,11 +825,17 @@ public actor DictationPipeline {
         let wasSecure = destinationIsSecure
 
         // An unconfirmed paste is not proof the words reached the user, so nothing is learnt from it yet.
-        guard arrival != .unconfirmed else { return }
+        guard attempt.arrival != .unconfirmed else { return }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
         // A secret is not a word to learn.
         guard !wasSecure else { return }
+        // A destination reported by the inserter wins over a screen read made before the switch.
+        if let landedID = landedIn(attempt)?.bundleIdentifier,
+            let readID = appContext?.bundleIdentifier, landedID != readID
+        {
+            return
+        }
         await learnWords(heard: whole.heard.text, wrote: toWrite, seeing: appContext ?? AppContext())
     }
 
@@ -1128,7 +1134,7 @@ public actor DictationPipeline {
     private func insert(
         _ text: String, cleanedBy: TransformerKind, changes: AppliedChanges, delivery: Delivery,
         generation mine: Int, destination: InsertionDestination
-    ) async -> InsertionArrival? {
+    ) async -> InsertionAttempt? {
         let inserter = delivery == .copy ? clipboard : self.inserter
         // Said before the words are handed over, because the app takes its own time to show them.
         transition(to: .inserting)
@@ -1161,7 +1167,7 @@ public actor DictationPipeline {
                         spokenFor: spokenFor, changes: changes,
                         fromRecording: delivery == .copy, arrival: attempt.arrival,
                         intoSecureField: destinationIsSecure, missedPieces: missedPieces)))
-            return attempt.arrival
+            return attempt
         } catch {
             guard !wasCancelled(mine) else { return nil }
             // The words survive the failure: the interface can still offer them.

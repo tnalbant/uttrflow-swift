@@ -147,16 +147,21 @@ private final class FakeInserter: TextInserting, Sendable {
     private let state = Mutex<[String]>([])
     private let refuses: Bool
     private let arrival: InsertionArrival
+    private let destination: InsertionDestination?
 
-    init(refuses: Bool = false, arrival: InsertionArrival = .notReported) {
+    init(
+        refuses: Bool = false, arrival: InsertionArrival = .notReported,
+        destination: InsertionDestination? = nil
+    ) {
         self.refuses = refuses
         self.arrival = arrival
+        self.destination = destination
     }
 
     func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
         state.withLock { $0.append(text) }
         guard !refuses else { throw .clipboardUnavailable }
-        return InsertionAttempt(.accessibility, arrival: arrival)
+        return InsertionAttempt(.accessibility, arrival: arrival, destination: destination)
     }
 
     var received: [String] { state.withLock { $0 } }
@@ -612,6 +617,26 @@ struct DictationPipelineVocabularyTests {
                 FakeVocabulary.Lesson(
                     heard: heard, wrote: heard.capitalisedFirst, context: .fixture())
             ])
+    }
+
+    @Test("Does not learn private title words from a stale app context after insertion lands elsewhere")
+    func doesNotLearnAgainstStaleApplicationContext() async {
+        let vocabulary = FakeVocabulary()
+        let appA = AppContext(
+            applicationName: "Private App", bundleIdentifier: "com.example.a",
+            documentName: "Secret project title")
+        let landedInB = InsertionDestination(
+            applicationName: "Public App", bundleIdentifier: "com.example.b")
+        let pipeline = makePipeline(
+            vocabulary: vocabulary,
+            inserter: FakeInserter(destination: landedInB),
+            context: FakeContextEngine(context: appA))
+
+        await dictate(with: pipeline)
+
+        #expect(vocabulary.lessons.isEmpty)
+        #expect(await pipeline.outcome?.insertedInto == "Public App")
+        #expect(await pipeline.outcome?.insertedIntoIdentifier == "com.example.b")
     }
 
     /// The question this path asks is what the user *said*, before anything rewrote it.
