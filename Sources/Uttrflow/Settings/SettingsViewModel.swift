@@ -22,6 +22,8 @@ final class SettingsViewModel {
     private let onReset: (SettingsReset) -> Void
     /// Told when the shortcut field starts and stops listening, so the live shortcut stands down meanwhile.
     private let onShortcutRecording: (Bool) -> Void
+    /// Re-reads the system preference when the user chooses hold-Fn.
+    private let readGlobeKeyAction: () -> GlobeKeyAction
 
     init(
         store: any SettingsStore,
@@ -31,7 +33,8 @@ final class SettingsViewModel {
         onChange: @escaping (UttrflowSettings.Settings) -> Void = { _ in },
         onRequest: @escaping (SettingsChange) -> Void = { _ in },
         onReset: @escaping (SettingsReset) -> Void = { _ in },
-        onShortcutRecording: @escaping (Bool) -> Void = { _ in }
+        onShortcutRecording: @escaping (Bool) -> Void = { _ in },
+        readGlobeKeyAction: @escaping () -> GlobeKeyAction = { .doNothing }
     ) {
         self.store = store
         self.personalisation = personalisation
@@ -39,12 +42,14 @@ final class SettingsViewModel {
         self.onRequest = onRequest
         self.onReset = onReset
         self.onShortcutRecording = onShortcutRecording
+        self.readGlobeKeyAction = readGlobeKeyAction
         session = SettingsSession(
             settings: store.load(), capabilities: capabilities, tab: tab)
     }
 
     /// Starts listening for a new shortcut, and stands the live one down while it does.
     func beginRecordingShortcut(_ action: ShortcutAction) {
+        session.capabilities.globeKeyAction = readGlobeKeyAction()
         session.beginRecordingShortcut(action)
         onShortcutRecording(true)
     }
@@ -87,6 +92,9 @@ final class SettingsViewModel {
     func apply(_ change: SettingsChange) {
         // A request to act now is handed on whole, since saving it would store nothing and lose it.
         guard !change.isRequestToAct else { return onRequest(change) }
+        if case .shortcut(.dictate, let binding) = change, binding.isFunctionHold {
+            session.capabilities.globeKeyAction = readGlobeKeyAction()
+        }
         persist(session.apply(change))
     }
 

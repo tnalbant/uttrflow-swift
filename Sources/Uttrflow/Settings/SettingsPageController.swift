@@ -29,6 +29,7 @@ final class SettingsPageController {
         onRequest: @escaping (SettingsChange) -> Void = { _ in },
         onReset: @escaping (SettingsReset) -> Void = { _ in },
         onShortcutRecording: @escaping (Bool) -> Void = { _ in },
+        readGlobeKeyAction: @escaping () -> GlobeKeyAction = { GlobeKeySettings.action },
         probe: @escaping @Sendable (UserProfile) async -> SettingsCapabilities = {
             await SettingsCapabilities.refreshed(for: $0)
         }
@@ -37,7 +38,7 @@ final class SettingsPageController {
         model = SettingsViewModel(
             store: store, personalisation: personalisation, capabilities: capabilities,
             onChange: onChange, onRequest: onRequest, onReset: onReset,
-            onShortcutRecording: onShortcutRecording)
+            onShortcutRecording: onShortcutRecording, readGlobeKeyAction: readGlobeKeyAction)
     }
 
     /// The tab the page is on, which the sidebar lights its Settings row for.

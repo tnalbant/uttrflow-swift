@@ -18,7 +18,8 @@ extension SettingsCapabilities {
             canCheckForUpdates: UpdateController.isConfigured,
             versionDescription: versionDescription,
             readySpeechEngines: readySpeechEngines,
-            readyTransformers: Set(TransformerKind.selectable))
+            readyTransformers: Set(TransformerKind.selectable),
+            globeKeyAction: GlobeKeySettings.action)
     }
 
     /// The same answers with the clean-up engines that answered they could run for `profile`'s language.

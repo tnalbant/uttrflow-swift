@@ -170,7 +170,7 @@ public enum SettingsEditor {
 
     /// Said for ⌘, ⌥, ⌃ or ⇧ alone, naming Fn because it is the one key that can be held by itself.
     static let bareModifier =
-        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn."
+        "That key alone is part of too many other shortcuts. Add a key or another modifier, or hold fn after setting ‘Press 🌐 key to’ to Do Nothing in System Settings → Keyboard."
 
     /// Said for a held-modifier chord on an action Carbon registers, which cannot arm it. See `Docs/core-hotkeys.md`.
     static let heldChordNotClaimable =

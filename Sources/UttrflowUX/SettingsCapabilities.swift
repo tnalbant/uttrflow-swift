@@ -2,6 +2,44 @@
 public import UttrflowCore
 public import UttrflowSettings
 
+/// What macOS does when the user presses the Globe or Fn key.
+public enum GlobeKeyAction: Sendable, Equatable {
+    case doNothing
+    case changeInputSource
+    case showEmojiAndSymbols
+    case startDictation
+    case unknown
+
+    /// Maps the value macOS stores in `AppleFnUsageType` to its Keyboard setting.
+    public init(rawValue: Int?) {
+        switch rawValue {
+        case 0: self = .doNothing
+        case 1: self = .changeInputSource
+        case 2: self = .showEmojiAndSymbols
+        case 3: self = .startDictation
+        default: self = .unknown
+        }
+    }
+
+    /// The action name shown when Fn could also trigger macOS.
+    public var title: String {
+        switch self {
+        case .doNothing: "Do Nothing"
+        case .changeInputSource: "Change Input Source"
+        case .showEmojiAndSymbols: "Show Emoji & Symbols"
+        case .startDictation: "Start Dictation"
+        case .unknown: "an unknown action"
+        }
+    }
+
+    /// The warning shown when a hold-Fn shortcut would also trigger macOS.
+    public var warning: String? {
+        guard self != .doNothing else { return nil }
+        return
+            "macOS is set to \(title) when you press the Globe key. Holding fn for Uttrflow can trigger both actions. Set System Settings → Keyboard → ‘Press 🌐 key to’ to Do Nothing."
+    }
+}
+
 /// What this particular Mac can do, passed in so every refusal is testable on a machine that can.
 public struct SettingsCapabilities: Sendable, Equatable {
     /// What macOS will do with Uttrflow at the next login, including nothing for want of a login item.
@@ -28,6 +66,9 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Shortcuts the app could not claim, so a row never shows a key that does nothing.
     public var unarmedShortcuts: Set<ShortcutAction>
 
+    /// What macOS does when the Globe or Fn key is pressed by itself.
+    public var globeKeyAction: GlobeKeyAction
+
     /// Builds the answers; updates and the version default to absent.
     public init(
         launchAtLogin: LaunchAtLoginStatus,
@@ -37,7 +78,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
         readySpeechEngines: Set<SpeechEngineKind>,
         readyTransformers: Set<TransformerKind>,
         suggestionModel: SuggestionModelReadiness = .notAsked,
-        unarmedShortcuts: Set<ShortcutAction> = []
+        unarmedShortcuts: Set<ShortcutAction> = [],
+        globeKeyAction: GlobeKeyAction = .doNothing
     ) {
         self.launchAtLogin = launchAtLogin
         self.canPlayRecordingSound = canPlayRecordingSound
@@ -47,6 +89,7 @@ public struct SettingsCapabilities: Sendable, Equatable {
         self.readyTransformers = readyTransformers
         self.suggestionModel = suggestionModel
         self.unarmedShortcuts = unarmedShortcuts
+        self.globeKeyAction = globeKeyAction
     }
 
     /// A Mac that can do everything: the start of a real probe, and a test's default.
@@ -63,6 +106,12 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Whether anything above the floor can tidy text; the floor is excluded, or this is true everywhere.
     public var canTidyBeyondTheFloor: Bool {
         readyTransformers.contains { $0 != SettingsEngines.floor }
+    }
+
+    /// Warns only when the selected shortcut holds Fn by itself.
+    public func globeKeyWarning(for binding: HotkeyBinding) -> String? {
+        guard binding.isFunctionHold else { return nil }
+        return globeKeyAction.warning
     }
 }
 
