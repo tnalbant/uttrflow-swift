@@ -8,7 +8,9 @@ extension CleaningPipeline {
     public static func beforeModel(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        piece(numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout, steps: steps)
+        piece(
+            numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
+            insertionPoint: situation.insertion, steps: steps)
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -16,18 +18,21 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: piece(numbers: formatter.numbers, digits: formatter.digits, steps: steps).passes
+            passes: piece(
+                numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
+                steps: steps
+            ).passes
                 + message(for: formatter, situation: situation).passes)
     }
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
     public static func piece(
         numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
-        steps: CleaningSteps = .default
+        insertionPoint: InsertionPoint = .unknown, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         let cleanings: [any CleaningPass] = [
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
-            SpokenPunctuationPass(), LayoutWordsPass(layout: layout),
+            SpokenPunctuationPass(), LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
         ]

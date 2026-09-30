@@ -37,6 +37,22 @@ struct StandardPipelineTests {
                 == "we need\n1. milk\n2. eggs")
     }
 
+    @Test("uses the caret text for a leading paragraph command")
+    func leadingParagraphAtCaret() {
+        let formatter = DestinationFormatter.standard(for: .email)
+        let existingText = AppContext(precedingText: "The numbers look fine. ")
+        let existingSituation = Situation(
+            app: existingText, insertion: existingText.insertionPoint, destination: .email)
+        let existing = CleaningPipeline.beforeModel(for: formatter, situation: existingSituation)
+        #expect(existing.run(Draft(text: "new paragraph thanks sam")).text == "\n\nthanks sam")
+
+        let emptyField = AppContext(precedingText: "")
+        let emptySituation = Situation(
+            app: emptyField, insertion: emptyField.insertionPoint, destination: .email)
+        let empty = CleaningPipeline.beforeModel(for: formatter, situation: emptySituation)
+        #expect(empty.run(Draft(text: "new paragraph thanks sam")).text == "thanks sam")
+    }
+
     @Test("is the plain formatter at a caret that says nothing")
     func plainByDefault() {
         let first = CleaningPipeline.standard.passes.compactMap { $0 as? FirstWordPass }.first
