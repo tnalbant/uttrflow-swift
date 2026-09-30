@@ -172,6 +172,8 @@ The passes, in the order the shipped formatters run them:
 | `FirstWord` | capitalise, or lower-case after a mid-sentence caret | `situation.insertion.sentenceState` + formatter policy | new |
 | `TerminalStop` | add or withhold the final mark | formatter policy | exists, gains the policy |
 
+`SpokenPunctuation` runs before `LayoutWords` because a spoken stop must become punctuation before a following layout phrase can be recognized as a break. For example, `question mark new line` must become `?` followed by a line break; reversing the passes leaves `new line` unconverted because it has not yet been preceded by a sentence stop.
+
 Every pass records what it did in the draft, which is what makes the guard able to tell
 "the pass removed *no sorry at four*" from "the model dropped half the sentence".
 

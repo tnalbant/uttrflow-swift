@@ -33,6 +33,7 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         let cleanings: [any CleaningPass] = [
             FillersPass(), StammersPass(), RepeatedPhrasePass(), SelfCorrectionPass(),
+            // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(), LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpelledInitialismPass(), SpacingPass(),

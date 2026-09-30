@@ -179,6 +179,14 @@ struct StandardPipelineTests {
         )
     }
 
+    @Test("recognizes a layout command after spoken punctuation")
+    func spokenPunctuationPrecedesLayoutWords() {
+        let pipeline = CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown)
+        #expect(
+            pipeline.run(Draft(text: "is it ready question mark new line yes")).text
+                == "is it ready?\nyes")
+    }
+
     @Test("keeps the record of every pass that touched a word")
     func provenance() {
         let draft = CleaningPipeline.standard.run(Draft(text: "um at four no sorry at five"))
