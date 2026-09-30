@@ -148,11 +148,12 @@ extension RawTranscript {
         var index = withoutSpeaker.startIndex
 
         while index < withoutSpeaker.endIndex {
-            if withoutSpeaker[index].text.allSatisfy({ $0 == "*" }), withoutSpeaker[index].text.count >= 3 {
+            let token = withoutSpeaker[index].text
+            if token.allSatisfy({ $0 == "*" }), token.count >= 3 {
                 index += 1
                 continue
             }
-            let opener = withoutSpeaker[index].text.first
+            let opener = token.first
             guard opener == "[" || opener == "(" || opener == "*" else {
                 kept.append(withoutSpeaker[index])
                 index += 1
@@ -170,7 +171,10 @@ extension RawTranscript {
             }
             let inside = withoutSpeaker[index...close].map(\.text).joined(separator: " ").dropFirst()
                 .dropLast()
-            if !isMarker(inside) && !isMusicMarker(inside) {
+            let openingToken = token.drop(while: \.isWhitespace)
+            let closingToken = withoutSpeaker[close].text.drop(while: \.isWhitespace)
+            let standsAlone = openingToken.first == opener && closingToken.last == closer
+            if !standsAlone || (!isMarker(inside) && !isMusicMarker(inside)) {
                 kept.append(contentsOf: withoutSpeaker[index...close])
             }
             index = withoutSpeaker.index(after: close)
