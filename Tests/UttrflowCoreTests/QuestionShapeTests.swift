@@ -13,7 +13,8 @@ struct QuestionShapeTests {
         "reads a direct question from its word order",
         arguments: [
             "where did you put the keys", "which branch should I merge into",
-            "what time is the meeting tomorrow", "how many people are coming",
+            "what time is the meeting tomorrow", "what time is it", "how many people are coming",
+            "how are you", "can you send it", "did you see the email", "is it ready",
             "what's the status of the release", "can you review the pull request", "did the build go green",
             "is anyone using the room", "do you have a minute", "have you seen the numbers",
             "Would you like some coffee", "it's a long weekend isn't it",
@@ -25,6 +26,7 @@ struct QuestionShapeTests {
             "are you around yet i should be there in ten",
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
+            "what I mean is we should wait",
             "This duplicates the logic in the helper class can we reuse that instead",
             "I don't have access to the production database can someone grant it",
             "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya",

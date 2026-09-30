@@ -41,8 +41,9 @@ public enum QuestionShape {
         if contractedQuestionWords.contains(first) { return true }
         if questionWords.contains(first) {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
-            for word in clause.dropFirst().prefix(3) {
-                if subjects.contains(word) { return false }
+            for (offset, word) in clause.dropFirst().prefix(3).enumerated() {
+                // A subject before the auxiliary names a thing; one after it completes the inversion.
+                if subjects.contains(word) { return offset > 0 }
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) { return true }
             }
             return false
