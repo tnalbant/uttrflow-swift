@@ -106,6 +106,7 @@ struct SuggestionView: View {
                 .truncationMode(.tail)
         }
         .font(presentation.font(at: presentation.pointSize))
+        .fontWeight(row.isSelected ? .semibold : .regular)
         .foregroundStyle(ink(rowOpacity(row)))
     }
 
@@ -115,13 +116,13 @@ struct SuggestionView: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .font(presentation.font(at: presentation.pointSize * 0.82))
-            .foregroundStyle(ink(presentation.opacity * SuggestionPresentation.dimmedShare))
+            .foregroundStyle(ink(presentation.unselectedListOpacity))
             .accessibilityHidden(true)
     }
 
-    /// Full ghost strength for the row Tab would take, and a dimmed share for the ones it would not.
+    /// The selected row reads at full strength; unselected rows use their contrast-safe list opacity.
     private func rowOpacity(_ row: SuggestionPresentation.Row) -> Double {
-        row.isSelected ? presentation.opacity : presentation.opacity * SuggestionPresentation.dimmedShare
+        presentation.listOpacity(for: row)
     }
 }
 
