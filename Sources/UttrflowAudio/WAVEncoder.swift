@@ -13,6 +13,8 @@ public enum WAVEncoder {
     static let headerSize = 44
     /// Where the data chunk's byte count sits in the header.
     static let dataSizeOffset = 40
+    /// Largest size a RIFF chunk can declare.
+    private static let maximumChunkSize = UInt64(UInt32.max)
 
     /// Encodes `audio` as a complete WAV file.
     public static func encode(_ audio: AudioSamples) -> Data {
@@ -23,10 +25,12 @@ public enum WAVEncoder {
 
     /// The 44-byte header declaring `frames` of 16-bit mono at `sampleRate`.
     static func header(frames: Int, sampleRate: Int) -> Data {
-        let payloadSize = frames * bytesPerFrame
+        // Oversized chunk declarations saturate at WAV's 32-bit limit.
+        let payloadSize = min(UInt64(max(frames, 0)) * UInt64(bytesPerFrame), maximumChunkSize)
+        let riffSize = min(36 + payloadSize, maximumChunkSize)
         var data = Data(capacity: headerSize)
         data.append(ascii: "RIFF")
-        data.append(littleEndian: UInt32(36 + payloadSize))
+        data.append(littleEndian: UInt32(riffSize))
         data.append(ascii: "WAVE")
 
         data.append(ascii: "fmt ")

@@ -64,6 +64,13 @@ struct WAVEncoderTests {
         #expect(uint32(data, at: 4) == 36)
     }
 
+    @Test("clamps chunk sizes for recordings beyond the WAV limit")
+    func oversizedRecordingSizes() {
+        let data = WAVEncoder.header(frames: Int(UInt32.max), sampleRate: 16_000)
+        #expect(uint32(data, at: 4) == UInt32.max, "RIFF size")
+        #expect(uint32(data, at: 40) == UInt32.max, "data size")
+    }
+
     @Test(
         "scales normalised floats to the full 16-bit range",
         arguments: [
