@@ -526,8 +526,14 @@ struct CorpusIndependenceTests {
     }
 
     private func knownContamination(in prompt: PromptBuilder) -> [(caseID: String, fragment: String)] {
-        let instructions = [prompt.contract] + prompt.blocks.values.map(\.rules)
-        let fragments = instructions.flatMap(quotedFragments(in:)) + prompt.allWorkedExamples
+        let instructions =
+            [prompt.contract] + prompt.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.map(\.rules)
+        let fragments =
+            instructions.flatMap(quotedFragments(in:))
+            + prompt.contractExamples
+            .flatMap(\.sentences)
+            + prompt.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.flatMap(\.examples).flatMap(
+                \.sentences)
         return EvaluationCorpus.all.flatMap { testCase in
             let corpusText = [normalise(testCase.spoken), normalise(testCase.expected)]
             return fragments.compactMap { fragment in
@@ -563,16 +569,45 @@ struct CorpusIndependenceTests {
             })
     }
 
-    /// An input that closely matches an example can make a model answer with a different example's text.
-    @Test("no corpus case is a near-copy of any block's worked example")
+    @Test("finds a corpus leak in either half of a worked example")
+    func detectsKnownWorkedExampleLeak() {
+        let prompt = PromptBuilder(
+            contract: "",
+            contractExamples: [
+                WorkedExample(
+                    spoken: "there is three of them waiting outside",
+                    cleaned: "There are three of them waiting outside.")
+            ],
+            blocks: [:])
+
+        #expect(
+            knownContamination(in: prompt).contains {
+                $0.caseID == "agreement-there-is"
+                    && normalise($0.fragment) == "there is three of them waiting outside"
+            })
+    }
+
+    /// An input that closely matches a rule fragment or example can make a model repeat it.
+    @Test("no corpus case is a near-copy of any prompt rule or worked example")
     func corpusIsNotNearlyInThePrompt() {
+        let instructions =
+            [PromptBuilder.standard.contract]
+            + PromptBuilder.standard.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.map(\.rules)
+        let promptFragments =
+            instructions.flatMap(quotedFragments(in:))
+            + PromptBuilder.standard.contractExamples.flatMap(\.sentences)
+            + PromptBuilder.standard.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }
+            .flatMap(\.examples).flatMap(\.sentences)
+
         for testCase in EvaluationCorpus.all {
-            let spoken = Set(Scorer.tokens(testCase.spoken))
-            guard spoken.count >= 5 else { continue }
-            for example in PromptBuilder.standard.allWorkedExamples {
-                let overlap = spoken.intersection(Scorer.tokens(example))
-                let share = Double(overlap.count) / Double(spoken.count)
-                #expect(share < 0.7, "\(testCase.id) overlaps a worked example by \(Int(share * 100))%")
+            let corpusWords = Set(Scorer.tokens(testCase.spoken))
+            guard corpusWords.count >= 5 else { continue }
+            for fragment in promptFragments {
+                let fragmentWords = Set(Scorer.tokens(fragment))
+                let share = Double(corpusWords.intersection(fragmentWords).count) / Double(corpusWords.count)
+                #expect(
+                    share < 0.7, "\(testCase.id) overlaps prompt fragment \(fragment) by \(Int(share * 100))%"
+                )
             }
         }
     }

@@ -11,7 +11,7 @@ public enum PromptContract {
 
         Tidy the words:
         - remove fillers (um, uh, er) and repeated false starts
-        - a slot said twice keeps the later: "the original copy the backup copy"
+        - when a speaker explicitly corrects a word, keep the corrected word: "I meant Tuesday, no, Wednesday"
         - fix punctuation, capitalisation and obvious mis-hearings
         - keep every other word said, including greetings and openers
         - keep technical terms and units exactly as spoken
