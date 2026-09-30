@@ -260,7 +260,8 @@ public enum InsightsPresenter {
         _ range: InsightsRange, _ entries: [HistoryEntry], now: Date, calendar: Calendar
     ) -> [HistoryEntry] {
         let first = firstDay(of: range, now: now, calendar: calendar)
-        return entries.filter { $0.when >= first }
+        let end = calendar.date(byAdding: .day, value: range.days, to: first) ?? now
+        return entries.filter { $0.when >= first && $0.when < end }
     }
 
     // MARK: - The calendar

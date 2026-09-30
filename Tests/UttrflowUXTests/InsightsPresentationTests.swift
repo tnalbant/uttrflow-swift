@@ -145,6 +145,21 @@ struct InsightsCalendarBucketingTests {
             ).calendar)
         #expect(week.days.reduce(0) { $0 + $1.words } == 70)
     }
+
+    @Test("a dictation before the first chart day is excluded from the range figures")
+    func beforeFirstChartDay() throws {
+        let first = InsightsPresenter.firstDay(
+            of: .week, now: HistoryFixture.now, calendar: HistoryFixture.mondayFirst)
+        let prior = HistoryFixture.entry("outside", when: first.addingTimeInterval(-1))
+        let entries = HistoryFixture.aWeek(words: 1, days: 7, from: 0) + [prior]
+        let page = HistoryFixture.insights(
+            entries: entries, settings: HistoryFixture.keeping(30), range: .week)
+        let chart = try #require(page.calendar)
+
+        #expect(chart.days.reduce(0) { $0 + $1.words } == 7)
+        #expect(page.figures.first?.value == "7")
+        #expect(page.figures.last?.value == "7 days")
+    }
 }
 
 @Suite("The calendar's shading")
