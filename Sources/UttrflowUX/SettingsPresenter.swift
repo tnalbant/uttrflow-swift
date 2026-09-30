@@ -348,10 +348,18 @@ public enum SettingsPresenter {
                 id: "checkForUpdates",
                 label: "Check for updates",
                 explanation: capabilities.canCheckForUpdates
-                    ? "Uttrflow also checks on its own every six hours." : nil,
+                    ? "Check now even when automatic checks are off." : nil,
                 control: .action(title: "Check Now", change: .checkForUpdatesNow),
                 unavailability: capabilities.canCheckForUpdates ? nil : noFeed,
                 icon: .symbol("arrow.triangle.2.circlepath", .info)))
+
+        rows.append(
+            toggleRow(
+                .checksForUpdatesAutomatically,
+                label: "Check for updates automatically",
+                explanation: "Checks the update feed every six hours.",
+                settings, capabilities
+            ).with(icon: .symbol("arrow.triangle.2.circlepath", .info)))
 
         rows.append(
             toggleRow(
@@ -599,10 +607,33 @@ public enum SettingsPresenter {
     static func suggestionModelBanner(
         _ settings: Settings, _ capabilities: SettingsCapabilities
     ) -> SettingsBanner? {
-        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
-        guard settings.suggestions.isEnabled, let title = capabilities.suggestionModel.headline else {
-            return nil
+        guard settings.suggestions.isEnabled else { return nil }
+        switch capabilities.suggestionRuntime {
+        case .starting:
+            return SettingsBanner(
+                symbolName: "clock", title: "Suggestions are paused briefly",
+                message: "The key tap is restarting. Suggestions will resume automatically.")
+        case .secureInputBlocked:
+            return SettingsBanner(
+                symbolName: "lock", title: "Suggestions are paused",
+                message: "A secure input field is active. Suggestions resume when you leave it.")
+        case .tapFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "Allow Uttrflow to monitor input in Privacy & Security, then turn suggestions off and on again."
+            )
+        case .corpusFailed:
+            return SettingsBanner(
+                symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
+                message:
+                    "The suggestion corpus could not be opened. Check its file access, then turn suggestions off and on again."
+            )
+        case .idle, .running:
+            break
         }
+        // Nothing to explain while the feature is off: the model is not fetched until it is asked for.
+        guard let title = capabilities.suggestionModel.headline else { return nil }
         switch capabilities.suggestionModel {
         case .ready, .notAsked, .downloading:
             return SettingsBanner(
@@ -788,10 +819,20 @@ public enum SettingsPresenter {
     ) -> SettingsRow {
         let identifier = application.bundleIdentifier
         let key = preferences.acceptKeys.key(forBundleIdentifier: identifier)
+        let kind = DestinationClassifier.kind(for: AppContext(bundleIdentifier: identifier))
+        let explanation: String? =
+            if key == .tab,
+                kind == .spreadsheet || kind == .terminal || kind == .codeEditor
+                    || kind == .sqlEditor
+            {
+                "Tab also has a job in this app."
+            } else {
+                key.explanation
+            }
         return SettingsRow(
             id: "suggestionAcceptKey.\(identifier)",
             label: "Accept with",
-            explanation: key.explanation,
+            explanation: explanation,
             control: .menu(
                 options: AcceptKey.allCases.map { offered in
                     SettingsOption(
@@ -1072,6 +1113,7 @@ public enum SettingsPresenter {
         case .minimisesWhileDictating: settings.minimisesWhileDictating
         case .playsSoundWhenRecordingStarts: settings.playsSoundWhenRecordingStarts
         case .opensAtLogin: settings.opensAtLogin
+        case .checksForUpdatesAutomatically: settings.checksForUpdatesAutomatically
         case .installsUpdatesAutomatically: settings.installsUpdatesAutomatically
         case .sharesUsageStatistics: settings.sharesUsageStatistics
         case .sendsCrashReports: settings.sendsCrashReports

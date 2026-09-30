@@ -26,6 +26,26 @@ struct PanelAliasCorrectionTests {
         #expect(PanelAlias.handle("\tpg\nprod ", locale: Self.locale) == "pgprod")
     }
 
+    @Test("nukta and accent variants resolve to the same alias")
+    func diacriticVariantsAgree() {
+        let hindi = PanelFixture.clip("zindagi", alias: "ज़िंदगी")
+        let cafe = PanelFixture.clip("coffee", minutesAgo: 1, alias: "Café")
+
+        #expect(
+            PanelAlias.propose("जिंदगी", for: UUID(), among: [hindi], locale: Self.locale).takenBy == hindi.id)
+        #expect(
+            PanelAlias.propose("cafe", for: UUID(), among: [cafe], locale: Self.locale).takenBy == cafe.id)
+    }
+
+    @Test("Arabic hamza forms remain distinct aliases")
+    func arabicHamzaRemainsSignificant() {
+        let clip = PanelFixture.clip("Ahmed", alias: "أحمد")
+        let proposal = PanelAlias.propose("احمد", for: UUID(), among: [clip], locale: Self.locale)
+
+        #expect(proposal.takenBy == nil)
+        #expect(proposal.isUsable)
+    }
+
     /// The interface prints the slash, so typing it follows instructions and is not a correction.
     @Test("dropping the convention's slash is not reported as a correction")
     func theSlashIsNotACorrection() {

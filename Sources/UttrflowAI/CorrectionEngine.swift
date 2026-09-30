@@ -25,9 +25,8 @@ public struct WordCorrectionEngine: Sendable {
             .compactMap { proposal(for: $0, against: dictionary, given: evidence) }
         let chosen = Self.withoutOverlaps(wanted)
 
-        // The cap counts spoken words, not proposals: replacing a run of three changes three words.
-        let changed = chosen.reduce(0) { $0 + $1.wordRange.count }
-        guard changed <= Self.budget(for: utterance.words.count) else { return [] }
+        // Each dictionary entry is one proposal, even when it replaces a multi-word run.
+        guard chosen.count <= Self.budget(for: utterance.words.count) else { return [] }
         return chosen.sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound }
     }
 

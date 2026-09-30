@@ -22,17 +22,17 @@ private final class CacheRecorder: Sendable {
 struct GPUBufferCacheTests {
     private let situation = GenerationSituation(application: "Mail", surroundings: "the draft looks fine")
 
-    @Test("A generation pass caps the cache before it runs and empties it after")
+    @Test("An unloaded scorer does not claim the process cache for generation")
     func generationHoldsThenClears() async throws {
         let recorder = CacheRecorder()
         let scorer = MLXCandidateScorer(model: .gemma3, maximumTokens: 16, bufferCache: recorder.control)
         for typed in ["Thanks for sending", "Could we move the review to ", "Sounds good, let"] {
             _ = try await scorer.completions(for: typed, in: situation)
         }
-        #expect(recorder.recorded == Array(repeating: ["hold", "clear"], count: 3).flatMap { $0 })
+        #expect(recorder.recorded.isEmpty)
     }
 
-    @Test("Every other way into the model does the same")
+    @Test("An unloaded scorer does not claim the process cache for other model entry points")
     func everyEntryHoldsThenClears() async throws {
         let recorder = CacheRecorder()
         let scorer = MLXCandidateScorer(model: .gemma3, maximumTokens: 16, bufferCache: recorder.control)
@@ -40,10 +40,56 @@ struct GPUBufferCacheTests {
         _ = try await scorer.alternatives(for: "git che", in: situation, excluding: "git checkout")
         _ = await scorer.judgedTokens(of: "git checkout main", following: "git che")
         _ = await scorer.logLikelihood(of: "git checkout main", following: "git che")
-        #expect(recorder.recorded == Array(repeating: ["hold", "clear"], count: 4).flatMap { $0 })
+        #expect(recorder.recorded.isEmpty)
     }
 
-    @Test("A pass cancelled before it starts still empties the cache")
+    @Test("Overlapping model passes clear once, only after the final pass ends")
+    func overlappingPassesClearAfterTheLastPass() async {
+        let recorder = CacheRecorder()
+        let passes = BufferCachePasses(control: recorder.control)
+        let firstScorer = MLXCandidateScorer(
+            model: .gemma3, maximumTokens: 16, bufferCache: recorder.control, bufferCachePasses: passes)
+        let secondScorer = MLXCandidateScorer(
+            model: .gemma3, maximumTokens: 16, bufferCache: recorder.control, bufferCachePasses: passes)
+        let (started, starter) = AsyncStream.makeStream(of: Int.self)
+        let (firstGate, releaseFirst) = AsyncStream.makeStream(of: Void.self)
+        let (secondGate, releaseSecond) = AsyncStream.makeStream(of: Void.self)
+
+        let first = Task {
+            await firstScorer.beginPass()
+            starter.yield(1)
+            for await _ in firstGate { break }
+            await firstScorer.endPass()
+        }
+        let second = Task {
+            await secondScorer.beginPass()
+            starter.yield(2)
+            for await _ in secondGate { break }
+            await secondScorer.endPass()
+        }
+        for await _ in started.prefix(2) {}
+        #expect(recorder.recorded == ["hold"])
+
+        releaseFirst.yield(())
+        await first.value
+        #expect(recorder.recorded == ["hold"])
+
+        releaseSecond.yield(())
+        await second.value
+        #expect(recorder.recorded == ["hold", "clear"])
+    }
+
+    @Test("A judged-token cache hit does not touch the process-wide buffer cache")
+    func judgedTokenCacheHitDoesNotClear() async {
+        let recorder = CacheRecorder()
+        let scorer = MLXCandidateScorer(model: .gemma3, maximumTokens: 16, bufferCache: recorder.control)
+        _ = await scorer.judgedTokens(of: "git checkout main", following: "git che")
+        let firstCall = recorder.recorded
+        _ = await scorer.judgedTokens(of: "git checkout main", following: "git che")
+        #expect(recorder.recorded == firstCall)
+    }
+
+    @Test("A pass cancelled before it starts does not claim the cache")
     func cancelledPassClears() async {
         let recorder = CacheRecorder()
         let scorer = MLXCandidateScorer(model: .gemma3, maximumTokens: 16, bufferCache: recorder.control)
@@ -53,7 +99,7 @@ struct GPUBufferCacheTests {
             return try await scorer.completions(for: "Thanks for sending", in: situation)
         }
         _ = try? await work.value
-        #expect(recorder.recorded == ["hold", "clear"])
+        #expect(recorder.recorded.isEmpty)
     }
 
     @Test("Loading the model caps the cache and empties it after, even when the load fails")
@@ -74,7 +120,7 @@ struct GPUBufferCacheTests {
         let recorder = CacheRecorder()
         let scorer = MLXCandidateScorer(model: .gemma3, maximumTokens: 16, bufferCache: recorder.control)
         await scorer.release()
-        #expect(recorder.recorded == ["clear"])
+        #expect(recorder.recorded == ["hold", "clear"])
         #expect(await scorer.isReady == false)
     }
 

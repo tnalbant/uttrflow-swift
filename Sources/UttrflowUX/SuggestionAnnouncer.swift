@@ -2,6 +2,8 @@ import UttrflowPredict
 
 /// Decides what VoiceOver is told about the suggestion surface: each offer, and the dot Escape leaves, once when it appears, never again on a redraw.
 public struct SuggestionAnnouncer: Sendable, Equatable {
+    /// The quiet period that coalesces per-keystroke offer updates.
+    public static let coalescingInterval: Duration = .milliseconds(150)
     /// What makes one offer different from another, including how much of the typing taking the leader would replace.
     private struct Offer: Sendable, Equatable {
         let candidates: [String]
@@ -34,5 +36,43 @@ public struct SuggestionAnnouncer: Sendable, Equatable {
     /// Forgets the last offer, so the next one is announced even if it is the same text.
     public mutating func surfaceWithdrawn() {
         spoken = nil
+    }
+}
+
+/// Holds the latest changed offer until it is stable.
+public struct SuggestionAnnouncementCoalescer: Sendable, Equatable {
+    private var pending: String?
+    private var lastUpdate: Duration?
+
+    public init() {}
+
+    /// Records a newly generated announcement and returns it when the offer stays unchanged for the quiet period.
+    public mutating func offer(_ announcement: String?, at now: Duration) -> String? {
+        guard let announcement else { return nil }
+        pending = announcement
+        lastUpdate = now
+        return flushIfReady(at: now)
+    }
+
+    /// Returns the pending announcement after its quiet interval.
+    public mutating func flushIfReady(at now: Duration) -> String? {
+        guard let pending, let lastUpdate,
+            now - lastUpdate >= SuggestionAnnouncer.coalescingInterval
+        else { return nil }
+        self.pending = nil
+        self.lastUpdate = nil
+        return pending
+    }
+
+    /// The remaining quiet interval, or nothing when no announcement is pending.
+    public func remainingQuietInterval(at now: Duration) -> Duration? {
+        guard let lastUpdate else { return nil }
+        return max(.zero, SuggestionAnnouncer.coalescingInterval - (now - lastUpdate))
+    }
+
+    /// Drops queued text when the visible suggestion surface is withdrawn.
+    public mutating func reset() {
+        pending = nil
+        lastUpdate = nil
     }
 }

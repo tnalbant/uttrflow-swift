@@ -40,6 +40,14 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 startOfSentence = true
                 continue
             }
+            let letterAdjacent = Self.hasLetterNameBesideI(at: index, in: draft)
+            if letterAdjacent, WordShape(word.text).key == "i" {
+                let cased = WordShape(word.text).replacingCore(with: "i")
+                draft.replace(at: index, with: cased, by: Self.id)
+                startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+                isFirst = false
+                continue
+            }
             var cased = Self.pronounCapitalised(word.text)
             if isFirst {
                 // The case is read from where this word stands, so a word a pass dropped cannot decide it.
@@ -55,7 +63,10 @@ public struct FirstWordPass: WholeTextCleaningPass {
             }
             draft.replace(at: index, with: cased, by: Self.id)
             // A word trailing off in an ellipsis is a pause, so the next keeps the case it was heard in.
-            startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+            let next = draft.presentIndices.drop(while: { $0 <= index }).first
+                .map { draft.words[$0].text }
+            startOfSentence =
+                Self.endsSentence(cased, followedBy: next) && !WordShape.trailsOff(WordShape(cased).suffix)
             isFirst = false
         }
         return draft
@@ -91,8 +102,31 @@ public struct FirstWordPass: WholeTextCleaningPass {
     /// Whether the word closes a sentence; a dotted abbreviation such as "p.m." carries a stop of its own.
     static func endsSentence(_ text: String) -> Bool {
         let shape = WordShape(text)
-        let abbreviation = InsertionPoint.sentenceAbbreviations.contains(shape.core.lowercased())
-        return shape.endsSentence && !abbreviation && !shape.core.contains(".")
+        guard shape.endsSentence else { return false }
+        guard shape.core.last == "." else { return true }
+        let abbreviation = String(shape.core.dropLast()).lowercased()
+        return !isAbbreviation(abbreviation)
+    }
+
+    static func endsSentence(_ text: String, followedBy next: String?) -> Bool {
+        let shape = WordShape(text)
+        guard shape.endsSentence else { return false }
+        guard shape.core.last == "." else { return true }
+        let abbreviation = String(shape.core.dropLast()).lowercased()
+        guard isAbbreviation(abbreviation) else { return true }
+        guard let next, let first = next.first else { return false }
+        if isTitle(abbreviation) { return !first.isUppercase }
+        return first.isUppercase
+    }
+
+    private static func isTitle(_ word: String) -> Bool {
+        ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof"].contains(word)
+    }
+
+    private static func isAbbreviation(_ word: String) -> Bool {
+        InsertionPoint.sentenceAbbreviations.contains(word) || word.contains(".") || word.count == 1
+            || ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "approx", "dept", "fig", "eg", "ie"]
+                .contains(word)
     }
 
     /// "i" and "i'll" become "I" and "I'll"; nothing else changes.
@@ -102,6 +136,25 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return text
         }
         return shape.replacingCore(with: "I" + shape.core.dropFirst())
+    }
+
+    private static func hasLetterNameBesideI(at index: Int, in draft: Draft) -> Bool {
+        let live = draft.presentIndices
+        guard let position = live.firstIndex(of: index), WordShape(draft.words[index].text).key == "i" else {
+            return false
+        }
+        let names = SpelledInitialismPass.letterNamesForCasing
+        let previousIsLetter =
+            position > 0
+            && live[position - 1] + 1 == index
+            && !draft.shape(at: live[position - 1]).endsClause
+            && names.contains(draft.shape(at: live[position - 1]).key)
+        let nextIsLetter =
+            position + 1 < live.count
+            && live[position + 1] == index + 1
+            && !draft.shape(at: index).endsClause
+            && names.contains(draft.shape(at: live[position + 1]).key)
+        return previousIsLetter || nextIsLetter
     }
 
     /// Gives unambiguous weekday and month names their conventional case without guessing at May or March.
@@ -118,7 +171,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return shape.replacingCore(with: WordShape.capitalised(shape.core))
     }
 
-    private static func isProperName(_ text: String, in context: String) -> Bool {
+    static func isProperName(_ text: String, in context: String) -> Bool {
         let key = WordShape(text).key.lowercased()
         return properNames.contains(key) || isNewYorkWord(key, in: context)
     }

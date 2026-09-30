@@ -82,10 +82,10 @@ struct PromptBuilderTests {
             email.examples == [
                 WorkedExample(
                     spoken: "good morning all the standup is cancelled today thanks kofi",
-                    cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi."),
+                    cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi"),
                 WorkedExample(
                     spoken: "thanks for the update cheers tom",
-                    cleaned: "Thanks for the update.\n\nCheers,\nTom."),
+                    cleaned: "Thanks for the update.\n\nCheers,\nTom"),
             ])
         #expect(!builder.workedExamples(for: .messaging).contains("Thanks,\nKofi."))
         #expect(!builder.workedExamples(for: .plain).contains("Cheers,\nTom."))
@@ -124,6 +124,10 @@ struct PromptBuilderTests {
     func restraintWording() {
         #expect(PromptContract.text.contains("- when unsure, keep the original wording"))
         #expect(PromptContract.text.contains("- never invent or change a name, number, date or amount"))
+        #expect(PromptContract.text.contains("write an acronym in capitals: api → API, json → JSON"))
+        #expect(
+            PromptContract.examples.contains(
+                WorkedExample(spoken: "send the fbi a copy", cleaned: "Send the FBI a copy.")))
         #expect(!PromptContract.text.contains("Never shorten"))
         #expect(!PromptContract.text.contains("never finish an unfinished thought"))
     }

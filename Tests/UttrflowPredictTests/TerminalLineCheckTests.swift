@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import UttrflowPredict
@@ -58,6 +59,47 @@ private func fork() -> FakeDisk {
             "/Users/someone/fork/.git/packed-refs":
                 "abc123 refs/remotes/origin/solo\nabc124 refs/remotes/upstream/split\nabc125 refs/remotes/upstream/packed-only\n"
         ])
+}
+
+/// A packed-refs disk that records reads and lets the next lookup see a replacement file.
+private final class MutablePackedRefsDisk: FileSystemProbing {
+    private struct State: Sendable {
+        var text: String
+        var reads = 0
+    }
+
+    private let disk: FakeDisk
+    private let path = "/Users/someone/repo/.git/packed-refs"
+    private let state: Mutex<State>
+
+    init(text: String) {
+        disk = FakeDisk(directories: ["/Users/someone/repo/.git/refs/remotes/origin"])
+        state = Mutex(State(text: text))
+    }
+
+    var homeDirectory: String { disk.homeDirectory }
+    var searchPaths: [String] { disk.searchPaths }
+    var packedRefsReads: Int { state.withLock { $0.reads } }
+
+    func replacePackedRefs(with text: String) {
+        state.withLock { $0.text = text }
+    }
+
+    func kind(atPath path: String) -> PathKind {
+        path == self.path ? .file(executable: false) : disk.kind(atPath: path)
+    }
+
+    func contents(ofFile path: String, limit: Int) -> String? {
+        guard path == self.path else { return disk.contents(ofFile: path, limit: limit) }
+        return state.withLock {
+            $0.reads += 1
+            return $0.text.utf8.count <= limit ? $0.text : nil
+        }
+    }
+
+    func names(inDirectory path: String, limit: Int) -> [String]? {
+        disk.names(inDirectory: path, limit: limit)
+    }
 }
 
 /// A project with one script per interpreter and each interpreter on the search path.
@@ -135,6 +177,25 @@ struct TwoRemoteCheckTests {
         #expect(repository.remotes(holdingBranch: "split") == ["origin", "upstream"])
         #expect(repository.remotes(holdingBranch: "shared") == ["origin", "upstream"])
         #expect(repository.remotes(holdingBranch: "gone") == [])
+    }
+}
+
+@Suite("Packed refs are memoized for one repository lookup")
+struct PackedRefsCacheTests {
+    @Test("Commit and remote checks read once, then the next lookup sees packed ref updates.")
+    func oneReadPerLookupAndFreshNextLookup() throws {
+        let disk = MutablePackedRefsDisk(
+            text: "abc123 refs/heads/packed-only\nabc124 refs/remotes/origin/packed-only\n")
+        let first = try #require(GitRepository.holding("/Users/someone/repo", files: disk))
+
+        #expect(first.hasCommit(named: "packed-only"))
+        #expect(first.hasRemoteBranch(named: "packed-only"))
+        #expect(disk.packedRefsReads == 1)
+
+        disk.replacePackedRefs(with: "abc124 refs/heads/new-after-update\n")
+        let next = try #require(GitRepository.holding("/Users/someone/repo", files: disk))
+        #expect(next.hasCommit(named: "new-after-update"))
+        #expect(disk.packedRefsReads == 2)
     }
 }
 

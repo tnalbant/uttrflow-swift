@@ -1,9 +1,13 @@
+private import Synchronization
+
 /// A git repository read straight off disk — `.git`, `refs` and `packed-refs` — so a branch is checked without running git.
 struct GitRepository: Sendable {
     /// The directory that holds the refs, shared by every worktree of the repository.
     let commonDirectory: String
     /// The disk it is read from.
     let files: any FileSystemProbing
+    /// The packed refs parsed lazily once for this repository lookup.
+    private let packedRefsCache: PackedRefsCache
 
     /// How far up from the working directory `.git` is looked for.
     static let deepestSearch = 64
@@ -46,7 +50,10 @@ struct GitRepository: Sendable {
             }
             ?? gitDirectory
         guard files.kind(atPath: TerminalPath.joined(common, "reftable")) == .missing else { return nil }
-        return GitRepository(commonDirectory: common, files: files)
+        return GitRepository(
+            commonDirectory: common,
+            files: files,
+            packedRefsCache: PackedRefsCache(path: TerminalPath.joined(common, "packed-refs"), files: files))
     }
 
     /// The text after a `key:` line's key, trimmed.
@@ -73,17 +80,47 @@ struct GitRepository: Sendable {
     }
 
     /// Every ref `packed-refs` names, absent when it cannot be read whole.
-    private var packedRefs: Set<String>? {
-        let path = TerminalPath.joined(commonDirectory, "packed-refs")
-        guard files.kind(atPath: path) != .missing else { return [] }
-        guard let text = files.contents(ofFile: path, limit: Self.packedRefsLimit) else { return nil }
-        return Set(
-            text.split(whereSeparator: \.isNewline).compactMap { line in
-                guard !line.hasPrefix("#"), !line.hasPrefix("^"), let space = line.firstIndex(of: " ") else {
-                    return nil
-                }
-                return String(line[line.index(after: space)...])
-            })
+    private var packedRefs: Set<String>? { packedRefsCache.value }
+
+    /// A per-lookup memo that is discarded when the next repository verification starts.
+    private final class PackedRefsCache: Sendable {
+        private enum State: Sendable {
+            case unread
+            case read(Set<String>?)
+        }
+
+        private let path: String
+        private let files: any FileSystemProbing
+        private let state = Mutex<State>(.unread)
+
+        init(path: String, files: any FileSystemProbing) {
+            self.path = path
+            self.files = files
+        }
+
+        var value: Set<String>? {
+            state.withLock { state in
+                if case .read(let refs) = state { return refs }
+                let refs = Self.read(path: path, files: files)
+                state = .read(refs)
+                return refs
+            }
+        }
+
+        private static func read(path: String, files: any FileSystemProbing) -> Set<String>? {
+            guard files.kind(atPath: path) != .missing else { return [] }
+            guard let text = files.contents(ofFile: path, limit: GitRepository.packedRefsLimit) else {
+                return nil
+            }
+            return Set(
+                text.split(whereSeparator: \.isNewline).compactMap { line in
+                    guard !line.hasPrefix("#"), !line.hasPrefix("^"), let space = line.firstIndex(of: " ")
+                    else {
+                        return nil
+                    }
+                    return String(line[line.index(after: space)...])
+                })
+        }
     }
 
     /// The namespaces a ref's short name is read from, as `git for-each-ref` shortens them.

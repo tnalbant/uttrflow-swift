@@ -41,6 +41,18 @@ the disk image again before even a dry run calls it publishable.
 A placeholder `SUPublicEDKey` fails closed. The entitlement work found the same shape of bug,
 an all-zero Ed25519 key that verified forged signatures.
 
+## Automatic checks and installs
+
+The General tab keeps two choices separate. **Check for updates automatically** controls
+Sparkle's scheduled check, which runs every six hours when enabled. Turning it off stops
+those background requests; **Check Now** still asks Sparkle to check immediately. A check
+reveals the Mac's IP address, the app version in its request user agent, and that the Mac is
+online at that time. Sparkle receives no system profile from Uttrflow.
+
+**Install updates automatically** controls whether a found update downloads without asking.
+It does not control whether Sparkle checks. A downloaded update still waits until the app
+has been quiet for `UpdateGate.settleSeconds` before it installs.
+
 ## What is never sent
 
 `feedParameters(for:sendingSystemProfile:)` returns nothing. Sparkle offers to attach OS

@@ -117,7 +117,7 @@ extension PanelSnapshot {
         }
     }
 
-    /// Whether a clip's whole text, trimmed, is the query, ignoring case and accents.
+    /// Whether a clip's whole text, trimmed, is the query, ignoring case, accents and width.
     static func isWhole(_ needle: String, of clip: Clip, locale: Locale) -> Bool {
         let text = clip.text
         let scalars = text.unicodeScalars
@@ -127,7 +127,7 @@ extension PanelSnapshot {
         else { return needle.isEmpty }
         // Compares the trimmed range in place, so a long clip is rejected without copying its text.
         return text.compare(
-            needle, options: [.caseInsensitive, .diacriticInsensitive],
+            needle, options: SearchFolding.comparisonOptions,
             range: first..<scalars.index(after: last), locale: locale) == .orderedSame
     }
 
@@ -189,6 +189,6 @@ extension PanelSnapshot {
         guard let alias = clip.alias else { return false }
         // The same reduction the alias field saves through, so both spell one name.
         let typed = PanelAlias.handle(needle, locale: locale)
-        return !typed.isEmpty && typed == PanelAlias.handle(alias, locale: locale)
+        return !typed.isEmpty && PanelAlias.matches(typed, alias, locale: locale)
     }
 }

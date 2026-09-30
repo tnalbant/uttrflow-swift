@@ -159,7 +159,7 @@ public struct PanelSnapshot: Sendable, Equatable {
     public var revealed: Set<Clip.ID>
     /// The clock the timestamps are measured against, injected so "2 minutes ago" is testable.
     public var now: Date
-    /// Carried in the state because alias matching folds case and accents by it.
+    /// Carried in the state because alias matching folds case, accents and width by it.
     public var locale: Locale
 
     /// Builds a panel over these clips; the scope starts on History.

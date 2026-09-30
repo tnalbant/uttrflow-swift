@@ -1,4 +1,6 @@
+import Foundation
 import MLX
+import os
 
 /// MLX's own count of the GPU memory it holds, in bytes.
 public struct GPUMemoryReading: Sendable, Equatable {
@@ -31,4 +33,32 @@ struct BufferCacheControl: Sendable {
     /// The real cache, which only a process that loaded MLX's Metal library may touch.
     static let mlx = BufferCacheControl(
         hold: { Memory.cacheLimit = GPUBufferCache.limit }, clear: { Memory.clearCache() })
+}
+
+/// Holds the process-wide cache until every pass using the model has ended.
+final class BufferCachePasses: Sendable {
+    private let control: BufferCacheControl
+    private let active = OSAllocatedUnfairLock(initialState: 0)
+
+    init(control: BufferCacheControl) {
+        self.control = control
+    }
+
+    func begin() {
+        active.withLock {
+            if $0 == 0 { control.hold() }
+            $0 += 1
+        }
+    }
+
+    func end() {
+        active.withLock {
+            precondition($0 > 0)
+            $0 -= 1
+            if $0 == 0 { control.clear() }
+        }
+    }
+
+    /// Shares cache ownership across every scorer using MLX in this process.
+    static let processWide = BufferCachePasses(control: .mlx)
 }

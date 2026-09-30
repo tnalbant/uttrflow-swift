@@ -47,6 +47,15 @@ struct DictionaryPageTests {
         #expect(page.chrome.title == "Dictionary")
     }
 
+    @Test("the caption counts only words still applied")
+    func captionExcludesRetiredWords() {
+        let page = HistoryFixture.dictionary(entries: [
+            HistoryFixture.word("Uttrflow"),
+            HistoryFixture.word("Retired", used: 4, reverted: 3),
+        ])
+        #expect(page.chrome.caption == "Names and terms Uttrflow would otherwise get wrong. · 1 word")
+    }
+
     @Test("a row says how it sounds, where it came from and how it has fared")
     func row() {
         let page = HistoryFixture.dictionary(entries: [
@@ -238,7 +247,7 @@ struct DictionaryEmptyTests {
     @Test("an empty dictionary explains what would fill it")
     func empty() {
         let page = HistoryFixture.dictionary()
-        #expect(page.emptyState?.title == "No words of your own yet")
+        #expect(page.emptyState?.title == "Your dictionary is empty")
         #expect(page.emptyState?.action?.intent == .addWord)
         #expect(page.emptyState?.action?.title == "Add Word")
         #expect(page.emptyState?.message == "Add names and terms Uttrflow would otherwise get wrong.")
@@ -249,7 +258,7 @@ struct DictionaryEmptyTests {
     @Test("offers a word when the last dictionary entry is deleted during search")
     func emptyDuringSearch() {
         let page = HistoryFixture.dictionary(query: "anything")
-        #expect(page.emptyState?.title == "No words of your own yet")
+        #expect(page.emptyState?.title == "Your dictionary is empty")
         #expect(page.emptyState?.action?.intent == .addWord)
     }
 

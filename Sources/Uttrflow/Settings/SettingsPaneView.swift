@@ -1,6 +1,7 @@
 // One Settings tab: banner, rejection, labelled cards of rows, the tidying example and the note.
 
 import UttrflowUX
+import UttrflowPermissions
 import SwiftUI
 
 /// One tab's worth of cards, written once for every tab; the differences are in the `SettingsPane`.
@@ -12,6 +13,9 @@ struct SettingsPaneView: View {
         VStack(alignment: .leading, spacing: 22) {
             if let banner = pane.banner {
                 SettingsBannerView(banner: banner)
+            }
+            if let warning = model.session.capabilities.globeKeyWarning(for: model.session.settings.hotkey) {
+                GlobeKeyWarningView(message: warning)
             }
             // The refusal sits above the cards, one place to look whichever control earned it.
             if let rejection = model.session.rejection {
@@ -43,6 +47,35 @@ struct SettingsPaneView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Warns that macOS will also act on the Globe key, with a direct route to Keyboard settings.
+private struct GlobeKeyWarningView: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("Globe key also has a macOS action", systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(PagePalette.clipboard)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(PagePalette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Open Keyboard Settings") {
+                SystemSettingsOpener().open(.keyboard)
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 12, weight: .medium))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PagePalette.clipboard.opacity(0.1), in: .rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(PagePalette.clipboard.opacity(0.25), lineWidth: 1)
+        )
     }
 }
 

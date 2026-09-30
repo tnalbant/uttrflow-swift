@@ -9,16 +9,18 @@ extension TokenHealing.Vocabulary {
 
     /// Reads the whole vocabulary off the tokenizer, stopping at the first id it does not know; the turn ends on the tokenizer's end token, the configuration's, or any piece named as one.
     init(tokenizer: any MLXLMCommon.Tokenizer, endOfTurn: Set<String>, endingIds: Set<Int>) {
-        var bytes: [[UInt8]] = []
+        var pieces: [String] = []
         var ending = endingIds
         for id in 0..<Self.mostTokens {
             guard let piece = tokenizer.convertIdToToken(id) else { break }
-            let written = Self.bytes(of: piece)
-            if written.contains(0x0A) || id == tokenizer.eosTokenId || endOfTurn.contains(piece) {
+            if id == tokenizer.eosTokenId || endOfTurn.contains(piece) {
                 ending.insert(id)
             }
-            bytes.append(written)
+            pieces.append(piece)
         }
+        let byteLevelBPE = Self.usesByteLevelBPE(pieces)
+        let bytes = pieces.map { Self.bytes(of: $0, byteLevelBPE: byteLevelBPE) }
+        for (id, written) in bytes.enumerated() where written.contains(0x0A) { ending.insert(id) }
         self.init(bytes: bytes, ending: ending)
     }
 }

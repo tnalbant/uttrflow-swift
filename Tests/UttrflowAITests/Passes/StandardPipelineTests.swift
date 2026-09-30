@@ -10,7 +10,7 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.standard.ids == [
                 "fillers", "stammers", "repeatedPhrase", "selfCorrection", "spokenPunctuation", "layoutWords",
-                "numberForms", "contractions", "spacing", "firstWord", "terminalStop",
+                "numberForms", "contractions", "spelledInitialism", "spacing", "firstWord", "terminalStop",
             ])
     }
 
@@ -19,6 +19,13 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown).ids
                 == Array(CleaningPipeline.standard.ids.dropLast(2)))
+    }
+
+    @Test("joins spoken initialisms after the whole message is assembled")
+    func wholeTextInitialisms() {
+        let pipeline = CleaningPipeline.wholeText(for: .standard(for: .plain), situation: .unknown)
+        #expect(pipeline.ids == [.spelledInitialism, .firstWord, .terminalStop])
+        #expect(pipeline.run(Draft(text: "the a p i is down")).text == "The API is down.")
     }
 
     @Test("uses the formatter's list policy for piece clean-up")

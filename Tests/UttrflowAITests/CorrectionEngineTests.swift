@@ -127,6 +127,24 @@ struct CorrectionEngineTests {
 
     // MARK: The one-in-five cap
 
+    @Test("one three-word dictionary proposal fits under a fifteen-word budget")
+    func multiwordProposalCountsOnceAgainstTheCap() throws {
+        let utterance = CorrectionFixtures.spoken(
+            "we should run the ?s ?q ?l migration tonight before the release goes out")
+        #expect(utterance.words.count == 15)
+        let only = try #require(engine.proposals(for: utterance, against: index).only)
+        #expect(only.replacement == "SQL")
+        #expect(only.wordRange.count == 3)
+    }
+
+    @Test("two distinct proposals still exceed the one-in-five budget")
+    func distinctProposalsRespectTheCap() {
+        let utterance = CorrectionFixtures.spoken(
+            "?s ?q ?l and ?x ?m ?l")
+        #expect(utterance.words.count == 7)
+        #expect(engine.proposals(for: utterance, against: index).isEmpty)
+    }
+
     /// Four stray-letter runs in twenty-two words want twelve changes where four are allowed.
     @Test("abandons the whole utterance rather than change more than one word in five")
     func capAbandonsAnOverEagerUtterance() {

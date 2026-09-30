@@ -40,8 +40,8 @@ struct InsertionPointTests {
     @Test(
         "any other last mark leaves the caret mid-sentence",
         arguments: [
-            "The build failed because", "The build failed because ", "milk, eggs,", "wait…",
-            "He said \"go.\"",
+            "The build failed because", "The build failed because ", "milk, eggs,", "wait",
+            "Great work! 🎉 but", "Done. and then", "He said \"go.\" and left",
         ]
     )
     func midSentence(preceding: String) {
@@ -59,9 +59,27 @@ struct InsertionPointTests {
         #expect(InsertionPoint.sentenceState(before: preceding) == .midSentence)
     }
 
-    @Test("a normal terminal period still opens a sentence")
-    func normalPeriodStartsSentence() {
-        #expect(InsertionPoint.sentenceState(before: "Done. ") == .startOfSentence)
+    @Test(
+        "a sentence end before closing quotes, brackets or trailing emoji opens the next sentence",
+        arguments: [
+            "She said \"Go home.\" ", "She said ‘Go home.’ ", "(See the notes.) ",
+            "[See the notes!] ", "Great work! 🎉 ", "Amazing. 👩🏽‍💻 ", "Wait… ",
+        ])
+    func sentenceEndBeforeClosersAndEmojiStartsSentence(preceding: String) {
+        #expect(InsertionPoint.sentenceState(before: preceding) == .startOfSentence)
+    }
+
+    @Test(
+        "ordinary terminal punctuation starts a sentence while punctuation mid-sentence does not",
+        arguments: [
+            ("Done. ", true), ("Really? ", true), ("Go! ", true), ("3.14 is pi", false),
+            ("Wait… ", true), ("Great work 🎉 ", false), ("Great work! 🎉 and then", false),
+        ]
+    )
+    func terminalPunctuationAndMidSentenceControls(example: (String, Bool)) {
+        #expect(
+            InsertionPoint.sentenceState(before: example.0)
+                == (example.1 ? .startOfSentence : .midSentence))
     }
 
     /// A marker is typed but not written: the caret after one opens the line, whatever the marker is.

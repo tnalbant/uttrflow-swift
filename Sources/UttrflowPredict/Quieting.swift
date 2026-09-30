@@ -16,6 +16,7 @@ public enum Quieting {
         if !context.isEnabledHere { return .turnedOffHere }
         if context.isSecure { return .secureField }
         if context.markedText == .present { return .composing }
+        if !context.writingDirectionKnown { return .unknownWritingDirection }
         if !context.canDraw { return .nowhereToDraw }
         if context.hasSelection { return .textSelected }
         if !context.caretAtLineEnd { return .caretInsideText }
@@ -36,6 +37,8 @@ public enum Quieting {
         case secureField
         /// The field reports marked text, so an input method owns the line, Escape and the arrows.
         case composing
+        /// The adjacent glyph bounds do not establish which side the continuation belongs on.
+        case unknownWritingDirection
         /// The field reports no caret, so there is no place on its line to draw.
         case nowhereToDraw
         /// Text is selected, which the next keystroke would replace.

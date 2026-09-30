@@ -26,11 +26,13 @@ public enum SuggestionGeometry {
         field: CGRect? = nil,
         screen: CGRect,
         size: CGSize,
+        direction: WritingDirection = .leftToRight,
         fontAscent: CGFloat? = nil,
         fontDescent: CGFloat? = nil
     ) -> SuggestionAnchor? {
         guard placement == .inlineGhost, let caret = usable(caret, on: screen),
-            let room = availableWidth(caret: caret, field: field, window: window, screen: screen),
+            let room = availableWidth(
+                caret: caret, field: field, window: window, screen: screen, direction: direction),
             size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0,
             room >= min(size.width, minimumWidth)
         else { return nil }
@@ -42,7 +44,9 @@ public enum SuggestionGeometry {
         let top = min(max(baselineTop, lowerY + height), upperY)
         return SuggestionAnchor(
             placement: .inlineGhost,
-            frame: CGRect(x: caret.maxX, y: top - height, width: width, height: height))
+            frame: CGRect(
+                x: direction == .leftToRight ? caret.maxX : caret.minX - width,
+                y: top - height, width: width, height: height))
     }
 
     /// The first line's top follows the field baseline when its font metrics are available.
@@ -53,17 +57,24 @@ public enum SuggestionGeometry {
         return caret.minY + descent + ascent
     }
 
-    /// How far the ghost may run from the caret before it meets the field's, window's or screen's right edge, or nothing when the caret is past all three.
+    /// How far the ghost may run from the caret before it meets the containing edge in its writing direction.
     public static func availableWidth(
-        caret: CGRect, field: CGRect?, window: CGRect?, screen: CGRect
+        caret: CGRect, field: CGRect?, window: CGRect?, screen: CGRect,
+        direction: WritingDirection = .leftToRight
     ) -> CGFloat? {
-        let start = caret.maxX
-        guard start.isFinite, start >= screen.minX, start < screen.maxX else { return nil }
-        let edge = min(
-            screen.maxX,
-            fieldEdge(field, holding: start) ?? windowEdge(window, holding: start)
-                ?? screen.maxX)
-        return edge > start ? edge - start : nil
+        let start = direction == .leftToRight ? caret.maxX : caret.minX
+        guard start.isFinite, start >= screen.minX, start <= screen.maxX else { return nil }
+        let edge =
+            direction == .leftToRight
+            ? min(
+                screen.maxX,
+                fieldEdge(field, holding: start) ?? windowEdge(window, holding: start) ?? screen.maxX)
+            : max(
+                screen.minX,
+                fieldLeadingEdge(field, holding: start) ?? windowLeadingEdge(window, holding: start)
+                    ?? screen.minX)
+        let room = direction == .leftToRight ? edge - start : start - edge
+        return room > 0 ? room : nil
     }
 
     /// Whether a ghost this wide is drawn whole in this much room, since a cut ghost would hide what Tab inserts.
@@ -91,6 +102,20 @@ public enum SuggestionGeometry {
             window.minX <= start, start <= window.maxX
         else { return nil }
         return window.maxX
+    }
+
+    private static func fieldLeadingEdge(_ field: CGRect?, holding start: CGFloat) -> CGFloat? {
+        guard let field, !field.isNull, !field.isInfinite, field.width > minimumWidth,
+            field.minX <= start, start <= field.maxX
+        else { return nil }
+        return field.minX
+    }
+
+    private static func windowLeadingEdge(_ window: CGRect?, holding start: CGFloat) -> CGFloat? {
+        guard let window, !window.isNull, !window.isInfinite,
+            window.minX <= start, start <= window.maxX
+        else { return nil }
+        return window.minX
     }
 
     /// A rectangle from another display, or from a window since closed, is no rectangle.

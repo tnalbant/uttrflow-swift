@@ -158,6 +158,30 @@ struct IdleReleaseTests {
         #expect(await inner.steps == ["load", "release", "reload", "reload"])
     }
 
+    @Test("a failed idle reload is not retried by later readiness checks")
+    func failedIdleReloadIsNotRetriedUntilPrepare() async throws {
+        let inner = RecordingModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        let told = Told()
+        await model.whenReloadFails { Task { await told.note() } }
+        try await model.prepare(onProgress: { _ in })
+        #expect(await model.releaseIfIdle(at: .now + .seconds(700)) == false)
+        await inner.failNextLoad()
+
+        #expect(await model.isReady == false)
+        await model.pendingWork?.value
+        await told.waitForOne()
+        #expect(await model.holdsTheModel == false)
+
+        for _ in 0..<5 { #expect(await model.isReady == false) }
+        await model.pendingWork?.value
+        #expect(await inner.steps == ["load", "release", "reload"])
+
+        try await model.prepare(onProgress: { _ in })
+        #expect(await model.isReady)
+        #expect(await inner.steps == ["load", "release", "reload", "load"])
+    }
+
     @Test("the discretionary wrapper passes the reload report through to the model inside it")
     func theWrapperPassesTheReportOn() async throws {
         let inner = RecordingModel()

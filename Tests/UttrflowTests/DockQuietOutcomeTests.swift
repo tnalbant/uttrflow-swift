@@ -87,4 +87,28 @@ struct DockQuietOutcomeTests {
                 == AppDelegate.failureLingers)
         #expect(AppDelegate.linger(after: .recording) == nil)
     }
+
+    @Test("keeps a recoverable failure up for VoiceOver")
+    func recoverableFailureLingersForVoiceOver() {
+        let failure = DictationFailure(
+            message: "Try again.", recovery: .retry, severity: .recoverable)
+
+        #expect(
+            AppDelegate.linger(after: .failed(failure), voiceOverEnabled: true)
+                == AppDelegate.voiceOverFailureLingers)
+    }
+
+    @Test("pauses the remaining dismissal time and restarts it on exit")
+    func dismissalPausesAndResumes() {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var timer = DismissalCountdown(.seconds(10), at: start)
+        let hover = start.advanced(by: .seconds(4))
+        timer.pause(at: hover)
+
+        #expect(!timer.hasExpired(at: start.advanced(by: .seconds(30))))
+        timer.resume(at: start.advanced(by: .seconds(30)))
+        #expect(!timer.hasExpired(at: start.advanced(by: .seconds(35))))
+        #expect(timer.hasExpired(at: start.advanced(by: .seconds(36))))
+    }
 }

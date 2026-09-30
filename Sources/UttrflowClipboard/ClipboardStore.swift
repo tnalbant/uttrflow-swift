@@ -454,14 +454,18 @@ public actor ClipboardStore {
     static func rebuilding(
         _ clip: Clip, text: String, richText: String?, image: ClipImage?
     ) -> Clip {
+        let classified =
+            image == nil
+            ? ClipKindDetector.classification(of: text)
+            : ClipClassification(kind: .image, language: nil)
         Clip(
-            id: clip.id, text: text, kind: clip.kind, copiedAt: clip.copiedAt,
+            id: clip.id, text: text, kind: classified.kind, copiedAt: clip.copiedAt,
             source: clip.source, origin: clip.origin, dictations: clip.dictations,
             // An unlinked dictation copy keeps its first words, the only thing deleting its dictation can match.
             dictatedText: clip.dictatedText ?? (clip.isUnlinkedDictationCopy ? clip.text : nil),
             lastUsedAt: clip.lastUsedAt,
             lastUsedOrder: clip.lastUsedOrder,
-            language: clip.language, richText: richText, image: image,
+            language: classified.language, richText: richText, image: image,
             alias: clip.alias, category: clip.category, isPinned: clip.isPinned,
             timesCopied: clip.timesCopied)
     }

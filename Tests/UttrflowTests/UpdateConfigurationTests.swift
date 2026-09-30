@@ -48,4 +48,30 @@ struct UpdateConfigurationTests {
             #expect(!UpdateController.isPublicKey(key), "\(key)")
         }
     }
+
+    @Test("maps automatic checking and installing to their separate Sparkle settings")
+    @MainActor
+    func mapsUpdatePreferencesSeparately() {
+        let target = UpdateSettingsTargetStub()
+
+        UpdateSettingsMapping.configure(
+            checksAutomatically: false, installsAutomatically: true, to: target)
+
+        #expect(!target.automaticallyChecksForUpdates)
+        #expect(target.automaticallyDownloadsUpdates)
+
+        UpdateSettingsMapping.setChecksAutomatically(true, on: target)
+        #expect(target.automaticallyChecksForUpdates)
+        #expect(target.automaticallyDownloadsUpdates)
+
+        UpdateSettingsMapping.setInstallsAutomatically(false, on: target)
+        #expect(target.automaticallyChecksForUpdates)
+        #expect(!target.automaticallyDownloadsUpdates)
+    }
+}
+
+@MainActor
+private final class UpdateSettingsTargetStub: UpdateSettingsTarget {
+    var automaticallyChecksForUpdates = true
+    var automaticallyDownloadsUpdates = false
 }

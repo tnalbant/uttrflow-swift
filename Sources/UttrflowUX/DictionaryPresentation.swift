@@ -257,7 +257,9 @@ public enum DictionaryPresenter {
         return DictionaryPresentation(
             chrome: MainPageChrome(
                 title: "Dictionary",
-                caption: isBare ? nil : caption(for: snapshot.entries.count),
+                caption: isBare
+                    ? nil
+                    : caption(for: snapshot.entries.count(where: \.isTrustworthy)),
                 search: snapshot.entries.isEmpty
                     ? nil
                     : MainSearchField(placeholder: searchPlaceholder, query: snapshot.query),
@@ -432,7 +434,7 @@ public enum DictionaryPresenter {
         guard !snapshot.entries.isEmpty else {
             return MainEmptyState(
                 symbolName: "character.book.closed",
-                title: "No words of your own yet",
+                title: "Your dictionary is empty",
                 message: "Add names and terms Uttrflow would otherwise get wrong.",
                 action: MainAction(title: "Add Word", symbolName: "plus", intent: .addWord))
         }
@@ -451,7 +453,7 @@ public enum DictionaryPresenter {
         }
         return MainEmptyState(
             symbolName: "character.book.closed",
-            title: "No words of your own yet",
+            title: "Your dictionary is empty",
             message: "Add names and terms Uttrflow would otherwise get wrong.",
             action: MainAction(title: "Add Word", symbolName: "plus", intent: .addWord))
     }
