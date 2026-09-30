@@ -623,6 +623,40 @@ struct GrammarGuardTests {
         Draft(words: text.split(separator: " ").map { Draft.Word(String($0)) }, confidencesAreReal: true)
     }
 
+    @Test("refuses a sound-alike replacement of a high-confidence word")
+    func refusesConfidentHomophoneReplacement() {
+        let their = Draft(
+            words: "put it over their".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+        let hear = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.95)
+            }, confidencesAreReal: true)
+
+        #expect(
+            sut.verdict(draft: their, rewritten: "Put it over there.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'their' with a sound-alike",
+                    kind: .lostWord))
+        #expect(
+            sut.verdict(draft: hear, rewritten: "I can here you.")
+                == .rejected(
+                    reason: "the rewrite replaced high-confidence 'hear' with a sound-alike",
+                    kind: .lostWord))
+    }
+
+    @Test("allows an offered homophone for a low-confidence word")
+    func allowsOfferedLowConfidenceHomophone() {
+        let draft = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
+    }
+
     @Test("accepts a doubtful word written as one of the readings it was offered")
     func acceptsAnOfferedReading() {
         let offered = [DoubtfulSpan(heard: "apple", confidence: 0.31, candidates: ["Apple", "apples"])]

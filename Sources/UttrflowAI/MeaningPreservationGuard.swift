@@ -53,6 +53,9 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = readings.verdict {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.confidentHomophoneVerdict(draft, aligned: alignment) {
+            return .rejected(reason: reason, kind: kind)
+        }
         if case .rejected(let reason, let kind) = Self.layoutVerdict(
             kept: draft.text, rewritten: rewritten, layout: layout)
         {
@@ -61,6 +64,28 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token))
+    }
+
+    /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
+    private static func confidentHomophoneVerdict(_ draft: Draft, aligned: RewriteAlignment) -> GuardVerdict {
+        guard draft.confidencesAreReal else { return .accepted }
+        let heard = draft.words
+            .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
+            .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
+        for change in aligned.changes {
+            for index in change.kept where index < heard.count {
+                let token = aligned.kept[index]
+                guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
+                if change.rewritten.contains(where: {
+                    Homophones.share(token.matching, aligned.rewritten[$0].matching)
+                }) {
+                    return .rejected(
+                        reason: "the rewrite replaced high-confidence '\(token.text)' with a sound-alike",
+                        kind: .lostWord)
+                }
+            }
+        }
+        return .accepted
     }
 
     /// The content words and negations among removals no grant covers, each with the pass that took it.
