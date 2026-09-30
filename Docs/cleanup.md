@@ -300,7 +300,7 @@ one model call per piece — is `Docs/cleanup-design.md`. Below is where things 
   instead of a silent loss; the word itself comes back only when the pass is fixed.
   `RemovalGrantCorpusTests` lists every corpus case whose passes overreach, so the guard's
   verdict can differ from the kept-words-only one on those cases and no others. Issue 239.
-- `CorrectionEngine` and the dictionary handle spellings before the tidier sees the text.
+- `WordCorrectionEngine` and the dictionary handle spellings before the tidier sees the text.
 - The pieces cut while recording (`Docs/early-transcription.md`) are each tidied alone,
   which is why paragraph breaks and list layout have to be decided when the pieces are
   joined, not inside one piece.
