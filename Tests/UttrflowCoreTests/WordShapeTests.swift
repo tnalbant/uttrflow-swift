@@ -29,6 +29,20 @@ struct WordShapeTests {
     }
 
     @Test(
+        "recognizes danda and double danda as sentence endings",
+        arguments: ["है।", "है॥"])
+    func devanagariSentenceEndings(text: String) {
+        let shape = WordShape(text)
+        #expect(shape.endsSentence)
+        #expect(WordShape.finished(text) == text)
+    }
+
+    @Test("adds a full stop to an unmarked Devanagari sentence")
+    func finishesUnmarkedDevanagariSentence() {
+        #expect(WordShape.finished("है") == "है.")
+    }
+
+    @Test(
         "a sentence cannot end on an article, a conjunction, the copula or a contracted subject",
         arguments: [
             ("the", true), ("And", true), ("is", true), ("let's", true), ("we're", true),

@@ -11,7 +11,10 @@ struct TerminalStopPassTests {
 
     @Test(
         "finishes a sentence that has no ending",
-        arguments: [("hello there", "hello there."), ("42", "42."), ("ship it", "ship it.")])
+        arguments: [
+            ("hello there", "hello there."), ("42", "42."), ("ship it", "ship it."),
+            ("मेरी उड़ान 15 अगस्त को सुबह 9 बजे है", "मेरी उड़ान 15 अगस्त को सुबह 9 बजे है."),
+        ])
     func addsStop(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
@@ -87,7 +90,7 @@ struct TerminalStopPassTests {
         "leaves text that already ends, looks like code, or is empty",
         arguments: [
             "hello.", "hello!", "hello?", "hello…", "hello,", "\"hello\"", "get_user(id)",
-            "SELECT * FROM user;",
+            "SELECT * FROM user;", "मेरी उड़ान 15 अगस्त को सुबह 9 बजे है।", "वह घर गया॥",
             "let x = [1, 2, 3]", "func main() {}", "",
         ]
     )
@@ -235,7 +238,8 @@ struct TerminalStopPassTests {
         arguments: [
             ("", 0), ("   ", 0), ("one", 1), ("one.", 1), ("One. Two", 2), ("One. Two.", 2),
             ("Version 16.2 is out.", 1), ("Really?! Yes.", 2), ("One!  Two?  Three...", 3),
-            ("line one\nline two.", 1),
+            ("line one\nline two.", 1), ("वाक्य।", 1), ("वाक्य॥", 1),
+            ("पहला वाक्य। दूसरा वाक्य॥", 2),
         ]
     )
     func sentenceCount(text: String, expected: Int) {
