@@ -73,6 +73,47 @@ struct PanelKeyDecisionTests {
         #expect(copy == .intent(.copy(clip.id)))
     }
 
+    @Test("row chords are ignored while either typing sheet is open")
+    func rowChordsAreIgnoredByTypingSheets() {
+        let clip = PanelFixture.clip("Hello there")
+        for sheet in [
+            PanelSheet.aliasing(clip.id, draft: "draft"),
+            .moving(clip.id, draft: "draft"),
+        ] {
+            var snapshot = PanelFixture.panel([clip])
+            snapshot.selection = clip.id
+            snapshot.sheet = sheet
+            let page = PanelPresenter.present(snapshot)
+
+            for chord in [PanelRowAction.alias, .move, .delete, .pin, .copy] {
+                #expect(
+                    PanelKeyHandling.decision(
+                        characters: String(chord.chord.character),
+                        commandHeld: true,
+                        shiftHeld: chord.chord.isShifted,
+                        isReturn: false,
+                        isEscape: false,
+                        rowMenuOpen: false,
+                        presentation: page) == .ignore)
+            }
+            #expect(
+                PanelKeyHandling.decision(
+                    characters: "", commandHeld: false, shiftHeld: false,
+                    isReturn: true, isEscape: false, rowMenuOpen: false,
+                    presentation: page) == .key(.return))
+            #expect(
+                PanelKeyHandling.decision(
+                    characters: "", commandHeld: false, shiftHeld: false,
+                    isReturn: false, isEscape: true, rowMenuOpen: false,
+                    presentation: page) == .key(.escape))
+            #expect(
+                PanelKeyHandling.decision(
+                    characters: "", commandHeld: true, shiftHeld: false,
+                    isReturn: true, isEscape: false, rowMenuOpen: false,
+                    presentation: page) == .ignore)
+        }
+    }
+
     private func decision(
         _ characters: String,
         command: Bool = false,

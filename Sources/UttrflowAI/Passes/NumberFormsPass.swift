@@ -326,6 +326,21 @@ public struct NumberFormsPass: CleaningPass {
         {
             return (ten + unit, 2)
         }
+        if let cardinal = NumberWords.cardinal(unbroken(from: position, keys: keys, shapes: shapes)),
+            cardinal.value >= 20
+        {
+            var ordinalPosition = position + cardinal.count
+            var count = cardinal.count
+            if joined(ordinalPosition, shapes), keys[ordinalPosition] == "and",
+                joined(ordinalPosition + 1, shapes)
+            {
+                ordinalPosition += 1
+                count += 1
+            }
+            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10 {
+                return (cardinal.value + unit, count + 1)
+            }
+        }
         return ordinalUnits[keys[position]].map { ($0, 1) }
     }
 }

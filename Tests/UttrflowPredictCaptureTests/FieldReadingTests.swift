@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowPredict
 
@@ -95,7 +96,8 @@ struct FieldReadingTests {
         "A terminal running a remote session is scoped as that session, not the directory this Mac was left in.",
         arguments: [
             "someone@host: ~ \u{2014} ssh \u{2014} 80\u{00D7}24", "api \u{2014} ssh someone@host",
-            "api \u{2014} mosh-client", "(mosh)",
+            "api \u{2014} mosh-client", "(mosh)", "api \u{2014} autossh", "docker exec -it box sh",
+            "kubectl exec -it pod -- sh", "gcloud compute ssh instance", "someone@remote-host: ~/work",
         ])
     func remoteSessionIsNotTheLocalDirectory(windowTitle: String) {
         let reading = FieldReading(
@@ -106,16 +108,32 @@ struct FieldReadingTests {
     }
 
     @Test(
-        "A local terminal keeps its directory, including one whose name only reads like a remote program.",
-        arguments: [
-            "api \u{2014} -zsh \u{2014} 80\u{00D7}24", ".ssh \u{2014} -zsh", "~/api/.ssh",
-            "someone@this-mac: ~/api", "api \u{2014} ssh-keygen", "api \u{2014} scp",
-        ])
-    func localTerminalKeepsItsDirectory(windowTitle: String) {
+        "A local machine's exact host name establishes a local terminal scope.")
+    func localHostTitleKeepsItsDirectory() {
+        let host = Host.current().name ?? ProcessInfo.processInfo.hostName
         let reading = FieldReading(
             bundleIdentifier: "com.apple.Terminal", role: "AXTextArea",
-            document: "file:///Users/someone/api", windowTitle: windowTitle)
+            document: "file:///Users/someone/api", windowTitle: "someone@\(host): ~/api")
         #expect(reading.scope == "/Users/someone/api")
+    }
+
+    @Test("A local SSH directory is not mistaken for a remote program.")
+    func localSSHDirectoryIsNotRemote() {
+        #expect(!RemoteSession.isNamed(inWindowTitle: "~/.ssh — -zsh"))
+        #expect(
+            FieldReading(
+                bundleIdentifier: "com.apple.Terminal", role: "AXTextArea",
+                document: "file:///Users/someone/api", windowTitle: "~/.ssh — -zsh"
+            ).scope
+                == RemoteSession.unknownScope)
+    }
+
+    @Test("A terminal title without a trustworthy machine identity uses an isolated scope.")
+    func ambiguousTerminalTitleIsUnknown() {
+        let reading = FieldReading(
+            bundleIdentifier: "com.apple.Terminal", role: "AXTextArea",
+            document: "file:///Users/someone/api", windowTitle: "api — -zsh")
+        #expect(reading.scope == RemoteSession.unknownScope)
     }
 
     @Test(
@@ -129,8 +147,8 @@ struct FieldReadingTests {
         }
         let first = pane("/Users/someone/project-x")
         let second = pane("/Users/someone/project-y")
-        #expect(first.scope == RemoteSession.scope)
-        #expect(second.scope == RemoteSession.scope)
+        #expect(first.scope == RemoteSession.unknownScope)
+        #expect(second.scope == RemoteSession.unknownScope)
         #expect(first.surface?.scope == second.surface?.scope)
         #expect(first.scope?.hasPrefix("/") != true)
     }

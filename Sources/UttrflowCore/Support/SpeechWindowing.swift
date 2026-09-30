@@ -12,10 +12,10 @@ public struct SpeechWindowing: Sendable, Equatable {
     /// A pause this long ends a window that has reached ``minimumLength``, in seconds.
     public var sentencePause: Double
 
-    /// A window this long is ended by the shorter ``anyPause`` instead, in seconds.
+    /// A window this long begins accepting pauses shorter than ``sentencePause``, in seconds.
     public var comfortableLength: Double
 
-    /// A pause this long ends a window that has reached ``comfortableLength``, in seconds.
+    /// The shortest pause that may end a window as it approaches ``maximumLength``, in seconds.
     public var anyPause: Double
 
     /// A window never holds more than this, which is the recogniser's own window, in seconds.
@@ -66,11 +66,12 @@ public struct SpeechWindowing: Sendable, Equatable {
         let earliest = Int(Swift.min(earlyLength, minimumLength) / VoiceActivity.frameDuration)
         let ordinary = Int(minimumLength / VoiceActivity.frameDuration)
         let comfortable = Int(comfortableLength / VoiceActivity.frameDuration)
+        let maximum = Int(maximumLength / VoiceActivity.frameDuration)
         var spoken = [0]
         for value in loudness { spoken.append(spoken[spoken.count - 1] + (value >= threshold ? 1 : 0)) }
         if let pause = firstPause(
             in: loudness, below: threshold, after: earliest, ordinaryAt: ordinary,
-            comfortableAt: comfortable, spoken: spoken)
+            comfortableAt: comfortable, maximumAt: maximum, spoken: spoken)
         {
             return start + pause * frameLength
         }
@@ -111,7 +112,8 @@ public struct SpeechWindowing: Sendable, Equatable {
     /// The middle frame of the first quiet run long enough for where that middle falls, counting a run still open at the end.
     private func firstPause(
         in loudness: [Float], below threshold: Float, after earliest: Int,
-        ordinaryAt ordinary: Int, comfortableAt comfortable: Int, spoken: [Int]
+        ordinaryAt ordinary: Int, comfortableAt comfortable: Int, maximumAt maximum: Int,
+        spoken: [Int]
     ) -> Int? {
         let speechFrames = Int((minimumSpeech / VoiceActivity.frameDuration).rounded())
         let earlyFrames = Swift.max(1, Int(earlyPause / VoiceActivity.frameDuration))
@@ -124,7 +126,8 @@ public struct SpeechWindowing: Sendable, Equatable {
                 if runStart == nil { runStart = index }
             } else if let began = runStart {
                 if let middle = middle(
-                    ofRun: began..<index, ordinary, comfortable, earlyFrames, sentenceFrames, anyFrames),
+                    ofRun: began..<index, ordinary, comfortable, maximum, earlyFrames,
+                    sentenceFrames, anyFrames),
                     spoken[middle] >= speechFrames
                 {
                     return middle
@@ -134,8 +137,8 @@ public struct SpeechWindowing: Sendable, Equatable {
         }
         if let began = runStart,
             let middle = middle(
-                ofRun: began..<loudness.count, ordinary, comfortable, earlyFrames, sentenceFrames,
-                anyFrames),
+                ofRun: began..<loudness.count, ordinary, comfortable, maximum, earlyFrames,
+                sentenceFrames, anyFrames),
             spoken[middle] >= speechFrames
         {
             return middle
@@ -145,14 +148,21 @@ public struct SpeechWindowing: Sendable, Equatable {
 
     /// The middle of `run` when a cut may fall there and the pause is long enough for where it falls, else `nil`.
     private func middle(
-        ofRun run: Range<Int>, _ ordinary: Int, _ comfortable: Int,
+        ofRun run: Range<Int>, _ ordinary: Int, _ comfortable: Int, _ maximum: Int,
         _ earlyFrames: Int, _ sentenceFrames: Int, _ anyFrames: Int
     ) -> Int? {
         let middle = run.lowerBound + run.count / 2
-        let required =
-            middle >= comfortable
-            ? anyFrames
-            : middle >= ordinary ? sentenceFrames : earlyFrames
+        let required: Int
+        if middle >= comfortable {
+            let progress =
+                maximum > comfortable
+                ? Swift.min(1, Double(middle - comfortable) / Double(maximum - comfortable))
+                : 1
+            required = Int(
+                (Double(sentenceFrames) + progress * Double(anyFrames - sentenceFrames)).rounded(.up))
+        } else {
+            required = middle >= ordinary ? sentenceFrames : earlyFrames
+        }
         guard run.count >= required else { return nil }
         return middle
     }

@@ -255,6 +255,20 @@ public enum OnboardingPresenter {
                 holds
                 ? "Keep holding while you talk. Let go when you’re done." : "Press again when you’re done."
             page.action = skip
+        case .stillLoading:
+            page = self.page(
+                state, mood: .brand,
+                picture: .keyboard(
+                    OnboardingKeyboard(
+                        lit: lit, keys: keys, bracket: bracket, isHeld: false, demonstrates: true,
+                        field: .placeholder("Your words appear here"), isListening: false, celebrates: false)),
+                title: "Try it now.", hint: SpeechModelLoad.loading(elapsed: .zero).detail,
+                explanation: "Try it now. Uttrflow lives in your menu bar whenever you need it.")
+            page.subtitle =
+                holds
+                ? "Hold \(named), say anything, then let go."
+                : "Press \(named), say anything, then press again."
+            page.action = skip
         case .heard(let words):
             page = self.page(
                 state, mood: .done,

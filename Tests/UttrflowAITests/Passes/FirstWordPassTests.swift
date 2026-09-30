@@ -103,7 +103,6 @@ struct FirstWordPassTests {
         }
     }
 
-    @Test("starts a sentence after a paragraph or a bullet, but not after a plain line break")
     @Test("starts a sentence after every line break, paragraph, or bullet")
     func layout() {
         let paragraph = Draft(

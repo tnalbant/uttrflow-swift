@@ -864,7 +864,7 @@ private struct QuickPanelRow: View, @MainActor Equatable {
         } label: {
             HStack(spacing: 9) {
                 mark(row)
-                if let file = row.imageFile { thumbnail(file) }
+                if let file = row.imageFile { thumbnail(file, selected: row.isSelected) }
                 if let alias = row.alias { aliasChip(alias) }
                 if let language = row.language { languageChip(language) }
                 if let measurements = row.measurements {
@@ -954,9 +954,9 @@ private struct QuickPanelRow: View, @MainActor Equatable {
     }
 
     /// The picture, decoded once at drawn size; a file that has gone shows the card colour.
-    private func thumbnail(_ file: URL) -> some View {
+    private func thumbnail(_ file: URL, selected: Bool) -> some View {
         // Its own view, so a decode landing redraws this picture and not the whole panel; see `PanelThumbnails`.
-        PanelThumbnailView(file: file)
+        PanelThumbnailView(file: file, isSelected: selected)
             .frame(width: 34, height: 24)
             .clipShape(.rect(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color.panelLine, lineWidth: 1))
@@ -1030,7 +1030,7 @@ private struct QuickPanelRow: View, @MainActor Equatable {
 // MARK: - Sizes
 
 /// Claims right-clicks and ctrl-clicks in `hitTest` and lets every other click through to the row.
-\nstruct RightClickWatch: NSViewRepresentable {
+struct RightClickWatch: NSViewRepresentable {
     let clicked: () -> Void
 
     func makeNSView(context: Context) -> Catcher {

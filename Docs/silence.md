@@ -113,8 +113,8 @@ Recognisers also emit explicit non-speech markers — `[BLANK_AUDIO]`, `(music)`
 the one above and still earns its place: a recording that *does* hold speech can carry a
 marker in the middle of it.
 
-Four conditions have to hold together before a bracket is treated as a marker, because
-each one alone destroys real dictation:
+The general word-list rule has four conditions before a bracket is treated as a marker,
+because each one alone destroys real dictation:
 
 - the bracket stands alone, not attached to a word — otherwise `get_user(id)` loses its
   argument, and dictating code is a headline use of this product;
@@ -124,6 +124,30 @@ each one alone destroys real dictation:
   recogniser actually writes for non-speech. The first three are shape checks a spoken
   aside can also satisfy, as "(version two)" does; the vocabulary check is what tells
   them apart, and it is why "version two" survives while "(music)" does not.
+
+## Caption forms reproduced in issue #2372
+
+[Issue #2372](https://github.com/uttrflow/uttrflow-swift/issues/2372) records recogniser
+outputs that survived `RawTranscript.cleaned` in its reproduction probe. The added phrase
+entries below are exact phrases from that report; they do not make their component words
+general-purpose markers.
+
+| Reproduced output | Evidence recorded in the issue | Matching rule |
+|---|---|---|
+| `[door slams]` | Kept after mapping and title-cased by both tidiers | Exact phrase `door slams` |
+| `(phone ringing)` | Kept after mapping and title-cased by both tidiers | Exact phrase `phone ringing` |
+| `[clears throat]` | Kept after mapping and rules tidier | Exact phrase `clears throat` |
+| `(sneezes)` | Kept after mapping and rules tidier | Exact phrase `sneezes` |
+| `[inaudible 00:02]` | Kept after mapping and rules tidier | `inaudible` followed by a two-digit `MM:SS` timestamp |
+| `(speaking in foreign language)` | Kept after mapping and rules tidier | Exact four-word phrase |
+| `[ Background Conversations ]` | Kept after mapping and both tidiers | Exact phrase after case and whitespace normalization |
+| `♪♪`, `♪ la la la ♪`, `[♪♪♪]` | Kept after mapping; the tidiers also retained or altered the notation | Two or more notes enclosing only words and whitespace |
+| `>> Hello there.` | The speaker mark survived mapping and rules cleanup | A `>>` prefix at the start of the transcript |
+
+The same issue table reports `[Music]`, `(applause)`, `[SOUND]`, and `(upbeat music)`;
+those already match the existing closed `markerWords` vocabulary. The timestamp and
+music-note forms have dedicated structural checks. `(see the attached file)` and `[TODO]`
+remain unchanged because neither is one of these exact phrases or a known marker.
 
 A marker is removed from the recogniser's **words** as well as from its text, and where the
 words were reported the text is derived from them. The two used to be edited separately, so

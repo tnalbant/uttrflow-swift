@@ -82,6 +82,27 @@ struct CompletionParsingTests {
             ).isEmpty)
     }
 
+    @Test("A completion cannot end a number the person may still be typing")
+    func incompleteNumbersAreNotClosedByTheSuggestion() {
+        #expect(CompletionText.parse("LIMIT 10 OFFSET 0", typed: "LIMIT 10").isEmpty)
+        #expect(CompletionText.parse("LIMIT 5 OFFSET 0", typed: "LIMIT 5").isEmpty)
+        #expect(CompletionText.parse("LIMIT 100;", typed: "LIMIT 10") == ["LIMIT 100;"])
+        #expect(CompletionText.parse("LIMIT 50;", typed: "LIMIT 5") == ["LIMIT 50;"])
+        #expect(CompletionText.parse("LIMIT 10.5;", typed: "LIMIT 10") == ["LIMIT 10.5;"])
+        #expect(CompletionText.parse("LIMIT 10e3;", typed: "LIMIT 10") == ["LIMIT 10e3;"])
+    }
+
+    @Test("Unsafe control, format, and replacement scalars reject the whole continuation.")
+    func unsafeScalarsAreRejected() {
+        for scalar in ["\t", "\u{1B}", "\u{200B}", "\u{202E}", "\u{2066}", "\u{FFFD}"] {
+            #expect(CompletionText.parse("Thanks for the \(scalar)update", typed: "Thanks for the").isEmpty)
+        }
+        #expect(
+            CompletionText.parse("Thanks for the update", typed: "Thanks for the") == [
+                "Thanks for the update"
+            ])
+    }
+
     @Test("A continuation that loops on itself is dropped rather than drawn across the screen.")
     func repetitionIsDropped() {
         let looping = "sr" + String(repeating: " -  sr", count: 40)
@@ -345,6 +366,33 @@ struct FirstSentenceTests {
         ] {
             #expect(CompletionText.firstSentence(of: line, typed: String(line.prefix(4))) == line, "\(line)")
         }
+    }
+
+    @Test("An abbreviation ends a sentence before an uppercase word, except a title before a name")
+    func abbreviationsCanEndSentences() {
+        #expect(
+            CompletionText.firstSentence(
+                of: "The call is at 10 a.m. Please bring the slides.", typed: "The call is at 10")
+                == "The call is at 10 a.m.")
+        #expect(
+            CompletionText.firstSentence(
+                of: "Let's meet at 6 p.m. We can review the deck.", typed: "Let's meet at 6")
+                == "Let's meet at 6 p.m.")
+        #expect(
+            CompletionText.firstSentence(
+                of: "Bring pens, paper, etc. We start at nine.", typed: "Bring pens")
+                == "Bring pens, paper, etc.")
+        #expect(
+            CompletionText.firstSentence(of: "I got an A. It was hard.", typed: "I got an") == "I got an A.")
+        #expect(
+            CompletionText.firstSentence(of: "Mr. Smith will join us.", typed: "Mr")
+                == "Mr. Smith will join us.")
+        #expect(
+            CompletionText.firstSentence(of: "Please ask Dr. Rao tomorrow.", typed: "Please ask")
+                == "Please ask Dr. Rao tomorrow.")
+        #expect(
+            CompletionText.firstSentence(of: "Bring e.g. this example along.", typed: "Bring")
+                == "Bring e.g. this example along.")
     }
 
     @Test("A sentence end the person typed is theirs, and the line goes on to the next")

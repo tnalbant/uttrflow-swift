@@ -49,7 +49,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     public func transform(
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
-        let formatter = DestinationFormatter.standard(for: request.situation.destination)
+        let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
             for: formatter, situation: request.situation, steps: steps)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
@@ -58,7 +58,9 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
         let readings = await doubtful.spans(in: draft, for: request.situation)
         let rewritten = try await model.rewrite(
-            prompts.userPrompt(for: request, spoken: spoken, doubtful: readings),
+            prompts.userPrompt(
+                for: request, spoken: spoken, doubtful: readings,
+                preserving: steps.switchedOff),
             instructions: prompts.instructions(for: request.situation.destination), kind: kind
         )
 
@@ -72,9 +74,10 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                situation: request.situation, heard: request.transcription.text)
+                situation: request.situation, heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
-                for: formatter, situation: request.situation, heard: request.transcription.text)
+                for: formatter, situation: request.situation, heard: request.transcription.text,
+                spoken: spoken)
         let polished = finishing.run(Draft(keepingLineBreaks: TextTidy.collapseSpacing(unwrapped)))
         let finished = polished.text
 

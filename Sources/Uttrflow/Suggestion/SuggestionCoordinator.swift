@@ -70,6 +70,7 @@ final class SuggestionCoordinator {
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
 
     private let store: PredictStore
+    private let rejectedSuggestionRecorder: RejectedSuggestionRecorder
     let capture: CaptureSession
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
@@ -151,6 +152,8 @@ final class SuggestionCoordinator {
     private let acceptances = AcceptanceQueue()
     /// Set when a paste or a dictation put text in the field that capture has not yet been told was never typed.
     private var insertionPending = false
+    /// Printable keyboard input not yet checked against the next accessibility read.
+    private var pendingCaptureTyping: [String?] = []
     private var again: SuggestionReason?
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     /// Called when the user turns the feature off everywhere, so the choice is persisted and can be undone.
@@ -176,6 +179,7 @@ final class SuggestionCoordinator {
         let store = try PredictStore(
             path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
         self.store = store
+        rejectedSuggestionRecorder = RejectedSuggestionRecorder(store: store)
         // Lines learned before the credential rules last widened are removed once, off the typing path.
         Task.detached(priority: .utility) { _ = try? await CaptureGate.sweepSecrets(from: store) }
         // One index behind both, so asking the machine for a completion also warms what attests it.
@@ -236,20 +240,26 @@ final class SuggestionCoordinator {
     /// Forgets what one application taught, on disk and in every copy this loop holds.
     func forgetSuggestions(from bundleIdentifier: String) async throws {
         await capture.forgetLearned(from: bundleIdentifier)
-        await forgetWhatThisLoopRemembers()
-        try await store.forget(bundleIdentifier: bundleIdentifier)
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forget(bundleIdentifier: bundleIdentifier)
+        })
     }
 
     /// Forgets every line and answer, on disk and in every copy this loop holds.
     func forgetEverySuggestion() async throws {
         try await capture.forgetEverythingLearned()
-        await forgetWhatThisLoopRemembers()
-        try await store.forgetEverything()
+        let store = self.store
+        try await forgetWhatThisLoopRemembers(clearingCorpus: {
+            try await store.forgetEverything()
+        })
     }
 
     /// Drops the verdicts and model answers this loop keeps, which may name a forgotten line.
-    private func forgetWhatThisLoopRemembers() async {
-        await verifier.forgetEverything()
+    private func forgetWhatThisLoopRemembers(
+        clearingCorpus: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await verifier.forgetEverything(then: clearingCorpus)
         modelPass.freshStart(surfaceChanged: true, lineIsEmpty: true)
     }
 
@@ -370,6 +380,15 @@ final class SuggestionCoordinator {
             // A key this app inserted must not wake another turn, or the feature types on its own.
             if let cgEvent = event.cgEvent, SyntheticEvent.isOurs(cgEvent) { return }
             let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)
+            if !pastes, let self {
+                MainActor.assumeIsolated {
+                    if let text {
+                        self.pendingCaptureTyping.append(text)
+                    } else if Key(keyCode: event.keyCode) != .return {
+                        self.pendingCaptureTyping.append(nil)
+                    }
+                }
+            }
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
                 MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
@@ -702,6 +721,7 @@ final class SuggestionCoordinator {
 
     /// Reads the field, asks the corpus and draws the answer, all off the keystroke path; a turn left behind touches nothing.
     private func turn(_ number: Int, because reason: SuggestionReason) async {
+        await rejectedSuggestionRecorder.retry()
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
         progress = (number, .read, front)
         // Taken before the read, since a key pressed while a slow field is being read is one the read may have missed.
@@ -749,7 +769,7 @@ final class SuggestionCoordinator {
             isQuiet: preferences.isQuiet, sawKeystrokes: keystrokesSeen)
         if let rejected = turn.rejected, let surface = reading.surface {
             entering(.reject, turn: number)
-            try? await store.recordRejected(rejected, in: surface)
+            await rejectedSuggestionRecorder.record(rejected, in: surface)
         }
 
         switch turn.step {
@@ -1071,8 +1091,15 @@ final class SuggestionCoordinator {
     func candidates(for query: SuggestionQuery) async -> [Candidate] {
         let remembered =
             (try? await store.candidates(for: query.surface, matching: query.typed)) ?? []
-        guard remembered.isEmpty else { return remembered }
-        return await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        let candidates: [Candidate]
+        if remembered.isEmpty {
+            candidates = await environment.candidates(for: query.surface, matching: query.typed, now: Date())
+        } else {
+            candidates = remembered
+        }
+        return candidates.filter {
+            !rejectedSuggestionRecorder.suppresses($0.text, in: query.surface)
+        }
     }
 
     /// Tells capture what happened, and asks the user once about an application it has not met.
@@ -1082,7 +1109,13 @@ final class SuggestionCoordinator {
     ) async {
         // The acceptance is recorded off the key path, and capture still hears of it before this event.
         await acceptances.drained()
+        var typed = pendingCaptureTyping
+        pendingCaptureTyping = []
         if case .applicationChanged = reason, let leaving = lastReading, leaving != reading {
+            for input in typed {
+                _ = try? await capture.handle(.typed(input, at: moment), in: leaving)
+            }
+            typed = []
             _ = try? await capture.handle(.applicationDeactivated(at: moment), in: leaving)
         }
         let line = snapshot.learnableLine
@@ -1095,6 +1128,7 @@ final class SuggestionCoordinator {
             events = [reason.event(holding: line, at: moment)]
             if case .keystroke = events[0] { handed = (line, reading) }
         }
+        events.insert(contentsOf: typed.map { .typed($0, at: moment) }, at: 0)
         // Only a turn that read the line can tell capture the line holds inserted text.
         if insertionPending, reason != .tick {
             insertionPending = false

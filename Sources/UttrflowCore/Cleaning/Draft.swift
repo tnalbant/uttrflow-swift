@@ -144,7 +144,23 @@ public struct Draft: Sendable, Equatable {
     }
 
     private static func split(_ text: String, confidence: Double) -> [Word] {
-        text.split(whereSeparator: \.isWhitespace).map { Word(String($0), confidence: confidence) }
+        text.split(whereSeparator: \.isWhitespace).flatMap { token in
+            let value = String(token)
+            guard !value.contains("://"), !value.contains("www."), !value.contains("@") else {
+                return [Word(value, confidence: confidence)]
+            }
+            let normalized = value.replacingOccurrences(of: "…", with: "...")
+            let runs = normalized.components(separatedBy: "...")
+            guard runs.count > 1 else { return [Word(value, confidence: confidence)] }
+            let cores = runs.filter { !$0.isEmpty }
+            guard cores.count > 1,
+                cores.contains(where: { FillersPass.fillerWords.contains(WordShape($0).key) })
+            else { return [Word(value, confidence: confidence)] }
+            return cores.enumerated().map { index, core in
+                let pause = index < cores.count - 1 ? "..." : ""
+                return Word(core + pause, confidence: confidence)
+            }
+        }
     }
 
     /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.

@@ -1,4 +1,5 @@
 import Dispatch
+import Synchronization
 import UttrflowCore
 import Testing
 
@@ -52,6 +53,29 @@ struct CarbonHotkeyLifecycleTests {
         try stopOffMainThenStart(previous, next)
         await mainQueueDrained()
 
+        try expectHeld(bound)
+    }
+
+    @Test("deinitializing off the main thread unregisters before the next registration")
+    func deinitOffMainThenRebind() async throws {
+        var previous: CarbonHotkeyMonitor? = CarbonHotkeyMonitor()
+        weak var weakPrevious = previous
+        try previous?.start(binding: bound)
+
+        let lifetime = CarbonMonitorLifetime(previous!)
+        previous = nil
+        let destroyed = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            lifetime.release()
+            destroyed.signal()
+        }
+        destroyed.wait()
+        #expect(weakPrevious == nil)
+
+        let next = CarbonHotkeyMonitor()
+        defer { next.stop() }
+        await mainQueueDrained()
+        try next.start(binding: bound)
         try expectHeld(bound)
     }
 
@@ -153,5 +177,21 @@ struct CarbonHotkeyLifecycleTests {
         #expect(throws: HotkeyError.shortcutUnavailable) {
             try intruder.start(binding: binding)
         }
+    }
+}
+
+private final class CarbonMonitorLifetime: @unchecked Sendable {
+    private let monitor: Mutex<CarbonHotkeyMonitor?>
+
+    init(_ monitor: CarbonHotkeyMonitor) {
+        self.monitor = Mutex(monitor)
+    }
+
+    func release() {
+        let released = monitor.withLock { monitor -> CarbonHotkeyMonitor? in
+            defer { monitor = nil }
+            return monitor
+        }
+        withExtendedLifetime(released) {}
     }
 }

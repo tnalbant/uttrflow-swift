@@ -22,6 +22,9 @@ final class PanelThumbnails {
     /// The memory these may occupy, taken from the one place every such number lives.
     static let defaultBudget = ClipboardBudget.standard.images.bytes
 
+    /// Two ImageIO decodes keep browsing responsive without saturating every performance core.
+    static let maximumConcurrentDecodes = 2
+
     private let source: PanelThumbnailSource
     /// The most memory the decoded thumbnails may occupy, in bytes.
     private let budget: Int
@@ -35,6 +38,11 @@ final class PanelThumbnails {
     private var clock = 0
     /// Decodes in flight; one per file, so a row drawn twice does not decode twice.
     private var inflight: [URL: Task<Void, Never>] = [:]
+    /// Rows waiting for a decode. Selected rows sort ahead of other visible rows.
+    private var queued: [URL: (selected: Bool, order: Int)] = [:]
+    /// In-flight results for rows that disappeared are discarded on completion.
+    private var abandoned: Set<URL> = []
+    private var queueOrder = 0
     /// When each failed decode was recorded, so a file restored later is decoded again.
     private var missedAt: [URL: ContinuousClock.Instant] = [:]
     /// How long a failed decode is trusted before the file is read again.
@@ -74,16 +82,46 @@ final class PanelThumbnails {
         return nil
     }
 
-    /// Starts an off-main decode for `file`; a no-op if one is already in flight, or the answer is already cached.
-    func prepare(_ file: URL) {
+    /// Requests an off-main decode for a visible row; selected rows are scheduled first.
+    func prepare(_ file: URL, selected: Bool = false) {
         forgetStaleMiss(file)
         if known[file] != nil { return }
+        abandoned.remove(file)
+        if let queuedRequest = queued[file] {
+            queued[file] = (selected: selected, order: queuedRequest.order)
+            startQueuedDecodes()
+            return
+        }
         if inflight[file] != nil { return }
-        let source = self.source
-        let maxPixel = Self.maxPixel
-        inflight[file] = Task.detached(priority: .userInitiated) { [weak self] in
-            let image = source.load(file, maxPixel)
-            await self?.record(file, bytes: Loaded(image: image))
+        queueOrder += 1
+        queued[file] = (selected: selected, order: queueOrder)
+        startQueuedDecodes()
+    }
+
+    /// Releases a row's demand, removing queued work or dropping an already-running result.
+    func cancel(_ file: URL) {
+        queued.removeValue(forKey: file)
+        if let task = inflight[file] {
+            abandoned.insert(file)
+            task.cancel()
+        }
+        startQueuedDecodes()
+    }
+
+    private func startQueuedDecodes() {
+        while inflight.count < Self.maximumConcurrentDecodes,
+            let next = queued.max(by: { lhs, rhs in
+                if lhs.value.selected != rhs.value.selected { return !lhs.value.selected }
+                return lhs.value.order > rhs.value.order
+            })?.key
+        {
+            queued.removeValue(forKey: next)
+            let source = self.source
+            let maxPixel = Self.maxPixel
+            inflight[next] = Task.detached(priority: .utility) { [weak self] in
+                let image = source.load(next, maxPixel)
+                await self?.record(next, bytes: Loaded(image: image))
+            }
         }
     }
 
@@ -101,13 +139,23 @@ final class PanelThumbnails {
 
     /// Awaits the decode that `prepare(_:)` started for `file`.
     func waitForIdle(file: URL) async {
-        await inflight[file]?.value
+        while queued[file] != nil || inflight[file] != nil {
+            if let task = inflight[file] {
+                await task.value
+            } else {
+                await Task.yield()
+            }
+        }
     }
 
     /// Stored on `known` once the decode completes, even if the file is gone so the answer can be remembered.
     @MainActor
     private func record(_ file: URL, bytes: Loaded) {
         inflight[file] = nil
+        if abandoned.remove(file) != nil {
+            startQueuedDecodes()
+            return
+        }
         let result = bytes.image
         let cost = Self.bytes(of: result)
         known[file] = result
@@ -116,6 +164,7 @@ final class PanelThumbnails {
         held += cost
         touch(file)
         forgetTheLeastRecent()
+        startQueuedDecodes()
     }
 
     /// Drops a remembered failure once it is older than `retryAfter`, so the next ask decodes again.
@@ -157,11 +206,13 @@ struct Loaded: @unchecked Sendable {
 /// One picture clip's thumbnail, which alone redraws when its decode lands.
 struct PanelThumbnailView: View {
     let file: URL
+    let isSelected: Bool
     @State private var picture: NSImage?
 
     /// Starts from what the cache already holds, so a row scrolled back into view draws at once.
-    init(file: URL) {
+    init(file: URL, isSelected: Bool = false) {
         self.file = file
+        self.isSelected = isSelected
         _picture = State(initialValue: PanelThumbnails.shared.cached(file))
     }
 
@@ -178,7 +229,16 @@ struct PanelThumbnailView: View {
         // Decoded off the main actor; a row reused for a different file starts over.
         .task(id: file) {
             picture = PanelThumbnails.shared.cached(file)
-            picture = await PanelThumbnails.shared.picture(for: file)
+            PanelThumbnails.shared.prepare(file, selected: isSelected)
+            await PanelThumbnails.shared.waitForIdle(file: file)
+            guard !Task.isCancelled else { return }
+            picture = PanelThumbnails.shared.cached(file)
+        }
+        .onChange(of: isSelected) { _, selected in
+            PanelThumbnails.shared.prepare(file, selected: selected)
+        }
+        .onDisappear {
+            PanelThumbnails.shared.cancel(file)
         }
     }
 }

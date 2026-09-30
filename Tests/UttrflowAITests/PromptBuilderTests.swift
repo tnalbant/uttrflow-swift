@@ -60,7 +60,7 @@ struct PromptBuilderTests {
     @Test("shows a destination its own examples only where its layout, stop or grammar differs")
     func blockExamplesTeachTheDifference() {
         #expect(builder.block(for: .sqlEditor).examples.isEmpty)
-        #expect(builder.block(for: .email).examples.isEmpty)
+        #expect(builder.block(for: .email).examples.count == 2)
         #expect(builder.block(for: .plain).examples.count >= 2)
         #expect(builder.workedExamples(for: .messaging).contains("Ain't no rush, grab me a seat"))
         #expect(builder.workedExamples(for: .messaging).contains("Did the build go green?"))
@@ -71,6 +71,26 @@ struct PromptBuilderTests {
         #expect(
             builder.workedExamples(for: .codeEditor).contains(
                 "Handle the timeout first\nthen retry once with backoff"))
+    }
+
+    @Test("lays out only an email closing followed only by a name, using the spoken words in order")
+    func emailSignOffLayout() {
+        let email = builder.block(for: .email)
+        #expect(email.rules.contains("at the end only"))
+        #expect(email.rules.contains("thanks, best regards, regards, cheers or best"))
+        #expect(
+            email.examples == [
+                WorkedExample(
+                    spoken: "good morning all the standup is cancelled today thanks kofi",
+                    cleaned: "Good morning, all. The standup is cancelled today.\n\nThanks,\nKofi."),
+                WorkedExample(
+                    spoken: "thanks for the update cheers tom",
+                    cleaned: "Thanks for the update.\n\nCheers,\nTom."),
+            ])
+        #expect(!builder.workedExamples(for: .messaging).contains("Thanks,\nKofi."))
+        #expect(!builder.workedExamples(for: .plain).contains("Cheers,\nTom."))
+        #expect(builder.block(for: .messaging).rules.contains("keep closings inline and add no line breaks"))
+        #expect(builder.block(for: .plain).rules.contains("add none"))
     }
 
     /// The registry's grammar policy and the block wording must agree about where slips are repaired.

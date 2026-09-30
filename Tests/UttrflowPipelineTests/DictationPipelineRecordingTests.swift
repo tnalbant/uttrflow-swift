@@ -16,6 +16,17 @@ private struct RecordingFakeCleaner: TranscriptCleaning {
     }
 }
 
+private final class ContextRecordingCleaner: TranscriptCleaning, Sendable {
+    private let state = Mutex<[TransformationRequest]>([])
+
+    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
+        state.withLock { $0.append(request) }
+        return TransformationResult(text: request.transcription.text, producedBy: .rules)
+    }
+
+    var requests: [TransformationRequest] { state.withLock { $0 } }
+}
+
 /// A ``TextInserting`` that records what it is handed and answers as scripted.
 private final class RecordingFakeInserter: TextInserting, Sendable {
     private struct State: Sendable {
@@ -250,6 +261,40 @@ struct DictationPipelineRecordingTests {
         #expect(await speech.transcribeCalls.last?.audio == audio)
         #expect(await recordings.audioRequests == [recording.id])
         #expect(await recordings.discarded == [recording.id])
+    }
+
+    @Test("retry cleans and recognises with the recording destination")
+    func retryUsesRecordingDestination() async throws {
+        let destination = AppContext(
+            applicationName: "Editor", bundleIdentifier: "com.example.editor",
+            documentName: "private.swift", precedingText: "secret text")
+        let recording = KeptRecording(
+            id: UUID(), when: Date(), duration: .seconds(2), destination: destination)
+        let recordings = FakeRecordingKeeper(waiting: [recording])
+        let cleaner = ContextRecordingCleaner()
+        let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
+        let words = Mutex<[AppContext]>([])
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: cleaner,
+            context: FakeContextEngine(
+                context: .fixture(
+                    applicationName: "Frontmost", bundleIdentifier: "com.example.frontmost")),
+            inserter: RecordingFakeInserter(),
+            speechWords: { context in
+                words.withLock { $0.append(context) }
+                return ["DestinationName"]
+            },
+            recordings: recordings,
+            clipboard: RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard))))
+
+        #expect(await pipeline.retry(recording.id))
+
+        let request = try #require(cleaner.requests.first)
+        #expect(request.context.bundleIdentifier == "com.example.editor")
+        #expect(request.situation.destination == .plain)
+        #expect(words.withLock { $0.first?.bundleIdentifier } == "com.example.editor")
+        #expect(request.context.documentName == nil)
+        #expect(request.context.precedingText == nil)
     }
 
     /// Every attempt reads the dictionary as it is now, so a word added between attempts reaches the recogniser.

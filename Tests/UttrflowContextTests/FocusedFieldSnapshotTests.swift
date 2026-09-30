@@ -125,6 +125,60 @@ struct FocusedFieldSnapshotTests {
         #expect(!snapshot(value: "ls  -la", selection: NSRange(location: 2, length: 0)).caretAtLineEnd)
     }
 
+    @Test("Code and SQL completions can sit inside an editor's auto-closed pair.")
+    func autoClosedPairsKeepCodeAndSQLSuggestionsAvailable() {
+        let examples = [
+            ("com.microsoft.vscode", "COUNT()", "COUNT("),
+            (
+                "com.jetbrains.datagrip", "SELECT * FROM users WHERE name = ''",
+                "SELECT * FROM users WHERE name = '"
+            ),
+        ]
+        for (bundleIdentifier, value, typed) in examples {
+            let reading = snapshot(
+                bundleIdentifier: bundleIdentifier,
+                role: FocusedFieldSnapshot.proseRole,
+                value: value,
+                selection: NSRange(location: typed.utf16.count, length: 0))
+            #expect(reading.currentLine == typed)
+            #expect(reading.caretAtLineEnd)
+            #expect(reading.hasTextAfterCaret)
+            #expect(reading.learnableLine.isEmpty)
+            #expect(
+                Quieting.reason(
+                    PredictionContext(
+                        typed: reading.currentLine, caretAtLineEnd: reading.caretAtLineEnd,
+                        isProse: reading.isProse)) == nil)
+        }
+    }
+
+    @Test("Every supported auto-closed delimiter can follow a completion caret.")
+    func closingDelimitersCountAsCompletionEnd() {
+        for closer in [")", "]", "}", "'", "\"", "`"] {
+            let typed = "value"
+            let reading = snapshot(
+                bundleIdentifier: "com.microsoft.vscode", value: typed + closer,
+                selection: NSRange(location: typed.utf16.count, length: 0))
+
+            #expect(reading.caretAtLineEnd, "\(closer)")
+            #expect(reading.hasTextAfterCaret, "\(closer)")
+        }
+    }
+
+    @Test("A real code caret inside following text still silences suggestions.")
+    func codeCaretBeforeAnotherTokenIsNotAtLineEnd() {
+        let typed = "let result = "
+        let reading = snapshot(
+            bundleIdentifier: "com.microsoft.vscode", role: FocusedFieldSnapshot.proseRole,
+            value: typed + "other()", selection: NSRange(location: typed.utf16.count, length: 0))
+
+        #expect(!reading.caretAtLineEnd)
+        #expect(
+            Quieting.reason(
+                PredictionContext(
+                    typed: reading.currentLine, caretAtLineEnd: reading.caretAtLineEnd)) == .caretInsideText)
+    }
+
     @Test("Text after a terminal caret stays text even when a prompt-like tail follows padding.")
     func paddedTerminalTailIsStillTextAfterTheCaret() {
         let row =
