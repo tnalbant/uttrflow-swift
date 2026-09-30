@@ -1260,6 +1260,26 @@ struct GuardMatchStrengthTests {
         #expect(!survives("ravi", as: "gravity"))
     }
 
+    @Test("accepts spoken symbols and letter names written as identifiers, domains, and acronyms")
+    func acceptsSpokenSymbolsAndAcronyms() {
+        for (spoken, written) in [
+            ("the variable is user underscore id", "The variable is user_id."),
+            ("the a p i is down", "The API is down."),
+            ("open a p r for it", "Open a PR for it."),
+            ("we need it a s a p", "We need it ASAP."),
+            ("go to example dot com", "Go to example.com."),
+            ("the file is config dot json", "The file is config.json."),
+        ] {
+            #expect(verdict(spoken, written).isAccepted, "\(spoken) → \(written)")
+        }
+    }
+
+    @Test("refuses a spoken symbol name left inside an identifier")
+    func refusesSymbolNameInsideIdentifier() {
+        #expect(
+            !verdict("my handle is at sam underscore dev", "My handle is at sam_underscore_dev.").isAccepted)
+    }
+
     /// The identifier rule is why a spelled-in word matches at all, and it reads the humps.
     @Test("keeps a word spelled into an identifier, in either kind of identifier")
     func keepsSpelledIdentifiers() {

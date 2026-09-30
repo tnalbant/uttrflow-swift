@@ -436,7 +436,9 @@ public struct MeaningPreservationGuard: Sendable {
         let composed = composedNumbers(keptTokens, in: Set(written.map(\.matching)))
         let carried = keptTokens.indices.filter { index in
             let token = keptTokens[index]
-            return token.isPlain && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup))
+            return token.isPlain
+                && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup)
+                    || isAcronymLetter(at: index, in: keptTokens))
                 && !composed.contains(index) && !excused.contains(index)
         }
         if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
@@ -480,10 +482,11 @@ public struct MeaningPreservationGuard: Sendable {
     ) -> GuardVerdict {
         for change in alignment.changes {
             let here = (alignment.rewritten[change.rewritten] + echo).filter(\.isPlain)
-            for index in change.kept where carried.contains(index) {
-                let token = alignment.kept[index]
-                guard !here.contains(where: { survives(token.matching, as: $0) }) else { continue }
-                return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
+            let tokens = change.kept.compactMap { index in
+                carried.contains(index) ? alignment.kept[index] : nil
+            }
+            if case .rejected(let reason, let kind) = survivalVerdict(tokens, in: here) {
+                return .rejected(reason: reason, kind: kind)
             }
         }
         return .accepted
@@ -758,7 +761,43 @@ public struct MeaningPreservationGuard: Sendable {
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
     static func survivalVerdict(_ kept: [GrammarToken], in written: [GrammarToken]) -> GuardVerdict {
         var reached = 0
-        for token in kept {
+        var index = 0
+        while index < kept.count {
+            let token = kept[index]
+            if index + 1 < kept.count, Self.symbolNames[kept[index + 1].matching] != nil {
+                guard index + 2 < kept.count else {
+                    return .rejected(
+                        reason: "the rewrite lost or replaced '\(kept[index + 1].text)'", kind: .lostWord)
+                }
+                let symbol = kept[index + 1].matching
+                let spelling =
+                    Self.closedSpelling(token.text) + (Self.symbolNames[symbol] ?? "")
+                    + Self.closedSpelling(kept[index + 2].text)
+                if let range = Self.matchingSymbolSpelling(spelling, in: written, startingAt: reached) {
+                    reached = range.upperBound
+                    index += 3
+                    continue
+                }
+            }
+            if token.matching.count == 1, token.matching.first?.isLetter == true {
+                var end = index
+                var acronym = ""
+                while end < kept.count, kept[end].matching.count == 1,
+                    kept[end].matching.first?.isLetter == true
+                {
+                    acronym += kept[end].matching
+                    end += 1
+                }
+                if acronym.count > 1,
+                    let place = written.indices.first(where: {
+                        $0 >= reached && written[$0].matching == acronym
+                    })
+                {
+                    reached = place + 1
+                    index = end
+                    continue
+                }
+            }
             let matchingPlaces = written.indices.filter {
                 token.matching == written[$0].matching
                     || sameIrregularVerbForm(token.matching, written[$0].matching)
@@ -771,9 +810,57 @@ public struct MeaningPreservationGuard: Sendable {
                 return .rejected(reason: "the rewrite moved '\(token.text)'", kind: .movedWord)
             }
             reached = place
+            index += 1
         }
         return .accepted
     }
+
+    /// Keeps three or more adjacent spoken letter names together so articles like "a" can start an acronym.
+    private static func isAcronymLetter(at index: Int, in tokens: [GrammarToken]) -> Bool {
+        guard tokens[index].matching.count == 1, tokens[index].matching.first?.isLetter == true else {
+            return false
+        }
+        var start = index
+        while start > 0, tokens[start - 1].matching.count == 1,
+            tokens[start - 1].matching.first?.isLetter == true
+        {
+            start -= 1
+        }
+        var end = index + 1
+        while end < tokens.count, tokens[end].matching.count == 1,
+            tokens[end].matching.first?.isLetter == true
+        {
+            end += 1
+        }
+        return end - start >= 3
+    }
+
+    /// Closes punctuation between adjacent spoken words when checking a symbol spelling.
+    private static func closedSpelling(_ word: String) -> String {
+        word.lowercased().filter(\.isLetter).description
+    }
+
+    /// Finds adjacent written tokens whose spelling includes the spoken symbol between its neighbours.
+    private static func matchingSymbolSpelling(
+        _ spelling: String, in written: [GrammarToken], startingAt start: Int
+    ) -> Range<Int>? {
+        guard !spelling.isEmpty else { return nil }
+        for first in start..<written.count {
+            var combined = ""
+            for end in first..<written.count {
+                combined += written[end].text.lowercased()
+                if combined == spelling.lowercased() { return first..<(end + 1) }
+                if combined.count >= spelling.count { break }
+            }
+        }
+        return nil
+    }
+
+    /// Spoken punctuation names whose written marks join the words on either side.
+    private static let symbolNames: [String: String] = [
+        "dot": ".", "period": ".", "underscore": "_", "slash": "/", "backslash": "\\",
+        "at": "@", "hyphen": "-", "dash": "-", "plus": "+", "hash": "#",
+    ]
 
     /// Maps every spelling accepted by `survives` to its token positions, preserving their original order.
     private struct WordOccurrenceIndex {
@@ -869,7 +956,7 @@ public struct MeaningPreservationGuard: Sendable {
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
         if Homophones.share(word, candidate.matching) { return true }
         // A word spelled into an identifier — "invoices" inside "fetchInvoices" — is still there.
-        if spelledInto(word, candidate.text) { return true }
+        if symbolNames[word] == nil, spelledInto(word, candidate.text) { return true }
         // An auxiliary the rewrite contracted to its "n't" form is the same word.
         if Self.auxContractionRoots.contains(word), candidate.matching == "\(word)nt" { return true }
         if Self.auxContractionRoots.contains(candidate.matching), word == "\(candidate.matching)nt" {
