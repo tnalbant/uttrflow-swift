@@ -426,7 +426,7 @@ final class SuggestionCoordinator {
                 interceptor.setNativeMenuIsOpen(isOpen)
                 if isOpen {
                     withdraw()
-                } else if !isStopped {
+                } else if !isStopped, !secureInput.isBlocking {
                     wake(.tick)
                 }
             })

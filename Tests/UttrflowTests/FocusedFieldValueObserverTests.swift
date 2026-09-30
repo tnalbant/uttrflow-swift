@@ -31,6 +31,50 @@ private final class FakeFocusedFieldValueObserver: FocusedFieldValueObserving {
 @MainActor
 @Suite("AX value changes withdraw stale suggestion offers", .serialized)
 struct FocusedFieldValueObserverTests {
+    @Test("closing one menu leaves the focused menu observed across a focus change")
+    func menuVisibilitySurvivesFocusChange() {
+        var state = NativeMenuVisibilityState<Int>()
+        state.focusedElementChanged(to: 1)
+        state.menuOpened(from: 100)
+        state.menuOpened(from: 1)
+        state.focusedElementChanged(to: 2)
+
+        #expect(state.isOpen)
+        #expect(state.observedFocusedElements == [1, 2])
+
+        state.menuClosed(from: 100)
+        #expect(state.isOpen)
+        state.menuClosed(from: 1)
+
+        #expect(!state.isOpen)
+        #expect(state.observedFocusedElements == [2])
+    }
+
+    @Test("closing one of two menus from the same AX element keeps the other open")
+    func multipleMenusFromOneElementStayOpenUntilBothClose() {
+        var state = NativeMenuVisibilityState<Int>()
+        state.menuOpened(from: 1)
+        state.menuOpened(from: 1)
+
+        state.menuClosed(from: 1)
+        #expect(state.isOpen)
+
+        state.menuClosed(from: 1)
+        #expect(!state.isOpen)
+    }
+
+    @Test("observer teardown clears menu state and retained focused elements")
+    func teardownClearsNativeMenuState() {
+        var state = NativeMenuVisibilityState<Int>()
+        state.focusedElementChanged(to: 1)
+        state.menuOpened(from: 1)
+        state.focusedElementChanged(to: 2)
+
+        #expect(state.reset())
+        #expect(!state.isOpen)
+        #expect(state.observedFocusedElements.isEmpty)
+    }
+
     @Test("an AX SetValue change disarms and hides the current offer")
     func axValueChangeWithdrawsTheOffer() throws {
         let container = FileManager.default.temporaryDirectory.appending(
