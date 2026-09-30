@@ -207,6 +207,23 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "writes compound ordinals outside dates",
+        arguments: [
+            ("it is the forty second floor", "it is the 42nd floor"),
+            ("he came twenty first in the race", "he came 21st in the race"),
+            ("the thirty first floor", "the 31st floor"),
+            ("on the fifty fifth day", "on the 55th day"),
+            ("the twenty fifth anniversary", "the 25th anniversary"),
+            ("we finished twenty third", "we finished 23rd"),
+            ("the one hundred and twenty first floor", "the 121st floor"),
+            ("the twenty-fifth floor", "the 25th floor"),
+        ]
+    )
+    func compoundOrdinals(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("normalizes dotted times only with a clock cue")
     func dottedTimes() {
         #expect(cleaned("moved to 4.30 p.m. on June 2", by: sut) == "moved to 4:30 p.m. on June 2")
@@ -353,10 +370,10 @@ struct NumberFormsPassTests {
             "the second march was peaceful", "the twentieth march was peaceful",
             "thirty second of January", "ninety ninth of May", "thirty first of April",
             "thirtieth February", "twenty fifth of Smarch", "twenty fifth of",
-            "twenty fifth", "twenty-fifth", "twenty fifth, March", "tenth of, April",
-            "tenth of \"April\"", "twenty fifth place", "twenty--fifth of March",
+            "twenty fifth, March", "tenth of, April", "tenth of \"April\"",
+            "twenty--fifth of March",
             "twenty-tenth of March", "first", "a hundred and twentieth of June",
-            "one hundred and twenty first", "the one hundred and first",
+            "the one hundred and first",
         ]
     )
     func preservesOrdinals(input: String) {
