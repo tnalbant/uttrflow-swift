@@ -146,13 +146,11 @@ struct TerminalStopPassTests {
         "leaves short and long email greetings and sign-offs open",
         arguments: [
             ("Dear Sam", "Dear Sam"),
-            (
-                "Dear hiring manager for the product design team",
-                "Dear hiring manager for the product design team"
-            ),
+            ("Dear hiring manager", "Dear hiring manager"),
             ("Thanks, Sam", "Thanks, Sam"),
             ("Best regards, Samantha Jones", "Best regards, Samantha Jones"),
             ("The deck looks great. Thanks, Sam", "The deck looks great. Thanks, Sam"),
+            ("The deck looks great. Thanks, Sam. Go.", "The deck looks great. Thanks, Sam. Go."),
             ("The deck looks great. Best regards\nAna", "The deck looks great. Best regards\nAna"),
             ("The deck looks great. Cheers, Jo", "The deck looks great. Cheers, Jo"),
         ])
@@ -168,6 +166,13 @@ struct TerminalStopPassTests {
             email.apply(Draft(keepingLineBreaks: text)).text
                 == "Dear hiring manager for the product design team\n\nI am writing to ask about the role.\n\nThanks, Sam"
         )
+    }
+
+    @Test("keeps the stop when body text follows a greeting in the same paragraph")
+    func emailGreetingContinuesIntoBody() {
+        #expect(
+            email.apply(Draft(keepingLineBreaks: "Hi Priya, please send the deck")).text
+                == "Hi Priya, please send the deck.")
     }
 
     @Test("gives a list item no stop, at the end or before a blank line")

@@ -129,7 +129,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         return isEmailSignOff(draft) || paragraphs.count == 1 && isEmailGreeting(last, in: draft)
     }
 
-    /// Whether a final paragraph contains a supported email closing and a name.
+    /// Whether the text ends with a supported email closing and a name.
     private static func isEmailSignOff(_ draft: Draft) -> Bool {
         let live = draft.presentIndices
         for (position, index) in live.enumerated() where !draft.words[index].isLayoutMark {
@@ -152,6 +152,8 @@ public struct TerminalStopPass: WholeTextCleaningPass {
             else { continue }
             let nameCount = suffix.count - closingWords
             guard (1...2).contains(nameCount) else { continue }
+            let name = suffix.dropFirst(closingWords)
+            guard name.dropLast().allSatisfy({ !draft.shape(at: $0).endsSentence }) else { continue }
             if draft.words[first].text.hasSuffix(",") || closingWords == 2 || nameCount == 1 { return true }
         }
         return false
@@ -175,7 +177,9 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether these words begin the first paragraph with a conventional email greeting.
     private static func isEmailGreeting(_ indices: [Int], in draft: Draft) -> Bool {
-        guard let first = indices.first, paragraphWords(in: draft).first == indices else { return false }
+        guard let first = indices.first, indices.count <= 3, paragraphWords(in: draft).first == indices else {
+            return false
+        }
         let openingWords = ["dear", "hello", "hi", "good morning", "good afternoon", "good evening"]
         return openingWords.contains { prefix in
             let words = prefix.split(separator: " ").map(String.init)

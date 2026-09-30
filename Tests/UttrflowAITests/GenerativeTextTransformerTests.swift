@@ -701,6 +701,14 @@ struct RuleBasedTransformerTests {
                 destination: .email))
         #expect(result.text == "Dear hiring manager\n\nI am writing to ask about the role.\n\nThanks, Sam")
         #expect(model.calls.first?.instructions.contains("leave a greeting paragraph") == true)
+
+        let inlineGreeting = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in "Hi Priya, please send the deck" })
+        #expect(
+            try await inlineGreeting.transform(
+                request("hi priya please send the deck", destination: .email)
+            ).text
+                == "Hi Priya, please send the deck.")
     }
 
     @Test("cannot invent anything, whatever it is given, and writes Hindi in Latin letters")
