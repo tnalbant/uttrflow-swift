@@ -264,6 +264,10 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// How long one Accessibility message may take, generous because it is the dictation itself.
     private static let messagingTimeout: Float = 2
+    /// Keeps a suggestion read comfortably inside the one-second key hold.
+    private static let acceptanceMessagingTimeout: Float = 0.1
+    /// Bounds whole-value fallback to fields small enough to copy cheaply.
+    private static let smallValueFallbackLimit = 1_024
 
     /// Anything focused at all, without asking it to report a selection.
     public func hasFocusedElement() -> Bool { focusedElement() != nil }
@@ -293,29 +297,28 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             value: {
                 CaretWindow.prefix(
                     length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
-                    ?? stringAttribute(kAXValueAttribute, of: element)
             })
     }
 
     /// The focused element, asked system-wide then per-application, preferring whichever names a text-entry role. See `Docs/insertion.md`.
-    private func focusedElement() -> AXUIElement? {
+    private func focusedElement(timeout: Float = Self.messagingTimeout) -> AXUIElement? {
         guard AXIsProcessTrusted() else { return nil }
 
         // The timeout goes on the element itself: set on the system-wide element it is process-wide, and a suggestion read could lower it mid-insertion (#887).
         let system = AXUIElementCreateSystemWide()
-        let systemWide = focusedElement(of: system)
+        let systemWide = focusedElement(of: system, timeout: timeout)
         return FocusedElementPreference.choose(
             systemWide: systemWide, systemWideRole: { stringAttribute(kAXRoleAttribute, of: $0) },
             application: {
                 guard let frontmost = NSWorkspace.shared.frontmostApplication else { return nil }
                 let application = AXUIElementCreateApplication(frontmost.processIdentifier)
-                _ = AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
-                return focusedElement(of: application)
+                _ = AXUIElementSetMessagingTimeout(application, timeout)
+                return focusedElement(of: application, timeout: timeout)
             },
             applicationRole: { stringAttribute(kAXRoleAttribute, of: $0) })
     }
 
-    private func focusedElement(of parent: AXUIElement) -> AXUIElement? {
+    private func focusedElement(of parent: AXUIElement, timeout: Float) -> AXUIElement? {
         var focused: AnyObject?
         guard
             AXUIElementCopyAttributeValue(
@@ -325,7 +328,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
         // Checked by type ID above; `as?` on a Core Foundation type always succeeds.
         let field = unsafeDowncast(element, to: AXUIElement.self)
-        _ = AXUIElementSetMessagingTimeout(field, Self.messagingTimeout)
+        _ = AXUIElementSetMessagingTimeout(field, timeout)
         return field
     }
 
@@ -349,12 +352,22 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     /// Reads a bounded window where possible, refusing an ambiguous multi-range selection.
     private func textBeforeCaret(_ count: Int, of element: AXUIElement) -> (String, Int)? {
         guard count > 0, !isSecure(element), let range = selectionRange(of: element) else { return nil }
+        var rangeUnavailable = false
         if let window = CaretWindow.before(
-            range.location, characters: count, ranged: { stringForRange($0, of: element) })
+            range.location, characters: count,
+            ranged: { requested in
+                let text = stringForRange(requested, of: element)
+                rangeUnavailable = text == nil
+                return text
+            })
         {
             return (window, window.utf16.count)
         }
-        return readableValue(of: element).map { ($0, range.location) }
+        guard rangeUnavailable,
+            let length = characterCount(of: element), length <= Self.smallValueFallbackLimit,
+            let value = readableValue(of: element)
+        else { return nil }
+        return (value, range.location)
     }
 
     /// Reads the window and its text from one AX element, so matching text in another window cannot authorize a write.
@@ -365,6 +378,23 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
         else { return (number, .unreadable) }
         return (number, .text(tail))
+    }
+
+    /// Reads an accepted suggestion's tail with a short per-element timeout.
+    public func acceptanceWindowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {
+        guard count > 0,
+            let element = focusedElement(timeout: Self.acceptanceMessagingTimeout)
+        else { return (nil, .unreadable) }
+        let number = Self.windowNumber(of: element)
+        guard let (value, caret) = textBeforeCaret(count, of: element),
+            let tail = BackwardSelection.tail(in: value, endingAt: caret, upTo: count)
+        else { return (number, .unreadable) }
+        return (number, .text(tail))
+    }
+
+    /// Rechecks the destination window with the short accept-path timeout.
+    public func acceptanceFocusedWindowNumber() -> UInt32? {
+        focusedElement(timeout: Self.acceptanceMessagingTimeout).flatMap(Self.windowNumber(of:))
     }
 
     /// The window containing this focused field, or nothing when the system cannot identify it.
@@ -500,7 +530,6 @@ private func isSecureField(_ element: AXUIElement) -> Bool {
         value: {
             CaretWindow.prefix(
                 length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
-                ?? stringAttribute(kAXValueAttribute, of: element)
         })
 }
 

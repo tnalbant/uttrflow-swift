@@ -31,10 +31,23 @@ public struct SuggestionAcceptor: Sendable {
     /// Does to the field exactly what the drawn suggestion promised, or nothing when it promised nothing.
     @discardableResult
     public func accept(
-        _ suggestion: Suggestion, after typed: String
+        _ suggestion: Suggestion, after typed: String, expectedWindowNumber: UInt32? = nil
     ) async throws(TextInsertionError) -> TextInsertionMethod? {
-        switch await aim(suggestion, after: typed) {
-        case .write(let edit): return try await write(edit)
+        let (aim, before) = await assess(
+            suggestion, after: typed, expectedWindowNumber: expectedWindowNumber)
+        switch aim {
+        case .write(let edit):
+            if let expectedWindowNumber {
+                let focusedWindowNumber = await AccessibilityThread.run(orElse: nil) {
+                    focus?.acceptanceFocusedWindowNumber()
+                }
+                guard focusedWindowNumber == expectedWindowNumber else {
+                    throw .insertionRejected(
+                        description: "the focused field is in a different or unidentified window")
+                }
+            }
+            return try await completion.write(
+                edit.inserted, replacing: edit.replaced, confirmedPreceding: before)
         case .nothing: return nil
         case .refused(let reason): throw .insertionRejected(description: reason)
         }
@@ -60,28 +73,34 @@ public struct SuggestionAcceptor: Sendable {
     public func aim(
         _ suggestion: Suggestion, after typed: String, expectedWindowNumber: UInt32? = nil
     ) async -> Aim {
-        guard let drawn = suggestion.edit(after: typed) else { return .nothing }
-        guard let focus else { return .write(drawn) }
-        // A field that hides what is typed never takes a suggestion, whatever it was drawn in.
-        if await AccessibilityThread.run(orElse: true, { focus.focusedFieldIsSecure() }) {
-            return .refused("the focused field hides what is typed")
-        }
+        await assess(suggestion, after: typed, expectedWindowNumber: expectedWindowNumber).aim
+    }
+
+    /// Reads the field once and carries the verified replacement suffix into the write.
+    private func assess(
+        _ suggestion: Suggestion, after typed: String, expectedWindowNumber: UInt32? = nil
+    ) async -> (aim: Aim, confirmedPreceding: String?) {
+        guard let drawn = suggestion.edit(after: typed) else { return (.nothing, nil) }
+        guard let focus else { return (.write(drawn), nil) }
         let reach = max(typed.count + drawn.inserted.count, 1)
         let reading = await AccessibilityThread.run(orElse: (nil, FieldTail.unreadable)) {
-            focus.windowNumberAndTail(upTo: reach)
+            focus.acceptanceWindowNumberAndTail(upTo: reach)
         }
         if let expectedWindowNumber {
             guard reading.windowNumber == expectedWindowNumber else {
-                return .refused("the focused field is in a different or unidentified window")
+                return (.refused("the focused field is in a different or unidentified window"), nil)
             }
         }
         // A ghost is drawn only where the field was read, so a field that cannot be read now is not the one it was drawn in.
         guard case .text(let before) = reading.tail else {
-            return .refused("the focused field cannot be read")
+            return (.refused("the focused field cannot be read"), nil)
         }
-        if let rebased = Acceptance.rebase(drawn, after: typed, onto: before) { return .write(rebased) }
+        if let rebased = Acceptance.rebase(drawn, after: typed, onto: before) {
+            let preceding = rebased.replaced.isEmpty ? nil : String(before.suffix(rebased.replaced.count))
+            return (.write(rebased), preceding)
+        }
         // The whole suggestion already being there means the keys got ahead of the read, and there is nothing left to do.
-        if before.hasSuffix(typed + drawn.inserted), !drawn.isReplacement { return .nothing }
-        return .refused("the text before the caret is not the line the suggestion was drawn for")
+        if before.hasSuffix(typed + drawn.inserted), !drawn.isReplacement { return (.nothing, nil) }
+        return (.refused("the text before the caret is not the line the suggestion was drawn for"), nil)
     }
 }
