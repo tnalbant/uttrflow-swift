@@ -8,7 +8,7 @@ public enum FirstWordPolicy: Sendable, Equatable {
 }
 
 /// Whether the last sentence is given a full stop.
-public enum TerminalStopPolicy: Sendable, Equatable {
+public enum TerminalStopPolicy: Sendable, Equatable, Codable {
     case always
     /// No full stop is added, and one the tidier or the model put there is taken back.
     case never
@@ -156,5 +156,18 @@ public struct DestinationFormatter: Sendable, Equatable {
                 destination: .plain, firstWord: .fromInsertionPoint, terminalStop: .always,
                 layout: .paragraphs, grammar: .repair, numbers: .fromTen,
                 promptBlock: "plain")
+    }
+
+    /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
+    public static func standard(for situation: Situation) -> DestinationFormatter {
+        let base = standard(for: situation.destination)
+        guard let rule = DestinationClassifier.rule(for: situation.app),
+            rule.destination == situation.destination,
+            let terminalStop = rule.terminalStop
+        else { return base }
+        return DestinationFormatter(
+            destination: base.destination, firstWord: base.firstWord, terminalStop: terminalStop,
+            layout: base.layout, grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock)
     }
 }

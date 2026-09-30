@@ -970,6 +970,36 @@ public enum EvaluationCorpus {
             ),
             mustNotAdd: ["func", "var", "TODO"]
         ),
+        .init(
+            id: "reminders-title-no-stop", category: .contextual,
+            spoken: "water the plants",
+            expected: "Water the plants",
+            mustKeep: ["plants"],
+            context: AppContext(
+                applicationName: "Reminders",
+                bundleIdentifier: "com.apple.reminders",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Water",
+            mustEndWith: "plants"
+        ),
+        .init(
+            id: "calendar-title-keeps-question-mark", category: .contextual,
+            spoken: "should we move the dentist appointment to eleven thirty?",
+            expected: "Should we move the dentist appointment to 11:30?",
+            mustKeep: ["dentist", "11:30"],
+            context: AppContext(
+                applicationName: "Calendar",
+                bundleIdentifier: "com.apple.iCal",
+                documentName: "Dentist"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Should",
+            mustEndWith: "?"
+        ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.
         .init(
