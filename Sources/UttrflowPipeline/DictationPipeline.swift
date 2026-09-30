@@ -1366,7 +1366,7 @@ extension String {
 
 extension Transcription {
     /// The same recognised speech, with different words in it and the same timings.
-    fileprivate func saying(_ text: String) -> Transcription {
+    func saying(_ text: String) -> Transcription {
         guard text != self.text else { return self }
         return Transcription(
             text: text, detectedLanguage: detectedLanguage, segments: segments,
@@ -1374,7 +1374,7 @@ extension Transcription {
     }
 
     /// The same speech with the dictionary's spellings in it, every other word keeping the score it was heard with.
-    fileprivate func saying(_ corrected: CorrectedTranscript) -> Transcription {
+    func saying(_ corrected: CorrectedTranscript) -> Transcription {
         guard corrected.text != text else { return self }
         let heard = Draft(transcription: self)
         guard heard.confidencesAreReal else { return saying(corrected.text) }
