@@ -779,7 +779,11 @@ final class SuggestionCoordinator {
 
         let turn = session.turn(
             in: reading.surface, at: context(of: snapshot, at: started),
-            acceptKey: preferences.acceptKeys.key(forBundleIdentifier: snapshot.bundleIdentifier),
+            acceptKey: preferences.acceptKeys.key(
+                for: AppContext(
+                    applicationName: snapshot.applicationName,
+                    bundleIdentifier: snapshot.bundleIdentifier,
+                    documentName: snapshot.windowTitle)),
             isQuiet: preferences.isQuiet, sawKeystrokes: keystrokesSeen)
         if let rejected = turn.rejected, let surface = reading.surface {
             entering(.reject, turn: number)
@@ -1195,7 +1199,11 @@ final class SuggestionCoordinator {
             update.suggestion, typed: session.typed, placement: .inlineGhost, caret: caret,
             window: snapshot.window, field: snapshot.ghostField, fieldPointSize: snapshot.pointSize,
             selection: session.selection,
-            acceptKey: preferences.acceptKeys.key(forBundleIdentifier: snapshot.bundleIdentifier),
+            acceptKey: preferences.acceptKeys.key(
+                for: AppContext(
+                    applicationName: snapshot.applicationName,
+                    bundleIdentifier: snapshot.bundleIdentifier,
+                    documentName: snapshot.windowTitle)),
             fontFamily: snapshot.fontFamily, textColor: snapshot.textColor)
         // An offer the panel could not show whole claims no key, so Tab never inserts what was not drawn.
         guard shown else {
