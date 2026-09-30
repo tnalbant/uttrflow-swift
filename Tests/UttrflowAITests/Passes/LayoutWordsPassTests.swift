@@ -31,10 +31,34 @@ struct LayoutWordsPassTests {
                 "then\n2. call the landlord\n3. pay the rent"
             ),
             ("we need number 1 milk number 2 eggs", "we need\n1. milk\n2. eggs"),
+            (
+                "agenda number one budget number two hiring number three offsite",
+                "agenda\n1. budget\n2. hiring\n3. offsite"
+            ),
+            (
+                "the steps are number one gather the files number two check the names",
+                "the steps are\n1. gather the files\n2. check the names"
+            ),
+            ("number one budget number two hiring", "1. budget\n2. hiring"),
         ]
     )
     func numbersItems(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps connected number words in a sentence when an item ends in a conjunction",
+        arguments: [
+            "the list includes number one speed number two cost and number three quality all of which matter",
+            "we ranked number one on speed number two on price and number three on support last year",
+            "we ranked number one on speed number two on price number three on support last year",
+            "she said number one was the plan and number two was the backup which we never used",
+            "they named number one Ada and number two Lin before the vote closed",
+            "we need number one milk number two eggs or number three bread",
+        ]
+    )
+    func keepsConjoinedNumbersInSentences(input: String) {
+        #expect(cleaned(input, by: sut) == input)
     }
 
     /// Issue 254: with no lookback to ask, a phrase opening its sentence is an item only if the speaker set it off.
@@ -69,6 +93,30 @@ struct LayoutWordsPassTests {
     )
     func readsABreakAfterAStop(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "uses known text at the caret to decide what a leading break means",
+        arguments: [
+            ("The numbers look fine. ", "\n\nthanks sam"),
+            ("I looked at the numbers ", "\n\nthanks sam"),
+        ]
+    )
+    func leadingBreakWithTextBeforeCaret(precedingText: String, expected: String) {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: precedingText))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == expected)
+    }
+
+    @Test("drops a leading break command in a known empty field")
+    func leadingBreakInEmptyField() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: ""))
+        #expect(cleaned("new paragraph thanks sam", by: pass) == "thanks sam")
+    }
+
+    @Test("keeps the existing numbered item behavior at the caret")
+    func numberedItemAtCaret() {
+        let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: "The numbers look fine. "))
+        #expect(cleaned("number one, thanks sam", by: pass) == "1. thanks sam")
     }
 
     /// One spoken phrase cannot straddle a sentence end, so neither the phrase nor the item number reaches past one.

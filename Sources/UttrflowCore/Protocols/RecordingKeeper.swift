@@ -8,6 +8,9 @@ public protocol RecordingKeeper: Sendable {
     /// The recording written for the dictation that just stopped, if one was.
     func current() async -> KeptRecording?
 
+    /// Records the destination facts observed for a waiting recording.
+    func setDestination(_ destination: AppContext, for id: UUID) async
+
     /// Deletes a recording: its words landed, or there is nothing in it worth retrying.
     func discard(_ id: UUID) async
 
@@ -24,6 +27,8 @@ public struct RecordingsNotKept: RecordingKeeper {
     public init() {}
 
     public func current() async -> KeptRecording? { nil }
+
+    public func setDestination(_ destination: AppContext, for id: UUID) async {}
 
     public func discard(_ id: UUID) async {}
 

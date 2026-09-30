@@ -986,6 +986,40 @@ struct DictationControllerControlTests {
     }
 }
 
+@Suite("Escape cancellation")
+struct DictationControllerEscapeTests {
+    @Test("Escape discards a press-to-toggle recording")
+    func escapeCancelsToggle() async {
+        let harness = makeHarness(activation: .pressToToggle)
+        await harness.controller.handle(.pressed)
+        await harness.controller.handle(.released)
+        #expect(await harness.pipeline.currentState == .recording)
+
+        await harness.controller.handle(.escapePressed)
+
+        #expect(await harness.pipeline.currentState == .idle)
+        #expect(harness.inserter.received.isEmpty)
+        #expect(await harness.capture.calls.events == [.start, .stop])
+    }
+
+    @Test("Escape discards a hands-free recording")
+    func escapeCancelsHandsFree() async {
+        let harness = makeHarness()
+        await tap(harness)
+        harness.clock.advance(by: .milliseconds(120))
+        await tap(harness)
+        #expect(await harness.pipeline.currentState == .recording)
+        #expect(await harness.controller.currentStopGesture == .pressAgainHandsFree)
+
+        await harness.controller.handle(.escapePressed)
+
+        #expect(await harness.pipeline.currentState == .idle)
+        #expect(await harness.controller.currentStopGesture == .letGo)
+        #expect(harness.inserter.received.isEmpty)
+        #expect(await harness.capture.calls.events == [.start, .stop])
+    }
+}
+
 // MARK: - Being let go of
 
 @Suite("A controller nothing holds", .timeLimit(.minutes(1)))

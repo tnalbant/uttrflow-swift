@@ -1,3 +1,4 @@
+import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
@@ -5,6 +6,7 @@ public struct LayoutWordsPass: CleaningPass {
     public static let id: PassID = .layoutWords
 
     private let layout: LayoutPolicy
+    private let insertionState: InsertionPoint.SentenceState
 
     /// What each spoken phrase becomes; a bullet marker carries its own dash and space.
     static let marks: [(words: [String], mark: String, requiresLists: Bool)] = [
@@ -16,8 +18,11 @@ public struct LayoutWordsPass: CleaningPass {
     /// The word that opens a numbered item. It is not in `marks` because the number after it picks the mark.
     static let numbering = "number"
 
-    public init(layout: LayoutPolicy = [.paragraphs, .lists]) {
+    public init(
+        layout: LayoutPolicy = [.paragraphs, .lists], insertionPoint: InsertionPoint = .unknown
+    ) {
         self.layout = layout
+        self.insertionState = insertionPoint.sentenceState
     }
 
     public func apply(_ draft: Draft) -> Draft {
@@ -45,13 +50,20 @@ public struct LayoutWordsPass: CleaningPass {
         return draft
     }
 
-    /// The mark with nothing to break from at the head of the text, where a break is no layout and only an item's number is.
+    /// At the head, a break depends on the insertion point; an item number keeps its existing behavior.
     private func opening(
         _ found: (length: Int, mark: String)?, at position: Int
     ) -> (length: Int, mark: String)? {
         guard let found, position == 0 else { return found }
-        let mark = String(found.mark.drop(while: \.isNewline))
-        return mark.isEmpty ? nil : (found.length, mark)
+        guard found.mark.allSatisfy(\.isNewline) else { return found }
+        switch insertionState {
+        case .startOfText:
+            return (found.length, "")
+        case .startOfSentence, .midSentence:
+            return found
+        case .unknown:
+            return nil
+        }
     }
 
     /// Whether the phrase is dictated layout rather than named; an item opening its sentence needs a mark. See `Docs/cleanup.md`.
@@ -59,6 +71,7 @@ public struct LayoutWordsPass: CleaningPass {
         _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft
     ) -> Bool {
         let length = found.length
+        if position == 0, found.mark.allSatisfy(\.isNewline), insertionState != .unknown { return true }
         // Asked of the sentence, not the text, so a sentence before it cannot turn "number one is broken" into an item.
         guard position == 0 || draft.shape(at: live[position - 1]).endsSentence else {
             return !MentionGuard.isMentioned(
@@ -78,8 +91,52 @@ public struct LayoutWordsPass: CleaningPass {
         guard position > 0, !draft.shape(at: live[position - 1]).endsSentence,
             let value = itemValue(at: position, in: live, of: draft)
         else { return true }
-        return (value > 1 && numbered.contains(value - 1))
-            || (value < Int.max && numbered.contains(value + 1))
+        guard
+            (value > 1 && numbered.contains(value - 1))
+                || (value < Int.max && numbered.contains(value + 1))
+        else { return false }
+        return isEligibleNumberedRun(at: value, in: live, of: draft, among: numbered)
+    }
+
+    /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
+    private func isEligibleNumberedRun(
+        at value: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
+    ) -> Bool {
+        let positionsByValue = Dictionary(
+            numbered.compactMap { position -> (Int, Int)? in
+                guard let item = itemValue(at: position, in: live, of: draft) else { return nil }
+                return (item, position)
+            }, uniquingKeysWith: { first, _ in first },
+        )
+        var first = value
+        while first > 1, positionsByValue[first - 1] != nil { first -= 1 }
+        var item = first
+        var firstMarker: Int?
+        var hasJoiningWord = false
+        while let marker = positionsByValue[item] {
+            if firstMarker == nil { firstMarker = marker }
+            if marker > 0 {
+                let previous = draft.shape(at: live[marker - 1]).key
+                hasJoiningWord = hasJoiningWord || previous == "and" || previous == "or"
+            }
+            guard item < Int.max else { return false }
+            item += 1
+        }
+        guard let firstMarker else { return false }
+        return !hasJoiningWord && isLeadInBefore(firstMarker, in: live, of: draft)
+    }
+
+    /// A mid-sentence list starts after a lead-in, not after a running clause.
+    private func isLeadInBefore(_ marker: Int, in live: [Int], of draft: Draft) -> Bool {
+        guard marker > 0, !draft.shape(at: live[marker - 1]).endsSentence else { return true }
+        let previous = draft.shape(at: live[marker - 1])
+        guard !["and", "or"].contains(previous.key) else { return false }
+        if ["need", "are", "check"].contains(previous.key) { return true }
+        let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = context
+        guard let range = context.range(of: previous.core, options: .backwards) else { return false }
+        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.

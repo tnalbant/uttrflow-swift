@@ -151,16 +151,18 @@ public struct Draft: Sendable, Equatable {
 
     /// Splits a pause ellipsis between words while keeping URL punctuation inside its token.
     private static func splitPauseEllipses(in token: String) -> [String] {
-        let lowercased = token.lowercased()
-        guard !lowercased.contains("://"), !lowercased.hasPrefix("www.") else { return [token] }
+        let normalized = token.replacingOccurrences(of: "…", with: "...")
+        let lowercased = normalized.lowercased()
+        guard !lowercased.contains("://"), !lowercased.hasPrefix("www."), !lowercased.contains("@")
+        else { return [token] }
 
-        let characters = Array(token)
+        let characters = Array(normalized)
         var parts = [""]
         var index = 0
         while index < characters.count {
             if index > 0, index + 3 < characters.count,
                 characters[index] == ".", characters[index + 1] == ".", characters[index + 2] == ".",
-                (index + 3 == characters.count || characters[index + 3] != "."),
+                characters[index + 3] != ".",
                 characters[index - 1].isLetter || characters[index - 1].isNumber,
                 characters[index + 3].isLetter || characters[index + 3].isNumber
             {

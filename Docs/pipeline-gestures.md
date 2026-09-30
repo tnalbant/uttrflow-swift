@@ -145,6 +145,8 @@ open the microphone as usual:
 - the cap, which finishes the recording and keeps its words (`Docs/stuck-recording.md`);
 - a change of activation mode;
 - switching Hands-free off in Settings, which finishes the recording and keeps its words;
+- pressing Escape, which cancels the recording and discards its words. Escape still reaches the
+  frontmost app;
 - the pipeline ending the recording on its own, such as a cancel: the next press notices the
   microphone is closed and forgets hands-free before acting.
 

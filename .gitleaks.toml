@@ -104,6 +104,8 @@ useDefault = true
     '''^Zx9kLmQ2rT7p$''',
     '''^Zx9kLmQ2rT7pQ3vB$''',
     '''^https://hooks\.slack\.com/services/T0AB1CD2E/B0FG3HI4J/Zx9kLmQ2rT7pQ3vB8nW4yH6s$''',
+    # Exact scheme-less synthetic webhook fixture in SecretDetectionTests.swift for regression #2172.
+    '''^hooks\.slack\.com/services/T0AB1CD2E/B0FG3HI4J/Zx9kLmQ2rT7pQ3vB8nW4yH6s$''',
     '''^-----BEGIN OPENSSH PRIVATE KEY-----
             b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
             c2gtZWQyNTUxOQAAACDkQ2VydGlmaWNhdGVOb3RSZWFsbHlBS2V5QXRBbGxIZXJl

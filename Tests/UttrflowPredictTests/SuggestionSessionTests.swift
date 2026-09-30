@@ -70,6 +70,19 @@ struct SuggestionSessionTests {
         #expect(session.suggestion == .certain("git commit -m"))
     }
 
+    @Test("Candidates with control, format, or replacement scalars are never offered.")
+    func unsafeCorpusCandidatesAreRejected() throws {
+        for scalar in ["\t", "\u{1B}", "\u{200B}", "\u{202E}", "\u{2066}", "\u{FFFD}"] {
+            var session = SuggestionSession()
+            let update = try #require(
+                try draw(&session, typing: "git c", candidates: lone("git c\(scalar)heckout")))
+            #expect(update.suggestion == .silent)
+        }
+        var session = SuggestionSession()
+        let update = try #require(try draw(&session, typing: "git c", candidates: lone("git checkout")))
+        #expect(update.suggestion == .certain("git checkout"))
+    }
+
     @Test("The accept key follows the application, so a terminal is not robbed of Tab.")
     func followsTheAcceptKey() throws {
         var session = SuggestionSession()
@@ -798,6 +811,20 @@ struct GeneratedSuggestionTests {
 
     @Test("A lone continuation the model invents is drawn as a certain suggestion.")
     func loneGenerated() throws {
+        var session = SuggestionSession()
+        let asked = try asked(&session, typing: "git c")
+        let update = session.resolveSure(["git checkout"], for: asked, elapsedMilliseconds: 0)
+        #expect(update?.suggestion == .certain("git checkout"))
+    }
+
+    @Test("Generated candidates with control, format, or replacement scalars are never offered.")
+    func unsafeGeneratedCandidatesAreRejected() throws {
+        for scalar in ["\t", "\u{1B}", "\u{200B}", "\u{202E}", "\u{2066}", "\u{FFFD}"] {
+            var session = SuggestionSession()
+            let asked = try asked(&session, typing: "git c")
+            let update = session.resolveSure(["git c\(scalar)heckout"], for: asked, elapsedMilliseconds: 0)
+            #expect(update?.suggestion == .silent)
+        }
         var session = SuggestionSession()
         let asked = try asked(&session, typing: "git c")
         let update = session.resolveSure(["git checkout"], for: asked, elapsedMilliseconds: 0)

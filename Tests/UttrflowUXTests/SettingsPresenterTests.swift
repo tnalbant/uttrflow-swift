@@ -183,8 +183,19 @@ struct SettingsGeneralPaneTests {
 
         settings.hotkeyActivation = .pressToToggle
         let toggle = try #require(general(settings).row("shortcut.dictate")?.explanation)
-        #expect(toggle == "Press ⌃⌥ to start talking, and again to stop")
-        #expect(!toggle.contains("Double-tap"))
+        #expect(toggle == "Press ⌃⌥ once to start talking, and again to stop")
+        #expect(!toggle.lowercased().contains("double"))
+    }
+
+    @Test("keeps the Fn explanation ahead of the selected activation mode")
+    func functionHoldExplanationTakesPrecedence() throws {
+        var settings = Settings.default
+        settings.hotkey = .functionHold
+        settings.hotkeyActivation = .pressToToggle
+
+        let explanation = try #require(general(settings).row("shortcut.dictate")?.explanation)
+        #expect(explanation.contains("If pressing fn also opens Emoji"))
+        #expect(!explanation.contains("once to start talking"))
     }
 
     @Test("offers both ways of activating, with the stored one selected")
@@ -399,6 +410,36 @@ struct SettingsLanguagesPaneTests {
 }
 
 // MARK: - Dictation
+
+@Suite("Suggestion model failures in Settings")
+struct SettingsSuggestionModelFailureTests {
+    private func pane(for readiness: SuggestionModelReadiness) -> SettingsPane {
+        var settings = Settings.default
+        settings.suggestions.isEnabled = true
+        var capabilities = SettingsCapabilities.everything
+        capabilities.suggestionModel = readiness
+        return SettingsPresenter.pane(for: .suggestions, settings: settings, capabilities: capabilities)
+    }
+
+    @Test("names a failed fetch and offers connection advice")
+    func fetchFailure() {
+        let pane = pane(for: .fetchFailed)
+        #expect(pane.banner?.title == "The model could not be fetched")
+        #expect(pane.banner?.message.contains("Check your connection") == true)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be fetched")
+        #expect(pane.row("retrySuggestionModel")?.explanation?.contains("connection") == true)
+    }
+
+    @Test("names a failed disk load without connection advice")
+    func diskLoadFailure() {
+        let pane = pane(for: .loadFailed)
+        #expect(pane.banner?.title == "The model could not be loaded")
+        #expect(pane.banner?.message.contains("loading it again") == true)
+        #expect(pane.banner?.message.contains("connection") == false)
+        #expect(pane.row("retrySuggestionModel")?.label == "Suggestion model could not be loaded")
+        #expect(pane.row("retrySuggestionModel")?.explanation == "Try loading the model again.")
+    }
+}
 
 @Suite("The Dictation tab")
 struct SettingsDictationPaneTests {
@@ -769,6 +810,19 @@ struct UnarmedShortcutTests {
         #expect(shown.explanation == SettingsPresenter.unarmed)
     }
 
+    @Test("keeps the unarmed explanation ahead of the activation mode")
+    func unarmedDictateIsStillExplainedFirst() throws {
+        var settings = Settings.default
+        settings.hotkeyActivation = .pressToToggle
+        var capabilities = SettingsCapabilities.everything
+        capabilities.unarmedShortcuts = [.dictate]
+
+        let shown = try #require(
+            SettingsPresenter.pane(for: .general, settings: settings, capabilities: capabilities)
+                .groups.flatMap(\.rows).first { $0.id == "shortcut.dictate" })
+        #expect(shown.explanation == SettingsPresenter.unarmed)
+    }
+
     @Test("and every other row is left alone")
     func othersAreUntouched() throws {
         var capabilities = SettingsCapabilities.everything
@@ -796,6 +850,7 @@ struct ReturnedShortcutTests {
     func saysWhy() throws {
         var settings = Settings.default
         settings.shortcutsReturnedToDefault = [.dictate]
+        settings.hotkeyActivation = .pressToToggle
 
         let shown = try #require(row("shortcut.dictate", in: settings))
 

@@ -12,7 +12,10 @@ public enum NumberWords {
         "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
         "eighty": 80, "ninety": 90,
     ]
-    public static let scales: [String: Int] = ["hundred": 100, "thousand": 1_000, "million": 1_000_000]
+    public static let scales: [String: Int] = [
+        "hundred": 100, "thousand": 1_000, "million": 1_000_000,
+        "billion": 1_000_000_000, "trillion": 1_000_000_000_000,
+    ]
 
     /// The value of a single number word, or nil for any other word.
     public static func value(of key: String) -> Int? {

@@ -98,8 +98,14 @@ extension PanelSnapshot {
 extension PanelSnapshot {
     /// One keystroke, as a pure function of state, so which clip Return means is computed, not accumulated.
     public func applying(_ key: PanelKey) -> PanelResponse {
-        // A sheet with nothing to type into takes only its answer, so no other key moves, replaces or rewrites what it asks about.
-        if let sheet, !sheet.takesTyping {
+        // A typing sheet accepts only its draft, Return and Escape; the list behind it stays inert.
+        if let sheet, sheet.takesTyping {
+            switch key {
+            case .draft, .return, .escape: break
+            default: return stayingOpen
+            }
+        } else if sheet != nil {
+            // A sheet with nothing to type into takes only its answer.
             switch key {
             case .return, .returnPlain, .escape: break
             default: return stayingOpen

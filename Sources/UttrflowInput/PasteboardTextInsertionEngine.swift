@@ -88,7 +88,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         if isSecure {
             writeChangeCount = pasteboard.writeConcealedText(text)
         } else {
-            writeChangeCount = pasteboard.writeText(text, richText: richText)
+            writeChangeCount = pasteboard.writeTransientText(text, richText: richText)
         }
         // A different clipboard generation means another writer owns it now.
         let readback = pasteboard.text()

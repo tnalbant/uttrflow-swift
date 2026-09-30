@@ -9,12 +9,13 @@ import UttrflowCore
 struct RulesCorpusTests {
     /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
     static let rulesMustPass: Set<String> = [
-        "false-start", "self-correction", "filler-heavy", "fillers-glued-by-pause-ellipses",
+        "false-start", "self-correction", "filler-heavy", "ellipsis-glued-fillers",
         "noun-spelled-like-a-filler",
-        "pronoun-i", "number-words", "short-yes",
+        "pronoun-i", "number-words", "money-billion", "short-yes",
         "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
         "filler-between-commas",
-        "repeated-phrase", "i-mean-correction", "correction-between-commas", "actually-between-numbers",
+        "repeated-phrase", "repeated-intensifier-chain", "repeated-continuation-kept",
+        "i-mean-correction", "correction-between-commas", "actually-between-numbers",
         "number-correction-with-unit",
         "correction-between-amounts", "correction-between-percentages",
         "false-no-stays",
@@ -33,7 +34,7 @@ struct RulesCorpusTests {
         "percentage", "money",
         "period-as-a-word", "spoken-period",
         "period-after-new-line", "full-stop-new-paragraph", "question-mark-new-line",
-        "dates", "ordinal-not-date",
+        "dates", "ordinal-not-date", "compound-ordinal-above-one-hundred",
         "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",
         "spoken-email-address", "spoken-email-address-with-a-name",
         "spoken-email-address-ending-the-sentence", "spoken-email-addresses-in-a-list",
@@ -110,6 +111,14 @@ struct RulesCorpusTests {
             ("agreement-there-is", "There is three of them waiting outside."),
             ("agreement-he-dont", "He don't know about the meeting yet."),
             ("participle-have-went", "I have went through the whole report twice."),
+            ("participle-have-wrote", "I have wrote the summary already."),
+            ("participle-had-took", "I had took the wrong turn."),
+            ("participle-should-have-ate", "I should have ate before the call."),
+            ("participle-was-wrote", "It was wrote in the notes."),
+            ("participle-has-began", "The project has began already."),
+            ("participle-have-spoke", "I have spoke with them."),
+            ("participle-was-broke", "The window was broke during transit."),
+            ("participle-has-drove", "She has drove this route before."),
             ("article-a-apple", "There was a apple left in the bowl."),
             ("tense-drift", "Yesterday I open the file and it crashes immediately."),
             ("tense-drift-over-a-stem", "Yesterday I try to fix the build twice."),
@@ -129,7 +138,7 @@ struct RulesCorpusTests {
 
     @Test("covers every grammar case in the leave-alone list, so a new slip cannot skip the floor")
     func grammarCasesAreAllHeld() {
-        #expect(EvaluationCorpus.cases(in: .grammar).count == 14)
+        #expect(EvaluationCorpus.cases(in: .grammar).count == 22)
     }
 
     @Test("gives every destination at least three cases, so the bake-off can score its block")
@@ -177,7 +186,7 @@ struct RulesCorpusTests {
         "writes the exact reference for the cases that have one right answer",
         arguments: [
             ("self-correction", "Let's meet at five on tuesday."),
-            ("fillers-glued-by-pause-ellipses", "The invoice is overdue."),
+            ("ellipsis-glued-fillers", "The invoice is overdue."),
             ("version-number", "We're on postgres 16.2 right now."),
             ("spoken-comma", "We still need milk, eggs, and bread from the shop."),
             ("new-paragraph", "Thanks for the update.\n\nThe second issue is the login timeout."),

@@ -97,6 +97,55 @@ struct GenerativeTextTransformerTests {
         )
     }
 
+    @Test(
+        "removes spoken mark names the model echoed after writing their punctuation",
+        arguments: [
+            (
+                "send the report comma then call me",
+                "Send the report, comma, then call me.",
+                "Send the report, then call me."
+            ),
+            (
+                "yes comma no comma maybe",
+                "Yes, comma, no, comma, maybe.",
+                "Yes, no, maybe."
+            ),
+            (
+                "we ship on monday full stop no delays",
+                "We ship on Monday, full stop, no delays.",
+                "We ship on Monday. No delays."
+            ),
+            (
+                "the word open quote done close quote matters",
+                "The word \"open quote\" done' matters.",
+                "The word \"done\" matters."
+            ),
+        ]
+    )
+    func removesEchoedSpokenMarkNames(input: String, modelOutput: String, expected: String) async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in modelOutput })
+
+        #expect(try await sut.transform(request(input)).text == expected)
+    }
+
+    @Test(
+        "keeps mark names the model uses as literal vocabulary",
+        arguments: [
+            ("the period of time", "The period of time matters."),
+            ("a dash of salt", "A dash of salt is enough."),
+            ("comma separated values", "Comma separated values are easy to read."),
+            ("an open quote begins the string", "An open quote begins the string."),
+            ("a close quote ends the string", "A close quote ends the string."),
+        ]
+    )
+    func keepsLiteralMarkNames(input: String, modelOutput: String) async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in modelOutput })
+
+        #expect(try await sut.transform(request(input)).text == modelOutput)
+    }
+
     /// The passes under the destination's own policies, which is what the model is handed.
     @Test("runs the pre-model passes under the destination the words are going to")
     func runsThePassesForTheDestination() async throws {
@@ -144,6 +193,35 @@ struct GenerativeTextTransformerTests {
 
         _ = try await sut.transform(request("um hello there"))
         #expect(model.calls.first?.text == "Spoken: \"um hello there\"")
+    }
+
+    @Test(
+        "the model preserves each switched-off spoken cleanup step",
+        arguments: [
+            (PassID.fillers, "um so I think we should ship it", "Um, so I think we should ship it."),
+            (PassID.stammers, "I I think we should ship it", "I, I think we should ship it."),
+            (PassID.repeatedPhrase, "we should ship it Friday Friday", "We should ship it Friday Friday."),
+            (
+                PassID.selfCorrection, "we should ship Monday no sorry Friday",
+                "We should ship Monday, no sorry, Friday."
+            ),
+        ]
+    )
+    func preservesWordsForSwitchedOffSpokenSteps(
+        step: PassID, spoken: String, modelAnswer: String
+    ) async throws {
+        let model = FakeCleanupModel { _ in modelAnswer }
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: model,
+            steps: CleaningSteps(switchedOff: [step]))
+
+        let result = try await sut.transform(request(spoken))
+
+        #expect(result.text == modelAnswer)
+        #expect(model.calls.first?.text.contains("preserve these words") == true)
+        #expect(model.calls.first?.text.contains(CleaningSteps.name(of: step)) == true)
+        #expect(result.cleaning?.switchedOff == [step])
+        #expect(result.cleaning?.changes.contains(where: { $0.step == step }) == false)
     }
 
     private func request(
