@@ -952,6 +952,8 @@ final class SuggestionCoordinator {
         await drawFresh(update, for: snapshot, turn: number)
         // With the one line on screen, the others are fetched behind it, so Down has a list and the person never waited for it.
         guard completions.count == 1, let leader = completions.first, turns.isCurrent(number) else { return }
+        // Quiet keeps the one-line ghost and never spends a pass on alternatives.
+        guard !preferences.isQuiet else { return }
         // Where the machine gave the values, the other values are the alternatives, and no pass is spent on them.
         if case .values(let listed) = ModelPass.alternativesSource(
             typed: query.typed, choices: choices, leader: leader)
@@ -967,8 +969,6 @@ final class SuggestionCoordinator {
                 [leader] + others, for: query, at: place, listed: Set(others))
             return await drawFresh(expanded, for: snapshot, turn: number)
         }
-        // Quiet never shows the list, so no model pass is spent building one.
-        guard !preferences.isQuiet else { return }
         let more = Task { [generator, store, contextCache] in
             let situation = await Self.situation(
                 of: snapshot, for: query, store: store, cache: contextCache, turn: number)
