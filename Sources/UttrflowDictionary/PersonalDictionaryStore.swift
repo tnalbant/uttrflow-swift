@@ -170,16 +170,16 @@ public actor PersonalDictionaryStore {
 
     /// Forgets every word, the user's own included; ``removeLearned()`` is almost always the one meant.
     public func removeEverything() throws(DictionaryStoreError) {
-        try forgetSightings()
+        try forgetEverything()
         try persist([])
         do { try LocalStore.removeSetAside(file) } catch { throw .couldNotWrite }
     }
 
-    /// Forgets every inference and keeps the user's own words and this build's. See `Docs/app-dictionary-store.md`.
+    /// Clears pending sightings, keeps refusals, and retains user-added and shipped words.
     @discardableResult
     public func removeLearned() throws(DictionaryStoreError) -> [DictionaryEntry] {
-        // The half-counted evidence goes with the entries, or the button is a liar by one dictation.
-        try forgetSightings()
+        // Pending evidence goes with inferred entries, while refusals remain in force.
+        clearPendingSightings()
         // A shipped word was inferred from nothing, so there is nothing about it to forget.
         let kept = load().filter { $0.origin == .added || $0.origin == .shipped }
         try persist(kept)
@@ -290,8 +290,14 @@ public actor PersonalDictionaryStore {
         }
     }
 
-    /// Throws away the tally and every refusal, in memory and on disk.
-    private func forgetSightings() throws(DictionaryStoreError) {
+    /// Clears pending counts while keeping refusals in memory.
+    private func clearPendingSightings() {
+        let refusals = sightingLedger().refusals
+        ledger = SightingLedger(refusing: refusals)
+    }
+
+    /// Throws away pending counts and every refusal, in memory and on disk.
+    private func forgetEverything() throws(DictionaryStoreError) {
         ledger = SightingLedger()
         do { try removeRefusalRecord() } catch { throw .couldNotWrite }
     }
