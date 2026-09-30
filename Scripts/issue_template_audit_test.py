@@ -2,6 +2,8 @@
 """Proves the issue template audit catches every prompt that would publish forbidden content."""
 
 import os
+import plistlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -37,6 +39,30 @@ class TreeTest(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn("none invite content", run.stdout)
+
+    def test_bug_report_version_placeholder_uses_current_format(self):
+        with open(
+            os.path.join(self.REPO, ".github", "ISSUE_TEMPLATE", "bug_report.yml"),
+            encoding="utf-8",
+        ) as handle:
+            template = handle.read()
+        plist_path = os.path.join(self.REPO, "Resources", "Uttrflow-Info.plist")
+        with open(plist_path, "rb") as handle:
+            app_version = plistlib.load(handle)["CFBundleShortVersionString"]
+        version = re.search(
+            r'id: version\s+attributes:\s+label: Uttrflow version\s+'
+            r'description:[^\n]+\s+placeholder: "([^"]+)"',
+            template,
+        )
+        macos = re.search(
+            r'id: macos\s+attributes:\s+label: macOS version\s+'
+            r'placeholder: "([^"]+)"',
+            template,
+        )
+        self.assertIsNotNone(version)
+        self.assertEqual(version.group(1), app_version)
+        self.assertIsNotNone(macos)
+        self.assertRegex(macos.group(1), r"^26\.\d+\.\d+$")
 
 
 class ReasonTest(unittest.TestCase):
