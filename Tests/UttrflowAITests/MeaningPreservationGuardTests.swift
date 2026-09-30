@@ -20,6 +20,34 @@ struct MeaningPreservationGuardTests {
         #expect(sut.verdict(original: original, rewritten: rewritten).isAccepted, hint)
     }
 
+    @Test("refuses a dropped spoken dash and a quote style swap")
+    func preservesSpokenPunctuationMarks() {
+        let dash = SpokenPunctuationPass().apply(
+            Draft(text: "the plan dash if it works dash is simple"))
+        let quotes = SpokenPunctuationPass().apply(
+            Draft(text: "he said open quote ship it close quote and left"))
+
+        #expect(dash.text.contains("—"))
+        #expect(quotes.text.contains("\"ship") && quotes.text.contains("it\""))
+        #expect(sut.verdict(draft: dash, rewritten: "The plan — if it works — is simple.").isAccepted)
+        #expect(sut.verdict(draft: quotes, rewritten: "He said \"ship it\" and left.").isAccepted)
+        let droppedDash = "The plan if it works is simple."
+        let swappedQuotes = "He said 'ship it' and left."
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: dash, rewritten: droppedDash)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(
+            MeaningPreservationGuard.spokenPunctuationVerdict(draft: quotes, rewritten: swappedQuotes)
+                == .rejected(reason: "the rewrite dropped a spoken punctuation mark", kind: .layout))
+        #expect(!sut.verdict(draft: dash, rewritten: droppedDash).isAccepted)
+        #expect(!sut.verdict(draft: quotes, rewritten: swappedQuotes).isAccepted)
+    }
+
+    @Test("does not constrain punctuation the spoken punctuation pass did not write")
+    func allowsUnrelatedPunctuationChanges() {
+        #expect(sut.verdict(draft: Draft(text: "hello, friend"), rewritten: "Hello; friend.").isAccepted)
+    }
+
     @Test("accepts an ordinary tidy-up")
     func acceptsOrdinaryTidying() {
         accepted(

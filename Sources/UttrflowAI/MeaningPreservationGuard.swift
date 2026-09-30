@@ -39,6 +39,11 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
+            draft: draft, rewritten: rewritten)
+        {
+            return .rejected(reason: reason, kind: kind)
+        }
         if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
@@ -64,6 +69,26 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token))
+    }
+
+    /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
+    static func spokenPunctuationVerdict(draft: Draft, rewritten: String) -> GuardVerdict {
+        let marks = Set(SpokenPunctuationPass.marks.flatMap { Array($0.mark) } + Array("()[]{}"))
+        var required: [Character: Int] = [:]
+        for word in draft.words {
+            for edit in word.edits where edit.by == .spokenPunctuation && edit.kind == .replaced {
+                guard !edit.to.contains("@") else { continue }
+                for mark in marks {
+                    let added = edit.to.filter { $0 == mark }.count - edit.from.filter { $0 == mark }.count
+                    if added > 0 { required[mark, default: 0] += added }
+                }
+            }
+        }
+        for (mark, count) in required where rewritten.filter({ $0 == mark }).count < count {
+            return .rejected(
+                reason: "the rewrite dropped a spoken punctuation mark", kind: .layout)
+        }
+        return .accepted
     }
 
     /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
