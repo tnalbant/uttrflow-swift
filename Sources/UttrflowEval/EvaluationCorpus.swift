@@ -1278,6 +1278,14 @@ public enum EvaluationCorpus {
             mustNotAdd: ["number"], destination: .document,
             mustBeginWith: "Reminders\n"
         ),
+        .init(
+            id: "numbered-items-repeated-label", category: .contextual,
+            spoken: "reason number one it is cheap reason number two it is fast reason number three it works",
+            expected: "Reason 1: It is cheap\nReason 2: It is fast\nReason 3: It works",
+            mustKeep: ["reason", "cheap", "fast", "works"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "Reason 1: It is cheap"
+        ),
         // Issue 238: a designator spoken mid-sentence, which must keep its word and its number.
         .init(
             id: "number-ring-not-an-item", category: .contextual,

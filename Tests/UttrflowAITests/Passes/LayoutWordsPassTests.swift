@@ -24,6 +24,7 @@ struct LayoutWordsPassTests {
     @Test(
         "numbers the items a spoken number opens",
         arguments: [
+            ("number one call mom number two pay rent", "\n1. call mom\n2. pay rent"),
             ("we need number one milk number two eggs", "we need\n1. milk\n2. eggs"),
             ("we need number twenty one milk number twenty two eggs", "we need\n21. milk\n22. eggs"),
             (
@@ -35,6 +36,21 @@ struct LayoutWordsPassTests {
     )
     func numbersItems(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps a repeated label with each numbered item")
+    func keepsRepeatedLabelsWithNumberedItems() {
+        #expect(
+            cleaned(
+                "reason number one it is cheap reason number two it is fast reason number three it works",
+                by: sut)
+                == "\nReason 1: it is cheap\nReason 2: it is fast\nReason 3: it works")
+    }
+
+    @Test("does not turn repeated numbered labels into lists where lists are unavailable")
+    func leavesRepeatedLabelsAsProseWithoutListLayout() {
+        let input = "reason number one it is cheap reason number two it is fast"
+        #expect(cleaned(input, by: LayoutWordsPass(layout: .paragraphs)) == input)
     }
 
     /// Issue 254: with no lookback to ask, a phrase opening its sentence is an item only if the speaker set it off.
