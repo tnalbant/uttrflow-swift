@@ -124,6 +124,8 @@ public struct PanelSnapshot: Sendable, Equatable {
     let searchMemo = PanelSearchMemo()
     /// Keeps the rows last drawn, shared by every copy of this snapshot so an arrow key rebuilds none of them.
     let rowMemo = PanelRowMemo()
+    /// Keeps note counts across copies of this snapshot, so typing does not parse formatted notes again.
+    let checklistProgresses = ChecklistProgresses()
 
     /// Whether a delete can still be taken back; set by the app, which alone still holds the clip.
     public var canUndoDelete: Bool = false

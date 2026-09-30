@@ -445,7 +445,7 @@ public enum PanelPresenter {
             isSelected: isSelected,
             matched: result.match,
             measurements: measurements(of: clip, in: snapshot),
-            checklist: isMasked ? nil : checklistProgress(of: clip),
+            checklist: isMasked ? nil : checklistProgress(of: clip, in: snapshot),
             imageFile: isGone
                 ? nil
                 : clip.image.flatMap { image in
@@ -559,10 +559,8 @@ public enum PanelPresenter {
     }
 
     /// How many checklist boxes are checked, without copying any note text into the row.
-    static func checklistProgress(of clip: Clip) -> String? {
-        guard let richText = clip.richText,
-            let progress = NoteChecklist.progress(in: richText)
-        else { return nil }
+    static func checklistProgress(of clip: Clip, in snapshot: PanelSnapshot) -> String? {
+        guard let progress = snapshot.checklistProgresses.progress(of: clip) else { return nil }
         return "\(progress.done) of \(progress.total)"
     }
 
