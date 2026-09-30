@@ -11,6 +11,15 @@ struct RomaniserTests {
             ("नहीं", "nahi"), ("क्या", "kya"), ("क्यों", "kyun"), ("मैं आ रहा हूं", "main aa raha hoon"),
             ("कोई बात नहीं", "koi baat nahi"), ("अच्छा", "accha"), ("धन्यवाद", "dhanyavaad"), ("ज़रा", "zara"),
             ("ऑफिस", "office"), ("मिनट", "minute"),
+            ("फ़ाइल", "file"), ("फाइल", "file"), ("शेयर", "share"), ("कंप्यूटर", "computer"),
+            ("लड़का", "ladka"),
+            ("डेडलाइन", "deadline"), ("मोबाइल", "mobile"), ("चार्ज", "charge"), ("स्कूल", "school"),
+            ("डॉक्टर", "doctor"), ("बैंक", "bank"), ("कॉलेज", "college"), ("टैक्सी", "taxi"),
+            ("बुक", "book"), ("लैपटॉप", "laptop"), ("इंटरनेट", "internet"), ("पासवर्ड", "password"),
+            ("वीडियो", "video"), ("कॉल", "call"), ("फ़ोटो", "photo"), ("फोटो", "photo"),
+            ("ऑफ़र", "offer"), ("ऑफर", "offer"), ("कॉपी", "copy"), ("कॉन्टैक्ट", "contact"),
+            ("लॉगिन", "login"), ("लॉगआउट", "logout"), ("प्रॉब्लम", "problem"), ("बॉक्स", "box"),
+            ("कॉफ़ी", "coffee"), ("कॉफी", "coffee"),
         ])
     func commonSpellings(devanagari: String, typed: String) {
         #expect(Romaniser.romanised(devanagari) == typed)
