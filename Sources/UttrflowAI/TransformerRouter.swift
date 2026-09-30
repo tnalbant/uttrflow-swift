@@ -77,12 +77,13 @@ public struct TransformerRouter: TranscriptCleaning {
                 throw TransformationError.noCapableTransformer
             }
             // Its own allowance, so an engine that hangs spends nothing but its own turn.
-            let answer = try await withStageTimeout(engine.budget, clock: clock) {
+            let allowance = engine.budget(for: request)
+            let answer = try await withStageTimeout(allowance, clock: clock) {
                 try await engine.transform(request)
             }
             guard let answer else {
                 throw TransformationError.transformFailed(
-                    kind: engine.kind, description: "took longer than its \(engine.budget)")
+                    kind: engine.kind, description: "took longer than its \(allowance)")
             }
             return answer
         }
