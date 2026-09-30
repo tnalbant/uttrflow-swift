@@ -445,7 +445,7 @@ public enum PanelPresenter {
             isSelected: isSelected,
             matched: result.match,
             measurements: measurements(of: clip, in: snapshot),
-            checklist: checklistProgress(of: clip),
+            checklist: isMasked ? nil : checklistProgress(of: clip),
             imageFile: isGone
                 ? nil
                 : clip.image.flatMap { image in
