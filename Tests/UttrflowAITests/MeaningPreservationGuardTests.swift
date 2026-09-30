@@ -34,6 +34,19 @@ struct MeaningPreservationGuardTests {
         accepted("uh okay sure", "Okay, sure.")
     }
 
+    @Test("rejects moved function words while keeping allowed cleanup edits")
+    func rejectsMovedFunctionWords() {
+        rejected(
+            "Leeds a city in the north is where I grew up",
+            "Leeds is a city in the north where I grew up.")
+        rejected("we can ship it", "can we ship it.")
+
+        accepted("um, we can go", "We can go.")
+        accepted("I I can go", "I can go.")
+        accepted("a apple is ready", "An apple is ready.")
+        accepted("I will ship it", "I'll ship it.")
+    }
+
     @Test("rejects an empty rewrite of real speech")
     func rejectsEmptyRewrite() {
         rejected("hello there", "")

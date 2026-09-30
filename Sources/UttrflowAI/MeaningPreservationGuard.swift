@@ -414,6 +414,9 @@ public struct MeaningPreservationGuard: Sendable {
             return token.isPlain && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup))
                 && !composed.contains(index) && !excused.contains(index)
         }
+        if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
+            return .rejected(reason: reason, kind: kind)
+        }
         if case .rejected(let reason, let kind) = survivalVerdict(carried.map { keptTokens[$0] }, in: written)
         {
             return .rejected(reason: reason, kind: kind)
@@ -697,6 +700,34 @@ public struct MeaningPreservationGuard: Sendable {
         if token.matching.contains(where: \.isNumber) { return true }
         if !token.startsSentence, token.text.first?.isUppercase == true { return true }
         return !FunctionWords.holds(token.lookup)
+    }
+
+    /// Refuses a word the model moved, using the shared word alignment while leaving edits to the other guard checks.
+    static func wordOrderVerdict(kept: [GrammarToken], written: [GrammarToken]) -> GuardVerdict {
+        let alignment = WordErrorRate.measure(
+            reference: kept.filter(\.isPlain).map(\.matching),
+            hypothesis: written.filter(\.isPlain).map(\.matching))
+        var deleted: Set<String> = []
+        var inserted: Set<String> = []
+        var substitutedFrom: Set<String> = []
+        var substitutedTo: Set<String> = []
+        for operation in alignment.alignment {
+            switch operation {
+            case .match:
+                break
+            case .deletion(let word):
+                deleted.insert(word)
+            case .insertion(let word):
+                inserted.insert(word)
+            case .substitution(let reference, let hypothesis):
+                substitutedFrom.insert(reference)
+                substitutedTo.insert(hypothesis)
+            }
+        }
+        guard deleted.isDisjoint(with: inserted), substitutedFrom.isDisjoint(with: substitutedTo) else {
+            return .rejected(reason: "the rewrite moved a word", kind: .movedWord)
+        }
+        return .accepted
     }
 
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
