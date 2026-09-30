@@ -11,7 +11,8 @@ extension RawTranscript {
             detectedLanguage: detectedLanguage,
             segments: segments.map { $0.transcriptionSegment(shiftedBy: offset) },
             audioDuration: audioDuration,
-            effort: effort
+            effort: effort,
+            vocabularyPrompt: vocabularyPrompt
         )
     }
 

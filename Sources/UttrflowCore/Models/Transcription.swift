@@ -48,6 +48,8 @@ public struct Transcription: Sendable, Equatable {
     public let audioDuration: Duration
     /// What the recogniser spent beyond one decode, where it reports it.
     public let effort: DecodeEffort
+    /// Personal dictionary spellings that survived the recogniser's token budget.
+    public let vocabularyPrompt: [String]
 
     /// A transcription; everything but the text is optional.
     public init(
@@ -55,13 +57,15 @@ public struct Transcription: Sendable, Equatable {
         detectedLanguage: DetectedLanguage? = nil,
         segments: [TranscriptionSegment] = [],
         audioDuration: Duration = .zero,
-        effort: DecodeEffort = .none
+        effort: DecodeEffort = .none,
+        vocabularyPrompt: [String] = []
     ) {
         self.text = text
         self.detectedLanguage = detectedLanguage
         self.segments = segments
         self.audioDuration = audioDuration
         self.effort = effort
+        self.vocabularyPrompt = vocabularyPrompt
     }
 
     /// `true` when recognition contains no letter or digit — silence, or noise only.

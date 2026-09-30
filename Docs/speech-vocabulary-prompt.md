@@ -21,8 +21,13 @@ so the real ceiling is 111.
 Truncating here rather than leaving it to the decoder is the whole point. WhisperKit keeps
 the *last* 111 tokens and drops the rest without a word, so a vocabulary ranked best-first
 would lose precisely the words worth having. It is not a rare case either: `WorkingSet`
-offers up to 96 words and a technical word is seldom one token, so the budget usually binds
-long before the word count does.
+offers up to 28 words, matching the measured vocabulary that usually fits this budget.
+Long technical words can still make the token budget bind before that word limit.
+
+Words manually added during the last seven days rank ahead of older entries, newest first.
+This keeps a just-corrected name in front of entries that have accumulated a few uses. The
+Diagnostics page shows the exact dictionary words kept by the latest Whisper prompt; that
+personal list stays on screen and is omitted from copied diagnostics.
 
 Packing is word by word rather than a truncation mid-sequence: half of `PaymentSheet` in the
 prompt biases the decoder towards something the user has never said. A word too long for what

@@ -230,6 +230,20 @@ struct DiagnosticsLatencyTests {
     }
 }
 
+@Suite("Diagnostics reports the local recogniser prompt")
+struct DiagnosticsVocabularyPromptTests {
+    @Test("shows the last prompt words locally and leaves them out of copied diagnostics")
+    func vocabularyPromptIsLocalOnly() {
+        let snapshot = DiagnosticsSnapshot(vocabularyPrompt: ["Maelis", "Yuvraaj"])
+        let page = DiagnosticsPresenter.page(for: snapshot, locale: DiagnosticsFixture.locale)
+        let report = DiagnosticsPresenter.report(for: snapshot, locale: DiagnosticsFixture.locale)
+
+        #expect(page.vocabularyPrompt.detail == "Maelis, Yuvraaj")
+        #expect(!report.contains("Maelis"))
+        #expect(!report.contains("Yuvraaj"))
+    }
+}
+
 @Suite("Diagnostics reports how often things worked")
 struct DiagnosticsReliabilityTests {
     @Test("a stage's success rate comes from the successes recorded against it")
@@ -690,6 +704,17 @@ struct DiagnosticsRecorderTests {
         #expect(value == 42)
         #expect(await recorder.recorded.map(\.stage) == [.transformation])
         #expect(await recorder.recorded.allSatisfy(\.succeeded))
+    }
+
+    @Test("keeps the latest recogniser prompt locally and clears it on reset")
+    func recordsAndForgetsVocabularyPrompt() async {
+        let recorder = DiagnosticsRecorder()
+        await recorder.recordVocabularyPrompt(["Maelis", "Yuvraaj"])
+        #expect(await recorder.vocabularyPrompt == ["Maelis", "Yuvraaj"])
+
+        await recorder.forget()
+
+        #expect(await recorder.vocabularyPrompt.isEmpty)
     }
 }
 

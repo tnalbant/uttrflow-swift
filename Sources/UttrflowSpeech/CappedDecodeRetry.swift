@@ -28,6 +28,7 @@ public enum CappedDecodeRetry {
         var languageProbability: Double?
         var totalEffort = DecodeEffort.none
         var totalTokensUsed = 0
+        var vocabularyPrompt: [String] = []
         var remaining = samples
         var sliceStartSeconds = 0.0
         var stillCapped = false
@@ -41,6 +42,7 @@ public enum CappedDecodeRetry {
             languageProbability = result.languageProbability ?? languageProbability
             totalEffort = totalEffort.adding(result.effort)
             totalTokensUsed += result.tokensUsed
+            vocabularyPrompt = result.vocabularyPrompt
 
             let sliceDuration = Duration.seconds(Double(remaining.count) / sampleRate)
             let collapse = collapsedWindow(in: result.segments, sliceSeconds: sliceDuration.inSeconds)
@@ -108,7 +110,8 @@ public enum CappedDecodeRetry {
             languageProbability: languageProbability,
             segments: accumulatedSegments,
             effort: totalEffort,
-            tokensUsed: totalTokensUsed
+            tokensUsed: totalTokensUsed,
+            vocabularyPrompt: vocabularyPrompt
         )
     }
 

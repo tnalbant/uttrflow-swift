@@ -913,6 +913,7 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
+                    await metrics.recordVocabularyPrompt(transcription.vocabularyPrompt)
                     if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
                     return Heard.words(transcription)
                 } catch SpeechEngineError.audioTooShort {

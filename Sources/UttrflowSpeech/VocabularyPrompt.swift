@@ -21,13 +21,25 @@ enum VocabularyPrompt {
     /// Closed like a sentence, for the same reason it is opened like one.
     static let closing = "."
 
+    /// The exact words and tokens kept in the recogniser prompt.
+    struct Packing: Equatable {
+        let words: [String]
+        let tokens: [Int]?
+    }
+
     /// The prompt for `words`, most valuable first, packed whole words only, or `nil` if none fit.
     static func tokens(for words: [String], using tokenizer: some PromptTokenizer) -> [Int]? {
+        packing(for: words, using: tokenizer).tokens
+    }
+
+    /// Reports the exact dictionary words represented by the packed prompt.
+    static func packing(for words: [String], using tokenizer: some PromptTokenizer) -> Packing {
         let opening = ids(of: opening, using: tokenizer)
         let closing = ids(of: closing, using: tokenizer)
-        guard !opening.isEmpty, !closing.isEmpty else { return nil }
+        guard !opening.isEmpty, !closing.isEmpty else { return Packing(words: [], tokens: nil) }
 
         var body: [Int] = []
+        var packedWords: [String] = []
         for word in words {
             // Spaced rather than punctuated: the decoder copies a mark between two listed words into the transcript.
             let piece = ids(of: " " + word, using: tokenizer)
@@ -35,11 +47,12 @@ enum VocabularyPrompt {
                 continue
             }
             guard opening.count + body.count + piece.count + closing.count <= maximumTokens else {
-                break
+                continue
             }
             body += piece
+            packedWords.append(word)
         }
-        return body.isEmpty ? nil : opening + body + closing
+        return Packing(words: packedWords, tokens: body.isEmpty ? nil : opening + body + closing)
     }
 
     /// Seconds at the end of a clip no window may start in, so WhisperKit decodes nothing from a clip no longer than this.
@@ -76,7 +89,7 @@ enum VocabularyPrompt {
             // Keeps a window from starting where Whisper invents words; the backend's floor follows it.
             windowClipTime: windowClipTime,
             // Re-forced for every 30-second window, so a long dictation is biased throughout.
-            promptTokens: tokenizer.flatMap { tokens(for: vocabulary, using: $0) },
+            promptTokens: tokenizer.flatMap { packing(for: vocabulary, using: $0).tokens },
             prefixTokens: nil,
             suppressBlank: false,
             suppressTokens: [],

@@ -143,8 +143,20 @@ struct VocabularyPromptTests {
         #expect(!tokenizer.read(tokens).contains("supercalifragilistic400"))
     }
 
-    @Test("a word that does not fit keeps lower-ranked short words out")
-    func overflowStopsLowerRankedWords() throws {
+    @Test("reports the exact words kept when the real prompt-token ceiling drops words")
+    func reportsPackedWords() {
+        let newest = "Maelis"
+        let older = (0..<40).map { "Old\($0)" }
+        let packing = VocabularyPrompt.packing(for: [newest] + older, using: tokenizer)
+
+        #expect(packing.tokens?.count ?? 0 <= VocabularyPrompt.maximumTokens)
+        #expect(packing.words.first == newest)
+        #expect(packing.words.count < older.count + 1)
+        #expect(!packing.words.contains(older.last!))
+    }
+
+    @Test("skips a word that does not fit and keeps lower-ranked words that fit")
+    func overflowSkipsOnlyTheWordThatDoesNotFit() throws {
         let first = String(repeating: "a", count: 60)
         let second = String(repeating: "b", count: 25)
         let third = "cc"
@@ -155,8 +167,8 @@ struct VocabularyPromptTests {
 
         #expect(prompt.contains(first))
         #expect(!prompt.contains(second))
-        #expect(!prompt.contains(third))
-        #expect(!prompt.contains(fourth))
+        #expect(prompt.contains(third))
+        #expect(prompt.contains(fourth))
     }
 
     @Test("one enormous word does not cost the ordinary words ranked behind it")

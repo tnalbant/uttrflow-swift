@@ -1,14 +1,29 @@
 // Tests the dictionary-backed vocabulary source.
 import Foundation
 import Testing
+import WhisperKit
 
 @testable import UttrflowCore
 import UttrflowDictionary
 @testable import UttrflowSpeech
 
+private struct DictionaryPromptTokenizer: PromptTokenizer {
+    let firstSpecialToken = 50_257
+    func encode(text: String) -> [Int] { text.unicodeScalars.map { Int($0.value) } }
+}
+
+private struct WhisperDictionaryPromptTokenizer: PromptTokenizer {
+    let tokenizer: any WhisperTokenizer
+    var firstSpecialToken: Int { tokenizer.specialTokens.specialTokenBegin }
+    func encode(text: String) -> [Int] { tokenizer.encode(text: text) }
+}
+
 @Suite("DictionaryVocabulary")
 struct DictionaryVocabularyTests {
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let installedTokenizerFolder = FileSystemSpeechModelStore.defaultRoot()
+        .appending(path: SpeechModel.default.variant, directoryHint: .isDirectory)
+    private static let hasInstalledTokenizer = TokenizerAssets.arePresent(in: installedTokenizerFolder)
 
     private func entry(_ word: String, daysOld: Double = 0, timesUsed: Int = 0) -> DictionaryEntry {
         DictionaryEntry(
@@ -56,5 +71,34 @@ struct DictionaryVocabularyTests {
     @Test("an empty dictionary asks for no biasing at all")
     func emptyDictionary() async {
         #expect(await source(entries: []).vocabulary(favouring: .unknown).isEmpty)
+    }
+
+    @Test("packs a newly added word before 40 older used entries")
+    func recentAdditionSurvivesOlderUsage() async {
+        let old = (0..<40).map { entry("Older\($0)", daysOld: 10, timesUsed: 1) }
+        let newest = entry("Maelis", daysOld: 1)
+        let words = await source(entries: old + [newest]).vocabulary(favouring: .unknown)
+        let packing = VocabularyPrompt.packing(for: words, using: DictionaryPromptTokenizer())
+
+        #expect(words.first == "Maelis")
+        #expect(packing.words.first == "Maelis")
+        #expect(packing.tokens?.count ?? 0 <= VocabularyPrompt.maximumTokens)
+        #expect(packing.words.count < words.count)
+    }
+
+    @Test(.enabled(if: Self.hasInstalledTokenizer))
+    func recentAdditionSurvivesWithWhisperTokenizer() async throws {
+        let older = (0..<40).map { entry("Fomblenker\($0)", daysOld: 10, timesUsed: 1) }
+        let newest = entry("Maelis", daysOld: 1)
+        let words = await source(limit: 96, entries: older + [newest]).vocabulary(favouring: .unknown)
+        let tokenizer = try await ModelUtilities.loadTokenizer(
+            for: .largev3, additionalSearchPaths: [Self.installedTokenizerFolder])
+        let packing = VocabularyPrompt.packing(
+            for: words, using: WhisperDictionaryPromptTokenizer(tokenizer: tokenizer))
+
+        #expect(words.first == "Maelis")
+        #expect(packing.words.first == "Maelis")
+        #expect(packing.tokens?.count ?? 0 <= VocabularyPrompt.maximumTokens)
+        #expect(packing.words.count < words.count)
     }
 }
