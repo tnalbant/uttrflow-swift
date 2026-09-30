@@ -41,12 +41,33 @@ struct TerminalStopPassTests {
                 "I don't have access to the production database, can someone grant it?"
             ),
             ("it's late isn't it", "it's late isn't it?"),
+            ("the meeting is at three right", "the meeting is at three, right?"),
+            ("you sent the invoice right", "you sent the invoice, right?"),
+            ("the file is saved right", "the file is saved, right?"),
+            ("we leave at noon right", "we leave at noon, right?"),
+            ("is it okay if i leave at five", "is it okay if i leave at five?"),
+            ("is it fine if we start late", "is it fine if we start late?"),
+            ("is it okay when i call later", "is it okay when i call later?"),
             ("what we need is more time", "what we need is more time."),
             ("I think we can do it", "I think we can do it."),
             ("Can you check? I think it's fine", "Can you check? I think it's fine."),
         ])
     func addsQuestionMark(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("leaves right as a command or confirmation instead of a question tag")
+    func rightWithoutAClauseIsNotATag() {
+        #expect(cleaned("turn right", by: sut) == "turn right.")
+        #expect(cleaned("that's right", by: sut) == "that's right.")
+        #expect(cleaned("everything is right", by: sut) == "everything is right.")
+        #expect(cleaned("you should turn right", by: sut) == "you should turn right.")
+    }
+
+    @Test("keeps an indirect if clause as a statement")
+    func indirectIfClauseIsNotAQuestion() {
+        #expect(
+            cleaned("I wonder if it is okay when I leave", by: sut) == "I wonder if it is okay when I leave.")
     }
 
     @Test("keeps a question's mark in a short chat message and adds none where the place never ends one")

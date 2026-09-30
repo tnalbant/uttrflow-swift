@@ -5,7 +5,7 @@ public enum QuestionShape {
         let shapes = sentence.filter { !$0.key.isEmpty }
         let words = shapes.map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
         guard !words.isEmpty else { return false }
-        if endsOnATag(words) { return true }
+        if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
         // The last clause is where "I sent it, did you see it" asks.
         let openingClause = Array(words.drop(while: openers.contains))
         if opensAQuestion(openingClause) { return true }
@@ -20,6 +20,29 @@ public enum QuestionShape {
             return comma + 1
         }
         return trailingRequestStart(in: shapes)
+    }
+
+    /// The final "right" when a subject and predicate make the words before it a clause.
+    public static func trailingRightTagStart(in shapes: [WordShape]) -> Int? {
+        let spoken = shapes.indices.filter { !shapes[$0].key.isEmpty }
+        let words = spoken.map { shapes[$0].key.replacingOccurrences(of: "\u{2019}", with: "'") }
+        guard words.last == "right", hasClauseBeforeRight(Array(words.dropLast())) else { return nil }
+        return spoken.last
+    }
+
+    /// Whether words before "right" contain a subject followed by a predicate.
+    private static func hasClauseBeforeRight(_ words: [String]) -> Bool {
+        guard let last = words.last, !copulaVerbs.contains(last), !directionalRightVerbs.contains(last) else {
+            return false
+        }
+        let hasPronounSubject = words.indices.contains { index in
+            subjects.contains(words[index])
+                && words.dropFirst(index + 1).contains(where: rightTagPredicates.contains)
+        }
+        let hasNounSubject =
+            words.count >= 3 && determiners.contains(words[0])
+            && words.dropFirst(2).contains(where: rightTagPredicates.contains)
+        return hasPronounSubject || hasNounSubject
     }
 
     /// The start of a trailing inverted request without a spoken comma.
@@ -122,6 +145,18 @@ public enum QuestionShape {
         "say", "said", "takes", "take", "took", "taken", "makes", "make", "made", "gets", "get", "got",
         "gives", "give", "gave", "given", "finds", "find", "found", "keeps", "keep", "kept", "leaves",
         "leave", "left", "happening",
+    ]
+
+    /// Predicates used to distinguish a closing tag from "turn right" or "that's right".
+    private static let rightTagPredicates =
+        verbsBeforeSubject.union(pronounVerbs).union(lexicalQuestionVerbs).union(["sent", "saved"])
+
+    /// Copulas directly before "right" make it a complement, as in "everything is right".
+    private static let copulaVerbs: Set<String> = ["is", "are", "was", "were", "am", "be", "been", "being"]
+
+    /// Verbs directly before "right" use it as a direction rather than as a tag.
+    private static let directionalRightVerbs: Set<String> = [
+        "turn", "go", "move", "keep", "head", "bear", "drive",
     ]
 
     /// Negative verbs, which with a pronoun after them close a sentence as a tag: "isn't it", "don't you".
