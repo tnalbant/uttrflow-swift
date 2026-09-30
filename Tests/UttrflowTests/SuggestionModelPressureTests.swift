@@ -17,6 +17,53 @@ private actor Steps {
     func record(_ step: String) { all.append(step) }
 }
 
+/// Lets the test elapse a calm wait without advancing wall time.
+private actor PressureClock {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var requested: Duration?
+
+    func wait(_ duration: Duration) async throws {
+        requested = duration
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func elapse() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+/// Records the three model operations used by pressure and a later query.
+private actor PressureModel: ReleasableModel {
+    private(set) var steps: [String] = []
+    private var loaded = false
+
+    func prepare(onProgress: @escaping @Sendable (Double) -> Void) async throws {
+        steps.append("prepare")
+        loaded = true
+    }
+
+    func reload() async throws {
+        steps.append("reload")
+        loaded = true
+    }
+
+    func release() async {
+        steps.append("release")
+        loaded = false
+    }
+
+    var isReady: Bool { loaded }
+
+    func completions(for typed: String, in situation: GenerationSituation) async throws -> [String] { [] }
+
+    func logLikelihood(of candidate: String, following context: String) async -> Double? { nil }
+
+    func confidence(ofGenerated line: String) async -> Double? { nil }
+
+    func forgetEverything() async {}
+}
+
 @Suite("How long a released model waits")
 struct SuggestionModelPressurePolicyTests {
     private let start = ContinuousClock.now
@@ -102,7 +149,8 @@ struct MemoryPressureTests {
         let app = AppDelegate(
             container: sandbox.root, account: HeldSession(signedIn: true).layer,
             prepareModel: { _ in await steps.record("load") },
-            releaseModel: { await steps.record("release") })
+            releaseModel: { await steps.record("release") },
+            allowModelReload: { await steps.record("eligible") })
         app.drawsWindows = false
         app.memoryPressure = SuggestionModelPressure(firstWait: .zero, longestWait: .seconds(1_800))
         return app
@@ -124,20 +172,44 @@ struct MemoryPressureTests {
         #expect(await steps.all == ["load", "release"])
     }
 
-    @Test("calm after pressure loads the model again")
-    func calmReloads() async {
-        let steps = Steps()
+    @Test("calm makes the model eligible, and a later query reloads it")
+    func calmMakesModelEligibleForQuery() async throws {
+        let clock = PressureClock()
+        let inner = PressureModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
         let sandbox = Sandbox()
-        let app = app(steps, in: sandbox)
+        let app = AppDelegate(
+            container: sandbox.root, account: HeldSession(signedIn: true).layer,
+            scoring: model, generating: model,
+            prepareModel: { onProgress in try await model.prepare(onProgress: onProgress) },
+            releaseModel: { await model.release() },
+            allowModelReload: { await model.allowReloadAfterRelease() },
+            waitForCalm: { duration in try await clock.wait(duration) })
+        app.drawsWindows = false
+        app.memoryPressure = SuggestionModelPressure(firstWait: .seconds(120), longestWait: .seconds(1_800))
         app.settingsChanged(to: settings(suggesting: true))
         await app.modelPreparation?.value
+        #expect(await inner.steps == ["prepare"])
         app.memoryPressureChanged(to: .critical)
         app.memoryPressureChanged(to: .normal)
+        try await eventually { await clock.requested == .seconds(120) }
+        await clock.elapse()
         await app.pressureReload?.value
-        await app.modelPreparation?.value
-        #expect(await steps.all == ["load", "release", "load"])
-        #expect(app.suggestionModel == .ready)
+        #expect(await inner.steps == ["prepare", "release"])
+        #expect(await model.isReady == false)
+        #expect(app.memoryPressure.isReleased)
+        #expect(app.suggestionModel == .releasedForMemory)
+        #expect(await model.isReady == false)
+        app.suggestionModelReloaded(.started)
+        await model.pendingWork?.value
+        #expect(await inner.steps == ["prepare", "release", "reload"])
+        #expect(await model.isReady)
         #expect(!app.memoryPressure.isReleased)
+        #expect(app.suggestionModel == .loading)
+        app.suggestionModelReloaded(.finished)
+        app.memoryPressureChanged(to: .warning)
+        await app.modelPreparation?.value
+        #expect(app.memoryPressure.wait == .seconds(240))
     }
 
     @Test("pressure returning before the calm has lasted cancels the reload")
@@ -174,8 +246,8 @@ struct MemoryPressureTests {
         #expect(app.pressureReload == first)
         await first?.value
         await app.modelPreparation?.value
-        #expect(await steps.all == ["load", "release", "load"])
-        #expect(!app.memoryPressure.isReleased)
+        #expect(await steps.all == ["load", "release", "eligible"])
+        #expect(app.memoryPressure.isReleased)
     }
 
     @Test("pressure on a Mac that never loaded the model does nothing")
@@ -271,14 +343,15 @@ struct MemoryPressureTests {
                     throw error
                 }
             },
-            releaseModel: { await steps.record("release") })
+            releaseModel: { await steps.record("release") },
+            allowModelReload: { await steps.record("eligible") })
         app.drawsWindows = false
         app.memoryPressure = SuggestionModelPressure(firstWait: .zero, longestWait: .seconds(1_800))
         return app
     }
 
     @Test(
-        "pressure during a load stops the load instead of waiting for it, and calm loads again",
+        "pressure during a load stops it, and calm leaves the model unloaded",
         .timeLimit(.minutes(1)))
     func pressureStopsALoad() async throws {
         let steps = Steps()
@@ -293,8 +366,8 @@ struct MemoryPressureTests {
         app.memoryPressureChanged(to: .normal)
         await app.pressureReload?.value
         await app.modelPreparation?.value
-        #expect(await steps.all == ["load", "stopped", "release", "load"])
-        #expect(app.suggestionModel == .ready)
+        #expect(await steps.all == ["load", "stopped", "release", "eligible"])
+        #expect(app.suggestionModel == .releasedForMemory)
     }
 
     @Test(
