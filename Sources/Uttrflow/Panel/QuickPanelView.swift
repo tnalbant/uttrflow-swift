@@ -320,6 +320,7 @@ struct QuickPanelView: View {
             Image(systemName: state.symbolName)
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(Color.panelLabelDim)
+                .accessibilityHidden(true)
             Text(state.title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.panelLabelSoft)
@@ -618,7 +619,7 @@ struct QuickPanelView: View {
             // A cap, not a width, so the sheet shrinks with a panel narrower than the design.
             .frame(maxWidth: QuickPanelMetrics.width - 56, alignment: .leading)
             .panelPopover(cornerRadius: 12, shadowOpacity: 0.4, radius: 24, y: 8)
-                .padding(.horizontal, 28)
+            .padding(.horizontal, 28)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
