@@ -199,13 +199,15 @@ public enum ShellPrompt {
         var isChevrons = true
         /// Whether an at sign has been seen outside every quote.
         var hasAt = false
+        /// Whether the prefix contains characters outside quotes and substitutions.
+        var outsideSubstitution = true
 
         /// Takes one more character into what has been read, noting whether a quote holds it.
         mutating func append(_ character: Character, quoted: Bool) {
             last = character
             isBlank = isBlank && character.isWhitespace
             isChevrons = isChevrons && (character == ">" || character.isWhitespace)
-            hasAt = hasAt || (!quoted && character == "@")
+            hasAt = hasAt || (outsideSubstitution && !quoted && character == "@")
         }
     }
 
@@ -214,6 +216,8 @@ public enum ShellPrompt {
         var prefix = Prefix()
         var quote: Character?
         var escaped = false
+        var parenthesisDepth = 0
+        var substitutionActive: [Bool] = []
         var read = 0
         let isPowerShell = line.hasPrefix("PS ")
         defer { tally?.record(read) }
@@ -232,6 +236,24 @@ public enum ShellPrompt {
                 {
                     escaped = true
                 }
+            } else if !substitutionActive.isEmpty {
+                if character == "'" || character == "\"" {
+                    quote = character
+                } else if character == "(" {
+                    parenthesisDepth += 1
+                } else if character == ")" {
+                    parenthesisDepth -= 1
+                    if parenthesisDepth == 0 {
+                        substitutionActive.removeLast()
+                        parenthesisDepth = substitutionActive.last == true ? 1 : 0
+                    }
+                } else if character == "$", next < line.endIndex, line[next] == "(" {
+                    substitutionActive.append(true)
+                    parenthesisDepth += 1
+                }
+            } else if character == "$", next < line.endIndex, line[next] == "(", quote != "'" {
+                substitutionActive.append(true)
+                parenthesisDepth = 1
             } else if character == "'" || character == "\"" {
                 quote = character
             } else if character == "\\" || (isPowerShell && character == "`") {
@@ -242,6 +264,7 @@ public enum ShellPrompt {
             {
                 return index
             }
+            prefix.outsideSubstitution = substitutionActive.isEmpty
             prefix.append(character, quoted: quote != nil)
             index = next
         }
