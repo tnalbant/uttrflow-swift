@@ -215,6 +215,26 @@ struct PieceJoinerRestatementTests {
         #expect(joined(["Coffee at 2.", "Actually 3."], .document) == "Coffee at 3.")
     }
 
+    @Test("drops a replaced phrase when its correction trigger ends the previous piece")
+    func triggerAtEndOfPreviousPiece() {
+        #expect(
+            joined(["Let's move it to Tuesday no wait", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+        #expect(
+            joined(["Let's move it to Tuesday sorry", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+        #expect(
+            joined(["Let's move it to Tuesday I mean", "Wednesday afternoon"], .document)
+                == "Let's move it to Wednesday afternoon.")
+    }
+
+    @Test("keeps a trailing apology when the next piece does not restate the phrase")
+    func trailingSorryIsAnApology() {
+        #expect(
+            joined(["I am sorry", "Thank you for waiting"], .document)
+                == "I am sorry. Thank you for waiting")
+    }
+
     @Test("keeps both halves when the piece after the trigger says something else")
     func unmatchedTriggerKeepsEverything() {
         #expect(

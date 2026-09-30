@@ -135,6 +135,7 @@ enum PieceJoiner {
     /// Whether the words across a seam show the sentence carried on, which is the one reason not to end it there.
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
         endsUnfinished(text) || opensWithAPhrase(next) || completesFinalPhrase(text, with: next)
+            || trailingTriggerDiscardsWords(in: text, before: next)
     }
 
     /// Whether a piece ends on a word no sentence ends on, so the pause the cut fell at was inside a phrase.
@@ -273,11 +274,39 @@ enum PieceJoiner {
     /// The half the piece opening at `position` takes back, trigger included, or nil when the halves do not match.
     private static func discarded(at position: Int, in live: [Int], of draft: Draft) -> Range<Int>? {
         let trigger = Restatement.triggerRun(at: position, in: live, of: draft)
-        guard trigger > 0, position + trigger < live.count,
+        if trigger > 0, position + trigger < live.count,
             let start = Restatement.discardedStart(
                 before: position, after: position + trigger, in: live, of: draft)
+        {
+            return start..<(position + trigger)
+        }
+        guard let tail = trailingTriggerStart(before: position, in: live, of: draft),
+            position < live.count,
+            let start = Restatement.discardedStart(
+                before: tail, after: position, in: live, of: draft)
         else { return nil }
-        return start..<(position + trigger)
+        return start..<position
+    }
+
+    /// Finds a correction trigger that ends exactly at the seam and takes back the words before it.
+    private static func trailingTriggerStart(before position: Int, in live: [Int], of draft: Draft) -> Int? {
+        for start in stride(from: position - 1, through: max(0, position - 3), by: -1) {
+            let length = Restatement.triggerRun(at: start, in: live, of: draft)
+            if length > 0, start + length == position { return start }
+        }
+        return nil
+    }
+
+    /// Whether a trigger at the end of this piece matches the opening words of the next one as a correction.
+    private static func trailingTriggerDiscardsWords(in text: String, before next: String) -> Bool {
+        let draft = Draft(text: text + " " + next)
+        let live = draft.presentIndices
+        let boundary = Draft(text: text).presentIndices.count
+        guard boundary > 0, boundary < live.count,
+            let trigger = trailingTriggerStart(before: boundary, in: live, of: draft),
+            Restatement.discardedStart(before: trigger, after: boundary, in: live, of: draft) != nil
+        else { return false }
+        return true
     }
 
     // MARK: Lists from spoken sequence words
