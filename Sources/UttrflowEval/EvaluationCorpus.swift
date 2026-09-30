@@ -1786,12 +1786,12 @@ public enum EvaluationCorpus {
             spoken: "I have wrote the summary already",
             expected: "I have written the summary already.",
             mustKeep: ["summary", "already"],
-            mustNotAdd: ["wrote"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Meeting notes.pages"
             ),
+            mustNotAdd: ["wrote"],
             destination: .document,
             mustBeginWith: "I have written",
             mustEndWith: "already."
@@ -1801,12 +1801,12 @@ public enum EvaluationCorpus {
             spoken: "I had took the wrong turn",
             expected: "I had taken the wrong turn.",
             mustKeep: ["wrong", "turn"],
-            mustNotAdd: ["took"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Travel notes.pages"
             ),
+            mustNotAdd: ["took"],
             destination: .document,
             mustBeginWith: "I had taken",
             mustEndWith: "turn."
@@ -1816,12 +1816,12 @@ public enum EvaluationCorpus {
             spoken: "I should have ate before the call",
             expected: "I should have eaten before the call.",
             mustKeep: ["before", "call"],
-            mustNotAdd: ["ate"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Call notes.pages"
             ),
+            mustNotAdd: ["ate"],
             destination: .document,
             mustBeginWith: "I should have eaten",
             mustEndWith: "call."
@@ -1831,12 +1831,12 @@ public enum EvaluationCorpus {
             spoken: "It was wrote in the notes",
             expected: "It was written in the notes.",
             mustKeep: ["notes"],
-            mustNotAdd: ["wrote"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["wrote"],
             destination: .document,
             mustBeginWith: "It was written",
             mustEndWith: "notes."
@@ -1846,12 +1846,12 @@ public enum EvaluationCorpus {
             spoken: "The project has began already",
             expected: "The project has begun already.",
             mustKeep: ["project", "already"],
-            mustNotAdd: ["began"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["began"],
             destination: .document,
             mustBeginWith: "The project has begun",
             mustEndWith: "already."
@@ -1861,12 +1861,12 @@ public enum EvaluationCorpus {
             spoken: "I have spoke with them",
             expected: "I have spoken with them.",
             mustKeep: ["them"],
-            mustNotAdd: ["spoke"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Project notes.pages"
             ),
+            mustNotAdd: ["spoke"],
             destination: .document,
             mustBeginWith: "I have spoken",
             mustEndWith: "them."
@@ -1876,12 +1876,12 @@ public enum EvaluationCorpus {
             spoken: "The window was broke during transit",
             expected: "The window was broken during transit.",
             mustKeep: ["window", "transit"],
-            mustNotAdd: ["broke"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Delivery notes.pages"
             ),
+            mustNotAdd: ["broke"],
             destination: .document,
             mustBeginWith: "The window was broken",
             mustEndWith: "transit."
@@ -1891,12 +1891,12 @@ public enum EvaluationCorpus {
             spoken: "She has drove this route before",
             expected: "She has driven this route before.",
             mustKeep: ["route", "before"],
-            mustNotAdd: ["drove"],
             context: AppContext(
                 applicationName: "Pages",
                 bundleIdentifier: "com.apple.iWork.Pages",
                 documentName: "Travel notes.pages"
             ),
+            mustNotAdd: ["drove"],
             destination: .document,
             mustBeginWith: "She has driven",
             mustEndWith: "before."
