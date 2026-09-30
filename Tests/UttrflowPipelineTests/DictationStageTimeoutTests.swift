@@ -80,6 +80,66 @@ private struct NeverAnsweringInserter: TextInserting {
     }
 }
 
+private actor NeverAnsweringCapture: AudioCaptureEngine {
+    enum Event: Sendable, Equatable {
+        case start
+        case stop
+    }
+
+    private var currentState: AudioCaptureState = .idle
+    let calls = CallLog<Event>()
+
+    var state: AudioCaptureState { currentState }
+
+    func start() async throws(AudioCaptureError) {
+        await calls.append(.start)
+        currentState = .recording
+    }
+
+    func stop() async throws(AudioCaptureError) -> AudioSamples {
+        await calls.append(.stop)
+        await suspendUntilCancelled()
+        currentState = .idle
+        return .silence(seconds: 2)
+    }
+
+    func cancel() async {
+        currentState = .idle
+    }
+}
+
+private actor NeverAnsweringContextEngine: ContextEngine {
+    let calls = CallLog<Void>()
+
+    func currentContext() async -> AppContext {
+        await calls.append(())
+        await suspendUntilCancelled()
+        return .unknown
+    }
+}
+
+private struct NeverAnsweringCorrector: WordCorrecting {
+    let calls = CallLog<Void>()
+
+    func corrections(
+        for transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> [DictationCorrection] {
+        await calls.append(())
+        await suspendUntilCancelled()
+        return []
+    }
+}
+
+private struct NeverAnsweringExpander: SnippetExpanding {
+    let calls = CallLog<Void>()
+
+    func expand(_ text: String) async throws(DictationChangeError) -> ExpandedTranscript {
+        await calls.append(())
+        await suspendUntilCancelled()
+        return .unchanged(text)
+    }
+}
+
 private final class TimeoutPasteboard: Pasteboard, Sendable {
     private let stored = Mutex<String?>("older copied text")
 
@@ -129,6 +189,10 @@ struct DictationStageTimeoutTests {
         } onCancel: {
             wake()
         }
+    }
+
+    private func waitForCall(_ calls: CallLog<Void>) async {
+        while await calls.count == 0 { await Task.yield() }
     }
 
     @Test("a recogniser that never answers ends the dictation instead of wedging it")
@@ -276,5 +340,127 @@ struct DictationStageTimeoutTests {
         // Tidying timed out too, so what is offered is what the recogniser heard.
         #expect(failure.transcript == "what I said")
         #expect(await pipeline.currentState.isBusy == false)
+    }
+
+    @Test("a microphone stop that never answers fails with a retry and releases the next dictation")
+    func microphoneStopThatNeverAnswers() async {
+        let clock = ManualClock()
+        let capture = NeverAnsweringCapture()
+        let pipeline = DictationPipeline(
+            capture: capture,
+            speech: FakeSpeechEngine(),
+            cleaner: TimeoutTestCleaner(),
+            context: FakeContextEngine(),
+            inserter: TimeoutTestInserter(),
+            clock: clock)
+
+        await pipeline.startRecording()
+        let finishing = Task { await pipeline.finishRecording() }
+        while !(await capture.calls.contains(.stop)) { await Task.yield() }
+        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await settle(finishing)
+
+        guard case .failed(let failure) = await pipeline.currentState else {
+            Issue.record("expected the microphone timeout to fail, got \(await pipeline.currentState)")
+            return
+        }
+        #expect(failure.message == "Recording stopped unexpectedly. Try again.")
+        #expect(failure.recovery == .retry)
+        #expect(failure.transcript == nil)
+
+        await pipeline.startRecording()
+        #expect(await pipeline.currentState == .recording)
+    }
+
+    @Test("a screen read that never answers uses the unknown context and keeps the dictation")
+    func screenReadThatNeverAnswers() async {
+        let clock = ManualClock()
+        let context = NeverAnsweringContextEngine()
+        let inserter = TimeoutTestInserter()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
+            speech: FakeSpeechEngine(
+                transcribeOutcome: .success(Transcription(text: "what I said"))),
+            cleaner: TimeoutTestCleaner(),
+            context: context,
+            inserter: inserter,
+            clock: clock)
+
+        await pipeline.startRecording()
+        await waitForCall(context.calls)
+        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await pipeline.finishRecording()
+
+        #expect(inserter.inserted == ["Tidied."])
+        guard case .inserted(let outcome) = await pipeline.currentState else {
+            Issue.record("expected the dictation to insert, got \(await pipeline.currentState)")
+            return
+        }
+        #expect(outcome.insertedInto == nil)
+
+        await pipeline.startRecording()
+        #expect(await pipeline.currentState == .recording)
+    }
+
+    @Test("a dictionary lookup that never answers skips correction and keeps the tidied words")
+    func dictionaryLookupThatNeverAnswers() async {
+        let clock = ManualClock()
+        let corrector = NeverAnsweringCorrector()
+        let inserter = TimeoutTestInserter()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
+            speech: FakeSpeechEngine(
+                transcribeOutcome: .success(Transcription(text: "what I said"))),
+            cleaner: TimeoutTestCleaner(),
+            context: FakeContextEngine(),
+            inserter: inserter,
+            corrector: corrector,
+            clock: clock)
+
+        await pipeline.startRecording()
+        let finishing = Task { await pipeline.finishRecording() }
+        await waitForCall(corrector.calls)
+        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await settle(finishing)
+
+        #expect(inserter.inserted == ["Tidied."])
+        guard case .inserted = await pipeline.currentState else {
+            Issue.record("expected the dictation to insert, got \(await pipeline.currentState)")
+            return
+        }
+
+        await pipeline.startRecording()
+        #expect(await pipeline.currentState == .recording)
+    }
+
+    @Test("a snippet expansion that never answers inserts the tidied words unchanged")
+    func snippetExpansionThatNeverAnswers() async {
+        let clock = ManualClock()
+        let snippets = NeverAnsweringExpander()
+        let inserter = TimeoutTestInserter()
+        let pipeline = DictationPipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.silence(seconds: 2))),
+            speech: FakeSpeechEngine(
+                transcribeOutcome: .success(Transcription(text: "what I said"))),
+            cleaner: TimeoutTestCleaner(),
+            context: FakeContextEngine(),
+            inserter: inserter,
+            snippets: snippets,
+            clock: clock)
+
+        await pipeline.startRecording()
+        let finishing = Task { await pipeline.finishRecording() }
+        await waitForCall(snippets.calls)
+        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await settle(finishing)
+
+        #expect(inserter.inserted == ["Tidied."])
+        guard case .inserted = await pipeline.currentState else {
+            Issue.record("expected the dictation to insert, got \(await pipeline.currentState)")
+            return
+        }
+
+        await pipeline.startRecording()
+        #expect(await pipeline.currentState == .recording)
     }
 }
