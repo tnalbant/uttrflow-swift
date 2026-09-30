@@ -9,7 +9,7 @@ public protocol RecordingKeeper: Sendable {
     func current() async -> KeptRecording?
 
     /// Records the destination facts observed for a waiting recording.
-    func setDestination(_ destination: AppContext, for id: UUID) async
+    func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) async
 
     /// Deletes a recording: its words landed, or there is nothing in it worth retrying.
     func discard(_ id: UUID) async
@@ -28,7 +28,7 @@ public struct RecordingsNotKept: RecordingKeeper {
 
     public func current() async -> KeptRecording? { nil }
 
-    public func setDestination(_ destination: AppContext, for id: UUID) async {}
+    public func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) async {}
 
     public func discard(_ id: UUID) async {}
 

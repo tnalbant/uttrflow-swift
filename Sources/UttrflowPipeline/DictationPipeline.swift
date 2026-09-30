@@ -80,6 +80,8 @@ public actor DictationPipeline {
     private var openRecording: UUID?
     /// Destination facts read for audio kept for a retry.
     private var recordingDestination: AppContext?
+    /// The formatter destination read for that recording, retained even if app rules later change.
+    private var recordingFieldKind: Destination?
 
     /// Spans the early loop reached while the key was held, and where the audio it consumed ends. See `Docs/early-transcription.md`.
     private var earlySpans: [Span] = []
@@ -427,9 +429,9 @@ public actor DictationPipeline {
         stopwatch = nil
         takeSettings()
         spokenFor = audio.duration
-        recordingDestination =
-            (await recordings.waiting(now: Date()))
-            .first(where: { $0.id == recording })?.destination
+        let kept = (await recordings.waiting(now: Date())).first(where: { $0.id == recording })
+        recordingDestination = kept?.destination
+        recordingFieldKind = kept?.fieldKind
         insertedInto = recordingDestination?.applicationName
         insertedIntoIdentifier = recordingDestination?.bundleIdentifier
         destinationIsSecure = false
@@ -486,6 +488,7 @@ public actor DictationPipeline {
         earlyCut = 0
         earlyTidyTask = nil
         earlyContext = nil
+        recordingFieldKind = nil
         forgetTheLastAttempt()
         earlyWork = Task { [cleaner = runningCleaner, overrides = runningOverrides] in
             let seeing = await self.earlyContextRead(mine)
@@ -500,7 +503,10 @@ public actor DictationPipeline {
         _ app: AppContext, cleaner: any TranscriptCleaning, overrides: DestinationOverrides
     ) async {
         recordingDestination = app
-        let situation = SituationResolver.resolve(from: app, overrides: overrides)
+        let situation =
+            recordingFieldKind.map {
+                Situation(app: app, insertion: app.insertionPoint, destination: $0)
+            } ?? SituationResolver.resolve(from: app, overrides: overrides)
         let words = await speechWords(app)
         dictationWords = words
         dictationContext = DictationContext(
@@ -814,7 +820,7 @@ public actor DictationPipeline {
             // The unrewritten sentence, which is the space the corrections' word ranges index.
             spokenWords: whole.heard.text.spokenWords.count)
         guard
-            let arrival = await insert(
+            let attempt = await insert(
                 toWrite, cleanedBy: whole.cleaned.producedBy, changes: changes,
                 delivery: delivery, generation: mine,
                 destination: InsertionDestination(
@@ -825,11 +831,17 @@ public actor DictationPipeline {
         let wasSecure = destinationIsSecure
 
         // An unconfirmed paste is not proof the words reached the user, so nothing is learnt from it yet.
-        guard arrival != .unconfirmed else { return }
+        guard attempt.arrival != .unconfirmed else { return }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
         // A secret is not a word to learn.
         guard !wasSecure else { return }
+        // A destination reported by the inserter wins over a screen read made before the switch.
+        if let landedID = landedIn(attempt)?.bundleIdentifier,
+            let readID = appContext?.bundleIdentifier, landedID != readID
+        {
+            return
+        }
         await learnWords(heard: whole.heard.text, wrote: toWrite, seeing: appContext ?? AppContext())
     }
 
@@ -844,8 +856,13 @@ public actor DictationPipeline {
             destinationIsSecure = read.isSecure
             let recordedDestination = earlyContext ?? dictationContext?.app ?? read
             recordingDestination = recordedDestination
+            let fieldKind =
+                dictationContext?.situation.destination
+                ?? SituationResolver.resolve(from: recordedDestination, overrides: runningOverrides)
+                .destination
             if let openRecording {
-                await recordings.setDestination(recordedDestination, for: openRecording)
+                await recordings.setDestination(
+                    recordedDestination, fieldKind: fieldKind, for: openRecording)
             }
             return read
         case .copy:
@@ -1128,7 +1145,7 @@ public actor DictationPipeline {
     private func insert(
         _ text: String, cleanedBy: TransformerKind, changes: AppliedChanges, delivery: Delivery,
         generation mine: Int, destination: InsertionDestination
-    ) async -> InsertionArrival? {
+    ) async -> InsertionAttempt? {
         let inserter = delivery == .copy ? clipboard : self.inserter
         // Said before the words are handed over, because the app takes its own time to show them.
         transition(to: .inserting)
@@ -1161,7 +1178,7 @@ public actor DictationPipeline {
                         spokenFor: spokenFor, changes: changes,
                         fromRecording: delivery == .copy, arrival: attempt.arrival,
                         intoSecureField: destinationIsSecure, missedPieces: missedPieces)))
-            return attempt.arrival
+            return attempt
         } catch {
             guard !wasCancelled(mine) else { return nil }
             // The words survive the failure: the interface can still offer them.
@@ -1204,7 +1221,10 @@ public actor DictationPipeline {
         }
         openRecording = kept?.id
         if let destination = earlyContext ?? dictationContext?.app, let id = kept?.id {
-            await recordings.setDestination(destination, for: id)
+            let fieldKind =
+                dictationContext?.situation.destination
+                ?? SituationResolver.resolve(from: destination, overrides: runningOverrides).destination
+            await recordings.setDestination(destination, fieldKind: fieldKind, for: id)
         }
     }
 

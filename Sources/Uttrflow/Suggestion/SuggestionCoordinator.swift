@@ -1341,22 +1341,13 @@ final class SuggestionCoordinator {
             return false
         }
         var via = "nothing"
-        switch await acceptor.aim(
-            .certain(text), after: typed, expectedWindowNumber: windowNumber)
-        {
-        case .refused(let reason):
-            Self.log.error("\(SuggestionLog.refusedUnwritten(reason, typed: typed), privacy: .public)")
+        do throws(TextInsertionError) {
+            via =
+                try await acceptor.accept(
+                    .certain(text), after: typed, expectedWindowNumber: windowNumber)?.rawValue ?? via
+        } catch {
+            Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
             return false
-        case .nothing:
-            break
-        case .write(let edit):
-            do throws(TextInsertionError) {
-                via = try await acceptor.write(edit, expectedWindowNumber: windowNumber)?.rawValue ?? via
-            } catch {
-                // The case names which route refused and why; the user-facing message belongs to dictation, whose route has a clipboard.
-                Self.log.error("\(SuggestionLog.landedNowhere(error, typed: typed), privacy: .public)")
-                return false
-            }
         }
         Self.log.debug(
             "\(SuggestionLog.accept(text: text, typed: typed, via: via), privacy: .public)"

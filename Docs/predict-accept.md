@@ -141,11 +141,11 @@ will not report or set its selection, `TypedTextInsertionEngine` presses Delete 
 character and then types — which works everywhere and costs what the next section says.
 
 The typed route reads before it deletes. A blind backspace could eat a shell prompt, so
-`TypedTextInsertionEngine.write` asks the focused field for the characters before the caret
-(`precedingText`) and, when the field answers with something other than what would be
-replaced, throws `.insertionRejected` and types nothing. A field that will not say what
-precedes the caret is not held up by the check: the deletions go ahead, since a Tab that
-does nothing is the worse failure.
+`TypedTextInsertionEngine.write` checks the suffix already read by suggestion acceptance and,
+when the field answers with something other than what would be replaced, throws
+`.insertionRejected` and types nothing. A direct typed write makes its own `precedingText`
+read. A field that will not say what precedes the caret is not held up by the check: the
+deletions go ahead, since a Tab that does nothing is the worse failure.
 
 The Accessibility route checks too. Before it widens the selection, `AXTextField` compares
 the characters that selection would cover with what the edit replaces

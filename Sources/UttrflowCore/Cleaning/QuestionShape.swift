@@ -5,10 +5,13 @@ public enum QuestionShape {
         let shapes = sentence.filter { !$0.key.isEmpty }
         let words = shapes.map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
         guard !words.isEmpty else { return false }
-        if endsOnATag(words) { return true }
+        if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
         // The last clause is where "I sent it, did you see it" asks.
         let openingClause = Array(words.drop(while: openers.contains))
-        if opensAQuestion(openingClause) { return true }
+        if opensAQuestion(openingClause) {
+            return !runsOn(openingClause) || questionWords.contains(openingClause[0])
+                || hasInvertedQuestionAfterOpening(openingClause)
+        }
         guard let start = trailingQuestionStart(in: shapes) else { return false }
         let clause = Array(words[start...].drop(while: openers.contains))
         return opensAQuestion(clause) && !runsOn(clause)
@@ -20,6 +23,41 @@ public enum QuestionShape {
             return comma + 1
         }
         return trailingRequestStart(in: shapes)
+    }
+
+    /// The final "right" when a subject and predicate make the words before it a clause.
+    public static func trailingRightTagStart(in shapes: [WordShape]) -> Int? {
+        let spoken = shapes.indices.filter { !shapes[$0].key.isEmpty }
+        let words = spoken.map { shapes[$0].key.replacingOccurrences(of: "\u{2019}", with: "'") }
+        guard words.last == "right", hasClauseBeforeRight(Array(words.dropLast())) else { return nil }
+        return spoken.last
+    }
+
+    /// Whether a clause-starting subject has a predicate and a plausible complement before "right".
+    private static func hasClauseBeforeRight(_ words: [String]) -> Bool {
+        let clause = Array(words.drop(while: openers.contains))
+        guard let subjectEnd = rightTagSubjectEnd(in: clause) else { return false }
+        let predicateIndex = subjectEnd + 1
+        guard clause.indices.contains(predicateIndex), rightTagPredicates.contains(clause[predicateIndex])
+        else {
+            return false
+        }
+        let predicate = clause[predicateIndex]
+        let complement = Array(clause.dropFirst(predicateIndex + 1))
+        guard !rightComplementVerbs.contains(predicate), !complement.isEmpty,
+            !directionalRightVerbs.contains(complement.last ?? "")
+        else { return false }
+        if copulaVerbs.contains(predicate) {
+            return complement.count >= 2 || copulaRightComplements.contains(complement.last ?? "")
+        }
+        return complement.count >= 2
+    }
+
+    /// The subject at a clause's opening: a pronoun or a determiner with its noun.
+    private static func rightTagSubjectEnd(in clause: [String]) -> Int? {
+        guard let first = clause.first else { return nil }
+        if subjects.contains(first) { return 0 }
+        return determiners.contains(first) && clause.count >= 2 ? 1 : nil
     }
 
     /// The start of a trailing inverted request without a spoken comma.
@@ -43,7 +81,13 @@ public enum QuestionShape {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
             for word in clause.dropFirst().prefix(3) {
                 if subjects.contains(word) { return false }
-                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) { return true }
+                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
+                    return true
+                }
+                if lexicalQuestionVerbs.contains(word) {
+                    let following = clause.dropFirst().drop(while: { $0 != word }).dropFirst().first
+                    return following.map { !subjects.contains($0) && !determiners.contains($0) } ?? true
+                }
             }
             return false
         }
@@ -60,8 +104,28 @@ public enum QuestionShape {
         // The subject straight after the question's verb is the one it inverted, so the search starts past it.
         let verb =
             clause.prefix(4).firstIndex { verbsBeforeSubject.contains($0) || pronounVerbs.contains($0) } ?? 1
-        return clause.dropFirst(verb + 2).contains {
-            newSubjects.contains($0) || contractedNewSubjects.contains($0)
+        return clause.dropFirst(verb + 2).enumerated().contains { offset, subject in
+            guard newSubjects.contains(subject) || contractedNewSubjects.contains(subject) else {
+                return false
+            }
+            return !isDependentOrReportedSubject(at: verb + 2 + offset, in: clause)
+        }
+    }
+
+    /// Whether a subject starts a dependent or reported clause inside the question.
+    private static func isDependentOrReportedSubject(at index: Int, in clause: [String]) -> Bool {
+        if index > 0, ["if", "when"].contains(clause[index - 1]) { return true }
+        if index > 0, reportedVerbs.contains(clause[index - 1]) { return true }
+        return index > 1 && ["tell", "tells", "told"].contains(clause[index - 2]) && clause[index - 1] == "me"
+    }
+
+    /// Whether a later clause also opens an inverted question.
+    private static func hasInvertedQuestionAfterOpening(_ clause: [String]) -> Bool {
+        clause.indices.dropFirst().contains { index in
+            guard index + 1 < clause.count,
+                verbsBeforeSubject.contains(clause[index]) || pronounVerbs.contains(clause[index])
+            else { return false }
+            return subjects.contains(clause[index + 1])
         }
     }
 
@@ -106,6 +170,36 @@ public enum QuestionShape {
     /// Verbs that also start a command, so they ask only before a pronoun: "do you", not "do the dishes".
     static let pronounVerbs: Set<String> = ["do", "have", "don't", "haven't"]
 
+    /// Common present and past lexical verbs that can follow a question word directly.
+    private static let lexicalQuestionVerbs: Set<String> = [
+        "happens", "happen", "happened", "changed", "change", "changes", "works", "work", "worked",
+        "fails", "fail", "failed", "comes", "come", "came", "goes", "go", "went", "looks", "look",
+        "looked", "means", "mean", "meant", "costs", "cost", "costed", "matters", "matter", "mattered",
+        "causes", "cause", "caused", "starts", "start", "started", "ends", "end", "ended", "breaks",
+        "break", "broke", "broken", "shows", "show", "showed", "shown", "runs", "run", "ran", "says",
+        "say", "said", "takes", "take", "took", "taken", "makes", "make", "made", "gets", "get", "got",
+        "gives", "give", "gave", "given", "finds", "find", "found", "keeps", "keep", "kept", "leaves",
+        "leave", "left", "happening",
+    ]
+
+    /// Predicates used to distinguish a closing tag from "turn right" or "that's right".
+    private static let rightTagPredicates =
+        verbsBeforeSubject.union(pronounVerbs).union(lexicalQuestionVerbs).union(["sent", "saved"])
+
+    /// Copulas need a complement beyond the verb, as in "the meeting is at three".
+    private static let copulaVerbs: Set<String> = ["is", "are", "was", "were", "am", "be", "been", "being"]
+
+    /// Predicates whose complement is "right" rather than a closing tag.
+    private static let rightComplementVerbs: Set<String> = ["get", "gets", "got", "getting"]
+
+    /// One-word complements that complete a copula before a right tag.
+    private static let copulaRightComplements: Set<String> = ["saved"]
+
+    /// Directional complements that end in "right" without a tag.
+    private static let directionalRightVerbs: Set<String> = [
+        "turn", "go", "move", "keep", "head", "bear", "drive",
+    ]
+
     /// Negative verbs, which with a pronoun after them close a sentence as a tag: "isn't it", "don't you".
     static let negativeVerbs: Set<String> = [
         "isn't", "aren't", "wasn't", "weren't", "doesn't", "didn't", "hasn't", "hadn't", "can't", "couldn't",
@@ -122,6 +216,12 @@ public enum QuestionShape {
 
     /// Pronouns that can only be a subject, so one past a question's opening starts a second clause.
     static let newSubjects: Set<String> = ["i", "we", "he", "she", "they"]
+
+    /// Verbs that can introduce reported content in an inverted question.
+    private static let reportedVerbs: Set<String> = [
+        "say", "says", "said", "tell", "tells", "told", "know", "knows", "knew", "known", "think", "thinks",
+        "thought", "see", "sees", "saw", "seen", "hear", "hears", "heard", "mean", "means", "meant",
+    ]
 
     /// Every contracted form of those pronouns: "I'm", "we'll", "they've".
     static let contractedNewSubjects = Set(
