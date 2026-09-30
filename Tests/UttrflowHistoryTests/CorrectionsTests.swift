@@ -188,11 +188,35 @@ struct CorrectionUndoTests {
     /// A change records the punctuation it kept, so an undo looking for the bare word would find nothing.
     @Test("a change that kept the word's punctuation is still found and put back")
     func restoresAPunctuatedWord() throws {
-        let correction = made(heard: "tarvock,", wrote: "Tarvok,", range: 2..<3)
+        let correction = made(heard: "tarvock", wrote: "Tarvok", range: 2..<3)
         let record = said(
             "Open the Tarvok, then", changes: RecordedChanges(corrections: [correction]))
         let undone = try #require(record.undoing(correction.id))
         #expect(undone.record.text == "Open the tarvock, then")
+    }
+
+    @Test("a sentence-final correction keeps its full stop")
+    func restoresASentenceFinalWord() throws {
+        let correction = made(heard: "tarvock", wrote: "Tarvok", range: 3..<4)
+        let record = said("Send it to Tarvok.", changes: RecordedChanges(corrections: [correction]))
+
+        #expect(try #require(record.undoing(correction.id)).record.text == "Send it to tarvock.")
+    }
+
+    @Test("a sentence-final correction that expands to several words keeps its full stop")
+    func restoresSeveralWordsBeforeSentenceFinalPunctuation() throws {
+        let correction = made(heard: "tar vock", wrote: "Tarvok", range: 3..<4)
+        let record = said("Send it to Tarvok.", changes: RecordedChanges(corrections: [correction]))
+
+        #expect(try #require(record.undoing(correction.id)).record.text == "Send it to tar vock.")
+    }
+
+    @Test("a tidier-capitalised first word is restored with its punctuation")
+    func restoresACapitalisedFirstWord() throws {
+        let correction = made(heard: "tarvock", wrote: "tarvok", range: 0..<1)
+        let record = said("Tarvok, thanks.", changes: RecordedChanges(corrections: [correction]))
+
+        #expect(try #require(record.undoing(correction.id)).record.text == "tarvock, thanks.")
     }
 
     /// Splicing by character range keeps a dictated code block from arriving on one line.

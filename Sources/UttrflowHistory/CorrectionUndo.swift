@@ -1,5 +1,6 @@
 // Puts one recorded correction back into a dictation's text and names the dictionary entry to charge.
 public import struct Foundation.UUID
+import UttrflowCore
 
 /// Undoes one correction on a copy of the record, so no field is forgotten on the way.
 extension DictationRecord {
@@ -30,13 +31,62 @@ extension DictationRecord {
 
         guard length > 0, start >= 0, start + length <= words.count else { return text }
         let span = words[start].lowerBound..<words[start + length - 1].upperBound
-        // Anything but the written words means this text is not the one the range was measured against.
-        guard text[span].spokenWords() == reverted.wrote.spokenWords() else { return text }
+        let written = reverted.wrote.spokenWords()
+        let present = text[span].spokenWords()
+        guard present.count == written.count,
+            zip(present, written).allSatisfy({ sameWord($0.0, $0.1) })
+        else { return text }
 
         var repaired = String(text[text.startIndex..<span.lowerBound])
-        repaired += reverted.heard
+        repaired += restoringPunctuation(in: text[span], with: reverted.heard)
         repaired += text[span.upperBound...]
         return repaired
+    }
+
+    /// Replaces matching cores, keeping stored punctuation and same-count spacing.
+    private func restoringPunctuation(in written: Substring, with heard: String) -> String {
+        let ranges = written.spokenWordRanges()
+        let heardRanges = heard.spokenWordRanges()
+        guard let firstWritten = ranges.first, let lastWritten = ranges.last,
+            !heardRanges.isEmpty
+        else { return heard }
+
+        if ranges.count == heardRanges.count {
+            var restored = ""
+            var writtenCursor = written.startIndex
+            for (range, heardRange) in zip(ranges, heardRanges) {
+                restored += written[writtenCursor..<range.lowerBound]
+                let shape = WordShape(String(written[range]))
+                restored += shape.prefix + WordShape(String(heard[heardRange])).core + shape.suffix
+                writtenCursor = range.upperBound
+            }
+            restored += written[writtenCursor...]
+            return restored
+        }
+
+        var restored = ""
+        var heardCursor = heard.startIndex
+        for (index, range) in heardRanges.enumerated() {
+            restored += heard[heardCursor..<range.lowerBound]
+            let shape = WordShape(String(heard[range]))
+            let prefix = index == 0 ? WordShape(String(written[firstWritten])).prefix : shape.prefix
+            let suffix =
+                index == heardRanges.count - 1
+                ? WordShape(String(written[lastWritten])).suffix : shape.suffix
+            restored += prefix + shape.core + suffix
+            heardCursor = range.upperBound
+        }
+        restored += heard[heardCursor...]
+        return restored
+    }
+
+    /// Allows only the first letter's case to differ when comparing corrected word cores.
+    private func sameWord(_ present: Substring, _ written: Substring) -> Bool {
+        let actualCore = WordShape(String(present)).core
+        let writtenCore = WordShape(String(written)).core
+        guard let actualFirst = actualCore.first, let writtenFirst = writtenCore.first else { return false }
+        return actualFirst.lowercased() + String(actualCore.dropFirst())
+            == writtenFirst.lowercased() + String(writtenCore.dropFirst())
     }
 
     /// The words from where the pipeline found them in the stored text, moved by earlier undos only.
