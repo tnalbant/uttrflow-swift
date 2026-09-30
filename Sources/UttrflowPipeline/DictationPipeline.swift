@@ -96,6 +96,8 @@ public actor DictationPipeline {
     /// Early recogniser calls still running after their cancelled task has returned.
     private var earlyDecodesInFlight = 0
     private var earlyContext: AppContext?
+    /// Text from an unconfirmed paste, checked at the caret before another dictation starts.
+    private var pendingInsertion: String?
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     private(set) var earlyReadsSettled = 0
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
@@ -617,7 +619,12 @@ public actor DictationPipeline {
     /// The screen as it was while the key was held, read once for every early piece.
     private func earlyContextRead(_ mine: Int) async -> AppContext {
         if let earlyContext { return earlyContext }
-        let read = await readContext()
+        let read: AppContext
+        if let pendingInsertion {
+            read = await contextAfterPendingInsertion(pendingInsertion, for: mine)
+        } else {
+            read = await readContext()
+        }
         // Counted before the decision below, which runs without a suspension, so a waiter sees it made.
         earlyReadsSettled += 1
         // A read the user cancelled belongs to no dictation: the one now under way read its own screen.
@@ -627,6 +634,24 @@ public actor DictationPipeline {
         insertedIntoIdentifier = read.bundleIdentifier
         destinationIsSecure = read.isSecure
         return read
+    }
+
+    /// Waits for a previous paste to reach the caret before the new dictation captures its context.
+    private func contextAfterPendingInsertion(_ text: String, for mine: Int) async -> AppContext {
+        let wanted = PasteConfirmation.collapsed(text)
+        var waited = Duration.zero
+        while waited < PasteConfirmation.budget, isStillRunning(mine), !Task.isCancelled {
+            let latest = await readContext()
+            let preceding = latest.precedingText.map(PasteConfirmation.collapsed) ?? ""
+            if preceding.hasSuffix(wanted) {
+                pendingInsertion = nil
+                return latest
+            }
+            do { try await clock.sleep(for: PasteConfirmation.interval) } catch { break }
+            waited = min(PasteConfirmation.budget, waited + PasteConfirmation.interval)
+        }
+        guard isStillRunning(mine), !Task.isCancelled else { return AppContext() }
+        return await readContext()
     }
 
     /// Whether the dictation that started at `mine` is still the one under way.
@@ -890,7 +915,10 @@ public actor DictationPipeline {
         let wasSecure = destinationIsSecure
 
         // An unconfirmed paste is not proof the words reached the user, so nothing is learnt from it yet.
-        guard attempt.arrival != .unconfirmed else { return }
+        guard attempt.arrival != .unconfirmed else {
+            pendingInsertion = toWrite
+            return
+        }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
         // A secret is not a word to learn.
@@ -944,7 +972,8 @@ public actor DictationPipeline {
     ) async throws -> Transcription? {
         let whole = window == audio.samples.indices
         // Reuse the full recording when this window already covers it.
-        let slice = whole
+        let slice =
+            whole
             ? audio
             : AudioSamples(samples: Array(audio.samples[window]), sampleRate: audio.sampleRate) ?? .empty
         var heard = try await decode(slice, whole: whole, biasedTowards: words, recording: metrics)
