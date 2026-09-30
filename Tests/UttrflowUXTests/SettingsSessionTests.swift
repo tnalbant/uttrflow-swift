@@ -99,6 +99,46 @@ struct SettingsSessionTests {
         #expect(!session.recorder.isRecording)
     }
 
+    @Test("records the clipboard shortcut without changing dictation")
+    func recordsClipboardShortcutWithoutChangingDictation() {
+        var session = SettingsSession(settings: .default)
+        let dictation = session.settings.shortcuts.first(for: .dictate)
+        let clipboard = HotkeyBinding(keyCode: 9, modifiers: [.control, .option])
+        session.beginRecordingShortcut(.clipboard)
+
+        let saved = session.receive(KeyStroke(keyCode: 9, modifiers: [.control, .option], phase: .down))
+
+        #expect(saved?.shortcuts.first(for: .clipboard) == clipboard)
+        #expect(saved?.shortcuts.first(for: .dictate) == dictation)
+        #expect(session.settings.shortcuts.first(for: .clipboard) == clipboard)
+        #expect(!session.recorder.isRecording)
+    }
+
+    @Test("records Fn as dictation when the held key is released")
+    func recordsFunctionHoldOnRelease() {
+        var session = SettingsSession(settings: .default)
+        session.beginRecordingShortcut(.dictate)
+        #expect(session.hold(keyCode: 63, modifiers: []) == nil)
+
+        let saved = session.release()
+
+        #expect(saved?.hotkey == .functionHold)
+        #expect(session.settings.hotkey == .functionHold)
+        #expect(!session.recorder.isRecording)
+    }
+
+    @Test("clears an accessibility rejection after a successful change")
+    func successfulChangeClearsShortcutRejection() {
+        var session = SettingsSession(settings: .default)
+        session.rejectShortcut("Uttrflow needs Accessibility to read the keyboard.")
+        #expect(session.rejection == "Uttrflow needs Accessibility to read the keyboard.")
+
+        let saved = session.apply(.anchor(.bottomLeft))
+
+        #expect(saved?.floatingButtonAnchor == .bottomLeft)
+        #expect(session.rejection == nil)
+    }
+
     @Test("keeps the field listening when the shortcut already belongs to another action")
     func clashingShortcutKeepsRecording() throws {
         var session = SettingsSession(settings: .default)
