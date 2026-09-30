@@ -75,6 +75,45 @@ private final class LimitCue: RecordingCueing {
     func playWarning() { warnings.withLock { $0 += 1 } }
 
     var warningCount: Int { warnings.withLock { $0 } }
+
+/// Holds recognition so another hands-free dictation can arrive while the first is transcribing.
+private final class GatedSpeechEngine: SpeechEngine {
+    private struct State {
+        var calls = 0
+        var held: CheckedContinuation<Void, Never>?
+        var released = false
+    }
+
+    private let state = Mutex(State())
+
+    var kind: SpeechEngineKind { .whisperKit }
+    func prepare() async throws(SpeechEngineError) {}
+    func warm() async {}
+
+    func transcribe(
+        _ audio: AudioSamples, options: TranscriptionOptions
+    ) async throws(SpeechEngineError) -> Transcription {
+        await withCheckedContinuation { continuation in
+            let resumeNow = state.withLock { state -> Bool in
+                state.calls += 1
+                guard state.calls == 1, !state.released else { return true }
+                state.held = continuation
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+        return Transcription(text: "a long dictation")
+    }
+
+    var isHolding: Bool { state.withLock { $0.held != nil } }
+    func release() {
+        let held = state.withLock { state -> CheckedContinuation<Void, Never>? in
+            state.released = true
+            defer { state.held = nil }
+            return state.held
+        }
+        held?.resume()
+    }
 }
 
 /// A ``TextInserting`` that records what reached the screen, holding every insertion while it is shut.
