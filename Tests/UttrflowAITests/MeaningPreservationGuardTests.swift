@@ -616,6 +616,26 @@ struct GrammarGuardTests {
         #expect(verdict("y’all’s car is here", "Y'all's car is here.").isAccepted)
     }
 
+    @Test("rejects quotation pairs the speaker did not say")
+    func rejectsInventedQuotationPairs() {
+        #expect(
+            verdict("she yelled get out", "She yelled \"Get out.\"")
+                == .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation))
+        rejected("he whispered quote not now unquote", "He whispered \"quote not now unquote.\"")
+        rejected("he whispered \"not now\"", "He whispered \"quote not now unquote.\"")
+        rejected("we should ship this", "We should ‘ship this.’")
+    }
+
+    @Test("keeps quotation pairs the speaker said")
+    func keepsSpokenQuotationPairs() {
+        accepted("\"we should ship this\"", "\"We should ship this.\"")
+    }
+
+    @Test("does not treat word apostrophes or decade elisions as quotation pairs")
+    func acceptsApostrophesAndDecadeElisions() {
+        accepted("I'll call in the '90s", "I’ll call in the ’90s.")
+    }
+
     @Test("leaves Devanagari to the base checks, so romanising is not a lost word")
     func skipsDevanagari() {
         #expect(verdict("मैं कल office नहीं आऊंगा", "Main kal office nahi aaunga.").isAccepted)
