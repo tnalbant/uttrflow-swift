@@ -75,6 +75,26 @@ struct SecretDetectionTests {
         }
     }
 
+    @Test(
+        "leaves canonical UUIDs as ordinary text",
+        arguments: [
+            "eaff309c-ad68-4386-b070-c415ed7e70ca",
+            "4283fefc-63f0-4e9f-a7d3-f51c8b47a2e6",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "00000000-0000-4000-8000-000000000000",
+        ])
+    func uuids(_ text: String) {
+        #expect(!SecretShapes.looksGenerated(text))
+        #expect(ClipKindDetector.kind(of: text) == .text)
+    }
+
+    @Test("keeps masking generated tokens and rejects malformed UUID lookalikes")
+    func uuidLookalikesAndRealSecrets() {
+        #expect(ClipKindDetector.kind(of: "K9x$Qz7Tr2Bn8LmVa") == .secret)
+        #expect(SecretShapes.looksGenerated("eaff309c-ad68-4386-b070-c415ed7e70c"))
+        #expect(SecretShapes.looksGenerated("eaff309c-ad68-4386-b070-c415ed7e70ca-extra"))
+    }
+
     /// The prefix on its own is prose about keys, not a key.
     @Test(
         "does not mask talk about keys",
