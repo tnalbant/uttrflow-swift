@@ -38,6 +38,7 @@ struct QuestionShapeTests {
         "leaves a statement, an indirect question and a command alone",
         arguments: [
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
+            "what works for you is fine",
             "where I put the keys is a mystery",
             "I don't know why the build failed", "when the build finishes we ship",
             "do the dishes before you leave",

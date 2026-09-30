@@ -43,10 +43,12 @@ public enum QuestionShape {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
             for word in clause.dropFirst().prefix(3) {
                 if subjects.contains(word) { return false }
-                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word)
-                    || lexicalQuestionVerbs.contains(word)
-                {
+                if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
+                }
+                if lexicalQuestionVerbs.contains(word) {
+                    let following = clause.dropFirst().drop(while: { $0 != word }).dropFirst().first
+                    return following.map { !subjects.contains($0) && !determiners.contains($0) } ?? true
                 }
             }
             return false
