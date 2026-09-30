@@ -1270,6 +1270,14 @@ public enum EvaluationCorpus {
             mustEndWith: "broken."
         ),
         .init(
+            id: "numbered-list-opens-the-dictation", category: .contextual,
+            spoken: "number one check logs number two restart the server",
+            expected: "1. Check logs\n2. Restart the server",
+            mustKeep: ["check logs", "restart the server"], context: numberedNotes,
+            mustNotAdd: ["number"], destination: .document,
+            mustBeginWith: "1. Check logs"
+        ),
+        .init(
             id: "document-sentence-not-a-list", category: .contextual,
             spoken: "bring a torch a map and the spare batteries",
             expected: "Bring a torch, a map and the spare batteries.",
