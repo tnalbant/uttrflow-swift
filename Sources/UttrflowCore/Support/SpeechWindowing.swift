@@ -76,9 +76,16 @@ public struct SpeechWindowing: Sendable, Equatable {
             return start + pause * frameLength
         }
         guard limit - start >= Int(maximumLength * Double(sampleRate)) else { return nil }
-        // Nobody paused, so the cut goes where the speaker was quietest: between words, not inside one.
-        let quietest = loudness[comfortable...].enumerated().min { $0.element < $1.element }
-        return start + (quietest.map { comfortable + $0.offset } ?? loudness.count) * frameLength
+        // A quiet stretch separates words more reliably than a single stop-closure frame.
+        let quietFrames = Swift.max(1, Int((0.12 / VoiceActivity.frameDuration).rounded()))
+        let candidates = comfortable..<(loudness.count - quietFrames + 1)
+        let quietest = candidates.min { left, right in
+            let leftMean = loudness[left..<(left + quietFrames)].reduce(0, +)
+            let rightMean = loudness[right..<(right + quietFrames)].reduce(0, +)
+            return leftMean < rightMean
+        }
+        let frame = quietest.map { $0 + quietFrames / 2 } ?? loudness.count
+        return start + frame * frameLength
     }
 
     /// Every window in a finished recording; a last one holding only a word or two joins the window before it.

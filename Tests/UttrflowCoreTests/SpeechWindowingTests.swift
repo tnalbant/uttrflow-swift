@@ -23,6 +23,14 @@ private enum Take {
         }
     }
 
+    static func speech(envelope: [Float]) -> [Float] {
+        envelope.enumerated().flatMap { frame, level in
+            (0..<(rate / 50)).map { sample in
+                level * Float(sin(2 * .pi * 180 * Double(frame * (rate / 50) + sample) / Double(rate)))
+            }
+        }
+    }
+
     static func seconds(_ samples: Int) -> Double { Double(samples) / Double(rate) }
 }
 
@@ -128,6 +136,20 @@ struct SpeechWindowingTests {
         let cut = try #require(windowing.nextCut(in: audio, sampleRate: Take.rate, from: 0))
         #expect(abs(Take.seconds(cut) - 22.5) < 0.03)
         #expect(windowing.nextCut(in: Take.speech(29), sampleRate: Take.rate, from: 0) == nil)
+    }
+
+    @Test("a hard cut prefers a word gap over a single-frame stop closure")
+    func hardCutPrefersQuietStretch() throws {
+        var envelope = (0..<(32 * 50)).map { frame in
+            frame % 20 < 15 ? Float(0.1) : Float(0.03)
+        }
+        envelope[20 * 50 + 10] = 0.004
+        envelope[20 * 50 + 11] = 0.004
+        let cut = try #require(
+            windowing.nextCut(in: Take.speech(envelope: envelope), sampleRate: Take.rate, from: 0))
+        let seconds = Take.seconds(cut)
+        #expect(seconds >= 20.3 && seconds <= 20.4)
+        #expect((20.2..<20.24).contains(seconds) == false)
     }
 
     @Test("a hard cut never comes before the comfortable length")
