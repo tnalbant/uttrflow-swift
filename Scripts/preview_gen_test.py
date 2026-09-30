@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Proves the preview helper ignores unrelated PNGs and embeds referenced ones."""
+"""Proves the preview helper ignores unrelated image files and embeds referenced ones."""
 import importlib.util
 import subprocess
 import sys
