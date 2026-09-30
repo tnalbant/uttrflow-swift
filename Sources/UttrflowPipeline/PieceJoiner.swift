@@ -134,7 +134,14 @@ enum PieceJoiner {
 
     /// Whether the words across a seam show the sentence carried on, which is the one reason not to end it there.
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
-        endsUnfinished(text) || opensWithAPhrase(next) || completesFinalPhrase(text, with: next)
+        endsUnfinished(text) || opensWithAPhrase(next) || opensWithDependentClause(text)
+            || completesFinalPhrase(text, with: next)
+    }
+
+    /// Whether a sentence-ending piece opens with a subordinator and needs the following main clause.
+    private static func opensWithDependentClause(_ text: String) -> Bool {
+        guard text.last == ".", let first = text.spokenWords.first else { return false }
+        return Self.subordinators.contains(WordShape(String(first)).key)
     }
 
     /// Whether a piece ends on a word no sentence ends on, so the pause the cut fell at was inside a phrase.
@@ -407,6 +414,11 @@ enum PieceJoiner {
         "to", "of", "at", "with", "from", "by", "into", "onto", "upon", "between", "among",
         "toward", "towards", "against", "without", "within", "beside", "behind", "beyond",
         "near", "past",
+    ]
+
+    /// Subordinators that open a dependent clause before its main clause.
+    private static let subordinators: Set<String> = [
+        "although", "because", "if", "when",
     ]
 
     /// Prepositions and particles that can also close a complete sentence, so their seam evidence needs an object.

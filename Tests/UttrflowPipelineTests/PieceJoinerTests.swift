@@ -438,6 +438,29 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == "the room was taken.")
     }
 
+    @Test(
+        "joins a dependent clause opening to its main clause across a seam",
+        arguments: ["When", "If", "Because", "Although"])
+    func dependentClauseAtASeamRunsOn(subordinator: String) {
+        let seamed = PieceJoiner.seamed(
+            [
+                "\(subordinator) the light was finally automated.",
+                "The logbook was given to the town museum.",
+            ],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "\(subordinator) the light was finally automated")
+    }
+
+    @Test("still stops after a statement that starts with a wh-word")
+    func whWordStatementAtASeamStillStops() {
+        let seamed = PieceJoiner.seamed(
+            ["What it showed was surprising.", "The board approved the report."],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "What it showed was surprising.")
+    }
+
     /// A hard cut falls where the speaker never paused, which is most often inside a phrase.
     @Test(
         "adds no stop where the piece ends on a word no sentence ends on",
