@@ -6,12 +6,16 @@ public import UttrflowCore
 public enum ClipboardStoreError: UttrflowFailure {
     /// The clipboard file could not be written or removed.
     case couldNotWrite
+    /// The clipboard could not be saved because the disk is full.
+    case diskFull
     /// Another clip already answers to the alias.
     case aliasAlreadyInUse
 
     public var userMessage: String {
         switch self {
         case .couldNotWrite: "Your clipboard history could not be updated on this Mac."
+        case .diskFull:
+            "Your disk is full, so Uttrflow could not update clipboard history. Free some space and try again."
         case .aliasAlreadyInUse: "That name already belongs to another clip."
         }
     }
@@ -28,7 +32,8 @@ extension ClipboardStoreError: CataloguedFailure {
 
     public var caseAfter: Self? {
         switch self {
-        case .couldNotWrite: .aliasAlreadyInUse
+        case .couldNotWrite: .diskFull
+        case .diskFull: .aliasAlreadyInUse
         case .aliasAlreadyInUse: nil
         }
     }

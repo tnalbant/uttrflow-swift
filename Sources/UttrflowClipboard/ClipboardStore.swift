@@ -224,7 +224,7 @@ public actor ClipboardStore {
         // Reaches the disk here rather than at the next write: clearing and then quitting must stick.
         try save(saved)
         // A copy set aside from the history file is history too; the saved file's copies are saved clips.
-        do { try LocalStore.removeSetAside(file) } catch { throw .couldNotWrite }
+        do { try LocalStore.removeSetAside(file) } catch { throw Self.writeFailure(error) }
         return retained(saved, keeping: retention)
     }
 
@@ -253,7 +253,7 @@ public actor ClipboardStore {
             try LocalStore.removeSetAside(file)
             try LocalStore.removeSetAside(savedFile)
         } catch {
-            throw .couldNotWrite
+            throw Self.writeFailure(error)
         }
     }
 
@@ -339,7 +339,7 @@ public actor ClipboardStore {
         do {
             try writeImage(data, named: name)
         } catch {
-            throw .couldNotWrite
+            throw Self.writeFailure(error)
         }
     }
 
@@ -351,7 +351,7 @@ public actor ClipboardStore {
         do {
             try writeImage(data, named: name)
         } catch {
-            throw .couldNotWrite
+            throw Self.writeFailure(error)
         }
         unnamedPictures.insert(name)
         return ClipImage(
@@ -894,8 +894,18 @@ public actor ClipboardStore {
                 try PrivateFile.write(data, to: url)
             }
         } catch {
-            throw .couldNotWrite
+            throw Self.writeFailure(error)
         }
+    }
+
+    /// Distinguishes exhausted storage from other file-system failures.
+    package static func writeFailure(_ error: any Error) -> ClipboardStoreError {
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) { return .diskFull }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? any Error {
+            return writeFailure(underlying)
+        }
+        return .couldNotWrite
     }
 
     /// Deletes a file if it is there; nothing to delete is success, not a failure.
