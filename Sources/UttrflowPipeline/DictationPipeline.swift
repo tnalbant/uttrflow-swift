@@ -234,7 +234,7 @@ public actor DictationPipeline {
     /// Whether `prepare` is loading the recogniser right now, which is when a new dictation is refused.
     public var isLoading: Bool { loadsUnderWay > 0 }
 
-    /// Keeps readiness truthful when the speech engine unloads itself while idle.
+    /// Keeps readiness truthful when the speech engine unloads itself.
     public func speechWasReleased() {
         isReady = false
     }

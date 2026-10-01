@@ -237,7 +237,7 @@ Measured on Release builds with `/usr/bin/time -l` and MLX's own counters, 48 GB
 
 | holder | loaded when | released when | cost |
 |---|---|---|---|
-| speech model, Whisper large-v3 turbo on CoreML | launch, `loadSpeechModel()` | quit | +114 MB footprint loaded, 267 MB peak footprint and 340 MB peak resident mid-dictation; the weights are file-mapped, so macOS can drop them itself |
+| speech model, Whisper large-v3 turbo on CoreML | launch, `loadSpeechModel()` | memory pressure or quit | +114 MB footprint loaded, 267 MB peak footprint and 340 MB peak resident mid-dictation; the weights are file-mapped, so macOS can drop them itself |
 | suggestion model, Gemma 3 4B QAT on MLX | launch or the moment AI suggestions is turned on, only for somebody who turned it on | AI suggestions turned off; no query for 3 minutes on a Mac under 16 GB, 10 minutes otherwise; or quit | 2,485 MB of GPU memory, 3,036 MB at a pass's peak, 3,464 MB peak process footprint; anonymous, so nothing but a release frees it |
 | MLX's buffer cache | during a pass | the end of every pass | capped at 256 MB, 0 MB between passes |
 | the last pass's prompt in a KV cache | the end of a suggestion pass | the next pass trims it, or the weights are dropped | 91 MB of GPU memory measured over one typed reply, see [what a suggestion pass prefills](#what-a-suggestion-pass-prefills) |
@@ -257,10 +257,11 @@ Clean-up runs in Apple's model process, not this one, and is not counted here.
 | suggestions on, peak of a pass | ≤ 3.5 GB | ≤ 3.5 GB |
 | after turning suggestions off | back to the idle line within a second | same |
 
-The speech model fits inside the first two lines with room to spare, and it stays loaded:
-reloading costs the next dictation 2–9 s, and about 150 s on the first load after a reboot
-(`Docs/startup.md`), while its file-backed weights are exactly the memory macOS already
-reclaims on its own.
+The speech model fits inside the first two lines with room to spare, so it stays loaded
+between dictations and is released only under memory pressure. A pressure release costs
+the next dictation 2–9 s with the Neural Engine compile cached; the 148–254 s cold compile
+is measured on the first compile after install or an OS/model change, not after ordinary
+idle time. Its file-backed weights are also memory macOS can reclaim on its own.
 
 The suggestion model is what the budget is about. On an 8 GB Mac its 3 GB is close to half of
 all memory, which is why nothing loads it for somebody who never asked, and why turning the
@@ -309,7 +310,9 @@ Without the wait, the 3 s reload of 2.5 GB is exactly what pushes a small Mac st
 into pressure, and the model would load and drop in a loop. A reload that holds for thirty
 minutes starts the wait over.
 
-The speech model is left alone under pressure, for the reasons above.
+The speech engine is explicitly released under pressure. It stays loaded during ordinary
+idle periods; if pressure releases it, the next dictation reloads it and the app reports
+that unloaded/loading state until the recogniser is ready.
 
 ## How the budget is enforced
 

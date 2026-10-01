@@ -76,7 +76,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
         guard kit != nil else { return }
         kit = nil
         modelUseLease = nil
-        Self.log.info("speech model let go after sitting idle")
+        Self.log.info("speech model released from memory")
     }
 
     /// Says where the load's seconds went, since WhisperKit measures the parts and nothing reads them.
