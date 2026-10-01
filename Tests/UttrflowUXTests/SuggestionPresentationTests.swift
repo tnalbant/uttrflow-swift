@@ -26,6 +26,15 @@ struct SuggestionPresentationTests {
         #expect(presentation.accessibilityLabel.isEmpty)
     }
 
+    @Test("keeps the thermal gate explanation available when a silent surface has no suggestion")
+    func silentSurfaceExplainsEnergyGate() {
+        let message = "Suggestions are paused while Low Power Mode or thermal pressure is active."
+        let presentation = SuggestionPresentation(.silent, statusMessage: message)
+
+        #expect(presentation.accessibilityLabel == message)
+        #expect(presentation.surfaceAccessibilityLabel == message)
+    }
+
     @Test("A minimised suggestion is one dot and no text")
     func minimisedIsADot() {
         let presentation = SuggestionPresentation(.minimised)

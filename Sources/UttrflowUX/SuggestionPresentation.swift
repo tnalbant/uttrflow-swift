@@ -127,6 +127,8 @@ public struct SuggestionPresentation: Sendable, Equatable {
     public let isItalic: Bool
     /// The colour the ghost is drawn in, and whether it needs a backing to be read at all.
     public let ink: Ink
+    /// A system-condition message exposed to VoiceOver when suggestions are temporarily gated.
+    public let statusMessage: String?
 
     public init(
         _ suggestion: Suggestion,
@@ -139,6 +141,7 @@ public struct SuggestionPresentation: Sendable, Equatable {
         isBold: Bool = false,
         isItalic: Bool = false,
         fieldTextColor: TextColor? = nil,
+        statusMessage: String? = nil,
         maximumWidth: CGFloat? = nil,
         direction: SuggestionWritingDirection = .leftToRight
     ) {
@@ -147,6 +150,7 @@ public struct SuggestionPresentation: Sendable, Equatable {
         self.isBold = isBold
         self.isItalic = isItalic
         ink = fieldTextColor.map(Ink.field) ?? .backed
+        self.statusMessage = statusMessage
         let offered = Self.rows(of: suggestion, after: typed, selected: selection.index)
         style =
             switch suggestion {
@@ -195,8 +199,16 @@ public struct SuggestionPresentation: Sendable, Equatable {
     /// What VoiceOver can read while navigating the surface, including alternatives in an open list.
     public var accessibilityLabel: String {
         let alternatives = rows.filter { !$0.isSelected }.map(\.candidate)
-        guard !alternatives.isEmpty else { return announcementLabel }
-        return "\(announcementLabel) Alternatives: \(alternatives.joined(separator: ", "))."
+        var label = announcementLabel
+        if !alternatives.isEmpty { label += " Alternatives: \(alternatives.joined(separator: ", "))." }
+        if let statusMessage { label += " \(statusMessage)" }
+        return label
+    }
+
+    /// Includes a temporary system-condition explanation when VoiceOver is on an otherwise empty surface.
+    public var surfaceAccessibilityLabel: String {
+        if let statusMessage, accessibilityLabel.isEmpty { return statusMessage }
+        return accessibilityLabel
     }
 
     /// What VoiceOver is told the dot left by Escape is, and what a second Escape does.

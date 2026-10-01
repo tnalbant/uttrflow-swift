@@ -74,6 +74,8 @@ final class SuggestionPanelController {
     private let announcementClock = ContinuousClock()
     private let announcementStartedAt = ContinuousClock().now
     var announcementNow: (@MainActor () -> Duration)?
+    /// Explains why the model cannot offer candidates under current Mac conditions.
+    var statusMessage: String?
     var announcementSleep: @MainActor (Duration) async -> Void = { duration in
         try? await Task.sleep(for: duration)
     }
@@ -139,6 +141,10 @@ final class SuggestionPanelController {
         next.suggestion = suggestion
         next.typed = typed
         next.selection = selection
+        if isActuallyShowing, next.draws(sameAs: request), statusMessage != nil {
+            request = next
+            return render()
+        }
         if isActuallyShowing, next.draws(sameAs: request) { return true }
         request = next
         return render()
@@ -231,6 +237,7 @@ final class SuggestionPanelController {
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
             isBold: request.isBold, isItalic: request.isItalic,
             fieldTextColor: request.textColor, maximumWidth: room,
+            statusMessage: statusMessage,
             direction: request.direction == .rightToLeft ? .rightToLeft : .leftToRight)
         // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.
         if let inline = presentation.inline, let room = presentation.maximumWidth,

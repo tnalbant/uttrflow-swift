@@ -20,7 +20,7 @@ struct SuggestionView: View {
                 alignment: presentation.direction == .rightToLeft ? .topTrailing : .topLeading
             )
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(presentation.accessibilityLabel)
+            .accessibilityLabel(presentation.surfaceAccessibilityLabel)
     }
 
     @ViewBuilder private var form: some View {
