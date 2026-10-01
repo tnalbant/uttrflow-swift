@@ -97,6 +97,17 @@ final class PanelThumbnails {
         startQueuedDecodes()
     }
 
+    /// Releases cached decodes while the system is under memory pressure.
+    func releaseForMemoryPressure() {
+        known.removeAll()
+        cost.removeAll()
+        held = 0
+        lruNodes.removeAll()
+        oldest = nil
+        newest = nil
+        missedAt.removeAll()
+    }
+
     private func startQueuedDecodes() {
         while inflight.count < Self.maximumConcurrentDecodes,
             let next = queued.max(by: { lhs, rhs in

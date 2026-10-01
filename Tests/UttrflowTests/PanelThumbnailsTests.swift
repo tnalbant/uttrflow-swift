@@ -429,6 +429,22 @@ struct PanelThumbnailsCapacityTests {
         #expect(thumbnails.bytesHeld > 0, "a cache that holds nothing is a decode per frame")
     }
 
+    @Test("releases cached pictures under memory pressure")
+    func releasesForMemoryPressure() async {
+        let (thumbnails, _) = thumbnails(room: 2)
+
+        thumbnails.prepare(file(1))
+        await thumbnails.waitForIdle(file: file(1))
+        thumbnails.prepare(file(2))
+        await thumbnails.waitForIdle(file: file(2))
+
+        thumbnails.releaseForMemoryPressure()
+
+        #expect(thumbnails.bytesHeld == 0)
+        #expect(thumbnails.known.isEmpty)
+        #expect(thumbnails.thumbnail(for: file(1)) == nil)
+    }
+
     /// A budget of nothing would forget each answer before it could be used.
     @Test("keeps at least one, whatever it is asked for")
     func neverKeepsNothing() async {
