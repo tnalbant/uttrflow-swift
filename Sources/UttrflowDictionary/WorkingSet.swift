@@ -17,6 +17,9 @@ public enum WorkingSet {
     /// How long a manually added word keeps priority over older dictionary entries.
     static let newAdditionPriorityDays = 7.0
 
+    /// Unused inferred words stop occupying prompt slots after this many days.
+    static let unusedInferredLifetimeDays = 30.0
+
     /// The highest-value words within `limit`, best first, scored on frequency, recency and screen affinity.
     public static func words(
         from entries: [DictionaryEntry],
@@ -29,6 +32,11 @@ public enum WorkingSet {
         let ranked =
             entries
             .filter(\.isTrustworthy)
+            .filter { entry in
+                guard entry.origin == .learned || entry.origin == .observed else { return true }
+                return entry.netUses > 0
+                    || now.timeIntervalSince(entry.firstSeen) <= unusedInferredLifetimeDays * 86_400
+            }
             .map { (entry: $0, value: value(of: $0, now: now, wanted: wanted)) }
             .sorted { first, second in
                 let firstIsNew = isNewAddition(first.entry, now: now)

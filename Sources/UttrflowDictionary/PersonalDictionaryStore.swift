@@ -11,6 +11,8 @@ public import struct Foundation.CocoaError
 
 /// The words this user says that a general model would not expect. See `Docs/app-dictionary-store.md`.
 public actor PersonalDictionaryStore {
+    /// The maximum number of inferred entries retained alongside user and shipped words.
+    static let maximumInferredEntries = 256
     /// The file, injected so a test writes into a temporary directory rather than a real dictionary.
     private let file: URL
 
@@ -213,8 +215,9 @@ public actor PersonalDictionaryStore {
         ledger = sightings
 
         guard !learnt.isEmpty else { return [] }
-        try persist(existing + learnt)
-        return learnt
+        let bounded = Self.boundedEntries(existing + learnt)
+        try persist(bounded)
+        return learnt.filter { entry in bounded.contains(where: { $0.id == entry.id }) }
     }
 
     /// Notes that an entry was applied to a dictation, answering with it so a caller sees it retire.
@@ -329,6 +332,21 @@ public actor PersonalDictionaryStore {
         } catch {
             cache.forget()
             throw .couldNotWrite
+        }
+    }
+
+    /// Keeps all trusted origins and the strongest, most recent inferred entries within the bound.
+    private static func boundedEntries(_ entries: [DictionaryEntry]) -> [DictionaryEntry] {
+        let inferred = entries.filter { $0.origin == .learned || $0.origin == .observed }
+        guard inferred.count > maximumInferredEntries else { return entries }
+        let retained = Set(
+            inferred.sorted {
+                if $0.netUses != $1.netUses { return $0.netUses > $1.netUses }
+                if $0.firstSeen != $1.firstSeen { return $0.firstSeen > $1.firstSeen }
+                return $0.word.localizedStandardCompare($1.word) == .orderedAscending
+            }.prefix(maximumInferredEntries).map(\.id))
+        return entries.filter {
+            ($0.origin != .learned && $0.origin != .observed) || retained.contains($0.id)
         }
     }
 

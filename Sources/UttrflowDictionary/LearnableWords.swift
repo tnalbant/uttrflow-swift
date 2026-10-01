@@ -26,6 +26,7 @@ enum LearnableWords {
         var found: [String] = []
         var already: Set<String> = []
         for term in words(in: title, atMost: WorkingSet.maximumWordsOnScreen)
+            .map(stableTitleWord)
         where GeneralVocabulary.isWorthLearning(term) && already.insert(term.lowercased()).inserted {
             let sound = encode(term)
             let spans = spoken ?? said.map { (text: $0.text, sound: encode($0.text)) }
@@ -40,6 +41,12 @@ enum LearnableWords {
             found.append(term)
         }
         return found
+    }
+
+    /// Removes a trailing numeric version so numbered files share one inferred spelling.
+    private static func stableTitleWord(_ word: String) -> String {
+        let letters = word.prefix { $0.isLetter }
+        return letters.isEmpty ? word : String(letters)
     }
 
     /// Whether a title term is a distinct written form of a heard span, not an identical word or abbreviation.

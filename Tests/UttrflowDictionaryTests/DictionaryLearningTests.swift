@@ -60,6 +60,61 @@ struct DictionaryLearningTests {
         #expect(entries.pronunciation == nil)
     }
 
+    @Test("numbered titles share one inferred spelling and keep used names in the working set")
+    func numberedTitlesDoNotGrowTheDictionary() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        try await store.add(word("Marisol", from: .added, used: 5))
+
+        for file in 0..<200 {
+            for _ in 0..<3 {
+                _ = try await dictate(
+                    into: store, saying: "the spreadsheet is open",
+                    titled: "Spreadsheet\(file).xlsx")
+            }
+        }
+
+        let entries = await store.allEntries()
+        #expect(
+            entries.filter { $0.origin == .observed || $0.origin == .learned }.map(\.word) == ["Spreadsheet"])
+        let workingSet = WorkingSet.words(from: entries, limit: 8, now: epoch)
+        #expect(workingSet.contains("Marisol"))
+        #expect(!workingSet.contains("Spreadsheet199"))
+    }
+
+    @Test("bounds inferred entries while preserving added and shipped entries")
+    func inferredEntriesStayBounded() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        try await store.add(word("UserTerm", from: .added))
+        try await store.add(word("ShipTerm", from: .shipped))
+
+        for index in 0...PersonalDictionaryStore.maximumInferredEntries {
+            try await store.add(word("Learned\(index)", from: .observed, daysAgo: Double(index)))
+        }
+
+        let entries = await store.allEntries()
+        #expect(
+            entries.filter { $0.origin == .learned || $0.origin == .observed }.count
+                == PersonalDictionaryStore.maximumInferredEntries)
+        #expect(
+            Set(entries.filter { $0.origin == .added || $0.origin == .shipped }.map(\.word)) == [
+                "UserTerm", "ShipTerm",
+            ])
+        #expect(!entries.contains { $0.word == "Learned256" })
+    }
+
+    @Test("unused inferred words leave the working set after thirty days")
+    func unusedInferredWordsExpireFromWorkingSet() {
+        let stale = word("OldTerm", from: .observed, daysAgo: 31)
+        let recent = word("NewTerm", from: .learned, daysAgo: 29)
+        #expect(WorkingSet.words(from: [stale, recent], now: epoch) == ["NewTerm"])
+        #expect(
+            WorkingSet.words(from: [word("UsedTerm", from: .observed, used: 1, daysAgo: 90)], now: epoch) == [
+                "UsedTerm"
+            ])
+    }
+
     @Test("Window chrome does not teach the dictionary while distinct spellings do")
     func ignoresChromeAndKeepsDistinctSpellings() async throws {
         let sandbox = Sandbox()
