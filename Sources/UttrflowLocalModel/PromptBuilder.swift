@@ -87,25 +87,41 @@ enum PromptBuilder {
         let closing =
             switch ask {
             case .one:
-                "\(Self.instruction(for: register)):\n\(typed)"
+                "\(Self.instruction(for: register)):\n\(Self.delimited(typed))"
             case .others(let leader):
                 "Give up to three other ways to finish this \(register.kind), each different from \"\(Self.unquoted(leader))\", "
-                    + "one per line:\n\(typed)"
+                    + "one per line:\n\(Self.delimited(typed))"
             }
 
         let context = Self.context(for: situation)
         var parts = [opening]
         if !context.screen.isEmpty {
-            parts.append("On screen around the field:\n\(context.screen)")
+            parts.append("On screen around the field:\n\(Self.delimited(context.screen))")
         }
         if !context.recent.isEmpty {
-            parts.append("Lines this person wrote here before:\n\(context.recent)")
+            parts.append("Lines this person wrote here before:\n\(Self.delimited(context.recent))")
         }
         if !context.preceding.isEmpty {
-            parts.append("The text before the line reads:\n\(context.preceding)")
+            parts.append("The text before the line reads:\n\(Self.delimited(context.preceding))")
         }
         parts.append(closing)
         return parts.joined(separator: "\n\n")
+    }
+
+    /// Fences untrusted text with a backtick run longer than any it contains, so it cannot close its own block.
+    static func delimited(_ text: String) -> String {
+        var longestRun = 0
+        var currentRun = 0
+        for character in text {
+            if character == "`" {
+                currentRun += 1
+                longestRun = max(longestRun, currentRun)
+            } else {
+                currentRun = 0
+            }
+        }
+        let fence = String(repeating: "`", count: max(3, longestRun + 1))
+        return "\(fence)\n\(text)\n\(fence)"
     }
 
     /// The context parts as they are shown: nearest the line kept first, the field's own text before the person's lines before the screen.
