@@ -50,6 +50,21 @@ struct PieceJoinerListTests {
                 == "- Fix the build\n- Review the PR")
     }
 
+    @Test("keeps an item body across pieces and ends the list before a closing sentence")
+    func sequenceWordOnItsOwnPiece() {
+        let text = joined(
+            ["Step 1", "Unplug it.", "and keep holding it.", "Step 2", "Plug it in.", "Done."],
+            .document)
+        #expect(text == "- Unplug it and keep holding it\n- Plug it in\n\nDone.")
+    }
+
+    @Test("recognizes numeric ordinal list markers")
+    func numericOrdinalList() {
+        #expect(
+            joined(["1st, clean the data.", "2nd, train the model.", "3rd, evaluate it."], .document)
+                == "- Clean the data\n- Train the model\n- Evaluate it")
+    }
+
     @Test("leaves the list prose where the place has no lists")
     func chatKeepsProse() {
         let pieces = ["First, we need to fix the build.", "Second, we should review the PR."]

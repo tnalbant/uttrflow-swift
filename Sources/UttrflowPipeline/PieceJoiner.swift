@@ -251,14 +251,17 @@ enum PieceJoiner {
             absorbed.insert(opening)
         }
         let items = formatter.layout.contains(.lists) ? listItems(in: draft, starts: starts) : []
-        for (item, opening) in items.enumerated() {
-            let isOrdinal = Self.ordinals[draft.shape(at: opening).key] != nil
-            if let mark = itemise(&draft, opening, items: items, item: item, ordinal: isOrdinal) {
-                marks[opening] = mark
+        for listItem in items {
+            if let mark = itemise(&draft, listItem) {
+                marks[listItem.opening] = mark
             }
         }
+        if let last = items.last, last.bodyEnd < draft.words.count {
+            marks[last.bodyEnd] = "\n\n"
+        }
         for opening in starts.indices.dropFirst() {
-            guard paragraphs(formatter), !absorbed.contains(opening), !items.contains(opening),
+            guard paragraphs(formatter), !absorbed.contains(opening),
+                !items.contains(where: { $0.opening == starts[opening] }),
                 opensTopic(draft, at: starts[opening])
             else { continue }
             marks[starts[opening]] = "\n\n"
@@ -373,8 +376,14 @@ enum PieceJoiner {
 
     // MARK: Lists from spoken sequence words
 
-    /// The openings that are the items of one spoken list, or nothing when the pieces do not spell one.
-    private static func listItems(in draft: Draft, starts: [Int]) -> [Int] {
+    private struct ListItem {
+        let opening: Int
+        let sequenceLength: Int
+        let bodyEnd: Int
+    }
+
+    /// The spans that are the items of one spoken list, or nothing when the pieces do not spell one.
+    private static func listItems(in draft: Draft, starts: [Int]) -> [ListItem] {
         let live = draft.presentIndices
         guard !live.isEmpty else { return [] }
 
@@ -397,19 +406,28 @@ enum PieceJoiner {
         else {
             return boundaryListItems(in: draft, starts: starts)
         }
-        return Array(ordinalCandidates[ordinalHead...]).map { live[$0.position] }
+        let candidates = Array(ordinalCandidates[ordinalHead...])
+        return candidates.enumerated().map { index, candidate in
+            let opening = live[candidate.position]
+            let end =
+                index + 1 < candidates.count
+                ? live[candidates[index + 1].position]
+                : trailingSentenceStart(in: draft, starts: starts, after: opening) ?? draft.words.count
+            return ListItem(opening: opening, sequenceLength: 1, bodyEnd: end)
+        }
     }
 
     /// Recognizes announced and cardinal sequences at piece boundaries, where their number is unambiguous.
-    private static func boundaryListItems(in draft: Draft, starts: [Int]) -> [Int] {
+    private static func boundaryListItems(in draft: Draft, starts: [Int]) -> [ListItem] {
         let live = draft.presentIndices
-        let candidates = starts.enumerated().compactMap { index, start in
+        let candidates = starts.compactMap { start in
             guard let found = sequence(draft, live, at: start),
-                isClause(
-                    draft, live, position: live.firstIndex(of: start) ?? 0, starts: starts,
-                    after: found.length)
+                let position = live.firstIndex(of: start)
             else { return nil }
-            return (index: index, value: found.value, kind: found.kind)
+            return (
+                position: position, opening: start, length: found.length,
+                value: found.value, kind: found.kind
+            )
         }
         guard let head = candidates.firstIndex(where: { $0.value == 1 }), candidates.count - head >= 2
         else { return [] }
@@ -418,26 +436,53 @@ enum PieceJoiner {
         guard
             run.enumerated().allSatisfy({ offset, candidate in
                 candidate.kind == kind && candidate.value == offset + 1
-            }), run.last?.value == candidates.count - head
+                    && hasClauseBody(
+                        draft, live, from: candidate.position + candidate.length,
+                        to: offset + 1 < run.count ? run[offset + 1].position : live.count)
+            })
         else { return [] }
-        return run.map { starts[$0.index] }
+        return run.enumerated().map { offset, candidate in
+            let end =
+                offset + 1 < run.count
+                ? run[offset + 1].opening
+                : trailingSentenceStart(in: draft, starts: starts, after: candidate.opening)
+                    ?? draft.words.count
+            return ListItem(
+                opening: candidate.opening, sequenceLength: candidate.length, bodyEnd: end)
+        }
+    }
+
+    /// A later sentence after a complete item starts the closing paragraph; lowercase continuations stay in the item.
+    private static func trailingSentenceStart(in draft: Draft, starts: [Int], after opening: Int) -> Int? {
+        guard let piece = starts.firstIndex(of: opening) else { return nil }
+        for index in (piece + 1)..<starts.count {
+            let previous = starts[index] - 1
+            let live = draft.presentIndices
+            guard live.contains(previous),
+                draft.shape(at: previous).endsSentence,
+                let first = live.first(where: { $0 >= starts[index] }),
+                let character = draft.shape(at: first).core.first, character.isUppercase
+            else { continue }
+            return starts[index]
+        }
+        return nil
+    }
+
+    /// Whether words after a sequence marker form a clause before the next marker.
+    private static func hasClauseBody(_ draft: Draft, _ live: [Int], from start: Int, to end: Int) -> Bool {
+        let body = live[start..<end]
+        guard body.count >= 2, let first = body.first else { return false }
+        return !Self.determiners.contains(draft.shape(at: first).key)
     }
 
     /// Takes the sequence word off an item, capitalises what is left of it and drops its full stop, answering its mark.
-    private static func itemise(
-        _ draft: inout Draft, _ opening: Int, items: [Int], item: Int, ordinal: Bool
-    ) -> String? {
+    private static func itemise(_ draft: inout Draft, _ listItem: ListItem) -> String? {
         let live = draft.presentIndices
+        let opening = listItem.opening
         guard let position = live.firstIndex(of: opening) else { return nil }
-        let length: Int
-        if ordinal {
-            length = 1
-        } else {
-            guard let found = sequence(draft, live, at: opening) else { return nil }
-            length = found.length
-        }
+        let length = listItem.sequenceLength
         for index in live[position..<position + length] { draft.remove(at: index, by: id) }
-        let end = item + 1 < items.count ? items[item + 1] : draft.words.count
+        let end = listItem.bodyEnd
         let body = draft.presentIndices.filter { $0 >= opening && $0 < end }
         guard let head = body.first, let tail = body.last else { return nil }
         draft.replace(at: head, with: WordShape.capitalised(draft.words[head].text), by: id)
@@ -467,19 +512,6 @@ enum PieceJoiner {
         guard prefix != "point" || head.endsClause else { return nil }
         if let value = Self.cardinals[head.key] { return (value, .cardinal, length + 1) }
         return nil
-    }
-
-    /// Whether what a piece says after its sequence word stands as a clause rather than naming a thing.
-    private static func isClause(
-        _ draft: Draft, _ live: [Int], position opening: Int, starts: [Int], after head: Int
-    )
-        -> Bool
-    {
-        let openingWord = live[opening]
-        let endWord = starts.first(where: { $0 > openingWord }) ?? draft.words.count
-        let body = live[(opening + head)..<live.count].prefix { $0 < endWord }
-        guard body.count >= 2, let first = body.first else { return false }
-        return !Self.determiners.contains(draft.shape(at: first).key)
     }
 
     // MARK: Paragraphs between topics
@@ -515,7 +547,7 @@ enum PieceJoiner {
     // MARK: The words this reads
 
     /// Whether a sequence is counted in ordinals or in cardinals; one dictation's list never mixes them.
-    private enum SequenceKind { case ordinal, cardinal }
+    private enum SequenceKind: Equatable { case ordinal, cardinal }
 
     /// Words that may stand before the number of an item, as in "number one" and "point two".
     private static let prefixes: Set<String> = ["number", "point", "item", "step"]
@@ -523,6 +555,8 @@ enum PieceJoiner {
     private static let ordinals: [String: Int] = [
         "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7,
         "eighth": 8, "ninth": 9, "tenth": 10,
+        "1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5, "6th": 6, "7th": 7,
+        "8th": 8, "9th": 9, "10th": 10,
     ]
 
     private static let cardinals: [String: Int] = [
