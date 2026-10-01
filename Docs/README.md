@@ -116,6 +116,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [core-history-accuracy.md](core-history-accuracy.md) | The accuracy figure: where its denominator comes from |
 | [history-store-file.md](history-store-file.md) | The dictation history file, and the shape of the store around it |
 | [local-store-permissions.md](local-store-permissions.md) | Who may read the local store, and the one place its files are written |
+| [local-store-encryption.md](local-store-encryption.md) | The selected at-rest encryption and migration scheme; implementation is pending |
 | [retention-clock.md](retention-clock.md) | Retention, and the two things it will not take the wall clock's word for |
 
 ## Settings and system behaviour
