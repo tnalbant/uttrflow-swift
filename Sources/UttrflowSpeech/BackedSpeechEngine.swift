@@ -15,6 +15,10 @@ public actor BackedSpeechEngine: SpeechEngine {
     private var isLoaded = false
     /// How long the recogniser may sit unused before it is let go; `nil` holds it for the life of the engine.
     private let idleAfter: Duration?
+    /// Reports when memory backing a recogniser the app thought ready has been released.
+    private let didRelease: (@Sendable () -> Void)?
+    private let didLoad: (@Sendable () -> Void)?
+    private let willLoad: (@Sendable () -> Void)?
     /// When the recogniser last loaded or answered, which the idle watch measures from.
     private var lastUsed = ContinuousClock.now
     private var watch: Task<Void, Never>?
@@ -26,11 +30,17 @@ public actor BackedSpeechEngine: SpeechEngine {
     public init(
         kind: SpeechEngineKind,
         backend: any TranscriptionBackend,
-        idleAfter: Duration? = nil
+        idleAfter: Duration? = nil,
+        didRelease: (@Sendable () -> Void)? = nil,
+        didLoad: (@Sendable () -> Void)? = nil,
+        willLoad: (@Sendable () -> Void)? = nil
     ) {
         self.kind = kind
         self.backend = backend
         self.idleAfter = idleAfter
+        self.didRelease = didRelease
+        self.didLoad = didLoad
+        self.willLoad = willLoad
     }
 
     /// Whether the recogniser is loaded now; internal so a test can read it.
@@ -67,14 +77,17 @@ public actor BackedSpeechEngine: SpeechEngine {
         watch = nil
         await backend.unload()
         isLoaded = false
+        didRelease?()
     }
 
     /// Loads the recogniser unless a call that held the turn earlier already did; the caller holds the turn.
     private func loadIfNeeded() async throws(SpeechEngineError) {
         defer { touched() }
         guard !isLoaded else { return }
+        willLoad?()
         try await backend.load()
         isLoaded = true
+        didLoad?()
     }
 
     /// Marks the recogniser as just used and keeps an idle watch running while it is loaded.

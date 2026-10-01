@@ -48,6 +48,23 @@ struct BackedSpeechEngineIdleTests {
         #expect(backend.loadCount == 2)
     }
 
+    @Test("reports every idle unload and the lazy reload")
+    func reportsReadinessChanges() async throws {
+        let backend = FakeTranscriptionBackend()
+        let releases = ReadinessCallbackCount()
+        let loads = ReadinessCallbackCount()
+        let engine = BackedSpeechEngine(
+            kind: .whisperKit, backend: backend, idleAfter: .seconds(600),
+            didRelease: { releases.increment() }, didLoad: { loads.increment() })
+
+        try await engine.prepare()
+        await engine.release()
+        _ = try await engine.transcribe(audio(seconds: 1), options: .automatic)
+
+        #expect(releases.value == 1)
+        #expect(loads.value == 2)
+    }
+
     @Test("warm loads the recogniser without the caller waiting on it")
     func warmLoads() async throws {
         let backend = FakeTranscriptionBackend()
@@ -58,5 +75,23 @@ struct BackedSpeechEngineIdleTests {
 
         #expect(backend.loadCount == 1)
         #expect(await engine.holdsTheRecogniser)
+    }
+}
+
+/// Thread-safe callback count for engine lifecycle notifications.
+private final class ReadinessCallbackCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
     }
 }

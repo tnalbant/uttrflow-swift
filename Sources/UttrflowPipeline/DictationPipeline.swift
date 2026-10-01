@@ -234,6 +234,16 @@ public actor DictationPipeline {
     /// Whether `prepare` is loading the recogniser right now, which is when a new dictation is refused.
     public var isLoading: Bool { loadsUnderWay > 0 }
 
+    /// Keeps readiness truthful when the speech engine unloads itself while idle.
+    public func speechWasReleased() {
+        isReady = false
+    }
+
+    /// Marks readiness when a lazy reload completes during transcription.
+    public func speechWasLoaded() {
+        isReady = true
+    }
+
     /// Every state the pipeline passes through, from now on.
     public func states() -> AsyncStream<DictationState> {
         observers.makeStream(startingWith: state)
@@ -1021,6 +1031,7 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
+                    isReady = true
                     await metrics.recordVocabularyPrompt(transcription.vocabularyPrompt)
                     if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
                     return Heard.words(transcription)

@@ -1080,9 +1080,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let model = SpeechModel.default
         let engine = SpeechEngineFactory.make(
             kind: kind, model: model, modelFolder: modelStore.location(of: model),
-            idleAfter: BackedSpeechEngine.idleRelease)
+            idleAfter: BackedSpeechEngine.idleRelease,
+            didRelease: { [weak self] in
+                Task { @MainActor [weak self] in self?.speechModelWasReleased() }
+            },
+            didLoad: { [weak self] in
+                Task { @MainActor [weak self] in self?.speechModelWasLoaded() }
+            },
+            willLoad: { [weak self] in
+                Task { @MainActor [weak self] in self?.speechModelWillLoad() }
+            })
         speechEngine = engine
         return engine
+    }
+
+    /// The idle watcher released a recogniser that the readiness surfaces still called ready.
+    private func speechModelWasReleased() {
+        guard speechReadiness == .ready else { return }
+        speechReadiness = .loading
+        speechLoadStarted = nil
+        Task { await pipeline?.speechWasReleased() }
+        refreshSpeechModelSurfaces()
+    }
+
+    /// A cold reload finished, including one started lazily when the user began dictating.
+    private func speechModelWasLoaded() {
+        Task { await pipeline?.speechWasLoaded() }
+        guard speechReadiness == .loading else { return }
+        speechReadiness = .ready
+        speechLoadStarted = nil
+        speechLoadTicker?.cancel()
+        speechLoadTicker = nil
+        refreshSpeechModelSurfaces()
+    }
+
+    /// Starts the elapsed-time indicator when a released model actually begins reloading.
+    private func speechModelWillLoad() {
+        guard speechReadiness == .loading, speechLoadStarted == nil else { return }
+        speechLoadStarted = .now
+        speechLoadTicker?.cancel()
+        speechLoadTicker = Task { [weak self] in
+            try? await Task.sleep(for: SpeechModelLoad.estimateAfter)
+            while !Task.isCancelled {
+                guard let self, speechReadiness == .loading else { return }
+                refreshSpeechModelEstimate()
+                try? await Task.sleep(for: SpeechModelLoadEstimate.redrawInterval)
+            }
+        }
+        refreshSpeechModelSurfaces()
     }
 
     /// Hands the pipeline the recogniser just chosen, which it takes up once no dictation is under way.
