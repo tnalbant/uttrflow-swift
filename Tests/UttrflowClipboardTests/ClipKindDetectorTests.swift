@@ -179,6 +179,15 @@ struct ClipKindDetectorTests {
         #expect(ClipKindDetector.kind(of: text) == .code)
     }
 
+    @Test(
+        "calls a bare one-line invocation code",
+        arguments: [
+            "print(name, age)", "console.log(name, age)", "foo.bar(1, 2)", "print(\"hello\")", "run()",
+        ])
+    func oneLineInvocations(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) == .code)
+    }
+
     /// One line, no punctuation, and still unmistakably something to set in a monospaced face.
     @Test(
         "calls a one-line shell command code",
@@ -257,6 +266,7 @@ struct ClipKindDetectorTests {
             "Please return the book to the library.",
             "She let the dog out.",
             "Sort by name (ascending) and then export.",
+            "call me (tomorrow)", "Version (2) is available.", "version (2)",
             "defaults are fine by me", "tar and feathers", "cargo ship arrives Monday",
             "bun with butter please", "git gud", "rm 204 is booked", "Tom & Jerry; kill time",
             "pip install is slow today", "swift reply needed", "node of the network", "cd player broke",

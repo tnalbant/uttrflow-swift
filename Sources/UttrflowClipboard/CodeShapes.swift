@@ -12,6 +12,7 @@ enum CodeShapes {
         if isImportHeader(text) { return true }
         if isShellCommand(text) { return true }
         if isOneLineStatement(text) { return true }
+        if isOneLineInvocation(text) { return true }
         let sample = CodeSample.of(text)
         if isConfiguration(sample) { return true }
         return hasTwoSignals(in: sample)
@@ -146,6 +147,16 @@ enum CodeShapes {
 
     /// Caps the single line read as a statement; a longer one is left to the signals.
     static let statementLimit = 2_000
+
+    /// Matches a call-only clip whose callee touches its opening parenthesis, as in source code.
+    nonisolated(unsafe) static let oneLineInvocation =
+        #/^\h*[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\([^()\n]*\)\h*;?\h*$/#
+
+    /// Recognises a whole call without treating spaced parenthetical prose as code.
+    static func isOneLineInvocation(_ text: String) -> Bool {
+        guard text.utf8.count <= statementLimit, !text.contains(where: \.isNewline) else { return false }
+        return text.wholeMatch(of: oneLineInvocation) != nil
+    }
 
     /// Matches one SQL statement with its clause, read as a query rather than an instruction to select.
     nonisolated(unsafe) static let sqlStatement =
