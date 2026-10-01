@@ -210,6 +210,7 @@ enum PieceJoiner {
     private static func endedAtSeam(
         _ text: String, before next: String, under formatter: DestinationFormatter
     ) -> String {
+        if endsWithSpokenLineCommand(text) { return WordShape.withoutTrailingStop(text) }
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
         if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
@@ -218,6 +219,15 @@ enum PieceJoiner {
             !sentenceRunsOn(text, into: next)
         else { return text }
         return WordShape.finished(text)
+    }
+
+    /// Whether a piece ends with the spoken command that opens a new line.
+    private static func endsWithSpokenLineCommand(_ text: String) -> Bool {
+        let draft = Draft(keepingLineBreaks: text)
+        let live = draft.presentIndices
+        guard live.count >= 2 else { return false }
+        return draft.shape(at: live[live.count - 2]).key == "new"
+            && draft.shape(at: live[live.count - 1]).key == "line"
     }
 
     // MARK: The stop at a seam
@@ -242,10 +252,20 @@ enum PieceJoiner {
         }
         guard starts.count > 1 else { return draft.text }
 
-        layoutCommands(&draft, at: starts, under: formatter)
-
         var marks: [Int: String] = [:]
         var absorbed: Set<Int> = []
+        for opening in starts.indices.dropFirst() {
+            let live = draft.presentIndices
+            guard let position = live.firstIndex(of: starts[opening]), position >= 2,
+                draft.shape(at: live[position - 2]).key == "new",
+                draft.shape(at: live[position - 1]).key == "line"
+            else { continue }
+            draft.replace(at: live[position - 2], with: "\n", by: id)
+            draft.remove(at: live[position - 1], by: id)
+            absorbed.insert(opening)
+        }
+        layoutCommands(&draft, at: starts, under: formatter)
+
         for opening in starts.indices.dropFirst()
         where steps.runs(.selfCorrection) && restate(&draft, at: starts[opening]) {
             absorbed.insert(opening)

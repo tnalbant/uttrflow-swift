@@ -208,6 +208,9 @@ struct PieceJoinerParagraphTests {
         #expect(
             joined(["Guide.", "New paragraph", "open questions."], .email)
                 == "Guide.\n\nopen questions.")
+        #expect(
+            joined(["First item new line", "second item"], .document)
+                == "First item\nsecond item.")
     }
 
     @Test("opens a paragraph where the next piece opens a topic")
