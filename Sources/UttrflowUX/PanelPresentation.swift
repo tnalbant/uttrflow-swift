@@ -333,10 +333,10 @@ public enum PanelPresenter {
     /// A sheet's own keys, which differ from the list's. See `Docs/panel.md`.
     public static let sheetHint = "⏎ to save · esc to go back"
     /// Offered rather than merely available, because F7 traded the dialog away for it.
-    public static let undoHint = "Deleted · ⌘Z to put it back"
+    public static let undoHint = "Deleted · ⌘Z restores the last delete only"
 
     /// The undo offer as VoiceOver says it, with the key spelled out rather than drawn.
-    public static let undoAnnouncement = "Deleted. Press Command-Z to put it back."
+    public static let undoAnnouncement = "Deleted. Command-Z restores only the most recent deletion."
     /// What choosing a row does when the panel can paste.
     public static let pasteRowHint = "Pastes where you were typing"
     /// What choosing a row does when the panel can only copy.

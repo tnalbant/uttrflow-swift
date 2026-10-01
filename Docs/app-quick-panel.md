@@ -218,7 +218,7 @@ borderless panel gets none of AppKit's protection and goes clean under the menu 
 
 Every notice the panel shows is also announced: the three copy-only notices ("Copied — press
 ⌘V…"), a refused write, and a picture that is no longer on this Mac. So is the undo offer after a
-delete, spoken as "Deleted. Press Command-Z to put it back." A copy-only choice closes the panel
+delete, spoken as "Deleted. Command-Z restores only the most recent deletion." A copy-only choice closes the panel
 2.5 s later, which is sooner than VoiceOver focus reaches the notice bar, so drawing it is not
 enough.
 
