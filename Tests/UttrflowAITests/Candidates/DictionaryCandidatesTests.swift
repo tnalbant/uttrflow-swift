@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowCore
 import UttrflowDictionary
@@ -52,5 +53,31 @@ struct DictionaryCandidatesTests {
     func capsWhatItOffers() async {
         let found = await source.candidates(for: Draft.Word("kestral", confidence: 0.3), in: .unknown)
         #expect(found.count <= DictionaryCandidates.maximumOffered)
+    }
+
+    @Test("does not offer an inferred spelling for an ordinary word without screen evidence")
+    func restrainsInferredCandidatesForOrdinaryWords() async {
+        let entry = DictionaryEntry(
+            word: "mint", origin: .learned, firstSeen: Date(timeIntervalSince1970: 0))
+        let dictionary = DictionaryCandidates { PhoneticIndex(entries: [entry]) }
+
+        let found = await dictionary.candidates(
+            for: Draft.Word("monday", confidence: 0.3), in: .unknown)
+
+        #expect(found.isEmpty)
+    }
+
+    @Test("allows an inferred candidate for an ordinary word when the screen confirms it")
+    func acceptsScreenCorroboration() async {
+        let entry = DictionaryEntry(
+            word: "mint", origin: .learned, firstSeen: Date(timeIntervalSince1970: 0))
+        let dictionary = DictionaryCandidates { PhoneticIndex(entries: [entry]) }
+        let situation = Situation(
+            app: AppContext(documentName: "mint notes"), insertion: .unknown, destination: .plain)
+
+        let found = await dictionary.candidates(
+            for: Draft.Word("monday", confidence: 0.3), in: situation)
+
+        #expect(found.map(\.spelling) == ["mint"])
     }
 }

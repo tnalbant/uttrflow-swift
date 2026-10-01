@@ -745,6 +745,28 @@ struct LearnedVocabularyTests {
         #expect(learnt.origin == .learned)
     }
 
+    @Test("a learned correction triggers the visible learning callback")
+    func announcesACorrection() async throws {
+        actor Recorder {
+            private(set) var entries: [DictionaryEntry] = []
+            func record(_ newEntries: [DictionaryEntry]) { entries = newEntries }
+        }
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(
+            file: PersonalDictionaryStore.defaultFile(in: sandbox.root))
+        let recorder = Recorder()
+        let vocabulary = LearnedVocabulary(dictionary: store) { entries in
+            await recorder.record(entries)
+        }
+
+        try await vocabulary.learn(
+            heard: "utter flow", wrote: "Uttrflow",
+            seeing: AppContext(applicationName: "Notes", selectedText: "utter flow"))
+
+        #expect(await recorder.entries.count == 1)
+        #expect(await recorder.entries.first?.word == "Uttrflow")
+    }
+
     /// The argument order checked directly, because swapped it would learn the spelling the user deleted.
     @Test("the words the user got rid of are never what is learnt")
     func doesNotLearnWhatWasReplaced() async throws {

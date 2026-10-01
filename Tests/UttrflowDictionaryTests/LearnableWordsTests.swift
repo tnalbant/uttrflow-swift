@@ -349,6 +349,16 @@ struct CorrectedWordTests {
         #expect(LearnableWords.corrected(over: "to the", wrote: "too they") == nil)
     }
 
+    /// A single accidental re-dictation must not add an ordinary spelling or a correction to one.
+    @Test("Refuses ordinary words and spelling fixes of ordinary words")
+    func refusesOrdinarySpellings() {
+        #expect(LearnableWords.corrected(over: "minute", wrote: "mint") == nil)
+        #expect(LearnableWords.corrected(over: "recieve", wrote: "receive") == nil)
+        #expect(LearnableWords.corrected(over: "seperate", wrote: "separate") == nil)
+        #expect(LearnableWords.corrected(over: "adress", wrote: "address") == nil)
+        #expect(LearnableWords.corrected(over: "occured", wrote: "occurred") == nil)
+    }
+
     @Test("Refuses a replacement whose every word is ordinary, even beside a rare one")
     func refusesAPartlyOrdinaryPhrase() {
         #expect(LearnableWords.corrected(over: "the utterflow", wrote: "the Uttrflow") == nil)

@@ -15,9 +15,27 @@ public struct DictionaryCandidates: CandidateSource {
 
     /// What the correction engine's lookup recalls, capped; `ReadingRestraint` is not asked, because a taught word is evidence.
     public func candidates(for word: Draft.Word, in situation: Situation) async -> [Reading] {
-        Array(
-            WordCorrectionEngine.spellings(of: word.text, in: await index())
-                .map { Reading($0.word, entryID: $0.id) }
-                .prefix(Self.maximumOffered))
+        let candidates = WordCorrectionEngine.spellings(of: word.text, in: await index())
+        let visible = Self.visibleWords(in: situation)
+        return Array(
+            candidates.filter { entry in
+                guard entry.origin == .learned || entry.origin == .observed,
+                    GeneralVocabulary.isOrdinary(word.text)
+                else { return true }
+                return visible.contains(ReadingRestraint.closedUp(entry.word))
+            }.map { Reading($0.word, entryID: $0.id) }.prefix(Self.maximumOffered))
+    }
+
+    /// Screen text can corroborate an inferred word; the selected correction source is included too.
+    private static func visibleWords(in situation: Situation) -> Set<String> {
+        [
+            situation.app.documentName, situation.app.selectedText,
+            situation.insertion.precedingText, situation.insertion.followingText,
+        ]
+        .compactMap { $0 }
+        .flatMap { $0.split { !$0.isLetter && !$0.isNumber } }
+        .map { ReadingRestraint.closedUp(String($0)) }
+        .filter { !$0.isEmpty }
+        .reduce(into: Set<String>()) { $0.insert($1) }
     }
 }

@@ -1215,7 +1215,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             corrector: DictionaryCorrections(dictionary: dictionary),
             snippets: StoredSnippets(store: snippets),
             learner: StoreCounters(dictionary: dictionary, snippets: snippets),
-            vocabulary: LearnedVocabulary(dictionary: dictionary),
+            vocabulary: LearnedVocabulary(dictionary: dictionary) { [weak self] entries in
+                guard let entry = entries.first(where: { $0.origin == .learned }) else { return }
+                await MainActor.run {
+                    self?.actionNotice = MainNotice.learnedCorrection(entry.word, id: entry.id)
+                    self?.redrawMainWindow()
+                }
+            },
             metrics: telemetry.map { MetricsFanOut([diagnostics, $0.recorder]) } ?? diagnostics,
             cleaningRecorder: diagnostics,
             destinationOverrides: settings.destinations,
@@ -2855,6 +2861,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             saveWord(word, pronunciation: pronunciation)
         case .forgetWord(let id):
             act { try await self.dictionary.remove(id) }
+        case .undoLearnedWord(let id):
+            act { try await self.dictionary.remove(id) }
         case .restoreWord(let id):
             act { try await self.dictionary.restore(id) }
 
@@ -3392,13 +3400,23 @@ private struct StoreCounters: DictationLearning {
 /// Teaches the dictionary from a finished dictation, and is the only place the two targets meet.
 struct LearnedVocabulary: VocabularyLearning {
     let dictionary: PersonalDictionaryStore
+    let didLearn: @Sendable ([DictionaryEntry]) async -> Void
+
+    init(
+        dictionary: PersonalDictionaryStore,
+        didLearn: @escaping @Sendable ([DictionaryEntry]) async -> Void = { _ in }
+    ) {
+        self.dictionary = dictionary
+        self.didLearn = didLearn
+    }
 
     func learn(
         heard: String, wrote: String, seeing context: AppContext
     ) async throws(DictationChangeError) {
         do {
-            _ = try await dictionary.learn(
+            let entries = try await dictionary.learn(
                 heard: heard, wrote: wrote, seeing: context, at: Date())
+            await didLearn(entries)
         } catch {
             throw .storeRefused
         }

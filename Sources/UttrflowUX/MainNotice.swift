@@ -31,6 +31,14 @@ extension MainNotice {
     /// What an error nobody foresaw says, so a type name never reaches the screen.
     public static let unforeseenMessage = "Something went wrong. Please try again."
 
+    /// Announces the word a correction just added and offers to remove that inferred entry.
+    public static func learnedCorrection(_ word: String, id: UUID) -> MainNotice {
+        MainNotice(
+            message: "Learned “\(word)” from that correction.",
+            symbolName: "character.book.closed.fill", tone: .neutral,
+            action: MainAction(title: "Undo", intent: .undoLearnedWord(id)))
+    }
+
     /// Explains a first rules-only dictation caused by Apple Intelligence readiness.
     public static func appleIntelligenceUnavailable(_ reason: TransformerUnavailableReason) -> MainNotice {
         let message: String

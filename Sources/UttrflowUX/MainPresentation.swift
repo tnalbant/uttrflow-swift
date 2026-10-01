@@ -35,6 +35,8 @@ public enum MainIntent: Sendable, Equatable {
 
     /// Put a changed word back to what was heard.
     case undoCorrection(UUID)
+    /// Remove a word just inferred from a correction.
+    case undoLearnedWord(UUID)
 
     /// Open the inline word editor; the word arrives on ``saveWord(word:pronunciation:)``.
     case addWord

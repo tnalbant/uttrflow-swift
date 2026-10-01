@@ -1,4 +1,5 @@
 // Tests that a refused main-window change keeps the failure's own sentence and is drawn by what it cost.
+import Foundation
 import UttrflowCore
 import Testing
 
@@ -93,5 +94,14 @@ struct MainNoticeTests {
         #expect(notice.symbolName == "xmark")
         #expect(notice.tone == .good)
         #expect(notice.action == nil)
+    }
+
+    @Test("a newly learned correction is visible and can be undone")
+    func announcesLearnedCorrection() {
+        let id = UUID()
+        let notice = MainNotice.learnedCorrection("Uttrflow", id: id)
+
+        #expect(notice.message.contains("Uttrflow"))
+        #expect(notice.action == MainAction(title: "Undo", intent: .undoLearnedWord(id)))
     }
 }

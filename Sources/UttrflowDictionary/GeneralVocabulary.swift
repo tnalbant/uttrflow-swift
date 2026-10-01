@@ -8,6 +8,9 @@ public enum GeneralVocabulary {
     /// Whether a general model would already expect this word; lowercased and nothing more.
     static func knows(_ word: String) -> Bool { known.contains(word.lowercased()) }
 
+    /// Whether a recogniser is expected to spell this ordinary word already.
+    public static func isOrdinary(_ word: String) -> Bool { knows(ReadingRestraint.closedUp(word)) }
+
     /// Whether this word could be one of the user's own: long enough, has a letter, and not already known.
     static func isWorthLearning(_ word: String) -> Bool {
         word.count >= shortestWorthLearning && word.contains(where: \.isLetter) && !knows(word)
@@ -79,7 +82,7 @@ public enum GeneralVocabulary {
         many much lots weekend quarter daily weekly monthly
         too why where while whom whose off once ago yet else though since until upon per
         via ever soon later things quite rather almost enough instead however therefore
-        actually basically probably definitely hi hey bye cool nice
+        actually basically probably definitely hi hey bye cool nice mint receive separate address occurred
         """)
 
     /// Romanised Hindi and Hinglish glue, so a bilingual user does not end up with a dictionary of `nahi`.
