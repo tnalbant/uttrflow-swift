@@ -543,8 +543,8 @@ public enum SettingsPresenter {
                             id: "quality",
                             label: "Speed and accuracy",
                             explanation:
-                                "Most accurate takes a second or two longer and gets more names, "
-                                + "numbers and technical terms right.",
+                                "Faster uses macOS speech recognition, which does not recognise "
+                                + "Hindi. Use Most accurate for Hindi or Hinglish dictation.",
                             control: .segmented(
                                 options: SettingsTranscriptionQuality.allCases.map(qualityOption),
                                 selectedID: quality.rawValue),

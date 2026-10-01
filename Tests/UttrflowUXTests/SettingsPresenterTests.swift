@@ -568,6 +568,10 @@ struct SettingsDictationPaneTests {
         }
         #expect(selected == SettingsTranscriptionQuality.faster.rawValue)
         #expect(options.count == SettingsTranscriptionQuality.allCases.count)
+        #expect(dictation(settings).row("quality")?.explanation?.contains("does not recognise Hindi") == true)
+        #expect(
+            dictation(settings).row("quality")?.explanation?.contains("Most accurate for Hindi or Hinglish")
+                == true)
     }
 
     @Test("stays operable while either option can still run")
