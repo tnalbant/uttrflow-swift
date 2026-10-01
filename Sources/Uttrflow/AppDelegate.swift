@@ -256,7 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dictionary = PersonalDictionaryStore(
             file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
-        clipboard = ClipboardStore(file: ClipboardStore.defaultFile(in: container))
+        clipboard = ClipboardStore(
+            file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
         super.init()
     }
     private let clipboardWatcher = PasteboardWatcher(source: SystemClipboardSource())

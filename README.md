@@ -371,11 +371,11 @@ re-insert it, and deleted after its retention window. Your dictionary, your hist
 your settings are files on this Mac; signing out does not remove them, and only Reset does.
 
 When you are signed in and Clipboard is enabled, Uttrflow records copies it can keep in
-`~/Library/Application Support/Uttrflow` — plain JSON, with copied pictures as PNG files
-beside it. The folder and files are owner-only (`0o700` folders and `0o600` files), but
-they are not encrypted, so anything running as you can still read them. Clips age out
-after the retention window (seven days by default, five hundred clips) unless you pin
-them. None of it leaves this Mac: there is no clipboard sync.
+`~/Library/Application Support/Uttrflow` — encrypted JSON indexes and encrypted copied
+picture files beside them. Files use a device-only key held in Keychain; the clipboard
+panel decrypts its in-memory copy as needed. Clips age out after the retention window
+(seven days by default, five hundred clips) unless you pin them. None of it leaves this
+Mac: there is no clipboard sync.
 
 - **Password managers' concealed mark is honoured.** Concealed text is treated as a secret
   and is not written to clipboard history or saved clips. See

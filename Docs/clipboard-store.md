@@ -7,8 +7,8 @@ keeps its list in memory as well as on disk.
 The two JSON files and the `Images` folder are local working memory, not backup material. The
 folder and every file written through `PrivateFile` are marked `isExcludedFromBackup`, so backup
 tools that honour Finder's exclusion flag should skip clipboard text, saved clips and copied
-pictures. They are still ordinary owner-only files on the Mac rather than an encrypted store; the
-at-rest boundary is the user's login, FileVault and any encrypted backup volume.
+pictures. JSON indexes and picture bytes are encrypted with the shared device-only Keychain key;
+picture filenames remain visible, and legacy plaintext files migrate in place when read.
 
 ## Why this one caches and the history store does not
 
