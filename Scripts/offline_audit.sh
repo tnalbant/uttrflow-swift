@@ -87,9 +87,6 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 #                        connection, and it happens before any dictation.
 #   the developer CLIs — `uttrflow-dev sign-in` and the evaluation harness. Neither is in
 #                        a shipped product; `Scripts/bundle.sh` is what proves that.
-#   the cue wiring     — `AVAudioEngine.connect(_:to:format:)`, which links two audio nodes
-#                        in-process and shares only its name with BSD `connect(2)`. The file
-#                        holds that one call and nothing else, so nothing rides in with it.
 CLOUD_ISLAND='Sources/UttrflowAI/HTTPCleanupModel.swift'
 DOWNLOAD_ISLAND='Sources/UttrflowSpeech/TokenizerDownload.swift'
 ALLOWED_NETWORK_FILES=(
@@ -101,7 +98,6 @@ ALLOWED_NETWORK_FILES=(
     'Sources/Uttrflow/Onboarding/OnboardingWindowController.swift'
     'Sources/uttrflow-dev/SignIn.swift'
     'Sources/uttrflow-eval/CorpusConnection.swift'
-    'Sources/UttrflowAudio/CueEngineWiring.swift'
 )
 
 # Files that may construct the model hub's client, which is a URLSession underneath. Two
@@ -145,7 +141,8 @@ NETWORK_PATTERN='URLSession|URLRequest|URLProtocol|URLCredential|URLCache|NSURLC
 NETWORK_PATTERN+='|NWConnection|NWListener|NWBrowser|NWEndpoint|NWPathMonitor'
 NETWORK_PATTERN+='|import Network$|import NetworkExtension|nw_[a-z_]+\('
 NETWORK_PATTERN+='|import CFNetwork|CFSocket|CFStream|CFHTTP|NSXPCConnection'
-NETWORK_PATTERN+='|getaddrinfo|\bsocket\(|\bconnect\(|downloadAndInstall|AssetInventory'
+NETWORK_PATTERN+='|getaddrinfo|(^|[^.[:alnum:]_])((Darwin|Glibc)\.)?(socket|connect)\('
+NETWORK_PATTERN+='|downloadAndInstall|AssetInventory'
 NETWORK_PATTERN+='|mlx_distributed|MLXDistributed'
 NETWORK_PATTERN+='|https?://[A-Za-z0-9]'
 

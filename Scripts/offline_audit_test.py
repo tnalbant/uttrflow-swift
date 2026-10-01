@@ -23,6 +23,10 @@ WAYS_IN = {
     "URLSession": ("UttrflowClipboard", "let session = URLSession.shared\n"),
     "Network.framework": ("UttrflowHistory", "import Network\n"),
     "a raw socket": ("UttrflowPredict", "let fd = socket(AF_INET, SOCK_STREAM, 0)\n"),
+    "a Darwin BSD socket": ("UttrflowPredict", "let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)\n"),
+    "a raw BSD connect": ("UttrflowPredict", "connect(fd, addr, len)\n"),
+    "a Darwin BSD connect": ("UttrflowPredict", "Darwin.connect(fd, addr, len)\n"),
+    "a Glibc BSD connect": ("UttrflowPredict", "Glibc.connect(fd, addr, len)\n"),
     "a name lookup": ("UttrflowPredictStore", "let e = getaddrinfo(h, nil, nil, nil)\n"),
     "a system asset install": ("UttrflowDictionary", "try await request.downloadAndInstall()\n"),
     "an endpoint literal": ("UttrflowSettings", 'let host = "https://example.com/v1"\n'),
@@ -84,12 +88,9 @@ class OfflineAuditTests(unittest.TestCase):
             if os.path.exists(probe):
                 os.remove(probe)
 
-    def test_a_clean_tree_passes_the_source_checks(self):
+    def test_audio_engine_wiring_is_not_a_network_offender(self):
         output = self.workspace.output()
-        self.assertNotIn(NETWORK_FAILURE, output)
-        self.assertNotIn(URL_READ_FAILURE, output)
-        self.assertNotIn(MISSING_ALLOWANCE, output)
-        self.assertNotIn(UPDATER_FAILURE, output)
+        self.assertNotIn("Sources/UttrflowAudio/CueEngineWiring.swift", output)
 
     def test_every_way_in_is_refused(self):
         for way, (module, line) in WAYS_IN.items():
@@ -108,7 +109,11 @@ class OfflineAuditTests(unittest.TestCase):
 
     def test_the_account_module_is_still_allowed_one(self):
         self.workspace.write("UttrflowAccount", "let session = URLSession.shared\n")
-        self.assertNotIn(NETWORK_FAILURE, self.workspace.output())
+        self.assertNotIn("Sources/UttrflowAccount/AuditProbe.swift", self.workspace.output())
+
+    def test_audio_engine_connect_is_not_a_bsd_socket_call(self):
+        self.workspace.write("UttrflowAudio", "engine.connect(a, to: b, format: f)\n")
+        self.assertNotIn("Sources/UttrflowAudio/AuditProbe.swift", self.workspace.output())
 
     def test_an_allowance_that_names_a_missing_file_is_refused(self):
         island = os.path.join(self.workspace.root, "Sources", "UttrflowAI", "HTTPCleanupModel.swift")

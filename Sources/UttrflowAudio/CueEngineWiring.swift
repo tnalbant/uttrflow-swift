@@ -1,4 +1,3 @@
-// Holds the one AVAudioEngine call whose name the offline audit reads as a socket, so it is allowed alone.
 import AVFoundation
 
 /// Wires cue player nodes into an output-only engine.
