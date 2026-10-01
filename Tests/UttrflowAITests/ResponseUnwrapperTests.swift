@@ -71,6 +71,38 @@ struct ResponseUnwrapperTests {
         #expect(unwrap("\"We ship on Friday.\"", spoken: "we ship on friday") == "We ship on Friday.")
     }
 
+    @Test(
+        "removes whole-reply Markdown wrappers",
+        arguments: [
+            ("**We ship it today.**", "We ship it today."),
+            ("*We ship it today.*", "We ship it today."),
+            ("__We ship it today.__", "We ship it today."),
+            ("_We ship it today._", "We ship it today."),
+            ("`We ship it today.`", "We ship it today."),
+            ("```\\nWe ship it today.\\n```", "We ship it today."),
+            ("> We ship it today.", "We ship it today."),
+            ("«We ship it today.»", "We ship it today."),
+            ("‘We ship it today.’", "We ship it today."),
+        ])
+    func removesMarkdownWrappers(produced: String, expected: String) {
+        #expect(unwrap(produced, spoken: "we ship it today") == expected)
+    }
+
+    @Test("keeps markup when it was in the dictated text")
+    func keepsSpokenMarkup() {
+        #expect(
+            unwrap("**We ship it today.**", spoken: "**we ship it today**")
+                == "**We ship it today.**")
+        #expect(
+            unwrap("> We ship it today.", spoken: "> we ship it today")
+                == "> We ship it today.")
+    }
+
+    @Test("does not strip a wrapper around only part of the answer")
+    func keepsPartialMarkup() {
+        #expect(unwrap("We ship **it** today.", spoken: "we ship it today") == "We ship **it** today.")
+    }
+
     /// A sentence is the model chatting, not a label, and the guard should still catch it.
     @Test(
         "leaves conversational preambles alone, so the guard still rejects them",
