@@ -24,18 +24,11 @@ public struct PanelPasteReport: Sendable, Equatable {
     /// What VoiceOver says, with the key spelled out.
     public let spoken: String
 
-    /// Silent when the words were seen to arrive or the target cannot say; a sentence otherwise.
+    /// Silent after a text insertion, except when the words are left on the clipboard.
     public static func after(_ result: PanelPasteResult) -> PanelPasteReport? {
         switch result {
         case .text(let attempt) where attempt.method == .clipboard:
             copied
-        case .text(let attempt) where attempt.arrival == .unconfirmed:
-            PanelPasteReport(
-                symbolName: "questionmark.circle", primaryLine: "Inserted — not confirmed",
-                secondaryLine: "Still on the clipboard — press ⌘V if it is missing",
-                spoken:
-                    "Inserted, but not confirmed. It is still on the clipboard, so press Command V "
-                    + "if it is missing.")
         case .text:
             nil
         case .textRefused, .pictureRefused:

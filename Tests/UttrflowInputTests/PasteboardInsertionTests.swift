@@ -254,6 +254,19 @@ struct PasteboardTextInsertionEngineTests {
         #expect(pasteboard.markers["dictated words"] == "org.nspasteboard.TransientType")
     }
 
+    @Test("a panel paste skips reading another app's text field for a notice it will not show")
+    func panelPasteDoesNotConfirmArrival() async throws {
+        let focus = CountingFocus(answer: "inserted words")
+        let sut = PasteboardTextInsertionEngine(
+            focus: focus, pasteboard: FakePasteboard(), keystrokes: FakeKeystrokeSender(),
+            confirmsArrival: false)
+
+        let attempt = try await sut.insert("inserted words")
+
+        #expect(attempt == InsertionAttempt(.pasteboard, arrival: .notReported))
+        #expect(focus.readCount == 0)
+    }
+
     private func engine(
         _ pasteboard: FakePasteboard,
         _ keystrokes: FakeKeystrokeSender,

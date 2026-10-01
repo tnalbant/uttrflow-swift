@@ -8,7 +8,7 @@ import UttrflowCore
 @Suite("What a panel paste says after the panel has closed")
 struct PanelPasteReportTests {
     @Test(
-        "a paste seen to arrive, or one the target cannot report, stays silent",
+        "a successful text insertion stays silent",
         arguments: [
             InsertionArrival.confirmed, .notReported,
         ])
@@ -18,13 +18,10 @@ struct PanelPasteReportTests {
         }
     }
 
-    @Test("a paste that was never seen to arrive says so in the dictation's words")
-    func unconfirmed() throws {
-        let report = try #require(
-            PanelPasteReport.after(.text(InsertionAttempt(.pasteboard, arrival: .unconfirmed))))
-        #expect(report.primaryLine == "Inserted — not confirmed")
-        #expect(report.secondaryLine?.contains("⌘V") == true)
-        #expect(report.spoken.contains("Command V"))
+    @Test("a paste that could not be confirmed stays silent")
+    func unconfirmed() {
+        #expect(
+            PanelPasteReport.after(.text(InsertionAttempt(.pasteboard, arrival: .unconfirmed))) == nil)
     }
 
     @Test("text left on the clipboard, or refused outright, says to press ⌘V")
@@ -54,7 +51,6 @@ struct PanelPasteReportTests {
     @Test("every sentence is spoken with the key spelled out, never as a symbol")
     func spokenWithoutSymbols() {
         let recoverable: [PanelPasteResult] = [
-            .text(InsertionAttempt(.pasteboard, arrival: .unconfirmed)),
             .text(InsertionAttempt(.clipboard)), .textRefused, .pictureRefused,
         ]
         for result in recoverable {

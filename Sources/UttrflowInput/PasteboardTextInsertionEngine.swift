@@ -10,6 +10,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
     private let pasteboard: any Pasteboard
     private let keystrokes: any KeystrokeSender
     private let confirmation: PasteConfirmation
+    private let confirmsArrival: Bool
     private let report: (@Sendable (PasteConfirmation.Outcome) -> Void)?
     /// What was in front when the last paste was posted, which is where its words went.
     private var landedIn: InsertionDestination?
@@ -19,12 +20,14 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         pasteboard: any Pasteboard,
         keystrokes: any KeystrokeSender,
         confirmation: PasteConfirmation? = nil,
+        confirmsArrival: Bool = true,
         reporting: (@Sendable (PasteConfirmation.Outcome) -> Void)? = nil
     ) {
         self.focus = focus
         self.pasteboard = pasteboard
         self.keystrokes = keystrokes
         self.confirmation = confirmation ?? PasteConfirmation(focus: focus)
+        self.confirmsArrival = confirmsArrival
         self.report = reporting
     }
 
@@ -101,9 +104,12 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         guard readback == text else { throw .clipboardUnavailable }
         let verifiedChangeCount = writeChangeCount
         // Read before the paste is posted, so an unchanged caret cannot be read back as a fresh landing.
-        let before = await AccessibilityThread.run(orElse: .unreadable) {
-            focus.tail(upTo: PasteConfirmation.readLength)
-        }
+        let before: FieldTail =
+            confirmsArrival
+            ? await AccessibilityThread.run(orElse: .unreadable) {
+                focus.tail(upTo: PasteConfirmation.readLength)
+            }
+            : .unreadable
         // AX may take long enough for another device or app to replace the clipboard.
         if let verifiedChangeCount, let currentChangeCount = pasteboard.changeCount(),
             currentChangeCount != verifiedChangeCount
@@ -116,9 +122,12 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         // Read as the paste is posted, not after the wait below, so a switch during the wait is not credited.
         landedIn = focus.frontmostApplication()
         // Posting a paste proves nothing, so this waits for the words the way the write above is read back.
-        let outcome = await confirmation.waitFor(text, before: before)
-        // Waited for before the reporter is consulted, so attaching a logger cannot be what switches this on.
-        report?(outcome)
+        let outcome =
+            confirmsArrival
+            ? await confirmation.waitFor(text, before: before)
+            : PasteConfirmation.Outcome.notReported
+        // Panel insertion has no arrival notice, so it does not need to report confirmation either.
+        if confirmsArrival { report?(outcome) }
         // The borrowed clipboard is deliberately never restored. See `Docs/insertion.md`.
         return InsertionArrival(outcome)
     }

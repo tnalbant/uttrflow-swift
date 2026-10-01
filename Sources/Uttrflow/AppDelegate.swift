@@ -292,9 +292,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     lazy var clipInserter: any TextInserting = TextInsertion.coordinator(
         pasteboard: announcingPasteboard)
 
+    /// Panel pastes do not read another app's text field just to decide whether to show a notice.
+    private lazy var panelClipInserter: any TextInserting = TextInsertion.coordinator(
+        pasteboard: announcingPasteboard, confirmsArrival: false)
+
     /// The same for a secret clip, whose words reach the clipboard only with the concealed marker.
     private lazy var secretInserter = TextInsertion.coordinator(
         pasteboard: ConcealingPasteboard(announcingPasteboard))
+
+    /// The panel's concealed route follows the same no-confirmation rule as ordinary clips.
+    private lazy var panelSecretInserter = TextInsertion.coordinator(
+        pasteboard: ConcealingPasteboard(announcingPasteboard), confirmsArrival: false)
 
     /// The panel's state while it is open, held here because a window has no memory.
     private var panel: PanelSnapshot?
@@ -1674,16 +1682,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .closeAndInsertFormatted(let text, let richText, let used):
             let destination = panelTarget ?? InsertionDestination(applicationName: nil, bundleIdentifier: nil)
             closeQuickPanel()
-            insert(text, richText: richText, targeting: destination, used: used)
+            insert(text, richText: richText, targeting: destination, used: used, forPanel: true)
         case .closeAndInsert(let text, let used):
             // Closed first: insertion declines outright while Uttrflow is frontmost.
             let destination = panelTarget ?? InsertionDestination(applicationName: nil, bundleIdentifier: nil)
             closeQuickPanel()
-            insert(text, targeting: destination, used: used)
+            insert(text, targeting: destination, used: used, forPanel: true)
         case .closeAndInsertConcealed(let text, let used):
             let destination = panelTarget ?? InsertionDestination(applicationName: nil, bundleIdentifier: nil)
             closeQuickPanel()
-            insert(text, concealed: true, targeting: destination, used: used)
+            insert(text, concealed: true, targeting: destination, used: used, forPanel: true)
         case .copyAndSay(let text, let notice, let used):
             // Stays open: the panel is the only surface left to say this on.
             putOnClipboard(text, used: used)
@@ -2010,10 +2018,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Puts text where the caret is, through the coordinator whose last strategy cannot fail.
     private func insert(
         _ text: String, richText: String? = nil, concealed: Bool = false,
-        targeting destination: InsertionDestination? = nil, used: Clip.ID?
+        targeting destination: InsertionDestination? = nil, used: Clip.ID?, forPanel: Bool = false
     ) {
         markUsed(used)
-        let clipInserter = concealed ? secretInserter : clipInserter
+        let clipInserter: any TextInserting =
+            switch (forPanel, concealed) {
+            case (true, true): panelSecretInserter
+            case (true, false): panelClipInserter
+            case (false, true): secretInserter
+            case (false, false): self.clipInserter
+            }
         Task { [weak self, clipInserter] in
             do {
                 let attempt: InsertionAttempt
@@ -2023,11 +2037,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     attempt = try await clipInserter.insert(text, richText: richText)
                 }
                 Self.log.info(
-                    """
-                    clip inserted by \(attempt.method.rawValue, privacy: .public) \
-                    arrival=\(attempt.arrival.rawValue, privacy: .public)
-                    """)
-                self?.reportPanelPaste(.text(attempt))
+                    "clip inserted by \(attempt.method.rawValue, privacy: .public)"
+                        + (forPanel ? "" : " arrival=\(attempt.arrival.rawValue, privacy: .public)"))
+                if forPanel { self?.reportPanelPaste(.text(attempt)) }
             } catch {
                 // Every strategy refused, including the one that cannot.
                 let why = (error as? any UttrflowFailure)?.userMessage ?? SuggestionLog.failure(error)
