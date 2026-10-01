@@ -65,8 +65,13 @@ public struct DictationFailure: Sendable, Equatable {
 
     /// The same failure, marked as meant for a field that hides what is typed.
     public func markingSecure(_ secure: Bool) -> DictationFailure {
+        let cannotCopySecureTranscript = secure && recovery == .copyTranscript
         DictationFailure(
-            message: message, recovery: recovery, severity: severity, transcript: transcript,
+            message: cannotCopySecureTranscript
+                ? "The secure field didn't accept the text. The clipboard is unchanged, and the words were not kept."
+                : message,
+            recovery: cannotCopySecureTranscript ? nil : recovery,
+            severity: severity, transcript: transcript,
             intoSecureField: secure, speechEngineKind: speechEngineKind,
             speechEngineError: speechEngineError)
     }

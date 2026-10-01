@@ -12,6 +12,7 @@ struct DockAccessibilityTests {
     /// One value of every recovery the button can offer, since an associated value keeps the enum uncountable.
     nonisolated private static let everyRecovery: [RecoveryAction] = [
         .openSystemSettings(.accessibility), .retry, .downloadSpeechModel, .pasteManually,
+        .copyTranscript,
         .showRecentDictations, .retryFromRecording,
     ]
 

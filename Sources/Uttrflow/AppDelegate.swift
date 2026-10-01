@@ -1200,8 +1200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             cleaner: cleaner(for: settings),
             context: context,
             // Announced, like every write this app makes. See `Docs/insertion.md`.
-            inserter: TextInsertion.coordinator(
-                pasteboard: announcingPasteboard, reporting: Self.logPaste),
+            inserter: TextInsertion.dictation(),
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
             corrector: DictionaryCorrections(dictionary: dictionary),
             snippets: StoredSnippets(store: snippets),
@@ -2264,24 +2263,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Records how long the receiving application took to take a paste, which nothing else can observe.
-    @Sendable private nonisolated static func logPaste(_ outcome: PasteConfirmation.Outcome) {
-        switch outcome {
-        case .landed(let waited):
-            log.notice(
-                "paste landed after \(waited.inSeconds, format: .fixed(precision: 2), privacy: .public)s")
-        case .notReported:
-            log.notice("paste unconfirmed: the field does not report what it holds")
-        case .gaveUp(let waited):
-            log.notice(
-                "paste not seen within \(waited.inSeconds, format: .fixed(precision: 2), privacy: .public)s")
-        case .cancelled(let waited):
-            let seconds = waited.inSeconds
-            log.notice(
-                "paste wait cancelled after \(seconds, format: .fixed(precision: 2), privacy: .public)s")
-        }
-    }
-
     /// Redraws the menu bar and the floating button's hint when secure keyboard entry turns on or off.
     private func checkSecureInput() {
         guard secureInput.check() else { return }
@@ -3221,6 +3202,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             show(.onboarding)
         case .pasteManually:
             // Already on the clipboard, put there by the insertion floor before it reported failure.
+            Task { await pipeline?.acknowledge() }
+        case .copyTranscript:
+            if case .failed(let failure) = lastDictationState, let text = failure.wordsToKeep {
+                putOnClipboard(text, concealed: DictationTextPresentation(text).isSecret, used: nil)
+            }
             Task { await pipeline?.acknowledge() }
         case .showRecentDictations:
             // Delivery was unconfirmed or the clipboard failed; Recent has the saved words.

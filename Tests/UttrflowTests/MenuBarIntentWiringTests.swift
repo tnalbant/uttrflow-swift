@@ -25,6 +25,7 @@ private func reach(of intent: MenuBarIntent) -> Reach {
     case .recover(.downloadSpeechModel): .opens(.onboarding)
     case .recover(.retryFromRecording): .opens(.main(.history))
     case .recover(.openSystemSettings), .recover(.retry), .recover(.pasteManually),
+        .recover(.copyTranscript),
         .recover(.showRecentDictations):
         .system
     case .insertRecent, .copyRecent, .insertClip, .copyClip: .nothing
@@ -67,6 +68,7 @@ private let samples: [MenuBarIntent] =
     + [
         .recover(.openSystemSettings(.microphone)), .recover(.retry), .recover(.downloadSpeechModel),
         .recover(.pasteManually), .recover(.showRecentDictations), .recover(.retryFromRecording),
+        .recover(.copyTranscript),
     ]
     + [0, 7].flatMap { index -> [MenuBarIntent] in
         [

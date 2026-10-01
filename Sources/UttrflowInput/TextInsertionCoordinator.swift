@@ -85,7 +85,16 @@ public struct TextInsertionCoordinator: TextInserting {
                 intoSecureField: true)
         case .exhausted(let errors):
             // The last strategy's reason is the most specific; the earlier refusals are expected.
-            throw errors.compactMap { $0 as? TextInsertionError }.last ?? .clipboardUnavailable
+            let failure = errors.compactMap { $0 as? TextInsertionError }.last ?? .clipboardUnavailable
+            let keepsClipboard = strategies.contains { $0.method == .clipboard }
+            let canType = strategies.contains { $0.method == .typed }
+            if canType, !keepsClipboard {
+                switch failure {
+                case .clipboardChanged, .insertionUnconfirmed, .insertionTargetChanged: throw failure
+                default: throw .insertionNeedsCopy(description: failure.userMessage)
+                }
+            }
+            throw failure
         }
     }
 }

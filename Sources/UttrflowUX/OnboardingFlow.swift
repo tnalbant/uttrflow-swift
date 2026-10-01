@@ -309,7 +309,7 @@ public final class OnboardingFlow {
             await refresh()
         case .downloadSpeechModel:
             await enter(.setup)
-        case .pasteManually, .showRecentDictations, .retryFromRecording:
+        case .pasteManually, .showRecentDictations, .retryFromRecording, .copyTranscript:
             // Offered by failures elsewhere in the app, never by a page here; ignored.
             break
         }

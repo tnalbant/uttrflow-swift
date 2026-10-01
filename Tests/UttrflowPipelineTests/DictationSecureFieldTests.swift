@@ -244,6 +244,18 @@ struct DictationSecureFieldTests {
         #expect(failure.recovery == .pasteManually)
         #expect(failure.wordsToKeep == nil)
     }
+
+    @Test("a refused secure-field dictation never offers to copy the secret")
+    func secureFailureSuppressesCopyAction() {
+        let failure = DictationFailure(
+            TextInsertionError.insertionNeedsCopy(description: "unsupported character"),
+            transcript: passphrase
+        ).markingSecure(true)
+
+        #expect(failure.recovery == nil)
+        #expect(failure.wordsToKeep == nil)
+        #expect(failure.message.contains("words were not kept"))
+    }
 }
 
 @Suite("The floating button shows none of a secure field's words")

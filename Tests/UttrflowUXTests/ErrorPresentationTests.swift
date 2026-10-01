@@ -183,6 +183,7 @@ struct ErrorPresentationTests {
         #expect(FailurePresenter.title(for: .retry) == "Try Again")
         #expect(FailurePresenter.title(for: .downloadSpeechModel) == "Finish Setup")
         #expect(FailurePresenter.title(for: .pasteManually) == "Dismiss")
+        #expect(FailurePresenter.title(for: .copyTranscript) == "Copy")
         #expect(FailurePresenter.title(for: .showRecentDictations) == "Show Recent")
     }
 
@@ -191,6 +192,7 @@ struct ErrorPresentationTests {
         let actions: [RecoveryAction] = [
             .openSystemSettings(.microphone), .openSystemSettings(.accessibility),
             .openSystemSettings(.appleIntelligence), .retry, .downloadSpeechModel, .pasteManually,
+            .copyTranscript,
             .showRecentDictations, .retryFromRecording,
         ]
 

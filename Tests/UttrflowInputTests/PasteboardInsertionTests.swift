@@ -693,6 +693,65 @@ private final class PanelRouteTypist: KeystrokeTyping, @unchecked Sendable {
     func canType(_ text: String) -> Bool { true }
 }
 
+@Suite("Clipboard-free dictation insertion")
+struct ClipboardFreeDictationInsertionTests {
+    @Test("uses Accessibility then typing and never borrows or writes the clipboard")
+    func routeLeavesClipboardAlone() async throws {
+        let pasteboard = FakePasteboard(text: "the user's copy")
+        let typist = RouteRecordingTypist()
+        let coordinator = TextInsertion.dictation(focus: FakeFocus(field: nil), typist: typist)
+
+        #expect(coordinator.route == [.accessibility, .typed])
+        let attempt = try await coordinator.insert("dictated words")
+
+        #expect(attempt.method == .typed)
+        #expect(typist.text == ["dictated words"])
+        #expect(pasteboard.text() == "the user's copy")
+        #expect(pasteboard.writes.isEmpty)
+    }
+
+    @Test("the named dictation route contains no pasteboard strategy")
+    func routeIsAccessibilityThenTyping() {
+        #expect(TextInsertion.dictation().route == [.accessibility, .typed])
+    }
+
+    @Test("refused typing becomes a truthful copy action instead of a clipboard claim")
+    func refusesWithoutReplacingClipboard() async {
+        let coordinator = TextInsertion.dictation(
+            focus: FakeFocus(field: nil),
+            typist: RouteRecordingTypist(error: .insertionRejected(description: "unsupported character")))
+
+        await #expect(
+            throws: TextInsertionError.insertionNeedsCopy(
+                description: TextInsertionError.insertionRejected(
+                    description: "unsupported character"
+                ).userMessage)
+        ) {
+            try await coordinator.insert("dictated words")
+        }
+    }
+}
+
+private final class RouteRecordingTypist: KeystrokeTyping, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    private let error: TextInsertionError?
+    init(error: TextInsertionError? = nil) { self.error = error }
+    var text: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+    func type(_ text: String) throws(TextInsertionError) {
+        if let error { throw error }
+        lock.lock()
+        values.append(text)
+        lock.unlock()
+    }
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
+    func canType(_ text: String) -> Bool { true }
+}
+
 @Suite("ClipboardTextInsertionEngine")
 struct ClipboardTextInsertionEngineTests {
     @Test("marks the clipboard floor as generated while ordinary copies stay unmarked")
