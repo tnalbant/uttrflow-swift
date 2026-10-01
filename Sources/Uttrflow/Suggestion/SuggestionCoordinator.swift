@@ -416,7 +416,6 @@ final class SuggestionCoordinator {
             }
             if Self.mayMoveFocus(keyCode: event.keyCode, modifiers: event.modifierFlags) {
                 FocusedFieldReader.focusMayHaveMoved()
-                MainActor.assumeIsolated { self?.focusedFieldValueObserver.refresh() }
             }
             MainActor.assumeIsolated { self?.keyPressed(Key(keyCode: event.keyCode), typing: text) }
         }
@@ -779,7 +778,12 @@ final class SuggestionCoordinator {
         let keystrokesSeen = session.keystrokes
         let shouldRead = Self.shouldRead(
             front: front, own: ownBundleIdentifier, preferences: preferences, at: Date())
+        let readStarted = Date()
         let read = shouldRead ? await FocusedFieldReader.read() : nil
+        let readElapsed = Int(Date().timeIntervalSince(readStarted) * 1_000)
+        Self.log.debug(
+            "FIELD_READ front=\(front, privacy: .public) attempted=\(shouldRead) elapsedMs=\(readElapsed) read=\(read != nil)"
+        )
         guard turns.isCurrent(number) else { return }
         composingAtLastRead = read?.markedText == .present
         Self.log.debug(
@@ -789,7 +793,6 @@ final class SuggestionCoordinator {
             draw(session.turn(in: nil, at: PredictionContext(typed: "")).step)
             return
         }
-        // The clock starts after the field read, so the cross-process read is not charged against the budget.
         let started = Date()
         guard preferences.isEnabled(in: snapshot.bundleIdentifier, at: started) else {
             Self.log.debug(

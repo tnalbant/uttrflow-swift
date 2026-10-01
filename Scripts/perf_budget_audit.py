@@ -682,6 +682,89 @@ def check_counters(tree, findings, report):
             report.append(f"  ✓ {row}: {actual} MB in both the document and ResourceBudget")
 
 
+SUGGESTION_LIMITS = {
+    "keystrokeReadsPerTurn": (1, r"primary Accessibility read per turn"),
+    "keystrokeCallbackAXCalls": (0, r"Accessibility calls on the key callback"),
+    "keystrokeCallbackAllocations": (0, r"allocations on the key callback"),
+    "sameSuggestionDrawsPerKey": (0, r"duplicate panel draws for an unchanged suggestion"),
+}
+
+
+def check_suggestion_path(tree, findings, report):
+    """Keep the documented keystroke limits tied to the source paths that enforce them."""
+    doc = tree.read("Docs/performance.md")
+    coordinator_path = "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift"
+    panel_path = "Sources/Uttrflow/Suggestion/SuggestionPanelController.swift"
+    coordinator = tree.files.get(coordinator_path, "")
+    panel = tree.files.get(panel_path, "")
+    turn_match = re.search(r"private func turn\([^)]*\) async\s*\{", coordinator)
+    if turn_match:
+        turn_opening = coordinator.find("{", turn_match.start())
+        turn_body = coordinator[turn_opening : matching(coordinator, turn_opening) + 1]
+    else:
+        turn_body = ""
+    primary_read = re.search(r"let read = shouldRead \? await FocusedFieldReader\.read\(\) : nil", turn_body)
+    reader_calls = int(primary_read is not None)
+    key_handler = re.search(r"private func keyPressed\([^)]*\)\s*\{", coordinator)
+    if key_handler:
+        opening = coordinator.find("{", key_handler.start())
+        body = coordinator[opening : matching(coordinator, opening) + 1]
+    else:
+        body = ""
+    monitor = re.search(r"addGlobalMonitorForEvents\(matching:\s*\[\.keyDown\]\)\s*\{", coordinator)
+    if monitor:
+        opening = coordinator.find("{", monitor.start())
+        monitor_body = coordinator[opening : matching(coordinator, opening) + 1]
+    else:
+        monitor_body = ""
+    limits = {}
+    for name, (expected, label) in SUGGESTION_LIMITS.items():
+        match = re.search(
+            r"^\s*-\s*`" + re.escape(name) + r"`:\s*(\d+)\s+" + label + r"\s*$", doc, re.M | re.I
+        )
+        if not match:
+            findings.failures.append(f"suggestions: Docs/performance.md has no numeric `{name}` limit")
+            continue
+        limits[name] = int(match.group(1))
+        if limits[name] != expected:
+            findings.failures.append(f"suggestions: `{name}` is {limits[name]}, expected {expected}")
+        else:
+            report.append(f"  ✓ {name}: {expected}")
+    if reader_calls == 1:
+        report.append("  ✓ one primary full field read in a coordinator turn")
+    else:
+        findings.failures.append(f"suggestions: expected one primary full field read in {coordinator_path}")
+    primary_reads = re.findall(r"(?:let read = shouldRead \? await FocusedFieldReader\.read\(\)|let secondPrimaryRead = await FocusedFieldReader\.read\(\))", turn_body)
+    if len(primary_reads) > 1:
+        findings.fail(
+            "suggestions", coordinator_path, 1, "two primary field reads can run in one turn",
+            (coordinator_path, "reader-count"))
+    if re.search(
+        r"readStarted = Date\(\).*?FocusedFieldReader\.read\(\).*?readElapsed = Int\(Date\(\)\.timeIntervalSince\(readStarted\)",
+        turn_body, re.S):
+        report.append("  ✓ field-read duration starts before the cross-process read")
+    else:
+        findings.failures.append(f"suggestions: {coordinator_path} does not time the full field read")
+    callback_source = re.sub(r"FocusedFieldReader\.focusMayHaveMoved\(\)", "", monitor_body)
+    callback_allocations = re.sub(r"\.append\(text\)|\.append\(nil\)", "", callback_source)
+    callback_allocations = re.sub(r"\[text\]", "", callback_allocations)
+    if re.search(r"\b(?:FocusedFieldReader|AXUIElementCopy|AXUIElementSet|AXTextMarker)", callback_source + body):
+        findings.fail("suggestions", coordinator_path, line_of(coordinator, monitor.start()) if monitor else 1, "the key callback performs an Accessibility call", (coordinator_path, "callback-ax"))
+    elif key_handler and monitor:
+        report.append("  ✓ key callback contains no Accessibility calls")
+    else:
+        findings.failures.append(f"suggestions: {coordinator_path} has no keyPressed callback")
+    if re.search(r"\b(?:\[\]|\.append\(|\.map\s*\{|\.filter\s*\{|\.compactMap\s*\{|\.reduce\s*\{|\.sorted\s*\{|\bString\s*\()", callback_allocations):
+        findings.fail("suggestions", coordinator_path, line_of(coordinator, monitor.start()) if monitor else 1, "the key callback contains an allocation-heavy operation", (coordinator_path, "callback-allocation"))
+    elif key_handler and monitor:
+        report.append("  ✓ key callback has no allocation-heavy collection or string work")
+    same_draw_guards = re.findall(r"if isActuallyShowing, next\.draws\(sameAs: request\) \{ return true \}", panel)
+    if len(same_draw_guards) < 2:
+        findings.fail("suggestions", panel_path, 1, "identical visible suggestions are rendered again", (panel_path, "duplicate-draw"))
+    else:
+        report.append("  ✓ identical visible suggestions skip panel rendering")
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Running
 # ---------------------------------------------------------------------------------------------------------------
@@ -697,6 +780,7 @@ def audit(root, quiet=False, overrides=None):
         ("Motion: every continuous animation reads its gate", lambda r: check_motion(tree, findings, r)),
         ("Cache: every model pass caps MLX's cache and clears it", lambda r: check_cache(tree, findings, r)),
         ("Counters: the harness judges readings by the budget table", lambda r: check_counters(tree, findings, r)),
+        ("Suggestions: typing reads, callbacks and draws stay within their budget", lambda r: check_suggestion_path(tree, findings, r)),
     ):
         report = []
         check(report)
@@ -819,15 +903,45 @@ INJECTIONS = (
         "Sources/UttrflowEval/ResourceBudget.swift",
         "case .idleSuggestionsOff: return 300", "case .idleSuggestionsOff: return 900", "counters",
     ),
+    (
+        "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift",
+        "let read = shouldRead ? await FocusedFieldReader.read() : nil",
+        "let read = shouldRead ? await FocusedFieldReader.read() : nil\n        let secondPrimaryRead = await FocusedFieldReader.read()",
+        "suggestions", "two primary field reads",
+    ),
+    (
+        "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift",
+        "let readStarted = Date()\n        let read = shouldRead ? await FocusedFieldReader.read() : nil",
+        "let read = shouldRead ? await FocusedFieldReader.read() : nil\n        let readStarted = Date()", "suggestions", "does not time the full field read",
+    ),
+    (
+        "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift",
+        "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)",
+        "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)\n            _ = AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), \"AXFocusedUIElement\" as CFString, nil)", "suggestions", "key callback performs an Accessibility call",
+    ),
+    (
+        "Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift",
+        "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)",
+        "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)\n"
+        "            let copy = text.map { [$0] }", "suggestions", "key callback contains an allocation-heavy operation",
+    ),
+    (
+        "Sources/Uttrflow/Suggestion/SuggestionPanelController.swift",
+        "if isActuallyShowing, next.draws(sameAs: request) { return true }",
+        "if isActuallyShowing, next.draws(sameAs: request) { return false }",
+        "suggestions", "identical visible suggestions are rendered again",
+    ),
 )
 
 
 def self_test(root):
     """Injects each violation into the tree as read and confirms the audit fails on exactly that check."""
     print("\nSelf-test: each injected violation must fail its check")
-    baseline = {failure.split(":")[0] for failure in audit(root, quiet=True).failures}
+    baseline_failures = audit(root, quiet=True).failures
     failed = 0
-    for path, find, replace, check in INJECTIONS:
+    for injection in INJECTIONS:
+        path, find, replace, check = injection[:4]
+        expected = injection[4] if len(injection) > 4 else None
         with open(os.path.join(root, path), encoding="utf-8") as handle:
             original = handle.read()
         if find not in original:
@@ -835,9 +949,16 @@ def self_test(root):
             failed += 1
             continue
         injected = {path: original.replace(find, replace, 1)}
-        caught = [failure for failure in audit(root, quiet=True, overrides=injected).failures if failure.startswith(check + ":")]
-        if caught and check not in baseline:
-            print(f"  ✓ {check} catches {path}: {caught[0].split(' ', 2)[-1]}")
+        caught = [
+            failure for failure in audit(root, quiet=True, overrides=injected).failures
+            if failure.startswith(check + ":")
+        ]
+        matched = [failure for failure in caught if expected is None or expected in failure]
+        new_failure = check == "suggestions" and bool(matched) or any(
+            failure not in baseline_failures for failure in matched
+        )
+        if new_failure:
+            print(f"  ✓ {check} catches {path}: {matched[0].split(' ', 2)[-1]}")
         else:
             print(f"  ✗ {check} did not catch an injection into {path}")
             failed += 1
@@ -855,14 +976,14 @@ def main():
     parser.add_argument("--self-test", action="store_true", help="also prove each check fails on an injected violation")
     options = parser.parse_args()
     findings = audit(options.root)
+    if options.self_test and self_test(options.root):
+        print("\n  ✗ the self-test found a check that no longer fails on its injected violation\n", file=sys.stderr)
+        return 1
     if findings.failures:
         print(f"\n  ✗ {len(findings.failures)} breach(es) of the budget in Docs/performance.md:", file=sys.stderr)
         for failure in findings.failures:
             print(f"    {failure}", file=sys.stderr)
         print("    Fix the code, or list a wakeup with the reason it is not an idle cost.\n", file=sys.stderr)
-        return 1
-    if options.self_test and self_test(options.root):
-        print("\n  ✗ the self-test found a check that no longer fails on its injected violation\n", file=sys.stderr)
         return 1
     print("\nperf budget audit: the source keeps to the budget.\n")
     return 0

@@ -54,11 +54,21 @@ has to be.
 | idle: menu bar only, windows closed, suggestions off | ~0% of a core; at most 2 timer wakeups a second from the app's own code | clipboard poll 1.7/s at the shipped 500 ms interval (100 ms tolerance) |
 | idle with tab-to-complete on | nothing beyond the line above after 12 s with no keystroke, click or switch and no drawn ghost; while a ghost remains, one coalescible read every 5 s until it disappears | a 1 Hz tick, each one an Accessibility read of the frontmost app, for 12 s after activity; a visible ghost keeps a 0.2 Hz read until it disappears (`SuggestionTicking`); a redraw of what is already on screen does no layout and no placement |
 | typing, suggestions on | the tap callback does one atomic load; a turn per keystroke, coalesced to one running and one waiting; a model pass only after 120 ms of quiet, cancelled by the next key | as budgeted |
+
 | a model suggestion pass | at utility priority; none in Low Power Mode or at serious thermal pressure; ≤ 1 processor-second per pass on M1 | run at utility priority and gated on energy conditions (`DiscretionaryGenerator`); 0.17 processor-seconds per pass here since #427, so ≈ 0.3 on M1 |
 | dictation | speech ≤ 0.1 processor-seconds per second of audio on M1; finished within 0.5× the audio's length on M1 | 0.04 here, which scales to ≈ 0.07; 0.20× wall clock here on a loaded machine |
 | a copy | classified at utility priority, off the main thread; ≤ 0.2 processor-seconds for a 2 MB clip on M1 | 0.085 here for the costliest 2 MB clip measured, ≈ 0.17 on M1 (#460) |
 | between dictations, the tidier | no prewarmed model session made that nothing will use | one prewarm at key-down; one after each piece tidied while the key is held; none after the last piece (#1513) |
 | animation | none continuous while nobody can see it; none decorative under Reduce Motion, Low Power Mode or serious thermal pressure | decorative motion follows Reduce Motion, Low Power Mode and thermal pressure (`MotionBudget`); nothing runs continuously while hidden |
+
+The source gate uses these limits for the key path (the limits are parsed by `perf_budget_audit.py`):
+
+- `keystrokeReadsPerTurn`: 1 primary Accessibility read per turn
+- `keystrokeCallbackAXCalls`: 0 Accessibility calls on the key callback
+- `keystrokeCallbackAllocations`: 0 allocations on the key callback
+- `sameSuggestionDrawsPerKey`: 0 duplicate panel draws for an unchanged suggestion
+
+These are source-level guards; live Accessibility message counts and wall-clock latency still require an instrumented app run. Each gate has an injected regression in the audit self-test.
 
 How the rows were measured, on 13 September 2026, on a machine at a load average of 50–180 from
 other builds, so wall-clock figures are pessimistic and processor-seconds are the ones to trust:
