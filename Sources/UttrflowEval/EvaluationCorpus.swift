@@ -98,6 +98,37 @@ public enum EvaluationCorpus {
             mustKeep: ["Friday"]
         ),
         .init(
+            id: "false-start-new-words-article", category: .everyday,
+            spoken: "I went to the I'll call you later",
+            expected: "I'll call you later."
+        ),
+        .init(
+            id: "false-start-new-words-repeated-subject", category: .everyday,
+            spoken: "can we we should just cancel",
+            expected: "We should just cancel."
+        ),
+        .init(
+            id: "false-start-new-words-let-me", category: .everyday,
+            spoken: "let me I'll send it tomorrow",
+            expected: "I'll send it tomorrow."
+        ),
+        .init(
+            id: "false-start-new-words-going-to", category: .everyday,
+            spoken: "she was going to she decided to stay",
+            expected: "She decided to stay."
+        ),
+        .init(
+            id: "false-start-new-words-topic", category: .everyday,
+            spoken: "the problem is what I wanted to say is the server is slow",
+            expected: "What I wanted to say is the server is slow."
+        ),
+        .init(
+            id: "false-start-clause-complete-said-go", category: .everyday,
+            spoken: "I said I'd go",
+            expected: "I said I'd go.",
+            mustKeep: ["said", "go"]
+        ),
+        .init(
             id: "self-correction", category: .everyday,
             spoken: "let's meet at four no sorry at five on tuesday",
             expected: "Let's meet at five on Tuesday.",

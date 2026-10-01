@@ -33,7 +33,7 @@ struct CleaningStepsTests {
     func offeredOrder() {
         #expect(
             CleaningSteps.offered.map(\.id) == [
-                .fillers, .stammers, .repeatedPhrase, .selfCorrection, .spokenPunctuation,
+                .fillers, .repeatedPhrase, .stammers, .selfCorrection, .spokenPunctuation,
                 .layoutWords, .numberForms, .contractions, .spacing,
             ])
     }

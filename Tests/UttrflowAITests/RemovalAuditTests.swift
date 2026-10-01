@@ -35,6 +35,12 @@ struct RemovalAuditTests {
         arguments: [
             "um we should uh ship it today",
             "so I was I was I was thinking we could ship",
+            "um I went to the I'll call you later",
+            "I went to the I'll call you later",
+            "can we we should just cancel",
+            "let me I'll send it tomorrow",
+            "she was going to she decided to stay",
+            "the problem is what I wanted to say is the server is slow",
             "just checking in on the the design review",
             "let's meet at four no sorry at five on tuesday",
             "the build is not ready no the build is ready",

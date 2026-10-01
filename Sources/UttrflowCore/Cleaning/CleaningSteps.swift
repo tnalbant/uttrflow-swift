@@ -44,11 +44,11 @@ public struct CleaningSteps: Sendable, Equatable, Codable {
             id: .fillers, name: "Filler words",
             detail: "Takes out um, uh, hmm and the rest of what was never meant as words."),
         CleaningStep(
+            id: .repeatedPhrase, name: "Repeated phrases",
+            detail: "Takes out repeated words and a few incomplete starts the speaker restarts."),
+        CleaningStep(
             id: .stammers, name: "Stammers",
             detail: "Takes out a short word said twice in a row."),
-        CleaningStep(
-            id: .repeatedPhrase, name: "Repeated phrases",
-            detail: "Takes out a few words said twice in a row."),
         CleaningStep(
             id: .selfCorrection, name: "Self-corrections",
             detail: "Takes out the half you took back before \"no, sorry\" or \"I mean\"."),

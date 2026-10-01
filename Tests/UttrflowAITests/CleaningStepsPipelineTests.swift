@@ -13,7 +13,7 @@ struct CleaningStepsPipelineTests {
         #expect(built == CleaningPipeline.standard.ids)
         #expect(
             built == [
-                .fillers, .stammers, .repeatedPhrase, .selfCorrection, .spokenPunctuation,
+                .fillers, .repeatedPhrase, .stammers, .selfCorrection, .spokenPunctuation,
                 .layoutWords, .numberForms, .contractions, .spelledInitialism, .spacing, .firstWord,
                 .terminalStop,
             ])

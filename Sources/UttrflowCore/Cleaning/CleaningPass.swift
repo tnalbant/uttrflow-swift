@@ -2,7 +2,7 @@
 public enum RemovalGrant: Sendable, Equatable {
     /// A sound that was never a word, so never a numeral or a word written in capitals.
     case sound
-    /// The first saying of words said again straight after it.
+    /// A stammer or incomplete first saying whose restart remains in the text.
     case repetition
     /// The half of a correction the speaker took back, with the trigger that announced it.
     case retraction
