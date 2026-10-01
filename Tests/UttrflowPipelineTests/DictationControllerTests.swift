@@ -758,6 +758,20 @@ struct DictationControllerStopGestureTests {
         #expect(await harness.controller.currentStopGesture == .letGo)
     }
 
+    @Test("a control-started recording tells the dock that a click can finish it")
+    func controlStartReportsClickAgain() async {
+        let spy = StopGestureSpy()
+        let harness = makeHarness(activation: .holdToTalk, gestureSpy: spy)
+
+        await harness.controller.toggleFromControl()
+
+        #expect(await harness.controller.currentStopGesture == .clickAgain)
+        #expect(spy.recorded == [.letGo, .clickAgain])
+        await harness.controller.handle(.escapePressed)
+        #expect(await harness.controller.currentStopGesture == .letGo)
+        #expect(spy.recorded == [.letGo, .clickAgain, .letGo])
+    }
+
     /// A press-to-toggle shortcut stays waiting for the next press even while the microphone is live.
     @Test("press-to-toggle says the shortcut must be pressed again to stop, not let go")
     func toggleIsPressAgain() async {
@@ -870,6 +884,20 @@ struct DictationControllerControlTests {
         await harness.controller.toggleFromControl()
         #expect(harness.inserter.received == [controllerTidied], "the second click finished it")
         #expect(await harness.capture.calls.events == [.start, .stop], "stopped, not cancelled")
+    }
+
+    @Test("a shortcut hold still finishes a recording started by a click")
+    func shortcutFinishesClickStartedRecording() async {
+        let harness = makeHarness(activation: .holdToTalk)
+        await harness.controller.toggleFromControl()
+
+        await harness.controller.handle(.pressed)
+        harness.clock.advance(by: .seconds(1))
+        await harness.controller.handle(.released)
+
+        #expect(!(await harness.pipeline.currentState.isListening))
+        #expect(harness.inserter.received == [controllerTidied])
+        #expect(await harness.controller.currentStopGesture == .letGo)
     }
 
     @Test("clicking twice does not start a second dictation over the first")

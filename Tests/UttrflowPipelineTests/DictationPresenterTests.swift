@@ -114,6 +114,13 @@ struct RecordingInstructionTests {
             "a hold should not say press")
     }
 
+    @Test("a control-started recording asks for a click to finish")
+    func controlStartAsksForClickToFinish() {
+        let dock = DictationPresenter.dock(for: .recording, stopGesture: .clickAgain)
+        #expect(dock.primaryLine == "Click to finish")
+        #expect(dock.accessibilityLabel == "Listening. Click the button again to finish.")
+    }
+
     @Test("press-to-toggle tells the user to press again, never to let go")
     func pressToToggleTellsYouToPressAgain() {
         let dock = DictationPresenter.dock(for: .recording, stopGesture: .pressAgain)
@@ -137,7 +144,7 @@ struct RecordingInstructionTests {
 
     @Test("every gesture still keeps the recording indicator and waveform on")
     func gesturesKeepTheRecordingLights() {
-        for gesture in [StopGesture.letGo, .pressAgain, .pressAgainHandsFree] {
+        for gesture in [StopGesture.letGo, .clickAgain, .pressAgain, .pressAgainHandsFree] {
             let dock = DictationPresenter.dock(for: .recording, stopGesture: gesture)
             #expect(dock.isRecording == true, "\(gesture) turned off isRecording")
             #expect(dock.showsWaveform == true, "\(gesture) turned off showsWaveform")
@@ -146,7 +153,7 @@ struct RecordingInstructionTests {
 
     @Test("every gesture adds its countdown to the accessibility label when one is set")
     func gesturesKeepTheCountdownInTheLabel() {
-        for gesture in [StopGesture.letGo, .pressAgain, .pressAgainHandsFree] {
+        for gesture in [StopGesture.letGo, .clickAgain, .pressAgain, .pressAgainHandsFree] {
             let dock = DictationPresenter.dock(
                 for: .recording, advice: .approaching(remaining: .seconds(30)),
                 stopGesture: gesture)
@@ -161,7 +168,7 @@ struct RecordingInstructionTests {
 
     @Test("non-recording states ignore the stop gesture")
     func onlyRecordingLooksAtTheStopGesture() {
-        for gesture in [StopGesture.letGo, .pressAgain, .pressAgainHandsFree] {
+        for gesture in [StopGesture.letGo, .clickAgain, .pressAgain, .pressAgainHandsFree] {
             for state in [DictationState.idle, .transcribing, .tidying] {
                 let a = DictationPresenter.dock(for: state, stopGesture: gesture)
                 let b = DictationPresenter.dock(for: state)

@@ -39,6 +39,8 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private var lastTapEndedAt: ClockType.Instant?
     /// Whether the microphone was left open by a double tap, and so waits for another to close it.
     private var isHandsFree = false
+    /// Whether the active recording began from a control rather than the shortcut.
+    private var controlStartedRecording = false
     /// The shortcut being watched, which decides whether a press waits to settle.
     private var binding: HotkeyBinding?
     /// A press of modifiers bound alone that has not been held long enough to count yet.
@@ -228,7 +230,8 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// What the dock has to say to end a recording that is under way right now.
     public var currentStopGesture: StopGesture {
-        Self.currentStopGesture(activation: activation, isHandsFree: isHandsFree)
+        if controlStartedRecording { return .clickAgain }
+        return Self.currentStopGesture(activation: activation, isHandsFree: isHandsFree)
     }
 
     /// Pure form of ``currentStopGesture``, callable from any context.
@@ -260,6 +263,14 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     private func finishListening() async {
         guard let started = await pipeline.stopListening() else { return }
         processing = started
+        resetControlStartedRecording()
+    }
+
+    /// Returns the dock to the shortcut's gesture after a control-started recording ends.
+    private func resetControlStartedRecording() {
+        guard controlStartedRecording else { return }
+        controlStartedRecording = false
+        onStopGestureChange(currentStopGesture)
     }
 
     // MARK: Events
@@ -313,6 +324,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         guard await pipeline.currentState.isListening else { return }
         stopWatchingTheLimit()
         await pipeline.cancel()
+        resetControlStartedRecording()
     }
 
     /// Whether a press waits to settle, which modifier holds use before they can start dictation.
@@ -490,10 +502,15 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             await finishListening()
         } else {
             await beginListening()
+            if await pipeline.currentState.isListening {
+                controlStartedRecording = true
+                onStopGestureChange(.clickAgain)
+            }
         }
     }
 
     private func beginListening() async {
+        resetControlStartedRecording()
         // The previous take can still be transcribed; a new capture must not wait for its insertion.
         if let processing {
             self.processing = nil
