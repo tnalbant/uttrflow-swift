@@ -84,6 +84,29 @@ struct ContractionsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "restores it's only when the next word makes the possessive reading impossible",
+        arguments: [
+            ("its been a long day", "it's been a long day"),
+            ("its going to rain", "it's going to rain"),
+            ("its a long day", "it's a long day"),
+            ("its not ready", "it's not ready"),
+            ("Its been a long day", "It's been a long day"),
+        ]
+    )
+    func resolvesItsContraction(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps its as a possessive and preserves ordinary plurals")
+    func preservesPossessivesAndPlurals() {
+        for input in [
+            "its own colour", "its blue cover", "the dogs bowl is empty", "the teams results are in",
+        ] {
+            #expect(cleaned(input, by: sut) == input)
+        }
+    }
+
     @Test("records which pass rewrote the word, and what it read before")
     func provenance() {
         let draft = sut.apply(Draft(text: "dont stop"))
