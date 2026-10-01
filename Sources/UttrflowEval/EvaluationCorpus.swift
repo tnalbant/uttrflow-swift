@@ -1061,6 +1061,12 @@ public enum EvaluationCorpus {
             mustKeep: ["bug", "weird"]
         ),
         .init(
+            id: "hinglish-correction-nahi-nahi", category: .multilingual, language: .hindi,
+            spoken: "मीटिंग चार बजे है नहीं नहीं पाँच बजे है",
+            expected: "Meeting paanch baje hai.",
+            mustKeep: ["paanch"]
+        ),
+        .init(
             id: "hinglish-request", category: .multilingual, language: .hindi,
             spoken: "अरे सुनो ज़रा वो report भेज देना",
             expected: "Are suno zara wo report bhej dena.",

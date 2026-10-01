@@ -33,6 +33,8 @@ struct SelfCorrectionPassTests {
             ("at four never mind at five", "at five"),
             ("at four wait sorry at five", "at five"),
             ("at four no wait at five", "at five"),
+            ("chaar baje nahi nahi paanch baje", "paanch baje"),
+            ("chaar baje mera matlab, paanch baje", "paanch baje"),
             ("call me no call me later", "call me later"),
             ("at four, no sorry, at five", "at five"),
             ("put it on the table no sorry on the shelf", "put it on the shelf"),
@@ -45,6 +47,14 @@ struct SelfCorrectionPassTests {
     )
     func replacesRestatement(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("does not treat ordinary Hindi negation as a correction")
+    func keepsHindiNegation() {
+        #expect(cleaned("nahi aaunga", by: sut) == "nahi aaunga")
+        #expect(cleaned("main nahi nahi aaunga", by: sut) == "main nahi nahi aaunga")
+        #expect(
+            cleaned("chaar baje mera matlab paanch baje", by: sut) == "chaar baje mera matlab paanch baje")
     }
 
     /// The comma before the trigger went with the discarded half, so its partner after the restatement separates nothing.

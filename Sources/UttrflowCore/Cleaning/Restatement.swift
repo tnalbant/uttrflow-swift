@@ -3,12 +3,18 @@ public enum Restatement {
     /// Phrases that announce a correction, longest first so "no sorry" is one trigger rather than two.
     public static let triggers: [[String]] = [
         ["no", "sorry"], ["no", "wait"], ["wait", "sorry"], ["scratch", "that"], ["never", "mind"],
-        ["i", "mean"],
+        ["i", "mean"], ["nahi", "nahi"], ["mera", "matlab"],
         ["no"], ["sorry"], ["actually"],
     ]
 
     /// How many words back the discarded half may reach.
     public static let reach = 6
+
+    private static let hindiNumberWords: Set<String> = [
+        "ek", "do", "teen", "char", "chaar", "paanch", "panch", "chhe", "chhah", "che", "saat",
+        "aath", "nau", "das", "gyarah", "baarah", "barah", "terah", "chaudah", "pandrah",
+        "solah", "satrah", "atharah", "unnis", "bees",
+    ]
 
     /// Words that head an answer, which a second answer pairs with rather than takes back.
     public static let answerHeads: Set<String> = [
@@ -58,6 +64,15 @@ public enum Restatement {
     ) -> Int? {
         let earliest = max(0, trigger - reach)
         let firstAfter = draft.shape(at: live[restart]).key
+        let triggerWords = live[trigger..<restart].map { draft.shape(at: $0).key }
+        let isHindiDoubleNegative = triggerWords == ["nahi", "nahi"]
+        let isPausedMeraMatlab =
+            triggerWords == ["mera", "matlab"]
+            && draft.shape(at: live[restart - 1]).suffix.contains(",")
+        if isHindiDoubleNegative || isPausedMeraMatlab {
+            return hindiNumberStart(before: trigger, after: restart, in: live, of: draft)
+        }
+        if triggerWords == ["mera", "matlab"] { return nil }
         let through = standsAlone(trigger, before: restart, in: live, of: draft)
         if NumberWords.isNumber(firstAfter),
             let end = numberEnd(before: trigger, after: restart, in: live, of: draft)
@@ -88,6 +103,41 @@ public enum Restatement {
             }
         }
         return nil
+    }
+
+    /// Hindi triggers take back a number only when the following phrase repeats, so ordinary speech stays intact.
+    private static func hindiNumberStart(
+        before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
+    ) -> Int? {
+        guard restart < live.count else { return nil }
+        let replacement = draft.shape(at: live[restart]).key
+        guard isHindiOrDigitNumber(replacement) else { return nil }
+
+        let earliest = max(0, trigger - reach)
+        if trigger > earliest {
+            for start in stride(from: trigger - 1, through: earliest, by: -1)
+            where isHindiOrDigitNumber(draft.shape(at: live[start]).key) {
+                let oldTail = live[(start + 1)..<trigger].map { draft.shape(at: $0).key }
+                let newTailStart = restart + 1
+                let newTailEnd = newTailStart + oldTail.count
+                guard !oldTail.isEmpty, newTailEnd <= live.count else { continue }
+                let newTail = live[newTailStart..<newTailEnd].map { draft.shape(at: $0).key }
+                guard oldTail == newTail,
+                    !(start..<trigger).contains(where: { endsSentence($0, in: live, of: draft) }),
+                    !(restart..<newTailEnd).contains(where: { endsSentence($0, in: live, of: draft) })
+                else { continue }
+                return start
+            }
+        }
+
+        guard trigger > 0 else { return nil }
+        let oldNumber = draft.shape(at: live[trigger - 1]).key
+        return isHindiOrDigitNumber(oldNumber) ? trigger - 1 : nil
+    }
+
+    /// Whether a word is a supported romanised Hindi, English or digit number.
+    private static func isHindiOrDigitNumber(_ key: String) -> Bool {
+        hindiNumberWords.contains(key) || NumberWords.isNumber(key)
     }
 
     /// Whether a trigger sits between two content words in one sentence, replacing the word directly before it.
