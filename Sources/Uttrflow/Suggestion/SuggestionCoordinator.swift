@@ -445,7 +445,11 @@ final class SuggestionCoordinator {
         activations = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applicationChanged() }
+            MainActor.assumeIsolated {
+                let activeProcessIdentifier = NSWorkspace.shared.frontmostApplication?.processIdentifier
+                FocusedFieldReader.releaseFullTrees(except: activeProcessIdentifier)
+                self?.applicationChanged()
+            }
         }
         for name in [
             NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.screensDidSleepNotification,

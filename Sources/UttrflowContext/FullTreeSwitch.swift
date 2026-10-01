@@ -120,13 +120,22 @@ public final class FullTreeSwitch: Sendable {
         normalizedChromiumBrowsers.contains(bundleIdentifier.lowercased())
     }
 
-    /// Turns off every attribute this switch wrote that is not known to be off, and forgets every process, so the next start asks again.
-    func switchOffEverything(host: (Int32) -> Host) {
+    /// Turns off trees for departed processes, optionally retaining the active process, and invalidates earlier field reads.
+    func switchOffEverything(except retainedProcessIdentifier: Int32? = nil, host: (Int32) -> Host) {
         operations.withLock { _ in
             let written = state.withLock { state in
                 state.generation += 1
-                let written = state.written
-                state = State(generation: state.generation)
+                let written = state.written.filter { $0.key != retainedProcessIdentifier }
+                let retained =
+                    retainedProcessIdentifier.flatMap { processIdentifier in
+                        state.written[processIdentifier].map { [processIdentifier: $0] }
+                    } ?? [:]
+                state = State(
+                    generation: state.generation,
+                    attempts: state.attempts.filter { $0.key == retainedProcessIdentifier },
+                    settled: retainedProcessIdentifier.map { state.settled.contains($0) ? [$0] : [] } ?? [],
+                    switched: state.switched.filter { $0.key == retainedProcessIdentifier },
+                    written: retained)
                 return written
             }
             for (processIdentifier, attributes) in written {

@@ -149,8 +149,8 @@ public enum FocusedFieldReader {
     private static let fullTree = FullTreeSwitch()
 
     /// Turns off every browser engine's full tree the suggestion loop turned on.
-    public static func releaseFullTrees() {
-        fullTree.switchOffEverything(host: fullTreeHost)
+    public static func releaseFullTrees(except processIdentifier: Int32? = nil) {
+        fullTree.switchOffEverything(except: processIdentifier, host: fullTreeHost)
     }
 
     /// One application's full-tree switches, each message capped so a stalled application cannot hold the caller.

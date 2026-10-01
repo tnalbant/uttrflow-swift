@@ -89,6 +89,26 @@ struct FullTreeSwitchTests {
         #expect(chrome.writes.allSatisfy { $0.0 != FullTreeSwitch.enhancedAttribute })
     }
 
+    @Test("An application change releases prior processes and preserves the active process")
+    func appChangeReleasesOnlyPriorProcesses() {
+        let tree = FullTreeSwitch()
+        let previous = FakeApplication(supported: [FullTreeSwitch.enhancedAttribute])
+        let active = FakeApplication(supported: [FullTreeSwitch.enhancedAttribute])
+        tree.switchOn(processIdentifier: 9, bundleIdentifier: "com.google.Chrome", host: previous.host)
+        tree.switchOn(processIdentifier: 10, bundleIdentifier: "com.microsoft.edgemac", host: active.host)
+        let oldGeneration = tree.generation
+
+        tree.switchOffEverything(except: 10) { $0 == 9 ? previous.host : active.host }
+
+        #expect(previous.values[FullTreeSwitch.enhancedAttribute] == false)
+        #expect(active.values[FullTreeSwitch.enhancedAttribute] == true)
+        #expect(tree.switchedOn == [10: FullTreeSwitch.enhancedAttribute])
+        tree.switchOn(
+            processIdentifier: 9, bundleIdentifier: "com.google.Chrome", host: previous.host,
+            generation: oldGeneration)
+        #expect(previous.values[FullTreeSwitch.enhancedAttribute] == false)
+    }
+
     @Test("Stopping turns off what was turned on, and the next start asks again.")
     func stoppingTurnsItOffAndForgets() {
         let tree = FullTreeSwitch()
