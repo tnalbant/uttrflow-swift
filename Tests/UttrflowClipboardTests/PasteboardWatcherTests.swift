@@ -14,6 +14,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
         var html: String?
         var picture: (data: Data, width: Int, height: Int)?
         var application: String?
+        var bundleIdentifier: String?
         var markers: PasteboardMarkers = []
         var landsDuringMarkers: (text: String, markers: PasteboardMarkers)?
         var reads = 0
@@ -27,7 +28,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
     func write(
         _ text: String?, html: String? = nil,
         picture: (data: Data, width: Int, height: Int)? = nil, from application: String? = nil,
-        marked markers: PasteboardMarkers = []
+        marked markers: PasteboardMarkers = [], bundleIdentifier: String? = nil
     ) {
         state.withLock {
             $0.count += 1
@@ -35,6 +36,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
             $0.html = html
             $0.picture = picture
             $0.application = application
+            $0.bundleIdentifier = bundleIdentifier
             $0.markers = markers
         }
     }
@@ -85,6 +87,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
     func image() -> (data: Data, width: Int, height: Int)? { state.withLock(\.picture) }
 
     func frontmostApplicationName() -> String? { state.withLock(\.application) }
+    func frontmostApplicationBundleIdentifier() -> String? { state.withLock(\.bundleIdentifier) }
 }
 
 @Suite("Noticing that something was copied")
@@ -108,6 +111,22 @@ struct PasteboardWatcherTests {
         #expect(clip?.kind == .link)
         #expect(clip?.source == "Safari")
         #expect(clip?.copiedAt == noon)
+    }
+
+    @Test("skips excluded bundle identifiers but records unknown and other applications")
+    func excludesOnlySelectedApplications() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        await watcher.setExcludedApplications(["com.example.private"])
+
+        clipboard.write("secret copy", bundleIdentifier: "COM.EXAMPLE.PRIVATE")
+        #expect(await watcher.newClip(at: noon) == nil)
+
+        clipboard.write("ordinary copy", bundleIdentifier: "com.example.other")
+        #expect(await watcher.newClip(at: noon)?.clip.text == "ordinary copy")
+
+        clipboard.write("unknown provenance")
+        #expect(await watcher.newClip(at: noon)?.clip.text == "unknown provenance")
     }
 
     @Test("records an escaped-quote named secret as hidden without changing the text")

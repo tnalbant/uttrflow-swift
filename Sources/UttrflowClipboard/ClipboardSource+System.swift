@@ -69,4 +69,8 @@ public struct SystemClipboardSource: ClipboardSource {
     public func frontmostApplicationName() -> String? {
         NSWorkspace.shared.frontmostApplication?.localizedName
     }
+
+    public func frontmostApplicationBundleIdentifier() -> String? {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    }
 }

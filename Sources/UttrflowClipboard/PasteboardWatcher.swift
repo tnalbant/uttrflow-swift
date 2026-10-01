@@ -40,6 +40,8 @@ public actor PasteboardWatcher {
 
     /// The last change count dealt with, read at construction so neither launch case is wrong.
     private var seen: Int
+    /// Bundle identifiers excluded from capture; nil provenance is deliberately not excluded.
+    private var excludedApplications: Set<String> = []
 
     /// How long a promised or Universal Clipboard read may take before the copy is given up on.
     public static let defaultReadLimit = Duration.seconds(2)
@@ -122,6 +124,11 @@ public actor PasteboardWatcher {
         let count = source.changeCount()
         guard count != seen else { return nil }
         seen = count
+        if let identifier = source.frontmostApplicationBundleIdentifier(),
+            excludedApplications.contains(identifier.lowercased())
+        {
+            return nil
+        }
 
         isReading = true
         defer { isReading = false }
@@ -247,6 +254,11 @@ public actor PasteboardWatcher {
     public func passOver(upTo count: Int) {
         seen = count
         announced.withLock { $0 = nil }
+    }
+
+    /// Replaces the local exclusion list without restarting the polling task.
+    public func setExcludedApplications(_ bundleIdentifiers: Set<String>) {
+        excludedApplications = Set(bundleIdentifiers.map { $0.lowercased() })
     }
 
     // MARK: - The loop

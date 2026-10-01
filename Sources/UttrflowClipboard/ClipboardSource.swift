@@ -18,6 +18,15 @@ public protocol ClipboardSource: Sendable {
     /// The picture on the clipboard as PNG bytes and pixel size, read only when there is no text.
     func image() -> (data: Data, width: Int, height: Int)?
 
-    /// The application in front of the user, shown as provenance and never a basis for a decision.
+    /// The application in front of the user, shown as best-effort provenance.
     func frontmostApplicationName() -> String?
+
+    /// Bundle identifier of the frontmost application when the copy is detected. macOS does not
+    /// identify the process that wrote the pasteboard, so this is best-effort provenance only.
+    func frontmostApplicationBundleIdentifier() -> String?
+}
+
+extension ClipboardSource {
+    /// Sources without application provenance remain usable; unknown apps are never excluded.
+    public func frontmostApplicationBundleIdentifier() -> String? { nil }
 }

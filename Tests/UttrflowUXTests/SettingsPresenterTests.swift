@@ -206,6 +206,22 @@ struct SettingsGeneralPaneTests {
         SettingsPresenter.pane(for: .general, settings: settings, capabilities: capabilities)
     }
 
+    @Test("offers pause and resume from the current capture state")
+    func clipboardPauseActionFollowsState() throws {
+        let paused = try #require(general().row("clipboard-pause"))
+        #expect(
+            paused.control
+                == .action(
+                    title: "Pause for 1 hour", change: .pauseClipboardCapture(isOn: true)))
+        var capabilities = SettingsCapabilities.everything
+        capabilities.clipboardCapturePaused = true
+        let resumed = try #require(general(.default, capabilities).row("clipboard-pause"))
+        #expect(
+            resumed.control
+                == .action(
+                    title: "Resume", change: .pauseClipboardCapture(isOn: false)))
+    }
+
     @Test("shows the shortcut in force on keycaps")
     func showsTheShortcut() {
         var settings = Settings.default
@@ -900,6 +916,8 @@ struct SettingsUpdateEditingTests {
         #expect(!SettingsChange.toggle(.opensAtLogin, isOn: true).isRequestToAct)
         #expect(!SettingsChange.retention(days: 7).isRequestToAct)
         #expect(!SettingsChange.pauseSuggestions(isOn: true).isRequestToAct)
+        #expect(SettingsChange.manageClipboardExclusions.isRequestToAct)
+        #expect(SettingsChange.pauseClipboardCapture(isOn: true).isRequestToAct)
     }
 }
 

@@ -381,6 +381,12 @@ public enum SettingsChange: Sendable, Equatable {
     /// Starts the half-hour pause everywhere, or lifts one that is still running.
     case pauseSuggestions(isOn: Bool)
 
+    /// Opens the clipboard exclusion manager.
+    case manageClipboardExclusions
+
+    /// Pauses clipboard capture for one hour, or resumes it early.
+    case pauseClipboardCapture(isOn: Bool)
+
     /// Asks the update feed now rather than waiting for the next scheduled check.
     case checkForUpdatesNow
 
@@ -400,6 +406,7 @@ public enum SettingsChange: Sendable, Equatable {
     public var isRequestToAct: Bool {
         switch self {
         case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel,
+            .manageClipboardExclusions, .pauseClipboardCapture,
             .openSystemSettings, .openPage:
             true
         default: false

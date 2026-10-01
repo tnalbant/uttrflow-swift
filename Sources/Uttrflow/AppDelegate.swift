@@ -154,6 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Where every local store lives, kept because tab-to-complete opens its corpus after launch.
     private let container: URL
+    private let clipboardPreferencesFile: ClipboardPreferencesFile
+    private var clipboardPreferences = ClipboardPreferences()
+    private var clipboardPauseTask: Task<Void, Never>?
+    private var clipboardPauseUntil: Date?
 
     /// Tab-to-complete, built only where the user has asked for it. See `Docs/predict.md`.
     private var completions: SuggestionCoordinator?
@@ -226,6 +230,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     ) {
         self.container = container
+        clipboardPreferencesFile = ClipboardPreferencesFile(
+            path: ClipboardPreferencesFile.defaultFile(in: container).path)
+        clipboardPreferences = clipboardPreferencesFile.load()
+        clipboardPauseUntil = clipboardPreferences.pausedUntil
         self.loginItem = loginItem
         self.settingsStore = settingsStore
         self.account = account
@@ -1341,7 +1349,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Records copies while the Clipboard switch is on, and stops recording the moment it is off.
     private func followTheClipboardSwitch() {
-        guard surfaces.watchesTheClipboard else {
+        settingsPage.setClipboardCapturePaused(isClipboardPaused)
+        if isClipboardPaused { startClipboardPauseTimerIfNeeded() }
+        guard surfaces.watchesTheClipboard, !isClipboardPaused else {
             clipboardWatchTask?.cancel()
             clipboardWatchTask = nil
             return
@@ -1353,12 +1363,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         // Read now, so a copy made after the switch went on is recorded even if the task starts late.
         let baseline = clipboardWatcher.changeCount
+        let excludedApplications = clipboardPreferences.excludedBundleIdentifiers
         // Utility, because a poll nobody is waiting on should not run as the main thread's work.
         clipboardWatchTask = Task(priority: .utility) { [clipboardWatcher] in
             // Whatever was copied while the switch was off stays unrecorded.
             await clipboardWatcher.passOver(upTo: baseline)
+            await clipboardWatcher.setExcludedApplications(excludedApplications)
             await clipboardWatcher.run(handing: arrived)
         }
+    }
+
+    private var isClipboardPaused: Bool {
+        guard let clipboardPauseUntil else { return false }
+        return clipboardPauseUntil > Date()
+    }
+
+    /// Stops capture immediately and resumes from a fresh baseline after one hour.
+    private func setClipboardPaused(_ isPaused: Bool) {
+        clipboardPauseTask?.cancel()
+        clipboardPauseTask = nil
+        clipboardPauseUntil = isPaused ? Date().addingTimeInterval(60 * 60) : nil
+        clipboardPreferences.pausedUntil = clipboardPauseUntil
+        settingsPage.setClipboardCapturePaused(isPaused)
+        saveClipboardPreferences()
+        if isPaused {
+            clipboardWatchTask?.cancel()
+            clipboardWatchTask = nil
+            let baseline = clipboardWatcher.changeCount
+            Task { [clipboardWatcher] in await clipboardWatcher.passOver(upTo: baseline) }
+            startClipboardPauseTimerIfNeeded()
+        } else {
+            followTheClipboardSwitch()
+        }
+    }
+
+    private func startClipboardPauseTimerIfNeeded() {
+        guard clipboardPauseTask == nil, let until = clipboardPauseUntil else { return }
+        let delay = max(0, until.timeIntervalSinceNow)
+        clipboardPauseTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.clipboardPauseUntil = nil
+            self?.clipboardPreferences.pausedUntil = nil
+            self?.saveClipboardPreferences()
+            self?.clipboardPauseTask = nil
+            self?.followTheClipboardSwitch()
+        }
+    }
+
+    /// Adds or removes bundle identifiers through private preferences and a running-app picker.
+    private func manageClipboardExclusions() {
+        let identifiers = clipboardPreferences.excludedBundleIdentifiers.sorted()
+        let alert = NSAlert()
+        alert.messageText = "Clipboard exclusions"
+        alert.informativeText =
+            identifiers.isEmpty
+            ? "No apps are excluded. The frontmost app at copy detection time is used; macOS does not identify the pasteboard writer."
+            : "Excluded: " + identifiers.joined(separator: ", ")
+        alert.addButton(withTitle: "Add Running App…")
+        alert.addButton(withTitle: "Remove…")
+        alert.addButton(withTitle: "Done")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            ApplicationPicker.chooseClipboardApplication { [weak self] identifier in
+                guard let self else { return }
+                clipboardPreferences.exclude(identifier)
+                saveClipboardPreferences()
+            }
+        case .alertSecondButtonReturn:
+            guard !identifiers.isEmpty else { return }
+            let removal = NSAlert()
+            removal.messageText = "Remove an excluded app"
+            let menu = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+            menu.addItems(withTitles: identifiers)
+            removal.accessoryView = menu
+            removal.addButton(withTitle: "Remove")
+            removal.addButton(withTitle: "Cancel")
+            if removal.runModal() == .alertFirstButtonReturn {
+                clipboardPreferences.include(identifiers[max(0, menu.indexOfSelectedItem)])
+                saveClipboardPreferences()
+            }
+        default: break
+        }
+    }
+
+    private func saveClipboardPreferences() {
+        do {
+            try clipboardPreferencesFile.save(clipboardPreferences)
+            let excludedApplications = clipboardPreferences.excludedBundleIdentifiers
+            Task { [clipboardWatcher] in
+                await clipboardWatcher.setExcludedApplications(excludedApplications)
+                await clipboardWatcher.passOver(upTo: clipboardWatcher.changeCount)
+            }
+        } catch { report(error) }
     }
 
     /// Keeps a clip the user has just copied, and shows it if they are looking.
@@ -1478,7 +1575,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         updates.refresh()
         let opened = quickPanel.opens
         // A copy since the last poll is taken now, started not awaited, so no read holds the panel shut (#895).
-        if settings.clipboardEnabled {
+        if settings.clipboardEnabled && !isClipboardPaused {
             let arrived: @Sendable (NoticedClip) async -> Void = { [weak self] noticed in
                 await self?.clipArrived(noticed)
             }
@@ -2801,6 +2898,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 ApplicationPicker.choose(given: settings.suggestions) { [weak self] identifier in
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
+            case .manageClipboardExclusions: manageClipboardExclusions()
+            case .pauseClipboardCapture(let isOn): setClipboardPaused(isOn)
             case .retrySuggestionModel:
                 guard settings.suggestions.isEnabled,
                     suggestionModel == .fetchFailed || suggestionModel == .loadFailed

@@ -1,5 +1,18 @@
 # Recognising a credential
 
+## Per-application exclusions and pause
+
+Settings can exclude applications by bundle identifier and pause capture for one hour.
+The exclusion list is empty by default; add an app from the running-app picker or choose
+an application bundle. A timed pause can be resumed early and its end time survives an
+app restart. Copies observed during a pause are passed over when capture resumes.
+
+macOS exposes the frontmost application when Uttrflow notices a pasteboard change, but
+does not identify which process wrote that change. A background writer can therefore be
+attributed to the app that is frontmost at detection time. If the bundle identifier is
+unavailable, the copy is not filtered by the exclusion list. These controls complement
+the concealed pasteboard marker and secret detection; they do not replace either one.
+
 `SecretShapes.matches(_:)` is keener to say yes than no. A false positive masks something
 harmless: the row shows dots, Return still pastes it, one keystroke reveals it. A false
 negative leaves a production password legible on a panel opened in meetings and on recorded

@@ -71,6 +71,7 @@ final class SettingsPageController {
             refreshed.suggestionModel = suggestionModel
             refreshed.suggestionRuntime = suggestionRuntime
             refreshed.unarmedShortcuts = unarmedShortcuts
+            refreshed.clipboardCapturePaused = model.session.capabilities.clipboardCapturePaused
             model.session.capabilities = refreshed
         }
     }
@@ -96,6 +97,11 @@ final class SettingsPageController {
     func setUnarmedShortcuts(_ unarmed: Set<ShortcutAction>) {
         unarmedShortcuts = unarmed
         model.session.capabilities.unarmedShortcuts = unarmed
+    }
+
+    /// Redraws the clipboard pause action from the live one-hour timer.
+    func setClipboardCapturePaused(_ paused: Bool) {
+        model.session.capabilities.clipboardCapturePaused = paused
     }
 
     /// Applies a change the app worked out on the page's behalf, through the page's own session.

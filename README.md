@@ -219,7 +219,7 @@ Apple Silicon Mac, macOS 26 or later. Xcode 26.6 or later supplies the toolchain
 itself is SwiftPM.
 
 ```bash
-make verify     # lint, PII audit, build, 6,000+ tests, coverage floor, offline audit
+make verify     # lint, PII audit, build, 8,000+ tests, coverage floor, offline audit
 make app        # builds and ad-hoc signs dist/Uttrflow.app
 open dist/Uttrflow.app
 make help       # every target
@@ -381,8 +381,11 @@ them. None of it leaves this Mac: there is no clipboard sync.
   and is not written to clipboard history or saved clips. See
   [`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md) for what the marker and secret
   handling cover.
-- **The Clipboard switch in Settings pauses capture.** There is no per-application
-  exclusion.
+- **Clipboard capture can be excluded per app or paused for an hour.** Settings keeps a
+  private list of excluded apps and offers a one-hour pause. Exclusions use the frontmost
+  app when Uttrflow notices a copy; macOS does not identify the process that wrote the
+  pasteboard. No apps are excluded by default. These controls do not replace the concealed
+  marker or secret detection. See [`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md).
 
 Clips that look like secrets are masked in the panel until you ask to see them, at a
 fixed width that does not reveal how long the token is, and they get no tooltip. Secret

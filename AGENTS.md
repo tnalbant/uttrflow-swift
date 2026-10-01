@@ -456,7 +456,7 @@ than no merge at all.
 `Docs/releasing.md` covers a release by hand; `RELEASING.md` covers the tag workflow. In short:
 
 ```bash
-make verify        # lint, build, 6,000+ tests, coverage floor — what the gate runs
+make verify        # lint, build, 8,000+ tests, coverage floor — what the gate runs
 make hooks         # once per clone; hooks are not cloned
 make app-hardened  # a build fit to test on another Mac
 make dmg           # the disk image

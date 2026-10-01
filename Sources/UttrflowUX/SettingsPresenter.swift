@@ -304,9 +304,25 @@ public enum SettingsPresenter {
                         toggleRow(
                             .clipboardEnabled,
                             label: "Clipboard",
-                            explanation: "Off, copies are not kept and the clipboard shortcut is released.",
+                            explanation:
+                                "Off, copies are not kept and the clipboard shortcut is released. Exclusions use the frontmost app at detection time.",
                             settings, capabilities
                         ).with(icon: .symbol("list.clipboard", .suggestion)),
+                        SettingsRow(
+                            id: "clipboard-exclusions", label: "Excluded apps",
+                            explanation: "Copies detected while these apps are frontmost are skipped.",
+                            control: .action(title: "Manage…", change: .manageClipboardExclusions),
+                            icon: .symbol("hand.raised", .amber)),
+                        SettingsRow(
+                            id: "clipboard-pause", label: "Clipboard capture",
+                            explanation: capabilities.clipboardCapturePaused
+                                ? "Paused temporarily. Copies are skipped until resumed or the hour ends."
+                                : "Pause copying for one hour without changing this switch.",
+                            control: .action(
+                                title: capabilities.clipboardCapturePaused ? "Resume" : "Pause for 1 hour",
+                                change: .pauseClipboardCapture(isOn: !capabilities.clipboardCapturePaused)),
+                            icon: .symbol(
+                                capabilities.clipboardCapturePaused ? "play" : "pause", .neutral)),
                     ]),
             ],
             callout: nil)

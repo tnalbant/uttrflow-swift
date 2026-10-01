@@ -68,6 +68,7 @@ public enum SettingsEditor {
             try requireSuggestionsAreOn(in: settings)
             updated.suggestions.setPaused(isOn, at: moment)
         case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel,
+            .manageClipboardExclusions, .pauseClipboardCapture,
             .openSystemSettings, .openPage:
             // Named rather than left to a `default`, which would swallow the next case added.
             break

@@ -75,6 +75,9 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Shortcuts the app could not claim, so a row never shows a key that does nothing.
     public var unarmedShortcuts: Set<ShortcutAction>
 
+    /// Whether clipboard capture is within its temporary pause window.
+    public var clipboardCapturePaused: Bool
+
     /// What macOS does when the Globe or Fn key is pressed by itself.
     public var globeKeyAction: GlobeKeyAction
 
@@ -91,6 +94,7 @@ public struct SettingsCapabilities: Sendable, Equatable {
         suggestionModel: SuggestionModelReadiness = .notAsked,
         suggestionRuntime: SuggestionRuntimeStatus = .idle,
         unarmedShortcuts: Set<ShortcutAction> = [],
+        clipboardCapturePaused: Bool = false,
         globeKeyAction: GlobeKeyAction = .doNothing
     ) {
         self.launchAtLogin = launchAtLogin
@@ -104,6 +108,7 @@ public struct SettingsCapabilities: Sendable, Equatable {
         self.suggestionModel = suggestionModel
         self.suggestionRuntime = suggestionRuntime
         self.unarmedShortcuts = unarmedShortcuts
+        self.clipboardCapturePaused = clipboardCapturePaused
         self.globeKeyAction = globeKeyAction
     }
 
