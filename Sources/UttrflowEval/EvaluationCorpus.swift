@@ -2104,6 +2104,108 @@ public enum EvaluationCorpus {
             mustNotAdd: ["leader", "readme"],
             doubtful: ["reader"]
         ),
+        .init(
+            id: "code-editor-spoken-camel-case", category: .contextual,
+            spoken: "camel case user id",
+            expected: "userId",
+            mustKeep: ["userId"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "let x = "),
+            destination: .codeEditor,
+            mustBeginWith: "userId",
+            mustEndWith: "userId"
+        ),
+        .init(
+            id: "code-editor-spoken-snake-case", category: .contextual,
+            spoken: "snake case max retries",
+            expected: "max_retries",
+            mustKeep: ["max_retries"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "let x = "),
+            destination: .codeEditor,
+            mustBeginWith: "max_retries",
+            mustEndWith: "max_retries"
+        ),
+        .init(
+            id: "code-editor-spoken-empty-parentheses", category: .contextual,
+            spoken: "open paren close paren",
+            expected: "()",
+            mustKeep: ["()"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "foo"),
+            destination: .codeEditor,
+            mustBeginWith: "()",
+            mustEndWith: "()"
+        ),
+        .init(
+            id: "code-editor-spoken-case-stops-at-comma", category: .contextual,
+            spoken: "camel case user id comma then explain it",
+            expected: "userId, then explain it",
+            mustKeep: ["userId", "then", "explain"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "let x = "),
+            destination: .codeEditor,
+            mustBeginWith: "userId,",
+            mustEndWith: "explain it"
+        ),
+        .init(
+            id: "code-editor-spoken-equals", category: .contextual,
+            spoken: "max retries equals five",
+            expected: "max retries = 5",
+            mustKeep: ["max", "retries", "5"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "let x = "),
+            destination: .codeEditor,
+            mustBeginWith: "max retries",
+            mustEndWith: "= 5"
+        ),
+        .init(
+            id: "prose-keeps-spoken-camel-case", category: .contextual,
+            spoken: "camel case user id",
+            expected: "Camel case user id.",
+            mustKeep: ["Camel", "case", "user", "id"],
+            context: AppContext(applicationName: "Notes", bundleIdentifier: "com.apple.Notes"),
+            destination: .plain,
+            mustBeginWith: "Camel",
+            mustEndWith: "id."
+        ),
+        .init(
+            id: "prose-keeps-spoken-snake-case", category: .contextual,
+            spoken: "snake case max retries",
+            expected: "Snake case max retries.",
+            mustKeep: ["Snake", "case", "max", "retries"],
+            context: AppContext(applicationName: "Notes", bundleIdentifier: "com.apple.Notes"),
+            destination: .plain,
+            mustBeginWith: "Snake",
+            mustEndWith: "retries."
+        ),
+        .init(
+            id: "prose-keeps-spoken-parentheses", category: .contextual,
+            spoken: "open paren close paren",
+            expected: "Open paren close paren.",
+            mustKeep: ["Open", "paren", "close"],
+            context: AppContext(applicationName: "Notes", bundleIdentifier: "com.apple.Notes"),
+            destination: .plain,
+            mustBeginWith: "Open",
+            mustEndWith: "paren."
+        ),
+        .init(
+            id: "code-comment-keeps-spoken-commands", category: .contextual,
+            spoken: "camel case user id open paren close paren.",
+            expected: "camel case user id open paren close paren.",
+            mustKeep: ["camel", "user", "paren"],
+            context: AppContext(
+                applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
+                documentName: "Example.swift", precedingText: "// "),
+            destination: .codeEditor,
+            mustBeginWith: "camel",
+            mustEndWith: "paren."
+        ),
     ]
 
     // MARK: Grammar slips and dialect

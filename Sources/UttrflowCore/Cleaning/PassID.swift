@@ -26,6 +26,8 @@ extension PassID {
     public static let selfCorrection: PassID = "selfCorrection"
     /// "Comma", "full stop" and their kind, spoken as instructions.
     public static let spokenPunctuation: PassID = "spokenPunctuation"
+    /// Spoken casing and symbol commands in code editors.
+    public static let codeEditorCommands: PassID = "codeEditorCommands"
     /// "New line", "new paragraph", "bullet point", spoken as instructions.
     public static let layoutWords: PassID = "layoutWords"
     /// Spoken numbers written as numerals.

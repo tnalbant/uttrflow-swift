@@ -10,7 +10,9 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         piece(
             numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
-            insertionPoint: situation.insertion, destination: formatter.destination, steps: steps)
+            insertionPoint: situation.insertion, destination: formatter.destination,
+            precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
+            steps: steps)
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -20,7 +22,8 @@ extension CleaningPipeline {
         CleaningPipeline(
             passes: piece(
                 numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
-                destination: formatter.destination, steps: steps
+                destination: formatter.destination, precedingText: situation.insertion.precedingText,
+                documentName: situation.app.documentName, steps: steps
             ).passes
                 + [SpelledInitialismPass()]
                 + message(for: formatter, situation: situation).passes)
@@ -30,9 +33,10 @@ extension CleaningPipeline {
     public static func piece(
         numbers: NumberPolicy, digits: DigitGrouping, layout: LayoutPolicy = [.paragraphs, .lists],
         insertionPoint: InsertionPoint = .unknown, destination: Destination = .plain,
+        precedingText: String? = nil, documentName: String? = nil,
         steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        let cleanings: [any CleaningPass] = [
+        var cleanings: [any CleaningPass] = [
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(destination: destination),
@@ -40,6 +44,12 @@ extension CleaningPipeline {
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpelledInitialismPass(), SpacingPass(),
         ]
+        if destination == .codeEditor,
+            !CodeCommentContext.isComment(precedingText: precedingText, documentName: documentName),
+            let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
+        {
+            cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
+        }
         return CleaningPipeline(passes: cleanings.filter { steps.runs($0.id) })
     }
 
