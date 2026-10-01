@@ -180,9 +180,24 @@ struct DiagnosticsLatencyTests {
     func captionCountsDictations() {
         let page = DiagnosticsFixture.page(measurements: [
             DiagnosticsFixture.timing(.transcription, 1),
+            DiagnosticsFixture.timing(.insertion, 1),
             DiagnosticsFixture.timing(.transcription, 1),
+            DiagnosticsFixture.timing(.insertion, 1),
         ])
         #expect(page.latency?.caption.contains("over 2 dictations,") == true)
+    }
+
+    @Test("the caption counts completed dictations instead of split and retried decodes")
+    func captionCountsDictationsRatherThanTranscriptionCalls() {
+        let page = DiagnosticsFixture.page(measurements: [
+            DiagnosticsFixture.timing(.transcription, 0.2),
+            DiagnosticsFixture.timing(.transcription, 0.3),
+            DiagnosticsFixture.timing(.transcription, 0.4),
+            DiagnosticsFixture.timing(.transcription, 0.5),
+            DiagnosticsFixture.timing(.insertion, 0.04),
+        ])
+
+        #expect(page.latency?.caption.contains("over 1 dictation,") == true)
     }
 
     /// The bar is drawn from these, so they have to add up to the whole of it.

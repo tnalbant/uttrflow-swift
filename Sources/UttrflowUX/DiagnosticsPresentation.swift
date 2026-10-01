@@ -617,8 +617,7 @@ public enum DiagnosticsPresenter {
         for summaries: [StageLatency], missing: [PipelineStage]
     ) -> DiagnosticsLatency {
         let total = summaries.reduce(Duration.zero) { $0 + $1.typical }
-        // One transcription per dictation, so its sample count is how many journeys the numbers rest on.
-        let dictations = summaries.first { $0.stage == .transcription }?.samples ?? 0
+        let dictations = summaries.first { $0.stage == .insertion }?.samples ?? 0
         let measured = MainFormatting.seconds(total)
         let overDictations = MainFormatting.count(dictations, "dictation", "dictations")
 
