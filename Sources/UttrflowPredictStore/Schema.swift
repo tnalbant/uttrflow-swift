@@ -68,7 +68,14 @@ enum Schema {
 
     /// Brings an open database up to ``version``, creating it if it is empty.
     static func migrate(_ database: Database) throws(PredictStoreError) {
+        let schemaVersionBefore = try database.rows("PRAGMA schema_version", { _ in }) {
+            $0.integer(0)
+        }.first
         for statement in statements { try database.execute(statement) }
+        let schemaVersionAfter = try database.rows("PRAGMA schema_version", { _ in }) {
+            $0.integer(0)
+        }.first
+        if schemaVersionBefore != schemaVersionAfter { try database.markSchemaChanged() }
         let found = try database.rows("SELECT version FROM schema_version LIMIT 1", { _ in }) {
             $0.integer(0)
         }

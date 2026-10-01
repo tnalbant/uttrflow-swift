@@ -1,4 +1,5 @@
 import Foundation
+import UttrflowCore
 import UttrflowPredictCapture
 import UttrflowPredictStore
 import UttrflowUX
@@ -9,6 +10,8 @@ struct PredictCorpus: SuggestionCorpus {
     let container: URL
     /// The loop running now, if any, which must forget alongside the file so it does not write it back.
     var running: @Sendable @MainActor () -> SuggestionCoordinator? = { nil }
+    /// The shared device key seals the corpus snapshot while queries stay in memory.
+    var encryptedStore: EncryptedStore? = nil
 
     private var corpusPath: String {
         PredictStore.defaultFile(in: container).path(percentEncoded: false)
@@ -48,6 +51,6 @@ struct PredictCorpus: SuggestionCorpus {
     /// The corpus when there is one on disk, so asking never creates an empty file.
     private func existingStore() throws -> PredictStore? {
         guard FileManager.default.fileExists(atPath: corpusPath) else { return nil }
-        return try PredictStore(path: corpusPath)
+        return try PredictStore(path: corpusPath, encryptedStore: encryptedStore)
     }
 }

@@ -1,5 +1,7 @@
+import CryptoKit
 import Foundation
 import Testing
+import UttrflowCore
 import UttrflowPredict
 
 @testable import UttrflowPredictStore
@@ -35,6 +37,67 @@ private func isExcludedFromBackup(_ url: URL) throws -> Bool {
 
 private let terminal = Surface(bundleIdentifier: "com.example.terminal", role: "AXTextArea")
 private let moment = Date(timeIntervalSince1970: 1_800_000_000)
+
+private struct CorpusKeys: StoreKeyProviding {
+    let value: SymmetricKey
+    func key(createIfMissing _: Bool) throws -> SymmetricKey { value }
+}
+
+@Suite("Encrypted suggestion corpus")
+struct EncryptedPredictStoreTests {
+    @Test("sealed snapshots hide typed lines and reopen without plaintext sidecars")
+    func encryptedRoundTrip() async throws {
+        let corpus = Corpus()
+        let key = CorpusKeys(value: SymmetricKey(size: .bits256))
+        let store = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: key))
+        try await store.record("distinctive corpus phrase", in: terminal, at: moment)
+
+        let bytes = try Data(contentsOf: URL(filePath: corpus.path))
+        #expect(EncryptedStore.isSealed(bytes))
+        #expect(!String(decoding: bytes, as: UTF8.self).contains("distinctive corpus phrase"))
+        #expect(!FileManager.default.fileExists(atPath: corpus.path + "-wal"))
+        #expect(!FileManager.default.fileExists(atPath: corpus.path + "-shm"))
+
+        let reopened = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: key))
+        #expect(try await reopened.recent(in: terminal, limit: 5) == ["distinctive corpus phrase"])
+    }
+
+    @Test("legacy plaintext databases migrate with their rows into an encrypted snapshot")
+    func migratesLegacyDatabase() async throws {
+        let corpus = Corpus()
+        let legacy = try PredictStore(path: corpus.path)
+        try await legacy.record("legacy private phrase", in: terminal, at: moment)
+        #expect(FileManager.default.fileExists(atPath: corpus.path + "-wal"))
+        let key = CorpusKeys(value: SymmetricKey(size: .bits256))
+
+        let migrated = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: key))
+
+        #expect(try await migrated.recent(in: terminal, limit: 5) == ["legacy private phrase"])
+        #expect(EncryptedStore.isSealed(try Data(contentsOf: URL(filePath: corpus.path))))
+        #expect(!FileManager.default.fileExists(atPath: corpus.path + "-wal"))
+        #expect(!FileManager.default.fileExists(atPath: corpus.path + "-shm"))
+        _ = legacy
+    }
+
+    @Test("a wrong key refuses to open and leaves the encrypted snapshot untouched")
+    func wrongKeyDoesNotReplaceSnapshot() throws {
+        let corpus = Corpus()
+        let original = CorpusKeys(value: SymmetricKey(size: .bits256))
+        let store = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: original))
+        let bytes = try Data(contentsOf: URL(filePath: corpus.path))
+        let wrong = CorpusKeys(value: SymmetricKey(size: .bits256))
+
+        do {
+            _ = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: wrong))
+            Issue.record("Opening with another key unexpectedly succeeded")
+        } catch let error as PredictStoreError {
+            #expect(error == .cannotOpen("encrypted corpus could not be authenticated"))
+        }
+
+        #expect(try Data(contentsOf: URL(filePath: corpus.path)) == bytes)
+        _ = store
+    }
+}
 
 @Suite("Remembering what was entered")
 struct RecordingTests {

@@ -104,7 +104,7 @@ public struct EncryptedStore: Sendable {
         try PrivateFile.write(Self.seal(data, key: key, name: url.lastPathComponent), to: url)
     }
 
-    /// Encrypts already encoded JSON while keeping file I/O with the caller.
+    /// Encrypts bytes for a logical filename while leaving file I/O to the caller.
     public func seal(_ payload: Data, for logicalName: String) throws -> Data {
         let key = try keys.key(createIfMissing: true)
         return try Self.seal(payload, key: key, name: logicalName)

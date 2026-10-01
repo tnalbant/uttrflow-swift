@@ -11,13 +11,13 @@ the local model writes for the situation (`Sources/UttrflowPredict/CandidateGene
 It shares the product's one claim: the corpus is a SQLite file under Application Support,
 it is never uploaded, and the network is still reachable from `UttrflowAccount` alone.
 
-The corpus and consent file are local working memory, not backup material. `PredictStore` marks
-`predict.v1.sqlite` and any SQLite sidecars `isExcludedFromBackup`, and `CapturePreferencesFile`
-writes consent through `PrivateFile`, so backup tools that honour Finder's exclusion flag should
-skip learned lines and application consent. The files are still owner-only local files rather than
-an encrypted store; the at-rest boundary is the user's login, FileVault and any encrypted backup
-volume. The speech model directory is also excluded from backup because it is public downloaded
-data that can be fetched again.
+The corpus and consent file are local working memory, not backup material. The app keeps the
+SQLite working database in memory and atomically writes an AES-GCM sealed snapshot to
+`predict.v1.sqlite`; it does not create plaintext `-wal` or `-shm` files. The snapshot uses the
+shared device-only Keychain key and is excluded from backup. `CapturePreferencesFile` writes
+consent through `PrivateFile`, so backup tools that honour Finder's exclusion flag should skip
+learned lines and application consent. The speech model directory is also excluded from backup
+because it is public downloaded data that can be fetched again.
 
 ## The pieces
 
@@ -198,24 +198,16 @@ suggestion loop is running.
   so switching it back on picks up where it left off. Forgetting is the row beside it, a
   separate choice. Turning the feature off everywhere keeps the corpus the same way.
 
-Forgetting is a `DELETE` followed by `PRAGMA wal_checkpoint(TRUNCATE)`, because the loop keeps
-its connection open for the life of the process and a `DELETE` alone leaves the rows readable in
-`predict.v1.sqlite-wal` until the app quits. Measured before the checkpoint was added: 50 lines
-recorded and then deleted left the marker in 927 KB of bytes beside a database that answered
-`count(*) = 0`.
+Forgetting changes the in-memory database and immediately seals its next snapshot atomically.
+Legacy plaintext SQLite files are copied through SQLite, including committed WAL frames, before
+the first encrypted snapshot replaces the old file; plaintext sidecars are then removed.
 
-A checkpoint SQLite refuses is reported in the pragma's result row rather than as an error code,
-so the store reads that row: forgetting fails loudly when the log could not be emptied, instead of
-saying the words are gone while they are still in the file. The rows themselves are deleted either
-way — what the failure says is that the copy beside them outlived the request.
-
-The checkpoint is on the three ways a person asks to forget, and not on eviction, which trims the
-corpus on the typing path and would pay for an fsync per keystroke. Eviction drops the weakest
-line to make room rather than answering a request, so what it leaves behind is what the corpus
-already held; a person who wants it gone asks, and that asking truncates the log.
+Disk writes happen on committed corpus changes rather than on each keystroke query; reads continue
+to use the existing in-memory SQLite indexes. If a snapshot cannot be sealed or atomically written,
+the mutation reports an error rather than claiming the new state is durable.
 
 When deletes leave at least 64 free database pages, the store runs `VACUUM` after the write
-transaction or forget checkpoint. This compacts large scope evictions without putting file
+transaction or forget operation. This compacts large scope evictions without putting file
 compaction on each keystroke.
 
 `PRAGMA secure_delete = ON` is set with the other pragmas, so the cells a forgotten row held are

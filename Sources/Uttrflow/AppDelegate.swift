@@ -349,7 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store: settingsStore,
         personalisation: Self.personalisation(
             in: container, dictionary: dictionary, history: history, clipboard: clipboard,
-            elsewhere: keptElsewhere(), running: { [weak self] in self?.completions }),
+            elsewhere: keptElsewhere(), running: { [weak self] in self?.completions },
+            encryptedStore: encryptedStore),
         onChange: { [weak self] settings in self?.settingsChanged(to: settings) },
         // Through the same switch the main window uses, so one choice is never applied two ways.
         onRequest: { [weak self] change in self?.apply(change) },
@@ -457,11 +458,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     nonisolated static func personalisation(
         in container: URL, dictionary: PersonalDictionaryStore, history: DictationHistoryStore,
         clipboard: ClipboardStore, elsewhere: KeptElsewhere = KeptElsewhere(),
-        running: @escaping @Sendable @MainActor () -> SuggestionCoordinator? = { nil }
+        running: @escaping @Sendable @MainActor () -> SuggestionCoordinator? = { nil },
+        encryptedStore: EncryptedStore? = nil
     ) -> FilePersonalisationStore {
         FilePersonalisationStore(
             dictionary: dictionary, history: history, clipboard: clipboard,
-            suggestions: PredictCorpus(container: container, running: running),
+            suggestions: PredictCorpus(
+                container: container, running: running, encryptedStore: encryptedStore),
             met: { AppDelegate.applicationsTheLoopHasMet(in: container) },
             elsewhere: elsewhere)
     }
@@ -912,7 +915,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         do {
             let coordinator = try SuggestionCoordinator(
                 container: container, preferences: settings.suggestions, scoring: scoring,
-                generating: generating)
+                generating: generating, encryptedStore: encryptedStore)
             // ⌥⎋ persists the master switch off, so the screen agrees and turning it back on rebuilds the loop.
             coordinator.onTurnedOffEverywhere = { [weak self] in
                 self?.apply(.toggle(.suggestionsEnabled, isOn: false))

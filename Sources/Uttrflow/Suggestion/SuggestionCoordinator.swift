@@ -173,6 +173,7 @@ final class SuggestionCoordinator {
     init(
         container: URL, preferences: SuggestionPreferences,
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
+        encryptedStore: EncryptedStore? = nil,
         focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
         processActivity: any SuggestionProcessActivityManaging = ProcessSuggestionActivity(),
         focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
@@ -185,7 +186,8 @@ final class SuggestionCoordinator {
         self.focusedSelectionReader = focusedSelectionReader
         self.focusedFieldValueObserver = focusedFieldValueObserver ?? FocusedFieldValueObserver()
         let store = try PredictStore(
-            path: PredictStore.defaultFile(in: container).path(percentEncoded: false))
+            path: PredictStore.defaultFile(in: container).path(percentEncoded: false),
+            encryptedStore: encryptedStore)
         self.store = store
         rejectedSuggestionRecorder = RejectedSuggestionRecorder(store: store)
         // Lines learned before the credential rules last widened are removed once, off the typing path.

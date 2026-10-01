@@ -398,8 +398,9 @@ thread above a reply box, and hands it to a model that runs on this Mac. None of
 uploaded.
 
 **Tab-to-complete learns from what you type, and that corpus is the most sensitive thing
-the app keeps.** It is `predict.v1.sqlite` in the same Application Support folder, with
-owner-only file permissions, unencrypted, and it is never uploaded. Nothing is written
+the app keeps.** It is `predict.v1.sqlite` in the same Application Support folder, sealed
+with the device's local Keychain key and protected by owner-only file permissions; it is
+never uploaded. Nothing is written
 until you have been asked: the first time you finish a value in an application Uttrflow
 asks once whether it may learn there, keeps the answer in `predict-consent.v1.json`, and
 records nothing in the meantime — so the choice is per application, and an application you

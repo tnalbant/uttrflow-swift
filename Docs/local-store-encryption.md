@@ -2,10 +2,10 @@
 
 ## Status
 
-This page records the scheme chosen for issue #3152 and its reset contract. On `main`,
-history, dictionary and snippets use encrypted JSON envelopes. Clipboard indexes and images,
-and retry recordings use encrypted storage. The typed-line SQLite corpus still has separate
-implementation work; its status must not be inferred from this shared scheme.
+This page records the scheme chosen for issue #3152 and its reset contract. History,
+dictionary and snippets use encrypted JSON envelopes; clipboard indexes and images, retry
+recordings, and the suggestion corpus use encrypted storage through their own migration
+paths. The corpus seals complete SQLite snapshots and keeps its working database in memory.
 
 ## Decision
 
@@ -55,9 +55,9 @@ payload; the envelope is the only on-disk wrapper.
 
 JSON stores seal the complete encoded file on every write through the `PrivateFile` seam.
 The writer continues to use its atomic replacement, owner-only mode and backup exclusion,
-but writes only the envelope. SQLite and pictures do not go through that JSON seam and need
-their own changes under #3153 and #3154. Retry recordings use the shared seal/open operations
-for independently authenticated PCM chunks under #3156.
+but writes only the envelope. The suggestion corpus seals serialized in-memory SQLite
+snapshots with the same envelope, keeping plaintext WAL and SHM files off disk. Clipboard
+images and retry recordings use the shared seal/open operations for their binary formats.
 
 ## Reading, migration and failure
 
@@ -113,7 +113,5 @@ Store-level tests must show that a Keychain failure is visible and does not prod
 empty successful read.
 
 The shared envelope, history/dictionary/snippet migration, clipboard index and picture
-encryption, retry-recording encryption, and reset-key revocation are in place. Handle the
-typed-line SQLite corpus and its `-wal`/`-shm` files separately in #3153. Do not update
-user-facing docs to say those files are encrypted until their implementation and migration
-ship.
+encryption, retry-recording encryption, reset-key revocation, and encrypted prediction
+snapshots are in place. Each store retains its own legacy reader and deletion behavior.

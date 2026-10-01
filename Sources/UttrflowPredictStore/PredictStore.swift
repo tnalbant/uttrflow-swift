@@ -27,8 +27,8 @@ public actor PredictStore: PredictionStore {
     private var database: Database
 
     /// Opens the corpus, replacing a file that is not a database at all and refusing one from a newer build.
-    public init(path: String) throws(PredictStoreError) {
-        database = try Self.opened(at: path)
+    public init(path: String, encryptedStore: EncryptedStore? = nil) throws(PredictStoreError) {
+        database = try Self.opened(at: path, encryptedStore: encryptedStore)
     }
 
     /// Where the corpus lives, beside the clipboard and the history, versioned in its name.
@@ -37,19 +37,23 @@ public actor PredictStore: PredictionStore {
     }
 
     /// Opens and migrates, and on corruption starts again rather than leaving the app broken.
-    private static func opened(at path: String) throws(PredictStoreError) -> Database {
+    private static func opened(
+        at path: String, encryptedStore: EncryptedStore?
+    ) throws(PredictStoreError) -> Database {
         try? PrivateFile.makeDirectory(at: URL(filePath: path).deletingLastPathComponent())
         do {
-            let database = try Database(path: path)
+            let database = try Database(path: path, encryptedStore: encryptedStore)
             try Schema.migrate(database)
-            secureFiles(at: path)
+            try database.finishOpening()
+            if encryptedStore == nil { secureFiles(at: path) }
             return database
         } catch {
             guard error == .corrupt else { throw error }
             setAsideCorrupt(at: path)
-            let replacement = try Database(path: path)
+            let replacement = try Database(path: path, encryptedStore: encryptedStore)
             try Schema.migrate(replacement)
-            secureFiles(at: path)
+            try replacement.finishOpening()
+            if encryptedStore == nil { secureFiles(at: path) }
             return replacement
         }
     }
@@ -68,13 +72,11 @@ public actor PredictStore: PredictionStore {
         }
     }
 
-    /// SQLite creates the database and sidecars itself, so the store tightens them after opening.
+    /// SQLite owns these files in the legacy mode, so each remains private and backup-excluded.
     private static func secureFiles(at path: String) {
         for suffix in ["", "-wal", "-shm"] {
             let url = URL(filePath: path + suffix)
-            guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else {
-                continue
-            }
+            guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { continue }
             try? PrivateFile.tighten(at: url)
             try? PrivateFile.excludeFromBackup(at: url)
         }
@@ -559,9 +561,13 @@ public actor PredictStore: PredictionStore {
         return removed
     }
 
-    /// Empties the write-ahead log when no reader holds it, and reports whether it did; the delete has already committed either way.
+    /// Confirms an encrypted snapshot or empties the legacy write-ahead log after a deletion.
     @discardableResult
     private func leaveNothingBehind() -> Bool {
+        if database.usesEncryptedSnapshots {
+            try? compactIfNeeded()
+            return true
+        }
         let refused = try? database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
         if refused?.first == 0 { try? compactIfNeeded() }
         return refused?.first == 0
@@ -572,7 +578,9 @@ public actor PredictStore: PredictionStore {
         let free = try database.rows("PRAGMA freelist_count", { _ in }) { $0.integer(0) }.first ?? 0
         guard free >= Self.compactionThresholdPages else { return }
         try database.execute("VACUUM")
-        _ = try database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
+        if !database.usesEncryptedSnapshots {
+            _ = try database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
+        }
     }
 
     /// How many entries each application has taught, keyed by bundle identifier.

@@ -243,7 +243,7 @@ Measured on Release builds with `/usr/bin/time -l` and MLX's own counters, 48 GB
 | the last pass's prompt in a KV cache | the end of a suggestion pass | the next pass trims it, or the weights are dropped | 91 MB of GPU memory measured over one typed reply, see [what a suggestion pass prefills](#what-a-suggestion-pass-prefills) |
 | the recording | the shortcut | the end of the dictation | at most 15 MB: 240 s at 16 kHz in 4-byte samples |
 | clipboard thumbnails | the panel is drawn | least recently used first | at most 32 MB, see `Docs/clipboard-budget.md` |
-| clipboard, history, dictionary and suggestion stores | launch | quit | under a megabyte of text each at measured sizes; the prediction corpus is SQLite on disk |
+| clipboard, history, dictionary and suggestion stores | launch | quit | under a megabyte of text each at measured sizes; the prediction corpus queries in-memory SQLite and writes encrypted snapshots to disk |
 
 Clean-up runs in Apple's model process, not this one, and is not counted here.
 
