@@ -49,7 +49,16 @@ public enum WorkingSet {
                 // Ties broken the same way buckets are, so the two lists never disagree.
                 return PhoneticIndex.isMoreUseful(first.entry, second.entry)
             }
-        return ranked.prefix(limit).map(\.entry.word)
+        var sounds: Set<String> = []
+        var words: [String] = []
+        for candidate in ranked {
+            let keys = DoubleMetaphone.code(for: candidate.entry.soundsLike).keys
+            if !keys.isEmpty, !sounds.isDisjoint(with: keys) { continue }
+            sounds.formUnion(keys)
+            words.append(candidate.entry.word)
+            if words.count == limit { break }
+        }
+        return words
     }
 
     /// Whether the entry was manually added within the priority window.

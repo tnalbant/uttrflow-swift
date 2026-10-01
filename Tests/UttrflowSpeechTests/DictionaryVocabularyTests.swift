@@ -84,6 +84,21 @@ struct DictionaryVocabularyTests {
         #expect(words.count == 2)
     }
 
+    @Test("keeps only the highest-ranked spelling for one pronunciation")
+    func collapsesPhoneticDuplicates() async {
+        let better = entry("color", timesUsed: 40)
+        let duplicate = entry("colour")
+        let distinct = entry("invoice", timesUsed: 2)
+        let betterKeys = Set(DoubleMetaphone.code(for: better.soundsLike).keys)
+        let duplicateKeys = Set(DoubleMetaphone.code(for: duplicate.soundsLike).keys)
+        #expect(!betterKeys.isDisjoint(with: duplicateKeys))
+
+        let words = await source(limit: 3, entries: [duplicate, distinct, better])
+            .vocabulary(favouring: .unknown)
+
+        #expect(words == ["color", "invoice"])
+    }
+
     @Test("an empty dictionary asks for no biasing at all")
     func emptyDictionary() async {
         #expect(await source(entries: []).vocabulary(favouring: .unknown).isEmpty)
