@@ -9,7 +9,7 @@ struct StandardPipelineTests {
     func order() {
         #expect(
             CleaningPipeline.standard.ids == [
-                "fillers", "stammers", "repeatedPhrase", "selfCorrection", "spokenPunctuation", "layoutWords",
+                "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation", "layoutWords",
                 "numberForms", "contractions", "spelledInitialism", "spacing", "firstWord", "terminalStop",
             ])
     }
@@ -167,6 +167,37 @@ struct StandardPipelineTests {
         ]
     )
     func endToEnd(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "removes an abandoned clause when the speaker restarts in different words",
+        arguments: [
+            ("I went to the I'll call you later", "I'll call you later."),
+            ("can we we should just cancel", "We should just cancel."),
+            ("let me I'll send it tomorrow", "I'll send it tomorrow."),
+            ("she was going to she decided to stay", "She decided to stay."),
+            (
+                "the problem is what I wanted to say is the server is slow",
+                "What I wanted to say is the server is slow."
+            ),
+        ]
+    )
+    func abandonedClauseRestarts(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "keeps complete clauses that can resemble an abandoned start",
+        arguments: [
+            ("I said I'd go", "I said I'd go."),
+            ("I went to the store; I'll call you later", "I went to the store; I'll call you later."),
+            ("Let me know when you arrive", "Let me know when you arrive."),
+            ("She was going to the store", "She was going to the store."),
+            ("The problem is the server is slow", "The problem is the server is slow."),
+        ]
+    )
+    func completeClausesStay(input: String, expected: String) {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 

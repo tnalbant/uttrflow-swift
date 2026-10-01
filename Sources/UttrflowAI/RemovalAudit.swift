@@ -24,7 +24,7 @@ public enum RemovalAudit {
             case .sound:
                 if !isSound(draft.words[index].text) { found.insert(index) }
             case .repetition:
-                if !isRepeated(at: index, in: draft) { found.insert(index) }
+                if !isRepetitionOrRestart(at: index, in: draft) { found.insert(index) }
             case .conversion:
                 if !isConverted(at: index, by: pass, in: draft) { found.insert(index) }
             case .retraction:
@@ -42,13 +42,14 @@ public enum RemovalAudit {
         !text.contains(where: \.isNumber) && text.count(where: \.isUppercase) < 2
     }
 
-    /// Whether the same word stands among the words kept either side of it, where the saying that stayed is.
-    private static func isRepeated(at index: Int, in draft: Draft) -> Bool {
+    /// Whether a repeated word or a recognized incomplete clause restarts among the kept words.
+    private static func isRepetitionOrRestart(at index: Int, in draft: Draft) -> Bool {
         let key = draft.shape(at: index).key
         let kept = draft.words.indices.filter { draft.words[$0].isPresent }
         let before = kept.filter { $0 < index }.suffix(repetitionReach)
         let after = kept.filter { $0 > index }.prefix(repetitionReach)
         return (before + after).contains { draft.shape(at: $0).key == key }
+            || FalseStartRestart.coversRemoval(at: index, in: draft)
     }
 
     /// Whether the pass wrote something into the run of words it touched around this one.
