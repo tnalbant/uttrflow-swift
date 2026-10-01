@@ -74,6 +74,8 @@ public actor ClipboardStore {
 
     /// Sets how long a use waits in memory for another write before it is written on its own.
     private let useFlushDelay: Duration
+    /// The shared file envelope used by the app; nil only for stores created without encryption in tests/tools.
+    private let encryptedStore: EncryptedStore?
 
     /// Holds the pending write of a use, so a run of pastes costs one write rather than one each.
     private var useFlush: Task<Void, Never>?
@@ -84,11 +86,13 @@ public actor ClipboardStore {
     public init(
         file: URL = ClipboardStore.defaultFile(),
         budget: ClipboardBudget = ClipboardStore.defaultBudget,
-        useFlushDelay: Duration = .seconds(30)
+        useFlushDelay: Duration = .seconds(30),
+        encryptedStore: EncryptedStore? = nil
     ) {
         self.file = file
         self.budget = budget
         self.useFlushDelay = useFlushDelay
+        self.encryptedStore = encryptedStore
     }
 
     /// Where the clipboard lives by default; versioned in the name so a new shape can sit beside it.
@@ -333,8 +337,7 @@ public actor ClipboardStore {
     /// Writes a picture's bytes back under the file name its clip already records.
     private func restore(_ data: Data, as name: String) throws(ClipboardStoreError) {
         do {
-            try PrivateFile.write(
-                data, to: imagesFolder.appending(path: name, directoryHint: .notDirectory))
+            try writeImage(data, named: name)
         } catch {
             throw .couldNotWrite
         }
@@ -346,8 +349,7 @@ public actor ClipboardStore {
     ) throws(ClipboardStoreError) -> ClipImage {
         let name = "\(id.uuidString).png"
         do {
-            try PrivateFile.write(
-                data, to: imagesFolder.appending(path: name, directoryHint: .notDirectory))
+            try writeImage(data, named: name)
         } catch {
             throw .couldNotWrite
         }
@@ -371,8 +373,26 @@ public actor ClipboardStore {
 
     /// The bytes of a clip's picture, or `nil` when the file has gone from under the app.
     public func imageData(for image: ClipImage) -> Data? {
-        try? Data(
-            contentsOf: imagesFolder.appending(path: image.file, directoryHint: .notDirectory))
+        let url = imagesFolder.appending(path: image.file, directoryHint: .notDirectory)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let encryptedStore else { return data }
+        if EncryptedStore.isSealed(data) {
+            do { return try encryptedStore.open(data, for: image.file) } catch {
+                let setAside = LocalStore.setAside(url, now: Date())
+                if setAside == nil { unreplaceable.insert(url) }
+                return nil
+            }
+        }
+        // A plaintext legacy image remains usable if its one-time sealing write is temporarily unavailable.
+        do { try writeImage(data, named: image.file) } catch { return data }
+        return data
+    }
+
+    /// Writes PNG bytes sealed with the shared key and the image filename as authenticated data.
+    private func writeImage(_ data: Data, named name: String) throws {
+        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
+        guard let encryptedStore else { return try PrivateFile.write(data, to: url) }
+        try PrivateFile.write(try encryptedStore.seal(data, for: name), to: url)
     }
 
     /// Releases the pictures held for an undo, deleting each one no clip has taken back.
@@ -794,7 +814,7 @@ public actor ClipboardStore {
     /// Reads one file, setting an unreadable one aside and remembering that its pictures are unknown.
     private func read(_ url: URL) -> [Clip] {
         guard !unreplaceable.contains(url) else { return [] }
-        let stored = LocalStore.read([Clip].self, from: url)
+        let stored = encryptedStore?.read([Clip].self, from: url) ?? LocalStore.read([Clip].self, from: url)
         if case .unreadable(let setAside) = stored {
             hasUnreadableIndex = true
             if setAside == nil { unreplaceable.insert(url) }
@@ -868,7 +888,11 @@ public actor ClipboardStore {
             }
             let data = try JSONEncoder().encode(clips)
             Self.writes?.record(data)
-            try PrivateFile.write(data, to: url)
+            if let encryptedStore {
+                try encryptedStore.write(clips, to: url)
+            } else {
+                try PrivateFile.write(data, to: url)
+            }
         } catch {
             throw .couldNotWrite
         }

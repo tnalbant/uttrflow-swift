@@ -130,7 +130,8 @@ extension TextInsertionError: CataloguedFailure {
         case .insertionTimedOut: .insertionRejected(description: "")
         case .insertionRejected: .insertionUnconfirmed
         case .insertionUnconfirmed: .insertionTargetChanged
-        case .insertionTargetChanged: nil
+        case .insertionTargetChanged: .insertionNeedsCopy(description: "")
+        case .insertionNeedsCopy: nil
         }
     }
 }

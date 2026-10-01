@@ -1,7 +1,8 @@
 # The key events this app posts, and what the system does with them
 
-`CGEventKeystrokeSender` presses ⌘V and `CGEventTypist` types characters and presses
-Delete. Both post events into the same stream the user's own keyboard feeds. An event can
+`CGEventKeystrokeSender` presses ⌘V for clipboard-panel pastes, and `CGEventTypist` types
+characters for dictation and accepted completions and presses Delete for replacements.
+They post events into the same stream the user's own keyboard feeds. An event can
 carry both a Unicode string and a physical key code, and the receiving application decides
 which representation it uses.
 `Docs/insertion.md` covers where the events are posted; this page covers what is in them.

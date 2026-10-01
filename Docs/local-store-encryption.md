@@ -2,10 +2,10 @@
 
 ## Status
 
-This page records the scheme chosen for issue #3152 and the stores that use it. On `main`,
-history, dictionary and snippets use encrypted JSON envelopes. This change adds chunked
-encryption for retry recordings. Clipboard files and the typed-line SQLite corpus still
-have separate implementation work; reset-key revocation is tracked in #3157.
+This page records the scheme chosen for issue #3152 and its reset contract. On `main`,
+history, dictionary and snippets use encrypted JSON envelopes. Clipboard indexes and images,
+and retry recordings use encrypted storage. The typed-line SQLite corpus still has separate
+implementation work; its status must not be inferred from this shared scheme.
 
 ## Decision
 
@@ -85,10 +85,11 @@ may a read pretend the store is empty.
 
 ## Deletion and limits
 
-This scheme encrypts each store file under one installation key. Deleting a record rewrites
-or unlinks ciphertext; it is not per-record cryptographic erasure. Resetting all local
-personalisation must delete the Keychain item as part of the same reported operation, so
-retained copies of encrypted files cannot be opened by a fresh key. If Keychain deletion
+This scheme encrypts each store file under one installation key. Deleting one record rewrites
+or unlinks ciphertext; it is not per-record cryptographic erasure. This design accepts that
+boundary instead of keeping a separate key for every record or picture. Resetting all local
+personalisation deletes the Keychain item only after every reset target succeeds, so retained
+copies of encrypted files cannot be opened by a fresh key. If any target or Keychain deletion
 fails, reset must report failure rather than claim the data is revoked.
 
 Atomic replacement and unlink do not reliably overwrite old APFS or flash-storage blocks.
@@ -111,7 +112,8 @@ is replaced by an envelope, while malformed JSON and failed writes preserve the 
 Store-level tests must show that a Keychain failure is visible and does not produce an
 empty successful read.
 
-The shared envelope and history/dictionary/snippet migration are in place. Chunked retry
-recordings are added in #3156. Handle SQLite and its `-wal`/`-shm` files in #3153 and
-clipboard files in #3154; reset/deletion behavior remains in #3157. Do not update user-facing
-docs to say the remaining stores are encrypted until their implementation and migration ship.
+The shared envelope, history/dictionary/snippet migration, clipboard index and picture
+encryption, retry-recording encryption, and reset-key revocation are in place. Handle the
+typed-line SQLite corpus and its `-wal`/`-shm` files separately in #3153. Do not update
+user-facing docs to say those files are encrypted until their implementation and migration
+ship.

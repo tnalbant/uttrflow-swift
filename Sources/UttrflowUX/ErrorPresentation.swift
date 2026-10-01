@@ -95,6 +95,7 @@ public enum FailurePresenter {
         case .retry: "arrow.clockwise"
         case .pasteManually: "doc.on.clipboard"
         case .showRecentDictations: "menubar.arrow.up.rectangle"
+        case .copyTranscript: "doc.on.clipboard"
         case .retryFromRecording: "arrow.clockwise"
         }
     }

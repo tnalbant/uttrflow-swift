@@ -16,6 +16,8 @@ public enum TextInsertionError: UttrflowFailure {
     case insertionUnconfirmed
     /// The application in front changed after the destination was captured.
     case insertionTargetChanged
+    /// Clipboard-free insertion refused, so the user may copy the retained transcript explicitly.
+    case insertionNeedsCopy(description: String)
 
     /// A plain sentence per case, saying where the words are.
     public var userMessage: String {
@@ -36,6 +38,8 @@ public enum TextInsertionError: UttrflowFailure {
             "The app hasn't confirmed whether the text was inserted. Check the field before trying again."
         case .insertionTargetChanged:
             "The app in front changed. Focus the intended field and try again."
+        case .insertionNeedsCopy:
+            "The text couldn't be inserted. Your clipboard is unchanged."
         }
     }
 
@@ -51,6 +55,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .insertionTargetChanged: .showRecentDictations
         case .insertionRejected: .pasteManually
         case .insertionUnconfirmed: .showRecentDictations
+        case .insertionNeedsCopy: .copyTranscript
         }
     }
 
@@ -62,7 +67,7 @@ public enum TextInsertionError: UttrflowFailure {
         // The words exist and the user can reach them; they only missed where they were aimed.
         case .accessibilityDenied, .clipboardUnavailable, .clipboardChanged, .insertionTimedOut,
             .insertionRejected,
-            .insertionUnconfirmed, .insertionTargetChanged:
+            .insertionUnconfirmed, .insertionTargetChanged, .insertionNeedsCopy:
             .degraded
         }
     }

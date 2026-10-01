@@ -3,6 +3,7 @@
 import CryptoKit
 import Foundation
 import Security
+import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -24,6 +25,24 @@ struct EncryptedStoreTests {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw StoreKeyError.unavailable(Int32(errSecInteractionNotAllowed))
         }
+    }
+
+    private final class RevocableKeys: StoreKeyProviding, StoreKeyRevoking, Sendable {
+        private let stored = Mutex<SymmetricKey?>(nil)
+
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            try stored.withLock { current in
+                if let current { return current }
+                guard createIfMissing else {
+                    throw StoreKeyError.unavailable(Int32(errSecItemNotFound))
+                }
+                let generated = SymmetricKey(size: .bits256)
+                current = generated
+                return generated
+            }
+        }
+
+        func revokeKey() throws { stored.withLock { $0 = nil } }
     }
 
     private func folder() throws -> URL {
@@ -148,6 +167,26 @@ struct EncryptedStoreTests {
         }
 
         #expect(try Data(contentsOf: file) == source)
+    }
+
+    @Test("revoking the installation key makes retained envelopes unreadable")
+    func revokeKey() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appending(path: "history.v1.json")
+        let retainedDirectory = directory.appending(path: "retained", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: retainedDirectory, withIntermediateDirectories: true)
+        let retainedCopy = retainedDirectory.appending(path: "history.v1.json")
+        let keys = RevocableKeys()
+        let store = EncryptedStore(keys: keys)
+        try store.write(["private"], to: source)
+        try Data(contentsOf: source).write(to: retainedCopy)
+
+        try store.revokeKey()
+
+        let unreadable = store.read([String].self, from: retainedCopy)
+        #expect(unreadable.value == nil)
+        #expect(LocalStore.hasSetAside(retainedCopy))
     }
 
     @Test("rejects unsupported, truncated and modified envelopes")

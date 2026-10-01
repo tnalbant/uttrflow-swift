@@ -257,7 +257,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dictionary = PersonalDictionaryStore(
             file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
-        clipboard = ClipboardStore(file: ClipboardStore.defaultFile(in: container))
+        clipboard = ClipboardStore(
+            file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
         super.init()
     }
     private let clipboardWatcher = PasteboardWatcher(source: SystemClipboardSource())
@@ -474,10 +475,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The files a full reset reaches that the settings module has no store for.
     private func keptElsewhere() -> KeptElsewhere {
+        let encryptedStore = self.encryptedStore
         KeptElsewhere(
             recordings: { [recordings] in try await recordings.discardEverything() },
             snippets: { [snippets] in try await snippets.deleteEverything() },
-            suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() })
+            suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() },
+            revokeEncryptionKey: {
+                guard let encryptedStore else { return }
+                try encryptedStore.revokeKey()
+            })
     }
 
     /// Forgets which applications completions may learn from, through the running loop when there is one.
@@ -1201,8 +1207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             cleaner: cleaner(for: settings),
             context: context,
             // Announced, like every write this app makes. See `Docs/insertion.md`.
-            inserter: TextInsertion.coordinator(
-                pasteboard: announcingPasteboard, reporting: Self.logPaste),
+            inserter: TextInsertion.dictation(),
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
             corrector: DictionaryCorrections(dictionary: dictionary),
             snippets: StoredSnippets(store: snippets),
@@ -2265,24 +2270,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Records how long the receiving application took to take a paste, which nothing else can observe.
-    @Sendable private nonisolated static func logPaste(_ outcome: PasteConfirmation.Outcome) {
-        switch outcome {
-        case .landed(let waited):
-            log.notice(
-                "paste landed after \(waited.inSeconds, format: .fixed(precision: 2), privacy: .public)s")
-        case .notReported:
-            log.notice("paste unconfirmed: the field does not report what it holds")
-        case .gaveUp(let waited):
-            log.notice(
-                "paste not seen within \(waited.inSeconds, format: .fixed(precision: 2), privacy: .public)s")
-        case .cancelled(let waited):
-            let seconds = waited.inSeconds
-            log.notice(
-                "paste wait cancelled after \(seconds, format: .fixed(precision: 2), privacy: .public)s")
-        }
-    }
-
     /// Redraws the menu bar and the floating button's hint when secure keyboard entry turns on or off.
     private func checkSecureInput() {
         guard secureInput.check() else { return }
@@ -3222,6 +3209,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             show(.onboarding)
         case .pasteManually:
             // Already on the clipboard, put there by the insertion floor before it reported failure.
+            Task { await pipeline?.acknowledge() }
+        case .copyTranscript:
+            if case .failed(let failure) = lastDictationState, let text = failure.wordsToKeep {
+                putOnClipboard(text, concealed: DictationTextPresentation(text).isSecret, used: nil)
+            }
             Task { await pipeline?.acknowledge() }
         case .showRecentDictations:
             // Delivery was unconfirmed or the clipboard failed; Recent has the saved words.

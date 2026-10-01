@@ -18,10 +18,10 @@ struct FailureCatalogueTests {
         #expect(AudioCaptureError.everyCase.count == 6)
         #expect(SpeechEngineError.everyCase.count == 7)
         #expect(TransformationError.everyCase.count == 3)
-        #expect(TextInsertionError.everyCase.count == 6)
+        #expect(TextInsertionError.everyCase.count == 7)
         #expect(HotkeyError.everyCase.count == 2)
         #expect(DictionaryStoreError.everyCase.count == 4)
-        #expect(allFailures.count == 40)
+        #expect(allFailures.count == 41)
     }
 
     /// A backwards link loops and a repeated case hides the one it displaces; both show as a duplicate.
@@ -195,6 +195,13 @@ struct FailurePresentationTests {
             #expect(failure.recovery == .pasteManually)
             #expect(failure.userMessage.contains("press ⌘V"))
         }
+    }
+
+    @Test("clipboard-free insertion offers an explicit copy action")
+    func insertionNeedsCopyOffersCopyTranscript() {
+        let failure = TextInsertionError.insertionNeedsCopy(description: "keyboard layout")
+        #expect(failure.recovery == .copyTranscript)
+        #expect(failure.userMessage.contains("clipboard is unchanged"))
     }
 
     @Test("distinguishes failures that carry different detail")

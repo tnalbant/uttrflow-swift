@@ -11,6 +11,12 @@ public protocol StoreKeyProviding: Sendable {
     func key(createIfMissing: Bool) throws -> SymmetricKey
 }
 
+/// A provider that can revoke the shared installation key after a full personalisation reset.
+public protocol StoreKeyRevoking: Sendable {
+    /// Removes the key, making every retained envelope under it unreadable.
+    func revokeKey() throws
+}
+
 /// The shared versioned envelope for encrypted local JSON files.
 public struct EncryptedStore: Sendable {
     private static let log = Logger(subsystem: LocalStore.productionIdentifier, category: "store-encryption")
@@ -104,6 +110,14 @@ public struct EncryptedStore: Sendable {
         return try Self.seal(payload, key: key, name: logicalName)
     }
 
+    /// Revokes the shared key after all reset targets have been deleted successfully.
+    public func revokeKey() throws {
+        guard let revokingKeys = keys as? any StoreKeyRevoking else {
+            throw StoreKeyError.revocationUnsupported
+        }
+        try revokingKeys.revokeKey()
+    }
+
     /// Opens a sealed binary asset, refusing when the installation key is missing or the file was changed.
     public func open(_ envelope: Data, for logicalName: String) throws -> Data {
         let key = try keys.key(createIfMissing: false)
@@ -135,7 +149,7 @@ public struct EncryptedStore: Sendable {
 }
 
 /// Keeps one non-synchronizable, device-only key in the stable production Keychain service.
-public struct KeychainStoreKeyProvider: StoreKeyProviding {
+public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
     /// The versioned service shared across product upgrades.
     public static let service = "com.uttrflow.local-store.encryption.v1"
 
@@ -168,6 +182,21 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding {
         guard addStatus == errSecSuccess else { throw StoreKeyError.unavailable(Int32(addStatus)) }
         return key
     }
+
+    /// Deletes the stable local-store item; deleting an already absent key is a completed reset.
+    public func revokeKey() throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.service,
+            kSecAttrAccount as String: NSUserName(),
+            kSecAttrSynchronizable as String: false,
+            kSecUseDataProtectionKeychain as String: true,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw StoreKeyError.unavailable(Int32(status))
+        }
+    }
 }
 
 /// A Keychain refusal is retained so callers cannot mistake it for an empty store.
@@ -176,4 +205,6 @@ public enum StoreKeyError: Error, Sendable {
     case unavailable(Int32)
     /// A caller must decode a plaintext file through `read` before replacing it.
     case legacyFileNeedsMigration
+    /// The injected provider cannot revoke its key, so a full reset must fail closed.
+    case revocationUnsupported
 }

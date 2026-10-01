@@ -96,6 +96,8 @@ private extension RecoveryAction {
             "The text is on your clipboard. Press Command V to paste it."
         case .showRecentDictations:
             "Open Recent from the Uttrflow menu to find your words."
+        case .copyTranscript:
+            "Choose Copy on the floating button to copy your words."
         case .retryFromRecording:
             "Open History from the Uttrflow menu, then choose Retry on the recording."
         }

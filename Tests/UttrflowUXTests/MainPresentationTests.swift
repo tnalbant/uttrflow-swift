@@ -17,7 +17,7 @@ struct MainPresentationTests {
     func everyRecoveryHasATitle() {
         let every: [RecoveryAction] =
             SystemSettingsPane.allCases.map { .openSystemSettings($0) }
-            + [.retry, .downloadSpeechModel, .pasteManually, .showRecentDictations]
+            + [.retry, .downloadSpeechModel, .pasteManually, .showRecentDictations, .copyTranscript]
         for action in every {
             #expect(!MainPresenter.title(for: action).isEmpty)
         }
