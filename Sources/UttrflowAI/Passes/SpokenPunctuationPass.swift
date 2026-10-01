@@ -15,6 +15,7 @@ enum SpokenMarkKind: Sendable, Equatable {
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
 public struct SpokenPunctuationPass: CleaningPass {
     public static let id: PassID = .spokenPunctuation
+    private let destination: Destination
 
     /// Marks written as the pair they are, so adding one is a row rather than two rows and a guard clause.
     static let pairs: [(open: [String], close: [String], mark: String)] = [
@@ -49,14 +50,24 @@ public struct SpokenPunctuationPass: CleaningPass {
         "aap", "yeh", "woh",
     ]
 
-    public init() {}
+    public init(destination: Destination = .plain) {
+        self.destination = destination
+    }
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
         var live = draft.presentIndices
         let repeated = repeatedNames(in: live, of: draft)
+        let literalHyphens = isTechnicalDestination || hasTechnicalContext(in: live, of: draft)
         var position = 0
         while position < live.count {
+            if literalHyphens, replaceLongFlag(at: position, in: &live, of: &draft) {
+                continue
+            }
+            if literalHyphens, replaceShortFlag(at: position, in: &live, of: &draft) {
+                position += 1
+                continue
+            }
             if let address = SpokenAddress.read(at: position, in: live, of: draft) {
                 write(address, at: position, in: &live, of: &draft)
                 position += 1
@@ -73,7 +84,8 @@ public struct SpokenPunctuationPass: CleaningPass {
                     found.mark, before: position + found.words.count, spanning: found.words.count,
                     in: live, of: draft),
                 attach(
-                    found.mark, kind: found.kind, at: position, spanning: found.words.count,
+                    mark(found.mark, literalHyphens: literalHyphens), kind: found.kind,
+                    at: position, spanning: found.words.count,
                     in: &live, of: &draft)
             else {
                 position += 1
@@ -81,6 +93,65 @@ public struct SpokenPunctuationPass: CleaningPass {
             }
         }
         return draft
+    }
+
+    private var isTechnicalDestination: Bool {
+        destination == .terminal || destination == .codeEditor || destination == .sqlEditor
+    }
+
+    private func mark(_ value: String, literalHyphens: Bool) -> String {
+        literalHyphens && value == "\u{2014}" ? "-" : value
+    }
+
+    /// Plain editors have no useful destination metadata, so explicit command and branch words carry the cue.
+    private func hasTechnicalContext(in live: [Int], of draft: Draft) -> Bool {
+        let cues: Set<String> = ["git", "npm", "yarn", "pnpm", "branch", "command", "terminal"]
+        return live.contains { cues.contains(draft.shape(at: $0).key) }
+    }
+
+    /// Turns two consecutive spoken dashes into a long option, including one at the start of a command.
+    private func replaceLongFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
+        guard position + 2 < live.count,
+            matches(["dash"], at: position, in: live, of: draft),
+            matches(["dash"], at: position + 1, in: live, of: draft),
+            !MentionGuard.isMentioned(
+                at: position, spanning: 1, in: live, of: draft,
+                reach: MentionGuard.phraseReach, kind: .joining),
+            !MentionGuard.isMentioned(
+                at: position + 1, spanning: 1, in: live, of: draft,
+                reach: MentionGuard.phraseReach, kind: .joining)
+        else { return false }
+        let value = live[position + 2]
+        let option = draft.words[value].text
+        let joinsDevelopmentSuffix =
+            option == "save" && position + 3 < live.count
+            && draft.shape(at: live[position + 3]).key == "dev"
+        draft.replace(
+            at: value, with: "--" + option + (joinsDevelopmentSuffix ? "-dev" : ""), by: Self.id)
+        if joinsDevelopmentSuffix { draft.remove(at: live[position + 3], by: Self.id) }
+        draft.remove(at: live[position], by: Self.id)
+        draft.remove(at: live[position + 1], by: Self.id)
+        live.removeSubrange(position..<(position + (joinsDevelopmentSuffix ? 4 : 2)))
+        return true
+    }
+
+    /// Leaves a one-letter option as its own token: `git commit -m`, not `git commit-m`.
+    private func replaceShortFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
+        guard position + 1 < live.count, position > 0,
+            matches(["dash"], at: position, in: live, of: draft),
+            !MentionGuard.isMentioned(
+                at: position, spanning: 1, in: live, of: draft,
+                reach: MentionGuard.phraseReach, kind: .joining)
+        else { return false }
+        let next = draft.words[live[position + 1]].text
+        guard (1...2).contains(next.utf8.count),
+            next.unicodeScalars.allSatisfy({ (65...90).contains($0.value) || (97...122).contains($0.value) })
+        else { return false }
+        let index = live[position]
+        draft.replace(at: index, with: "-" + next, by: Self.id)
+        draft.remove(at: live[position + 1], by: Self.id)
+        live.remove(at: position + 1)
+        return true
     }
 
     /// Writes the address over the first of its words and drops the rest, which spelled it.

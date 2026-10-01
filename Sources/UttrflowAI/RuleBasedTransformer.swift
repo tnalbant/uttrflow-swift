@@ -63,7 +63,7 @@ public struct RuleBasedTransformer: TextTransformationEngine {
         case .piece:
             .piece(
                 numbers: formatter.numbers, digits: formatter.digits,
-                layout: formatter.layout, steps: steps)
+                layout: formatter.layout, destination: formatter.destination, steps: steps)
         }
     }
 }

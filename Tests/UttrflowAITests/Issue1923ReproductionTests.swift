@@ -44,21 +44,22 @@ struct Issue1923ReproductionTests {
     }
 
     /// The exact cases the issue lists: every lower-case command stays lower-case.
-    @Test(
-        "a dictated command keeps the case the speaker said",
-        arguments: [
-            "ls dash la", "npm run build", "git commit dash m fix the login bug",
-            "cd documents slash projects", "docker compose up dash d",
-        ]
-    )
-    func terminalCommandsKeepTheirCase(spoken: String) {
-        #expect(cleaned(spoken, into: terminal) == spoken)
+    @Test("a dictated command keeps its case while spoken flags become literal")
+    func terminalCommandsKeepTheirCase() {
+        for (spoken, expected) in [
+            ("ls dash la", "ls -la"), ("npm run build", "npm run build"),
+            ("git commit dash m fix the login bug", "git commit -m fix the login bug"),
+            ("cd documents slash projects", "cd documents slash projects"),
+            ("docker compose up dash d", "docker compose up -d"),
+        ] {
+            #expect(cleaned(spoken, into: terminal) == expected)
+        }
     }
 
     /// The case the speaker said is preserved through the deterministic pipeline, not just by the formatter.
-    @Test("ls dash la into Terminal stays ls dash la, in the rules path")
+    @Test("spoken short flags become literal in the rules path")
     func terminalKeepsCaseInTheRulesPath() {
-        #expect(cleaned("ls dash la", into: terminal) == "ls dash la")
+        #expect(cleaned("ls dash la", into: terminal) == "ls -la")
         #expect(cleaned("npm run build", into: terminal) == "npm run build")
     }
 
