@@ -214,6 +214,10 @@ corpus on the typing path and would pay for an fsync per keystroke. Eviction dro
 line to make room rather than answering a request, so what it leaves behind is what the corpus
 already held; a person who wants it gone asks, and that asking truncates the log.
 
+When deletes leave at least 64 free database pages, the store runs `VACUUM` after the write
+transaction or forget checkpoint. This compacts large scope evictions without putting file
+compaction on each keystroke.
+
 `PRAGMA secure_delete = ON` is set with the other pragmas, so the cells a forgotten row held are
 zeroed whatever the system library's default happens to be.
 
@@ -540,13 +544,16 @@ One row per surface, one row per entry, one row per succession pair, and two ind
 `entry`, each for a single query: `entry_prefix` on `(surface_id, text_lower)` for the
 prefix range scan run on every keystroke, over the lowercased text so matching ignores case
 and keeps the index, and `entry_recent` on `(surface_id, last_used)` for the person's most
-recent lines that the model is shown. `Schema.version` is 4: a v1 file, whose index was on
+recent lines that the model is shown. `Schema.version` is 6: a v1 file, whose index was on
 `text`, gains the `text_lower` column and has the index moved when it is opened; a v2 file
 gains `entry_recent`; every file below 4 has `text_lower` rewritten with Swift's
 `lowercased()`, the function writes and queries use, since SQLite's `lower` folds ASCII only
-and left an accented capital outside the prefix range; a file from a newer build is refused
-rather than written to. Recording a line again rewrites its key too. A surface holds at most 2,000 entries and evicts by count then age. Forgetting
-works at three sizes: one entry, one application, everything.
+and left an accented capital outside the prefix range; v5 canonicalizes application keys and
+v6 adds indexed surface recency. A file from a newer build is refused rather than written to.
+Recording a line again rewrites its key too. A surface holds at most 2,000 entries, a field
+retains at most 64 scopes, and lookups read at most the eight most recent scopes. Entry
+eviction is by count then age; scope eviction is least-recently-used. Forgetting works at three
+sizes: one entry, one application, everything.
 
 An entry carries `count`, `accepted`, `rejected`, `self_sourced` and `last_used`. A
 `superseded_by` value marks text the user has replaced, and a superseded entry is never

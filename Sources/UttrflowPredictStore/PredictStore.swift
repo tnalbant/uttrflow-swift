@@ -17,6 +17,9 @@ public actor PredictStore: PredictionStore {
     /// How many documents one field may retain before its least recently used scope is removed.
     public static let surfacesPerField = 64
 
+    /// Free pages accumulated before the store reclaims disk space.
+    static let compactionThresholdPages = 64
+
     /// How many candidates a query returns, which is more than any list shows.
     static let candidateLimit = 16
 
@@ -364,6 +367,7 @@ public actor PredictStore: PredictionStore {
                 Spelling.canonical(text), in: surface, after: previous.map(Spelling.canonical),
                 selfSourced: selfSourced, at: moment)
         }
+        try? compactIfNeeded()
     }
 
     /// The steps of a record, which stand or fall together.
@@ -472,6 +476,7 @@ public actor PredictStore: PredictionStore {
                 })
             try evictWeakest(surfaceIdentifier: id)
         }
+        try? compactIfNeeded()
     }
 
     // MARK: - Forgetting
@@ -558,7 +563,16 @@ public actor PredictStore: PredictionStore {
     @discardableResult
     private func leaveNothingBehind() -> Bool {
         let refused = try? database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
+        if refused?.first == 0 { try? compactIfNeeded() }
         return refused?.first == 0
+    }
+
+    /// Compacts a substantially reduced corpus so SQLite releases its unused pages.
+    private func compactIfNeeded() throws(PredictStoreError) {
+        let free = try database.rows("PRAGMA freelist_count", { _ in }) { $0.integer(0) }.first ?? 0
+        guard free >= Self.compactionThresholdPages else { return }
+        try database.execute("VACUUM")
+        _ = try database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
     }
 
     /// How many entries each application has taught, keyed by bundle identifier.

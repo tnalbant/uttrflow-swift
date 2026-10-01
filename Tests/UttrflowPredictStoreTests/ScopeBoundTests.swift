@@ -56,4 +56,53 @@ struct ScopeBoundTests {
             try await store.candidates(for: shell("/f\(PredictStore.surfacesPerField)"), matching: "command")
                 .count == 1)
     }
+
+    @Test("a large scope eviction reclaims the freed pages")
+    func compactsAfterLargeScopeEviction() async throws {
+        let corpus = Corpus()
+        let store = try PredictStore(path: corpus.path)
+        let sizeBefore: Int
+        do {
+            let database = try Database(path: corpus.path)
+            var oldestSurface: Int64?
+            for index in 0..<PredictStore.surfacesPerField {
+                try database.run(
+                    "INSERT INTO surface (bundle_id, role, locator, scope, last_used) VALUES (?, ?, ?, ?, ?)"
+                ) {
+                    $0.bind(1, "com.example.term")
+                    $0.bind(2, "AXTextArea")
+                    $0.bind(3, "Prompt")
+                    $0.bind(4, "/f\(index)")
+                    $0.bind(5, Double(index + 1))
+                }
+                if index == 0 { oldestSurface = database.lastInsertedIdentifier }
+            }
+            guard let oldestSurface else { Issue.record("Missing oldest scope"); return }
+            for index in 0..<512 {
+                let text = "entry-\(index)-" + String(repeating: "x", count: 1_000)
+                try database.run(
+                    "INSERT INTO entry (surface_id, text, text_lower, last_used) VALUES (?, ?, ?, ?)"
+                ) {
+                    $0.bind(1, oldestSurface)
+                    $0.bind(2, text)
+                    $0.bind(3, text.lowercased())
+                    $0.bind(4, Double(index))
+                }
+            }
+            _ = try database.rows("PRAGMA wal_checkpoint(TRUNCATE)", { _ in }) { $0.integer(0) }
+            sizeBefore =
+                (try FileManager.default.attributesOfItem(atPath: corpus.path)[.size] as? NSNumber)?.intValue
+                ?? 0
+        }
+        #expect(sizeBefore > PredictStore.compactionThresholdPages * 4_096)
+
+        try await store.record("new command", in: shell("/new"), at: moment)
+
+        let database = try Database(path: corpus.path)
+        let pagesAfter = try database.rows("PRAGMA freelist_count", { _ in }) { $0.integer(0) }.first ?? 0
+        let sizeAfter =
+            (try FileManager.default.attributesOfItem(atPath: corpus.path)[.size] as? NSNumber)?.intValue ?? 0
+        #expect(pagesAfter == 0)
+        #expect(sizeAfter < sizeBefore)
+    }
 }
