@@ -45,6 +45,18 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "joins spoken percentile ranks",
+        arguments: [
+            ("p fifty", "p50"), ("p ninety", "p90"), ("p ninety five", "p95"),
+            ("p ninety nine", "p99"), ("p ninety nine point nine", "p99.9"),
+        ]
+    )
+    func percentiles(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+        #expect(cleaned("plan p two", by: sut) == "plan p two")
+    }
+
     /// A cell, a query and a line of code want the numeral; prose wants the word. See the design's §2 table.
     @Test(
         "writes every number as a numeral where the place asks for all of them",

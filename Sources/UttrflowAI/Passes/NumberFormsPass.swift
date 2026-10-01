@@ -56,6 +56,16 @@ public struct NumberFormsPass: CleaningPass {
         let keys = shapes.map(\.key)
         var position = 0
         while position < live.count {
+            if let percentile = Self.percentile(
+                at: position, keys: keys, shapes: shapes, policy: policy, digits: digits)
+            {
+                let last = position + percentile.count - 1
+                let text = shapes[position].prefix + "p" + percentile.text + shapes[last].suffix
+                draft.replace(at: live[position], with: text, by: Self.id)
+                for index in live[(position + 1)..<(last + 1)] { draft.remove(at: index, by: Self.id) }
+                position += percentile.count
+                continue
+            }
             if let count = Self.unchangedIdiomCount(at: position, keys: keys, shapes: shapes) {
                 position += count
                 continue
@@ -81,6 +91,17 @@ public struct NumberFormsPass: CleaningPass {
             position += phrase.count
         }
         return draft
+    }
+
+    /// Joins a spoken percentile after `p` only for the commonly used latency ranks.
+    private static func percentile(
+        at position: Int, keys: [String], shapes: [WordShape], policy: NumberPolicy, digits: DigitGrouping
+    ) -> Phrase? {
+        guard keys[position] == "p", joined(position + 1, shapes),
+            let number = phrase(at: position + 1, in: shapes, policy: policy, digits: digits),
+            ["50", "90", "95", "99", "99.9"].contains(number.text)
+        else { return nil }
+        return Phrase(text: number.text, count: number.count + 1)
     }
 
     /// Reads `H.MM` as a clock only with a meridiem or an `at`/`by` cue.
