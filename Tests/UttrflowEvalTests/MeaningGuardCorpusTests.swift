@@ -29,4 +29,20 @@ struct MeaningGuardCorpusTests {
         }
     }
 
+    @Test("as-spoken chat corpus keeps dialect verb forms")
+    func corpusKeepsAsSpokenVerbForms() {
+        let guarder = MeaningPreservationGuard()
+        let dialectCases = EvaluationCorpus.all.filter { $0.id.hasPrefix("message-dialect-") }
+        #expect(dialectCases.count == 4)
+        for sample in dialectCases {
+            #expect(
+                guarder.verdict(
+                    draft: Draft(text: sample.spoken), rewritten: sample.expected,
+                    grammar: DestinationFormatter.standard(for: sample.situation).grammar
+                ).isAccepted,
+                "\(sample.id) should preserve its spoken form"
+            )
+        }
+    }
+
 }

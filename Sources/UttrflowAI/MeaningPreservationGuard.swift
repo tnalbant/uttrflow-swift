@@ -34,6 +34,7 @@ public struct MeaningPreservationGuard: Sendable {
     public func verdict(
         draft: Draft, rewritten: String, offering doubtful: [DoubtfulSpan] = [], echoed: String = "",
         layout: LayoutPolicy = [.paragraphs, .lists],
+        grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
@@ -73,7 +74,7 @@ public struct MeaningPreservationGuard: Sendable {
         }
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
-            restoring: restored.map(\.token))
+            restoring: restored.map(\.token), policy: grammar)
     }
 
     /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
@@ -448,8 +449,12 @@ public struct MeaningPreservationGuard: Sendable {
     /// The same check over an alignment already in hand, each word judged against what stands in its own place.
     static func grammarVerdict(
         _ alignment: RewriteAlignment, excusing excused: Set<Int>, echoed: String,
-        allowing doubtful: [DoubtfulSpan], restoring restored: [GrammarToken] = []
+        allowing doubtful: [DoubtfulSpan], restoring restored: [GrammarToken] = [],
+        policy: GrammarPolicy = .repair
     ) -> GuardVerdict {
+        if policy == .asSpoken, case .rejected(let reason, let kind) = asSpokenFormVerdict(alignment) {
+            return .rejected(reason: reason, kind: kind)
+        }
         let keptTokens = alignment.kept
         let rewrittenTokens = alignment.rewritten
         let echoTokens = grammarTokens(echoed)
@@ -505,6 +510,35 @@ public struct MeaningPreservationGuard: Sendable {
             alignment, echo: echoTokens + restored, allowing: doubtful,
             allowingRomanisedHindiSpellings: romanisedHindiContext)
     }
+
+    /// Refuses a kept word whose regular or reviewed irregular form changed in an as-spoken destination.
+    private static func asSpokenFormVerdict(_ alignment: RewriteAlignment) -> GuardVerdict {
+        for change in alignment.changes {
+            for kept in alignment.kept[change.kept] {
+                for rewritten in alignment.rewritten[change.rewritten]
+                where kept.matching != rewritten.matching {
+                    let keptIrregular = Self.asSpokenIrregularForms[kept.matching]
+                    let rewrittenIrregular = Self.asSpokenIrregularForms[rewritten.matching]
+                    guard
+                        sameForm(kept.matching, rewritten.matching)
+                            || (keptIrregular != nil && keptIrregular == rewrittenIrregular)
+                    else { continue }
+                    return .rejected(reason: "the rewrite changed a kept word's form", kind: .lostWord)
+                }
+            }
+        }
+        return .accepted
+    }
+
+    /// Reviewed irregular paradigms whose forms must stay as spoken in destinations that do not repair grammar.
+    private static let asSpokenIrregularForms: [String: String] = Dictionary(
+        uniqueKeysWithValues: [
+            ("be", ["am", "is", "are", "was", "were", "been", "being"]),
+            ("see", ["saw", "seen"]),
+            ("come", ["came"]),
+        ].flatMap { root, forms in
+            ([root] + forms).map { ($0, root) }
+        })
 
     /// Finds words a cleanup pass could remove or turn into punctuation in a changed run.
     private static func removableSpeechArtifacts(in alignment: RewriteAlignment) -> Set<Int> {

@@ -98,7 +98,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         }
         if case .rejected(let reason, let kind) = meaningGuard.verdict(
             draft: draft, rewritten: finished, offering: readings, echoed: Self.echo(in: polished),
-            layout: formatter.layout, grants: pipeline.grants)
+            layout: formatter.layout, grammar: formatter.grammar, grants: pipeline.grants)
         {
             throw .outputRejected(reason: reason, kind: kind)
         }

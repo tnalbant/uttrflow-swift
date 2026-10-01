@@ -69,6 +69,33 @@ struct MeaningPreservationGuardTests {
         #expect(MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
     }
 
+    @Test("as-spoken destinations refuse regular and irregular changes to kept word forms")
+    func refusesChangedFormsWhenAsSpoken() {
+        for (spoken, rewritten) in [
+            ("we was just talking about you", "We were just talking about you."),
+            ("they was at the shop", "They were at the shop."),
+            ("i seen it yesterday", "I saw it yesterday."),
+            ("he come by yesterday", "He came by yesterday."),
+            ("she walk home", "She walked home."),
+        ] {
+            #expect(
+                !sut.verdict(draft: Draft(text: spoken), rewritten: rewritten, grammar: .asSpoken)
+                    .isAccepted,
+                "\(spoken) → \(rewritten)"
+            )
+        }
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "we was just talking about you"),
+                rewritten: "We was just talking about you.", grammar: .asSpoken
+            ).isAccepted)
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "we was just talking about you"),
+                rewritten: "We were just talking about you."
+            ).isAccepted)
+    }
+
     @Test("still refuses loss of a content word and a dropped negation")
     func stillRefusesMeaningChangesWithRemovableSpeechArtifacts() {
         #expect(

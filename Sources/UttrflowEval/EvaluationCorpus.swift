@@ -2408,5 +2408,57 @@ public enum EvaluationCorpus {
             mustBeginWith: "There is",
             mustEndWith: "them"
         ),
+        .init(
+            id: "message-dialect-we-was", category: .grammar,
+            spoken: "we was just talking about you",
+            expected: "We was just talking about you",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We was",
+            mustEndWith: "you"
+        ),
+        .init(
+            id: "message-dialect-they-was", category: .grammar,
+            spoken: "they was at the shop",
+            expected: "They was at the shop",
+            context: AppContext(
+                applicationName: "WhatsApp",
+                bundleIdentifier: "net.whatsapp.WhatsApp",
+                documentName: "Rohan"
+            ),
+            destination: .messaging,
+            mustBeginWith: "They was",
+            mustEndWith: "shop"
+        ),
+        .init(
+            id: "message-dialect-i-seen", category: .grammar,
+            spoken: "i seen it yesterday",
+            expected: "I seen it yesterday",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Priya"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I seen",
+            mustEndWith: "yesterday"
+        ),
+        .init(
+            id: "message-dialect-he-come", category: .grammar,
+            spoken: "he come by yesterday",
+            expected: "He come by yesterday",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "He come",
+            mustEndWith: "yesterday"
+        ),
     ]
 }
