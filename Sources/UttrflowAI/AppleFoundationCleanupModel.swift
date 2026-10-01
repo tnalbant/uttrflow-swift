@@ -3,6 +3,7 @@ public import UttrflowCore
 import FoundationModels
 
 /// The shape the model fills in; a structured value stops the "Sure, here is the text:" prefix.
+@available(macOS 26, *)
 @Generable
 struct CleanedDictation {
     /// The tidied dictation.
@@ -11,6 +12,7 @@ struct CleanedDictation {
 }
 
 /// Apple's on-device model; only the real model can exercise it, so it sits outside the coverage gate.
+@available(macOS 26, *)
 public struct AppleFoundationCleanupModel: CleanupModel {
     /// Zero temperature keeps the model tidying rather than composing.
     private static let options = GenerationOptions(temperature: 0.0)

@@ -5,11 +5,13 @@ private import AVFoundation
 private import Speech
 
 /// The system's answer about a locale's speech assets.
+@available(macOS 26, *)
 public enum AppleSpeechAssetStatus: Sendable, Equatable {
     case installed, needsDownload, downloading, unsupported
 }
 
 /// The macOS system recogniser: no download, faster than Whisper, no Hindi; excluded from coverage.
+@available(macOS 26, *)
 public actor AppleSpeechBackend: TranscriptionBackend {
     /// Fed to the analyser in chunks rather than one buffer, matching how a live microphone delivers.
     private static let chunkFrames = 4096

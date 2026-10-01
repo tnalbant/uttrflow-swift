@@ -2,6 +2,7 @@ public import UttrflowPredict
 import FoundationModels
 
 /// Apple's on-device model asked the same question as the local one, so the two can be held to the same catalogue; it answers in text only, so nothing here can write the line into its turn or hold its first tokens to the typed word.
+@available(macOS 26, *)
 public actor AppleCandidateGenerator: PassShowing {
     /// The shape the model fills in, since a structured answer is what keeps it from opening with a comment.
     @Generable
