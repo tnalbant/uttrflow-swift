@@ -165,6 +165,15 @@ prose measures the recogniser doing an easier job than the product's.
 
 ### The suggestion model's GPU memory
 
+The scorer's CPU-side judgement cache keeps one `Float` for each candidate token and
+one optional prefix log-mass for each token position. It no longer retains a vocabulary
+row per position. For the issue's 262,000-token vocabulary and a 20-token candidate, that
+is at most 160 bytes of score payload instead of 20.96 MB (about 131,000× smaller);
+across the 16-entry cache, the payload falls from about 335 MB to 2.6 KB. These are
+calculated payload sizes, not a process-memory measurement; array and dictionary overhead
+are excluded. A miss still transiently materializes the flat MLX output once, but does not
+create a second array of copied vocabulary rows.
+
 The suggestion model runs on MLX, and MLX keeps every buffer it frees in a cache for reuse.
 It reuses a cached buffer only for a request of nearly the same size, and by default it
 empties the cache only near most of the GPU's working set, which is tens of gigabytes on a

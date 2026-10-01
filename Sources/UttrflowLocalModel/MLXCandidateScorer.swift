@@ -551,7 +551,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
         // A cancelled pass says nothing about the candidate, so it leaves the cache as it found it.
         if Task.isCancelled { return [] }
         guard let container else {
-            judgementCache.remember(JudgedLine(tokens: [], rows: [], texts: []), for: candidate)
+            judgementCache.remember(
+                JudgedLine(tokens: [], tokenLogProbabilities: [], prefixLogMasses: [], texts: []),
+                for: candidate)
             return []
         }
         beginPass()
@@ -572,25 +574,43 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     /// Two neutral tokens before the line, since `uttrflow-bakeoff score` shows Gemma 3 predicting nonsense from the first two positions.
     static let leadIn = "...\n"
 
-    /// The whole candidate as the model reads it, with its tokens, the log-softmax row at each, and each token's text.
+    /// The whole candidate as the model reads it, keeping only the scores needed for typed-prefix judgements.
     private static func judge(_ candidate: String, with loaded: ModelContext) -> JudgedLine {
         let whole = loaded.tokenizer.encode(text: leadIn + candidate)
-        guard !whole.isEmpty else { return JudgedLine(tokens: [], rows: [], texts: []) }
+        guard !whole.isEmpty else {
+            return JudgedLine(tokens: [], tokenLogProbabilities: [], prefixLogMasses: [], texts: [])
+        }
         let tokens = MLXArray(whole.map(Int32.init)).expandedDimensions(axis: 0)
         let output = loaded.model(LMInput.Text(tokens: tokens), cache: nil, state: nil)
         // Softmax in Float32, since the bf16 logits would round every log-probability to a coarse grid.
         let probabilities = logSoftmax(output.logits.asType(.float32), axis: -1)[0]
         eval(probabilities)
-        let flat = probabilities.asArray(Float.self)
-        let seqLen = whole.count
-        let vocab = seqLen > 0 ? flat.count / seqLen : 0
-        var rows: [[Float]] = []
-        rows.reserveCapacity(seqLen)
-        for i in 0..<seqLen {
-            rows.append(Array(flat[i * vocab..<(i + 1) * vocab]))
+        let vocabularySize = probabilities.dim(-1)
+        let vocabulary = self.vocabulary ?? .init(bytes: [], ending: [])
+        var tokenLogProbabilities: [Float] = []
+        var prefixLogMasses: [Float?] = []
+        tokenLogProbabilities.reserveCapacity(whole.count)
+        prefixLogMasses.reserveCapacity(whole.count)
+        for position in whole.indices {
+            let row = probabilities[position]
+            let token = whole[position]
+            tokenLogProbabilities.append(row[token].item(Float.self))
+            let bytes = ScoredSpan.written(by: token, in: vocabulary)
+            let continuing = ScoredSpan.continuing(bytes, in: vocabulary).filter { $0 != token }
+            prefixLogMasses.append(Self.logMass(of: continuing, in: row))
         }
         let texts = whole.map { loaded.tokenizer.decode(tokenIds: [$0]) }
-        return JudgedLine(tokens: whole, rows: rows, texts: texts)
+        return JudgedLine(
+            tokens: whole, tokenLogProbabilities: tokenLogProbabilities,
+            prefixLogMasses: prefixLogMasses, texts: texts)
+    }
+
+    /// The log probability mass of a token prefix, accumulated without copying a vocabulary-sized row.
+    private static func logMass(of tokens: [Int], in row: MLXArray) -> Float? {
+        let values = tokens.map { row[$0].item(Float.self) }
+        guard let largest = values.max(), largest > -.infinity else { return nil }
+        let sum = values.reduce(Float.zero) { $0 + exp($1 - largest) }
+        return largest + log(sum)
     }
 
     /// The judged tokens for a typed prefix, cut from the cached line so a re-typed keystroke skips the forward pass.

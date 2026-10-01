@@ -9,7 +9,9 @@ struct JudgementCacheTests {
     @Test("A candidate remembered once is read back unchanged.")
     func roundTripsTheLine() {
         var cache = JudgementCache()
-        let line = JudgedLine(tokens: [1, 2, 3], rows: [[0.1], [0.2], [0.3]], texts: ["a", "b", "c"])
+        let line = JudgedLine(
+            tokens: [1, 2, 3], tokenLogProbabilities: [0.1, 0.2, 0.3],
+            prefixLogMasses: [nil, nil, nil], texts: ["a", "b", "c"])
         cache.remember(line, for: "please")
         #expect(cache.recall(candidate: "please") == line)
     }
@@ -23,8 +25,10 @@ struct JudgementCacheTests {
     @Test("Re-remembering a candidate does not grow the cache and refreshes its recency.")
     func reRememberingRefreshesRecency() {
         var cache = JudgementCache()
-        let first = JudgedLine(tokens: [1], rows: [[0.1]], texts: ["a"])
-        let second = JudgedLine(tokens: [2], rows: [[0.2]], texts: ["b"])
+        let first = JudgedLine(
+            tokens: [1], tokenLogProbabilities: [0.1], prefixLogMasses: [nil], texts: ["a"])
+        let second = JudgedLine(
+            tokens: [2], tokenLogProbabilities: [0.2], prefixLogMasses: [nil], texts: ["b"])
         cache.remember(first, for: "alpha")
         cache.remember(second, for: "alpha")
         #expect(cache.count == 1)
@@ -34,13 +38,15 @@ struct JudgementCacheTests {
     @Test("Recalling a candidate keeps it alive through a full capacity of new candidates.")
     func recallingRefreshesRecency() {
         var cache = JudgementCache()
-        let line = JudgedLine(tokens: [1], rows: [[0.1]], texts: ["a"])
+        let line = JudgedLine(tokens: [1], tokenLogProbabilities: [0.1], prefixLogMasses: [nil], texts: ["a"])
         cache.remember(line, for: "candidate-A")
 
         for index in 0..<JudgementCache.capacity {
             let recalled = cache.recall(candidate: "candidate-A")
             #expect(recalled == line)
-            let other = JudgedLine(tokens: [index], rows: [[Float(index)]], texts: ["\(index)"])
+            let other = JudgedLine(
+                tokens: [index], tokenLogProbabilities: [Float(index)], prefixLogMasses: [nil],
+                texts: ["\(index)"])
             cache.remember(other, for: "candidate-\(index)")
         }
 
@@ -54,7 +60,8 @@ struct JudgementCacheTests {
         var cache = JudgementCache()
         for index in 0..<(JudgementCache.capacity + 3) {
             let line = JudgedLine(
-                tokens: [index], rows: [[Float(index)]], texts: ["\(index)"])
+                tokens: [index], tokenLogProbabilities: [Float(index)], prefixLogMasses: [nil],
+                texts: ["\(index)"])
             cache.remember(line, for: "candidate-\(index)")
         }
         #expect(cache.count == JudgementCache.capacity)
@@ -66,7 +73,9 @@ struct JudgementCacheTests {
     @Test("Forget everything empties the cache, so the next recall misses.")
     func forgetEverythingClears() {
         var cache = JudgementCache()
-        cache.remember(JudgedLine(tokens: [1], rows: [[0.1]], texts: ["a"]), for: "alpha")
+        cache.remember(
+            JudgedLine(tokens: [1], tokenLogProbabilities: [0.1], prefixLogMasses: [nil], texts: ["a"]),
+            for: "alpha")
         cache.forgetEverything()
         #expect(cache.count == 0)
         #expect(cache.recall(candidate: "alpha") == nil)
@@ -87,27 +96,29 @@ struct JudgedLineTests {
     @Test("A typed prefix that ends on a token boundary is read straight from the cache.")
     func typedOnBoundaryReturnsCachedTokens() {
         let tokens = [0, 2, 3, 4, 5, 6, 7]
-        let vocab = scorerBytes.count
-        let row = [Float](repeating: -10, count: vocab)
-        let rows = Array(repeating: row, count: tokens.count)
+        let tokenLogProbabilities = Array(repeating: -10, count: tokens.count)
         let texts = tokens.map { _ in "x" }
-        let line = JudgedLine(tokens: tokens, rows: rows, texts: texts)
+        let line = JudgedLine(
+            tokens: tokens, tokenLogProbabilities: tokenLogProbabilities,
+            prefixLogMasses: Array(repeating: nil, count: tokens.count), texts: texts)
         let typed = [0, 2]
         let judged = JudgedLine.judged(from: line, typedTokens: typed, bytes: scorerBytes)
         #expect(judged.count == tokens.count - 2)
+        #expect(judged.map(\.logProbability) == [-10, -10, -10, -10, -10])
     }
 
     @Test("A typed prefix that ends mid-token returns the slice from the cached rows.")
     func typedMidTokenReturnsTheSlice() {
         let tokens = [0, 3, 4, 5, 6, 7]
-        let vocab = scorerBytes.count
-        let row = [Float](repeating: -10, count: vocab)
-        let rows = Array(repeating: row, count: tokens.count)
+        let tokenLogProbabilities = Array(repeating: -10, count: tokens.count)
         let texts = tokens.map { _ in "x" }
-        let line = JudgedLine(tokens: tokens, rows: rows, texts: texts)
+        let line = JudgedLine(
+            tokens: tokens, tokenLogProbabilities: tokenLogProbabilities,
+            prefixLogMasses: Array(repeating: nil, count: tokens.count), texts: texts)
         let typed = [0, 1]
         let judged = JudgedLine.judged(from: line, typedTokens: typed, bytes: scorerBytes)
         #expect(judged.count == tokens.count - 1)
+        #expect(judged.map(\.logProbability) == [-10, -10, -10, -10, -10])
     }
 
     @Test("A cached mid-token judgement conditions on indexed rivals without changing its score")
@@ -119,11 +130,8 @@ struct JudgedLineTests {
         var vocabulary = TokenHealing.Vocabulary(bytes: vocabularyBytes, ending: [])
         let line = JudgedLine(
             tokens: tokens,
-            rows: [
-                Array(repeating: -8, count: vocabularyBytes.count),
-                Array(repeating: -8, count: vocabularyBytes.count),
-                Array(repeating: -8, count: vocabularyBytes.count),
-            ],
+            tokenLogProbabilities: [-8, -4, -8],
+            prefixLogMasses: [nil, log(2) - 8, nil],
             texts: ["", "please", "lease"])
         var cache = JudgementCache()
         cache.remember(line, for: "please")
@@ -146,7 +154,7 @@ struct JudgedLineTests {
 
     @Test("An empty cached line returns nothing rather than indexing out of bounds.")
     func emptyLineReturnsNothing() {
-        let line = JudgedLine(tokens: [], rows: [], texts: [])
+        let line = JudgedLine(tokens: [], tokenLogProbabilities: [], prefixLogMasses: [], texts: [])
         #expect(
             JudgedLine.judged(
                 from: line, typedTokens: [], vocabulary: .init(bytes: [], ending: [])) == [])

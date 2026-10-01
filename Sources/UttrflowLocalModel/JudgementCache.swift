@@ -1,13 +1,15 @@
-// The per-token log-softmax rows a candidate produces, kept so the model is not re-run for every keystroke.
+// Compact per-token log-softmax scores, kept so the model is not re-run for every keystroke.
 
 import Foundation
 
-/// The full per-position log-softmax the model returns for one candidate, the raw material the scorer cuts to a span.
+/// The candidate log-probabilities and cut-prefix masses the scorer needs for every span.
 struct JudgedLine: Sendable, Equatable {
-    /// The candidate's tokens with `leadIn` already prepended, each position aligned with `rows` and `texts`.
+    /// The candidate's tokens with `leadIn` already prepended.
     let tokens: [Int]
-    /// `rows[i]` is the log-softmax over the whole vocabulary at position i in `tokens`.
-    let rows: [[Float]]
+    /// The log-probability of `tokens[i]` at position i, as read from the model's log-softmax.
+    let tokenLogProbabilities: [Float]
+    /// The log mass of tokens sharing the candidate token's prefix at each position.
+    let prefixLogMasses: [Float?]
     /// `texts[i]` is the decoded text of `tokens[i]`, so a span reads the same surface the forward pass did.
     let texts: [String]
 
@@ -26,18 +28,10 @@ struct JudgedLine: Sendable, Equatable {
         var taken: [Float] = []
         taken.reserveCapacity(line.tokens.count - start)
         for i in start..<line.tokens.count {
-            taken.append(line.rows[i - 1][line.tokens[i]])
+            taken.append(line.tokenLogProbabilities[i - 1])
         }
         let continuing = ScoredSpan.continuing(span.owed, in: vocabulary)
-        let mass: Float? =
-            continuing.isEmpty
-            ? nil
-            : {
-                var rivals: [Float] = []
-                rivals.reserveCapacity(continuing.count)
-                for token in continuing { rivals.append(line.rows[start - 1][token]) }
-                return ScoredSpan.logSumExp(rivals)
-            }()
+        let mass = continuing.contains(line.tokens[start]) ? line.prefixLogMasses[start] : nil
         let scores = ScoredSpan.conditioned(taken, onMass: mass)
         return zip(line.texts[start...], scores).map {
             text, logProbability in JudgedToken(text: text, logProbability: logProbability)
