@@ -34,6 +34,13 @@ recogniser visibly came apart (a word split, a word spelt out) and something in 
 situation names the word it came apart into. Integers, because the signals are counts of
 independent facts.
 
+Recognition confidence does not scale this margin. `certaintyThreshold` already uses that
+score to decide whether a word may be changed; once it is below the threshold, the score is
+not calibrated across speech engines as a probability that the word is correct. The margin
+therefore counts the same independent evidence for every eligible word. A word at 0.49 and
+one at 0.05 need the same two-signal advantage to change, while a word at or above 0.5 is
+never proposed and may corroborate another word. `CorrectionEvidenceTests` pins that boundary.
+
 **The margin alone does not hold a run of several words**, which was measured rather than
 argued. Every sentence in the restraint corpus used to be short enough that
 `budget(for:)` was one, so a two-word proposal was discarded by the blast-radius cap and the

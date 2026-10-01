@@ -63,6 +63,25 @@ struct CorrectionEngineTests {
         #expect(engine.proposals(for: utterance, against: index).isEmpty)
     }
 
+    @Test("eligible confidence changes do not change the independent evidence margin")
+    func eligibleConfidenceDoesNotScaleTheMargin() throws {
+        let heard = "we should run the ?s ?q ?l migration tonight before the release goes out to everyone"
+        let evidence = CorrectionFixtures.showing("SQL migration")
+        let nearlyCertain = CorrectionFixtures.spoken(heard, unsure: 0.49)
+        let veryUncertain = CorrectionFixtures.spoken(heard, unsure: 0.05)
+
+        let nearlyCertainProposal = try #require(
+            engine.proposals(for: nearlyCertain, against: index, seeing: evidence).only)
+        let veryUncertainProposal = try #require(
+            engine.proposals(for: veryUncertain, against: index, seeing: evidence).only)
+
+        #expect(nearlyCertainProposal.replacement == "SQL")
+        #expect(veryUncertainProposal.replacement == "SQL")
+        #expect(nearlyCertainProposal.reason == veryUncertainProposal.reason)
+        #expect(nearlyCertainProposal.heardConfidence == 0.49)
+        #expect(veryUncertainProposal.heardConfidence == 0.05)
+    }
+
     /// A word the recogniser was sure of stays even when the dictionary and the screen both hold it.
     @Test("a confident word survives a perfect dictionary match")
     func confidentWordSurvivesAPerfectMatch() {
