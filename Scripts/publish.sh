@@ -278,10 +278,15 @@ else
     printf '  latest.json  will be rewritten to point at this release\n'
 fi
 if [[ "$NOTARISED" != "yes" ]]; then
-    # Said here rather than left to be discovered on the site, because this is the one
-    # consequence that is invisible from the command being typed.
-    printf '  download     THIS UNSIGNED BUILD BECOMES uttrflow.com/download\n'
-    printf '               macOS will call it damaged; every visitor needs the xattr command\n'
+    if [[ "$SOAK" == "yes" ]]; then
+        printf '  download     this prerelease address serves an unsigned build; the website stays unchanged\n'
+        printf '               macOS will call it damaged; anyone using this tag needs the xattr command\n'
+    else
+        # Said here rather than left to be discovered on the site, because this is the one
+        # consequence that is invisible from the command being typed.
+        printf '  download     THIS UNSIGNED BUILD BECOMES uttrflow.com/download\n'
+        printf '               macOS will call it damaged; every visitor needs the xattr command\n'
+    fi
 fi
 
 # Resumes only when the uploaded image is byte-identical to this one, and then signs the uploaded archive rather than this run's rebuild.

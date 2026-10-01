@@ -151,6 +151,18 @@ run_publish() {
 output="$(GH_RELEASE_EXISTS=0 run_publish --dry-run "$image" 2>&1)" && status=0 || status=$?
 [[ "$status" -eq 0 ]] || { echo "error: dry run failed unexpectedly:" >&2; echo "$output" >&2; exit 1; }
 grep -Fq 'Dry run' <<< "$output" || { echo "error: dry run did not say so:" >&2; echo "$output" >&2; exit 1; }
+grep -Fq 'THIS UNSIGNED BUILD BECOMES uttrflow.com/download' <<< "$output" \
+    || { echo "error: stable unsigned release warning disappeared:" >&2; echo "$output" >&2; exit 1; }
+output="$(GITHUB_REF_NAME=v2026.1.1-rc.1 GH_RELEASE_EXISTS=0 run_publish --dry-run "$image" 2>&1)" \
+    && status=0 || status=$?
+[[ "$status" -eq 0 ]] || { echo "error: prerelease dry run failed unexpectedly:" >&2; echo "$output" >&2; exit 1; }
+grep -Fq 'this prerelease address serves an unsigned build; the website stays unchanged' <<< "$output" \
+    || { echo "error: prerelease warning does not describe its tag-only address:" >&2; echo "$output" >&2; exit 1; }
+if grep -Fq 'THIS UNSIGNED BUILD BECOMES uttrflow.com/download' <<< "$output"; then
+    echo "error: prerelease warning falsely says the website moves:" >&2
+    echo "$output" >&2
+    exit 1
+fi
 assert_no_leftover "a dry run"
 
 # --- Scenario 2: a successful publish cleans the archive stage, the upload stage, and the clone ---
