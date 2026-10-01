@@ -5,23 +5,29 @@ public enum TextInsertion {
     /// The words a stage that has already given up must not write; a late paste is the user's clipboard gone.
     static let dictationEnded = "the dictation had already given up on this insertion"
 
-    /// Accessibility, then pasting, then the clipboard, which cannot fail. See `Docs/insertion.md`.
+    /// Accessibility, then pasting, typing and optionally the clipboard. See `Docs/insertion.md`.
     public static func coordinator(
         focus: any AccessibilityFocus = AXAccessibilityFocus(),
         pasteboard: any Pasteboard = SystemPasteboard(),
         keystrokes: any KeystrokeSender = CGEventKeystrokeSender(),
+        typist: any KeystrokeTyping = CGEventTypist(),
         confirmsArrival: Bool = true,
-        reporting: (@Sendable (PasteConfirmation.Outcome) -> Void)? = nil
+        reporting: (@Sendable (PasteConfirmation.Outcome) -> Void)? = nil,
+        clipboardFallback: Bool = true
     ) -> TextInsertionCoordinator {
-        TextInsertionCoordinator(
-            strategies: [
-                AccessibilityTextInsertionEngine(focus: focus),
-                PasteboardTextInsertionEngine(
-                    focus: focus, pasteboard: pasteboard, keystrokes: keystrokes,
-                    confirmsArrival: confirmsArrival,
-                    reporting: reporting),
-                ClipboardTextInsertionEngine(pasteboard: pasteboard, focus: focus),
-            ], focus: focus)
+        var strategies: [any TextInsertionEngine] = [
+            AccessibilityTextInsertionEngine(focus: focus),
+            PasteboardTextInsertionEngine(
+                focus: focus, pasteboard: pasteboard, keystrokes: keystrokes,
+                confirmsArrival: confirmsArrival,
+                reporting: reporting),
+        ]
+        if clipboardFallback {
+            strategies.append(ClipboardTextInsertionEngine(pasteboard: pasteboard, focus: focus))
+        } else {
+            strategies.append(TypedTextInsertionEngine(focus: focus, typist: typist))
+        }
+        return TextInsertionCoordinator(strategies: strategies, focus: focus)
     }
 
     /// The route an accepted suggestion takes, which has no clipboard in it at all. See `Docs/predict-accept.md`.

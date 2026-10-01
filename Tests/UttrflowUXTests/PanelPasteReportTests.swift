@@ -32,6 +32,13 @@ struct PanelPasteReportTests {
         #expect(PanelPasteReport.copied.primaryLine == "Copied — press ⌘V")
     }
 
+    @Test("a refused clipboard-free paste does not claim the clip was copied")
+    func textCouldNotPaste() throws {
+        let report = try #require(PanelPasteReport.after(.textCouldNotPaste))
+        #expect(report.primaryLine == "Couldn't paste this clip")
+        #expect(report.spoken.contains("clipboard was left unchanged"))
+    }
+
     @Test("a picture whose paste was refused says the same as text, since it is on the clipboard too")
     func pictureRefused() {
         #expect(PanelPasteReport.after(.pictureRefused) == PanelPasteReport.copied)
@@ -51,11 +58,11 @@ struct PanelPasteReportTests {
     @Test("every sentence is spoken with the key spelled out, never as a symbol")
     func spokenWithoutSymbols() {
         let recoverable: [PanelPasteResult] = [
-            .text(InsertionAttempt(.clipboard)), .textRefused, .pictureRefused,
+            .text(InsertionAttempt(.clipboard)), .textRefused, .pictureRefused, .textCouldNotPaste,
         ]
         for result in recoverable {
             let spoken = PanelPasteReport.after(result)?.spoken
-            #expect(spoken?.contains("Command V") == true)
+            #expect(spoken?.contains("Command V") == (result != .textCouldNotPaste))
             #expect(spoken?.contains("⌘") == false)
         }
         #expect(PanelPasteReport.after(.pictureMissing)?.spoken.contains("⌘") == false)

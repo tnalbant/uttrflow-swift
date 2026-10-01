@@ -7,6 +7,8 @@ public enum PanelPasteResult: Sendable, Equatable {
     case text(InsertionAttempt)
     /// Every text strategy refused; the words are still on the clipboard.
     case textRefused
+    /// Clipboard-free insertion refused; the panel did not replace the user's clipboard.
+    case textCouldNotPaste
     /// The picture reached the clipboard and the paste keystroke was refused.
     case pictureRefused
     /// The picture's file went between drawing the panel and pressing Return.
@@ -33,6 +35,11 @@ public struct PanelPasteReport: Sendable, Equatable {
             nil
         case .textRefused, .pictureRefused:
             copied
+        case .textCouldNotPaste:
+            PanelPasteReport(
+                symbolName: "exclamationmark.circle",
+                primaryLine: "Couldn't paste this clip", secondaryLine: nil,
+                spoken: "Couldn't paste this clip. Your clipboard was left unchanged.")
         case .pictureMissing:
             PanelPasteReport(
                 symbolName: "photo.badge.exclamationmark",

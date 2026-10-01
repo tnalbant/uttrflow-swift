@@ -243,7 +243,8 @@ arrives.
 | What happened | What is said |
 | --- | --- |
 | Text inserted into the target | nothing; the panel does not read the field back to announce success |
-| Text left on the clipboard, or every strategy refused | "Copied — press ⌘V" |
+| Text left on the clipboard | "Copied — press ⌘V" |
+| Clipboard-free text route refuses | "Couldn't paste this clip"; the clipboard is unchanged |
 | A picture on the clipboard whose ⌘V was refused | "Copied — press ⌘V" |
 | A picture whose file went before Return | "That picture is no longer on this Mac" |
 

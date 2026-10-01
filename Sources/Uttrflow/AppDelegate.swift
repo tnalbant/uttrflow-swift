@@ -301,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Panel pastes do not read another app's text field just to decide whether to show a notice.
     private lazy var panelClipInserter: any TextInserting = TextInsertion.coordinator(
-        pasteboard: announcingPasteboard, confirmsArrival: false)
+        pasteboard: announcingPasteboard, confirmsArrival: false, clipboardFallback: false)
 
     /// The same for a secret clip, whose words reach the clipboard only with the concealed marker.
     private lazy var secretInserter = TextInsertion.coordinator(
@@ -309,7 +309,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The panel's concealed route follows the same no-confirmation rule as ordinary clips.
     private lazy var panelSecretInserter = TextInsertion.coordinator(
-        pasteboard: ConcealingPasteboard(announcingPasteboard), confirmsArrival: false)
+        pasteboard: ConcealingPasteboard(announcingPasteboard), confirmsArrival: false,
+        clipboardFallback: false)
 
     /// The panel's state while it is open, held here because a window has no memory.
     private var panel: PanelSnapshot?
@@ -2051,7 +2052,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 // Every strategy refused, including the one that cannot.
                 let why = (error as? any UttrflowFailure)?.userMessage ?? SuggestionLog.failure(error)
                 Self.log.error("clip insertion failed: \(why, privacy: .public)")
-                self?.reportPanelPaste(.textRefused)
+                self?.reportPanelPaste(forPanel ? .textCouldNotPaste : .textRefused)
             }
         }
     }

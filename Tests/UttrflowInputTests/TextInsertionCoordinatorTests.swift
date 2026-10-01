@@ -520,6 +520,12 @@ struct TextInsertionAssemblyTests {
     @Test("tries the strategies in the order the product needs")
     func order() {
         #expect(coordinator().route == [.accessibility, .pasteboard, .clipboard])
+        #expect(
+            TextInsertion.coordinator(
+                focus: FakeFocus(), pasteboard: FakePasteboard(),
+                keystrokes: FakeKeystrokeSender(), clipboardFallback: false
+            ).route
+                == [.accessibility, .pasteboard, .typed])
     }
 
     /// The words arrive seconds after the user was told the dictation failed, in whatever is in front now.

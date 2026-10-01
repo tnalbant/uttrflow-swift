@@ -657,6 +657,40 @@ struct UnreportedPasteRouteTests {
         #expect(attempt == InsertionAttempt(.pasteboard, arrival: .confirmed))
         #expect(focus.readCount > 0, "how the route is composed must not decide what it verifies")
     }
+
+    @Test("a clipboard-free route types after Accessibility and paste refuse")
+    func clipboardFreeRouteUsesTypingInsteadOfReplacingTheClipboard() async throws {
+        let pasteboard = FakePasteboard(text: "the user's copy")
+        let typist = PanelRouteTypist()
+        let coordinator = TextInsertion.coordinator(
+            focus: FakeFocus(field: nil), pasteboard: pasteboard,
+            keystrokes: FakeKeystrokeSender(error: .accessibilityDenied), typist: typist,
+            confirmsArrival: false, clipboardFallback: false)
+
+        let attempt = try await coordinator.insert("a panel clip")
+
+        #expect(attempt.method == .typed)
+        #expect(typist.text == ["a panel clip"])
+        #expect(pasteboard.text() == "the user's copy")
+        #expect(pasteboard.writes.isEmpty)
+    }
+}
+
+private final class PanelRouteTypist: KeystrokeTyping, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    var text: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+    func type(_ text: String) throws(TextInsertionError) {
+        lock.lock()
+        values.append(text)
+        lock.unlock()
+    }
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
+    func canType(_ text: String) -> Bool { true }
 }
 
 @Suite("ClipboardTextInsertionEngine")

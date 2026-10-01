@@ -1,7 +1,14 @@
 # Putting the words on screen, and the traps in doing it
 
-Three strategies in order — write into the focused element, paste, leave it on the
-clipboard — and each of the first two has a failure that reports success.
+The ordinary dictation route tries Accessibility, paste, and then the clipboard floor.
+The clipboard panel instead tries Accessibility, paste, and typed text, so a selected
+text clip never replaces the user's clipboard. A typed route can refuse characters the
+active keyboard layout cannot type; the panel reports that outcome and leaves the clip
+in its Recent row, where its explicit Copy action remains available. Pictures still need
+the clipboard for ⌘V and remain there after the paste is posted, since this panel path
+does not confirm arrival and restoring an unconfirmed paste could erase a picture that
+landed late. The ordinary dictation route retains its clipboard floor so dictated words
+are never lost when every insertion strategy refuses.
 
 Which applications do which of these is collected in [compatibility.md](compatibility.md); this
 page feeds its `AX write`, `Paste`, `Confirmed` and `Full route` columns, and the secure-field
