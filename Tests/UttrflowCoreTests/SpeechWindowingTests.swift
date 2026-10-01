@@ -52,6 +52,14 @@ struct SpeechWindowingTests {
         #expect(windowing.windows(in: audio, sampleRate: Take.rate).count == 2)
     }
 
+    @Test("cuts a one-and-a-half-second pause that starts before the early window is ready")
+    func cutsLongPauseStartingBeforeEarlyWindow() throws {
+        let audio = Take.speech(1.6) + Take.silence(1.5) + Take.speech(2.3)
+        let cut = try #require(windowing.nextCut(in: audio, sampleRate: Take.rate, from: 0))
+        #expect(abs(Take.seconds(cut) - 2.5) < 0.05)
+        #expect(windowing.windows(in: audio, sampleRate: Take.rate).count == 2)
+    }
+
     @Test("does not cut shorter early hesitations or speech before the early minimum")
     func leavesShortEarlyPauses() {
         let hesitation = Take.speech(3) + Take.silence(0.9) + Take.speech(3)

@@ -115,8 +115,8 @@ struct DictationPipelineLanguageTests {
         )
     }
 
-    /// Later pieces share the first piece's language for one dictation.
-    @Test("uses the first piece language for the remaining pieces")
+    /// A default profile detects each pause-delimited piece without a language hint.
+    @Test("detects each piece independently for the default profile")
     func detectsEveryPieceForDefaultProfile() async {
         let (pipeline, speech) = await pipeline(detecting: [.english, .hindi, .hindi])
 
@@ -126,11 +126,11 @@ struct DictationPipelineLanguageTests {
 
         #expect(hints.count > 1)
         #expect(hints.first == nil)
-        #expect(hints.dropFirst().allSatisfy { $0 == .english })
+        #expect(hints.dropFirst().allSatisfy { $0 == nil })
     }
 
-    /// Each dictation resolves a new language from its own first piece.
-    @Test("resolves the first piece language again for the next dictation")
+    /// Each dictation resolves its own language settings and detects every piece again.
+    @Test("detects every piece again for the next dictation")
     func forgetsBetweenDictations() async {
         let (pipeline, speech) = await pipeline(
             detecting: [.english, .english, .english, .hindi, .hindi, .hindi])
@@ -143,9 +143,7 @@ struct DictationPipelineLanguageTests {
         let hints = await speech.hints
 
         #expect(hints.count > first)
-        #expect(hints[first] == nil)
-        #expect(hints[first] == nil)
-        #expect(hints.dropFirst(first + 1).allSatisfy { $0 == .hindi })
+        #expect(hints.dropFirst(first).allSatisfy { $0 == nil })
     }
 
     /// A retry is its own attempt, so it detects its own language rather than the last dictation's.
@@ -166,11 +164,11 @@ struct DictationPipelineLanguageTests {
         #expect(hints[first] == nil)
     }
 
-    /// Issue 230's dictation-wide context keeps one detected language across every piece.
-    @Test("uses one first-piece language for a speaker of English and Hindi")
+    /// A bilingual profile can change languages between pause-delimited pieces.
+    @Test("detects a Hindi-to-English switch for a bilingual profile")
     func detectsEachPieceForBothLanguages() async {
         let (pipeline, speech) = await pipeline(
-            detecting: [.english, .hindi, .hindi],
+            detecting: [.hindi, .english, .english],
             profile: UserProfile(preferredLanguages: [.english, .hindi]))
 
         await pipeline.startRecording()
@@ -179,7 +177,7 @@ struct DictationPipelineLanguageTests {
 
         #expect(hints.count > 1)
         #expect(hints.first == nil)
-        #expect(hints.dropFirst().allSatisfy { $0 == .english })
+        #expect(hints.dropFirst().allSatisfy { $0 == nil })
     }
 
     /// Issue 699: a short Hindi reply was detected as English words.
@@ -224,8 +222,7 @@ struct DictationPipelineLanguageTests {
 
         #expect(first.count > 1, "a recording of several pieces")
         #expect(first.first == .some(nil), "the English profile detects the first piece")
-        #expect(
-            first.dropFirst().allSatisfy { $0 == .english }, "the first piece fixes the dictation language")
+        #expect(first.dropFirst().allSatisfy { $0 == nil }, "the original profile detects every piece")
 
         await pipeline.startRecording()
         await pipeline.finishRecording()

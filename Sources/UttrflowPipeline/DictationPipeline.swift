@@ -102,7 +102,6 @@ public actor DictationPipeline {
     private(set) var earlyReadsSettled = 0
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
     private var dictationWords: [String]?
-    private var firstPieceLanguage: LanguageCode?
     /// Pieces of this dictation that held speech and decoded to no words twice, left out of what is inserted.
     private var missedPieces = 0
 
@@ -466,7 +465,6 @@ public actor DictationPipeline {
     private func forgetTheLastAttempt() {
         dictationWords = nil
         dictationContext = nil
-        firstPieceLanguage = nil
         missedPieces = 0
     }
 
@@ -994,15 +992,6 @@ public actor DictationPipeline {
         }
         switch heard {
         case .words(let transcription):
-            if firstPieceLanguage == nil, let detected = transcription.detectedLanguage?.code,
-                isStillRunning(mine)
-            {
-                firstPieceLanguage = detected
-                if var dictationContext {
-                    dictationContext.listening = .firstPiece
-                    self.dictationContext = dictationContext
-                }
-            }
             // Kept beside the timing, since a re-decode is most of what a long transcription time is.
             await metrics.recordDecoding(transcription.effort)
             return transcription
@@ -1023,7 +1012,7 @@ public actor DictationPipeline {
     ) async throws -> Heard {
         // The default profile detects each piece; a Hindi-only profile pins each piece to Hindi. See `Docs/speech-engines.md`.
         let policy = dictationContext?.listening ?? ListeningLanguages(profile: runningProfile)
-        let language = policy.hint(afterFirstPiece: firstPieceLanguage)
+        let language = policy.hint(afterFirstPiece: nil)
         let speaks = VoiceActivity.speechRange(in: slice.samples, sampleRate: slice.sampleRate) != nil
         let heard = try await metrics.measuringInTime(.transcription, clock: clock) {
             try await withStageTimeout(StageTimeout.transcription, clock: clock) {

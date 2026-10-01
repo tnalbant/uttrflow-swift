@@ -1332,7 +1332,7 @@ stall each other: every one of them compiles for the Neural Engine at the same m
 process, which is why it cannot run a corpus.
 
 **The corpus is synthetic and invented.** `say` voices for US, UK and Indian English and for
-Hindi; 139 clips and 30.6 minutes of speech: replies of one to four words, passages of 5 s to
+Hindi; 140 clips and 30.6 minutes of speech: replies of one to four words, passages of 5 s to
 2 min (with a 0.9 s breath every third sentence from 30 s up, and one 60 s passage without), numbers,
 email addresses on `example.com`, code identifiers, invented proper nouns with and without a
 vocabulary, Hinglish read in the Latin alphabet, spoken punctuation, self-corrections, the committed
@@ -1641,8 +1641,11 @@ python3 Scripts/dictation_bench.py score .build/bench/run.out
 ```
 
 The `code-switch` category includes an English Rishi passage followed by a Hindi Lekha passage
-after a 1.5-second pause. Its job uses the `en,hi` Languages profile so each piece can detect
-its own language; `python3 Scripts/dictation_bench.py jobs --categories code-switch` selects it.
+and a Hindi Lekha sentence followed by an English Rishi sentence, each after a 1.5-second pause.
+The reverse-direction clip reproduces #2370's mixed-language shape and scores both its romanised
+and Devanagari Hindi forms. Their jobs use both `en,hi` and `hi,en` Languages profiles so each
+piece can detect its own language; `python3 Scripts/dictation_bench.py jobs --categories code-switch`
+selects them.
 
 ```
 .build/release/uttrflow-dev bench .build/bench/jobs.tsv --idle-before 300 > .build/bench/run-cold.out

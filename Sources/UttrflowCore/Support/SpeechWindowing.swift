@@ -136,33 +136,58 @@ public struct SpeechWindowing: Sendable, Equatable {
     ) -> Int? {
         let speechFrames = Int((minimumSpeech / VoiceActivity.frameDuration).rounded())
         let earlyFrames = Swift.max(1, Int(earlyPause / VoiceActivity.frameDuration))
+        let longPauseFrames = Swift.max(1, Int((1.5 / VoiceActivity.frameDuration).rounded()))
         let sentenceFrames = Swift.max(1, Int(sentencePause / VoiceActivity.frameDuration))
         let anyFrames = Swift.max(1, Int(anyPause / VoiceActivity.frameDuration))
         var runStart: Int?
-        // A pause is measured from where it began, but never from before `earliest`, which is not scanned.
-        for index in earliest..<loudness.count {
+        // A long pause can start before the early window is long enough to cut.
+        for index in 0..<loudness.count {
             if loudness[index] < threshold {
                 if runStart == nil { runStart = index }
             } else if let began = runStart {
-                if let middle = middle(
-                    ofRun: began..<index, ordinary, comfortable, maximum, earlyFrames,
-                    sentenceFrames, anyFrames),
-                    spoken[middle] >= speechFrames
+                if let cut = pauseCut(
+                    in: began..<index, earliest: earliest, ordinary: ordinary,
+                    comfortable: comfortable, maximum: maximum, earlyFrames: earlyFrames,
+                    longPauseFrames: longPauseFrames, sentenceFrames: sentenceFrames,
+                    anyFrames: anyFrames, spoken: spoken, speechFrames: speechFrames)
                 {
-                    return middle
+                    return cut
                 }
                 runStart = nil
             }
         }
         if let began = runStart,
-            let middle = middle(
-                ofRun: began..<loudness.count, ordinary, comfortable, maximum, earlyFrames,
-                sentenceFrames, anyFrames),
-            spoken[middle] >= speechFrames
+            let cut = pauseCut(
+                in: began..<loudness.count, earliest: earliest, ordinary: ordinary,
+                comfortable: comfortable, maximum: maximum, earlyFrames: earlyFrames,
+                longPauseFrames: longPauseFrames, sentenceFrames: sentenceFrames,
+                anyFrames: anyFrames, spoken: spoken, speechFrames: speechFrames)
         {
-            return middle
+            return cut
         }
         return nil
+    }
+
+    /// A long pause may end a piece at the earliest safe boundary even when it began before that boundary.
+    private func pauseCut(
+        in run: Range<Int>, earliest: Int, ordinary: Int, comfortable: Int, maximum: Int,
+        earlyFrames: Int, longPauseFrames: Int, sentenceFrames: Int, anyFrames: Int,
+        spoken: [Int], speechFrames: Int
+    ) -> Int? {
+        let rawMiddle = run.lowerBound + run.count / 2
+        let cut = Swift.max(rawMiddle, earliest)
+        guard cut < run.upperBound else { return nil }
+        let longEnough: Bool
+        if run.lowerBound < earliest {
+            longEnough = run.count >= longPauseFrames
+        } else {
+            longEnough =
+                middle(
+                    ofRun: run, ordinary, comfortable, maximum, earlyFrames, sentenceFrames,
+                    anyFrames) != nil
+        }
+        guard longEnough, spoken[cut] >= speechFrames else { return nil }
+        return cut
     }
 
     /// The middle of `run` when a cut may fall there and the pause is long enough for where it falls, else `nil`.

@@ -109,6 +109,9 @@ HINGLISH = [
 CODE_SWITCH_ENGLISH = "Okay team, quick update on the release today."
 CODE_SWITCH_HINDI = "कल मैं ऑफिस नहीं आऊँगा, घर से काम करूँगा, और शाम तक रिपोर्ट भेज दूँगा।"
 CODE_SWITCH_ROMANISED = "Kal main office nahi aaunga, ghar se kaam karunga, aur shaam tak report bhej dunga."
+CODE_SWITCH_HI_EN_HINDI = "तुम्हारा लैपटॉप कहाँ है?"
+CODE_SWITCH_HI_EN_ROMANISED = "Tumhara laptop kahan hai?"
+CODE_SWITCH_HI_EN_ENGLISH = "The server is running slowly again today."
 PUNCTUATION = [
     ("Dear team comma the build is green full stop", "Dear team, the build is green."),
     ("Can you join the call at noon question mark", "Can you join the call at noon?"),
@@ -190,6 +193,12 @@ def clips():
         spoken=f"{english_twice} {CODE_SWITCH_ROMANISED}",
         devanagari=f"{english_twice} {CODE_SWITCH_HINDI}", languages=["en", "hi"],
         parts=[["Rishi", f"{CODE_SWITCH_ENGLISH}{PAUSE}{CODE_SWITCH_ENGLISH}"], ["Lekha", CODE_SWITCH_HINDI]])
+    add("code-switch-hi-en-lekha-rishi", "code-switch", "hinglish", "Lekha+Rishi",
+        f"{CODE_SWITCH_HI_EN_HINDI}{PAUSE}{CODE_SWITCH_HI_EN_ENGLISH}",
+        f"{CODE_SWITCH_HI_EN_ROMANISED} {CODE_SWITCH_HI_EN_ENGLISH}",
+        spoken=f"{CODE_SWITCH_HI_EN_ROMANISED} {CODE_SWITCH_HI_EN_ENGLISH}",
+        devanagari=f"{CODE_SWITCH_HI_EN_HINDI} {CODE_SWITCH_HI_EN_ENGLISH}", languages=["hi", "en"],
+        parts=[["Lekha", CODE_SWITCH_HI_EN_HINDI], ["Rishi", CODE_SWITCH_HI_EN_ENGLISH]])
     for case in committed_passages():
         if case["language"] == "english":
             for voice in ENGLISH:
