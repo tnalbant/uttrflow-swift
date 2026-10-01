@@ -118,6 +118,15 @@ public struct EncryptedStore: Sendable {
         try revokingKeys.revokeKey()
     }
 
+    /// Opens a sealed binary asset, refusing when the installation key is missing or the file was changed.
+    public func open(_ envelope: Data, for logicalName: String) throws -> Data {
+        let key = try keys.key(createIfMissing: false)
+        return try Self.open(envelope, key: key, name: logicalName)
+    }
+
+    /// Whether bytes carry this store's versioned envelope header.
+    public static func isSealed(_ payload: Data) -> Bool { payload.starts(with: magic) }
+
     private static func seal(_ payload: Data, key: SymmetricKey, name: String) throws -> Data {
         let box = try AES.GCM.seal(payload, using: key, authenticating: Data(name.utf8))
         guard let combined = box.combined else { throw CocoaError(.fileWriteUnknown) }

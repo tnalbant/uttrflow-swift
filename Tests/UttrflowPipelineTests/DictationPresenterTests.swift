@@ -195,6 +195,10 @@ struct FailureOnScreenTests {
             DictationPresenter.dock(for: .failed(failureWithoutWords)).action
                 == .openSystemSettings(.microphone))
         #expect(DictationPresenter.dock(for: .failed(failureWithWords)).action == .pasteManually)
+        let clipboardFree = DictationFailure(
+            message: "The text couldn't be inserted. Your clipboard is unchanged.",
+            recovery: .copyTranscript, severity: .degraded, transcript: "the words")
+        #expect(DictationPresenter.dock(for: .failed(clipboardFree)).action == .copyTranscript)
     }
 
     /// §19: whatever fails, the user's words must stay reachable.

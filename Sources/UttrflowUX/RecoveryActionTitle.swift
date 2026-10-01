@@ -11,6 +11,7 @@ public enum RecoveryActionTitle {
         case .downloadSpeechModel: "Finish Setup"
         case .pasteManually: "Dismiss"
         case .showRecentDictations: "Show Recent"
+        case .copyTranscript: "Copy"
         case .retryFromRecording: "Retry"
         }
     }
