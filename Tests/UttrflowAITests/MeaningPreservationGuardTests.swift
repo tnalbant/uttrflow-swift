@@ -957,6 +957,20 @@ struct GrammarGuardTests {
             ).isAccepted)
     }
 
+    @Test("accepts an offered reading that begins a sentence")
+    func acceptsPreambleShapedOfferedReading() {
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(
+            sut.verdict(
+                draft: draft("hear is the file"), rewritten: "Here is the file.", offering: offered
+            ).isAccepted)
+        #expect(
+            !sut.verdict(
+                draft: draft("hear is the file"), rewritten: "Here is the file."
+            ).isAccepted)
+    }
+
     // MARK: Where the reading stands
 
     /// The rewrite writes "mine" where "money" was doubted, and is accepted because "main" stands earlier.

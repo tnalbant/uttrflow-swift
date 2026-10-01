@@ -38,7 +38,9 @@ public struct MeaningPreservationGuard: Sendable {
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
-            return .rejected(reason: reason, kind: kind)
+            guard kind == .preamble,
+                Self.rewriteStartsWithOfferedReading(draft: draft, rewritten: rewritten, offering: doubtful)
+            else { return .rejected(reason: reason, kind: kind) }
         }
         if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
             original: draft.text, rewritten: rewritten)
@@ -75,6 +77,20 @@ public struct MeaningPreservationGuard: Sendable {
         return Self.grammarVerdict(
             alignment, excusing: readings.excused, echoed: echoed, allowing: doubtful,
             restoring: restored.map(\.token), policy: grammar)
+    }
+
+    /// Allows a chat-like opening only when it is the offered reading of the doubtful first run.
+    private static func rewriteStartsWithOfferedReading(
+        draft: Draft, rewritten: String, offering doubtful: [DoubtfulSpan]
+    ) -> Bool {
+        guard let first = doubtful.first,
+            let heard = draft.text.range(of: first.heard, options: [.caseInsensitive]),
+            draft.text[..<heard.lowerBound].allSatisfy(\.isWhitespace),
+            first.candidates.contains(where: { candidate in
+                rewritten.range(of: candidate.spelling, options: [.caseInsensitive, .anchored]) != nil
+            })
+        else { return false }
+        return true
     }
 
     /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
