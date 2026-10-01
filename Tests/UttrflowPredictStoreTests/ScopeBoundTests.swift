@@ -32,4 +32,28 @@ struct ScopeBoundTests {
         #expect(recent.count == PredictStore.scopeLimit)
         #expect(recent.first == "make target0")
     }
+
+    @Test("A field evicts its least recently used scopes and their entries and successions.")
+    func evictsOldScopesAndTheirDependents() async throws {
+        let corpus = Corpus()
+        let store = try PredictStore(path: corpus.path)
+        for index in 0...PredictStore.surfacesPerField {
+            let scope = shell("/f\(index)")
+            try await store.record(
+                "command \(index)", in: scope, after: "previous \(index)",
+                at: moment.addingTimeInterval(Double(index)))
+        }
+        let counts = try Database(path: corpus.path).rows(
+            "SELECT (SELECT COUNT(*) FROM surface), (SELECT COUNT(*) FROM entry), (SELECT COUNT(*) FROM succession)",
+            { _ in }
+        ) { [$0.integer(0), $0.integer(1), $0.integer(2)] }
+        #expect(
+            counts == [
+                [PredictStore.surfacesPerField, PredictStore.surfacesPerField, PredictStore.surfacesPerField]
+            ])
+        #expect(try await store.candidates(for: shell("/f0"), matching: "command").isEmpty)
+        #expect(
+            try await store.candidates(for: shell("/f\(PredictStore.surfacesPerField)"), matching: "command")
+                .count == 1)
+    }
 }

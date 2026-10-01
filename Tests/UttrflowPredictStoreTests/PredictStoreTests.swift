@@ -684,6 +684,33 @@ struct RecoveryTests {
         #expect(version == [Schema.version])
     }
 
+    @Test("A version five file adds scope recency seeded from its entries.")
+    func migratesSurfaceRecency() throws {
+        let corpus = Corpus()
+        let database = try Database(path: corpus.path)
+        try Schema.migrate(database)
+        try database.run("INSERT INTO surface (bundle_id, role, scope) VALUES (?, ?, ?)") {
+            $0.bind(1, "com.example.term")
+            $0.bind(2, "AXTextArea")
+            $0.bind(3, "/work")
+        }
+        try database.run("INSERT INTO entry (surface_id, text, text_lower, last_used) VALUES (1, ?, ?, ?)") {
+            $0.bind(1, "make verify")
+            $0.bind(2, "make verify")
+            $0.bind(3, moment.timeIntervalSince1970)
+        }
+        try database.execute("ALTER TABLE surface DROP COLUMN last_used")
+        try database.execute("DROP INDEX IF EXISTS surface_recent")
+        try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(5)) }
+        try Schema.migrate(database)
+        let recency = try database.rows("SELECT last_used FROM surface WHERE id = 1", { _ in }) {
+            $0.double(0)
+        }
+        #expect(recency == [moment.timeIntervalSince1970])
+        let indexes = try database.rows("PRAGMA index_list(surface)", { _ in }) { $0.text(1) }
+        #expect(indexes.contains("surface_recent"))
+    }
+
     @Test("A version four file folds mixed-case application rows into one surface.")
     func migratesMixedCaseApplicationKeys() async throws {
         let corpus = Corpus()

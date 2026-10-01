@@ -14,6 +14,9 @@ public actor PredictStore: PredictionStore {
     /// How many entries one surface may hold before the weakest are evicted.
     public static let entriesPerSurface = 2_000
 
+    /// How many documents one field may retain before its least recently used scope is removed.
+    public static let surfacesPerField = 64
+
     /// How many candidates a query returns, which is more than any list shows.
     static let candidateLimit = 16
 
@@ -174,7 +177,7 @@ public actor PredictStore: PredictionStore {
     static let scopeQuery = """
         SELECT id FROM surface
         WHERE bundle_id = ? AND role = ? AND locator = ?
-        ORDER BY scope = ? DESC, (SELECT MAX(last_used) FROM entry WHERE surface_id = surface.id) DESC, id DESC
+        ORDER BY scope = ? DESC, last_used DESC, id DESC
         LIMIT ?
         """
 
@@ -368,6 +371,10 @@ public actor PredictStore: PredictionStore {
         _ text: String, in surface: Surface, after previous: String?, selfSourced: Bool, at moment: Date
     ) throws(PredictStoreError) {
         guard let id = try identifier(of: surface, creating: true) else { return }
+        try database.run("UPDATE surface SET last_used = MAX(last_used, ?) WHERE id = ?") {
+            $0.bind(1, moment.timeIntervalSince1970)
+            $0.bind(2, id)
+        }
         // A half-typed fragment is not stored when a longer line the user already entered begins with it.
         if try isFragmentOfLongerEntry(surfaceIdentifier: id, text: text) { return }
         try database.run(
@@ -408,6 +415,9 @@ public actor PredictStore: PredictionStore {
                 })
         }
         try evictWeakest(surfaceIdentifier: id)
+        try evictOldestSurfaces(
+            bundleIdentifier: surface.bundleIdentifier, role: surface.role, locator: surface.locator ?? "",
+            keepingSurface: id)
     }
 
     /// Notes that a suggestion was taken, which is evidence and also a discount.
@@ -732,6 +742,30 @@ public actor PredictStore: PredictionStore {
             })
     }
 
+    /// Removes the least recently used scopes after a field exceeds its surface cap.
+    private func evictOldestSurfaces(
+        bundleIdentifier: String, role: String, locator: String, keepingSurface id: Int64
+    ) throws(PredictStoreError) {
+        let count =
+            try database.rows(
+                "SELECT COUNT(*) FROM surface WHERE bundle_id = ? AND role = ? AND locator = ?",
+                {
+                    $0.bind(1, bundleIdentifier); $0.bind(2, role); $0.bind(3, locator)
+                }
+            ) { $0.integer(0) }.first ?? 0
+        guard count > Self.surfacesPerField else { return }
+        let excess = count - Self.surfacesPerField
+        try database.run(
+            "DELETE FROM surface WHERE id IN (SELECT id FROM surface WHERE bundle_id = ? AND role = ? AND locator = ? AND id != ? ORDER BY last_used ASC, id ASC LIMIT ?)",
+            {
+                $0.bind(1, bundleIdentifier)
+                $0.bind(2, role)
+                $0.bind(3, locator)
+                $0.bind(4, id)
+                $0.bind(5, Int64(excess))
+            })
+    }
+
     /// Reads a query returning the entry columns as candidates, each at the given edit distance.
     private func readCandidates(
         _ sql: String, _ bind: (OpaquePointer) -> Void, distance: Int
@@ -778,7 +812,7 @@ public actor PredictStore: PredictionStore {
         if let existing = found.first { return existing }
         guard creating else { return nil }
         try database.run(
-            "INSERT INTO surface (bundle_id, role, locator, scope) VALUES (?, ?, ?, ?)", bind)
+            "INSERT INTO surface (bundle_id, role, locator, scope, last_used) VALUES (?, ?, ?, ?, 0)", bind)
         return database.lastInsertedIdentifier
     }
 

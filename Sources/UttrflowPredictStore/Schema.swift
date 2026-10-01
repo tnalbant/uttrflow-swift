@@ -3,7 +3,7 @@ import UttrflowCore
 /// The tables the corpus lives in, and the one place their shape is written down.
 enum Schema {
     /// What this build expects on disk; an older file is migrated to it and a newer one is refused.
-    static let version = 5
+    static let version = 6
 
     /// Everything a fresh database needs, in the order it must be created.
     static let statements = [
@@ -24,9 +24,11 @@ enum Schema {
           role      TEXT NOT NULL,
           locator   TEXT NOT NULL DEFAULT '',
           scope     TEXT NOT NULL DEFAULT '',
+          last_used REAL NOT NULL DEFAULT 0,
           UNIQUE (bundle_id, role, locator, scope)
         )
         """,
+        "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)",
         """
         CREATE TABLE IF NOT EXISTS entry (
           id           INTEGER PRIMARY KEY,
@@ -91,9 +93,26 @@ enum Schema {
                 try migrateToApplicationKeys(database)
             }
         }
+        if current < 6 {
+            try database.transaction { () throws(PredictStoreError) in
+                try migrateToSurfaceRecency(database)
+            }
+        }
         if current < version {
             try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(version)) }
         }
+    }
+
+    /// Adds indexed scope recency and seeds it from the newest entry in each surface.
+    private static func migrateToSurfaceRecency(_ database: Database) throws(PredictStoreError) {
+        if !hasColumn("last_used", in: "surface", database) {
+            try database.execute("ALTER TABLE surface ADD COLUMN last_used REAL NOT NULL DEFAULT 0")
+        }
+        try database.execute(
+            "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)")
+        try database.execute(
+            "UPDATE surface SET last_used = COALESCE((SELECT MAX(last_used) FROM entry WHERE entry.surface_id = surface.id), 0)"
+        )
     }
 
     /// Adds the lowercased column an existing v1 file lacks, fills it, and moves the index onto it.
