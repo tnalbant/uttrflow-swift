@@ -66,10 +66,12 @@ struct SnippetRowView: View {
             Text("\(row.timesUsed)×")
                 .monospacedDigit()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
+                .accessibilityLabel("Used \(MainFormatting.count(row.timesUsed, "time", "times"))")
             Text(row.lastUsed)
                 .font(.system(size: 12))
                 .foregroundStyle(PagePalette.faint)
                 .lineLimit(1)
+                .accessibilityLabel(row.lastUsed == "Never" ? "Never used" : "Last used \(row.lastUsed)")
             controls
         }
         .font(.system(size: 13))

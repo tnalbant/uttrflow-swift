@@ -90,6 +90,7 @@ struct DictionaryRowView: View {
                 .italic()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
                 .lineLimit(1)
+                .accessibilityLabel(row.pronunciation == "—" ? "No pronunciation" : row.pronunciation)
             PageTintChip(text: row.source.title, tint: DictionarySourceTint.color(row.source))
                 .help(row.origin)
             Text("\(row.timesUsed)×")
@@ -97,11 +98,13 @@ struct DictionaryRowView: View {
                 .foregroundStyle(PagePalette.text.opacity(0.6))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .accessibilityLabel("Used \(MainFormatting.count(row.timesUsed, "time", "times"))")
             Text("\(row.timesUndone)×")
                 .monospacedDigit()
                 .foregroundStyle(undoneColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .accessibilityLabel("Undone \(MainFormatting.count(row.timesUndone, "time", "times"))")
             controls
         }
         .font(.system(size: 13))
