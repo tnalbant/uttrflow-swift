@@ -51,6 +51,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [app-dictionary.md](app-dictionary.md) | Personal dictionary: phonetics and learning |
 | [app-dictionary-store.md](app-dictionary-store.md) | The personal dictionary store |
 | [ai-snippet-store.md](ai-snippet-store.md) | The snippet store |
+| [personal-data-archive.md](personal-data-archive.md) | Local export and import for the dictionary and snippets |
 
 ## Tab-to-complete
 

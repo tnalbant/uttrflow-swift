@@ -561,6 +561,7 @@ public enum SettingsPresenter {
                     id: "learned",
                     title: "What Uttrflow has picked up",
                     rows: [learnedWordsRow(personalisation)]),
+                personalDataTransferGroup,
                 pages,
             ] + availabilityGroups,
             callout: SettingsCallout(
@@ -583,6 +584,25 @@ public enum SettingsPresenter {
             control: .action(title: "Open Dictionary", change: .openPage(.dictionary)),
             icon: .symbol("book.closed", .amber))
     }
+
+    /// Local backup and restore controls for the words and snippets a person has built up.
+    static let personalDataTransferGroup = SettingsGroup(
+        id: "personalDataTransfer",
+        title: "Your words and snippets",
+        rows: [
+            SettingsRow(
+                id: "exportPersonalData",
+                label: "Export personal data",
+                explanation: "Save your dictionary and snippets as a local JSON file.",
+                control: .action(title: "Export…", change: .exportPersonalData),
+                icon: .symbol("square.and.arrow.up", .info)),
+            SettingsRow(
+                id: "importPersonalData",
+                label: "Import personal data",
+                explanation: "Merge a local backup. Existing words and triggers are kept.",
+                control: .action(title: "Import…", change: .importPersonalData),
+                icon: .symbol("square.and.arrow.down", .info)),
+        ])
 
     /// The main window's page that has no sidebar row and no tab here, as a row that opens it.
     static let pages = SettingsGroup(

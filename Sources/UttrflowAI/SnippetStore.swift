@@ -38,6 +38,19 @@ public actor SnippetStore {
         load()
     }
 
+    /// Replaces the stored snapshot after an archive has been fully validated and merged.
+    public func replaceAll(_ snippets: [Snippet]) throws(SnippetStoreError) {
+        var triggers = Set<[String]>()
+        for snippet in snippets {
+            guard !snippet.triggerWords.isEmpty else { throw .triggerHasNoWords }
+            guard !TextTidy.collapseWhitespace(snippet.expansion).isEmpty else {
+                throw .expansionIsEmpty
+            }
+            guard triggers.insert(snippet.triggerWords).inserted else { throw .triggerAlreadyUsed }
+        }
+        try persist(snippets)
+    }
+
     /// The matcher, built from what is on disk right now rather than from a list fetched earlier.
     public func expander() -> SnippetExpander {
         SnippetExpander(snippets: load())

@@ -406,6 +406,12 @@ public enum SettingsChange: Sendable, Equatable {
     /// Fetches the suggestion model again after a failed attempt.
     case retrySuggestionModel
 
+    /// Writes a user-selected local archive of the personal dictionary and snippets.
+    case exportPersonalData
+
+    /// Merges a user-selected local archive into the personal dictionary and snippets.
+    case importPersonalData
+
     /// Opens a System Settings pane to resolve an Apple Intelligence availability notice.
     case openSystemSettings(SystemSettingsPane)
 
@@ -416,7 +422,7 @@ public enum SettingsChange: Sendable, Equatable {
     public var isRequestToAct: Bool {
         switch self {
         case .checkForUpdatesNow, .chooseApplicationToTurnOffSuggestions, .retrySuggestionModel,
-            .manageClipboardExclusions, .pauseClipboardCapture,
+            .exportPersonalData, .importPersonalData, .manageClipboardExclusions, .pauseClipboardCapture,
             .openSystemSettings, .openPage:
             true
         default: false

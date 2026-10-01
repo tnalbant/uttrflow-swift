@@ -186,6 +186,16 @@ struct SettingsDictationDesignTests {
         #expect(row("learnedWords", in: pane(.dictation))?.explanation?.contains("appear here") == true)
     }
 
+    @Test("offers local export and merge controls for the personal lists")
+    func personalDataTransfer() throws {
+        let export = try #require(row("exportPersonalData", in: pane(.dictation)))
+        let `import` = try #require(row("importPersonalData", in: pane(.dictation)))
+        #expect(export.control == .action(title: "Export…", change: .exportPersonalData))
+        #expect(`import`.control == .action(title: "Import…", change: .importPersonalData))
+        #expect(SettingsChange.exportPersonalData.isRequestToAct)
+        #expect(SettingsChange.importPersonalData.isRequestToAct)
+    }
+
     @Test("an app's own row carries its icon")
     func appIcons() {
         let last = SettingsApp(bundleIdentifier: "com.example.notes", name: "Notes")

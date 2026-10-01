@@ -1,6 +1,7 @@
 import Accessibility
 import AppKit
 import OSLog
+import UniformTypeIdentifiers
 import UttrflowAI
 import UttrflowAccount
 import UttrflowAudio
@@ -2974,6 +2975,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     self?.settingsPage.apply(.suggestionsHere(application: identifier, isOn: false))
                 }
             case .manageClipboardExclusions: manageClipboardExclusions()
+            case .exportPersonalData: exportPersonalData()
+            case .importPersonalData: importPersonalData()
             case .pauseClipboardCapture(let isOn): setClipboardPaused(isOn)
             case .retrySuggestionModel:
                 guard settings.suggestions.isEnabled,
@@ -2994,6 +2997,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         settingsStore.save(updated)
         settingsChanged(to: updated)
+    }
+
+    /// Writes both personal lists to a private, user-chosen JSON file.
+    @MainActor
+    private func exportPersonalData() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "Uttrflow-Personal-Data.json"
+        panel.canCreateDirectories = true
+        panel.message = "This file contains your personal dictionary and snippet text."
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        intentWork = Task { [weak self, dictionary, snippets] in
+            do {
+                let archive = PersonalDataArchive(
+                    dictionary: await dictionary.allEntries(), snippets: await snippets.snippets())
+                try archive.encoded().write(to: destination, options: .atomic)
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: PrivateFile.fileMode],
+                    ofItemAtPath: destination.path(percentEncoded: false))
+                self?.showPersonalDataNotice(
+                    title: "Personal data exported",
+                    message: "Your dictionary and snippets were saved to the file you chose.")
+            } catch {
+                self?.showPersonalDataNotice(
+                    title: "Export could not be completed",
+                    message: "Uttrflow could not write the selected file.")
+            }
+            self?.refreshMainWindow()
+        }
+    }
+
+    /// Validates the entire local archive before either store is changed, then merges and reports conflicts.
+    @MainActor
+    private func importPersonalData() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "The file is read locally. Existing words and snippet triggers are kept."
+        panel.prompt = "Import"
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+
+        intentWork = Task { [weak self, dictionary, snippets] in
+            do {
+                let merged = try await PersonalDataTransfer.importArchive(
+                    Data(contentsOf: source), into: dictionary, and: snippets)
+                let duplicateCount = merged.duplicateWords + merged.duplicateSnippets
+                let message =
+                    duplicateCount == 0
+                    ? "The archive was imported. No duplicate entries were skipped."
+                    : "Imported the archive. Skipped \(merged.duplicateWords) duplicate \(merged.duplicateWords == 1 ? "word" : "words") and \(merged.duplicateSnippets) duplicate \(merged.duplicateSnippets == 1 ? "snippet" : "snippets"). Existing entries were kept."
+                self?.showPersonalDataNotice(title: "Import complete", message: message)
+            } catch let error as PersonalDataTransferError {
+                switch error {
+                case .dictionaryCapacityExceeded:
+                    self?.showPersonalDataNotice(
+                        title: "Import exceeds the dictionary limit",
+                        message: "The merged dictionary would exceed its limit. Nothing was imported.")
+                }
+            } catch {
+                self?.showPersonalDataNotice(
+                    title: "Import could not be completed",
+                    message: "Uttrflow could not read the selected file or save the imported lists.")
+            }
+            self?.refreshMainWindow()
+        }
+    }
+
+    /// States the result in a standard alert, including when no duplicates were found.
+    @MainActor
+    private func showPersonalDataNotice(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     /// Runs a store change and redraws from what the store then holds, never from what it returned.

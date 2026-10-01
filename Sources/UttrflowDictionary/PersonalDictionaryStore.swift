@@ -12,7 +12,7 @@ public import struct Foundation.CocoaError
 /// The words this user says that a general model would not expect. See `Docs/app-dictionary-store.md`.
 public actor PersonalDictionaryStore {
     /// The maximum number of inferred entries retained alongside user and shipped words.
-    static let maximumInferredEntries = 256
+    public static let maximumInferredEntries = 256
     /// The file, injected so a test writes into a temporary directory rather than a real dictionary.
     private let file: URL
     private let encryptedStore: EncryptedStore?
@@ -83,6 +83,17 @@ public actor PersonalDictionaryStore {
             load().filter { $0.id != entry.id && $0.word.lowercased() != spelling } + [entry]
         try persist(kept)
         return kept
+    }
+
+    /// Replaces the stored snapshot after an archive has been fully validated and merged.
+    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+        for entry in entries {
+            guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
+                throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+            }
+        }
+        try persist(Self.boundedEntries(entries))
+        cachedIndex = nil
     }
 
     /// Writes what the user typed in as a word of their own. See `Docs/app-dictionary-store.md`.
