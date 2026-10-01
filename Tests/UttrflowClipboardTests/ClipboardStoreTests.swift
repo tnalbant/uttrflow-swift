@@ -2,6 +2,7 @@
 
 import Foundation
 import Testing
+import UttrflowCore
 import UttrflowTestSupport
 
 @testable import UttrflowClipboard
@@ -29,6 +30,20 @@ struct ClipboardStoreTests {
 
         #expect(clips.map(\.text) == ["second", "first"])
         #expect(await store.clips(keeping: week()).map(\.text) == ["second", "first"])
+    }
+
+    @Test("reclassifies stored text with the current secret detector before returning or persisting it")
+    func reclassifiesStoredSecret() async throws {
+        let file = TemporaryFile()
+        let old = Clip(text: "api_key = ff00aa11ff00aa11ff00aa11", kind: .text, copiedAt: noon)
+        try JSONEncoder().encode([old]).write(to: file.url)
+        let store = ClipboardStore(file: file.url)
+
+        let clips = await store.clips(keeping: week())
+
+        #expect(clips.first?.kind == .secret)
+        let persisted = try JSONDecoder().decode([Clip].self, from: Data(contentsOf: file.url))
+        #expect(persisted.isEmpty)
     }
 
     /// Arrival order, not clock order, so a Mac whose clock jumped cannot shuffle the list.

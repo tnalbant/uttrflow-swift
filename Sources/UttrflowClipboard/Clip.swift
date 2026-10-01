@@ -147,6 +147,15 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
             alias: alias, category: category, isPinned: isPinned, timesCopied: timesCopied)
     }
 
+    /// Replaces only the detector-owned classification fields while preserving the clip's identity and edits.
+    func reclassified(as classification: ClipClassification) -> Clip {
+        Clip(
+            id: id, text: text, kind: classification.kind, copiedAt: copiedAt, source: source, origin: origin,
+            dictations: dictations, dictatedText: dictatedText, lastUsedAt: lastUsedAt,
+            lastUsedOrder: lastUsedOrder, language: classification.language, richText: richText, image: image,
+            alias: alias, category: category, isPinned: isPinned, timesCopied: timesCopied)
+    }
+
     /// Whether this is the copy of that dictation; a clip older than the link is matched on its words.
     public func isCopy(ofDictation id: UUID, saying spoken: String?) -> Bool {
         guard origin == .uttrflow else { return false }

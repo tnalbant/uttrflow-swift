@@ -56,6 +56,8 @@ public actor ClipboardStore {
 
     /// Whether this process has already reconciled the pictures folder; see ``sweepOnce()``.
     private var hasSwept = false
+    /// Whether stored clips have been checked once with the detector shipped by this build.
+    private var reclassifiedFiles: Set<URL> = []
     /// Pictures of deleted clips an undo can still bring back, left on disk until ``forgetHeldPictures()``.
     private var heldPictures: Set<String> = []
     /// Pictures written for a clip no index names yet, which only the write that follows can account for.
@@ -732,6 +734,30 @@ public actor ClipboardStore {
         return normalized
     }
 
+    /// Rechecks each readable index once so a corrected detector can mask clips it previously missed.
+    private func reclassifyStoredClips(_ clips: [Clip], at url: URL) -> [Clip] {
+        guard reclassifiedFiles.insert(url).inserted, !hasUnreadableIndex, !unreplaceable.contains(url)
+        else { return clips }
+        guard !LocalStore.hasSetAside(url) else { unreplaceable.insert(url); return clips }
+        let updated = clips.map { clip in
+            clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+        }
+        guard updated != clips else { return clips }
+        // A secret clip's picture is removed only after its replacement index is safely written.
+        let becameSecret = Set(updated.filter { $0.kind == .secret }.map(\.id))
+        let picturesToRemove = Set(clips.filter { becameSecret.contains($0.id) }.compactMap(\.image?.file))
+        do {
+            let persistable = updated.filter(Self.isPersistable)
+            if persistable == clips { return updated }
+            try persist(persistable, to: url)
+            removePictures(picturesToRemove)
+            return updated
+        } catch {
+            // Keep the old persisted classification if the replacement cannot be committed.
+            return clips
+        }
+    }
+
     /// The two lists as one, newest first; a merge rather than a sort, so two draws cannot disagree.
     private static func interleaving(saved: [Clip], history: [Clip]) -> [Clip] {
         var out: [Clip] = []
@@ -767,12 +793,17 @@ public actor ClipboardStore {
 
     /// Reads one file, setting an unreadable one aside and remembering that its pictures are unknown.
     private func read(_ url: URL) -> [Clip] {
+        guard !unreplaceable.contains(url) else { return [] }
         let stored = LocalStore.read([Clip].self, from: url)
         if case .unreadable(let setAside) = stored {
             hasUnreadableIndex = true
             if setAside == nil { unreplaceable.insert(url) }
         }
-        return stored.value ?? []
+        let clips = stored.value ?? []
+        let reclassified = reclassifyStoredClips(clips, at: url)
+        if url == savedFile { savedOnDisk = reclassified.filter(Self.isPersistable) }
+        if url == file { historyOnDisk = reclassified.filter(Self.isPersistable) }
+        return reclassified
     }
 
     /// Writes the list to memory and then to disk, filing each clip by what ``Clip/isKept`` says.
