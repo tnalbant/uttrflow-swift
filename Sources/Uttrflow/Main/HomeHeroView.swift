@@ -86,10 +86,15 @@ struct HomeHeroCard: View {
                     Text("·").foregroundStyle(PagePalette.soft)
                 }
                 Text(feature.title).foregroundStyle(Self.accent(for: feature))
+                if feature.isBeta { BetaBadge() }
             }
         }
         .font(BrandFont.display(size: 16, weight: .regular))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            hero.features.map { feature in
+                feature.isBeta ? BetaFeature.accessibilityName(feature.title) : feature.title
+            }.joined(separator: ", "))
     }
 
     /// Each feature's accent: teal for dictation, lilac for suggestions, amber for the clipboard.

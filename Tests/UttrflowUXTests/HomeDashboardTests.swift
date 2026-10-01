@@ -159,6 +159,7 @@ struct HomeHeroTests {
         #expect(hero.emphasis == "finished for you.")
         #expect(hero.features.map(\.title) == ["Dictation", "AI suggestions", "Clipboard"])
         #expect(hero.features.map(\.id) == ["dictation", "suggestions", "clipboard"])
+        #expect(hero.features.map(\.isBeta) == [false, true, true])
         #expect(hero.start.intent == .dictate)
         #expect(hero.start.title == "Start speaking")
         #expect(hero.canStart)

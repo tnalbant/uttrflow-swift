@@ -263,16 +263,28 @@ private struct MenuBarRoundButton: View {
                     )
                     .opacity(button.command.isEnabled || button.isPrimary ? 1 : 0.35)
                     .menuBarFocusRing(Circle(), isShown: isFocused)
-                Text(button.command.title)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(MenuBarColour.buttonLabel)
-                    .lineLimit(1)
+                HStack(spacing: 3) {
+                    Text(button.command.title)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(MenuBarColour.buttonLabel)
+                        .lineLimit(1)
+                    if button.isBeta { BetaBadge() }
+                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!button.command.isEnabled)
-        .accessibilityLabel(button.command.title)
+        .accessibilityLabel(
+            button.isBeta ? BetaFeature.accessibilityName(button.command.title) : button.command.title)
+    }
+
+    private var isBeta: Bool {
+        switch button.command.intent {
+        case .openClipboard: true
+        case .setFeature(let feature, _): feature.isBeta
+        default: false
+        }
     }
 }
 

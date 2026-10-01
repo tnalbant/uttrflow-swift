@@ -75,6 +75,14 @@ struct SettingsWindowTests {
             #expect(!item.symbolName.isEmpty, "\(item.tab) has no symbol")
             #expect(item.id == item.tab)
         }
+        #expect(items.first { $0.tab == .suggestions }?.badge == BetaFeature.label)
+        #expect(items.first { $0.tab == .dictation }?.badge == nil)
+        #expect(
+            SettingsPresenter.pane(for: .general, settings: .default)
+                .row(SettingsToggleField.clipboardEnabled.rawValue)?.badge == BetaFeature.label)
+        #expect(
+            SettingsPresenter.pane(for: .suggestions, settings: .default)
+                .row(SettingsToggleField.suggestionsEnabled.rawValue)?.badge == BetaFeature.label)
     }
 
     @Test("shows the tab it was asked for, alongside the whole sidebar")
@@ -690,6 +698,10 @@ struct SettingsRowTests {
         #expect(
             SettingsRow(id: "a", label: "Open at login", control: row.control)
                 .accessibilityLabel == "Open at login")
+        let betaRow = SettingsRow(
+            id: "clipboard", label: "Clipboard",
+            control: .toggle(field: .clipboardEnabled, isOn: true), badge: BetaFeature.label)
+        #expect(betaRow.accessibilityLabel == "Clipboard, beta")
     }
 
     @Test("reads one full stop between parts, even where a part already ends in one")

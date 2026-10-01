@@ -10,6 +10,7 @@ public struct SettingsTabItem: Sendable, Equatable, Identifiable {
     public let tab: SettingsTab
     public let title: String
     public let symbolName: String
+    public let badge: String?
 
     public var id: SettingsTab { tab }
 }
@@ -159,7 +160,8 @@ public struct SettingsRow: Sendable, Equatable, Identifiable {
 
     /// What VoiceOver reads, including why the row is off, which grey alone does not say.
     public var accessibilityLabel: String {
-        let parts = [label, explanation ?? keyedExplanation?.text, unavailability]
+        let spokenLabel = badge == BetaFeature.label ? BetaFeature.accessibilityName(label) : label
+        let parts = [spokenLabel, explanation ?? keyedExplanation?.text, unavailability]
             .compactMap(\.self).filter { !$0.isEmpty }
         // A lone label is read as a name, so only a label with more after it gains a full stop.
         return parts.count == 1 ? parts[0] : parts.map(Self.sentence).joined(separator: " ")
@@ -201,6 +203,14 @@ public struct SettingsRow: Sendable, Equatable, Identifiable {
 
     /// The same row with a tile at the left.
     public func with(icon: SettingsIcon) -> SettingsRow {
+        SettingsRow(
+            id: id, label: label, explanation: explanation, control: control,
+            unavailability: unavailability, icon: icon, badge: badge,
+            keyedExplanation: keyedExplanation, style: style)
+    }
+
+    /// The same row with a short word beside its label.
+    public func with(badge: String) -> SettingsRow {
         SettingsRow(
             id: id, label: label, explanation: explanation, control: control,
             unavailability: unavailability, icon: icon, badge: badge,

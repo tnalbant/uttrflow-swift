@@ -75,12 +75,31 @@ extension View {
 /// The heading above a card, and the caption above a list.
 struct MainSectionLabel: View {
     let text: String
+    var isBeta = false
 
     var body: some View {
-        Text(text)
-            .font(.system(size: MainMetrics.subheadSize, weight: .semibold))
-            .foregroundStyle(Color.mainMuted)
-            .padding(.leading, 3)
+        HStack(spacing: 5) {
+            Text(text)
+                .font(.system(size: MainMetrics.subheadSize, weight: .semibold))
+                .foregroundStyle(Color.mainMuted)
+            if isBeta { BetaBadge() }
+        }
+        .padding(.leading, 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isBeta ? BetaFeature.accessibilityName(text) : text)
+    }
+}
+
+/// The shared visible and spoken marker for beta features.
+struct BetaBadge: View {
+    var body: some View {
+        Text(BetaFeature.label)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(PagePalette.suggestion)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(PagePalette.suggestion.opacity(0.16), in: .capsule)
+            .accessibilityHidden(true)
     }
 }
 

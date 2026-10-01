@@ -123,6 +123,9 @@ public enum MenuBarFeature: String, Sendable, Equatable, CaseIterable {
         case .suggestions: "AI Suggestions"
         }
     }
+
+    /// Whether the feature name carries a beta badge.
+    public var isBeta: Bool { self != .dictation }
 }
 
 /// Which of the three are on, held as three answers so switching one cannot move another.
@@ -606,10 +609,11 @@ public enum MenuBarPresenter {
     static func title(
         of feature: MenuBarFeature, isOn: Bool, suggestionModel: SuggestionModelReadiness
     ) -> String {
+        let name = feature.isBeta ? "\(feature.title), \(BetaFeature.label)" : feature.title
         guard feature == .suggestions, isOn, let headline = suggestionModel.headline else {
-            return feature.title
+            return name
         }
-        return "\(feature.title) — \(headline)"
+        return "\(name) — \(headline)"
     }
 
     /// What a recording says about itself, counting down once it nears its cap.

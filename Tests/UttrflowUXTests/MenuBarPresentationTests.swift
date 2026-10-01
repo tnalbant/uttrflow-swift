@@ -212,6 +212,7 @@ struct MenuBarContentsTests {
             ])
         #expect(shown.buttons.map(\.isPrimary) == [true, false, false, false])
         #expect(shown.buttons.map(\.symbolName) == ["mic", "clipboard", "gearshape", "square.grid.2x2"])
+        #expect(MenuBarFeature.allCases.map(\.isBeta) == [false, true, true])
     }
 
     /// The right-click menu holds what the popover has no room for, with Quit always last.
@@ -223,7 +224,8 @@ struct MenuBarContentsTests {
         }
         #expect(
             titles == [
-                "Dictation", "Clipboard", "AI Suggestions", "Open Uttrflow", "Settings…", "Quit Uttrflow",
+                "Dictation", "Clipboard, Beta", "AI Suggestions, Beta", "Open Uttrflow", "Settings…",
+                "Quit Uttrflow",
             ])
         guard case .status = shown.items.first else {
             Issue.record("the menu does not begin with the status line")

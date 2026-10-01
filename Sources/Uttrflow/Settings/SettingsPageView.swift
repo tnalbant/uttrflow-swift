@@ -179,6 +179,7 @@ struct SettingsTabStrip: View {
                             }
                             .lineLimit(1)
                             .fixedSize()
+                        if item.badge == BetaFeature.label { BetaBadge() }
                     }
                     // Room either side of the words, so the chosen tab's fill never touches them.
                     .padding(.horizontal, 8)
@@ -195,7 +196,10 @@ struct SettingsTabStrip: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(item.title)
+                .accessibilityLabel(
+                    item.badge == BetaFeature.label
+                        ? BetaFeature.accessibilityName(item.title) : item.title
+                )
                 .accessibilityAddTraits(.isButton)
                 .accessibilitySelection(isSelected)
             }

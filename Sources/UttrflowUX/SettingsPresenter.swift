@@ -22,7 +22,9 @@ public enum SettingsPresenter {
     /// Every tab, in the design's order, driven by ``SettingsTab/allCases`` so a new case adds a tab.
     public static func tabs() -> [SettingsTabItem] {
         SettingsTab.allCases.map { tab in
-            SettingsTabItem(tab: tab, title: title(of: tab), symbolName: symbolName(of: tab))
+            SettingsTabItem(
+                tab: tab, title: title(of: tab), symbolName: symbolName(of: tab),
+                badge: tab == .suggestions ? BetaFeature.label : nil)
         }
     }
 
@@ -307,7 +309,8 @@ public enum SettingsPresenter {
                             explanation:
                                 "Off, copies are not kept and the clipboard shortcut is released. Exclusions use the frontmost app at detection time.",
                             settings, capabilities
-                        ).with(icon: .symbol("list.clipboard", .suggestion)),
+                        ).with(icon: .symbol("list.clipboard", .suggestion))
+                            .with(badge: BetaFeature.label),
                         SettingsRow(
                             id: "clipboard-exclusions", label: "Excluded apps",
                             explanation: "Copies detected while these apps are frontmost are skipped.",
@@ -626,7 +629,8 @@ public enum SettingsPresenter {
                             label: "Turn on AI suggestions",
                             explanation: suggestionsExplanation,
                             settings, .everything
-                        ).with(icon: .symbol("power", .suggestion)),
+                        ).with(icon: .symbol("power", .suggestion))
+                            .with(badge: BetaFeature.label),
                         toggleRow(
                             .quietSuggestions,
                             label: "Only suggest when it is sure",

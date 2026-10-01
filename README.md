@@ -44,7 +44,7 @@
 `UttrflowInput`, with the dock in `Sources/Uttrflow/Dock`. Read
 [`Docs/pipeline.md`](Docs/pipeline.md) and [`Docs/cleanup.md`](Docs/cleanup.md).
 
-## 📋 Smart clipboard: everything you copied, one shortcut away
+## 📋 Smart clipboard (Beta): everything you copied, one shortcut away
 
 <p align="center">
   <img src="Docs/media/readme-clipboard.png" width="720"
@@ -60,7 +60,7 @@
 **In the code:** `UttrflowClipboard` and `Sources/Uttrflow/Panel`. Read
 [`Docs/panel.md`](Docs/panel.md) and [`Docs/clipboard-secrets.md`](Docs/clipboard-secrets.md).
 
-## ⇥ AI suggestions: Any tool, get suggestions at the speed of thought
+## ⇥ AI suggestions (Beta): Any tool, get suggestions at the speed of thought
 
 <p align="center">
   <img src="Docs/media/readme-suggestions.png" width="820"

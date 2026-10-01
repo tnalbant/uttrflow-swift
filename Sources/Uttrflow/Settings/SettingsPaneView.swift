@@ -233,7 +233,9 @@ struct SettingsRowView: View {
                 Text(row.label)
                     .font(.system(size: labelSize))
                     .foregroundStyle(SettingsPalette.ink(0.92))
-                if let badge = row.badge {
+                if row.badge == BetaFeature.label {
+                    BetaBadge()
+                } else if let badge = row.badge {
                     Text(badge)
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.6)

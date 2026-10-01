@@ -174,7 +174,7 @@ struct ClipboardRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
-                MainSectionLabel(text: "Clipboard")
+                MainSectionLabel(text: "Clipboard", isBeta: true)
                 Spacer(minLength: 6)
                 ForEach(Array(demonstration.keys.enumerated()), id: \.offset) { _, key in
                     Text(key)

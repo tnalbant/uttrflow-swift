@@ -78,6 +78,9 @@ public enum HomeFeature: String, Sendable, Equatable, CaseIterable, Identifiable
         case .clipboard: "Clipboard"
         }
     }
+
+    /// Whether the feature name carries a beta badge.
+    public var isBeta: Bool { self != .dictation }
 }
 
 /// The card across the top of home: the headline, the three features and the way to start talking.
