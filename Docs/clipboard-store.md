@@ -160,8 +160,8 @@ which keeps arrival order in one pass and without a sort.
 oldest", and its known weakness turned out to be the common case rather than a corner: a value
 copied twenty times last month outranked one pasted twice this morning, so the clip somebody had
 leaned on all week was the first thing thrown away. `Clip.lastUsedOrder` ranks eviction, while
-`Clip.lastUsedAt` records when the use happened; `markUsed` updates both so a paste moves the
-clip to the newest position even when the wall clock moves backward.
+`Clip.lastUsedAt` records when the use happened. `markUsed` moves the clip to the top of its
+history or saved pool by that order, even when the wall clock moves backward.
 
 **Memory and disk are weighed separately.** `weight(of:)` counts a clip's words and deliberately
 not its picture. It once added `image.bytes`, which is the size of a file on disk the process has
@@ -234,16 +234,14 @@ ever; four had accumulated in a morning's testing.
 
 ## Ordering
 
-The store answers in arrival order, newest first, and the panel decides where pinned rows are
-shown — that is a presentation question and two answers to it would disagree. A new clip is
-prepended rather than sorted in, because the clock belongs to the caller and a machine whose clock
-moved must not be able to shuffle what the user is shown.
+The store answers in most-recently-used order, and the panel decides where pinned rows are shown —
+that is a presentation question and two answers to it would disagree. A new clip is prepended, and
+using a clip moves it to the top of its history or saved pool. The persisted `lastUsedOrder` is
+monotonic, so a machine whose clock moved cannot shuffle what the user is shown.
 
-Merging the two files uses a two-way merge rather than a sort, and that is not a
-micro-optimisation: each list is already in arrival order, and a merge keeps both of those orders
-intact where a sort is free to reorder equal timestamps differently on each call. The panel counts
-rows, so two draws of an unchanged clipboard disagreeing about which one is third is the one thing
-this cannot do.
+Merging the two files uses a two-way merge rather than a sort: each pool is already in use order,
+and a merge keeps those orders intact. Equal use orders retain their copied-time order, so two draws
+of an unchanged clipboard agree about which row is third.
 
 ## What fails quietly and what does not
 
@@ -251,7 +249,7 @@ Memory is updated first and unconditionally, so a disk that refuses does not als
 the pin they just set for as long as the app stays open. The error still reaches them: what they
 lose is the change surviving a quit, not the change.
 
-`markUsed` does not write at all. It moves `lastUsedAt` in memory and the next real write — a
+`markUsed` does not write at all. It moves the clip in memory and the next real write — a
 copy, a pin, a delete — carries it to disk; with no other write, `flushUse` writes it after 30
 seconds, and quitting writes it before the process exits. A paste therefore costs no rewrite of
 the history file. If the app is killed before any of those, the uses since the last write are

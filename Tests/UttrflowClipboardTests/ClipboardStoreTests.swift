@@ -58,6 +58,27 @@ struct ClipboardStoreTests {
         #expect(clips.map(\.text) == ["earlier", "later"])
     }
 
+    @Test("using a clip moves it to the top of history and keeps that order after reopening")
+    func useMovesClipToTop() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url, useFlushDelay: .seconds(3_600))
+        let first = clip("first", at: -120)
+        let second = clip("second", at: -60)
+        let third = clip("third")
+        try await store.record(first, keeping: week())
+        try await store.record(second, keeping: week())
+        try await store.record(third, keeping: week())
+
+        let used = await store.markUsed(first.id, at: noon.addingTimeInterval(-600), keeping: week())
+
+        #expect(used.map(\.text) == ["first", "third", "second"])
+        await store.flushUse()
+        #expect(
+            await ClipboardStore(file: file.url).clips(keeping: week()).map(\.text) == [
+                "first", "third", "second",
+            ])
+    }
+
     @Test("survives a relaunch")
     func persistence() async throws {
         let file = TemporaryFile()

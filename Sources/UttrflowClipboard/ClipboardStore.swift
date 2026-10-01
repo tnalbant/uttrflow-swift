@@ -155,7 +155,7 @@ public actor ClipboardStore {
         return try settled(updated, keeping: retention)
     }
 
-    /// Notes that a clip has just been reached for, in memory; the disk hears of it with the next write.
+    /// Moves a used clip to the top of its history or saved pool; the disk hears of it with the next write.
     @discardableResult
     public func markUsed(
         _ id: UUID, at moment: Date, keeping retention: ClipRetention
@@ -165,6 +165,9 @@ public actor ClipboardStore {
             return retained(clips, keeping: retention)
         }
         clips[index] = clips[index].used(at: moment, order: nextUseOrder())
+        let used = clips.remove(at: index)
+        let poolStart = clips.firstIndex(where: { $0.isKept == used.isKept }) ?? clips.endIndex
+        clips.insert(used, at: poolStart)
         let onDisk = keptOnDisk(clips, keeping: retention)
         // A clip that aged out is a real change, written now; a use alone is bookkeeping for a later eviction.
         guard onDisk.count == clips.count else {
@@ -726,7 +729,8 @@ public actor ClipboardStore {
         let stored = fromSavedFile + fromHistoryFile.filter { !savedIDs.contains($0.id) }
         let list = Self.uniqueAliases(
             in: Self.interleaving(
-                saved: stored.filter(\.isKept), history: stored.filter { !$0.isKept }))
+                saved: Self.orderedForDisplay(stored.filter(\.isKept)),
+                history: Self.orderedForDisplay(stored.filter { !$0.isKept })))
         let ordered = list.enumerated().sorted { left, right in
             switch (left.element.lastUsedOrder, right.element.lastUsedOrder) {
             case (let leftOrder?, let rightOrder?):
@@ -778,14 +782,14 @@ public actor ClipboardStore {
         }
     }
 
-    /// The two lists as one, newest first; a merge rather than a sort, so two draws cannot disagree.
+    /// The two lists as one, newest used first; a merge keeps each persisted pool's order intact.
     private static func interleaving(saved: [Clip], history: [Clip]) -> [Clip] {
         var out: [Clip] = []
         out.reserveCapacity(saved.count + history.count)
         var left = 0
         var right = 0
         while left < saved.count, right < history.count {
-            if saved[left].copiedAt >= history[right].copiedAt {
+            if precedesForDisplay(saved[left], history[right]) {
                 out.append(saved[left])
                 left += 1
             } else {
@@ -796,6 +800,26 @@ public actor ClipboardStore {
         out.append(contentsOf: saved[left...])
         out.append(contentsOf: history[right...])
         return out
+    }
+
+    /// Sorts each persisted pool by its monotonic use order, retaining arrival order for legacy clips.
+    private static func orderedForDisplay(_ clips: [Clip]) -> [Clip] {
+        clips.enumerated().sorted { left, right in
+            if precedesForDisplay(left.element, right.element) { return true }
+            if precedesForDisplay(right.element, left.element) { return false }
+            return left.offset < right.offset
+        }.map(\.element)
+    }
+
+    /// Compares by persisted use order and falls back to arrival time only before an order was stored.
+    private static func precedesForDisplay(_ left: Clip, _ right: Clip) -> Bool {
+        switch (left.lastUsedOrder, right.lastUsedOrder) {
+        case (let leftOrder?, let rightOrder?):
+            return leftOrder == rightOrder ? left.copiedAt > right.copiedAt : leftOrder > rightOrder
+        case (.some, nil): return true
+        case (nil, .some): return false
+        case (nil, nil): return left.copiedAt > right.copiedAt
+        }
     }
 
     /// Reconciles the pictures folder once a launch, catching orphans no write of ours can notice.

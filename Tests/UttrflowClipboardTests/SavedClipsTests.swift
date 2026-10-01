@@ -38,6 +38,27 @@ struct SavedClipsTests {
             FileManager.default.fileExists(atPath: file.url.path(percentEncoded: false)) == false)
     }
 
+    @Test("using a saved clip moves it to the top of the saved pool")
+    func useMovesClipToTopOfSaved() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url, useFlushDelay: .seconds(3_600))
+        let first = clip("first", at: -60)
+        let second = clip("second")
+        try await store.record(first, keeping: week())
+        try await store.record(second, keeping: week())
+        try await store.setPinned(true, of: first.id, keeping: week())
+        try await store.setPinned(true, of: second.id, keeping: week())
+
+        let used = await store.markUsed(first.id, at: noon.addingTimeInterval(-600), keeping: week())
+
+        #expect(used.map(\.text) == ["first", "second"])
+        await store.flushUse()
+        #expect(
+            await ClipboardStore(file: file.url).clips(keeping: week()).map(\.text) == [
+                "first", "second",
+            ])
+    }
+
     /// The measured failure, now a test.
     @Test("a saved clip survives a history file that cannot be read at all")
     func survivesADamagedHistory() async throws {
