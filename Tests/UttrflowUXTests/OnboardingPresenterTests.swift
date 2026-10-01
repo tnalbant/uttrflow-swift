@@ -69,6 +69,16 @@ private func intents(_ page: OnboardingPage) -> [OnboardingIntent] {
 @Suite("Onboarding pages")
 struct OnboardingPresenterTests {
 
+    @Test("offers telemetry opt-in and opt-out side by side during first-run onboarding")
+    func usageStatisticsChoice() {
+        let state = OnboardingState(step: .signIn, detail: .signIn(.offering))
+        let page = OnboardingPresenter.page(for: state, hotkey: Settings.default.hotkey)
+
+        #expect(page.buttons.map(\.title) == ["Keep off", "Share"])
+        #expect(page.buttons.map(\.intent) == [.setUsageStatistics(false), .setUsageStatistics(true)])
+        #expect(page.buttons[0].isProminent)
+    }
+
     // MARK: Rules that hold on every page
 
     @Test("says something on every page it can be asked for, and numbers it")

@@ -788,6 +788,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.onboarding = onboarding
         // The rest of the app opens as soon as the session exists, before the setup pages after it.
         onboarding.onSignIn = { [weak self] in self?.followSession() }
+        onboarding.onSettingsChange = { [weak self] in self?.settingsChanged(to: $0) }
         onboarding.onFinish = { [weak self] _ in
             guard let self else { return }
             // Re-read, because the microphone check writes the language list through the same store.

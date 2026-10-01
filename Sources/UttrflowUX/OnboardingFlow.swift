@@ -29,6 +29,9 @@ public final class OnboardingFlow {
     /// Called once, when the user closes onboarding, with what they ended up able to do.
     public var onFinish: ((OnboardingReadiness) -> Void)?
 
+    /// Called after onboarding changes a saved setting, so the running app applies it immediately.
+    public var onSettingsChange: ((Settings) -> Void)?
+
     /// Called as soon as a sign-in's profile is kept, so the app opens before the rest of setup.
     public var onSignIn: (() -> Void)?
 
@@ -112,7 +115,8 @@ public final class OnboardingFlow {
         let settings = settingsStore.load()
         return OnboardingPresenter.page(
             for: state, hotkey: settings.hotkey, activation: settings.hotkeyActivation,
-            signsInAsStandIn: authentication.signsInAsStandIn)
+            signsInAsStandIn: authentication.signsInAsStandIn,
+            sharesUsageStatistics: settings.sharesUsageStatistics)
     }
 
     // MARK: Driving
@@ -147,6 +151,13 @@ public final class OnboardingFlow {
             guard state.step == .signIn else { return }
             abandonSignIn()
             await enter(.signIn)
+        case .setUsageStatistics(let enabled):
+            guard state.step == .signIn, case .signIn(.offering) = state.detail else { return }
+            var settings = settingsStore.load()
+            settings.sharesUsageStatistics = enabled
+            settingsStore.save(settings)
+            onSettingsChange?(settings)
+            set(detail: state.detail)
         case .finish:
             // Only the last page offers this, so an instruction to close from anywhere else is ignored.
             guard let readiness = state.detail.readiness else { return }

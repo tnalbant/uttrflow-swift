@@ -19,6 +19,20 @@ private func keys(of page: OnboardingPage) -> [String] {
 @Suite("Onboarding flow")
 struct OnboardingFlowTests {
 
+    @Test("saves the usage statistics choice immediately on the onboarding sign-in page")
+    func savesUsageStatisticsChoice() async {
+        let harness = Harness(signedIn: false)
+        await harness.flow.start()
+
+        #expect(harness.step == .signIn)
+        #expect(harness.buttonTitles == ["Keep off", "Share"])
+        await harness.flow.perform(.setUsageStatistics(true))
+        #expect(harness.settingsStore.load().sharesUsageStatistics)
+
+        await harness.flow.perform(.setUsageStatistics(false))
+        #expect(!harness.settingsStore.load().sharesUsageStatistics)
+    }
+
     // MARK: Getting under way
 
     @Test("opens on the first page with something to ask, with a dot for every page there will be")

@@ -275,6 +275,9 @@ public enum OnboardingIntent: Sendable, Equatable {
     /// Give up on a sign-in that is somewhere else and go back to the providers.
     case cancelSignIn
 
+    /// Choose whether usage statistics are shared.
+    case setUsageStatistics(Bool)
+
     /// Close onboarding. Only ever offered on the last page.
     case finish
 }

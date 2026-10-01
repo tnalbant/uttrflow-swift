@@ -17,8 +17,8 @@ struct OnboardingSignInTests {
 
     // MARK: The first thing anybody sees
 
-    /// The pitch and the providers share the first page, and the providers are its only controls.
-    @Test("opens on sign-in, which says what Uttrflow is for and offers only the providers")
+    /// The pitch and the providers share the first page, alongside the usage choice.
+    @Test("opens on sign-in with providers and the usage statistics choice")
     func signInComesFirst() async {
         let harness = Harness(signedIn: false)
         await harness.flow.start()
@@ -28,8 +28,8 @@ struct OnboardingSignInTests {
         #expect(harness.detail == .signIn(.offering))
         #expect(harness.page.providers.map(\.provider) == SignInProvider.offered)
         #expect(harness.liveProviders == SignInProvider.offered)
-        #expect(harness.buttonTitles.isEmpty)
-        #expect(harness.page.explanation == OnboardingPresenter.pitch)
+        #expect(harness.buttonTitles == ["Keep off", "Share"])
+        #expect(harness.page.explanation?.hasPrefix(OnboardingPresenter.pitch) == true)
     }
 
     @Test("offers nothing that reads as a way to carry on without an account")

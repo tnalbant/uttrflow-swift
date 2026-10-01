@@ -7,10 +7,10 @@ public enum OnboardingPresenter {
     /// The page for a state, with the shortcut and how it is pressed drawn on the last one.
     public static func page(
         for state: OnboardingState, hotkey: HotkeyBinding, activation: HotkeyActivation = .holdToTalk,
-        signsInAsStandIn: Bool = false
+        signsInAsStandIn: Bool = false, sharesUsageStatistics: Bool = false
     ) -> OnboardingPage {
         switch state.step {
-        case .signIn: signIn(state, standIn: signsInAsStandIn)
+        case .signIn: signIn(state, standIn: signsInAsStandIn, sharesUsageStatistics: sharesUsageStatistics)
         case .microphone: permission(.microphone, state)
         case .accessibility: permission(.accessibility, state)
         case .setup: setup(state)
@@ -31,7 +31,9 @@ public enum OnboardingPresenter {
     static let standInHint = "Development build: signs in as a stand-in, no browser"
 
     /// The sign-in page in its six forms: offering, unreachable, in the browser, entering a code, refused, welcomed.
-    private static func signIn(_ state: OnboardingState, standIn: Bool = false) -> OnboardingPage {
+    private static func signIn(
+        _ state: OnboardingState, standIn: Bool = false, sharesUsageStatistics: Bool = false
+    ) -> OnboardingPage {
         let signIn = state.detail.signIn
         let providers = SignInProvider.offered.map {
             OnboardingProviderButton(provider: $0, isEnabled: signIn.acceptsAProvider)
@@ -44,8 +46,17 @@ public enum OnboardingPresenter {
         case .offering:
             return page(
                 state, mood: .brand, picture: .waveform(.talking, badge: nil), title: "Just talk.",
-                providers: providers, hint: standIn ? standInHint : nil, showsTerms: true,
-                explanation: pitch)
+                providers: providers,
+                buttons: [
+                    sharesUsageStatistics
+                        ? .plain("Keep off", "hand.raised", .setUsageStatistics(false))
+                        : .prominent("Keep off", "hand.raised", .setUsageStatistics(false)),
+                    sharesUsageStatistics
+                        ? .prominent("Share", "chart.bar", .setUsageStatistics(true))
+                        : .plain("Share", "chart.bar", .setUsageStatistics(true)),
+                ],
+                hint: standIn ? standInHint : nil, showsTerms: true,
+                explanation: pitch + " Usage statistics are off unless you choose to share them.")
         case .refused(let message):
             return page(
                 state, mood: .failure, picture: .waveform(.still, badge: .symbol("xmark", .failure)),

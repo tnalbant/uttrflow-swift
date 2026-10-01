@@ -7,9 +7,9 @@ guarantee and where the numbers come from.
 
 ## What is sent, when, and how to turn it off
 
-**It is on by default, and one switch turns it off.** Settings → Privacy → "Share usage
-statistics" is `Settings.sharesUsageStatistics`, `true` unless the user has said
-otherwise. The statistics are not anonymous: while somebody is signed in, every report is
+**It is off by default.** Settings → Privacy → "Share usage
+statistics" is `Settings.sharesUsageStatistics`, `false` until the user chooses to share.
+The statistics are not anonymous: while somebody is signed in, every report is
 attributed to their account, as **Where** below explains. What a report can carry does not
 change with that: it is numbers only. Turning it off stops collection at once and drops every report still waiting to
 be sent; turning it back on starts from an empty window.

@@ -133,16 +133,16 @@ struct SettingsTests {
     }
 
     /// Usage statistics are shared unless the user says otherwise, and saying so is kept.
-    @Test("shares usage statistics by default, and keeps the opt-out across a save and a load")
-    func usageStatisticsOptOutSticks() throws {
-        #expect(Settings.default.sharesUsageStatistics)
+    @Test("does not share usage statistics by default, and keeps explicit choices")
+    func usageStatisticsChoiceSticks() throws {
+        #expect(!Settings.default.sharesUsageStatistics)
         let older = try JSONDecoder().decode(Settings.self, from: Data(#"{"opensAtLogin":false}"#.utf8))
-        #expect(older.sharesUsageStatistics)
+        #expect(!older.sharesUsageStatistics)
 
         let restored = try JSONDecoder().decode(
-            Settings.self, from: JSONEncoder().encode(Settings(sharesUsageStatistics: false))
+            Settings.self, from: JSONEncoder().encode(Settings(sharesUsageStatistics: true))
         )
-        #expect(!restored.sharesUsageStatistics)
+        #expect(restored.sharesUsageStatistics)
     }
 
     /// Hands-free stays on for a file written before the switch, and off once somebody turns it off.

@@ -114,7 +114,7 @@ public struct Settings: Sendable, Equatable, Codable {
         opensAtLogin: Bool = true,
         checksForUpdatesAutomatically: Bool = true,
         installsUpdatesAutomatically: Bool = true,
-        sharesUsageStatistics: Bool = true,
+        sharesUsageStatistics: Bool = false,
         sendsCrashReports: Bool = false,
         appearance: AppAppearance = .dark,
         transcriptRetentionDays: Int = Settings.defaultTranscriptRetentionDays,
