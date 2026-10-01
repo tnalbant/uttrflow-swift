@@ -35,7 +35,7 @@ extension FixtureCatalogue {
         lines: [
             "what is the price of MitoActive™ serum", "is the Zenlight® lamp in stock",
             "does the Aurora™ kettle come in red", "Kestrel Labs® return policy",
-            "© 2026 Brightleaf Ltd all rights reserved",
+            "© 2026 Brightleaf Ltd all rights reserved", "salt & pepper on the side",
         ])
 
     private static let emoji = Scenario(

@@ -39,6 +39,11 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
+            original: draft.text, rewritten: rewritten)
+        {
+            return .rejected(reason: reason, kind: kind)
+        }
         if case .rejected(let reason, let kind) = Self.spokenPunctuationVerdict(
             draft: draft, rewritten: rewritten)
         {
@@ -299,6 +304,11 @@ public struct MeaningPreservationGuard: Sendable {
         if !originalWords.isEmpty, rewrittenWords.isEmpty {
             return .rejected(reason: "the rewrite is empty", kind: .emptyRewrite)
         }
+        if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
+            original: original, rewritten: rewritten)
+        {
+            return .rejected(reason: reason, kind: kind)
+        }
         // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
         if let preamble = Self.preambles.first(where: {
             rewritten.lowercased().hasPrefix($0)
@@ -327,6 +337,16 @@ public struct MeaningPreservationGuard: Sendable {
         }
         if Self.addsQuotationPair(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
+        }
+        return .accepted
+    }
+
+    /// Refuses a rewrite that spells a spoken ampersand as "and" or turns "and" into an ampersand.
+    static func spokenAmpersandVerdict(original: String, rewritten: String) -> GuardVerdict {
+        let heard = original.filter { $0 == "&" }.count
+        let written = rewritten.filter { $0 == "&" }.count
+        guard heard == written else {
+            return .rejected(reason: "the rewrite changed a spoken ampersand", kind: .lostWord)
         }
         return .accepted
     }

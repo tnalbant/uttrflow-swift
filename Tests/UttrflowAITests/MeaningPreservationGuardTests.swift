@@ -56,6 +56,27 @@ struct MeaningPreservationGuardTests {
         )
     }
 
+    @Test("keeps a spoken ampersand and refuses swapping it with the word and")
+    func preservesSpokenAmpersands() {
+        for (original, rewritten) in [
+            ("salt & pepper on the side", "Salt and pepper on the side."),
+            ("fish and chips for dinner", "Fish & chips for dinner."),
+        ] {
+            #expect(
+                sut.verdict(original: original, rewritten: rewritten)
+                    == .rejected(reason: "the rewrite changed a spoken ampersand", kind: .lostWord))
+        }
+
+        for phrase in ["Salt & pepper on the side.", "Research & Development and Q&A."] {
+            #expect(sut.verdict(original: phrase, rewritten: phrase).isAccepted)
+        }
+
+        let draft = Draft(text: "rock & roll is loud")
+        #expect(
+            sut.verdict(draft: draft, rewritten: "Rock and roll is loud.")
+                == .rejected(reason: "the rewrite changed a spoken ampersand", kind: .lostWord))
+    }
+
     @Test("accepts filler removal from a short utterance")
     func acceptsShortUtterance() {
         accepted("um yes", "Yes.")

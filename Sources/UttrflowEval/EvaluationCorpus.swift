@@ -43,6 +43,11 @@ public enum EvaluationCorpus {
             expected: "I finished the report and sent it to Maria."
         ),
         .init(
+            id: "spoken-ampersand", category: .everyday,
+            spoken: "salt & pepper on the side",
+            expected: "Salt & pepper on the side."
+        ),
+        .init(
             id: "but1", category: .everyday,
             spoken: "I wanted to come. But my train was cancelled",
             expected: "I wanted to come, but my train was cancelled."

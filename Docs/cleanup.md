@@ -58,6 +58,8 @@ content words and the check above catches those; the count holds them as well. T
 words the caret-echo pass takes back after the model answers count as present, since
 the model did write them — otherwise a good rewrite is thrown away for a word that is
 only missing from the finished text.
+A spoken ampersand is held as a symbol: the model may not spell it out as "and" or write
+"and" as an ampersand.
 A number is read with its thousands separators removed, so "12,000" and "12000" (and
 "1,50,000" and "150000") are the same number and a model that drops or adds the comma
 is not refused. §9 of the requirements, §19 for the fallback.
