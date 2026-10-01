@@ -20,6 +20,20 @@ struct TerminalStopPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("leaves an open parenthetical unfinished but keeps a question mark")
+    func openBracketBeforeCaret() {
+        let formatter = DestinationFormatter.standard(for: .plain)
+        func pass(before: String) -> TerminalStopPass {
+            TerminalStopPass(
+                policy: formatter.terminalStop, layout: formatter.layout,
+                insertionPoint: InsertionPoint(precedingText: before))
+        }
+
+        #expect(cleaned("buy milk", by: pass(before: "Details (")) == "buy milk")
+        #expect(cleaned("is it ready?", by: pass(before: "Details (")) == "is it ready?")
+        #expect(cleaned("buy milk", by: pass(before: "Details (see above) ")) == "buy milk.")
+    }
+
     /// An unpunctuated question is finished as one, on the rules path and after a model that left it bare. Issue #2177.
     @Test(
         "finishes a sentence that asks a question with a question mark",
