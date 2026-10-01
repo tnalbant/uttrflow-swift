@@ -55,6 +55,21 @@ struct ScriptGuardTests {
         #expect(!verdict.isAccepted, "\(rewritten)")
     }
 
+    @Test("refuses dropped Hindi reduplication but accepts a genuine stammer")
+    func preservesHindiReduplication() {
+        for (said, written) in [
+            ("dheere dheere jaana", "dheere jaana"),
+            ("ek ek karke", "ek karke"),
+            ("do do kitaben lo", "do kitaben lo"),
+        ] {
+            #expect(
+                MeaningPreservationGuard.changedWord(said: said, written: written) != nil,
+                "\(said) → \(written)")
+        }
+        #expect(
+            MeaningPreservationGuard.changedWord(said: "main main jaa raha", written: "main jaa raha") == nil)
+    }
+
     /// A loanword the rules romanise is the same word in its English spelling, and Hindi grammar may be set right. Issue #2376.
     @Test(
         "accepts an English loanword in its English spelling, a verb's form, and a filler or a stammer dropped",

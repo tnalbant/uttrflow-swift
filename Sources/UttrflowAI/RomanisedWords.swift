@@ -49,10 +49,26 @@ extension MeaningPreservationGuard {
         }
     }
 
-    /// The words with each run of one word said again kept once, so a stammer dropped or kept is no change.
+    /// Removes only adjacent repetitions the stammer pass would remove.
     static func withoutStammers(_ words: [RomanisedWord]) -> [RomanisedWord] {
-        words.enumerated().filter { $0.offset == 0 || words[$0.offset - 1].key != $0.element.key }.map(
-            \.element)
+        var kept: [RomanisedWord] = []
+        for word in words {
+            guard let previous = kept.last, word.key == previous.key else {
+                kept.append(word)
+                continue
+            }
+            let spelling = word.word.lowercased()
+            if (FunctionWords.holds(spelling) || isGrammarWord(spelling))
+                && !StammersPass.legitimateDoubles.contains(spelling)
+            {
+                continue
+            }
+            if numberWords[spelling] != nil, numberWords[previous.word.lowercased()] != nil {
+                continue
+            }
+            kept.append(word)
+        }
+        return kept
     }
 
     /// Whether the rewrite wrote a loanword the rules romanised in its English spelling: "ticket" for the rules' "tikat".
