@@ -175,7 +175,7 @@ enum VendorKeyWindows {
     }
 }
 
-/// Runs the card-number pattern only over runs of digits, spaces, line breaks, hyphens and full stops long enough to hold a card.
+/// Runs the card-number pattern only over runs of digits, horizontal spaces, hyphens and full stops long enough to hold a card.
 enum CardNumberRuns {
     /// The fewest digits any of the pattern's groupings holds.
     static let fewestDigits = 13
@@ -213,7 +213,7 @@ enum CardNumberRuns {
         let lead = bytes[offset]
         switch lead {
         case UInt8(ascii: "0")...UInt8(ascii: "9"): return (1, true)
-        case UInt8(ascii: " "), UInt8(ascii: "-"), UInt8(ascii: "."), 0x09...0x0D: return (1, false)
+        case UInt8(ascii: " "), UInt8(ascii: "\t"), UInt8(ascii: "-"), UInt8(ascii: "."): return (1, false)
         case 0xC2...0xEF:
             let width = lead < 0xE0 ? 2 : 3
             guard offset + width <= bytes.count else { return nil }

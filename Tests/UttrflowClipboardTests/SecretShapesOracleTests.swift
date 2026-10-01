@@ -327,9 +327,12 @@ enum BacktrackingPatterns {
     /// `CardNumberShape.matches` as it read before the runs: the pattern over the whole clip, in its printed form.
     static func hasCardNumber(_ original: String) -> Bool {
         let text = CardNumberShape.printedForm(of: original[...]) ?? original
-        return text.matches(of: CardNumberShape.candidate).contains { match in
-            CardNumberShape.standsAlone(match.range, in: text)
-                && CardNumberShape.isCardNumber(match.output.0.filter(\.isNumber))
+        return text.split(whereSeparator: \.isNewline).contains { part in
+            let line = String(part)
+            line.matches(of: CardNumberShape.candidate).contains { match in
+                CardNumberShape.standsAlone(match.range, in: line)
+                    && CardNumberShape.isCardNumber(match.output.0.filter(\.isNumber))
+            }
         }
     }
 

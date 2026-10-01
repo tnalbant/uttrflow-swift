@@ -42,10 +42,14 @@ enum CardNumberShape {
     /// The fullwidth forms of the printable ASCII characters, each 0xFEE0 above its ASCII form.
     static let fullwidthASCII: ClosedRange<UInt32> = 0xFF01...0xFF5E
 
-    /// Whether this scalar separates a card's groups: any Unicode space or line break, or a fullwidth hyphen or full stop.
+    /// Whether this scalar separates a card's groups: horizontal Unicode whitespace, or a fullwidth hyphen or full stop.
     static func isSeparator(_ value: UInt32) -> Bool {
-        value == 0xFF0D || value == 0xFF0E || Unicode.Scalar(value)?.properties.isWhitespace == true
+        value == 0xFF0D || value == 0xFF0E
+            || (!lineBreaks.contains(value) && Unicode.Scalar(value)?.properties.isWhitespace == true)
     }
+
+    /// Newline scalars split columnar text into separate runs rather than joining card groups.
+    private static let lineBreaks: Set<UInt32> = [0x0A, 0x0B, 0x0C, 0x0D, 0x85, 0x2028, 0x2029]
 
     /// The text with fullwidth forms as ASCII, line breaks as `\n` and other spaces as U+0020, character for character; `nil` when nothing changes.
     static func printedForm(of text: Substring) -> String? {

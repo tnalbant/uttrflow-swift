@@ -55,11 +55,11 @@ struct CardNumberDetectionTests {
     }
 
     @Test(
-        "masks a card number grouped by any Unicode space or line break",
+        "masks a card number grouped by any Unicode horizontal space",
         arguments: [
-            "\u{2028}", "\u{2029}", "\u{85}", "\u{0B}", "\u{0C}", "\n", "\r", "\r\n",
+            "\u{A0}", "\u{2009}", "\u{202F}", "\u{3000}", "\t",
         ])
-    func lineAndSpaceSeparators(_ separator: String) {
+    func horizontalSpaceSeparators(_ separator: String) {
         let text = ["4111", "1111", "1111", "1111"].joined(separator: separator)
         #expect(ClipKindDetector.kind(of: text) == .secret, "\(text.debugDescription)")
         #expect(CardNumberShape.matches(text) == BacktrackingPatterns.hasCardNumber(text))
@@ -80,6 +80,9 @@ struct CardNumberDetectionTests {
         arguments: [
             // A column of numbers, a mixed grouping and a failed Luhn check
             "1234\n5678\n9012\n3456",
+            "Invoices:\n4539\n1488\n0343\n6467\n",
+            "4539\u{2028}1488\u{2028}0343\u{2028}6467",
+            "4539\r\n1488\r\n0343\r\n6467",
             "4111\n1111 1111 1111",
             "4111\u{2028}1111\u{2028}1111\u{2028}1112",
             "2024\n2025\n2026\n2027",
