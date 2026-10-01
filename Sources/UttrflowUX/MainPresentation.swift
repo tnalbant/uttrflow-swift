@@ -51,6 +51,8 @@ public enum MainIntent: Sendable, Equatable {
     case editSnippet(UUID)
     /// Delete a snippet.
     case forgetSnippet(UUID)
+    /// Restore the snippet held by the latest deletion notice.
+    case restoreSnippet(UUID)
     /// Commit the inline editor; `replacing` is the snippet being edited, or `nil` for a new one.
     case saveSnippet(trigger: String, text: String, replacing: UUID?)
     /// Close the inline snippet editor unchanged.

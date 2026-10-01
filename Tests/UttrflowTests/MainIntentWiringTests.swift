@@ -457,6 +457,27 @@ struct MainIntentWiringTests {
         #expect(await store.snippets().count == 1)
     }
 
+    @Test("a deleted snippet can be restored with its original identity and usage")
+    func restoresADeletedSnippet() async throws {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+        let store = SnippetStore(file: SnippetStore.defaultFile(in: sandbox.root))
+        let snippet = Snippet(
+            id: UUID(), trigger: "my address", expansion: "Flat 402", created: .now,
+            timesUsed: 12, lastUsed: .now)
+        try await store.save(snippet)
+
+        app.carryOut(.forgetSnippet(snippet.id))
+        await app.intentWork?.value
+        #expect(await store.snippets().isEmpty)
+        #expect(app.actionNotice?.action?.intent == .restoreSnippet(snippet.id))
+
+        app.carryOut(.restoreSnippet(snippet.id))
+        await app.intentWork?.value
+        #expect(await store.snippets() == [snippet])
+        #expect(app.actionNotice == nil)
+    }
+
     @Test("a flag the store refuses to keep is said")
     func saysARefusedFlag() async throws {
         let sandbox = Sandbox()

@@ -2679,6 +2679,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var snippetRefusal: String?
     /// Why the last delete, flag, restore or undo did not happen, until one of them works or the page changes.
     private(set) var actionNotice: MainNotice?
+    /// The complete snippet held for the short main-window undo window.
+    private var deletedSnippet: Snippet?
+    private var snippetUndoTask: Task<Void, Never>?
 
     /// Counts editor requests, so a slow one cannot open over a faster one that followed it.
     private var editorGeneration = 0
@@ -2861,7 +2864,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .saveSnippet(let trigger, let text, let replacing):
             saveSnippet(trigger: trigger, text: text, replacing: replacing)
         case .forgetSnippet(let id):
-            act { try await self.snippets.delete(id) }
+            snippetUndoTask?.cancel()
+            deletedSnippet = nil
+            intentWork = Task { [weak self] in
+                guard let self else { return }
+                do throws(SnippetStoreError) {
+                    guard let snippet = await snippets.snippets().first(where: { $0.id == id }) else {
+                        _ = try await snippets.delete(id)
+                        refreshMainWindow()
+                        return
+                    }
+                    _ = try await snippets.delete(id)
+                    deletedSnippet = snippet
+                    let notice = MainNotice(
+                        message: "Snippet deleted.", symbolName: "trash", tone: .neutral,
+                        action: MainAction(title: "Undo", intent: .restoreSnippet(id)))
+                    actionNotice = notice
+                    announce("Snippet deleted. Undo is available for eight seconds.", urgently: false)
+                    snippetUndoTask = Task { [weak self] in
+                        try? await Task.sleep(for: AppDelegate.undoWindow)
+                        guard let self, !Task.isCancelled else { return }
+                        deletedSnippet = nil
+                        if actionNotice?.action?.intent == .restoreSnippet(id) { actionNotice = nil }
+                        refreshMainWindow()
+                    }
+                } catch {
+                    report(error)
+                }
+                refreshMainWindow()
+            }
+        case .restoreSnippet(let id):
+            snippetUndoTask?.cancel()
+            snippetUndoTask = nil
+            guard let snippet = deletedSnippet, snippet.id == id else { return }
+            deletedSnippet = nil
+            intentWork = Task { [weak self] in
+                guard let self else { return }
+                do throws(SnippetStoreError) {
+                    _ = try await snippets.save(snippet)
+                    actionNotice = nil
+                } catch {
+                    report(error)
+                }
+                refreshMainWindow()
+            }
 
         case .signIn:
             // Onboarding owns the whole sign-in conversation, so this asks for it explicitly.
