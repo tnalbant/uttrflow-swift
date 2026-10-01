@@ -1676,6 +1676,30 @@ struct MeaningGuardIndexEquivalenceTests {
         }
     }
 
+    @Test("invention cannot reuse one spoken content word as provenance")
+    func inventionCountsContentWordOrigins() {
+        #expect(
+            !sut.verdict(
+                draft: Draft(text: "It was like really fast."),
+                rewritten: "It was really like really fast."
+            ).isAccepted)
+        #expect(
+            !sut.verdict(
+                draft: Draft(text: "Please send me the report by tomorrow."),
+                rewritten: "Please send me the report by tomorrow. please"
+            ).isAccepted)
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "It was very very fast."),
+                rewritten: "It was very very fast."
+            ).isAccepted)
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "Call fetch invoices."),
+                rewritten: "Call fetchInvoices."
+            ).isAccepted)
+    }
+
     private func referenceSurvival(
         _ kept: [MeaningPreservationGuard.GrammarToken], _ written: [MeaningPreservationGuard.GrammarToken]
     ) -> GuardVerdict {

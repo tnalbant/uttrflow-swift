@@ -630,30 +630,34 @@ public struct MeaningPreservationGuard: Sendable {
             ?? hasRomanisedHindiContext(alignment.kept + alignment.rewritten + echo)
         let origins = (alignment.kept + echo).filter(\.isPlain)
         let originIndex = WordOccurrenceIndex(origins)
+        var usedOrigins = Set<Int>()
+        var usedReadings = Set<Int>()
         for index in alignment.rewritten.indices
         where alignment.rewritten[index].isPlain
             && (isContent(alignment.rewritten[index])
                 || FunctionWords.isMeaningBearing(alignment.rewritten[index].lookup))
         {
             let token = alignment.rewritten[index]
-            if originIndex.contains(token.matching) || originIndex.spells(token.text)
-                || origins.contains(where: {
-                    sameForm(
-                        $0.matching, token.matching, allowingRegularInflections: false,
-                        allowingRomanisedHindiSpellings: romanisedHindiContext)
-                })
+            if let origins = originIndex.matchingOrigins(
+                token, allowingRomanisedHindiSpellings: romanisedHindiContext,
+                excluding: usedOrigins)
             {
+                usedOrigins.formUnion(origins)
                 continue
             }
-            let offeredHere = doubtful.contains { span in
-                alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
+            let offeredReading = doubtful.enumerated().first { entry in
+                let (spanIndex, span) = entry
+                guard !usedReadings.contains(spanIndex) else { return false }
+                return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
                     alignment.changes.contains { change in
                         change.kept.overlaps(source) && change.rewritten.contains(index)
                             && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
                     }
                 }
             }
-            if !offeredHere {
+            if let offeredReading {
+                usedReadings.insert(offeredReading.offset)
+            } else {
                 return .rejected(reason: "the rewrite invented '\(token.text)'", kind: .inventedWord)
             }
         }
@@ -990,8 +994,10 @@ public struct MeaningPreservationGuard: Sendable {
     /// Maps every spelling accepted by `survives` to its token positions, preserving their original order.
     private struct WordOccurrenceIndex {
         private let places: [String: [Int]]
+        private let tokens: [GrammarToken]
 
         init(_ tokens: [GrammarToken]) {
+            self.tokens = tokens
             var indexed: [String: [Int]] = [:]
             for (index, token) in tokens.enumerated() {
                 var spellings: Set<String> = [token.matching]
@@ -1050,6 +1056,34 @@ public struct MeaningPreservationGuard: Sendable {
                 if candidates[middle] < lowerBound { low = middle + 1 } else { high = middle }
             }
             return low < candidates.count ? candidates[low] : nil
+        }
+
+        func matchingOrigins(
+            _ token: GrammarToken, allowingRomanisedHindiSpellings: Bool, excluding used: Set<Int>
+        ) -> [Int]? {
+            let exact = places[token.matching] ?? []
+            if let match = exact.first(where: { !used.contains($0) }) { return [match] }
+
+            // Preserve compound identifier matches, consuming each source word at most once.
+            let parts = MeaningPreservationGuard.identifierParts(token.text)
+            if parts.count > 1 {
+                var next = 0
+                var matched: [Int] = []
+                for part in parts {
+                    guard let place = firstOccurrence(of: part, atOrAfter: next), !used.contains(place)
+                    else { matched.removeAll(); break }
+                    matched.append(place)
+                    next = place + 1
+                }
+                if !matched.isEmpty { return matched }
+            }
+
+            return tokens.indices.first { index in
+                !used.contains(index)
+                    && MeaningPreservationGuard.sameForm(
+                        tokens[index].matching, token.matching, allowingRegularInflections: false,
+                        allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
+            }.map { [$0] }
         }
 
         func contains(_ word: String) -> Bool { places[word] != nil }
