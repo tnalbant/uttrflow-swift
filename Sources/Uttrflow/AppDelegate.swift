@@ -1502,7 +1502,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// The newest few clips for the popover, or none while the clipboard is switched off.
-    private func readMenuClips() async {
+    func readMenuClips() async {
         let clips =
             settings.clipboardEnabled
             ? Array(await clipboard.clips(keeping: retention).prefix(MenuBarPresenter.clipCount)) : []
@@ -1774,6 +1774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 panel?.notice = .writeFailed(failure.userMessage)
             }
             await refreshPanelIfOpen()
+            await readMenuClips()
         }
     }
 
