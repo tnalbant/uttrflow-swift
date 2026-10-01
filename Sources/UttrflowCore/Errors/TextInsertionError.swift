@@ -31,7 +31,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .clipboardChanged:
             "Your clipboard changed during insertion. Your dictation is saved under Recent in the menu bar."
         case .insertionTimedOut:
-            "The application did not respond. Your dictation is saved under Recent in the menu bar."
+            "Your dictation didn't arrive in time. It's saved under Recent in the menu bar."
         case .insertionRejected:
             "The text couldn't be inserted here. It's been copied, so press ⌘V to paste it."
         case .insertionUnconfirmed:

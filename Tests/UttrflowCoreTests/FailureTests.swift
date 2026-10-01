@@ -120,6 +120,9 @@ struct FailurePresentationTests {
         let failure = TextInsertionError.insertionTimedOut
         #expect(failure.recovery == .showRecentDictations)
         #expect(failure.userMessage.contains("Recent"))
+        #expect(
+            failure.userMessage
+                == "Your dictation didn't arrive in time. It's saved under Recent in the menu bar.")
         #expect(!failure.userMessage.contains("copied"))
         #expect(!failure.userMessage.contains("⌘V"))
     }
