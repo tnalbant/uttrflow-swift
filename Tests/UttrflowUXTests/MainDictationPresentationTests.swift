@@ -193,6 +193,22 @@ struct DictationFiguresTests {
         #expect(figures.first { $0.caption == "Words per minute" }?.value == "60")
     }
 
+    @Test("pace counts spoken words rather than snippet expansion text")
+    func paceExcludesSnippetExpansion() {
+        let expansion = String(repeating: "expanded ", count: 60)
+        let snippet = RecordedSnippet(snippetID: UUID(), matched: "my signature", expansion: expansion)
+        let measured = HistoryFixture.timed(
+            expansion, seconds: 2,
+            changes: RecordedChanges(snippets: [snippet], spokenWords: 2))
+        let figures = HistoryFixture.figures(entries: [
+            HistoryFixture.timed(String(repeating: "word ", count: 100), seconds: 60), measured,
+        ])
+        #expect(figures.first { $0.caption == "Words per minute" }?.value == "99")
+
+        let older = HistoryFixture.timed(expansion, seconds: 2, changes: RecordedChanges(snippets: [snippet]))
+        #expect(DictationPresenter.pace(of: [older]) == 60)
+    }
+
     @Test("nothing timed means no pace at all")
     func paceWithoutTimings() {
         let figures = HistoryFixture.figures(entries: [HistoryFixture.entry()])

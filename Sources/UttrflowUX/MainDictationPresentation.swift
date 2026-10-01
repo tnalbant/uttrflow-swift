@@ -76,12 +76,21 @@ public enum DictationPresenter {
         // Reduced to words and seconds as found, so untimed entries never reach the sum.
         let timed = entries.compactMap { entry -> (words: Int, seconds: Double)? in
             guard let spoken = entry.spokenFor else { return nil }
-            return (MainFormatting.words(in: entry.text), spoken.inSeconds)
+            return (spokenWords(in: entry), spoken.inSeconds)
         }
         let seconds = timed.reduce(0.0) { $0 + $1.seconds }
         guard seconds > 0 else { return nil }
         let words = timed.reduce(0) { $0 + $1.words }
         return Int((Double(words) / seconds * 60).rounded())
+    }
+
+    /// Counts the utterance when recorded, or reconstructs it from the stored snippet matches for older entries.
+    private static func spokenWords(in entry: HistoryEntry) -> Int {
+        if let count = entry.changes?.spokenWords { return count }
+        let snippets = entry.changes?.snippets ?? []
+        let inserted = snippets.reduce(0) { $0 + MainFormatting.words(in: $1.expansion) }
+        let said = snippets.reduce(0) { $0 + MainFormatting.words(in: $1.matched) }
+        return max(0, MainFormatting.words(in: entry.text) - inserted + said)
     }
 
     /// The share of spoken words that came out as said, measured dictations only. See Docs/ux-figures.md.
