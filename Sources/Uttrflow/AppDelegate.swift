@@ -252,7 +252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.transformerReadiness = transformerReadiness
         history = DictationHistoryStore(
             file: DictationHistoryStore.defaultFile(in: container), encryptedStore: encryptedStore)
-        recordings = RecordingStore(directory: RecordingStore.defaultDirectory(in: container))
+        recordings = RecordingStore(
+            directory: RecordingStore.defaultDirectory(in: container), encryptedStore: encryptedStore)
         dictionary = PersonalDictionaryStore(
             file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)

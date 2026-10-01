@@ -2,10 +2,10 @@
 
 ## Status
 
-This page records the scheme chosen for issue #3152. It is a design decision, not an
-implementation claim: the stores on `main` remain plaintext JSON, SQLite, image and WAV
-files, protected by owner-only permissions and backup exclusions. Store changes follow as
-separate work; this page is their shared contract.
+This page records the scheme chosen for issue #3152 and the stores that use it. On `main`,
+history, dictionary and snippets use encrypted JSON envelopes. This change adds chunked
+encryption for retry recordings. Clipboard files and the typed-line SQLite corpus still
+have separate implementation work; reset-key revocation is tracked in #3157.
 
 ## Decision
 
@@ -55,8 +55,9 @@ payload; the envelope is the only on-disk wrapper.
 
 JSON stores seal the complete encoded file on every write through the `PrivateFile` seam.
 The writer continues to use its atomic replacement, owner-only mode and backup exclusion,
-but writes only the envelope. SQLite, pictures and recordings do not go through that JSON
-seam and need their own changes under issues #3153, #3154 and #3156.
+but writes only the envelope. SQLite and pictures do not go through that JSON seam and need
+their own changes under #3153 and #3154. Retry recordings use the shared seal/open operations
+for independently authenticated PCM chunks under #3156.
 
 ## Reading, migration and failure
 
@@ -110,8 +111,7 @@ is replaced by an envelope, while malformed JSON and failed writes preserve the 
 Store-level tests must show that a Keychain failure is visible and does not produce an
 empty successful read.
 
-Roll the envelope into `PrivateFile` and `StoredList` first, while retaining the legacy
-reader for one-time migration. Handle SQLite and its `-wal`/`-shm` files separately in
-#3153; clipboard pictures in #3154; history, dictionary and snippets in #3155; raw audio
-recordings in #3156; and reset/deletion behavior in #3157. Do not update user-facing docs
-to say those stores are encrypted until their implementation and migration have shipped.
+The shared envelope and history/dictionary/snippet migration are in place. Chunked retry
+recordings are added in #3156. Handle SQLite and its `-wal`/`-shm` files in #3153 and
+clipboard files in #3154; reset/deletion behavior remains in #3157. Do not update user-facing
+docs to say the remaining stores are encrypted until their implementation and migration ship.

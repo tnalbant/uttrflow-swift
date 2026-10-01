@@ -17,19 +17,23 @@ public final class RecordingWriter: Sendable {
         private let when: Date
         private let directory: URL?
         private let create: @Sendable (URL) -> Int32
+        private let encryptedStore: EncryptedStore?
         private let failed: Failure
         private var descriptor: Int32 = -1
         private var frames = 0
+        private var chunkIndex = 0
+        private var pendingSamples: [Float] = []
         private var isOpen = false
 
         init(
             url: URL, when: Date, directory: URL?, create: @escaping @Sendable (URL) -> Int32,
-            failed: Failure
+            encryptedStore: EncryptedStore?, failed: Failure
         ) {
             self.url = url
             self.when = when
             self.directory = directory
             self.create = create
+            self.encryptedStore = encryptedStore
             self.failed = failed
         }
 
@@ -52,7 +56,10 @@ public final class RecordingWriter: Sendable {
             descriptor = create(url)
             guard descriptor >= 0 else { return false }
             try? PrivateFile.excludeFromBackup(at: url)
-            let header = WAVEncoder.header(frames: 0, sampleRate: AudioSamples.canonicalSampleRate)
+            let header =
+                encryptedStore == nil
+                ? WAVEncoder.header(frames: 0, sampleRate: AudioSamples.canonicalSampleRate)
+                : EncryptedRecordingFile.magic
             guard RecordingWriter.write(header, to: descriptor) else {
                 Darwin.close(descriptor)
                 try? FileManager.default.removeItem(at: url)
@@ -64,20 +71,67 @@ public final class RecordingWriter: Sendable {
         }
 
         private func append(_ block: [Float]) {
-            guard isOpen, RecordingWriter.write(WAVEncoder.pcm(block), to: descriptor) else { return }
-            frames += block.count
+            guard isOpen else { return }
+            guard encryptedStore != nil else {
+                guard RecordingWriter.write(WAVEncoder.pcm(block), to: descriptor) else {
+                    failed.mark()
+                    close(keeping: false)
+                    return
+                }
+                frames += block.count
+                return
+            }
+            pendingSamples.append(contentsOf: block)
+            while pendingSamples.count >= EncryptedRecordingFile.maximumChunkFrames {
+                let samples = Array(pendingSamples.prefix(EncryptedRecordingFile.maximumChunkFrames))
+                pendingSamples.removeFirst(EncryptedRecordingFile.maximumChunkFrames)
+                guard writeEncryptedChunk(samples) else {
+                    failed.mark()
+                    close(keeping: false)
+                    return
+                }
+            }
+        }
+
+        private func writeEncryptedChunk(_ samples: [Float]) -> Bool {
+            guard let encryptedStore else { return false }
+            let pcm = WAVEncoder.pcm(samples)
+            let record: Data
+            do {
+                record = try EncryptedRecordingFile.record(
+                    pcm, frames: samples.count, index: chunkIndex, url: url,
+                    encryptedStore: encryptedStore)
+            } catch {
+                return false
+            }
+            guard RecordingWriter.write(record, to: descriptor) else { return false }
+            frames += samples.count
+            chunkIndex += 1
+            return true
         }
 
         /// Rewrites the header with the frames that reached disk, or deletes a file nobody wants.
         private func close(keeping: Bool) {
             guard isOpen else { return }
             isOpen = false
-            if keeping {
+            if keeping, encryptedStore != nil, !pendingSamples.isEmpty {
+                guard writeEncryptedChunk(pendingSamples) else {
+                    failed.mark()
+                    pendingSamples = []
+                    Darwin.close(descriptor)
+                    descriptor = -1
+                    try? FileManager.default.removeItem(at: url)
+                    return
+                }
+                pendingSamples = []
+            }
+            if keeping, encryptedStore == nil {
                 let header = WAVEncoder.header(
                     frames: frames, sampleRate: AudioSamples.canonicalSampleRate)
                 _ = RecordingWriter.write(header, to: descriptor, at: 0)
             }
             Darwin.close(descriptor)
+            descriptor = -1
             if !keeping { try? FileManager.default.removeItem(at: url) }
         }
     }
@@ -110,14 +164,17 @@ public final class RecordingWriter: Sendable {
     /// Starts writing to `url` without touching the disk; the sink creates the file before its first block. See `Docs/recordings.md`.
     public init(
         url: URL, id: UUID = UUID(), when: Date = Date(), directory: URL? = nil,
-        create: @escaping @Sendable (URL) -> Int32 = RecordingWriter.createFile
+        create: @escaping @Sendable (URL) -> Int32 = RecordingWriter.createFile,
+        encryptedStore: EncryptedStore? = nil
     ) {
         self.id = id
         self.url = url
         self.when = when
         let (stream, continuation) = AsyncStream<Piece>.makeStream()
         pieces = continuation
-        let sink = Sink(url: url, when: when, directory: directory, create: create, failed: failure)
+        let sink = Sink(
+            url: url, when: when, directory: directory, create: create,
+            encryptedStore: encryptedStore, failed: failure)
         self.sink = Task { await sink.consume(stream) }
     }
 
@@ -171,6 +228,7 @@ public final class RecordingWriter: Sendable {
 
     /// Rewrites the header of a file whose writer never finished, from the bytes that made it to disk.
     public static func repair(_ url: URL) {
+        guard !EncryptedRecordingFile.isEncrypted(url) else { return }
         guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
             size > WAVEncoder.headerSize,
             let descriptor = Optional(open(url.path, O_RDWR)), descriptor >= 0

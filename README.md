@@ -365,7 +365,8 @@ Dictation happens entirely on your Mac. **Audio is kept on this Mac for a day, a
 failed dictation can be retried**: every recording is written beside the buffer the
 recogniser reads and deleted the moment the words land. If the words are lost — the
 recogniser fails, or the app dies mid-dictation — the recording stays for a day and sits at
-the top of the Dictation page with a Retry. Nothing about it leaves the Mac. See
+the top of the Dictation page with a Retry. The recording is encrypted in authenticated
+chunks with a device-only Keychain key; nothing about it leaves the Mac. See
 [`Docs/recordings.md`](Docs/recordings.md). The text is kept locally so you can copy or
 re-insert it, and deleted after its retention window. Your dictionary, your history and
 your settings are files on this Mac; signing out does not remove them, and only Reset does.

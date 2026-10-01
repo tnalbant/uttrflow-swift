@@ -36,6 +36,7 @@ public actor RecordingStore: RecordingKeeper {
 
     private let directory: URL
     private let retention: Duration
+    private let encryptedStore: EncryptedStore?
     /// The writer of the recording under way, whose file is not yet a recording to list.
     private var open: RecordingWriter?
     /// The recording written for the dictation that most recently stopped.
@@ -47,10 +48,12 @@ public actor RecordingStore: RecordingKeeper {
 
     public init(
         directory: URL = RecordingStore.defaultDirectory(),
-        retention: Duration = RecordingStore.defaultRetention
+        retention: Duration = RecordingStore.defaultRetention,
+        encryptedStore: EncryptedStore? = nil
     ) {
         self.directory = directory
         self.retention = retention
+        self.encryptedStore = encryptedStore
     }
 
     /// Where this build's recordings live, beside the other stores so a development build never prunes the shipped app's.
@@ -71,7 +74,9 @@ public actor RecordingStore: RecordingKeeper {
             settling[previous.id] = previous
         }
         let id = UUID()
-        let writer = RecordingWriter(url: url(of: id), id: id, when: when, directory: directory)
+        let writer = RecordingWriter(
+            url: url(of: id), id: id, when: when, directory: directory,
+            encryptedStore: encryptedStore)
         open = writer
         return writer
     }
@@ -167,7 +172,15 @@ public actor RecordingStore: RecordingKeeper {
                 if window.mayDelete(when) { await discard(id) }
                 continue
             }
-            let frames = WAVEncoder.frames(inFileOf: values?.fileSize ?? 0)
+            let frames: Int
+            if let encryptedStore {
+                guard let audio = try? readAudio(at: file, encryptedStore: encryptedStore),
+                    !audio.isEmpty
+                else { continue }
+                frames = audio.samples.count
+            } else {
+                frames = WAVEncoder.frames(inFileOf: values?.fileSize ?? 0)
+            }
             kept.append(
                 KeptRecording(
                     id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames),
@@ -179,7 +192,25 @@ public actor RecordingStore: RecordingKeeper {
 
     public func audio(of id: UUID) async throws(AudioCaptureError) -> AudioSamples {
         await settle(id)
-        return try AudioFileReader.read(contentsOf: url(of: id))
+        return try readAudio(at: url(of: id), encryptedStore: encryptedStore)
+    }
+
+    /// Opens an encrypted stream or migrates a legacy WAV before returning plaintext samples.
+    private func readAudio(
+        at url: URL, encryptedStore: EncryptedStore?
+    ) throws(AudioCaptureError) -> AudioSamples {
+        guard let encryptedStore else { return try AudioFileReader.read(contentsOf: url) }
+        if EncryptedRecordingFile.isEncrypted(url) {
+            do { return try EncryptedRecordingFile.read(from: url, encryptedStore: encryptedStore) } catch {
+                throw .engineFailed(description: error.localizedDescription)
+            }
+        }
+        RecordingWriter.repair(url)
+        let audio = try AudioFileReader.read(contentsOf: url)
+        do { try EncryptedRecordingFile.encode(audio, to: url, encryptedStore: encryptedStore) } catch {
+            throw .engineFailed(description: error.localizedDescription)
+        }
+        return audio
     }
 
     private func url(of id: UUID) -> URL {

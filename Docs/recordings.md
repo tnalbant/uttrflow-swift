@@ -30,13 +30,21 @@ handed — so the microphone never waits on a file, and every block captured mea
 lands. A file that cannot be made keeps nothing and fails nothing: the dictation goes on from
 the buffer, and `current()` answers with nothing once the writer has settled.
 
-The file is a plain 16-bit mono WAV at the canonical 16 kHz, built from the same header
-and PCM bytes `WAVEncoder` produces, so a finished file is byte-for-byte what the encoder
-would have written. It opens with a header claiming zero frames, and the count is rewritten
-when the last block has landed. A file whose header still says zero is one the writer
-never finished — a crash —
-and `RecordingWriter.repair` patches the count from the bytes that reached disk, which
-is how a recording from before a crash becomes readable at the next launch.
+The on-disk file is not a WAV. It begins with the `UTTRWAV1` container marker, followed by
+independently authenticated AES-GCM chunks. Each full chunk contains one second of 16-bit
+mono PCM at the canonical 16 kHz; only the final chunk can be shorter. Each chunk gets a
+fresh nonce from the shared device-only Keychain key. Its clear frame count and envelope
+length, plus the recording filename and chunk index, are authenticated as additional data.
+The counts reveal duration, but the encrypted payload cannot be opened as audio in QuickTime.
+
+The writer encrypts each chunk as capture proceeds, without leaving a plaintext temporary
+WAV. After a crash, the reader decrypts every complete chunk and ignores a torn final chunk,
+so at most the last partial chunk is lost. Retry and playback both go through
+`RecordingStore.audio(of:)`; playback creates a WAV only in memory. Legacy plaintext WAVs
+are repaired if needed and atomically migrated when read, preserving their original creation
+date. If the key is unavailable or migration fails, the original file remains and the
+recording is not offered until it can be read safely. `RecordingWriter.repair` only repairs
+legacy WAV headers; the encrypted reader handles crash-truncated chunks.
 
 ## Life of a recording
 
@@ -65,8 +73,8 @@ offers `retryFromRecording` instead — the floating button's Retry then opens t
 History page rather than starting a new dictation. A failure with a different fix, like
 a missing speech model, keeps that fix and the recording both.
 
-`cancel()` after the key is released discards the recording. `retry(_:)` reads the file
-through `AudioFileReader`, so the samples arrive in the same shape the microphone
+`cancel()` after the key is released discards the recording. `retry(_:)` asks
+`RecordingStore.audio(of:)` to decrypt the chunks, so the samples arrive in the same shape the microphone
 delivers, and runs the same stages with two differences: no screen context is read
 (Uttrflow's own window is in front), and the words are delivered to the clipboard rather
 than typed, because the field they were meant for is gone. The sidecar keeps the app's
