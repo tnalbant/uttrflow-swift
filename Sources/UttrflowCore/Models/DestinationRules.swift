@@ -1,6 +1,6 @@
 /// The table every destination is read from; a new app is a new row here and nowhere else.
 public enum DestinationRules {
-    /// Tried in order: the SQL row sits ahead of the editors because DataGrip shares JetBrains' prefix.
+    /// DataGrip also matches JetBrains' broad code-editor prefix; the classifier chooses its longer SQL prefix.
     public static let standard: [DestinationRule] = [
         DestinationRule(
             bundlePrefixes: [

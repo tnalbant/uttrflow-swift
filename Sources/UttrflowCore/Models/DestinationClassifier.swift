@@ -92,13 +92,27 @@ public enum DestinationClassifier {
         overrides.destination(for: app) ?? rule(for: app, rules: rules)?.destination ?? .plain
     }
 
-    /// Every row's bundle identifiers, then their titles, then their names; a title never beats an identifier.
+    /// The most specific bundle prefix, then the first matching title, then the first matching name.
     public static func rule(
         for app: AppContext, rules: [DestinationRule] = DestinationRules.standard
     ) -> DestinationRule? {
-        rules.first { $0.matchesBundle(app) }
-            ?? rules.first { $0.matchesTitle(app) }
-            ?? rules.first { $0.matchesName(app) }
+        if let bundle = app.bundleIdentifier?.lowercased(), !bundle.isEmpty {
+            var bestBundleRule: DestinationRule?
+            var bestPrefixLength = 0
+            for rule in rules {
+                for prefix in rule.bundlePrefixes {
+                    let prefix = prefix.lowercased()
+                    guard !prefix.isEmpty, bundle.hasPrefix(prefix) else { continue }
+                    // Strictly greater keeps the earlier row as the stable tie-break for equal prefixes.
+                    if prefix.count > bestPrefixLength {
+                        bestBundleRule = rule
+                        bestPrefixLength = prefix.count
+                    }
+                }
+            }
+            if let bestBundleRule { return bestBundleRule }
+        }
+        return rules.first { $0.matchesTitle(app) } ?? rules.first { $0.matchesName(app) }
     }
 
     /// The sort of app the table calls this one, which is what the prompt's caption is written from.

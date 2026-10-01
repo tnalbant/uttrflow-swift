@@ -116,13 +116,15 @@ struct DestinationClassifierTests {
         #expect(DestinationClassifier.classify(app("", title: "")) == .plain)
     }
 
-    @Test("the first matching rule wins, which is what keeps DataGrip out of the editors")
-    func firstMatchWins() {
+    @Test("the longest matching bundle prefix wins regardless of row order")
+    func mostSpecificBundleMatchWins() {
         let rules = [
             DestinationRule(bundlePrefixes: ["com.example."], destination: .email),
             DestinationRule(bundlePrefixes: ["com.example.app"], destination: .messaging),
         ]
-        #expect(DestinationClassifier.classify(app("com.example.app"), rules: rules) == .email)
+        let context = app("com.example.app")
+        #expect(DestinationClassifier.classify(context, rules: rules) == .messaging)
+        #expect(DestinationClassifier.classify(context, rules: Array(rules.reversed())) == .messaging)
         #expect(DestinationClassifier.classify(app("com.example.app"), rules: []) == .plain)
     }
 
