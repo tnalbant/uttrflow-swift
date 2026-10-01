@@ -21,6 +21,8 @@ public enum MainIntent: Sendable, Equatable {
 
     /// This dictation came out wrong: the honest input to teaching.
     case flagDictation(UUID)
+    /// Keep this dictation in clipboard history by choice.
+    case keepDictationAsClip(UUID)
     /// Delete a dictation from history.
     case forgetDictation(UUID)
 

@@ -238,6 +238,18 @@ struct HistoryRowActionsTests {
         #expect(row.more.first?.isDestructive == true)
     }
 
+    @Test("offers Keep as clip only when clipboard capture is enabled")
+    func offersKeepAsClipWhenEnabled() {
+        let entry = HistoryFixture.entry("Hello there")
+        let page = HistoryPresenter.page(
+            for: HistorySnapshot(
+                entries: [entry], canKeepAsClip: true, now: HistoryFixture.now),
+            calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+        let row = page.days.first?.rows.first
+
+        #expect(row?.more.map(\.title) == ["Keep as clip", "Delete"])
+        #expect(row?.more.first?.intent == .keepDictationAsClip(entry.id))
+    }
 
 }
 

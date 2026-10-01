@@ -1,4 +1,4 @@
-// Tests that a finished dictation reaches the clipboard history only while the Clipboard switch is on (#2084).
+// Tests that dictations enter clipboard history only after an explicit action (#3222).
 
 import Foundation
 import UttrflowClipboard
@@ -23,7 +23,7 @@ struct DictationClipSwitchTests {
         return await store.clips(keeping: ClipRetention(days: 7, now: Date())).map(\.text)
     }
 
-    @Test("a dictation finished while the switch is off is not kept as a clip")
+    @Test("dictating never records a clip when the Clipboard switch is off")
     func switchOff() async {
         let sandbox = Sandbox()
         let app = app(clipboardOn: false, in: sandbox)
@@ -35,13 +35,24 @@ struct DictationClipSwitchTests {
         #expect(await keptClips(in: sandbox).isEmpty)
     }
 
-    @Test("a dictation finished while the switch is on is kept as a clip")
+    @Test("dictating does not record a clip while the Clipboard switch is on")
     func switchOn() async throws {
         let sandbox = Sandbox()
         let app = app(clipboardOn: true, in: sandbox)
 
-        let recording = try #require(app.recordAsClip("Sample words", of: UUID()))
-        await recording.value
+        app.render(
+            .inserted(DictationOutcome(text: "Sample words", method: .accessibility, cleanedBy: .rules)))
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(20))
+            #expect(await keptClips(in: sandbox).isEmpty)
+        }
+
+        let dictation = try #require(app.lastTranscriptID)
+        app.carryOut(.keepDictationAsClip(dictation))
+        for _ in 0..<50 {
+            if await keptClips(in: sandbox) == ["Sample words"] { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
 
         #expect(await keptClips(in: sandbox) == ["Sample words"])
     }

@@ -142,6 +142,8 @@ public struct HistorySnapshot: Sendable, Equatable {
     public let settings: Settings
     /// Whether captured audio is written to disk, read from the app so the notice cannot claim otherwise.
     public let keepsRecordings: Bool
+    /// Whether the Clipboard switch permits a History row to be kept as a clip.
+    public let canKeepAsClip: Bool
     /// Recordings whose words were lost, newest first, each waiting for a retry.
     public let recordings: [KeptRecording]
     /// The recording going through transcription again right now, if one is.
@@ -159,6 +161,7 @@ public struct HistorySnapshot: Sendable, Equatable {
         query: String = "",
         settings: Settings = .default,
         keepsRecordings: Bool = false,
+        canKeepAsClip: Bool = false,
         recordings: [KeptRecording] = [],
         retrying: UUID? = nil,
         playing: UUID? = nil,
@@ -169,6 +172,7 @@ public struct HistorySnapshot: Sendable, Equatable {
         self.query = query
         self.settings = settings
         self.keepsRecordings = keepsRecordings
+        self.canKeepAsClip = canKeepAsClip
         self.recordings = recordings
         self.retrying = retrying
         self.playing = playing
@@ -366,7 +370,9 @@ public enum HistoryPresenter {
     ) -> HistoryRow {
         switch item {
         case .entry(let entry):
-            row(for: entry, words: words, relativeTo: snapshot.now, calendar: calendar, locale: locale)
+            row(
+                for: entry, words: words, relativeTo: snapshot.now, calendar: calendar,
+                locale: locale, canKeepAsClip: snapshot.canKeepAsClip)
         case .recording(let recording):
             row(for: recording, snapshot: snapshot, calendar: calendar, locale: locale)
         }
@@ -387,7 +393,7 @@ public enum HistoryPresenter {
     /// One dictation as a row, with the buttons it offers when pointed at.
     static func row(
         for entry: HistoryEntry, words: Int? = nil, relativeTo now: Date,
-        calendar: Calendar = .autoupdatingCurrent, locale: Locale
+        calendar: Calendar = .autoupdatingCurrent, locale: Locale, canKeepAsClip: Bool = false
     ) -> HistoryRow {
         let (tag, tone) = HomeDashboard.outcome(of: entry.changes)
         return HistoryRow(
@@ -411,7 +417,13 @@ public enum HistoryPresenter {
                     symbolName: entry.isFlagged ? "flag.fill" : "flag",
                     intent: .flagDictation(entry.id)),
             ],
-            more: [.delete(.forgetDictation(entry.id))])
+            more: (canKeepAsClip
+                ? [
+                    MainAction(
+                        title: "Keep as clip", symbolName: "doc.on.clipboard",
+                        intent: .keepDictationAsClip(entry.id))
+                ]
+                : []) + [.delete(.forgetDictation(entry.id))])
     }
 
     /// A recording whose words were lost, as a row with the way to hear it and to retry it.

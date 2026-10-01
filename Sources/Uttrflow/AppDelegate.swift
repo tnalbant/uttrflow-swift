@@ -2013,7 +2013,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         await refreshPanelIfOpen()
     }
 
-    /// Keeps a dictation in the clipboard's Uttrflow list while the Clipboard switch is on, and nothing while it is off.
+    /// Adds a chosen dictation to clipboard history while the Clipboard switch is on.
     @discardableResult
     func recordAsClip(_ text: String, of dictation: DictationRecord.ID) -> Task<Void, Never>? {
         guard surfaces.watchesTheClipboard else { return nil }
@@ -2189,8 +2189,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             lastTranscript = kept
             lastTranscriptID = record.id
             keep(record)
-            // I4 — into the clipboard too, which the watcher never sees because this is not a copy.
-            recordAsClip(kept, of: record.id)
         case .failed(let notice):
             if notice.speechEngineKind == .appleSpeech,
                 case .modelLoadFailed? = notice.speechEngineError
@@ -2585,7 +2583,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             history: HistoryPresenter.page(
                 for: HistorySnapshot(
                     entries: entries, query: query(for: .history), settings: settings,
-                    keepsRecordings: true, recordings: knownRecordings,
+                    keepsRecordings: true, canKeepAsClip: surfaces.watchesTheClipboard,
+                    recordings: knownRecordings,
                     retrying: retryingRecording, playing: playback.playing, now: now,
                     hasReadHistory: hasReadHistory)),
             dictionary: dictionaryPage(at: now, corrections: corrections),
@@ -2828,6 +2827,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     .first { $0.id == id }?.text
                 try await self.forgetClips(of: id, saying: spoken)
                 try await self.history.delete(id, keeping: retention)
+            }
+
+        case .keepDictationAsClip(let id):
+            guard surfaces.watchesTheClipboard else { return }
+            Task { [weak self] in
+                guard let self else { return }
+                let retention = Retention(days: self.settings.transcriptRetentionDays, now: Date())
+                guard
+                    let entry = await self.history.records(keeping: retention).first(where: { $0.id == id }),
+                    let write = self.recordAsClip(entry.text, of: id)
+                else { return }
+                await write.value
             }
 
         case .addWord:

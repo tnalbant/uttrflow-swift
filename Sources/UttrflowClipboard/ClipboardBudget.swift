@@ -4,7 +4,7 @@ public enum ClipClass: String, Sendable, Equatable, CaseIterable, Codable {
     case kept
     /// Text the user pressed ⌘C on.
     case copied
-    /// What Uttrflow made — a dictation, or a clip kept from the panel.
+    /// What Uttrflow made — a clip the user kept from History or the panel.
     case dictation
     /// Pictures, whoever put them there.
     case images

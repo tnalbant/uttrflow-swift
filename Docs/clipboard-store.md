@@ -51,7 +51,9 @@ from a newer build.
 
 A set-aside copy is deleted by the button that forgets what it holds. Clearing the clipboard
 history deletes the copies of the history file and keeps those of the saved file, as it keeps the
-saved clips themselves; "Reset personalisation" deletes both. There is no timed lifetime here:
+saved clips themselves; "Reset personalisation" deletes both. Dictations remain in History unless
+the user chooses **Keep as clip** on a History row; dictating alone does not add a clipboard item.
+There is no timed lifetime here:
 `clips(keeping:)` is the read ⇧⌘V waits on, and it does no I/O.
 
 Answering an unreadable file with an empty list is itself why the two are separate. It is the
@@ -134,7 +136,7 @@ everything.
 "Reset personalisation" says it puts Uttrflow back to a fresh install, and a fresh install has no
 clips of any kind, so it is the one call that takes them. The two are separate calls so that
 neither promise can be made by accident from the other's button. It matters more than it looks:
-every finished dictation is written here as a second copy of the transcript, so a reset that
+each dictation chosen as a clip was written here as a second copy of the transcript, so a reset that
 spared this file left every word the user had ever spoken on the disk after telling them it was
 gone.
 

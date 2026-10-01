@@ -44,7 +44,7 @@ weight after edits, too; an edit that crosses the cap is refused without changin
 string — about 2.9 s per megabyte — and leaving the question to the store spent all of that on a
 clip it was going to refuse, with the poll loop stopped meanwhile. Both count the same bytes: the
 plain text plus the formatted flavour, as `ClipboardStore.weight(of:)` does. The store still asks
-too, because a clip also reaches it from dictation and from the panel.
+too, because a clip can also be kept from History or from the panel.
 
 ## A copied picture
 
