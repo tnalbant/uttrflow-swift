@@ -55,6 +55,11 @@ public struct PanelResults: Sendable, Equatable {
 }
 
 extension PanelSnapshot {
+    /// Whether any clip has the whole query, including clips hidden by the kind filter or secret mask.
+    var hasWholeTextMatch: Bool {
+        !needle.isEmpty && clips.contains { Self.isWhole(needle, of: $0, locale: locale) }
+    }
+
     /// What the panel is showing right now, found once for each list of clips, query and tab, so Return and an arrow key share the search.
     public var results: PanelResults {
         let (rows, omitted) = searchMemo.rows(

@@ -681,9 +681,18 @@ public enum PanelPresenter {
 
         // The kind chip is the one narrowing a search keeps, so an empty search names it and the way out.
         if !query.isEmpty, snapshot.filter != .all {
+            if snapshot.hasWholeTextMatch {
+                return .noMatches(
+                    "A clip with this exact text is under another kind. Choose All to search every kind."
+                )
+            }
             return .noMatches(
                 "Nothing under \(snapshot.filter.title) mentions “\(query)”. Choose All to search everything."
             )
+        }
+
+        if snapshot.hasWholeTextMatch {
+            return .noMatches("A clip with this exact text is already in your history.")
         }
 
         // A search spans every tab and collection, so naming one would describe a constraint not applied.

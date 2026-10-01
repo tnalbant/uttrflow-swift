@@ -200,6 +200,27 @@ struct PanelNoResultsTests {
         #expect(page.emptyAction?.title.contains("pgprod") == true)
     }
 
+    @Test("an exact match under another kind is not offered as a new clip")
+    func exactMatchUnderAnotherKind() {
+        let existing = PanelFixture.clip("hello world", kind: .text)
+        let page = PanelPresenter.present(
+            PanelFixture.panel([existing], query: "hello world", filter: .code))
+
+        #expect(page.rows.isEmpty)
+        #expect(page.emptyAction == nil)
+        #expect(page.emptyState?.message.contains("under another kind") == true)
+    }
+
+    @Test("an exact masked secret is not offered as an unmasked clip")
+    func maskedSecretMatch() {
+        let secret = PanelFixture.clip("sk-test-123456789", kind: .secret)
+        let page = PanelPresenter.present(PanelFixture.panel([secret], query: secret.text))
+
+        #expect(page.rows.isEmpty)
+        #expect(page.emptyAction == nil)
+        #expect(page.emptyState?.message.contains("already in your history") == true)
+    }
+
     @Test("keeping a nonblank query preserves its text")
     func keepsNonblankQueryText() {
         let query = "  pgprod\n"
