@@ -400,8 +400,9 @@ final class SuggestionPanelController {
         panel.hidesOnDeactivate = false
         panel.worksWhenModal = true
         panel.level = .statusBar
+        // A transient window hides while Mission Control shows window tiles.
         panel.collectionBehavior = [
-            .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+            .canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle,
         ]
         panel.isOpaque = false
         panel.backgroundColor = .clear
