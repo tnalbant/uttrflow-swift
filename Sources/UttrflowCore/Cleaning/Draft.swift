@@ -111,7 +111,7 @@ public struct Draft: Sendable, Equatable {
         self.init(words: Self.split(text, confidence: 1))
     }
 
-    /// Splits text on spaces and tabs, keeping each run of line breaks as one layout mark and a bulleted line as a list item.
+    /// Splits text on spaces and tabs, keeping line breaks and list markers as layout marks.
     public init(keepingLineBreaks text: String) {
         var words: [Word] = []
         var previousLine: Int?
@@ -119,15 +119,26 @@ public struct Draft: Sendable, Equatable {
         for (number, line) in lines.enumerated() {
             var lineWords = line.split(whereSeparator: \.isWhitespace)
             guard !lineWords.isEmpty else { continue }
-            let isItem = lineWords.count > 1 && Self.bulletTokens.contains(String(lineWords[0]))
+            let opening = lineWords.count > 1 ? String(lineWords[0]) : ""
+            let isBullet = Self.bulletTokens.contains(opening)
+            let itemNumber = Self.numberedItemNumber(opening)
+            let isItem = isBullet || itemNumber != nil
             if isItem { lineWords.removeFirst() }
             let breaks = previousLine.map { String(repeating: "\n", count: number - $0) } ?? ""
-            let mark = breaks + (isItem ? Self.bullet : "")
+            let itemMark = isBullet ? Self.bullet : itemNumber.map { "\($0)\(Self.numberStop)" } ?? ""
+            let mark = breaks + itemMark
             if !mark.isEmpty { words.append(Word(mark)) }
             words += lineWords.map { Word(String($0)) }
             previousLine = number
         }
         self.init(words: words)
+    }
+
+    /// Returns a line-opening number marker such as `3.` without treating ordinary numbers as list items.
+    private static func numberedItemNumber(_ token: String) -> String? {
+        guard token.hasSuffix("."), token.count > 1 else { return nil }
+        let digits = token.dropLast()
+        return digits.allSatisfy(\.isNumber) ? String(digits) : nil
     }
 
     /// Takes the recogniser's confidences when its timed words spell the text, spacing aside, else splits it.

@@ -74,6 +74,17 @@ struct DraftTests {
         }
     }
 
+    @Test("reads numbered lines as list items")
+    func readsNumberedItems() {
+        let draft = Draft(keepingLineBreaks: "1. call mom\n2. pay rent\n3. book the flight")
+
+        #expect(
+            draft.words.map(\.text)
+                == ["1. ", "call", "mom", "\n2. ", "pay", "rent", "\n3. ", "book", "the", "flight"])
+        #expect(draft.text == "1. call mom\n2. pay rent\n3. book the flight")
+        #expect(draft.words.filter(\.isListMark).count == 3)
+    }
+
     @Test("tells a list mark from the other layout marks")
     func listMarks() {
         #expect(Draft.Word("\n- ").isListMark && Draft.Word("\n- ").isLayoutMark)

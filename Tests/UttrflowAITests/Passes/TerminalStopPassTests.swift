@@ -183,6 +183,13 @@ struct TerminalStopPassTests {
         #expect(short.apply(long).text == "One. Two.\n\nThree here.")
     }
 
+    @Test("leaves a model answer ending in a numbered list item without a full stop")
+    func modelAnswerEndingInNumberedItem() {
+        let answer = Draft(keepingLineBreaks: "Number 1 call mom\n2. Pay rent\n3. Book the flight")
+
+        #expect(sut.apply(answer).text == "Number 1 call mom\n2. Pay rent\n3. Book the flight")
+    }
+
     @Test(
         "ends each paragraph of three or more words with a full stop, and leaves one that has a mark",
         arguments: [
