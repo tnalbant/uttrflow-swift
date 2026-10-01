@@ -260,11 +260,28 @@ struct PanelChipTests {
 
         let page = PanelFixture.page(clips, category: "Personal")
 
-        #expect(page.categories.map(\.title) == ["Prod", "Personal"])
+        #expect(page.categories.map(\.title) == ["Personal", "Prod"])
         #expect(page.categories.map(\.shortcut) == [2, 3])
         #expect(page.categories.map(\.isActive) == [false, true])
-        #expect(page.categories.map(\.category) == ["Prod", "Personal"])
-        #expect(page.categories.map(\.id) == ["Prod", "Personal"])
+        #expect(page.categories.map(\.category) == ["Personal", "Prod"])
+        #expect(page.categories.map(\.id) == ["Personal", "Prod"])
+    }
+
+    @Test("filing a newer clip does not renumber collection shortcuts")
+    func filingDoesNotRenumberCategories() {
+        let existing = [
+            PanelFixture.clip("production", minutesAgo: 1, category: "Prod"),
+            PanelFixture.clip("personal", minutesAgo: 2, category: "Personal"),
+        ]
+        let before = PanelFixture.page(existing).categories
+        let after = PanelFixture.page([
+            PanelFixture.clip("new personal", category: "Personal"),
+            PanelFixture.clip("production", minutesAgo: 1, category: "Prod"),
+            PanelFixture.clip("personal", minutesAgo: 2, category: "Personal"),
+        ]).categories
+
+        #expect(after.map(\.category) == before.map(\.category))
+        #expect(after.map(\.shortcut) == before.map(\.shortcut))
     }
 
     /// There is never an "All" chip beside the collections; the kind filters' All already begins the row.

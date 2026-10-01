@@ -187,14 +187,14 @@ public struct PanelSnapshot: Sendable, Equatable {
         self.locale = locale
     }
 
-    /// The collections the clips are filed into, in first-met order so ⌘-numbers stay stable.
+    /// The collections the clips are filed into, in alphabetical order so ⌘-numbers stay stable as clips arrive.
     public var categories: [String] {
         var seen: [String] = []
         for clip in clips {
             guard let name = Self.name(clip.category), !seen.contains(name) else { continue }
             seen.append(name)
         }
-        return seen
+        return seen.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// The query as it is searched, trimmed; empty means the panel is browsing.
