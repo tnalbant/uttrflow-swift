@@ -39,7 +39,7 @@ ROLES = (
 SWIFT_UINT32 = re.compile(r"0x([0-9A-Fa-f_]{6,8})")
 SWIFT_TONE = re.compile(
     r"static let (?P<name>\w+)(?::\s*UInt32)?\s*=\s*"
-    r"(?:BrandTone\(dark:\s*(?P<dark>[^,]+),\s*light:\s*(?P<light>[^)]+)\)"
+    r"(?:BrandTone\(\s*dark:\s*(?P<dark>[^,]+),\s*light:\s*(?P<light>[^,)]+)[^)]*\)"
     r"|(?P<fixed>0x[0-9A-Fa-f_]+))"
 )
 TOKEN_LINE = r"--{name}:\s*(?P<hex>#[0-9A-Fa-f]{{6}});"
