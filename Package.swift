@@ -341,7 +341,7 @@ let package = Package(
         .testTarget(
             name: "UttrflowSpeechTests",
             dependencies: [
-                "UttrflowSpeech", "UttrflowEval", "UttrflowTestSupport",
+                "UttrflowSpeech", "UttrflowAI", "UttrflowEval", "UttrflowTestSupport",
                 .product(name: "WhisperKit", package: "whisperkit"),
             ],
             swiftSettings: sharedSwiftSettings

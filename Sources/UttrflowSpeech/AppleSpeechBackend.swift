@@ -2,7 +2,7 @@
 public import Foundation
 public import UttrflowCore
 private import AVFoundation
-private import Speech
+internal import Speech
 
 /// The system's answer about a locale's speech assets.
 @available(macOS 26, *)
@@ -35,7 +35,7 @@ public actor AppleSpeechBackend: TranscriptionBackend {
     public static func assetStatus(
         locale: Locale = Locale(identifier: "en-US")
     ) async -> AppleSpeechAssetStatus {
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        let transcriber = SpeechTranscriber(locale: locale, preset: Self.transcriptionPreset())
         return switch await AssetInventory.status(forModules: [transcriber]) {
         case .installed: AppleSpeechAssetStatus.installed
         case .unsupported: AppleSpeechAssetStatus.unsupported
@@ -43,6 +43,15 @@ public actor AppleSpeechBackend: TranscriptionBackend {
         case .downloading: AppleSpeechAssetStatus.downloading
         @unknown default: AppleSpeechAssetStatus.unsupported
         }
+    }
+
+    /// Requests word confidence and audio timing while preserving the general transcription preset.
+    static func transcriptionPreset() -> SpeechTranscriber.Preset {
+        let base = SpeechTranscriber.Preset.transcription
+        return SpeechTranscriber.Preset(
+            transcriptionOptions: base.transcriptionOptions,
+            reportingOptions: base.reportingOptions,
+            attributeOptions: base.attributeOptions.union([.audioTimeRange, .transcriptionConfidence]))
     }
 
     /// The audio format the analyser reads, found once the locale's assets are installed.
@@ -63,7 +72,7 @@ public actor AppleSpeechBackend: TranscriptionBackend {
     /// Installs the locale's assets and prepares the first pair, once per lifetime. See Docs/speech-engines.md.
     public func load() async throws(SpeechEngineError) {
         guard format == nil else { return }
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        let transcriber = SpeechTranscriber(locale: locale, preset: Self.transcriptionPreset())
         switch await AssetInventory.status(forModules: [transcriber]) {
         case .installed:
             break
@@ -138,11 +147,13 @@ public actor AppleSpeechBackend: TranscriptionBackend {
         continuation.finish()
         try await pair.analyzer.finalizeAndFinishThroughEndOfInput()
 
+        let transcript = try await text
         return RawTranscript(
-            text: try await text,
+            text: transcript.text,
             languageIdentifier: locale.language.languageCode?.identifier,
             // The system reports a verdict per locale, never a probability.
-            languageProbability: nil
+            languageProbability: nil,
+            segments: transcript.segments
         )
     }
 
@@ -155,7 +166,7 @@ public actor AppleSpeechBackend: TranscriptionBackend {
     private static func preparedPair(
         locale: Locale, format: AVAudioFormat, vocabulary: [String]
     ) async throws -> Pair {
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        let transcriber = SpeechTranscriber(locale: locale, preset: Self.transcriptionPreset())
         let context = context(for: vocabulary)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         try await analyzer.setContext(context)
@@ -201,11 +212,15 @@ public actor AppleSpeechBackend: TranscriptionBackend {
 
     private static func collect(
         _ results: some AsyncSequence<SpeechTranscriber.Result, any Error> & Sendable
-    ) async throws -> String {
+    ) async throws -> RawTranscript {
         var pieces: [FinalTranscriptPiece] = []
         for try await result in results {
-            pieces.append(FinalTranscriptPiece(text: String(result.text.characters), isFinal: result.isFinal))
+            let text = result.text
+            pieces.append(
+                FinalTranscriptPiece(
+                    text: String(text.characters), isFinal: result.isFinal,
+                    segment: AppleSpeechTranscriptMapping.segment(text, audioRange: result.range)))
         }
-        return TranscriptAssembly.finalText(from: pieces)
+        return TranscriptAssembly.apple(from: pieces)
     }
 }

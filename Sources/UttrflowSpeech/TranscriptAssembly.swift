@@ -15,6 +15,13 @@ struct WhisperTranscriptWindow: Sendable {
 struct FinalTranscriptPiece: Sendable {
     let text: String
     let isFinal: Bool
+    let segment: RawSegment?
+
+    init(text: String, isFinal: Bool, segment: RawSegment? = nil) {
+        self.text = text
+        self.isFinal = isFinal
+        self.segment = segment
+    }
 }
 
 /// Joins framework results after their values have crossed the recogniser boundary.
@@ -34,6 +41,14 @@ enum TranscriptAssembly {
     /// Joins only final Apple results in the order the recogniser emitted them.
     static func finalText(from pieces: [FinalTranscriptPiece]) -> String {
         pieces.filter(\.isFinal).map(\.text).joined(separator: " ")
+    }
+
+    /// Joins final Apple results and retains timing/confidence data only where it was reported.
+    static func apple(from pieces: [FinalTranscriptPiece]) -> RawTranscript {
+        let final = pieces.filter(\.isFinal)
+        return RawTranscript(
+            text: final.map(\.text).joined(separator: " "),
+            segments: final.compactMap(\.segment))
     }
 }
 

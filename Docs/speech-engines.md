@@ -257,9 +257,10 @@ counted over letter fragments (#705) and is therefore not a word error rate at a
 - Measured on the shipping turbo model: +4.1 ms on a 3.3 s clip and +19.1 ms on a 24.3 s one,
   0.9% and 1.4% of those transcriptions. The spread is real: "up" at 0.41 beside content words
   at 0.99 in the same sentence.
-- Apple's recogniser reports nothing of the kind, so `words` is `nil` there. Absent means "not
-  reported", never "all confident"; a caller that conflated the two would turn silence into
-  certainty.
+- Apple can report both attributes on `SpeechTranscriber.Result.text`; `AppleSpeechBackend`
+  requests them and maps a word only when its entire token has both a confidence and audio range.
+  If any token lacks either attribute, that result carries no word timings. Absent still means
+  "not reported", never "all confident".
 
 ## The conditioning prompt
 

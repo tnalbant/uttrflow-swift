@@ -86,14 +86,19 @@ struct TranscriptAssemblyTests {
 
     @Test("drops interim Apple results and joins final results")
     func joinsFinalAppleResults() {
+        let first = RawSegment(text: "first", start: 0, end: 0.5)
+        let second = RawSegment(text: "second", start: 0.6, end: 1)
         let pieces = [
             FinalTranscriptPiece(text: "partial", isFinal: false),
-            FinalTranscriptPiece(text: "first", isFinal: true),
+            FinalTranscriptPiece(text: "first", isFinal: true, segment: first),
             FinalTranscriptPiece(text: "another partial", isFinal: false),
-            FinalTranscriptPiece(text: "second", isFinal: true),
+            FinalTranscriptPiece(text: "second", isFinal: true, segment: second),
         ]
 
         #expect(TranscriptAssembly.finalText(from: pieces) == "first second")
+        let assembled = TranscriptAssembly.apple(from: pieces)
+        #expect(assembled.text == "first second")
+        #expect(assembled.segments == [first, second])
     }
 
     @Test("chunks every sample once and keeps the short final chunk")
