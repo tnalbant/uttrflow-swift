@@ -634,12 +634,17 @@ struct QuickPanelView: View {
                     Button(sheet.confirmTitle) { relayKey(.return) }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.panelAccentText)
+                        .foregroundStyle(
+                            sheet.isConfirmDestructive ? Color.white : Color.panelAccentText
+                        )
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             Capsule().fill(
-                                sheet.isConfirmEnabled ? Color.panelAccent : Color.panelLine)
+                                sheet.isConfirmEnabled
+                                    ? (sheet.isConfirmDestructive
+                                        ? Color.panelDestructive : Color.panelAccent)
+                                    : Color.panelLine)
                         )
                         .disabled(!sheet.isConfirmEnabled)
                 }

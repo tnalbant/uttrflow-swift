@@ -112,6 +112,7 @@ struct PanelDeleteCategoryTests {
         let sheet = PanelPresenter.present(panel).sheet
         #expect(sheet?.conflict?.contains("cannot be undone") == true)
         #expect(sheet?.confirmTitle == "Delete both")
+        #expect(sheet?.isConfirmDestructive == true)
         #expect(panel.applying(.return).outcome == .change(.deleteCategoryAndClips("Work")))
     }
 

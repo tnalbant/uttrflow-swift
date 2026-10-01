@@ -59,6 +59,8 @@ public struct PanelSheetPresentation: Sendable, Equatable {
     public let collections: [PanelCollectionOption]
     /// The words on the primary button.
     public let confirmTitle: String
+    /// Whether confirming this action permanently removes user data.
+    public let isConfirmDestructive: Bool
     /// What the formatter wants to change, cut to the parts that changed; empty for every other sheet.
     public let diff: [TextDiff.Line]
     /// Whether Return would do anything; the reason it would not is in ``note`` or ``conflict``.
@@ -74,6 +76,7 @@ public struct PanelSheetPresentation: Sendable, Equatable {
         conflict: String?,
         collections: [PanelCollectionOption],
         confirmTitle: String,
+        isConfirmDestructive: Bool = false,
         isConfirmEnabled: Bool,
         diff: [TextDiff.Line] = []
     ) {
@@ -85,6 +88,7 @@ public struct PanelSheetPresentation: Sendable, Equatable {
         self.conflict = conflict
         self.collections = collections
         self.confirmTitle = confirmTitle
+        self.isConfirmDestructive = isConfirmDestructive
         self.isConfirmEnabled = isConfirmEnabled
         self.diff = diff
     }
@@ -162,6 +166,7 @@ extension PanelPresenter {
                 conflict: keepingClips ? nil : "This cannot be undone",
                 collections: [],
                 confirmTitle: keepingClips ? "Delete collection" : "Delete both",
+                isConfirmDestructive: !keepingClips,
                 isConfirmEnabled: true)
 
         case .formatting(let id, let formatted):
