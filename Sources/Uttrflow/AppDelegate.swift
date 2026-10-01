@@ -154,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Where every local store lives, kept because tab-to-complete opens its corpus after launch.
     private let container: URL
+    private let onboardingRecordStore: any OnboardingRecordStore
     private let clipboardPreferencesFile: ClipboardPreferencesFile
     private var clipboardPreferences = ClipboardPreferences()
     private var clipboardPauseTask: Task<Void, Never>?
@@ -219,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     init(
         container: URL = .applicationSupportDirectory, loginItem: LaunchAtLogin = LaunchAtLogin(),
         settingsStore: UserDefaultsSettingsStore = UserDefaultsSettingsStore(),
+        onboardingRecordStore: any OnboardingRecordStore = UserDefaultsOnboardingRecordStore(),
         account: OnboardingAccountLayer = .forThisBuild(),
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         prepareModel: (@Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void)? = nil,
@@ -230,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     ) {
         self.container = container
+        self.onboardingRecordStore = onboardingRecordStore
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
         clipboardPreferences = clipboardPreferencesFile.load()
@@ -359,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before the first read, so an install onboarded under ⌥Space keeps it. See `Docs/shortcuts.md`.
-        settingsStore.pinDefaults(onboarded: UserDefaultsOnboardingRecordStore().hasFinished)
+        settingsStore.pinDefaults(onboarded: onboardingRecordStore.hasFinished)
         settings = settingsStore.load()
         // Reconciled at launch too: the login item can be removed without telling the app.
         applyAppearance()

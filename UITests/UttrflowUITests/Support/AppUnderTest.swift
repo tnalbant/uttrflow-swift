@@ -17,12 +17,45 @@ enum AppUnderTest {
     static var bundle: URL { repositoryRoot.appending(path: "dist/Uttrflow.app") }
 
     /// The app, launched and ready, or a failure naming the missing bundle rather than a timeout.
+    @MainActor
     static func launch(file: StaticString = #filePath, line: UInt = #line) -> XCUIApplication {
         if !FileManager.default.fileExists(atPath: bundle.path(percentEncoded: false)) {
             XCTFail("dist/Uttrflow.app is not there. Run `make app` first.", file: file, line: line)
         }
+        let container = FileManager.default.temporaryDirectory
+            .appending(path: "uttrflow-ui-\(UUID().uuidString)", directoryHint: .isDirectory)
+        do {
+            try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        } catch {
+            XCTFail("could not create isolated app container: \(error)", file: file, line: line)
+        }
         let app = XCUIApplication(url: bundle)
+        app.launchEnvironment["UTTRFLOW_TEST_CONTAINER"] = container.path(percentEncoded: false)
         app.launch()
         return app
+    }
+
+    /// The disposable folder whose stores and singleton locks belong to this launch.
+    @MainActor
+    static func container(for app: XCUIApplication) -> URL? {
+        app.launchEnvironment["UTTRFLOW_TEST_CONTAINER"].map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        }
+    }
+
+    /// The defaults domain paired with a disposable container.
+    static func defaultsSuite(for container: URL) -> String {
+        "com.uttrflow.UITests.\(container.lastPathComponent)"
+    }
+
+    /// Stops the app before removing the stores it used during this test.
+    @MainActor
+    static func terminate(_ app: XCUIApplication) {
+        let container = container(for: app)
+        app.terminate()
+        guard app.wait(for: .notRunning, timeout: 20), let container else { return }
+        UserDefaults(suiteName: defaultsSuite(for: container))?.removePersistentDomain(
+            forName: defaultsSuite(for: container))
+        try? FileManager.default.removeItem(at: container)
     }
 }

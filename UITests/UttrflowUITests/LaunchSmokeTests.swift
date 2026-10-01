@@ -3,6 +3,7 @@
 import XCTest
 
 /// The floor: a build that cannot open a window is broken in a way no headless test can see.
+@MainActor
 final class LaunchSmokeTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -12,7 +13,7 @@ final class LaunchSmokeTests: XCTestCase {
     func testTheAppLaunches() {
         let app = AppUnderTest.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), "the app never came up")
-        app.terminate()
+        AppUnderTest.terminate(app)
     }
 
     func testEverySettingsPaneDraws() {
@@ -32,13 +33,32 @@ final class LaunchSmokeTests: XCTestCase {
             tab.click()
             XCTAssertTrue(tab.isSelected, "\(pane) did not open")
         }
-        app.terminate()
+        AppUnderTest.terminate(app)
     }
 
     func testQuittingLeavesNothingRunning() {
         let app = AppUnderTest.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
-        app.terminate()
+        AppUnderTest.terminate(app)
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 20), "the app did not quit cleanly")
+    }
+
+    func testLaunchUsesDisposableStoresAndLocks() {
+        let app = AppUnderTest.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let container = AppUnderTest.container(for: app)
+        XCTAssertNotNil(container)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: container!.appending(path: "Uttrflow/instance.lock").path(percentEncoded: false)),
+            "the app did not place its instance lock in the disposable container")
+        let suiteName = AppUnderTest.defaultsSuite(for: container!)
+        XCTAssertNotNil(
+            UserDefaults(suiteName: suiteName)?.data(forKey: "com.uttrflow.settings.v1"),
+            "the app did not pin settings in its disposable defaults suite")
+        AppUnderTest.terminate(app)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: container!.path(percentEncoded: false)),
+            "the test container was not cleaned up")
     }
 }

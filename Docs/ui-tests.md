@@ -55,11 +55,13 @@ teardown crash class.
 
 ## What to be careful of
 
-The suite drives the app you have installed state for. On a developer's Mac that means real
-settings and real history, read-only in these tests but not isolated. Before the second tier is
-written, the app should accept a container path at launch, the way `AppDelegate.init(container:)`
-already allows in unit tests — that isolates settings, history, clipboard and corpus in one move
-and is what makes a keyboard test repeatable.
+Each launch gets a unique disposable container through the test-only
+`UTTRFLOW_TEST_CONTAINER` environment variable. App data, singleton locks and the settings and
+onboarding defaults suite all use that container's identity. `AppUnderTest.terminate(_:)` waits
+for exit and removes it, so a UI run neither reads nor writes the installed app's local state and
+does not contend for the installed app's singleton locks. UI-test mode also uses an in-memory
+account, suppresses automatic update checks, and makes login-item actions inert. This is the
+isolation needed before the keyboard and lifetime tier can be repeated safely.
 
 Selectors are titles the presenters produce. When a pane is renamed, this suite is where it is
 felt, which is the cost of testing what the user sees rather than what the code returns.

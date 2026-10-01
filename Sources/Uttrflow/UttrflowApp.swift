@@ -3,10 +3,13 @@
 import AppKit
 import Foundation
 import OSLog
+import UttrflowAccount
 import UttrflowCore
 import UttrflowLocalModel
 import UttrflowPipeline
 import UttrflowPredict
+import UttrflowSettings
+import UttrflowUX
 
 /// The app, owning nothing but the objects it wires together.
 @main
@@ -14,8 +17,33 @@ enum UttrflowApp {
     @MainActor
     static func main() {
         let application = NSApplication.shared
+        let testContainer = ProcessInfo.processInfo.environment["UTTRFLOW_TEST_CONTAINER"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let container = testContainer ?? .applicationSupportDirectory
+        let testDefaultsSuite = testContainer.map { "com.uttrflow.UITests.\($0.lastPathComponent)" }
+        let settingsStore = UserDefaultsSettingsStore(
+            store: SystemUserDefaults(suiteName: testDefaultsSuite))
+        let onboardingRecordStore = UserDefaultsOnboardingRecordStore(
+            store: SystemUserDefaults(suiteName: testDefaultsSuite))
+        if testContainer != nil {
+            var settings = Settings.default
+            settings.opensAtLogin = false
+            settings.checksForUpdatesAutomatically = false
+            settings.installsUpdatesAutomatically = false
+            settingsStore.save(settings)
+            onboardingRecordStore.recordFinished()
+        }
+        let account =
+            testContainer.map { _ in
+                OnboardingAccountLayer(
+                    authentication: InMemoryAuthenticationService(), profiles: UITestProfileCache())
+            } ?? OnboardingAccountLayer.forThisBuild()
+        let loginItem =
+            testContainer.map { _ in
+                LaunchAtLogin(readStatus: { .unavailable }, register: {}, unregister: {})
+            } ?? LaunchAtLogin()
         // Before any model or keyboard monitor exists, so a second copy never builds either.
-        guard let instance = claimTheOnlyInstance() else { exit(0) }
+        guard let instance = claimTheOnlyInstance(in: container) else { exit(0) }
         let (reloads, reported) = AsyncStream<IdleReload>.makeStream()
         // One model both validates a remembered suggestion and invents one where there is none; its weights are fetched when the feature is first built, never at launch.
         let model = IdleReleasingModel(
@@ -34,6 +62,11 @@ enum UttrflowApp {
                 EnergyConditions.current().allowsDiscretionaryWork && !DictationInProgress.shared.isDictating
             })
         let delegate = AppDelegate(
+            container: container,
+            loginItem: loginItem,
+            settingsStore: settingsStore,
+            onboardingRecordStore: onboardingRecordStore,
+            account: account,
             scoring: scoring, generating: generating,
             prepareModel: { onProgress in try await scoring.prepare(onProgress: onProgress) },
             releaseModel: { await scoring.release() },
@@ -65,23 +98,25 @@ enum UttrflowApp {
     }
 
     @MainActor
-    private static func claimTheOnlyInstance() -> InstanceLocks? {
+    private static func claimTheOnlyInstance(in container: URL) -> InstanceLocks? {
         let identifier = Bundle.main.bundleIdentifier
         // Acquire shared coordination before per-build store locks so a loser cannot make the winner exit.
         guard
             let coordination = acquireOrExplain(
-                at: SingleInstanceLock.coordinationFile(), identifier: identifier)
+                at: SingleInstanceLock.coordinationFile(in: container), identifier: identifier)
         else {
             return nil
         }
         guard
-            let store = acquireOrExplain(at: SingleInstanceLock.defaultFile(), identifier: identifier)
+            let store = acquireOrExplain(
+                at: SingleInstanceLock.defaultFile(in: container), identifier: identifier)
         else {
             return nil
         }
         guard
             let legacyStoreGuards = guardAgainstOlderBuilds(
-                differentFrom: identifier, currentStoreFile: SingleInstanceLock.defaultFile())
+                differentFrom: identifier, currentStoreFile: SingleInstanceLock.defaultFile(in: container),
+                in: container)
         else {
             return nil
         }
@@ -92,7 +127,7 @@ enum UttrflowApp {
     /// Guards older running builds and current-protocol startup losers without exiting the coordinator winner.
     @MainActor
     private static func guardAgainstOlderBuilds(
-        differentFrom identifier: String?, currentStoreFile: URL
+        differentFrom identifier: String?, currentStoreFile: URL, in directory: URL
     ) -> [SingleInstanceLock]? {
         let me = ProcessInfo.processInfo.processIdentifier
         let otherIdentifiers = Set(
@@ -101,7 +136,7 @@ enum UttrflowApp {
             })
         var guards: [SingleInstanceLock] = []
         for otherIdentifier in otherIdentifiers {
-            let otherStoreFile = SingleInstanceLock.defaultFile(for: otherIdentifier)
+            let otherStoreFile = SingleInstanceLock.defaultFile(in: directory, for: otherIdentifier)
             // Unknown IDs can share the production folder; our own store lock already covers it.
             guard otherStoreFile.standardizedFileURL != currentStoreFile.standardizedFileURL else {
                 continue
@@ -265,4 +300,27 @@ enum UttrflowApp {
         }
         _ = done.wait(timeout: .now() + 3)
     }
+}
+
+/// A signed-in account fixture that keeps UI tests away from the developer's keychain and server.
+private struct UITestProfileCache: ProfileCache {
+    func load() -> Profile? { Self.profile }
+
+    func save(_ profile: Profile) throws(AccountError) {}
+
+    func clear() {}
+
+    private static let profile: Profile = {
+        let account = Account(
+            identifier: "ui-test", displayName: "UI Test", emailAddress: "ui-test@example.invalid",
+            provider: .google)
+        let entitlement = Entitlement(
+            account: account, plan: .pro, expiresAt: .distantFuture, signature: "ui-test")
+        return Profile(
+            account: account,
+            subscription: Profile.Subscription(
+                plan: .pro, status: .active, currentPeriodEnd: nil, effectivePlan: .pro,
+                limits: Profile.Limits(monthlyMinutes: nil, customDictionaryEntries: nil)),
+            devices: [], entitlement: entitlement, fetchedAt: .distantPast)
+    }()
 }
