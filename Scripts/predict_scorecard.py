@@ -55,6 +55,14 @@ def by_category(results):
     return {k: summarise(v) for k, v in sorted(groups.items())}
 
 
+def by_source(results):
+    groups = defaultdict(list)
+    for r in results:
+        if r.get("source"):
+            groups[r["source"]].append(r)
+    return {k: summarise(v) for k, v in sorted(groups.items())}
+
+
 def main():
     new = rows(sys.argv[1])
     s = summarise(new)
@@ -71,6 +79,23 @@ def main():
         print(f"  {k:10s} n={v['total']:4d} hit {pct(v['hit'], v['total']):>5}  register {pct(v['conforms'], v['total']):>5}  "
               f"p50 {v['p50']:4d}  precision {(f'{100 * v['right'] / v['shown']:.1f}%' if v['shown'] else '-'):>7}  "
               f"wrong {v['shown'] - v['right']:3d}  quiet {v['total'] - v['shown']:3d}")
+    sources = by_source(new)
+    if sources:
+        print("\nby shown source:")
+        for k, v in sources.items():
+            wrong = v["shown"] - v["right"]
+            precision = f"{100 * v['right'] / v['shown']:.2f} %" if v["shown"] else "-"
+            print(f"  {k:12s} precision {precision:>8} ({v['right']}/{v['shown']} shown, {wrong} wrong)")
+        unjudged = defaultdict(int)
+        for row in new:
+            first = row.get("first")
+            shown = bool(first) and not str(first).startswith("error:") and not row.get("gate", {}).get("held", False)
+            if row.get("source") and shown and not row.get("judged", False):
+                unjudged[row["source"]] += 1
+        if unjudged:
+            print("unjudged shown lines by source:")
+            for k, count in sorted(unjudged.items()):
+                print(f"  {k:12s} {count}")
     if len(sys.argv) > 2:
         old = {r["name"]: r for r in rows(sys.argv[2])}
         fixed = [r for r in new if r["hit"] and r["name"] in old and not old[r["name"]]["hit"]]

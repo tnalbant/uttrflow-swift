@@ -317,6 +317,7 @@ let package = Package(
             name: "uttrflow-bakeoff",
             dependencies: [
                 "UttrflowAI", "UttrflowAudio", "UttrflowCore", "UttrflowEval", "UttrflowLocalModel",
+                "UttrflowPredict",
                 "UttrflowSpeech",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],

@@ -1167,14 +1167,8 @@ final class SuggestionCoordinator {
 
     /// What the corpus remembers, or failing that what this machine holds; the machine never outranks the person's own history.
     func candidates(for query: SuggestionQuery) async -> [Candidate] {
-        let remembered =
-            (try? await store.candidates(for: query.surface, matching: query.typed)) ?? []
-        let candidates: [Candidate]
-        if remembered.isEmpty {
-            candidates = await environment.candidates(for: query.surface, matching: query.typed, now: Date())
-        } else {
-            candidates = remembered
-        }
+        let candidates = await CandidateSources.candidates(
+            from: store, environment: environment, for: query.surface, matching: query.typed, now: Date())
         return candidates.filter {
             !rejectedSuggestionRecorder.suppresses($0.text, in: query.surface)
         }

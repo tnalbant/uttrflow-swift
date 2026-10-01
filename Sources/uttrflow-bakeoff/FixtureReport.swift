@@ -13,6 +13,8 @@ struct FixtureResult: Encodable {
     let elapsedMs: Int
     /// The first completion the model offered, or nothing when it offered none.
     let first: String?
+    /// Which production candidate source supplied the line shown to the person.
+    let source: String?
     /// How the pass ended and every word the model wrote, recorded only when the run asked for it.
     let raw: String?
     /// Whether the model named a program, path, branch or verb the fixture's machine does not have, before the sieve dropped it.
@@ -40,7 +42,7 @@ struct FixtureResult: Encodable {
 
     init(
         name: String, category: String, typed: String, hit: Bool, judged: Bool, conforms: Bool,
-        elapsedMs: Int, first: String?,
+        elapsedMs: Int, first: String?, source: String? = nil,
         raw: String?, invented: Bool, rescued: Bool = false, secondOpinionMs: Int? = nil,
         lengthStopped: Bool = false, gate: Gate = .open
     ) {
@@ -52,6 +54,7 @@ struct FixtureResult: Encodable {
         self.conforms = conforms
         self.elapsedMs = elapsedMs
         self.first = first
+        self.source = source
         self.raw = raw
         self.invented = invented
         self.rescued = rescued
@@ -111,6 +114,9 @@ struct FixtureSummary: Encodable {
     let p50Ms: Int
     let p95Ms: Int
     let categories: [Category]
+    let sources: [Category]
+    /// How many shown lines had no judgment corpus, which keeps their precision denominator honest.
+    let unjudgedSources: [Category]
 
     init(_ results: [FixtureResult]) {
         total = results.count
@@ -138,6 +144,23 @@ struct FixtureSummary: Encodable {
                 conforming: inCategory.filter(\.conforms).count,
                 shown: inCategory.filter { $0.shown && $0.judged }.count,
                 right: inCategory.filter { $0.shown && $0.judged && $0.hit }.count)
+        }
+        sources = Set(results.compactMap(\.source)).sorted().map { source in
+            let inSource = results.filter { $0.source == source }
+            return Category(
+                name: source, total: inSource.count, hits: inSource.filter(\.hit).count,
+                conforming: inSource.filter(\.conforms).count,
+                shown: inSource.filter { $0.shown && $0.judged }.count,
+                right: inSource.filter { $0.shown && $0.judged && $0.hit }.count)
+        }
+        unjudgedSources = Set(results.compactMap(\.source)).sorted().map { source in
+            let inSource = results.filter { $0.source == source }
+            let shown = inSource.filter(\.shown)
+            return Category(
+                name: source, total: inSource.count, hits: inSource.filter(\.hit).count,
+                conforming: inSource.filter(\.conforms).count,
+                shown: shown.filter { !$0.judged }.count,
+                right: shown.filter { !$0.judged && $0.hit }.count)
         }
     }
 }
@@ -167,6 +190,22 @@ struct FixtureReport: Encodable {
                     + "in register \(category.conforming)/\(category.total)  precision "
                     + "\(Self.rate(category.right, of: category.shown)) (\(category.right)/\(category.shown) judged shown, "
                     + "\(category.shown - category.right) wrong)")
+        }
+        if !summary.sources.isEmpty {
+            print("\nby shown source:")
+            for source in summary.sources {
+                print(
+                    "\(source.name.leftPadded(to: 12)) precision "
+                        + "\(Self.rate(source.right, of: source.shown)) (\(source.right)/\(source.shown) judged shown, "
+                        + "\(source.shown - source.right) wrong)")
+            }
+            let unjudged = summary.unjudgedSources.filter { $0.shown > 0 }
+            if !unjudged.isEmpty {
+                print("unjudged shown lines by source:")
+                for source in unjudged {
+                    print("\(source.name.leftPadded(to: 12)) \(source.shown)")
+                }
+            }
         }
         guard summary.total > 0 else { return }
         print(

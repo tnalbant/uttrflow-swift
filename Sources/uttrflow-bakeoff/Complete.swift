@@ -25,6 +25,9 @@ struct Complete: AsyncParsableCommand {
     @Flag(name: .long, help: "Run every fixture and report hit rate, register conformance and latency.")
     var fixtures = false
 
+    @Flag(name: .long, help: "Run the seeded history/environment/model arbitration fixtures.")
+    var sources = false
+
     @Option(name: .long, help: "Only fixtures whose name starts with this, e.g. chat/ or terminal/.")
     var only: String?
 
@@ -84,7 +87,7 @@ struct Complete: AsyncParsableCommand {
             FileHandle.standardError.write(Data("\r\u{1B}[2K".utf8))
             generator = scorer
         }
-        if fixtures {
+        if fixtures || sources {
             await measure(with: generator)
         } else {
             await complete(typed ?? "", with: generator)
@@ -111,7 +114,9 @@ struct Complete: AsyncParsableCommand {
 
     /// Every chosen fixture in turn, each timed, then the rates that decide whether a phase held and the failures.
     private func measure(with scorer: any CandidateGenerating) async {
-        var chosen = Fixture.all.filter { only.map($0.name.hasPrefix) ?? true }
+        var chosen = (sources ? SourceFixtures.all : Fixture.all).filter {
+            only.map($0.name.hasPrefix) ?? true
+        }
         if let failedIn {
             guard let missed = Self.misses(recordedIn: failedIn) else {
                 print("could not read the earlier run at \(failedIn)")
@@ -138,6 +143,7 @@ struct Complete: AsyncParsableCommand {
             var confidence: Double?
             var judgeScore: Double?
             var judgeMs: Int?
+            var shownSource: String?
             // A fixture on a machine is asked what the word may be first, and its answer is sieved after, as the app does both.
             let grounding = await Grounding(for: fixture)
             var situation = fixture.situation
@@ -148,30 +154,38 @@ struct Complete: AsyncParsableCommand {
             case .open?, nil: break
             }
             do {
-                if denied {
-                    words = "[not on this machine]"
-                } else if raw, let scorer = scorer as? any PassShowing {
-                    let pass = try await scorer.pass(for: fixture.typed, in: situation)
-                    completions = pass?.completions ?? []
-                    lengthStopped = pass?.stopReason == "length"
-                    words = pass.map { "[\($0.stopReason)] \($0.text)" } ?? "[not asked]"
+                if sources {
+                    let arbitration = await Self.arbitrate(
+                        fixture, generator: scorer, scoring: scorer as? any CandidateScoring)
+                    completions = arbitration.lines
+                    shownSource = arbitration.source
+                    words = "[production arbitration] \(completions.joined(separator: " | "))"
                 } else {
-                    completions = try await scorer.completions(for: fixture.typed, in: situation)
-                }
-                if let grounding {
-                    let standing = await grounding.standing(completions, after: fixture.typed)
-                    invented = standing.count < completions.count
-                    completions = standing
-                }
-                // The second opinion is the wider pass the person would never wait for, measured here to see whether it earns its place.
-                if secondOpinion, completions.isEmpty, !denied {
-                    let again = ContinuousClock.now
-                    var others = try await scorer.alternatives(
-                        for: fixture.typed, in: situation, excluding: "")
-                    if let grounding { others = await grounding.standing(others, after: fixture.typed) }
-                    secondMs = Int((ContinuousClock.now - again) / .milliseconds(1))
-                    rescued = fixture.hits(others)
-                    completions = others
+                    if denied {
+                        words = "[not on this machine]"
+                    } else if raw, let scorer = scorer as? any PassShowing {
+                        let pass = try await scorer.pass(for: fixture.typed, in: situation)
+                        completions = pass?.completions ?? []
+                        lengthStopped = pass?.stopReason == "length"
+                        words = pass.map { "[\($0.stopReason)] \($0.text)" } ?? "[not asked]"
+                    } else {
+                        completions = try await scorer.completions(for: fixture.typed, in: situation)
+                    }
+                    if let grounding {
+                        let standing = await grounding.standing(completions, after: fixture.typed)
+                        invented = standing.count < completions.count
+                        completions = standing
+                    }
+                    // The second opinion is the wider pass the person would never wait for, measured here to see whether it earns its place.
+                    if secondOpinion, completions.isEmpty, !denied {
+                        let again = ContinuousClock.now
+                        var others = try await scorer.alternatives(
+                            for: fixture.typed, in: situation, excluding: "")
+                        if let grounding { others = await grounding.standing(others, after: fixture.typed) }
+                        secondMs = Int((ContinuousClock.now - again) / .milliseconds(1))
+                        rescued = fixture.hits(others)
+                        completions = others
+                    }
                 }
             } catch {
                 failure = "error: \(error)"
@@ -205,11 +219,13 @@ struct Complete: AsyncParsableCommand {
                 judgeScore = await scoring.logLikelihood(of: first, following: fixture.typed)
                 judgeMs = Int((ContinuousClock.now - judging) / .milliseconds(1))
             }
+            if !sources { shownSource = nil }
             let result = FixtureResult(
                 name: fixture.name, category: fixture.category, typed: fixture.typed,
                 hit: fixture.hits(drawn), judged: fixture.isJudged,
                 conforms: fixture.conforms(drawn), elapsedMs: elapsed,
-                first: failure ?? completions.first, raw: words, invented: invented, rescued: rescued,
+                first: failure ?? completions.first, source: shownSource,
+                raw: words, invented: invented, rescued: rescued,
                 secondOpinionMs: secondMs, lengthStopped: lengthStopped,
                 gate: FixtureResult.Gate(
                     confidence: confidence, held: held, hitIfDrawn: fixture.hits(completions),
@@ -228,6 +244,94 @@ struct Complete: AsyncParsableCommand {
         } catch {
             print("\ncould not write \(json): \(error)")
         }
+    }
+
+    /// Runs the shared coordinator selection, session ranking, verifier, and model fallback for one seeded fixture.
+    private static func arbitrate(
+        _ fixture: Fixture, generator: any CandidateGenerating, scoring: (any CandidateScoring)?
+    ) async -> (lines: [String], source: String?) {
+        let directory = fixture.situation.document ?? "/Users/me/project"
+        let surface = Surface(
+            bundleIdentifier: fixture.situation.application == "Terminal"
+                ? "com.apple.Terminal" : "com.apple.TextEdit",
+            role: fixture.situation.application == "Terminal" ? "AXTextArea" : "AXTextView",
+            scope: fixture.situation.application == "Terminal" ? directory : nil)
+        let store = FixturePredictionStore(candidates: fixture.seededCandidates)
+        let index = EnvironmentIndex(reader: FixtureArbitrationMachine(fixture.machine ?? [:]))
+        for lookup in Verification.offerings(
+            for: CompletionToken(fixture.typed) ?? CompletionToken(leading: "", token: ""))
+        {
+            for kind in lookup.kinds {
+                _ = await index.values(of: kind, in: directory, now: Date())
+            }
+        }
+        await index.settle()
+        let environment = EnvironmentSource(index: index)
+        let now = Date()
+        let candidates = await CandidateSources.candidates(
+            from: store, environment: environment, for: surface, matching: fixture.typed, now: now)
+        let verifier = Verifier(index: index, scoring: scoring)
+        var session = SuggestionSession()
+        let query: SuggestionQuery
+        switch session.turn(in: surface, at: PredictionContext(typed: fixture.typed)).step {
+        case .query(let value): query = value
+        case .settled(let update): return (update.suggestion.accepting.map { [$0] } ?? [], nil)
+        }
+        guard
+            let resolution = session.resolve(
+                candidates, for: query, now: now, elapsedMilliseconds: 0)
+        else { return ([], nil) }
+        switch resolution {
+        case .settled(let update):
+            if let line = update.suggestion.accepting {
+                return (Self.drawnLines(update.suggestion), sourceName(of: candidates, line: line))
+            }
+        case .verify(let request):
+            let verified = await verifier.verified(
+                request.candidates, in: request.surface, typed: request.typed, now: now)
+            if let update = session.resolve(
+                verified, for: request, now: now, elapsedMilliseconds: 0),
+                let line = update.suggestion.accepting
+            {
+                return (Self.drawnLines(update.suggestion), sourceName(of: verified, line: line))
+            }
+        }
+        guard
+            ModelPass.shouldAsk(
+                after: .init(suggestion: .silent, armed: [], silence: .nothingOffered),
+                hasGenerator: true, isReady: await generator.isReady)
+        else { return ([], nil) }
+        let options = await verifier.options(for: fixture.typed, in: surface, now: now)
+        let situation: GenerationSituation
+        switch options {
+        case .none: return ([], nil)
+        case .among(let values): situation = fixture.situation.choosing(values)
+        case .open: situation = fixture.situation
+        }
+        let generated = (try? await generator.completions(for: fixture.typed, in: situation)) ?? []
+        let standing = await verifier.standing(
+            generated, after: fixture.typed, in: surface, now: now)
+        let scores = await verifier.scoreCompletions(standing)
+        guard
+            let update = session.resolveGenerated(
+                standing, for: query, elapsedMilliseconds: 0, scores: scores),
+            let line = update.suggestion.accepting
+        else { return ([], nil) }
+        return (Self.drawnLines(update.suggestion), "model")
+    }
+
+    /// Lists every line visible in a certain suggestion or a choice, led by the accepted line.
+    private static func drawnLines(_ suggestion: Suggestion) -> [String] {
+        switch suggestion {
+        case .certain(let line): [line]
+        case .choice(let leader, let others): [leader] + others
+        case .silent, .minimised: []
+        }
+    }
+
+    /// Names the remembered source that survived production ranking.
+    private static func sourceName(of candidates: [Candidate], line: String) -> String? {
+        candidates.first(where: { $0.text == line }).map { String(describing: $0.source) }
     }
 
     /// The names of the fixtures an earlier run's JSON records as missed, or nothing when the file cannot be read.

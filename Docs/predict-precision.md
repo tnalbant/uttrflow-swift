@@ -15,6 +15,12 @@ share of moments where anything was drawn at all. The bake-off prints both
 (`uttrflow-bakeoff complete --fixtures`), and precision is printed to two decimal places because
 the last of them is what the bar is set on.
 
+`complete --fixtures` measures model-only fixtures. Use `complete --sources --json run.json` to
+exercise the app's remembered-versus-environment candidate selection, shared session ranking and
+verification, and model fallback against seeded source cases; the JSON and
+`Scripts/predict_scorecard.py` report precision for each shown source. That seeded source run is
+an arbitration check, not a replacement for the full product's live-corpus measurement.
+
 | | Run 8, before | Run 9, addresses refused | Run 10, searches refused too |
 |---|---|---|---|
 | Precision | 94.07 % | 95.80 % | **96.74 %** |

@@ -11,10 +11,12 @@ struct Fixture {
     let expectation: CompletionExpectation
     /// What the machine under the field holds, for a terminal whose arguments it can vouch for or deny; absent where no machine is asked.
     let machine: [EnvironmentKind: [String]]?
+    /// Seeded remembered candidates for measuring the app's source arbitration.
+    let seededCandidates: [Candidate]
 
     init(
         _ name: String, _ situation: GenerationSituation, typed: String, expectation: CompletionExpectation,
-        machine: [EnvironmentKind: [String]]? = nil
+        machine: [EnvironmentKind: [String]]? = nil, seededCandidates: [Candidate] = []
     ) {
         self.name = name
         self.situation = situation
@@ -23,6 +25,7 @@ struct Fixture {
         let refused = Register.infer(from: situation, typed: typed).answersFromHistoryAlone
         self.expectation = refused ? expectation.refused : expectation
         self.machine = machine
+        self.seededCandidates = seededCandidates
     }
 
     init(
@@ -47,7 +50,7 @@ struct Fixture {
     var category: String { String(name.split(separator: "/").first ?? "") }
 
     /// Every situation the generator is held to: the hand-written cases first, then the generated catalogue.
-    static let all: [Fixture] = handwritten + FixtureCatalogue.all
+    static let all: [Fixture] = handwritten + FixtureCatalogue.all + SourceFixtures.all
 }
 
 /// The scrollback a terminal shows before its prompt, which is what a shell command is continued from.
@@ -136,6 +139,32 @@ private let code = GenerationSituation(
 private let search = GenerationSituation(
     application: "Finder", field: "Search", windowTitle: "Documents",
     recentLines: ["invoice august", "tax 2025", "invoice july"])
+
+/// Seeded history and environment cases for the production arbitration path.
+enum SourceFixtures {
+    static let all = [
+        Fixture(
+            "source/personal", GenerationSituation(application: "TextEdit"), typed: "send the ",
+            expectation: CompletionExpectation(acceptable: ["invoice"], band: 1...40),
+            seededCandidates: [
+                Candidate(
+                    text: "send the invoice", source: .personal,
+                    evidence: Entry(text: "send the invoice", count: 10, lastUsed: Date()))
+            ]),
+        Fixture(
+            "source/succession", GenerationSituation(application: "TextEdit"), typed: "git ",
+            expectation: CompletionExpectation(acceptable: ["commit"], band: 1...40),
+            seededCandidates: [
+                Candidate(
+                    text: "git commit", source: .succession,
+                    evidence: Entry(text: "git commit", count: 10, lastUsed: Date()))
+            ]),
+        Fixture(
+            "source/environment", terminal(recent: []), typed: "git ch",
+            expectation: CompletionExpectation(acceptable: ["eckout"], band: 1...40),
+            machine: [.subcommand(of: "git"): ["checkout"]]),
+    ]
+}
 
 extension Fixture {
     /// The cases written one by one, across the registers people actually type in.
