@@ -15,6 +15,7 @@ public actor PersonalDictionaryStore {
     static let maximumInferredEntries = 256
     /// The file, injected so a test writes into a temporary directory rather than a real dictionary.
     private let file: URL
+    private let encryptedStore: EncryptedStore?
 
     /// The file's decoded contents, reread only when the file changed on disk.
     var cache: CachedStoredList<[DictionaryEntry]>
@@ -25,9 +26,13 @@ public actor PersonalDictionaryStore {
     /// Terms seen and said but not yet often enough to keep, and the words deleted; read from disk on first use.
     private var ledger: SightingLedger?
 
-    public init(file: URL = PersonalDictionaryStore.defaultFile()) {
+    public init(file: URL = PersonalDictionaryStore.defaultFile(), encryptedStore: EncryptedStore? = nil) {
         self.file = file
-        self.cache = CachedStoredList(file: file)
+        self.encryptedStore = encryptedStore
+        self.cache = CachedStoredList(file: file) { url in
+            encryptedStore.map { LocalStore.read([DictionaryEntry].self, from: url, encryptedBy: $0) }
+                ?? LocalStore.read([DictionaryEntry].self, from: url)
+        }
     }
 
     /// Where the dictionary lives by default; versioned in the name so a new shape can sit beside it.
@@ -321,13 +326,18 @@ public actor PersonalDictionaryStore {
 
     /// Writes the whole list atomically, or removes the file when nothing is left to keep.
     private func persist(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+        guard !cache.isUnreadable else { throw .couldNotWrite }
         do {
             guard !entries.isEmpty else {
                 try removeFile()
                 cache.remember(nil)
                 return
             }
-            try PrivateFile.write(JSONEncoder().encode(entries), to: file)
+            if let encryptedStore {
+                try encryptedStore.write(entries, to: file)
+            } else {
+                try PrivateFile.write(JSONEncoder().encode(entries), to: file)
+            }
             cache.remember(entries)
         } catch {
             cache.forget()

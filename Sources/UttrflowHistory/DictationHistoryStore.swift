@@ -14,6 +14,7 @@ public actor DictationHistoryStore {
 
     /// The file, injected so a test writes into a temporary directory rather than a real history.
     private let file: URL
+    private let encryptedStore: EncryptedStore?
 
     /// The file's decoded contents, reread only when the file changed on disk.
     var cache: CachedStoredList<[DictationRecord]>
@@ -24,10 +25,15 @@ public actor DictationHistoryStore {
     /// Uses the app's own file and cap unless a test names others.
     public init(
         file: URL = DictationHistoryStore.defaultFile(),
-        capacity: Int = DictationHistoryStore.defaultCapacity
+        capacity: Int = DictationHistoryStore.defaultCapacity,
+        encryptedStore: EncryptedStore? = nil
     ) {
         self.file = file
-        self.cache = CachedStoredList(file: file)
+        self.encryptedStore = encryptedStore
+        self.cache = CachedStoredList(file: file) { url in
+            encryptedStore.map { LocalStore.read([DictationRecord].self, from: url, encryptedBy: $0) }
+                ?? LocalStore.read([DictationRecord].self, from: url)
+        }
         // Clamped because a negative capacity would trap in `prefix`.
         self.capacity = max(0, capacity)
     }
@@ -146,13 +152,18 @@ public actor DictationHistoryStore {
 
     /// Writes the whole list atomically, or removes the file when nothing is left to keep.
     private func persist(_ records: [DictationRecord]) throws(HistoryStoreError) {
+        guard !cache.isUnreadable else { throw .couldNotWrite }
         do {
             guard !records.isEmpty else {
                 try removeFile()
                 cache.remember(nil)
                 return
             }
-            try PrivateFile.write(JSONEncoder().encode(records), to: file)
+            if let encryptedStore {
+                try encryptedStore.write(records, to: file)
+            } else {
+                try PrivateFile.write(JSONEncoder().encode(records), to: file)
+            }
             cache.remember(records)
         } catch {
             cache.forget()

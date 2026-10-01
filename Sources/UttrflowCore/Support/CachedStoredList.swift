@@ -26,21 +26,25 @@ public struct FileStamp: Equatable, Sendable {
 }
 
 /// A stored list held in memory, decoded again only when the file's stamp differs from the one it was read at.
-public struct CachedStoredList<Value: Decodable & Sendable>: Sendable {
+public struct CachedStoredList<Value: Decodable & Encodable & Sendable>: Sendable {
     /// The file this copy mirrors.
     public let file: URL
 
     /// The stamp the held value was read or written at, and the value itself; `nil` value is an empty store.
     private var held: (stamp: FileStamp?, value: Value?)?
+    private let reader: @Sendable (URL) -> StoredList<Value>
 
     /// How many times the file has been decoded, which a test counts.
     public private(set) var diskReads = 0
+    /// Whether the last read found bytes that could not safely be treated as empty.
+    public private(set) var isUnreadable = false
 
     /// Goes up whenever the held value is replaced, so anything derived from it knows to rebuild.
     public private(set) var generation = 0
 
-    public init(file: URL) {
+    public init(file: URL, reader: (@Sendable (URL) -> StoredList<Value>)? = nil) {
         self.file = file
+        self.reader = reader ?? { LocalStore.read(Value.self, from: $0) }
     }
 
     /// The value on disk, from memory when the file is unchanged; `nil` when missing or unreadable.
@@ -49,23 +53,27 @@ public struct CachedStoredList<Value: Decodable & Sendable>: Sendable {
         let stamp = FileStamp.of(file)
         if let held, held.stamp == stamp { return held.value }
         guard stamp != nil else {
+            isUnreadable = false
             replace(with: nil, stamp: nil)
             return nil
         }
         diskReads += 1
-        let read = LocalStore.read(Value.self, from: file)
+        let read = reader(file)
         // An unreadable file is not held, so the set-aside path runs exactly as it did before.
         guard !read.isUnreadable else {
+            isUnreadable = true
             held = nil
             generation += 1
             return nil
         }
+        isUnreadable = false
         replace(with: read.value, stamp: stamp)
         return read.value
     }
 
     /// Holds what was just written to the file, or `nil` after the file was removed.
     public mutating func remember(_ value: Value?) {
+        isUnreadable = false
         replace(with: value, stamp: FileStamp.of(file))
     }
 

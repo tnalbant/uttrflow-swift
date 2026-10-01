@@ -37,6 +37,13 @@ extension LocalStore {
     /// The suffix a set-aside file carries after the name it was read under.
     static let setAsideMarker = ".unreadable-"
 
+    /// Reads a local JSON file through an injected authenticated-encryption layer.
+    public static func read<Value: Decodable & Encodable & Sendable>(
+        _ type: Value.Type, from url: URL, encryptedBy store: EncryptedStore, now: Date = Date()
+    ) -> StoredList<Value> {
+        store.read(type, from: url, now: now)
+    }
+
     /// Reads and decodes a file, moving an unreadable one aside so the next write cannot replace it.
     public static func read<Value: Decodable & Sendable>(
         _ type: Value.Type, from url: URL, now: Date = Date()

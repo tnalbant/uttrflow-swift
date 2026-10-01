@@ -11,14 +11,19 @@ public import class Foundation.JSONEncoder
 public actor SnippetStore {
     /// The file, injected so a test writes into a temporary directory rather than real snippets.
     private let file: URL
+    private let encryptedStore: EncryptedStore?
 
     /// The file's decoded contents, reread only when the file changed on disk.
     var cache: CachedStoredList<[Snippet]>
 
     /// Uses the app's own file unless a test names another.
-    public init(file: URL = SnippetStore.defaultFile()) {
+    public init(file: URL = SnippetStore.defaultFile(), encryptedStore: EncryptedStore? = nil) {
         self.file = file
-        self.cache = CachedStoredList(file: file)
+        self.encryptedStore = encryptedStore
+        self.cache = CachedStoredList(file: file) { url in
+            encryptedStore.map { LocalStore.read([Snippet].self, from: url, encryptedBy: $0) }
+                ?? LocalStore.read([Snippet].self, from: url)
+        }
     }
 
     /// Where the snippets live, versioned in the name; only a test passes a `directory`.
@@ -117,13 +122,18 @@ public actor SnippetStore {
 
     /// Writes the whole list atomically, or removes the file when nothing is left to keep.
     private func persist(_ snippets: [Snippet]) throws(SnippetStoreError) {
+        guard !cache.isUnreadable else { throw .couldNotWrite }
         do {
             guard !snippets.isEmpty else {
                 try removeFile()
                 cache.remember(nil)
                 return
             }
-            try PrivateFile.write(JSONEncoder().encode(snippets), to: file)
+            if let encryptedStore {
+                try encryptedStore.write(snippets, to: file)
+            } else {
+                try PrivateFile.write(JSONEncoder().encode(snippets), to: file)
+            }
             cache.remember(snippets)
         } catch {
             cache.forget()
