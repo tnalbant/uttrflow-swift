@@ -751,6 +751,18 @@ public enum EvaluationCorpus {
 
     static let technical: [EvaluationCase] = [
         .init(
+            id: "mid-sentence-brand-name-case", category: .technical,
+            spoken: "we use Slack and Zoom and Figma daily",
+            expected: "We use Slack and Zoom and Figma daily.",
+            mustKeep: ["Slack", "Zoom", "Figma"]
+        ),
+        .init(
+            id: "mid-sentence-mixed-case-brand", category: .technical,
+            spoken: "the eBay listing sold on YouTube this morning",
+            expected: "The eBay listing sold on YouTube this morning.",
+            mustKeep: ["eBay", "YouTube"]
+        ),
+        .init(
             id: "kubernetes", category: .technical,
             spoken: "the uh kubernetes pod keeps restarting after the deploy",
             expected: "The Kubernetes pod keeps restarting after the deploy.",

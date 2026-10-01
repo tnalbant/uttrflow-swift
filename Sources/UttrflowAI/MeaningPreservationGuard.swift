@@ -502,6 +502,9 @@ public struct MeaningPreservationGuard: Sendable {
         {
             return .rejected(reason: reason, kind: kind)
         }
+        if case .rejected(let reason, let kind) = casePreservationVerdict(alignment) {
+            return .rejected(reason: reason, kind: kind)
+        }
         let dropped = negators(in: keptTokens) - negators(in: rewrittenTokens + echoTokens)
         if dropped > 0 {
             return .rejected(reason: "the rewrite dropped a negation", kind: .negationDropped)
@@ -673,6 +676,26 @@ public struct MeaningPreservationGuard: Sendable {
             let after = alignment.rewritten[change.rewritten].filter { $0.isPlain && !isContent($0) }
             return total + functionWordChurn(before, after)
         }
+    }
+
+    /// Refuses to erase capitals that distinguish a mid-sentence name or acronym from an ordinary word.
+    static func casePreservationVerdict(_ alignment: RewriteAlignment) -> GuardVerdict {
+        var required: [String: [String: Int]] = [:]
+        for token in alignment.kept where !token.startsSentence && token.text.contains(where: \.isUppercase) {
+            required[token.matching, default: [:]][token.text, default: 0] += 1
+        }
+        var written: [String: [String: Int]] = [:]
+        for token in alignment.rewritten {
+            written[token.matching, default: [:]][token.text, default: 0] += 1
+        }
+        for (matching, spellings) in required
+        where (written[matching]?.values.reduce(0, +) ?? 0) >= spellings.values.reduce(0, +) {
+            for (spelling, count) in spellings where (written[matching]?[spelling] ?? 0) < count {
+                return .rejected(
+                    reason: "the rewrite changed the capitalization of '\(spelling)'", kind: .lostWord)
+            }
+        }
+        return .accepted
     }
 
     /// Refuses a negator that moved to a different content-word neighbourhood, while allowing contractions and punctuation changes.

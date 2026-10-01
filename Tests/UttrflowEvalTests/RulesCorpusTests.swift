@@ -43,6 +43,7 @@ struct RulesCorpusTests {
         "dates", "spoken-date-with-the", "spoken-date-without-the",
         "ordinal-not-date", "compound-ordinal-above-one-hundred",
         "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",
+        "mid-sentence-brand-name-case", "mid-sentence-mixed-case-brand",
         "spoken-email-address", "spoken-email-address-with-a-name",
         "spoken-email-address-ending-the-sentence", "spoken-email-addresses-in-a-list",
         "look-at-a-domain-as-words", "met-at-the-office-as-words",

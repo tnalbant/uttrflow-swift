@@ -48,6 +48,30 @@ struct MeaningPreservationGuardTests {
         #expect(sut.verdict(draft: Draft(text: "hello, friend"), rewritten: "Hello; friend.").isAccepted)
     }
 
+    @Test("preserves names and mixed-case words the recognizer capitalizes mid-sentence")
+    func preservesRecognizedNameCase() {
+        #expect(
+            !sut.verdict(
+                draft: Draft(text: "we use Slack and Zoom and Figma daily"),
+                rewritten: "We use slack and zoom and figma daily."
+            ).isAccepted)
+        #expect(
+            !sut.verdict(
+                draft: Draft(text: "the eBay listing sold on YouTube this morning"),
+                rewritten: "The ebay listing sold on youtube this morning."
+            ).isAccepted)
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "we use Slack and eBay daily"),
+                rewritten: "We use Slack and eBay daily."
+            ).isAccepted)
+        #expect(
+            sut.verdict(
+                draft: Draft(text: "we use slack on monday"),
+                rewritten: "We use Slack on Monday."
+            ).isAccepted)
+    }
+
     @Test(
         "accepts a model fix for a rules-missed filler, spoken mark or closed homophone",
         arguments: [
