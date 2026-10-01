@@ -1089,7 +1089,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let model = SpeechModel.default
         let engine = SpeechEngineFactory.make(
             kind: kind, model: model, modelFolder: modelStore.location(of: model),
-            idleAfter: BackedSpeechEngine.idleRelease,
             didRelease: { [weak self] in
                 Task { @MainActor [weak self] in self?.speechModelWasReleased() }
             },
