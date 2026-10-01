@@ -235,6 +235,7 @@ public enum OnboardingPresenter {
         let skip = OnboardingAction(
             title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil, caption: nil)
         let copies = state.detail.readiness == .pastesManually
+        let clipboardHint = "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies."
         let bracket = keys.count > 1 ? (holds ? "HOLD BOTH" : "PRESS BOTH") : (holds ? "HOLD" : "PRESS")
         var page: OnboardingPage
         switch state.detail.trial {
@@ -246,8 +247,11 @@ public enum OnboardingPresenter {
                         lit: lit, keys: keys, bracket: bracket, isHeld: false, demonstrates: true,
                         field: .placeholder("Your words appear here"), isListening: false, celebrates: false)),
                 title: "Try it now.",
-                hint: copies ? "Without Accessibility, words are copied for you to paste" : nil,
-                explanation: "Try it now. Uttrflow lives in your menu bar whenever you need it.")
+                hint: copies
+                    ? "Without Accessibility, words are copied for you to paste. \(clipboardHint)"
+                    : clipboardHint,
+                explanation:
+                    "Try it now. Uttrflow lives in your menu bar whenever you need it. \(clipboardHint)")
             page.subtitle =
                 holds
                 ? "Click a text field in another app, then hold \(named), say anything, then let go."

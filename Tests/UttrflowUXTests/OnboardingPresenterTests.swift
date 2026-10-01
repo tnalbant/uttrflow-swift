@@ -408,6 +408,8 @@ struct OnboardingPresenterTests {
             trying.subtitle
                 == "Click a text field in another app, then hold control and option, say anything, then let go."
         )
+        #expect(trying.hint == "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies.")
+        #expect(trying.accessibilityLabel.contains("Open the Clipboard panel with ⇧⌘V"))
         #expect(
             trying.picture
                 == .keyboard(
@@ -520,6 +522,7 @@ struct OnboardingPresenterTests {
         let state = OnboardingState(step: .ready, detail: .finishing(.pastesManually))
         let copying = page(state)
         #expect(copying.hint?.contains("copied") == true)
+        #expect(copying.hint?.contains("Clipboard panel with ⇧⌘V") == true)
         #expect(
             copying.subtitle
                 == "Click a text field in another app, then hold control and option, say anything, then let go."

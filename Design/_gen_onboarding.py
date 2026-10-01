@@ -307,7 +307,8 @@ pages["Onboarding-Ready"] = onboarding(
          <span class="key">&#8997;</span><span class="key" style="min-width: 76px">Space</span>
        </div>
        <p class="h-body" style="margin-top: 14px">Hold it, talk, let go.<br>
-         Uttrflow lives in your menu bar whenever you need it.</p>""",
+         Uttrflow lives in your menu bar whenever you need it.</p>
+       <p class="h-body" style="margin-top: 12px">Open Clipboard with ⇧⌘V to browse and paste recent copies.</p>""",
     '<button class="btn primary">Start Using Uttrflow</button>',
 )
 
