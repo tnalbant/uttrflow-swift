@@ -45,6 +45,11 @@ private func entry(_ word: String, _ origin: WordOrigin) -> DictionaryEntry {
     DictionaryEntry(word: word, origin: origin, firstSeen: Date(timeIntervalSince1970: 0))
 }
 
+private actor ResetKeyTracker {
+    private(set) var revocations = 0
+    func revoke() { revocations += 1 }
+}
+
 /// Two of everything, so a reset that keeps the wrong kind is visible rather than ambiguous.
 private let mixedDictionary = [
     entry("kubectl", .added), entry("Nikhil", .learned), entry("Aarav", .observed),
@@ -225,14 +230,32 @@ struct FilePersonalisationStoreTests {
             let now = Date()
             let (dictionary, history) = stores(in: directory)
             try await fill(dictionary, history, now: now)
+            let tracker = ResetKeyTracker()
             let store = FilePersonalisationStore(
                 dictionary: dictionary, history: history,
-                clipboard: clipboardStore(in: directory))
+                clipboard: clipboardStore(in: directory),
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { await tracker.revoke() }))
 
             try await store.carryOut(.everything)
 
             let counts = await store.personalisation(keeping: Retention(days: 7, now: now))
             #expect(counts == .nothing)
+            #expect(await tracker.revocations == 1)
+        }
+    }
+
+    @Test("a failed key revocation means the full reset reports failure")
+    func keyRevocationFailureIsReported() async throws {
+        try await inATemporaryDirectory { directory in
+            let (dictionary, history) = stores(in: directory)
+            let store = FilePersonalisationStore(
+                dictionary: dictionary, history: history,
+                clipboard: clipboardStore(in: directory),
+                elsewhere: KeptElsewhere(revokeEncryptionKey: { throw CocoaError(.fileWriteUnknown) }))
+
+            await #expect(throws: SettingsResetFailure.self) {
+                try await store.carryOut(.everything)
+            }
         }
     }
 

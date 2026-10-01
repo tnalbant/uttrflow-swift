@@ -2,10 +2,10 @@
 
 ## Status
 
-This page records the scheme chosen for issue #3152. It is a design decision, not an
-implementation claim: the stores on `main` remain plaintext JSON, SQLite, image and WAV
-files, protected by owner-only permissions and backup exclusions. Store changes follow as
-separate work; this page is their shared contract.
+This page records the scheme chosen for issue #3152 and its reset contract. On `main`,
+history, dictionary and snippets use encrypted JSON envelopes. Clipboard indexes and images,
+the typed-line SQLite corpus, and raw audio recordings still have separate implementation
+work; their status must not be inferred from this shared scheme.
 
 ## Decision
 
@@ -84,10 +84,11 @@ may a read pretend the store is empty.
 
 ## Deletion and limits
 
-This scheme encrypts each store file under one installation key. Deleting a record rewrites
-or unlinks ciphertext; it is not per-record cryptographic erasure. Resetting all local
-personalisation must delete the Keychain item as part of the same reported operation, so
-retained copies of encrypted files cannot be opened by a fresh key. If Keychain deletion
+This scheme encrypts each store file under one installation key. Deleting one record rewrites
+or unlinks ciphertext; it is not per-record cryptographic erasure. This design accepts that
+boundary instead of keeping a separate key for every record or picture. Resetting all local
+personalisation deletes the Keychain item only after every reset target succeeds, so retained
+copies of encrypted files cannot be opened by a fresh key. If any target or Keychain deletion
 fails, reset must report failure rather than claim the data is revoked.
 
 Atomic replacement and unlink do not reliably overwrite old APFS or flash-storage blocks.
@@ -110,8 +111,7 @@ is replaced by an envelope, while malformed JSON and failed writes preserve the 
 Store-level tests must show that a Keychain failure is visible and does not produce an
 empty successful read.
 
-Roll the envelope into `PrivateFile` and `StoredList` first, while retaining the legacy
-reader for one-time migration. Handle SQLite and its `-wal`/`-shm` files separately in
-#3153; clipboard pictures in #3154; history, dictionary and snippets in #3155; raw audio
-recordings in #3156; and reset/deletion behavior in #3157. Do not update user-facing docs
-to say those stores are encrypted until their implementation and migration have shipped.
+The shared envelope, history/dictionary/snippet migration and key-reset operation are in
+place. Handle SQLite and its `-wal`/`-shm` files separately in #3153; clipboard indexes and
+pictures in #3154; and raw audio recordings in #3156. Do not update user-facing docs to say
+those remaining stores are encrypted until their implementation and migration have shipped.

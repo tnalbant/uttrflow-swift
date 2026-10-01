@@ -168,16 +168,19 @@ public struct KeptElsewhere: Sendable {
     let recordings: @Sendable () async throws -> Void
     let snippets: @Sendable () async throws -> Void
     let suggestionConsent: @Sendable () async throws -> Void
+    let revokeEncryptionKey: @Sendable () async throws -> Void
 
     /// Each closure defaults to doing nothing, for a build or a test that keeps none of these.
     public init(
         recordings: @escaping @Sendable () async throws -> Void = {},
         snippets: @escaping @Sendable () async throws -> Void = {},
-        suggestionConsent: @escaping @Sendable () async throws -> Void = {}
+        suggestionConsent: @escaping @Sendable () async throws -> Void = {},
+        revokeEncryptionKey: @escaping @Sendable () async throws -> Void = {}
     ) {
         self.recordings = recordings
         self.snippets = snippets
         self.suggestionConsent = suggestionConsent
+        self.revokeEncryptionKey = revokeEncryptionKey
     }
 }
 
@@ -235,6 +238,10 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
         var refused = false
         for target in reset.targets {
             do { try await remove(target) } catch { refused = true }
+        }
+        // Keep the only decryption key until every reset target has reported success.
+        if !refused, reset == .everything {
+            do { try await elsewhere.revokeEncryptionKey() } catch { refused = true }
         }
         if refused { throw SettingsResetFailure() }
     }

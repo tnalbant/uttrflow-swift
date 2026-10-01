@@ -473,10 +473,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The files a full reset reaches that the settings module has no store for.
     private func keptElsewhere() -> KeptElsewhere {
+        let encryptedStore = self.encryptedStore
         KeptElsewhere(
             recordings: { [recordings] in try await recordings.discardEverything() },
             snippets: { [snippets] in try await snippets.deleteEverything() },
-            suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() })
+            suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() },
+            revokeEncryptionKey: {
+                guard let encryptedStore else { return }
+                try encryptedStore.revokeKey()
+            })
     }
 
     /// Forgets which applications completions may learn from, through the running loop when there is one.
