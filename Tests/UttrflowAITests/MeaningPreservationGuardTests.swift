@@ -395,6 +395,44 @@ struct GrammarGuardTests {
         #expect(!MeaningPreservationGuard.sameForm("wrote", "writeup"))
     }
 
+    @Test("accepts common romanised Hindi respellings and refuses meaning changes")
+    func acceptsRomanisedHindiRespellings() {
+        for (first, second) in [
+            ("hai", "he"), ("nahi", "nahin"), ("kar", "kr"), ("mein", "me"), ("yeh", "ye"),
+        ] {
+            #expect(
+                MeaningPreservationGuard.sameForm(
+                    first, second, allowingRomanisedHindiSpellings: true))
+        }
+
+        for (original, rewritten) in [
+            ("Kal mujhe call karna hai", "Kal mujhe call karna he."),
+            ("Main kal office nahi aaunga", "Main kal office nahin aaunga."),
+            ("Woh kaam kar do", "Woh kaam kr do."),
+            ("Mujhe ghar mein milo", "Mujhe ghar me milo."),
+            ("Yeh file bhejo", "Ye file bhejo."),
+        ] {
+            #expect(
+                sut.verdict(draft: Draft(text: original), rewritten: rewritten).isAccepted,
+                "\(original) -> \(rewritten)")
+        }
+
+        for (original, rewritten) in [
+            ("Main kal office nahi aaunga", "Main kal office haan aaunga."),
+            ("Main kal office nahi aaunga", "Main kal office nahin aaya."),
+            ("Main kal office nahi aaunga", "Tum kal office nahi aaunga."),
+            ("Main kal office nahi aaunga", "Main kal nahi aaunga."),
+            ("Main kal office nahi aaunga", "Office kal main nahi aaunga."),
+            ("Main kal office nahi aaunga", "I will not come to the office tomorrow."),
+            ("He will meet me later", "Hai will meet mein later."),
+            ("Please give me the file", "Please give mein the file."),
+        ] {
+            #expect(
+                !sut.verdict(draft: Draft(text: original), rewritten: rewritten).isAccepted,
+                "\(original) -> \(rewritten)")
+        }
+    }
+
     @Test("accepts an article corrected, but a plural repaired by its form is rejected as a meaning change")
     func acceptsOnlyArticleRepair() {
         #expect(

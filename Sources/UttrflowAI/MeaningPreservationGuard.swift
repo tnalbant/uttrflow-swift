@@ -133,13 +133,16 @@ public struct MeaningPreservationGuard: Sendable {
     ) -> GuardVerdict {
         let written = (grammarTokens(echoed) + grammarTokens(rewritten)).filter(\.isPlain)
         var negations = negators(in: grammarTokens(kept))
+        let romanisedHindiContext = hasRomanisedHindiContext(grammarTokens(kept) + written)
         for (pass, token) in restored {
             let isNegation = negatingWords.contains(token.matching)
             if isNegation { negations += 1 }
             let present =
                 isNegation
                 ? negators(in: written) >= negations
-                : written.contains { survives(token.matching, as: $0) }
+                : written.contains {
+                    survives(token.matching, as: $0, allowingRomanisedHindiSpellings: romanisedHindiContext)
+                }
             guard present else {
                 return .rejected(
                     reason: "the \(pass) step took out '\(token.text)' and the rewrite does not put it back",
@@ -452,6 +455,7 @@ public struct MeaningPreservationGuard: Sendable {
         let echoTokens = grammarTokens(echoed)
         // The echo the caret pass took back opened the model's answer, so its words count as survivors ahead of the rest.
         let written = (echoTokens + rewrittenTokens).filter(\.isPlain)
+        let romanisedHindiContext = hasRomanisedHindiContext(keptTokens + rewrittenTokens + echoTokens)
         // A number spoken over several words answers to the one numeral the rewrite wrote for it.
         let composed = composedNumbers(keptTokens, in: Set(written.map(\.matching)))
         let carried = keptTokens.indices.filter { index in
@@ -464,11 +468,15 @@ public struct MeaningPreservationGuard: Sendable {
         if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
             return .rejected(reason: reason, kind: kind)
         }
-        if case .rejected(let reason, let kind) = survivalVerdict(carried.map { keptTokens[$0] }, in: written)
+        if case .rejected(let reason, let kind) = survivalVerdict(
+            carried.map { keptTokens[$0] }, in: written,
+            allowingRomanisedHindiSpellings: romanisedHindiContext)
         {
             return .rejected(reason: reason, kind: kind)
         }
-        if case .rejected(let reason, let kind) = placeVerdict(Set(carried), in: alignment, echo: echoTokens)
+        if case .rejected(let reason, let kind) = placeVerdict(
+            Set(carried), in: alignment, echo: echoTokens,
+            allowingRomanisedHindiSpellings: romanisedHindiContext)
         {
             return .rejected(reason: reason, kind: kind)
         }
@@ -493,19 +501,23 @@ public struct MeaningPreservationGuard: Sendable {
         }
         // A word put back where a pass took it without the grant to is the speaker's, not the model's.
         return inventionVerdict(
-            alignment, echo: echoTokens + restored, allowing: doubtful)
+            alignment, echo: echoTokens + restored, allowing: doubtful,
+            allowingRomanisedHindiSpellings: romanisedHindiContext)
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
     static func placeVerdict(
-        _ carried: Set<Int>, in alignment: RewriteAlignment, echo: [GrammarToken]
+        _ carried: Set<Int>, in alignment: RewriteAlignment, echo: [GrammarToken],
+        allowingRomanisedHindiSpellings: Bool = false
     ) -> GuardVerdict {
         for change in alignment.changes {
             let here = (alignment.rewritten[change.rewritten] + echo).filter(\.isPlain)
             let tokens = change.kept.compactMap { index in
                 carried.contains(index) ? alignment.kept[index] : nil
             }
-            if case .rejected(let reason, let kind) = survivalVerdict(tokens, in: here) {
+            if case .rejected(let reason, let kind) = survivalVerdict(
+                tokens, in: here, allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
+            {
                 return .rejected(reason: reason, kind: kind)
             }
         }
@@ -526,10 +538,14 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Refuses a content or meaning-bearing word with no origin in the same aligned run or an offered reading for it.
     static func inventionVerdict(
-        _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan]
+        _ alignment: RewriteAlignment, echo: [GrammarToken], allowing doubtful: [DoubtfulSpan],
+        allowingRomanisedHindiSpellings: Bool? = nil
     ) -> GuardVerdict {
         // A draft the checks cannot read romanises into words with no counterpart here, so the base checks keep it.
         guard alignment.kept.allSatisfy(\.isPlain) else { return .accepted }
+        let romanisedHindiContext =
+            allowingRomanisedHindiSpellings
+            ?? hasRomanisedHindiContext(alignment.kept + alignment.rewritten + echo)
         let origins = (alignment.kept + echo).filter(\.isPlain)
         let originIndex = WordOccurrenceIndex(origins)
         for index in alignment.rewritten.indices
@@ -539,7 +555,11 @@ public struct MeaningPreservationGuard: Sendable {
         {
             let token = alignment.rewritten[index]
             if originIndex.contains(token.matching) || originIndex.spells(token.text)
-                || origins.contains(where: { sameIrregularVerbForm($0.matching, token.matching) })
+                || origins.contains(where: {
+                    sameForm(
+                        $0.matching, token.matching, allowingRegularInflections: false,
+                        allowingRomanisedHindiSpellings: romanisedHindiContext)
+                })
             {
                 continue
             }
@@ -779,7 +799,9 @@ public struct MeaningPreservationGuard: Sendable {
     }
 
     /// Walks the kept content words along the rewrite, so a word may change its form but never its place.
-    static func survivalVerdict(_ kept: [GrammarToken], in written: [GrammarToken]) -> GuardVerdict {
+    static func survivalVerdict(
+        _ kept: [GrammarToken], in written: [GrammarToken], allowingRomanisedHindiSpellings: Bool = false
+    ) -> GuardVerdict {
         var reached = 0
         var index = 0
         while index < kept.count {
@@ -819,8 +841,9 @@ public struct MeaningPreservationGuard: Sendable {
                 }
             }
             let matchingPlaces = written.indices.filter {
-                token.matching == written[$0].matching
-                    || sameIrregularVerbForm(token.matching, written[$0].matching)
+                sameForm(
+                    token.matching, written[$0].matching, allowingRegularInflections: false,
+                    allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
             }
             guard !matchingPlaces.isEmpty else {
                 return .rejected(reason: "the rewrite lost or replaced '\(token.text)'", kind: .lostWord)
@@ -968,8 +991,15 @@ public struct MeaningPreservationGuard: Sendable {
     }
 
     /// Whether a rewritten word preserves the kept word as a listed form, numeral, homophone, identifier spelling, or contracted auxiliary.
-    static func survives(_ word: String, as candidate: GrammarToken) -> Bool {
-        if word == candidate.matching || sameIrregularVerbForm(word, candidate.matching) { return true }
+    static func survives(
+        _ word: String, as candidate: GrammarToken, allowingRomanisedHindiSpellings: Bool = false
+    ) -> Bool {
+        if sameForm(
+            word, candidate.matching, allowingRegularInflections: false,
+            allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
+        {
+            return true
+        }
         if equivalentClockTime(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
@@ -1008,11 +1038,44 @@ public struct MeaningPreservationGuard: Sendable {
         "can", "could", "may", "might", "must",
     ]
 
-    /// Whether two words are the same form, a regular inflection, or a reviewed irregular verb form.
-    static func sameForm(_ word: String, _ other: String) -> Bool {
-        word == other || inflections(of: word).contains(other) || inflections(of: other).contains(word)
-            || sameIrregularVerbForm(word, other)
+    /// Whether two words have the same spelling, a reviewed Hindi respelling, or a listed verb form.
+    static func sameForm(
+        _ word: String, _ other: String, allowingRegularInflections: Bool = true,
+        allowingRomanisedHindiSpellings: Bool = false
+    ) -> Bool {
+        if word == other || sameIrregularVerbForm(word, other)
+            || (allowingRomanisedHindiSpellings && sameRomanisedHindiSpelling(word, other))
+        {
+            return true
+        }
+        guard allowingRegularInflections else { return false }
+        return inflections(of: word).contains(other) || inflections(of: other).contains(word)
     }
+
+    /// Whether two spellings are a measured spelling variant of one romanised Hindi word.
+    private static func sameRomanisedHindiSpelling(_ word: String, _ other: String) -> Bool {
+        guard let first = romanisedHindiSpellingKeys[word], let second = romanisedHindiSpellingKeys[other]
+        else { return false }
+        return first == second
+    }
+
+    /// Detects romanised Hindi from a negation or a known verb form outside the ambiguous spelling pairs.
+    private static func hasRomanisedHindiContext(_ tokens: [GrammarToken]) -> Bool {
+        tokens.contains { token in
+            let word = token.matching
+            return negatingWords.contains(word) || hindiVerbStems.contains(word)
+                || hindiVerbStems.contains { hindiForms(of: $0).contains(word) }
+        }
+    }
+
+    /// Common romanised Hindi spellings grouped by the word they represent.
+    private static let romanisedHindiSpellingKeys: [String: String] = [
+        "hai": "hai", "he": "hai",
+        "nahi": "nahi", "nahin": "nahi",
+        "kar": "kar", "kr": "kar",
+        "mein": "mein", "me": "mein",
+        "yeh": "ye", "ye": "ye",
+    ]
 
     /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
     static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
@@ -1042,7 +1105,7 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Whether two romanised Hindi words are one word in two forms: by `sameForm`, a verb and its stem ("aata" and "aa"), or two cases of one pronoun ("yah" and "is").
     static func sameRomanisedForm(_ word: String, _ other: String) -> Bool {
-        if sameForm(word, other) { return true }
+        if sameForm(word, other, allowingRomanisedHindiSpellings: true) { return true }
         let (first, second) = (Romaniser.soundKey(word), Romaniser.soundKey(other))
         if hindiIrregularVerbForms[first] == second || hindiIrregularVerbForms[second] == first {
             return true
