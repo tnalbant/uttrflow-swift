@@ -85,6 +85,7 @@ struct OnboardingProviderMark: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: size, height: size)
+                .accessibilityHidden(true)
         } else if provider == .apple {
             Image(systemName: "apple.logo").font(.system(size: size * 0.9))
         } else {
