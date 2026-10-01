@@ -345,9 +345,7 @@ struct SuggestionPresentationTests {
     func faintGhostIsNotUnderlined() {
         #expect(!SuggestionPresentation(.certain("Sydney")).underlinesGhost)
         #expect(
-            !SuggestionPresentation(
-                .certain("Sydney"), appearance: SuggestionAppearance(reducesMotion: true)
-            ).underlinesGhost)
+            !SuggestionPresentation(.certain("Sydney")).underlinesGhost)
     }
 
     @Test("With no display setting, the ghost is drawn at its faint grey opacity.")
@@ -380,18 +378,10 @@ struct SuggestionPresentationTests {
         }
     }
 
-    @Test("Reduce Motion does not change what is drawn")
-    func reduceMotionLeavesTheStyleAlone() {
-        let still = SuggestionPresentation(
-            .certain("Sydney"), appearance: SuggestionAppearance(reducesMotion: true))
-        #expect(still.style == .ghost)
-    }
-
     @Test("A Mac with nothing turned on reports the standard appearance")
     func standardAppearanceIsNothingTurnedOn() {
         #expect(!SuggestionAppearance.standard.increasesContrast)
         #expect(!SuggestionAppearance.standard.reducesTransparency)
-        #expect(!SuggestionAppearance.standard.reducesMotion)
         #expect(!SuggestionAppearance.standard.demandsOpaqueGhost)
         #expect(highContrast.demandsOpaqueGhost)
         #expect(opaque.demandsOpaqueGhost)

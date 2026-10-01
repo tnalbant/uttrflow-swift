@@ -6,23 +6,18 @@ public enum SuggestionWritingDirection: Sendable, Equatable {
     case rightToLeft
 }
 
-/// What the user's accessibility settings ask the suggestion surface to do differently.
+/// The display settings that change how the suggestion surface is drawn.
 public struct SuggestionAppearance: Sendable, Equatable {
     /// Increase Contrast, under which grey text on the user's own line fails to read.
     public let increasesContrast: Bool
     /// Reduce Transparency, which asks for a solid surface rather than a floating one.
     public let reducesTransparency: Bool
-    /// Reduce Motion, under which nothing on the surface moves.
-    public let reducesMotion: Bool
-
     public init(
         increasesContrast: Bool = false,
-        reducesTransparency: Bool = false,
-        reducesMotion: Bool = false
+        reducesTransparency: Bool = false
     ) {
         self.increasesContrast = increasesContrast
         self.reducesTransparency = reducesTransparency
-        self.reducesMotion = reducesMotion
     }
 
     /// Nothing turned on, which is what most Macs report.

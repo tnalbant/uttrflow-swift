@@ -306,13 +306,12 @@ final class SuggestionPanelController {
             ])
     }
 
-    /// What Increase Contrast, Reduce Transparency and Reduce Motion are set to right now.
+    /// What Increase Contrast and Reduce Transparency are set to right now.
     private static func appearance() -> SuggestionAppearance {
         let workspace = NSWorkspace.shared
         return SuggestionAppearance(
             increasesContrast: workspace.accessibilityDisplayShouldIncreaseContrast,
-            reducesTransparency: workspace.accessibilityDisplayShouldReduceTransparency,
-            reducesMotion: workspace.accessibilityDisplayShouldReduceMotion)
+            reducesTransparency: workspace.accessibilityDisplayShouldReduceTransparency)
     }
 
     /// Redraws when the user changes a display setting while the surface is on screen.
