@@ -32,6 +32,7 @@ public struct PanelSheetPresentation: Sendable, Equatable {
         case renamingCategory
         case deletingCategory
         case formatting
+        case reindenting
     }
 
     /// Which sheet this is.
@@ -43,7 +44,7 @@ public struct PanelSheetPresentation: Sendable, Equatable {
     public var takesTyping: Bool {
         switch kind {
         case .aliasing, .moving, .renamingCategory: true
-        case .confirmingDelete, .deletingCategory, .formatting: false
+        case .confirmingDelete, .deletingCategory, .formatting, .reindenting: false
         }
     }
     /// What the field holds, exactly as typed, never the corrected form.
@@ -167,6 +168,12 @@ extension PanelPresenter {
             let original = snapshot.clip(id)?.text ?? ""
             return snapshot.formattingSheets.sheet(from: original, to: formatted)
 
+        case .reindenting(let id, let formatted):
+            let original = snapshot.clip(id)?.text ?? ""
+            return snapshot.formattingSheets.sheet(
+                from: original, to: formatted, title: "Re-indent this code?",
+                confirmTitle: "Apply re-indent", kind: .reindenting)
+
         case .confirmingDelete:
             return PanelSheetPresentation(
                 kind: .confirmingDelete,
@@ -182,7 +189,11 @@ extension PanelPresenter {
     }
 
     /// The formatting sheet for a diff computed once, or for a pair too large to compare line by line.
-    static func formattingSheet(_ comparison: TextDiff.Comparison, changes: Bool) -> PanelSheetPresentation {
+    static func formattingSheet(
+        _ comparison: TextDiff.Comparison, changes: Bool,
+        title: String = "Format this code?", confirmTitle: String = "Keep it",
+        kind: PanelSheetPresentation.Kind = .formatting
+    ) -> PanelSheetPresentation {
         let note: String
         let diff: [TextDiff.Line]
         let isConfirmEnabled: Bool
@@ -200,14 +211,14 @@ extension PanelPresenter {
             isConfirmEnabled = changes
         }
         return PanelSheetPresentation(
-            kind: .formatting,
-            title: "Format this code?",
+            kind: kind,
+            title: title,
             draft: "",
             placeholder: "",
             note: note,
             conflict: "This change cannot be undone",
             collections: [],
-            confirmTitle: "Keep it",
+            confirmTitle: confirmTitle,
             isConfirmEnabled: isConfirmEnabled,
             diff: diff)
     }

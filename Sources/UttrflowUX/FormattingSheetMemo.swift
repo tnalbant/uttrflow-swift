@@ -8,6 +8,8 @@ final class FormattingSheetMemo: Sendable, Equatable {
     private struct Drawn {
         let original: String
         let formatted: String
+        let title: String
+        let confirmTitle: String
         let sheet: PanelSheetPresentation
     }
 
@@ -16,20 +18,33 @@ final class FormattingSheetMemo: Sendable, Equatable {
     init() {}
 
     /// Returns the sheet for this pair, comparing the texts only when this pair has not been drawn before.
-    func sheet(from original: String, to formatted: String) -> PanelSheetPresentation {
-        if let last = drawn.withLock({ $0 }), last.original == original, last.formatted == formatted {
+    func sheet(
+        from original: String, to formatted: String,
+        title: String = "Format this code?", confirmTitle: String = "Keep it",
+        kind: PanelSheetPresentation.Kind = .formatting
+    ) -> PanelSheetPresentation {
+        if let last = drawn.withLock({ $0 }), last.original == original, last.formatted == formatted,
+            last.title == title, last.confirmTitle == confirmTitle
+        {
             return last.sheet
         }
         let sheet = PanelPresenter.formattingSheet(
-            TextDiff.compare(from: original, to: formatted), changes: original != formatted)
-        drawn.withLock { $0 = Drawn(original: original, formatted: formatted, sheet: sheet) }
+            TextDiff.compare(from: original, to: formatted), changes: original != formatted,
+            title: title, confirmTitle: confirmTitle, kind: kind)
+        drawn.withLock {
+            $0 = Drawn(
+                original: original, formatted: formatted, title: title, confirmTitle: confirmTitle,
+                sheet: sheet)
+        }
         return sheet
     }
 
     /// Keeps a sheet drawn elsewhere, so presenting its pair does no comparison.
     func remember(_ prepared: PreparedFormattingSheet) {
         drawn.withLock {
-            $0 = Drawn(original: prepared.original, formatted: prepared.formatted, sheet: prepared.sheet)
+            $0 = Drawn(
+                original: prepared.original, formatted: prepared.formatted,
+                title: "Format this code?", confirmTitle: "Keep it", sheet: prepared.sheet)
         }
     }
 

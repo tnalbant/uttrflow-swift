@@ -41,12 +41,14 @@ public enum PanelSheet: Sendable, Equatable {
     case deletingCategory(String, keepingClips: Bool)
     /// A formatter's result awaiting agreement, carried here because a second run could differ.
     case formatting(Clip.ID, formatted: String)
+    /// A re-indenter's result awaiting agreement before the original clip text is replaced.
+    case reindenting(Clip.ID, formatted: String)
 
     /// Whether this sheet has a field to type into; one that has none keeps the list behind it still (#946).
     public var takesTyping: Bool {
         switch self {
         case .aliasing, .moving, .renamingCategory: true
-        case .confirmingDelete, .deletingCategory, .formatting: false
+        case .confirmingDelete, .deletingCategory, .formatting, .reindenting: false
         }
     }
 
@@ -54,7 +56,7 @@ public enum PanelSheet: Sendable, Equatable {
     public var clip: Clip.ID? {
         switch self {
         case .aliasing(let id, _), .moving(let id, _), .confirmingDelete(let id),
-            .formatting(let id, _):
+            .formatting(let id, _), .reindenting(let id, _):
             id
         case .renamingCategory, .deletingCategory: nil
         }
@@ -64,7 +66,7 @@ public enum PanelSheet: Sendable, Equatable {
     public var category: String? {
         switch self {
         case .renamingCategory(let name, _), .deletingCategory(let name, _): name
-        case .aliasing, .moving, .confirmingDelete, .formatting: nil
+        case .aliasing, .moving, .confirmingDelete, .formatting, .reindenting: nil
         }
     }
 
@@ -73,7 +75,7 @@ public enum PanelSheet: Sendable, Equatable {
         switch self {
         case .aliasing(_, let draft), .moving(_, let draft), .renamingCategory(_, let draft):
             draft
-        case .confirmingDelete, .deletingCategory, .formatting: ""
+        case .confirmingDelete, .deletingCategory, .formatting, .reindenting: ""
         }
     }
 }
@@ -124,6 +126,10 @@ extension PanelSnapshot {
             return PanelResponse(
                 state: closingSheet(), outcome: .change(.rewriteText(id, formatted)))
 
+        case .reindenting(let id, let formatted):
+            return PanelResponse(
+                state: closingSheet(), outcome: .change(.rewriteText(id, formatted)))
+
         case .renamingCategory(let name, let draft):
             let renamed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !renamed.isEmpty, renamed != name else { return stayingOpen }
@@ -155,7 +161,7 @@ extension PanelSnapshot {
         case .aliasing(let id, _): next.sheet = .aliasing(id, draft: text)
         case .moving(let id, _): next.sheet = .moving(id, draft: text)
         case .renamingCategory(let name, _): next.sheet = .renamingCategory(name, draft: text)
-        case .confirmingDelete, .deletingCategory, .formatting, .none: return self
+        case .confirmingDelete, .deletingCategory, .formatting, .reindenting, .none: return self
         }
         return next
     }
@@ -165,7 +171,7 @@ extension PanelSnapshot {
         guard let clip = clip(id), let tidied = CodeReindent.reindented(clip.text) else {
             return stayingOpen
         }
-        return PanelResponse(state: self, outcome: .change(.rewriteText(id, tidied)))
+        return opening(.reindenting(id, formatted: tidied))
     }
 
     /// Gives a plain clip a rich form; refuses one that has it, so a written note is never overwritten.

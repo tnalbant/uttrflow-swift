@@ -252,6 +252,7 @@ struct PanelSheetWithoutFieldTests {
         .confirmingDelete(PanelDeleteTests.pinned.id),
         .deletingCategory("Work", keepingClips: true),
         .formatting(PanelDeleteTests.ordinary.id, formatted: "x"),
+        .reindenting(PanelDeleteTests.ordinary.id, formatted: "x"),
     ]
 
     @Test("letters and arrows change neither the query nor the selection", arguments: sheets)

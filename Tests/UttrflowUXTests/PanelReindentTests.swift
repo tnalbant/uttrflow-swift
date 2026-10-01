@@ -54,14 +54,15 @@ struct PanelReindentTests {
         #expect(!Self.actions(literal).contains("Re-indent"), "so the row does not offer it")
     }
 
-    @Test("choosing it asks the store for the tidied text and nothing else")
-    func itChangesOnlyTheText() {
+    @Test("choosing it opens a diff confirmation without rewriting the clip")
+    func itPreviewsOnlyTheText() {
         let response = PanelFixture.panel([Self.messy]).applying(.reindent(Self.messy.id))
 
-        guard case .change(.rewriteText(let id, let tidied)) = response.outcome else {
-            Issue.record("did not ask for a re-indent")
+        guard case .reindenting(let id, let tidied) = response.state.sheet else {
+            Issue.record("did not open the re-indent confirmation")
             return
         }
+        #expect(response.outcome == .open)
         #expect(id == Self.messy.id)
         // The guarantee the re-indenter makes, checked again at the seam where it is used.
         let before = Self.messy.text.split(separator: "\n", omittingEmptySubsequences: false)
@@ -71,6 +72,25 @@ struct PanelReindentTests {
             before.map { $0.drop { $0 == " " || $0 == "\t" } }
                 == after.map { $0.drop { $0 == " " || $0 == "\t" } },
             "every line's content is untouched")
+        let preview = PanelPresenter.present(response.state).sheet
+        #expect(preview?.kind == .reindenting)
+        #expect(preview?.title == "Re-indent this code?")
+        #expect(preview?.confirmTitle == "Apply re-indent")
+        #expect(preview?.diff.contains { $0.kind == .added } == true)
+        #expect(preview?.diff.contains { $0.kind == .removed } == true)
+        #expect(preview?.conflict == "This change cannot be undone")
+    }
+
+    @Test("only Return applies the exact previewed text and Escape discards it")
+    func confirmsOrDiscardsPreview() {
+        let preview = PanelFixture.panel([Self.messy]).applying(.reindent(Self.messy.id)).state
+        guard case .reindenting(let id, let shown) = preview.sheet else {
+            Issue.record("did not open the re-indent confirmation")
+            return
+        }
+        #expect(preview.applying(.return).outcome == .change(.rewriteText(id, shown)))
+        #expect(preview.applying(.escape).outcome == .open)
+        #expect(preview.applying(.escape).state.sheet == nil)
     }
 
     /// A clip can change between the row being drawn and the button being pressed.
