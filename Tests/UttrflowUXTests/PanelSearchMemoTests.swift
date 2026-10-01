@@ -22,6 +22,9 @@ struct PanelSearchMemoTests {
         PanelFixture.clip("KAR with no nukta", minutesAgo: 11, alias: "\u{0915}\u{0930}"),
         PanelFixture.clip("https://example.com/invoice", kind: .link, minutesAgo: 12),
         PanelFixture.clip("let invoice = 1", kind: .code, minutesAgo: 13),
+        PanelFixture.clip("\u{FB01}le", minutesAgo: 14),
+        PanelFixture.clip("\u{FB00}", minutesAgo: 15),
+        PanelFixture.clip("\u{0149}", minutesAgo: 16),
     ]
 
     /// The rows a panel with no memory of an earlier query lists, which is what the fix has to match.
@@ -38,6 +41,22 @@ struct PanelSearchMemoTests {
         "typing a query letter by letter lists what searching for it cold lists",
         arguments: ["invoice", "inv-prod", "/invo", "Invoices", "café", "\u{0915}\u{0930}", "zqx"])
     func typing(query: String) {
+        var panel = PanelFixture.panel(Self.clips)
+
+        for length in 1...query.count {
+            let typed = String(query.prefix(length))
+            panel = panel.applying(.search(typed)).state
+
+            #expect(
+                Self.same(panel.results, Self.fromScratch(typed)),
+                "after typing \(typed)")
+        }
+    }
+
+    @Test(
+        "typing across compatibility ligatures lists what searching for the whole query cold lists",
+        arguments: ["fi", "ff", "ʼn"])
+    func compatibilityLigatures(query: String) {
         var panel = PanelFixture.panel(Self.clips)
 
         for length in 1...query.count {

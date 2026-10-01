@@ -34,6 +34,8 @@ final class PanelSearchMemo: Sendable, Equatable {
     static let depth = 32
 
     private let listed = Mutex<[Listed]>([])
+    /// Compatibility characters can make a longer query match text that the shorter query did not.
+    private let compatibilityProfile = Mutex<([Clip], Bool)?>(nil)
 
     init() {}
 
@@ -49,12 +51,28 @@ final class PanelSearchMemo: Sendable, Equatable {
             return (hit.rows, hit.omitted)
         }
         // The narrowest earlier list that still bounds this query rules in the fewest clips.
-        let bound = recent.filter { $0.view.narrows(to: view) }.min { $0.matches.count < $1.matches.count }
+        let candidates = recent.filter { $0.view.narrows(to: view) }
+        let bound =
+            candidates.isEmpty || hasCompatibilityText(in: view.clips)
+            ? nil
+            : candidates.min { $0.matches.count < $1.matches.count }
         let ruledIn = bound.map { Set($0.matches.map(\.result.id)) }
         let matches = scan(ruledIn)
         let (rows, omitted) = rank(matches)
         remember(Listed(view: view, matches: matches, rows: rows, omitted: omitted))
         return (rows, omitted)
+    }
+
+    /// Whether any searchable haystack text has a compatibility decomposition, cached for this clip list.
+    private func hasCompatibilityText(in clips: [Clip]) -> Bool {
+        compatibilityProfile.withLock { profile in
+            if let profile, profile.0 == clips { return profile.1 }
+            let found = clips.contains {
+                $0.text.precomposedStringWithCompatibilityMapping != $0.text
+            }
+            profile = (clips, found)
+            return found
+        }
     }
 
     /// Keeps `entry` as the most recent list, dropping lists of another clip list, which can never be reused.
