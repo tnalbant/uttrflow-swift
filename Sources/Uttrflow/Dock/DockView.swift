@@ -527,14 +527,15 @@ private struct LevelMeterView: View {
     let towardsLeading: Bool
 
     var body: some View {
+        let motion = MotionBudgetObserver.shared.budget
         TimelineView(
-            .animation(minimumInterval: MotionBudgetObserver.shared.budget.dockFrameInterval)
+            .animation(
+                minimumInterval: motion.dockFrameInterval,
+                paused: !motion.levelMeterMoves)
         ) { timeline in
             Canvas { context, size in
-                let phase = min(
-                    max(
-                        timeline.date.timeIntervalSince(model.lastArrival)
-                            / DockMetrics.meterArrivalInterval, 0), 1)
+                let phase = motion.levelMeterPhase(
+                    elapsedSinceArrival: timeline.date.timeIntervalSince(model.lastArrival))
                 DockMetrics.drawBars(
                     model.bars.levels, in: context, size: size,
                     phase: phase, towardsLeading: towardsLeading)

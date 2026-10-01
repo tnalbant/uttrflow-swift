@@ -44,6 +44,17 @@ struct MotionBudgetTests {
         #expect(!MotionBudget(reducesMotion: true).workingBarsMove)
     }
 
+    @Test("holds each level-meter arrival still under Reduce Motion")
+    func levelMeterPhase() {
+        let interval = DockMetrics.meterArrivalInterval
+
+        #expect(MotionBudget().levelMeterMoves)
+        #expect(MotionBudget().levelMeterPhase(elapsedSinceArrival: interval / 2) == 0.5)
+        #expect(MotionBudget().levelMeterPhase(elapsedSinceArrival: interval * 2) == 1)
+        #expect(!MotionBudget(reducesMotion: true).levelMeterMoves)
+        #expect(MotionBudget(reducesMotion: true).levelMeterPhase(elapsedSinceArrival: 0) == 1)
+    }
+
     @Test("allows onboarding page changes unless Reduce Motion is on")
     func onboardingMoves() {
         #expect(MotionBudget().onboardingMoves)

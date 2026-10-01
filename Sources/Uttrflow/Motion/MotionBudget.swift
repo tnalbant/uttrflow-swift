@@ -36,6 +36,17 @@ struct MotionBudget: Equatable {
         !reducesMotion
     }
 
+    /// Whether the recording meter's bars may slide in from the edge.
+    var levelMeterMoves: Bool {
+        !reducesMotion
+    }
+
+    /// The meter holds each arrival in place under Reduce Motion.
+    func levelMeterPhase(elapsedSinceArrival elapsed: TimeInterval) -> Double {
+        guard levelMeterMoves else { return 1 }
+        return min(max(elapsed / DockMetrics.meterArrivalInterval, 0), 1)
+    }
+
     /// Whether onboarding page changes may move; energy conditions do not change this choice.
     var onboardingMoves: Bool {
         !reducesMotion
