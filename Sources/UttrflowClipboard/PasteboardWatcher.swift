@@ -25,6 +25,8 @@ public actor PasteboardWatcher {
 
     /// How long an announcement stays armed, so a write that never happened cannot sit waiting.
     static let announcementLifetime: Double = 2
+    /// Bounds announcements from a burst of app-owned writes between clipboard polls.
+    static let maxPendingAnnouncements = 32
 
     private nonisolated let source: any ClipboardSource
     private let interval: Duration
@@ -32,8 +34,8 @@ public actor PasteboardWatcher {
     private let budget: ClipboardBudget
     private nonisolated let now: @Sendable () -> Date
 
-    /// Uttrflow's own write, behind a `Mutex` because a write cannot `await` to announce itself.
-    private nonisolated let announced = Mutex<Announcement?>(nil)
+    /// Uttrflow's own writes, behind a `Mutex` because a write cannot `await` to announce itself.
+    private nonisolated let announced = Mutex<[Announcement]>([])
 
     /// A picture as the clipboard hands it over.
     typealias ClipboardPicture = (data: Data, width: Int, height: Int)
@@ -89,28 +91,30 @@ public actor PasteboardWatcher {
     private nonisolated func announce(_ written: Written) {
         let before = source.changeCount()
         let at = now()
-        announced.withLock { $0 = Announcement(after: before, at: at, wrote: written) }
+        announced.withLock { pending in
+            pending.removeAll { at.timeIntervalSince($0.at) > Self.announcementLifetime }
+            if pending.count == Self.maxPendingAnnouncements { pending.removeFirst() }
+            pending.append(Announcement(after: before, at: at, wrote: written))
+        }
     }
 
     /// Whether this change is the announced write, matched on what it put there. See `Docs/insertion.md`.
     private nonisolated func claims(
         _ count: Int, at date: Date, holding text: String?, picture: Data?
     ) -> Bool {
-        announced.withLock { held -> Bool in
-            guard let pending = held else { return false }
+        announced.withLock { pending in
             // A write that never happened must not sit armed over somebody's copy.
-            guard date.timeIntervalSince(pending.at) <= Self.announcementLifetime else {
-                held = nil
-                return false
-            }
-            guard count > pending.after else { return false }
-            switch pending.wrote {
-            case .text(let wrote):
-                guard text == wrote else { return false }
-            case .picture(let wrote):
-                guard text == nil, picture == wrote else { return false }
-            }
-            held = nil
+            pending.removeAll { date.timeIntervalSince($0.at) > Self.announcementLifetime }
+            guard
+                let match = pending.firstIndex(where: { announcement in
+                    guard count > announcement.after else { return false }
+                    switch announcement.wrote {
+                    case .text(let wrote): text == wrote
+                    case .picture(let wrote): text == nil && picture == wrote
+                    }
+                })
+            else { return false }
+            pending.remove(at: match)
             return true
         }
     }
@@ -189,9 +193,11 @@ public actor PasteboardWatcher {
 
     /// Whether a picture announcement is armed, asked without reading the clipboard.
     private nonisolated func awaitsPicture() -> Bool {
-        announced.withLock { held in
-            guard case .picture = held?.wrote else { return false }
-            return true
+        announced.withLock { pending in
+            pending.contains { announcement in
+                if case .picture = announcement.wrote { return true }
+                return false
+            }
         }
     }
 

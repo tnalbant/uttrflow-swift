@@ -381,6 +381,24 @@ struct PasteboardWatcherTests {
         #expect(await watcher.newClip(at: noon)?.clip == nil)
     }
 
+    @Test("keeps multiple announced writes until each reaches the clipboard")
+    func multipleAnnouncementsSurviveBeforeOnePoll() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+
+        watcher.ignoreNextWrite(of: "first app paste")
+        // A second asynchronous writer can announce before the first write lands.
+        watcher.ignoreNextWrite(of: "second app paste")
+        clipboard.write("first app paste")
+        #expect(await watcher.newClip(at: noon) == nil)
+
+        clipboard.write("second app paste")
+        #expect(await watcher.newClip(at: noon) == nil)
+
+        clipboard.write("copied by the user")
+        #expect(await watcher.newClip(at: noon)?.clip.text == "copied by the user")
+    }
+
     /// The failure this prevents: a copy in the same tick as a paste never reaching the panel.
     @Test("a copy that lands in the same tick as an Uttrflow paste is still noticed")
     func aCopyRacingThePasteSurvives() async {
