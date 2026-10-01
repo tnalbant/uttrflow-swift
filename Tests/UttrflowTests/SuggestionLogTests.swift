@@ -14,6 +14,15 @@ struct SuggestionLogTests {
     /// An invented completion of it.
     private static let offered = "zephyr quokka marmalade trombone"
 
+    @Test("names Low Power Mode and thermal pressure when model generation is paused")
+    func energyGateNamesBothConditions() {
+        let lowPower = SuggestionLog.energyGate(EnergyConditions(isLowPowerMode: true))
+        let thermal = SuggestionLog.energyGate(EnergyConditions(thermal: .serious))
+
+        #expect(lowPower == "ENERGY_GATE lowPowerMode=true thermal=nominal")
+        #expect(thermal == "ENERGY_GATE lowPowerMode=false thermal=serious")
+    }
+
     /// Whether any of the invented words reached the line.
     private static func leaks(_ line: String) -> Bool {
         (typed + " " + offered).split(separator: " ").contains { line.contains($0) }

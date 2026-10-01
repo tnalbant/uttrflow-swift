@@ -3,6 +3,11 @@ import UttrflowCore
 
 /// The predict log's lines, which carry lengths, counts and reasons and never the text itself. See `Docs/logging.md`.
 enum SuggestionLog {
+    /// Why discretionary generation is paused, without logging anything the user typed.
+    static func energyGate(_ conditions: EnergyConditions) -> String {
+        "ENERGY_GATE lowPowerMode=\(conditions.isLowPowerMode) thermal=\(conditions.thermal)"
+    }
+
     /// What the corpus held for the line.
     static func query(typed: String, corpus: Int, generatorReady: Bool) -> String {
         "QUERY typedChars=\(typed.count) corpus=\(corpus) generatorReady=\(generatorReady)"

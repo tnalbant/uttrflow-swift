@@ -838,10 +838,6 @@ final class SuggestionCoordinator {
             let candidates = await candidates(for: query)
             let ready = await generator?.isReady ?? false
             guard turns.isCurrent(number) else { return }
-            panel.statusMessage =
-                generator != nil && !ready
-                ? "Suggestions are paused while Low Power Mode or thermal pressure is active."
-                : nil
             Self.log.debug(
                 "\(SuggestionLog.query(typed: query.typed, corpus: candidates.count, generatorReady: ready), privacy: .public)"
             )
@@ -852,6 +848,11 @@ final class SuggestionCoordinator {
             guard ModelPass.shouldAsk(after: update, hasGenerator: generator != nil, isReady: ready),
                 let generator
             else {
+                if generator != nil, !ready {
+                    Self.log.notice(
+                        "\(SuggestionLog.energyGate(EnergyConditions.current()), privacy: .public)"
+                    )
+                }
                 return settle(update, in: snapshot, since: started)
             }
             // The machine says first what the next word may be: anything, one of its values, or nothing here, which no pass can improve on.
@@ -892,7 +893,6 @@ final class SuggestionCoordinator {
                 wake(.tick, afterMilliseconds: delay)
             }
         }
-        panel.statusMessage = nil
         draw(update, in: snapshot)
     }
 
@@ -1221,7 +1221,6 @@ final class SuggestionCoordinator {
         guard !isStopped, !isPointerGestureActive, !nativeMenuIsOpen,
             case .settled(let update) = step
         else { return }
-        panel.statusMessage = nil
         stopWatchingSelection()
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
@@ -1237,9 +1236,6 @@ final class SuggestionCoordinator {
             interceptor.arm([])
             panel.hide()
             return
-        }
-        if panel.statusMessage != nil {
-            panel.statusMessage = nil
         }
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
@@ -1290,7 +1286,6 @@ final class SuggestionCoordinator {
             panel.hide()
             return
         }
-        if panel.statusMessage != nil { panel.statusMessage = nil }
         interceptor.arm(update.armed)
         armedOffer = update.suggestion.accepting
         guard panel.redraw(update.suggestion, typed: session.typed, selection: session.selection) else {
