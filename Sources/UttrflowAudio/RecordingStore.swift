@@ -174,12 +174,15 @@ public actor RecordingStore: RecordingKeeper {
             }
             let frames: Int
             if let encryptedStore {
-                guard let audio = try? readAudio(at: file, encryptedStore: encryptedStore),
-                    !audio.isEmpty
-                else { continue }
+                guard let audio = try? readAudio(at: file, encryptedStore: encryptedStore) else { continue }
                 frames = audio.samples.count
             } else {
-                frames = WAVEncoder.frames(inFileOf: values?.fileSize ?? 0)
+                guard let size = values?.fileSize else { continue }
+                frames = WAVEncoder.frames(inFileOf: size)
+            }
+            guard frames > 0 else {
+                await discard(id)
+                continue
             }
             kept.append(
                 KeptRecording(

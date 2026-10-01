@@ -228,6 +228,36 @@ struct RecordingStoreTests {
         #expect(try await store.audio(of: id).samples.count == 16_000)
     }
 
+    @Test("deletes header-only and partial-frame crash files but keeps one-frame recordings")
+    func emptyCrashFilesAreDiscarded() async throws {
+        let sandbox = Sandbox()
+        try FileManager.default.createDirectory(at: sandbox.directory, withIntermediateDirectories: true)
+        let emptyID = UUID()
+        let partialID = UUID()
+        let oneFrameID = UUID()
+        try WAVEncoder.header(frames: 0, sampleRate: AudioSamples.canonicalSampleRate)
+            .write(to: sandbox.directory.appending(path: "\(emptyID.uuidString).wav"))
+        var partial = WAVEncoder.header(frames: 0, sampleRate: AudioSamples.canonicalSampleRate)
+        partial.append(0)
+        try partial.write(to: sandbox.directory.appending(path: "\(partialID.uuidString).wav"))
+        var oneFrame = WAVEncoder.header(frames: 0, sampleRate: AudioSamples.canonicalSampleRate)
+        oneFrame.append(WAVEncoder.pcm([0.25]))
+        try oneFrame.write(to: sandbox.directory.appending(path: "\(oneFrameID.uuidString).wav"))
+        let store = RecordingStore(directory: sandbox.directory)
+
+        let waiting = await store.waiting(now: now)
+
+        #expect(waiting.map(\.id) == [oneFrameID])
+        #expect(waiting.first?.duration == .seconds(1.0 / Double(AudioSamples.canonicalSampleRate)))
+        #expect(try await store.audio(of: oneFrameID).samples.count == 1)
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: sandbox.directory.appending(path: "\(emptyID.uuidString).wav").path))
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: sandbox.directory.appending(path: "\(partialID.uuidString).wav").path))
+    }
+
     @Test("keeps nothing rather than failing when the folder cannot be made")
     func unwritableFolder() async throws {
         let store = RecordingStore(directory: URL(fileURLWithPath: "/dev/null/recordings"))
