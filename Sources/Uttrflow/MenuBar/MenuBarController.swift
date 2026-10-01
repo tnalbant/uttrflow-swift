@@ -36,10 +36,12 @@ final class MenuBarController: NSObject {
     private(set) var presentation: MenuBarPresentation
     /// The right-click menu, refilled in place, so an update made while it opens lands in the menu on screen.
     private let menu = NSMenu()
-    private let panel: MenuBarPanel
+    let panel: MenuBarPanel
     private let hostingView: MenuBarHostingView
     /// Clicks and Escape anywhere else close the popover, as a menu would.
     private var monitors: [Any] = []
+    /// Switching to another app resigns the panel's key status even though it does not activate this app.
+    private var resignKeyObserver: (any NSObjectProtocol)?
 
     /// Whether the popover is on screen.
     var isPopoverShown: Bool { panel.isVisible }
@@ -260,6 +262,10 @@ final class MenuBarController: NSObject {
         statusItem.button?.highlight(false)
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors.removeAll()
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
     }
 
     /// Sizes the panel to the view and hangs it under the icon, kept on the icon's screen.
@@ -277,8 +283,13 @@ final class MenuBarController: NSObject {
             NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
     }
 
-    /// Closes on a click outside the popover or on Escape, the two ways a menu is dismissed.
+    /// Closes on a click outside, Escape, or losing key status to another app.
     private func watchForDismissal() {
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        }
         let outside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
             [weak self] _ in
             MainActor.assumeIsolated { self?.closePopover() }

@@ -49,6 +49,18 @@ struct MenuBarPanelTests {
         bar.closePopover()
     }
 
+    @Test("closes the popover when its panel resigns key status")
+    func closesWhenPanelResignsKey() {
+        let bar = MenuBarController()
+        bar.openMenu()
+        #expect(bar.isPopoverShown)
+
+        bar.panel.resignKey()
+
+        #expect(!bar.isPopoverShown)
+        #expect(!bar.isPopoverContentHosted)
+    }
+
     @Test("A development build labels the menu-bar item Dev in blue")
     func developmentBuildHasBlueDevLabel() {
         let title = MenuBarController.title(isDevelopmentBuild: true, iconMissing: false)
