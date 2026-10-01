@@ -458,12 +458,13 @@ public struct MeaningPreservationGuard: Sendable {
         let romanisedHindiContext = hasRomanisedHindiContext(keptTokens + rewrittenTokens + echoTokens)
         // A number spoken over several words answers to the one numeral the rewrite wrote for it.
         let composed = composedNumbers(keptTokens, in: Set(written.map(\.matching)))
+        let removable = removableSpeechArtifacts(in: alignment)
         let carried = keptTokens.indices.filter { index in
             let token = keptTokens[index]
             return token.isPlain
                 && (isContent(token) || FunctionWords.isMeaningBearing(token.lookup)
                     || isAcronymLetter(at: index, in: keptTokens))
-                && !composed.contains(index) && !excused.contains(index)
+                && !composed.contains(index) && !excused.contains(index) && !removable.contains(index)
         }
         if case .rejected(let reason, let kind) = wordOrderVerdict(kept: keptTokens, written: written) {
             return .rejected(reason: reason, kind: kind)
@@ -503,6 +504,37 @@ public struct MeaningPreservationGuard: Sendable {
         return inventionVerdict(
             alignment, echo: echoTokens + restored, allowing: doubtful,
             allowingRomanisedHindiSpellings: romanisedHindiContext)
+    }
+
+    /// Finds words a cleanup pass could remove or turn into punctuation in a changed run.
+    private static func removableSpeechArtifacts(in alignment: RewriteAlignment) -> Set<Int> {
+        let kept = alignment.kept
+        var removable = Set(kept.indices.filter { FillersPass.fillerWords.contains(kept[$0].matching) })
+        for mark in Set(SpokenPunctuationPass.marks.map(\.mark)) {
+            guard let character = mark.first, String(character) == mark else { continue }
+            let added =
+                alignment.rewrittenText.filter { $0 == character }.count
+                - alignment.keptText.filter { $0 == character }.count
+            guard added > 0 else { continue }
+            var remaining = added
+            let names = Set(SpokenPunctuationPass.marks.filter { $0.mark == mark }.map(\.words))
+                .sorted { $0.count > $1.count }
+            for change in alignment.changes where remaining > 0 {
+                for name in names where remaining > 0 {
+                    guard name.count <= change.kept.count else { continue }
+                    for start in change.kept where remaining > 0 {
+                        let end = start + name.count
+                        guard end <= change.kept.upperBound,
+                            zip(name, kept[start..<end]).allSatisfy({ $0 == $1.matching }),
+                            !removable.contains(where: { start..<end ~= $0 })
+                        else { continue }
+                        removable.formUnion(start..<end)
+                        remaining -= 1
+                    }
+                }
+            }
+        }
+        return removable
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
@@ -841,8 +873,8 @@ public struct MeaningPreservationGuard: Sendable {
                 }
             }
             let matchingPlaces = written.indices.filter {
-                sameForm(
-                    token.matching, written[$0].matching, allowingRegularInflections: false,
+                survives(
+                    token.matching, as: written[$0],
                     allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
             }
             guard !matchingPlaces.isEmpty else {

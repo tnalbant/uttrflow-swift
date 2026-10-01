@@ -41,7 +41,7 @@ public enum Homophones {
         ["sea", "see"], ["son", "sun"], ["stationary", "stationery"], ["steal", "steel"],
         ["tail", "tale"], ["their", "there", "they're"], ["threw", "through"], ["to", "too", "two"],
         ["toe", "tow"], ["vain", "vein"], ["wait", "weight"], ["way", "weigh"],
-        ["wear", "where"], ["weak", "week"],
+        ["wear", "where"], ["weather", "whether"], ["weak", "week"],
         ["wood", "would"], ["write", "right", "rite"],
         ["your", "you're"],
     ]

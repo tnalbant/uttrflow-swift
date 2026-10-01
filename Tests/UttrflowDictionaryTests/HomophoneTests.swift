@@ -12,7 +12,8 @@ struct HomophoneTests {
             ("no", "know"), ("one", "won"), ("by", "buy"), ("buy", "bye"), ("to", "too"),
             ("two", "too"), ("their", "there"), ("there", "they're"), ("your", "you're"),
             ("its", "it's"), ("cite", "site"), ("site", "sight"), ("cache", "cash"),
-            ("root", "route"), ("for", "four"), ("ate", "eight"), ("wear", "where"), ("hour", "our"),
+            ("root", "route"), ("for", "four"), ("ate", "eight"), ("wear", "where"),
+            ("weather", "whether"), ("hour", "our"),
         ])
     func offersATrueHomophone(heard: String, homophone: String) {
         #expect(Homophones.share(heard, homophone))

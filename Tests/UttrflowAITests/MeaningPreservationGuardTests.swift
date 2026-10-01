@@ -48,6 +48,39 @@ struct MeaningPreservationGuardTests {
         #expect(sut.verdict(draft: Draft(text: "hello, friend"), rewritten: "Hello; friend.").isAccepted)
     }
 
+    @Test(
+        "accepts a model fix for a rules-missed filler, spoken mark or closed homophone",
+        arguments: [
+            (
+                "the uh kubernetes pod keeps restarting after the deploy",
+                "The Kubernetes pod keeps restarting after the deploy."
+            ),
+            (
+                "pack the charger comma the cable comma and the adapter",
+                "Pack the charger, the cable, and the adapter."
+            ),
+            ("the er budget is approved", "The budget is approved."),
+            ("send the report full stop then call me", "Send the report. Then call me."),
+            ("i want to by a new car", "I want to buy a new car."),
+            ("the whether is nice today", "The weather is nice today."),
+        ]
+    )
+    func acceptsRepairsForWordsRulesMayMiss(kept: String, rewritten: String) {
+        #expect(MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    }
+
+    @Test("still refuses loss of a content word and a dropped negation")
+    func stillRefusesMeaningChangesWithRemovableSpeechArtifacts() {
+        #expect(
+            MeaningPreservationGuard.grammarVerdict(kept: "please call Marisol", rewritten: "Please call.")
+                == .rejected(reason: "the rewrite lost or replaced 'Marisol'", kind: .lostWord))
+        #expect(
+            MeaningPreservationGuard.grammarVerdict(
+                kept: "we do not ship the build", rewritten: "We ship the build."
+            )
+            .isAccepted == false)
+    }
+
     @Test("accepts an ordinary tidy-up")
     func acceptsOrdinaryTidying() {
         accepted(
