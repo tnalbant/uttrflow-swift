@@ -91,7 +91,8 @@ public enum Restatement {
             return start
         }
         guard !weakAnchors.contains(firstAfter) else { return nil }
-        let replacesOneWord = replacesSingleWord(before: trigger, after: restart, in: live, of: draft)
+        let replacesOneWord = replacesSingleWord(
+            before: trigger, after: restart, triggerWords: triggerWords, in: live, of: draft)
         for candidate in stride(from: trigger - 1, through: earliest, by: -1) {
             if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
@@ -154,7 +155,7 @@ public enum Restatement {
 
     /// Whether a trigger sits between two content words in one sentence, replacing the word directly before it.
     private static func replacesSingleWord(
-        before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
+        before trigger: Int, after restart: Int, triggerWords: [String], in live: [Int], of draft: Draft
     ) -> Bool {
         guard trigger > 0, restart < live.count,
             !endsSentence(trigger - 1, in: live, of: draft),
@@ -162,6 +163,11 @@ public enum Restatement {
             FunctionWords.isContent(draft.shape(at: live[restart]).key),
             !coordinates(trigger - 1, before: trigger, in: live, of: draft)
         else { return false }
+
+        // Ordinary "actually" and "no" join content words too, so their pause must corroborate the correction.
+        if triggerWords == ["actually"] || triggerWords == ["no"] {
+            return draft.shape(at: live[trigger - 1]).suffix.contains(",")
+        }
         return true
     }
 

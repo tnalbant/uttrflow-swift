@@ -192,6 +192,42 @@ public enum EvaluationCorpus {
             mustNotAdd: ["blue"]
         ),
         .init(
+            id: "actually-ordinary-adverb-weather", category: .everyday,
+            spoken: "the weather actually improved overnight",
+            expected: "The weather actually improved overnight.",
+            mustKeep: ["weather", "improved"]
+        ),
+        .init(
+            id: "actually-ordinary-adverb-sales", category: .everyday,
+            spoken: "sales actually grew last quarter",
+            expected: "Sales actually grew last quarter.",
+            mustKeep: ["Sales", "grew"]
+        ),
+        .init(
+            id: "actually-ordinary-adverb-server", category: .everyday,
+            spoken: "the server actually crashed again",
+            expected: "The server actually crashed again.",
+            mustKeep: ["server", "crashed"]
+        ),
+        .init(
+            id: "actually-ordinary-adverb-team", category: .everyday,
+            spoken: "the team actually shipped the release",
+            expected: "The team actually shipped the release.",
+            mustKeep: ["team", "shipped"]
+        ),
+        .init(
+            id: "no-ordinary-determiner-reason", category: .everyday,
+            spoken: "she gave no reason",
+            expected: "She gave no reason.",
+            mustKeep: ["gave", "reason"]
+        ),
+        .init(
+            id: "no-ordinary-determiner-thanks", category: .everyday,
+            spoken: "he said no thanks to the offer",
+            expected: "He said no thanks to the offer.",
+            mustKeep: ["said", "thanks"]
+        ),
+        .init(
             id: "filler-heavy", category: .everyday,
             spoken: "um so uh basically the the thing is we need more time",
             expected: "So basically the thing is, we need more time."
