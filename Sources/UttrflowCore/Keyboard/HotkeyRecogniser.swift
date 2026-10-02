@@ -51,6 +51,9 @@ public struct HotkeyRecogniser: Sendable, Equatable {
 
     /// Fn held, read only from a flags change: an arrow key carries the same flag without being Fn.
     private mutating func receiveFunctionHold(_ stroke: KeyStroke) -> HotkeyEvent? {
+        defer {
+            if !stroke.isFunctionDown { functionHoldIsSpoiled = false }
+        }
         guard stroke.phase == .modifiersChanged else {
             if stroke.phase == .down, stroke.isFunctionDown { functionHoldIsSpoiled = true }
             return functionHoldIsSpoiled && edge.stopped() != nil ? .cancelled : nil
@@ -59,9 +62,8 @@ public struct HotkeyRecogniser: Sendable, Equatable {
         if functionHoldIsSpoiled {
             event = edge.stopped() == nil ? nil : .cancelled
         } else {
-            event = settle(false)
+            event = settle(stroke.isFunctionDown)
         }
-        if !stroke.isFunctionDown { functionHoldIsSpoiled = false }
         return event
     }
 

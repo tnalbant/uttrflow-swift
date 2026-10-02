@@ -35,6 +35,15 @@ struct HotkeyRecogniserTests {
         #expect(r.receive(held([])) == .released)
     }
 
+    @Test("Fn press and release follow the flags changed state")
+    func functionHoldTracksFnState() {
+        var r = HotkeyRecogniser(binding: .functionHold)
+        #expect(r.receive(held([], fn: true)) == .pressed)
+        #expect(r.isDown)
+        #expect(r.receive(held([])) == .released)
+        #expect(!r.isDown)
+    }
+
     @Test("one modifier held on its own")
     func singleModifierHold() {
         var r = HotkeyRecogniser(binding: HotkeyBinding(keyCode: 55, modifiers: []))
@@ -133,6 +142,17 @@ struct HotkeyRecogniserTests {
         #expect(!r.isDown)
         #expect(r.receive(held([], fn: true)) == nil)
         #expect(r.receive(held([])) == nil)
+    }
+
+    @Test("a spoiled Fn hold stays withdrawn until Fn is released, then rearms")
+    func spoiledFunctionHoldRearmsAfterFnRelease() {
+        var r = HotkeyRecogniser(binding: .functionHold)
+        #expect(r.receive(held([], fn: true)) == .pressed)
+        #expect(r.receive(key(51, .down, fn: true)) == .cancelled)
+        #expect(r.receive(held([], fn: true)) == nil)
+        #expect(r.receive(held([])) == nil)
+        #expect(r.receive(held([], fn: true)) == .pressed)
+        #expect(r.receive(held([])) == .released)
     }
 
     @Test("Fn arrow events without a reported Fn hold still do not start a hold")
