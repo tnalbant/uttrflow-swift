@@ -110,4 +110,26 @@ struct QuestionShapeTests {
     func dependentClauses(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
     }
+
+    @Test("reads Hindi question words in a subject-first clause")
+    func subjectFirstHindiQuestions() {
+        for text in [
+            "tum kab aaoge", "tum kab milenge", "tum kyun aaye", "aaj kaun aayega",
+            "tumhara naam kya hai", "yeh kya hai", "tum kya karoge", "tum kya chahte ho",
+            "tum kaisa feel kar rahe ho", "tumne khana khaya kya", "chalega kya", "tum kaisi ho",
+        ] {
+            #expect(QuestionShape.asks(shapes(text)), "Expected a question: \(text)")
+        }
+    }
+
+    @Test("leaves Hindi embedded questions as statements")
+    func embeddedHindiQuestions() {
+        for text in [
+            "mujhe nahi pata ye kya hai", "mujhe pata nahi tum kab aaoge",
+            "mujhe nahi pata ki tum kab aaoge", "maine kaha tum kab aaoge", "I don't know ye kya hai",
+            "kya baat hai", "woh kya hai na yaani mujhe time chahiye",
+        ] {
+            #expect(!QuestionShape.asks(shapes(text)), "Expected a statement: \(text)")
+        }
+    }
 }

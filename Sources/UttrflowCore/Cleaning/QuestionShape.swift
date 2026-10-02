@@ -145,16 +145,33 @@ public enum QuestionShape {
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
     }
 
-    /// Whether a Hindi question word appears in a clause with a finite predicate.
+    /// Whether an unembedded Hindi question word appears in the clause.
     private static func opensHindiQuestion(_ clause: [String]) -> Bool {
-        guard clause.count >= 2,
-            clause.contains(where: hindiQuestionWords.contains) || clause.first == "kya"
-        else { return false }
+        guard clause.count >= 2 else { return false }
         if clause.first == "kya" {
-            return hindiSubjects.contains(clause.dropFirst().first ?? "")
-                || clause.contains(where: hindiFiniteVerbs.contains)
+            let second = clause.dropFirst().first ?? ""
+            return hindiSubjects.contains(second) || hindiFiniteVerbs.contains(second)
         }
-        return clause.contains(where: hindiFiniteVerbs.contains)
+        if let questionIndex = clause.firstIndex(where: hindiQuestionWords.contains) {
+            return !hasHindiEmbeddingWord(before: Array(clause[..<questionIndex]))
+        }
+        guard let kya = clause.lastIndex(of: "kya"), kya > 0,
+            !hasHindiEmbeddingWord(before: Array(clause[..<kya]))
+        else { return false }
+        if kya == clause.count - 1 { return true }
+        if hindiSubjects.contains(clause[kya - 1]) {
+            let tail = clause.dropFirst(kya + 1)
+            if let first = tail.first, hindiCopulas.contains(first) { return tail.count == 1 }
+            return !tail.isEmpty
+        }
+        return kya == clause.count - 2 && hindiCopulas.contains(clause[kya + 1])
+    }
+
+    /// Whether a clause prefix introduces the following Hindi question word as embedded content.
+    private static func hasHindiEmbeddingWord(before words: [String]) -> Bool {
+        words.contains {
+            hindiEmbeddingWords.contains($0) || subordinateWords.contains($0) || reportedVerbs.contains($0)
+        }
     }
 
     /// Whether a new subject starts later in the clause, as in "are you around yet I should be there", where the mark's place is unknown.
@@ -305,13 +322,13 @@ public enum QuestionShape {
         "some",
     ]
 
-    /// Romanised Hindi question words that ask from the start of a sentence.
+    /// Romanised Hindi question words that ask from anywhere in the main clause.
     static let hindiQuestionWords: Set<String> = [
-        "kaun", "kaunsa", "kaunsi", "kaunse", "kahan", "kab", "kaise", "kyun", "kyon", "kitna", "kitne",
-        "kitni", "kiska", "kiski", "kiske", "kisne", "kisko",
+        "kaun", "kaunsa", "kaunsi", "kaunse", "kahan", "kab", "kaise", "kaisa", "kaisi", "kyun", "kyon",
+        "kitna", "kitne", "kitni", "kiska", "kiski", "kiske", "kisne", "kisko",
     ]
 
-    /// Romanised Hindi subject pronouns, which "kya" asks about from the start of a sentence.
+    /// Romanised Hindi subject pronouns that anchor subject-first "kya" questions.
     static let hindiSubjects: Set<String> = [
         "tum", "aap", "tu", "wo", "woh", "ye", "yeh", "hum", "main", "mai", "unhone", "usne", "humne",
         "tumne", "aapne",
@@ -328,4 +345,10 @@ public enum QuestionShape {
         "ki", "li", "lia", "liya", "kar", "karta", "karte", "karti", "karoge", "karogi", "karega",
         "karegi", "karunga", "karungi", "karna", "chahiye", "sakte", "sakti", "sakta",
     ])
+
+    /// Romanised Hindi words that introduce embedded question content.
+    private static let hindiEmbeddingWords: Set<String> = ["ki", "pata", "kaha", "bola", "pucha", "poocha"]
+
+    /// Copulas that can follow a subject or noun before an interrogative "kya".
+    private static let hindiCopulas: Set<String> = ["hai", "hain", "ho", "hoga"]
 }
