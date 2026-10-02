@@ -299,6 +299,17 @@ struct SecretDetectionTests {
         }
     }
 
+    @Test("masks generated session cookies at every position in a Cookie header")
+    func sessionCookiesBeyondTheFirstTwoPairs() {
+        let session = "Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf"
+        for prefix in ["", "a=1; ", "a=1; b=2; ", "a=1; b=2; c=3; d=4; "] {
+            #expect(
+                ClipKindDetector.kind(of: "Host: example.com\nCookie: \(prefix)session=\(session)") == .secret
+            )
+        }
+        #expect(ClipKindDetector.kind(of: "Cookie: theme=dark; layout=compact") != .secret)
+    }
+
     @Test("does not treat cookie prose or an auth type declaration as a credential")
     func structuredCredentialFalsePositives() {
         #expect(ClipKindDetector.kind(of: "A sentence about cookies is ordinary prose.") != .secret)

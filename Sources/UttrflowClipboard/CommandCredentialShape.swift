@@ -9,11 +9,15 @@ enum CommandCredentialShape {
         var words: [String] = []
         var word = ""
         var hasWord = false
+        var hasCookieHeader = false
         var quote: Character?
         var escaped = false
         /// Ends the word being read, and with a separator or a line end, the command it belongs to.
         func endWord() {
-            if hasWord { words.append(word) }
+            if hasWord {
+                words.append(word)
+                if isCookieHeaderToken(word) { hasCookieHeader = true }
+            }
             word = ""
             hasWord = false
         }
@@ -29,6 +33,7 @@ enum CommandCredentialShape {
                 endWord()
                 if handsOverCredential(words, read: &read) { return true }
                 words.removeAll(keepingCapacity: true)
+                hasCookieHeader = false
                 continue
             }
             if let open = quote {
@@ -40,10 +45,14 @@ enum CommandCredentialShape {
                 quote = character
                 hasWord = true
             case "\\": escaped = true
+            case ";" where hasCookieHeader || isCookieHeaderToken(word):
+                word.append(character)
+                hasWord = true
             case "|", ";", "&":
                 endWord()
                 if handsOverCredential(words, read: &read) { return true }
                 words.removeAll(keepingCapacity: true)
+                hasCookieHeader = false
             default:
                 if character.isWhitespace {
                     endWord()
@@ -55,6 +64,13 @@ enum CommandCredentialShape {
         }
         endWord()
         return handsOverCredential(words, read: &read)
+    }
+
+    /// Whether the current command is reading a Cookie or Set-Cookie header value.
+    private static func isCookieHeaderToken(_ word: String) -> Bool {
+        guard let colon = word.firstIndex(of: ":") else { return false }
+        let name = word[..<colon].trimmingSuffix(while: \.isWhitespace).lowercased()
+        return name == "cookie" || name == "set-cookie"
     }
 
     // MARK: - One command
@@ -253,9 +269,7 @@ enum CommandCredentialShape {
         let header = String(lowered.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
         if header == "cookie" || header == "set-cookie" {
             let rest = word[word.index(after: colon)...]
-            let value =
-                rest.contains(where: { !$0.isWhitespace })
-                ? String(rest) : following.prefix(2).joined(separator: " ")
+            let value = ([String(rest)] + following).joined(separator: " ")
             return hasGeneratedCookieCredential(value)
         }
         guard header.hasSuffix("authorization") || header.contains("-") && namesSecret(header) else {
