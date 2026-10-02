@@ -9,8 +9,9 @@ protocol RealKeyStateReading: Sendable {
 /// Asks the window server directly, the same way `CarbonHotkeyMonitor`'s poll does.
 struct SystemKeyState: RealKeyStateReading {
     func isDown(_ binding: HotkeyBinding) -> Bool {
-        let (modifiers, isFunctionDown) = SystemKeyboard.modifiers(
-            from: CGEventSource.flagsState(.combinedSessionState))
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        let modifiers = Set(HotkeyModifier.held(in: flags))
+        let isFunctionDown = flags.contains(.maskSecondaryFn)
         if binding.isFunctionHold { return isFunctionDown }
         if binding.heldModifier != nil, binding.modifiers.isEmpty {
             guard let named = HotkeyBinding.modifier(ofKeyCode: binding.keyCode) else { return false }

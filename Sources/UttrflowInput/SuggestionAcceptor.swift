@@ -83,7 +83,9 @@ public struct SuggestionAcceptor: Sendable {
         guard let drawn = suggestion.edit(after: typed) else { return (.nothing, nil) }
         guard let focus else { return (.write(drawn), nil) }
         let reach = max(typed.count + drawn.inserted.count, 1)
-        let reading = await AccessibilityThread.run(orElse: (nil, FieldTail.unreadable)) {
+        let reading: (windowNumber: UInt32?, tail: FieldTail) = await AccessibilityThread.run(
+            orElse: (windowNumber: nil, tail: FieldTail.unreadable)
+        ) {
             focus.acceptanceWindowNumberAndTail(upTo: reach)
         }
         if let expectedWindowNumber {

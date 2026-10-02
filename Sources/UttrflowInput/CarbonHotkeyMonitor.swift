@@ -86,7 +86,7 @@ public final class CarbonHotkeyMonitor: HotkeyMonitoring {
     /// Main-actor isolated: Carbon delivers on the run loop of the registering thread.
     @MainActor
     private func register(_ hotkey: CarbonHotkey) throws(HotkeyError) {
-        try hotkeyLifecycle.withLock { pending in
+        try hotkeyLifecycle.withLock { pending throws(HotkeyError) -> Void in
             // A second start rebinds rather than leaking the first registration.
             if let live = release() { _ = UnregisterEventHotKey(live.hotKey) }
             unregisterDeferred(&pending)

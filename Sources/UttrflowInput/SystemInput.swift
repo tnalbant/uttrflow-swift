@@ -7,6 +7,12 @@ public import UttrflowPredict
 private import Carbon
 private import Synchronization
 
+/// Calls the Accessibility framework's exported window-number SPI.
+@_silgen_name("_AXUIElementGetWindow")
+private func axUIElementGetWindow(
+    _ element: AXUIElement, _ window: UnsafeMutablePointer<CGWindowID>
+) -> AXError
+
 /// The real clipboard, untestable by construction and so excluded from the coverage gate.
 public struct SystemPasteboard: Pasteboard {
     /// Told what this app is about to write, so the watcher can tell it from a copy. See `Docs/insertion.md`.
@@ -376,7 +382,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// Reads a bounded window where possible, refusing an ambiguous multi-range selection.
     private func textBeforeCaret(_ count: Int, of element: AXUIElement) -> (String, Int)? {
-        guard count > 0, !isSecure(element), let range = selectionRange(of: element) else { return nil }
+        guard count > 0, !isSecureField(element), let range = selectionRange(of: element) else { return nil }
         var rangeUnavailable = false
         if let window = CaretWindow.before(
             range.location, characters: count,
@@ -425,7 +431,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     /// The window containing this focused field, or nothing when the system cannot identify it.
     private static func windowNumber(of element: AXUIElement) -> UInt32? {
         var number: CGWindowID = 0
-        guard AXUIElementGetWindow(element, &number) == .success else { return nil }
+        guard axUIElementGetWindow(element, &number) == .success else { return nil }
         return number
     }
 
