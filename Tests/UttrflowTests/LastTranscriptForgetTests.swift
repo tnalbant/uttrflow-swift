@@ -2,6 +2,7 @@
 
 import Foundation
 import UttrflowCore
+import UttrflowClipboard
 import UttrflowHistory
 import UttrflowInput
 import UttrflowPipeline
@@ -38,6 +39,24 @@ struct LastTranscriptForgetTests {
 
         #expect(app.lastTranscript == nil)
         #expect(app.lastTranscriptID == nil)
+    }
+
+    @Test("a reset that clears the clipboard withdraws its panel undo offer")
+    func resetWithdrawsPanelUndo() {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+        let clip = Clip(text: "Private words", kind: .text, copiedAt: .now, source: nil)
+        app.undoOffer.offer(clip)
+        let timer = Task { try? await Task.sleep(for: .seconds(30)) }
+        app.undoTask = timer
+
+        app.forget(after: .everything)
+
+        #expect(app.undoOffer.clip == nil)
+        #expect(app.undoOffer.pendingDelete == nil)
+        #expect(app.undoOffer.claimForRestore()?.clip == nil)
+        #expect(timer.isCancelled)
+        #expect(app.undoTask == nil)
     }
 
     @Test("deleting the dictation it came from forgets the last transcript")

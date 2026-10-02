@@ -334,8 +334,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var clipboardWatchTask: Task<Void, Never>?
 
     /// F7, F9 — the clip a delete removed, held by the app because the undo outlives the panel.
-    private var undoOffer = PanelUndoOffer()
-    private var undoTask: Task<Void, Never>?
+    var undoOffer = PanelUndoOffer()
+    var undoTask: Task<Void, Never>?
     private let noticeLinger = NoticeLinger()
     /// Puts the floating button back once a panel paste's report has been read.
     private var pasteReportTask: Task<Void, Never>?
@@ -2508,6 +2508,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Forgets what a reset removed before redrawing, so the page cannot repaint the words it took.
     func forget(after reset: SettingsReset) {
+        if reset.targets.contains(.clipboard) {
+            let deletion = undoOffer.pendingDelete
+            undoOffer.withdraw()
+            undoTask?.cancel()
+            undoTask = nil
+            panel?.canUndoDelete = false
+            Task { [clipboard] in
+                if let deletion { _ = await deletion.value }
+                await clipboard.forgetHeldPictures()
+            }
+        }
         guard reset.forgetsTheLastDictation else {
             refreshMainWindow()
             return
