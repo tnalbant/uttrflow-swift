@@ -1,5 +1,6 @@
 package import Synchronization
 import UttrflowCore
+public import struct UttrflowCore.EncryptedStore
 public import UttrflowPredict
 
 public import struct Foundation.Date
