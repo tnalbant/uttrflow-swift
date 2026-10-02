@@ -42,6 +42,56 @@ struct ShippedWordsTests {
         #expect(await relaunched.allEntries().count == 1)
     }
 
+    @Test("a full reset offers shipped words again on the next launch", arguments: [false, true])
+    func fullResetRestoresSeeding(deleteFirst: Bool) async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let seeded = try await store.seedShippedWords(at: epoch)
+        if deleteFirst {
+            let entry = try #require(seeded.first)
+            try await store.remove(entry.id)
+        }
+
+        try await store.removeEverything()
+        #expect(await store.allEntries().isEmpty)
+        let record = sandbox.folder.appending(path: "dictionary.v1.seeded.json")
+        #expect(!FileManager.default.fileExists(atPath: record.path(percentEncoded: false)))
+
+        let relaunched = PersonalDictionaryStore(file: sandbox.file)
+        let restored = try await relaunched.seedShippedWords(at: epoch)
+        #expect(restored.map(\.word) == ShippedWords.entries(at: epoch).map(\.word))
+        #expect(try await relaunched.seedShippedWords(at: epoch).isEmpty)
+        #expect(sandbox.onDisk()?.map(\.word) == restored.map(\.word))
+    }
+
+    @Test("forgetting learned words keeps the deletion of a shipped word across launches")
+    func learnedResetKeepsSeedingRecord() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let seeded = try await store.seedShippedWords(at: epoch)
+        let entry = try #require(seeded.first)
+        try await store.remove(entry.id)
+        try await store.removeLearned()
+
+        let relaunched = PersonalDictionaryStore(file: sandbox.file)
+        #expect(try await relaunched.seedShippedWords(at: epoch).isEmpty)
+        #expect(await relaunched.allEntries().isEmpty)
+    }
+
+    @Test("a full reset reports a seed record it cannot remove")
+    func fullResetReportsSeedRecordFailure() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        try await store.seedShippedWords(at: epoch)
+        let record = sandbox.folder.appending(path: "dictionary.v1.seeded.json")
+        try setImmutable(record, true)
+        defer { try? setImmutable(record, false) }
+
+        await #expect(throws: DictionaryStoreError.couldNotWrite) {
+            try await store.removeEverything()
+        }
+    }
+
     /// The user's deletion is the whole point of the record beside the file.
     @Test("does not bring back a shipped word the user deleted")
     func doesNotResurrectADeletedWord() async throws {

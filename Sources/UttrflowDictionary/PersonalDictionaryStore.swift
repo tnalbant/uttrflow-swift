@@ -116,7 +116,7 @@ public actor PersonalDictionaryStore {
                 firstSeen: moment))
     }
 
-    /// Writes each word this build ships knowing, once ever; a word the user then deletes stays deleted.
+    /// Offers shipped words once until a full reset; individual deletions stay deleted.
     @discardableResult
     public func seedShippedWords(at moment: Date) throws(DictionaryStoreError) -> [DictionaryEntry] {
         try seed(ShippedWords.entries(at: moment))
@@ -190,7 +190,14 @@ public actor PersonalDictionaryStore {
     public func removeEverything() throws(DictionaryStoreError) {
         try forgetEverything()
         try persist([])
-        do { try LocalStore.removeSetAside(file) } catch { throw .couldNotWrite }
+        do {
+            if FileManager.default.fileExists(atPath: seedRecord.path(percentEncoded: false)) {
+                try FileManager.default.removeItem(at: seedRecord)
+            }
+            try LocalStore.removeSetAside(file)
+        } catch {
+            throw .couldNotWrite
+        }
     }
 
     /// Clears pending sightings, keeps refusals, and retains user-added and shipped words.

@@ -106,7 +106,9 @@ words the user already had in the dictionary and chose to remove, not terms read
 and both resets delete the record with the rest.
 
 **Everything.** `removeEverything()` is the blunt instrument and takes the user's own words too.
-`removeLearned()` is almost always the one they wanted.
+It also removes the seed record, so the next launch offers the shipped words as on a fresh install.
+If that record cannot be removed, the reset reports a write failure.
+`removeLearned()` keeps the seed record and individual deletions in force.
 
 **Everything inferred.** `removeLearned()` is the operation the rest of the design is insured by. A
 dictionary that learns is a dictionary that can learn the wrong thing — a mis-heard name accepted
