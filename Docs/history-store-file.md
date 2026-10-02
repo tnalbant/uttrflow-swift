@@ -35,18 +35,22 @@ so re-reading is cheap enough to be worth the certainty.
 
 `SnippetStore` is the same shape for the same reasons — see `Docs/ai-snippet-store.md`.
 
-## The cap: a thousand records
+## Always keeps every record; finite retention has a cap
 
-The whole file is rewritten on every dictation, so the cap is really a bound on that write:
-at a few hundred bytes a record, a thousand is a couple of hundred kilobytes — one cheap
-atomic write — where an uncapped file eventually is not. It sits well above what the default
-retention window holds, so in ordinary use the retention promise does the deleting and the
-cap never has to. Because the cap only ever removes *more*, it cannot keep anything longer
-than the user was told.
+"Always" is the default transcript retention choice and promises to keep dictations until
+the user deletes them. It skips the count cap on reads and every write, including flagging,
+undoing a correction and deleting another record. The sentinel value lives in
+`RetentionWindow.keepAlwaysDays`; settings and the history store share that value so the
+storage rule agrees with the choice.
 
-A capacity passed in is clamped to zero at the bottom, for the reason `RecentDictations`
-gives about its own: a negative capacity would trap in `prefix`, and a history that keeps
-nothing is a far better outcome than a crash.
+Finite retention keeps the newest thousand records within its window. The cap bounds the
+whole-file rewrite on every dictation when the user has chosen automatic deletion. A capacity
+passed in is clamped to zero, since a negative capacity would trap in `prefix`.
+
+An Always history can grow beyond a thousand records, so reading and rewriting that file
+cost more as it grows. A storage optimization must preserve those records rather than
+silently imposing a deletion policy. Selecting a finite period applies its window and cap
+to the existing history on the next read or write.
 
 ## Retention is applied on read as well as on write
 
@@ -69,8 +73,8 @@ could answer from two different files.
 
 Order is arrival order — a new record is prepended, never sorted in. The clock belongs to
 the caller, so a machine whose clock moved must not be able to shuffle what the user is
-shown. The retention filter runs first and the cap second, and the cap is a plain `prefix`
-only because the list is newest-first throughout.
+shown. The retention filter runs first and any finite-retention cap second. That cap is a plain
+`prefix` because the list is newest-first throughout.
 
 ## Undo answers with a dictionary entry
 

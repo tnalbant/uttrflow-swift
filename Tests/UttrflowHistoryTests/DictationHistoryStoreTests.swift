@@ -278,6 +278,86 @@ struct DictationHistoryStoreTests {
         #expect(sandbox.onDisk() == nil)
     }
 
+    @Test("Always keeps dictation 1,001 and the oldest correction after relaunch")
+    func alwaysOutgrowsDefaultCapacity() async throws {
+        let sandbox = Sandbox()
+        let oldest = changed("Uttrflow is late.", wrote: "Uttrflow", daysAgo: 100)
+        let previous =
+            (0..<(DictationHistoryStore.defaultCapacity - 1)).map {
+                spoken("Line \($0).", daysAgo: 1)
+            } + [oldest]
+        try sandbox.seed(previous)
+        let always = Retention(days: 36_500, now: epoch)
+        let newest = spoken("Newest.")
+        let store = DictationHistoryStore(file: sandbox.file)
+
+        let appended = try await store.append(newest, keeping: always)
+        #expect(appended.count == previous.count + 1)
+        #expect(appended.last == oldest)
+        #expect(sandbox.onDisk()?.count == previous.count + 1)
+        #expect(sandbox.onDisk()?.last == oldest)
+        let reopened = await DictationHistoryStore(file: sandbox.file).records(keeping: always)
+        #expect(reopened.count == previous.count + 1)
+        #expect(reopened.first == newest)
+        #expect(reopened.last == oldest)
+    }
+
+    @Test("Always reads every record above the cap without pruning the file")
+    func alwaysReadsAboveCapacity() async throws {
+        let sandbox = Sandbox()
+        let records = [spoken("Newest."), spoken("Middle."), spoken("Oldest.", daysAgo: 100)]
+        try sandbox.seed(records)
+        let store = DictationHistoryStore(file: sandbox.file, capacity: 2)
+        #expect(await store.records(keeping: Retention(days: 36_500, now: epoch)) == records)
+        #expect(sandbox.onDisk() == records)
+    }
+
+    @Test(
+        "Always preserves unrelated records when flagging, undoing, or deleting",
+        arguments: [
+            "flag", "undo", "delete",
+        ])
+    func alwaysPreservesRecordsDuringEdits(_ operation: String) async throws {
+        let sandbox = Sandbox()
+        let edited = changed("Uttrflow is late.", wrote: "Uttrflow")
+        let others = [spoken("Second."), spoken("Third."), spoken("Oldest.", daysAgo: 100)]
+        try sandbox.seed([edited] + others)
+        let always = Retention(days: 36_500, now: epoch)
+        let store = DictationHistoryStore(file: sandbox.file, capacity: 2)
+        switch operation {
+        case "flag":
+            #expect(try await store.toggleFlag(edited.id, keeping: always) == true)
+        case "undo":
+            let correction = try #require(edited.changes?.corrections.first)
+            #expect(try await store.undoCorrection(correction.id, keeping: always) == correction.entryID)
+        default:
+            _ = try await store.delete(edited.id, keeping: always)
+        }
+
+        let reopened = await DictationHistoryStore(file: sandbox.file, capacity: 2)
+            .records(keeping: always)
+        #expect(reopened.filter { $0.id != edited.id } == others)
+        #expect(sandbox.onDisk()?.filter { $0.id != edited.id } == others)
+        if operation == "delete" {
+            #expect(!reopened.contains { $0.id == edited.id })
+        }
+    }
+
+    @Test("changing Always to finite retention applies its window and cap, and zero removes it")
+    func changingAlwaysToFiniteRetention() async throws {
+        let sandbox = Sandbox()
+        let records = [
+            spoken("Newest."), spoken("Middle."), spoken("Oldest."), spoken("Expired.", daysAgo: 30),
+        ]
+        try sandbox.seed(records)
+        let store = DictationHistoryStore(file: sandbox.file, capacity: 2)
+        #expect(await store.records(keeping: Retention(days: 36_500, now: epoch)) == records)
+        #expect(await store.records(keeping: week) == Array(records.prefix(2)))
+        #expect(sandbox.onDisk() == Array(records.prefix(2)))
+        #expect(await store.records(keeping: Retention(days: 0, now: epoch)).isEmpty)
+        #expect(sandbox.onDisk() == nil)
+    }
+
     // MARK: Deleting
 
     @Test("deleting one entry reaches the disk in the same call")

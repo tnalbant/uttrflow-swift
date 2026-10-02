@@ -153,7 +153,7 @@ public struct Settings: Sendable, Equatable, Codable {
     public static let defaultRetentionDays = 7
 
     /// The period that stands for "keep until I delete it", longer than anything can be kept waiting.
-    public static let keepAlwaysDays = 36_500
+    public static let keepAlwaysDays = RetentionWindow.keepAlwaysDays
 
     /// Bounds finite retention values read from settings files; the keep-always sentinel is separate.
     public static let maximumFiniteRetentionDays = 365

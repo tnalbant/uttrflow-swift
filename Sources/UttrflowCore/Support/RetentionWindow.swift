@@ -4,6 +4,9 @@ public import struct Foundation.Date
 
 /// A retention promise and the clock it is measured against, which it does not trust. See `Docs/retention-clock.md`.
 public struct RetentionWindow: Sendable, Equatable {
+    /// The stored day value for keeping transcripts until the user deletes them.
+    public static let keepAlwaysDays = 36_500
+
     /// A stamp this far ahead of `now` is taken at face value, since a clock nudged by a second is not a wrong one.
     static let clockSkewAllowance: Double = 300
 

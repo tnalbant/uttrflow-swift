@@ -9,7 +9,7 @@ public import class Foundation.JSONEncoder
 
 /// Everything the user has dictated, in its own file on this Mac. See `Docs/history-store-file.md`.
 public actor DictationHistoryStore {
-    /// A thousand dictations, which bounds the whole-file rewrite each one costs.
+    /// A thousand dictations bounds the file only when the user chooses finite retention.
     public static let defaultCapacity = 1_000
 
     /// The file, injected so a test writes into a temporary directory rather than a real history.
@@ -19,7 +19,7 @@ public actor DictationHistoryStore {
     /// The file's decoded contents, reread only when the file changed on disk.
     var cache: CachedStoredList<[DictationRecord]>
 
-    /// The most records kept, oldest discarded first.
+    /// The most records kept under finite retention, oldest discarded first.
     private let capacity: Int
 
     /// Uses the app's own file and cap unless a test names others.
@@ -121,12 +121,12 @@ public actor DictationHistoryStore {
 
     // MARK: - The rules
 
-    /// Applies the retention promise and then the cap, in that order: what the caller may be shown.
+    /// Applies the retention promise and any finite-retention cap to what the caller may be shown.
     private func retained(
         _ records: [DictationRecord], keeping retention: Retention
     ) -> [DictationRecord] {
         let surviving = records.filter { $0.survives(days: retention.days, now: retention.now) }
-        return Array(surviving.prefix(capacity))
+        return capped(surviving, keeping: retention)
     }
 
     /// The same, plus what a clock too far ahead to be believed says is past. See `Docs/retention-clock.md`.
@@ -135,7 +135,15 @@ public actor DictationHistoryStore {
     ) -> [DictationRecord] {
         let window = Self.window(of: retention)
         let held = records.filter { window.keeps($0.when) || !window.mayDelete($0.when) }
-        return Array(held.prefix(capacity))
+        return capped(held, keeping: retention)
+    }
+
+    /// Always keeps every record; only finite retention may discard records to bound the file.
+    private func capped(
+        _ records: [DictationRecord], keeping retention: Retention
+    ) -> [DictationRecord] {
+        guard retention.days < RetentionWindow.keepAlwaysDays else { return records }
+        return Array(records.prefix(capacity))
     }
 
     /// The promise as the rule the three stores share states it.
