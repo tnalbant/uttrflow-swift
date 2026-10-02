@@ -1,6 +1,4 @@
-import Foundation
-public import struct Foundation.Date
-import class Foundation.NSError
+public import Foundation
 import OSLog
 private import Synchronization
 
@@ -16,8 +14,8 @@ public actor Verifier {
     private let supersession: (any SupersessionRecording)?
     /// How long the model has to judge one keystroke's candidates, held so a test need not wait it out.
     private let budgetInMilliseconds: Int
-    /// What the budget is measured on, a real clock but for tests that decide when it runs out.
-    private let clock: any Clock<Duration>
+    /// Starts one budget on the clock supplied at initialization.
+    private let startBudget: @Sendable (Duration) -> Budget
     /// The verdicts already reached, so most keystrokes cost nothing at all.
     private var cache = VerdictCache()
     /// Invalidates verdicts still being computed when a forget action arrives.
@@ -36,11 +34,11 @@ public actor Verifier {
     private let lines: TerminalLineCheck
 
     /// A verifier over one machine, with a model and a store only where there are any.
-    public init(
+    public init<C: Clock<Duration>>(
         index: EnvironmentIndex, scoring: (any CandidateScoring)? = nil,
         supersession: (any SupersessionRecording)? = nil,
         budgetInMilliseconds: Int = Verification.budgetInMilliseconds,
-        clock: any Clock<Duration> = ContinuousClock(),
+        clock: C = ContinuousClock(),
         files: any FileSystemProbing = CachedFileSystem(SystemFileSystem())
     ) {
         self.lines = TerminalLineCheck(files: files)
@@ -48,7 +46,7 @@ public actor Verifier {
         self.scoring = scoring
         self.supersession = supersession
         self.budgetInMilliseconds = budgetInMilliseconds
-        self.clock = clock
+        self.startBudget = { Budget.starting($0, on: clock) }
     }
 
     /// Every candidate the gates allow, in the form they allow it, the wrong ones dropped.
@@ -128,7 +126,7 @@ public actor Verifier {
             complete = complete && lookupComplete
             let caseSensitive = lookup.kinds.contains(where: Self.requiresCaseSensitiveMatch)
             guard !Verification.attests(lookup.word, known, caseSensitive: caseSensitive) else {
-                if generation == forgetGeneration { cache.remember(.attested, for: key, now: now) }
+                if generation == forgetGeneration { cache.remember(.attested, for: key) }
                 return .attested
             }
             if judged == nil { judged = (lookup.word, lookup.prefix, known, caseSensitive) }
@@ -525,7 +523,7 @@ public actor Verifier {
 
     /// When this keystroke's whole set of candidates has to have been judged by.
     private func deadline() -> Budget {
-        Budget.starting(.milliseconds(budgetInMilliseconds), on: clock)
+        startBudget(.milliseconds(budgetInMilliseconds))
     }
 
     /// What a verdict is remembered against, which is this field and what has been typed into it.

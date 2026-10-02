@@ -69,7 +69,7 @@ public struct WordShape: Equatable, Sendable {
     ]
 
     /// Quotes that open a quotation, read on the word's own prefix.
-    static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]
+    public static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]
 
     /// Quotes a full stop belongs inside, which is where a spoken "close quote" leaves the end of a sentence.
     static let closingQuotes: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}"]

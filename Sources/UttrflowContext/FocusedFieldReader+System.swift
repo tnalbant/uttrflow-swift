@@ -706,7 +706,7 @@ public enum FocusedFieldReader {
             CTParagraphStyleGetValueForSpecifier(
                 style, .baseWritingDirection, MemoryLayout<CTWritingDirection>.size, &direction)
         else { return .unknown }
-        switch direction {
+        return switch direction {
         case .leftToRight: .leftToRight
         case .rightToLeft: .rightToLeft
         default: .unknown

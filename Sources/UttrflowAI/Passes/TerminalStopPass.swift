@@ -93,7 +93,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
         if followingTextContinuesSentence { return word }
-        if insertionPoint.hasUnclosedBracket { return word }
+        if hasUnclosedBracket { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
@@ -225,7 +225,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether these words begin the first paragraph with a conventional email greeting.
     private static func isEmailGreeting(_ indices: [Int], in draft: Draft) -> Bool {
-        guard let first = indices.first, indices.count <= 3, paragraphWords(in: draft).first == indices else {
+        guard !indices.isEmpty, indices.count <= 3, paragraphWords(in: draft).first == indices else {
             return false
         }
         let openingWords = ["dear", "hello", "hi", "good morning", "good afternoon", "good evening"]

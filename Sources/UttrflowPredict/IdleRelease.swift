@@ -41,7 +41,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
     private let model: Model
     private let idleAfter: Duration
     private let clock: any Clock<Duration>
-    private let elapsed: () -> Duration
+    private let elapsed: @Sendable () -> Duration
     /// Whether the caller wants the model, which only ``prepare(onProgress:)`` and ``release()`` change.
     private var isWanted = false
     /// Whether an idle reload has failed and needs an explicit prepare before retrying.
@@ -264,7 +264,7 @@ public actor IdleReleasingModel<Model: ReleasableModel>: ReleasableModel {
         watch = Task { [weak self] in
             var wait = first
             while !Task.isCancelled {
-                try? await clock.sleep(for: wait)
+                try? await self?.clock.sleep(for: wait)
                 guard !Task.isCancelled, let self, await releaseIfIdle(at: elapsed()) else { return }
                 wait = await timeUntilIdle(at: elapsed())
             }

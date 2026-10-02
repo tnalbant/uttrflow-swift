@@ -442,6 +442,14 @@ struct GrammarGuardTests {
         sut.verdict(draft: Draft(text: kept), rewritten: rewritten)
     }
 
+    private func rejected(_ kept: String, _ rewritten: String) {
+        #expect(!verdict(kept, rewritten).isAccepted)
+    }
+
+    private func accepted(_ kept: String, _ rewritten: String) {
+        #expect(verdict(kept, rewritten).isAccepted)
+    }
+
     @Test("rejects an agreement repair that changes a verb's number")
     func rejectsAgreementRepair() {
         #expect(
@@ -1652,6 +1660,8 @@ extension MeaningPreservationGuardTests {
 /// Guards the indexed occurrence lookups against the former ordered scans.
 @Suite("Indexed meaning guard equivalence")
 struct MeaningGuardIndexEquivalenceTests {
+    private let sut = MeaningPreservationGuard()
+
     @Test("survival retains exact matches across forms, homophones, identifiers and contractions")
     func survivalMatchesOrderedScan() {
         let cases: [(String, String)] = [

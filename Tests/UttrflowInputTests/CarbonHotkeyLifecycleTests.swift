@@ -59,17 +59,17 @@ struct CarbonHotkeyLifecycleTests {
     @Test("deinitializing off the main thread unregisters before the next registration")
     func deinitOffMainThenRebind() async throws {
         var previous: CarbonHotkeyMonitor? = CarbonHotkeyMonitor()
-        weak var weakPrevious = previous
+        weak let weakPrevious = previous
         try previous?.start(binding: bound)
 
         let lifetime = CarbonMonitorLifetime(previous!)
         previous = nil
-        let destroyed = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            lifetime.release()
-            destroyed.signal()
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                lifetime.release()
+                continuation.resume()
+            }
         }
-        destroyed.wait()
         #expect(weakPrevious == nil)
 
         let next = CarbonHotkeyMonitor()

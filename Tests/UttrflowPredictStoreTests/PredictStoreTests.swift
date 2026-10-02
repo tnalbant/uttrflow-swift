@@ -90,7 +90,7 @@ struct EncryptedPredictStoreTests {
         do {
             _ = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: wrong))
             Issue.record("Opening with another key unexpectedly succeeded")
-        } catch let error as PredictStoreError {
+        } catch let error {
             #expect(error == .cannotOpen("encrypted corpus could not be authenticated"))
         }
 

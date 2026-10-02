@@ -28,9 +28,10 @@ private func snapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
-        caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
+        caret: caret, writingDirection: writingDirection, pointSize: pointSize, fontFamily: fontFamily,
+        textColor: textColor,
         isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable,
-        writingDirection: writingDirection, readMicroseconds: 400)
+        readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")

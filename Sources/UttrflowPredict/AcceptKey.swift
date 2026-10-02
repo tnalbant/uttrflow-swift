@@ -1,4 +1,4 @@
-import UttrflowCore
+public import UttrflowCore
 
 /// Which key takes a suggestion, which cannot be Tab everywhere. See `Docs/predict-accept.md`.
 public enum AcceptKey: String, Sendable, Equatable, CaseIterable, Codable {

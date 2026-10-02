@@ -263,7 +263,7 @@ struct PasteboardTextInsertionEngineTests {
 
         let attempt = try await sut.insert("inserted words")
 
-        #expect(attempt == InsertionAttempt(.pasteboard, arrival: .notReported))
+        #expect(attempt == .notReported)
         #expect(focus.readCount == 0)
     }
 

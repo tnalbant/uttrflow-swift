@@ -128,9 +128,9 @@ extension StringProtocol {
 }
 
 /// Word positions for splicing.
-extension String {
+extension StringProtocol {
     /// Where each spoken word of this text begins and ends.
-    fileprivate func spokenWordRanges() -> [Range<String.Index>] {
+    fileprivate func spokenWordRanges() -> [Range<Index>] {
         spokenWords().map { $0.startIndex..<$0.endIndex }
     }
 }
