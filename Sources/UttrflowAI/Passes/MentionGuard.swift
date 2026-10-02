@@ -4,6 +4,9 @@ import UttrflowCore
 /// Words that mean the word after them is being talked about rather than dictated.
 enum MentionGuard {
     private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
+    private static let finalPeriodCompoundModifiers: Set<String> = [
+        "cooling", "grace", "month", "notice", "time", "trial", "victorian", "waiting",
+    ]
 
     /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
     static func namesToken(at position: Int, in live: [Int], of draft: Draft) -> Bool {
@@ -46,7 +49,10 @@ enum MentionGuard {
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
-        if opensThePhrase(ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging) {
+        if opensThePhrase(
+            ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
+            finalMark: kind == .trailing && position + length == live.count
+        ) {
             return true
         }
         let next = position + length
@@ -56,7 +62,7 @@ enum MentionGuard {
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
     private static func opensThePhrase(
         ending position: Int, reaching reach: Int, in live: [Int], of draft: Draft,
-        bridgedBy bridging: Set<String>?
+        bridgedBy bridging: Set<String>?, finalMark: Bool
     ) -> Bool {
         // A hyphen joins the two words around it, so it heads no phrase and only the word before it speaks.
         let far = draft.shape(at: live[position]).key == "hyphen" ? 1 : reach
@@ -68,7 +74,9 @@ enum MentionGuard {
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
             if let bridging {
                 if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
-            } else if !isModifier(shape.key, before: draft.shape(at: live[position]).key) {
+            } else if !isModifier(
+                shape.key, before: draft.shape(at: live[position]).key, finalMark: finalMark
+            ) {
                 return false
             }
         }
@@ -76,7 +84,7 @@ enum MentionGuard {
     }
 
     /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
-    private static func isModifier(_ word: String, before head: String) -> Bool {
+    private static func isModifier(_ word: String, before head: String, finalMark: Bool) -> Bool {
         if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.digits(word) != nil)
         {
             return true
@@ -89,8 +97,12 @@ enum MentionGuard {
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
 
-        // A noun can modify a period even when the tagger cannot identify the compound.
-        if lexicalClass == .noun && head == "period" { return true }
+        // Known period compounds stay words when the tagger cannot identify the compound.
+        if lexicalClass == .noun && head == "period"
+            && (!finalMark || finalPeriodCompoundModifiers.contains(word))
+        {
+            return true
+        }
 
         return lexicalClass == .noun && word.hasSuffix("ing")
     }

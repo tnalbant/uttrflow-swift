@@ -36,12 +36,16 @@ struct SpokenPunctuationPassTests {
             ("we checked dash cam footage", "we checked dash cam footage"),
             ("meet at five colon thirty", "meet at five: 30"),
             ("the build passed period the tests passed period", "the build passed. the tests passed."),
-            ("i finished the draft period", "i finished the draft."),
             ("that was amazing exclamation point", "that was amazing!"),
         ]
     )
     func attachesMarks(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("converts a final spoken period after a noun object")
+    func finalSpokenPeriodAfterNounObject() {
+        #expect(cleaned("i finished the draft period", by: sut) == "i finished the draft.")
     }
 
     @Test(
@@ -193,6 +197,7 @@ struct SpokenPunctuationPassTests {
             "I love the Victorian period",
             "the 100 metre dash was close", "a short grace period follows",
             "a grace period applies", "the notice period expires tomorrow",
+            "the grace period", "notice period",
             "a waiting period applies", "the time period was short",
             "a cooling off period applies", "the six month period ended",
         ]
