@@ -3,6 +3,16 @@ import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
 enum MentionGuard {
+    private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
+
+    /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
+    static func namesToken(at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        let shape = draft.shape(at: live[position])
+        if shape.prefix.contains(where: WordShape.openingQuotes.contains) { return true }
+        guard position > 0 else { return false }
+        return namingWords.contains(draft.shape(at: live[position - 1]).key)
+    }
+
     /// The tagger calls "trial" a noun before "period", so bridge only for this head.
     private static let attributiveNounsByHead: [String: Set<String>] = ["period": ["trial"]]
 

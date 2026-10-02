@@ -76,6 +76,23 @@ struct FillersPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "keeps a filler when the sentence names it",
+        arguments: [
+            "The word ah is an interjection", "Write ah in the field", "Say mhm when you agree",
+            "Type the word er into the box", "Spell um after the greeting", "She said uh yesterday",
+            "Write ‘um’ in quotes after hello",
+        ]
+    )
+    func keepsNamedFillers(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("removes a filler not being named")
+    func removesUnnamedFiller() {
+        #expect(cleaned("I, um, think so", by: sut) == "I think so")
+    }
+
     /// A determiner before it says the token is a noun, which is what tells "the ER" from a hesitation.
     @Test(
         "keeps a word a determiner opens, however it is spelled",
