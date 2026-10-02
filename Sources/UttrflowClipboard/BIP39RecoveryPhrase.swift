@@ -11,8 +11,15 @@ enum BIP39RecoveryPhrase {
         var window: [UInt16] = []
         for rawWord in text.split(whereSeparator: \.isWhitespace) {
             let word = String(rawWord).trimmingCharacters(in: .punctuationCharacters)
-            guard word.utf8.allSatisfy({ (97...122).contains($0) }),
-                let index = wordIndices[word]
+            // Wallet exports often prefix each word with its position. Treat only a
+            // standalone positive integer as a list marker; arbitrary numeric text
+            // still breaks a candidate phrase.
+            if !window.isEmpty, isNumberedListMarker(String(rawWord)) { continue }
+
+            let normalizedWord = word.lowercased()
+            guard !word.isEmpty,
+                word.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) }),
+                let index = wordIndices[normalizedWord]
             else {
                 window.removeAll(keepingCapacity: true)
                 continue
@@ -28,6 +35,12 @@ enum BIP39RecoveryPhrase {
         }
 
         return false
+    }
+
+    private static func isNumberedListMarker(_ token: String) -> Bool {
+        let number = token.trimmingCharacters(in: .punctuationCharacters)
+        guard !number.isEmpty, number.first != "0" else { return false }
+        return number.utf8.allSatisfy { (48...57).contains($0) }
     }
 
     private static func loadWordIndices() -> [String: UInt16] {

@@ -89,6 +89,32 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test("masks numbered and case-varied recovery phrases at every supported length")
+    func walletRecoveryPhraseFormattingVariants() {
+        let phrases = [
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exhibit",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agent",
+            "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch saddle",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+        ]
+
+        for phrase in phrases {
+            let words = phrase.split(separator: " ")
+            let numbered = words.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " ")
+            let capitalized = words.map { $0.capitalized }.joined(separator: " ")
+            let uppercase = phrase.uppercased()
+
+            #expect(ClipKindDetector.kind(of: numbered) == .secret)
+            #expect(ClipKindDetector.kind(of: capitalized) == .secret)
+            #expect(ClipKindDetector.kind(of: uppercase) == .secret)
+        }
+
+        let prose =
+            "1. abandon 2. amount 3. liar 4. amount 5. expire 6. adjust 7. this 8. is 9. ordinary 10. prose 11. with 12. numbers"
+        #expect(ClipKindDetector.kind(of: prose) != .secret)
+    }
+
     @Test("masks vendor tokens in multiline clips without matching prose")
     func vendorTokensInMultilineClips() {
         let tokens = [
