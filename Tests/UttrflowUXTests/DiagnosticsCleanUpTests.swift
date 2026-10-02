@@ -79,6 +79,23 @@ struct DiagnosticsCleanUpTests {
         #expect(row?.state == .attention)
     }
 
+    @Test("names a failed engine and its non-sensitive reason")
+    func namesFailedEngineAndReason() {
+        let record = CleaningRecord(
+            changes: [],
+            engineFailures: [
+                .init(engine: TransformerKind.foundationModels.rawValue, reason: "Timed out")
+            ])
+
+        let row = DiagnosticsFixture.page(cleaning: record).cleanUp.first
+
+        #expect(row?.title == "Engine failed")
+        #expect(row?.detail == "foundationModels: Timed out")
+        #expect(row?.state == .attention)
+        #expect(
+            DiagnosticsPresenter.countedCleanUp(record) == ["  engine failed (foundationModels): Timed out"])
+    }
+
     /// The page is on the user's own screen; the report is pasted somewhere else.
     @Test("the copied report counts the words rather than quoting them")
     func reportCountsOnly() {

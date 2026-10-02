@@ -17,11 +17,11 @@ struct FailureCatalogueTests {
         #expect(SnippetStoreError.everyCase.count == 4)
         #expect(AudioCaptureError.everyCase.count == 6)
         #expect(SpeechEngineError.everyCase.count == 7)
-        #expect(TransformationError.everyCase.count == 3)
+        #expect(TransformationError.everyCase.count == 4)
         #expect(TextInsertionError.everyCase.count == 7)
         #expect(HotkeyError.everyCase.count == 2)
         #expect(DictionaryStoreError.everyCase.count == 4)
-        #expect(allFailures.count == 41)
+        #expect(allFailures.count == 42)
     }
 
     /// A backwards link loops and a repeated case hides the one it displaces; both show as a duplicate.

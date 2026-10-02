@@ -138,6 +138,24 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.reason == "changed the meaning")
     }
 
+    @Test("records a failed engine without copying its error text")
+    func recordsEngineFailure() async throws {
+        let failed = StubTransformer(
+            kind: .foundationModels,
+            error: .transformFailed(kind: .foundationModels, description: "private transcript text"))
+        let router = TransformerRouter(
+            engines: [failed, StubTransformer(kind: .rules)], preference: [.foundationModels, .rules])
+
+        let result = try await router.transform(request)
+
+        #expect(result.producedBy == .rules)
+        #expect(
+            result.cleaning?.engineFailures == [
+                .init(engine: TransformerKind.foundationModels.rawValue, reason: "Failed")
+            ])
+        #expect(!String(describing: result.cleaning).contains("private transcript text"))
+    }
+
     @Test("records an unavailable engine and its reason when rules handle the dictation")
     func recordsUnavailableEngine() async throws {
         let unavailable = StubTransformer(
@@ -421,6 +439,26 @@ struct TransformerBudgetTests {
         let result = try await running.value
         #expect(result.producedBy == .rules)
         #expect(floor.transformCount == 1)
+        #expect(
+            result.cleaning?.engineFailures == [
+                .init(engine: TransformerKind.foundationModels.rawValue, reason: "Timed out")
+            ])
+    }
+
+    @Test("a cancelled engine stops the route instead of running the floor")
+    func cancellationStopsFallback() async throws {
+        let clock = ManualClock()
+        let model = StubTransformer(kind: .foundationModels, hangs: true)
+        let floor = StubTransformer(kind: .rules)
+        let router = TransformerRouter(
+            engines: [model, floor], preference: [.foundationModels, .rules], clock: clock)
+        let running = Task { try await router.transform(request) }
+
+        while model.transformCount == 0 { await Task.yield() }
+        running.cancel()
+
+        await #expect(throws: TransformationError.cancelled) { try await running.value }
+        #expect(floor.transformCount == 0)
     }
 
     /// The floor's own allowance is short, since it only rearranges words already in hand.

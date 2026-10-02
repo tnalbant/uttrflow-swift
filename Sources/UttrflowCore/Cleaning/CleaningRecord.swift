@@ -70,6 +70,17 @@ public struct CleaningRecord: Sendable, Equatable {
         }
     }
 
+    /// An engine that ran but could not produce an answer, with a non-sensitive reason.
+    public struct EngineFailure: Sendable, Equatable {
+        public let engine: String
+        public let reason: String
+
+        public init(engine: String, reason: String) {
+            self.engine = engine
+            self.reason = reason
+        }
+    }
+
     /// One entry per step that changed something, ordered by the first word each touched.
     public let changes: [Change]
     /// The steps that were not in the pipeline that ran, in the order they would have run.
@@ -78,22 +89,25 @@ public struct CleaningRecord: Sendable, Equatable {
     public let refusals: [Refusal]
     /// Engines skipped before the recorded engine because they were unavailable.
     public let unavailableEngines: [UnavailableEngine]
+    /// Engines that failed before the recorded engine answered.
+    public let engineFailures: [EngineFailure]
 
     public init(
         changes: [Change], switchedOff: [PassID] = [], refusals: [Refusal] = [],
-        unavailableEngines: [UnavailableEngine] = []
+        unavailableEngines: [UnavailableEngine] = [], engineFailures: [EngineFailure] = []
     ) {
         self.changes = changes
         self.switchedOff = switchedOff
         self.refusals = refusals
         self.unavailableEngines = unavailableEngines
+        self.engineFailures = engineFailures
     }
 
     /// The same record, saying which answers were refused before the one it describes.
     public func refused(_ refusals: [Refusal]) -> CleaningRecord {
         CleaningRecord(
             changes: changes, switchedOff: switchedOff, refusals: refusals,
-            unavailableEngines: unavailableEngines)
+            unavailableEngines: unavailableEngines, engineFailures: engineFailures)
     }
 
     /// At most this many words are listed per step; the counts are exact either way.
@@ -109,6 +123,7 @@ public struct CleaningRecord: Sendable, Equatable {
     /// Whether anything at all is worth showing.
     public var isEmpty: Bool {
         changes.isEmpty && switchedOff.isEmpty && refusals.isEmpty && unavailableEngines.isEmpty
+            && engineFailures.isEmpty
     }
 
     /// One record for a dictation done in pieces, keeping each step's words in the order they were said.
@@ -140,10 +155,14 @@ public struct CleaningRecord: Sendable, Equatable {
         for engine in records.flatMap(\.unavailableEngines) where !unavailableEngines.contains(engine) {
             unavailableEngines.append(engine)
         }
+        var engineFailures: [EngineFailure] = []
+        for failure in records.flatMap(\.engineFailures) where !engineFailures.contains(failure) {
+            engineFailures.append(failure)
+        }
         return CleaningRecord(
             changes: order.compactMap { merged[$0] },
             switchedOff: CleaningSteps.offered.map(\.id).filter(off.contains),
-            refusals: refusals, unavailableEngines: unavailableEngines)
+            refusals: refusals, unavailableEngines: unavailableEngines, engineFailures: engineFailures)
     }
 
     /// Every word a step touched, grouped by the step and ordered by the first word it reached.

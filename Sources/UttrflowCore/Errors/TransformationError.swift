@@ -6,11 +6,13 @@ public enum TransformationError: UttrflowFailure {
     case transformFailed(kind: TransformerKind, description: String)
     /// The model returned something that failed the meaning-preservation checks.
     case outputRejected(reason: String, kind: RefusalKind)
+    /// The caller cancelled the route before an engine answered.
+    case cancelled
 
     /// The one sentence: the raw words are ready to paste.
     public var userMessage: String {
         switch self {
-        case .noCapableTransformer, .transformFailed, .outputRejected:
+        case .noCapableTransformer, .transformFailed, .outputRejected, .cancelled:
             "Your words were captured, but couldn't be tidied up. The raw text is copied, so press ⌘V to paste it."
         }
     }

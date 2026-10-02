@@ -1,5 +1,10 @@
 public import UttrflowCore
 
+private enum RouterAttemptFailure: Error, Sendable {
+    case timedOut(TransformerKind)
+    case cancelled
+}
+
 /// Tries engines in preference order, stepping around any that decline; so Hindi skips Apple's model.
 public struct TransformerRouter: TranscriptCleaning {
     /// Every transformer this build contains.
@@ -78,7 +83,15 @@ public struct TransformerRouter: TranscriptCleaning {
     ) async throws(TransformationError) -> TransformationResult {
         let route = candidates(for: request)
         var unavailableEngines: [CleaningRecord.UnavailableEngine] = []
-        let outcome = await FallbackRunner.firstSuccess(among: route) { [clock] engine in
+        let outcome = await FallbackRunner.firstSuccess(
+            among: route,
+            stopAfterFailure: { error in
+                guard let failure = error as? RouterAttemptFailure else { return false }
+                if case .cancelled = failure { return true }
+                return false
+            }
+        ) { [clock] engine in
+            guard !Task.isCancelled else { throw RouterAttemptFailure.cancelled }
             let availability = await engine.availability(for: request)
             guard availability.isAvailable else {
                 if case .unavailable(let reason) = availability {
@@ -89,12 +102,18 @@ public struct TransformerRouter: TranscriptCleaning {
             }
             // Its own allowance, so an engine that hangs spends nothing but its own turn.
             let allowance = engine.budget(for: request)
-            let answer = try await withStageTimeout(allowance, clock: clock) {
-                try await engine.transform(request)
+            let answer: TransformationResult?
+            do {
+                answer = try await withStageTimeout(allowance, clock: clock) {
+                    try await engine.transform(request)
+                }
+            } catch {
+                if Task.isCancelled { throw RouterAttemptFailure.cancelled }
+                throw error
             }
             guard let answer else {
-                throw TransformationError.transformFailed(
-                    kind: engine.kind, description: "took longer than its \(allowance)")
+                if Task.isCancelled { throw RouterAttemptFailure.cancelled }
+                throw RouterAttemptFailure.timedOut(engine.kind)
             }
             return answer
         }
@@ -103,14 +122,26 @@ public struct TransformerRouter: TranscriptCleaning {
         case .succeeded(let result, let refused):
             // Carried on the record the Diagnostics page renders, so a plainer dictation has a reason.
             let refusals = Self.refusals(in: refused, on: route.map(\.kind))
-            guard !refusals.isEmpty || !unavailableEngines.isEmpty else { return result }
+            let failures = Self.engineFailures(in: refused)
+            guard !refusals.isEmpty || !unavailableEngines.isEmpty || !failures.isEmpty else {
+                return result
+            }
             var record = result.cleaning ?? CleaningRecord(changes: [])
             if !refusals.isEmpty { record = record.refused(refusals) }
             return result.recording(
                 CleaningRecord(
                     changes: record.changes, switchedOff: record.switchedOff,
-                    refusals: record.refusals, unavailableEngines: unavailableEngines))
-        case .exhausted:
+                    refusals: record.refusals, unavailableEngines: unavailableEngines,
+                    engineFailures: record.engineFailures + failures))
+        case .exhausted(let errors):
+            if errors.contains(where: {
+                ($0 as? RouterAttemptFailure).map { failure in
+                    if case .cancelled = failure { return true }
+                    return false
+                } ?? false
+            }) {
+                throw .cancelled
+            }
             throw .noCapableTransformer
         }
     }
@@ -132,6 +163,28 @@ public struct TransformerRouter: TranscriptCleaning {
             guard case TransformationError.outputRejected(let reason, let kind) = error, index < route.count
             else { return nil }
             return CleaningRecord.Refusal(engine: route[index].rawValue, reason: reason, kind: kind)
+        }
+    }
+
+    /// The failures that explain why an earlier engine did not answer, without its error text.
+    private static func engineFailures(in errors: [any Error]) -> [CleaningRecord.EngineFailure] {
+        errors.compactMap { error in
+            let engine: String
+            let reason: String
+            if let failure = error as? RouterAttemptFailure,
+                case .timedOut(let kind) = failure
+            {
+                engine = kind.rawValue
+                reason = "Timed out"
+            } else if let failure = error as? TransformationError,
+                case .transformFailed(let kind, _) = failure
+            {
+                engine = kind.rawValue
+                reason = "Failed"
+            } else {
+                return nil
+            }
+            return CleaningRecord.EngineFailure(engine: engine, reason: reason)
         }
     }
 }
