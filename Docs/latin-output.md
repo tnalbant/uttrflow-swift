@@ -28,14 +28,15 @@ for decoding straight to Latin, and why none of them is taken — is measured in
 chat, not the way a scholar transliterates it. It has no diacritics and never produces
 "karanā"; it produces "karna".
 
-- **Common spellings first.** A table of 167 frequent words holds the
+- **Common spellings first.** A table of 170 frequent words holds the
   spelling people actually use: है hai, हाँ haan, ठीक thik, नहीं nahi, मैं main, में mein, क्या
   kya, क्यों kyun, हूँ hoon, and loanwords people write in English (ऑफिस office, मिनट minute).
   Chandrabindu and anusvara key the same entry, so हाँ and हां meet.
 - **Syllables otherwise.** A word is split into consonant clusters and their vowels.
 - **The unwritten vowel is dropped** at the end of a word (कल kal) and between a vowel and a
   consonant that carries its own vowel (करना karna, समझना samajhna), scanning from the right.
-  A conjunct after it keeps it: अनन्या is "ananya", not "annya".
+  A nasal syllable before it keeps it too (ज़िंदगी zindagi). A conjunct after it keeps it:
+  अनन्या is "ananya", not "annya".
 - **Long vowels are doubled only where people double them.** आ is "aa" in a first or closed
   syllable (आज aaj, किताब kitaab) and "a" at the end of a word or before another vowel
   (करना karna, जाएगा jayega). ई and ऊ are "ee" and "oo" in a closed syllable or a first

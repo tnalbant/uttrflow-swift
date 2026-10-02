@@ -188,7 +188,9 @@ public enum Romaniser {
             let before = syllables[index - 1]
             let after = syllables[index + 1]
             // A conjunct after it keeps the vowel: "ananya", not "annya".
-            guard !before.vowel.isEmpty, !after.vowel.isEmpty, after.consonants.count == 1 else { continue }
+            guard !before.vowel.isEmpty, !before.isNasal, !after.vowel.isEmpty,
+                after.consonants.count == 1
+            else { continue }
             syllables[index].vowel = ""
         }
     }
@@ -398,7 +400,8 @@ public enum Romaniser {
         ("कॉफ़ी", "coffee"), ("कॉफी", "coffee"),
         ("टाइम", "time"), ("मिनट", "minute"), ("जाएगा", "jayega"), ("जाएगी", "jayegi"),
         ("जाएंगे", "jayenge"), ("आएगा", "aayega"), ("आएगी", "aayegi"), ("उन्हें", "unhe"),
-        ("इन्हें", "inhe"), ("हमें", "hamein"), ("तुम्हें", "tumhe"), ("रहा", "raha"), ("रही", "rahi"),
+        ("इन्हें", "inhe"), ("हमें", "hamein"), ("तुम्हें", "tumhe"), ("इंतज़ार", "intezaar"),
+        ("इंतजार", "intezaar"), ("संपादक", "sampadak"), ("रहा", "raha"), ("रही", "rahi"),
         ("रहे", "rahe"), ("था", "tha"), ("थी", "thi"), ("थे", "the"), ("अभी", "abhi"), ("कभी", "kabhi"),
         ("सभी", "sabhi"), ("कोई", "koi"), ("बात", "baat"), ("आज", "aaj"), ("कल", "kal"),
     ]

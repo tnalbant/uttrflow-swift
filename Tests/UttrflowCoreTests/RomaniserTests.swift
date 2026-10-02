@@ -38,6 +38,16 @@ struct RomaniserTests {
     }
 
     @Test(
+        "keeps the inherent vowel after a nasal syllable",
+        arguments: [
+            ("ज़िंदगी", "zindagi"), ("इंतज़ार", "intezaar"), ("इंतजार", "intezaar"),
+            ("संपादक", "sampadak"),
+        ])
+    func vowelAfterNasalSyllable(devanagari: String, typed: String) {
+        #expect(Romaniser.romanised(devanagari) == typed)
+    }
+
+    @Test(
         "writes long vowels, nasals and clusters without diacritics",
         arguments: [
             ("किताब", "kitaab"), ("बताया", "bataya"), ("पूरा", "poora"), ("चीज़", "cheez"), ("दूँगा", "dunga"),
