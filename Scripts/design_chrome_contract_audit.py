@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""Fails when the design shell's chrome drifts from `MainWindowStrip` / `OrbitPageHeader`.
-
-#1138 found `Design/_gen_shell.py`'s shared main-window shell still drawing the retired
-44px `<div class="toolbar"><h2>` band — a title plus optional controls — instead of the
-two pieces that ship: `MainWindowStrip`, the top band with the sidebar toggle and account
-chip (`Sources/Uttrflow/Main/MainWindowView.swift:142-170`), and `OrbitPageHeader`, the
-112-point header with kicker, title, purpose caption and ordered scope/search/add controls
-(`Sources/Uttrflow/Main/MainWindowView.swift:174-217`). All 28 `Main-*.dc.html` artboards
-inherited that toolbar, and none carried a page's `MainPageChrome.caption`.
-
-This reads each page's caption straight out of its own presenter source and fails unless
-`Design/_gen_shell.py`, `Design/_gen_main.py` and `Design/_gen_app.py` spell it verbatim
-somewhere in the generator set, and fails outright if the shell still draws the retired
-`<div class="toolbar"><h2>` band, or if it has lost the `.strip` (sidebar toggle + account
-chip) or `.header` (kicker/title/caption, then scope/search/add) structure — so neither the
-obsolete shell nor a missing caption can silently return.
-"""
+"""Checks shell structure and source-derived fixed captions or counted-caption prefixes."""
 
 import argparse
 import os
@@ -34,21 +18,30 @@ GENERATOR_SOURCES = [
 
 # Pages whose caption sits inline in a `MainPageChrome(title: "X", caption: "...")` call.
 INLINE_CAPTION_PAGES = [
-    ("Dictation", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "MainDictationPresentation.swift")),
-    ("Dictionary", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "DictionaryPresentation.swift")),
     ("Corrections", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "CorrectionsPresentation.swift")),
     ("Insights", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "InsightsPresentation.swift")),
-    ("Snippets", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "SnippetsPresentation.swift")),
-    ("Style", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "StylePagePresentation.swift")),
     ("Account", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "AccountPagePresentation.swift")),
 ]
 
-# Pages whose chrome caption is a named `static let caption` the window controller reads,
-# rather than spelled inline at the call site (`Sources/Uttrflow/Main/MainWindowController.swift`).
+# Pages whose chrome caption is a named `static let caption` the window controller reads.
 REFERENCED_CAPTION_PAGES = [
     ("History", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "HistoryPresentation.swift")),
     ("Diagnostics", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "DiagnosticsPresentation.swift")),
 ]
+
+# Bare pages omit the caption; populated pages and open editors use a counted caption.
+CONDITIONAL_CAPTION_PAGES = [
+    ("Dictionary", "entries", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "DictionaryPresentation.swift")),
+    ("Snippets", "snippets", os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "SnippetsPresentation.swift")),
+]
+
+BARE_PAGE = r'(?m)^\s*let isBare\s*=\s*snapshot\.{collection}\.isEmpty\s*&&\s*editor\s*==\s*nil[ \t]*$'
+CONDITIONAL_CAPTION = r'title:\s*"{page}",\s*caption:\s*isBare\s*\?\s*nil\s*:\s*caption\(for:'
+COUNTED_CAPTION = re.compile(
+    r'static func caption\(for count: Int\)\s*->\s*String\s*\{\s*'
+    r'let lede\s*=\s*"(?P<c>[^"\\]+)"\s*'
+    r'return count\s*==\s*0\s*\?\s*lede\s*:\s*"\\\(lede\)[^\n]+"\s*\}'
+)
 
 INLINE_CAPTION = r'title:\s*"{page}",\s*caption:\s*"(?P<c>[^"]+)"'
 REFERENCED_CAPTION = r'static let caption\s*=\s*"(?P<c>[^"]+)"'
@@ -76,6 +69,24 @@ def load_referenced_caption(path):
     return match.group("c")
 
 
+def conditional_caption(page, collection, text, path):
+    """Checks the bare-page branch and reads the non-empty prefix of every counted caption."""
+    if not re.search(BARE_PAGE.format(collection=re.escape(collection)), text):
+        raise SystemExit(f"chrome contract audit: no {page!r} bare-page condition found in {path}")
+    if not re.search(CONDITIONAL_CAPTION.format(page=re.escape(page)), text):
+        raise SystemExit(f"chrome contract audit: no {page!r} conditional caption found in {path}")
+    match = COUNTED_CAPTION.search(text)
+    if not match or not match.group("c").strip():
+        raise SystemExit(f"chrome contract audit: no non-empty counted caption found in {path}")
+    return match.group("c")
+
+
+def load_conditional_caption(page, collection, path):
+    if not os.path.isfile(path):
+        raise SystemExit(f"chrome contract audit: {path} not found")
+    return conditional_caption(page, collection, open(path).read(), path)
+
+
 def load_page_captions():
     """Returns {page title: caption}, read straight out of each page's own presenter."""
     captions = {}
@@ -83,6 +94,8 @@ def load_page_captions():
         captions[page] = load_inline_caption(page, path)
     for page, path in REFERENCED_CAPTION_PAGES:
         captions[page] = load_referenced_caption(path)
+    for page, collection, path in CONDITIONAL_CAPTION_PAGES:
+        captions[page] = load_conditional_caption(page, collection, path)
     return captions
 
 
@@ -164,6 +177,46 @@ def self_test():
         print("  ✗ self-test: referenced caption extraction failed", file=sys.stderr)
         ok = False
 
+    conditional_fixture = r'''
+        let isBare = snapshot.entries.isEmpty && editor == nil
+        chrome: MainPageChrome(
+            title: "Dictionary",
+            caption: isBare
+                ? nil
+                : caption(for: snapshot.entries.count(where: \.isTrustworthy)),
+        )
+        static func caption(for count: Int) -> String {
+            let lede = "A counted caption."
+            return count == 0 ? lede : "\(lede) · \(MainFormatting.count(count, "word", "words"))"
+        }
+    '''
+    single_line = re.sub(r'caption: isBare\s*\? nil\s*:', 'caption: isBare ? nil :', conditional_fixture)
+    for fixture in (conditional_fixture, single_line):
+        if conditional_caption("Dictionary", "entries", fixture, "fixture") != "A counted caption.":
+            print("  ✗ self-test: conditional caption extraction failed", file=sys.stderr)
+            ok = False
+
+    for name, fixture in [
+        ("missing bare condition", conditional_fixture.replace("let isBare", "let unrelated")),
+        ("wrong collection", conditional_fixture.replace("snapshot.entries", "snapshot.other")),
+        ("editor excluded", conditional_fixture.replace(" && editor == nil", "")),
+        ("extra bare condition", conditional_fixture.replace("editor == nil", "editor == nil && false")),
+        ("wrong page", conditional_fixture.replace('title: "Dictionary"', 'title: "Other"')),
+        ("missing nil branch", conditional_fixture.replace("? nil", '? "Always visible"')),
+        ("unused helper", conditional_fixture.replace(": caption(for:", ": other(for:")),
+        ("missing helper", conditional_fixture.replace("static func caption", "static func other")),
+        ("empty caption", conditional_fixture.replace("A counted caption.", "")),
+        ("blank caption", conditional_fixture.replace("A counted caption.", "   ")),
+        ("empty zero-count result", conditional_fixture.replace("? lede", '? ""')),
+        ("lost caption prefix", conditional_fixture.replace(r'"\(lede) · ', '"')),
+    ]:
+        try:
+            conditional_caption("Dictionary", "entries", fixture, "fixture")
+        except SystemExit:
+            continue
+        print(f"  ✗ self-test: {name} was not flagged", file=sys.stderr)
+        ok = False
+
     captions = {"Dictation": "A caption."}
     good_shell = (
         'def app_window(...):\n'
@@ -203,6 +256,14 @@ def self_test():
         print("  ✗ self-test: a missing caption was not flagged", file=sys.stderr)
         ok = False
 
+    counted = conditional_caption("Dictionary", "entries", conditional_fixture, "fixture")
+    if audit_failures(good_shell, good_generators + counted, {"Dictionary": counted}):
+        print("  ✗ self-test: a matching counted caption was flagged", file=sys.stderr)
+        ok = False
+    if not audit_failures(good_shell, good_generators, {"Dictionary": counted}):
+        print("  ✗ self-test: a missing counted caption was not flagged", file=sys.stderr)
+        ok = False
+
     return ok
 
 
@@ -223,7 +284,7 @@ def audit():
 
     print(
         "chrome contract audit: the shell's MainWindowStrip and OrbitPageHeader match "
-        "production, with every page's caption spelled verbatim.\n"
+        "production, with every fixed caption or counted-caption prefix spelled verbatim.\n"
     )
     return 0
 

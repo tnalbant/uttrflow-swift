@@ -717,10 +717,10 @@ account = f"""<div class="card" style="padding: 14px 15px">
 DICTATION_CAPTION = "Everything you said today, and what Uttrflow did with it."
 DICTIONARY_CAPTION = "Names and terms Uttrflow would otherwise get wrong."
 CORRECTIONS_CAPTION = "Dictionary-backed substitutions Uttrflow made after it heard you."
-INSIGHTS_CAPTION = "Where the words went, and how fast they arrived."
-SNIPPETS_CAPTION = "Short triggers that expand into whatever you like."
+INSIGHTS_CAPTION = "Where the words went, and how fast they arrived. Measured on this Mac."
+SNIPPETS_CAPTION = "Say a short phrase; Uttrflow types the whole thing."
 STYLE_CAPTION = "How much tidying Uttrflow does to what you actually said."
-ACCOUNT_CAPTION = "Who you are signed in as, and what you are paying for."
+ACCOUNT_CAPTION = "Who you are signed in as, and on which Mac."
 
 SCREENS = [
     # Home is the first destination in SidebarPresenter.order.
@@ -733,7 +733,7 @@ SCREENS = [
     # Dictionary: search only when there are entries; Add Word always.
     ("Main-Dictionary", "Dictionary", DICTIONARY_CAPTION,
      "", searchbox("Search words"), addbtn("Add Word"), dictionary, RECENT, TAILS),
-    ("Main-Dictionary-Empty", "Dictionary", DICTIONARY_CAPTION,
+    ("Main-Dictionary-Empty", "Dictionary", None,
      "", "", addbtn("Add Word"), dictionary_empty, RECENT, None),
     # Corrections: scope and search both only when there is anything today.
     ("Main-Corrections", "Corrections", CORRECTIONS_CAPTION,
@@ -748,7 +748,7 @@ SCREENS = [
     # Snippets: search only when there are snippets; New Snippet always.
     ("Main-Snippets", "Snippets", SNIPPETS_CAPTION,
      "", searchbox("Search snippets"), addbtn("New Snippet"), snippets, RECENT, TAILS),
-    ("Main-Snippets-Empty", "Snippets", SNIPPETS_CAPTION,
+    ("Main-Snippets-Empty", "Snippets", None,
      "", "", addbtn("New Snippet"), snippets_empty, RECENT_NEVER, None),
     # Style and Account: title and caption only, no scope/search/add.
     ("Main-Style", "Style", STYLE_CAPTION, "", "", "", style, RECENT, TAILS),
