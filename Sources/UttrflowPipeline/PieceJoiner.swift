@@ -157,18 +157,25 @@ enum PieceJoiner {
         return nil
     }
 
-    /// Lowers a capital opened by the recognizer while keeping spellings the casing passes protect.
+    /// Lowers a sentence starter while leaving unrecognized proper nouns intact.
     private static func lowercasedOpening(_ text: String, in context: String) -> String {
         guard let start = text.firstIndex(where: { !$0.isWhitespace }),
             let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex,
             let first = text[start..<end].first, first.isUppercase,
             !FirstWordPass.keepsCapital(String(text[start..<end])),
             !FirstWordPass.isCalendarWord(String(text[start..<end])),
-            !FirstWordPass.looksLikeName(String(text[start..<end]), in: [context])
+            !FirstWordPass.looksLikeName(String(text[start..<end]), in: [context]),
+            lowercaseAtRunOnSeam.contains(WordShape(String(text[start..<end])).key)
         else { return text }
         let word = String(text[start..<end])
         return text.replacingCharacters(in: start..<end, with: WordShape.lowercased(word))
     }
+
+    private static let lowercaseAtRunOnSeam: Set<String> = [
+        "a", "an", "and", "as", "at", "but", "by", "for", "from", "if", "in", "into", "of",
+        "on", "or", "so", "that", "the", "then", "these", "this", "those", "to", "when",
+        "which", "while", "who", "with",
+    ]
 
     /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
     private static func joiningAmountsAcrossSeams(_ pieces: [String]) -> [String] {

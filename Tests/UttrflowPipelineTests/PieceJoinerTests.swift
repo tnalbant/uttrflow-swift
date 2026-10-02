@@ -559,6 +559,55 @@ struct PieceJoinerSeamTests {
         #expect(whole.cleaned.text == "We moved the review to the next slot works")
     }
 
+    @Test(
+        "preserves recognizer capitalization for names at run-on seams",
+        arguments: [
+            ("Thanks to.", "Marcus for the help.", "Thanks to Marcus for the help."),
+            ("He works for.", "Microsoft in Seattle.", "He works for Microsoft in Seattle."),
+            ("Send it to.", "Sam and Priya.", "Send it to Sam and Priya."),
+            ("The email came from.", "Alice.", "The email came from Alice."),
+            ("The report is for.", "Acme Corp.", "The report is for Acme Corp."),
+            ("I spoke to.", "Maria about it yesterday.", "I spoke to Maria about it yesterday."),
+            ("She works at.", "Google.", "She works at Google."),
+            ("I will see you in.", "Boston next week.", "I will see you in Boston next week."),
+        ])
+    func preservesNameCapitalAtRunOnSeam(first: String, next: String, expected: String) {
+        let whole = PieceJoiner.join(
+            [piece(first), piece(next)], under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == expected)
+    }
+
+    @Test("preserves a name whether or not the recognizer inserted a seam stop")
+    func preservesNameWithAndWithoutRecognizerStop() {
+        let withStop = PieceJoiner.seamed(
+            ["Thanks to.", "Marcus for the help."], under: .standard(for: .document))
+        let withoutStop = PieceJoiner.seamed(
+            ["Thanks to", "Marcus for the help."], under: .standard(for: .document))
+
+        #expect(withStop == ["Thanks to", "Marcus for the help."])
+        #expect(withoutStop == ["Thanks to", "Marcus for the help."])
+    }
+
+    @Test("keeps a name capitalized when a sentence is cut at every word boundary")
+    func preservesNameAcrossEveryWordBoundary() {
+        let words = "I spoke to Marcus about it yesterday.".split(separator: " ").map(String.init)
+
+        for boundary in 1..<words.count {
+            let before = words[..<boundary].joined(separator: " ")
+            let after = words[boundary...].joined(separator: " ")
+            let withoutStop = PieceJoiner.join(
+                [piece(before), piece(after)], under: .standard(for: .document)
+            ).cleaned.text
+            let withStop = PieceJoiner.join(
+                [piece(before + "."), piece(after)], under: .standard(for: .document)
+            ).cleaned.text
+
+            #expect(withoutStop.contains("Marcus"))
+            #expect(withStop.contains("Marcus"))
+        }
+    }
+
     @Test("keeps protected first word casing across a run-on seam")
     func keepsProtectedCaseAtRunOnSeam() {
         let seamed = PieceJoiner.seamed(
