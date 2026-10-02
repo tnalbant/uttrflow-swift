@@ -137,6 +137,7 @@ struct Complete: AsyncParsableCommand {
             var failure: String?
             var words: String?
             var lengthStopped = false
+            var alternativesLengthStopped = false
             var invented = false
             var rescued = false
             var secondMs: Int?
@@ -179,8 +180,16 @@ struct Complete: AsyncParsableCommand {
                     // The second opinion is the wider pass the person would never wait for, measured here to see whether it earns its place.
                     if secondOpinion, completions.isEmpty, !denied {
                         let again = ContinuousClock.now
-                        var others = try await scorer.alternatives(
-                            for: fixture.typed, in: situation, excluding: "")
+                        var others: [String]
+                        if raw, let passShowing = scorer as? any AlternativePassShowing {
+                            let pass = try await passShowing.alternativesPass(
+                                for: fixture.typed, in: situation, excluding: "")
+                            others = pass?.completions ?? []
+                            alternativesLengthStopped = pass?.stopReason == "length"
+                        } else {
+                            others = try await scorer.alternatives(
+                                for: fixture.typed, in: situation, excluding: "")
+                        }
                         if let grounding { others = await grounding.standing(others, after: fixture.typed) }
                         secondMs = Int((ContinuousClock.now - again) / .milliseconds(1))
                         rescued = fixture.hits(others)
@@ -227,6 +236,7 @@ struct Complete: AsyncParsableCommand {
                 first: failure ?? completions.first, source: shownSource,
                 raw: words, invented: invented, rescued: rescued,
                 secondOpinionMs: secondMs, lengthStopped: lengthStopped,
+                alternativesLengthStopped: alternativesLengthStopped,
                 gate: FixtureResult.Gate(
                     confidence: confidence, held: held, hitIfDrawn: fixture.hits(completions),
                     judgeScore: judgeScore, judgeMs: judgeMs))

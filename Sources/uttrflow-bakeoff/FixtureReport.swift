@@ -25,6 +25,8 @@ struct FixtureResult: Encodable {
     let secondOpinionMs: Int?
     /// Whether the first generation pass ended because it reached its token budget.
     let lengthStopped: Bool
+    /// Whether the alternatives pass ended because it reached its token budget.
+    let alternativesLengthStopped: Bool
     /// What the confidence floor made of the first line.
     let gate: Gate
 
@@ -44,7 +46,7 @@ struct FixtureResult: Encodable {
         name: String, category: String, typed: String, hit: Bool, judged: Bool, conforms: Bool,
         elapsedMs: Int, first: String?, source: String? = nil,
         raw: String?, invented: Bool, rescued: Bool = false, secondOpinionMs: Int? = nil,
-        lengthStopped: Bool = false, gate: Gate = .open
+        lengthStopped: Bool = false, alternativesLengthStopped: Bool = false, gate: Gate = .open
     ) {
         self.name = name
         self.category = category
@@ -60,6 +62,7 @@ struct FixtureResult: Encodable {
         self.rescued = rescued
         self.secondOpinionMs = secondOpinionMs
         self.lengthStopped = lengthStopped
+        self.alternativesLengthStopped = alternativesLengthStopped
         self.gate = gate
     }
 
@@ -97,6 +100,8 @@ struct FixtureSummary: Encodable {
     let invented: Int
     /// First passes that reached their token budget, whether or not the completion was withheld.
     let lengthStopped: Int
+    /// Alternatives passes that reached their token budget.
+    let alternativesLengthStopped: Int
     /// Shown candidates that came from a length-stopped pass. This must stay zero.
     let shownFromLengthStop: Int
     /// Hits checked against a named answer, and hits taken on any continuation, which say nothing about being right.
@@ -124,6 +129,7 @@ struct FixtureSummary: Encodable {
         conforming = results.filter(\.conforms).count
         invented = results.filter(\.invented).count
         lengthStopped = results.filter(\.lengthStopped).count
+        alternativesLengthStopped = results.filter(\.alternativesLengthStopped).count
         shownFromLengthStop = results.filter { $0.lengthStopped && $0.shown }.count
         judgedHits = results.filter { $0.hit && $0.judged }.count
         unjudgedHits = results.filter { $0.hit && !$0.judged }.count
@@ -211,6 +217,7 @@ struct FixtureReport: Encodable {
         print(
             "\nall  hit \(summary.hits)/\(summary.total)  in register \(summary.conforming)/\(summary.total)"
                 + "  invented \(summary.invented)  length-stopped \(summary.lengthStopped)"
+                + "  alternatives length-stopped \(summary.alternativesLengthStopped)"
                 + "  shown from length stop \(summary.shownFromLengthStop)"
                 + "  p50 \(summary.p50Ms)ms  p95 \(summary.p95Ms)ms")
         print("hits judged \(summary.judgedHits)  unjudged \(summary.unjudgedHits)")

@@ -25,6 +25,31 @@ struct CompletionParsingTests {
         #expect(endedNormally == ["see you at the"])
     }
 
+    @Test("An alternatives pass drops only its unterminated line when the token budget ends it.")
+    func tokenLimitedAlternativesDropTheirCutLine() {
+        let situation = GenerationSituation(application: "Notes")
+        let cutOff = MLXCandidateScorer.completions(
+            from: .init(
+                text: "see you at the park\nsee you after the", stop: .length, written: "", tokens: [],
+                logProbabilities: [], bytes: []),
+            typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
+        #expect(cutOff == ["see you at the park"])
+
+        let endedOnNewline = MLXCandidateScorer.completions(
+            from: .init(
+                text: "see you at the park\nsee you after the park\n", stop: .length, written: "", tokens: [],
+                logProbabilities: [], bytes: []),
+            typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
+        #expect(endedOnNewline == ["see you at the park", "see you after the park"])
+
+        let unparsableCutLine = MLXCandidateScorer.completions(
+            from: .init(
+                text: "see you at the park\nunfinished", stop: .length, written: "", tokens: [],
+                logProbabilities: [], bytes: []),
+            typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
+        #expect(unparsableCutLine == ["see you at the park"])
+    }
+
     @Test(
         "An indented line is read against the typed text without its indentation, and keeps it in the answer."
     )

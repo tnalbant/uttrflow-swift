@@ -23,7 +23,7 @@ public struct JudgedToken: Sendable, Equatable {
 }
 
 /// Judges and invents suggestions with one loaded model: scores a candidate, or generates one from nothing.
-public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel {
+public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassShowing, ReleasableModel {
     private let model: LocalModel
     private let maximumTokens: Int
     private var container: ModelContainer?
@@ -302,12 +302,25 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
 
     /// The one-line pass for `typed`: every token after the line's own start that opened its turn, why it ended, and what the parser made of it.
     public func pass(for typed: String, in situation: GenerationSituation) async throws -> GenerationPass? {
+        try await generationPass(typed: typed, in: situation, asking: .one, tokenShare: 1)
+    }
+
+    public func alternativesPass(
+        for typed: String, in situation: GenerationSituation, excluding leader: String
+    ) async throws -> GenerationPass? {
+        try await generationPass(
+            typed: typed, in: situation, asking: .others(excluding: leader), tokenShare: 3)
+    }
+
+    private func generationPass(
+        typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
+    ) async throws -> GenerationPass? {
         let generation = forgetGeneration
-        guard let run = try await run(typed: typed, in: situation, asking: .one, tokenShare: 1) else {
+        guard let run = try await run(typed: typed, in: situation, asking: ask, tokenShare: tokenShare) else {
             return nil
         }
         guard generation == forgetGeneration else { return nil }
-        let completions = Self.completions(from: run, typed: typed, asking: .one, in: situation)
+        let completions = Self.completions(from: run, typed: typed, asking: ask, in: situation)
         if run.forgetGeneration == forgetGeneration {
             confidenceMemory.remember(Self.confidences(of: completions, from: run, typed: typed))
         }
@@ -328,17 +341,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
     private func generate(
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> [String] {
-        let generation = forgetGeneration
-        guard let run = try await run(typed: typed, in: situation, asking: ask, tokenShare: tokenShare) else {
-            return []
-        }
-        guard generation == forgetGeneration else { return [] }
-        let lines = Self.completions(from: run, typed: typed, asking: ask, in: situation)
-        // Measured from the pass that wrote them, so the gate never runs the model a second time.
-        if run.forgetGeneration == forgetGeneration {
-            confidenceMemory.remember(Self.confidences(of: lines, from: run, typed: typed))
-        }
-        return lines
+        let pass = try await generationPass(typed: typed, in: situation, asking: ask, tokenShare: tokenShare)
+        return pass?.completions ?? []
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
@@ -360,15 +364,22 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, ReleasableModel 
             logProbabilities: run.logProbabilities, bytes: run.bytes)
     }
 
-    /// What the parser makes of a pass, each line cut where it starts copying the screen and then finished; one line the budget cut is kept to its last whole word, which is still the line's own start.
+    /// What the parser makes of a pass, withholding a budget-cut line that has not ended.
     private static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
         guard !(ask == .one && run.stop == .length) else { return [] }
-        let text = run.text
+        var response = run.written + run.text
+        if ask != .one, run.stop == .length, let last = response.last, !last.isNewline {
+            if let newline = response.lastIndex(where: \.isNewline) {
+                response = String(response[..<newline])
+            } else {
+                response = ""
+            }
+        }
         let context = CompletionText.contextNeverCopied(in: situation)
         // The prefill is the line's own start, so the answer reads as the whole line it would echo.
-        let lines = CompletionText.parse(run.written + text, typed: typed).compactMap {
+        let lines = CompletionText.parse(response, typed: typed).compactMap {
             CompletionText.trimmed($0, typed: typed, echoing: context)
         }
         return CompletionText.finished(lines, typed: typed, in: situation)

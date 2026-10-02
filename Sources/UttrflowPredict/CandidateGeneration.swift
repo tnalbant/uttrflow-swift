@@ -109,3 +109,11 @@ public protocol PassShowing: CandidateGenerating {
     /// The one-line pass for `typed`, raw and parsed together; nothing when the line is too short to ask about.
     func pass(for typed: String, in situation: GenerationSituation) async throws -> GenerationPass?
 }
+
+/// A generator that can show the raw alternatives pass, which is how a measurement reads a length stop.
+public protocol AlternativePassShowing: CandidateGenerating {
+    /// The alternatives pass for `typed`, raw and parsed together; nothing when the line is too short to ask about.
+    func alternativesPass(
+        for typed: String, in situation: GenerationSituation, excluding leader: String
+    ) async throws -> GenerationPass?
+}
