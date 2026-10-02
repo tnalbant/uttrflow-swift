@@ -550,7 +550,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
             guard let container else { return [] }
-            guard var vocabulary = self.vocabulary else { return [] }
+            guard let vocabulary = self.vocabulary else { return [] }
             let judged = await container.perform { loaded in
                 Self.judgedFromCache(
                     line, candidate: candidate, context: context, vocabulary: vocabulary,
@@ -569,9 +569,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         }
         beginPass()
         defer { endPass() }
-        guard var scoringVocabulary = self.vocabulary else { return [] }
+        guard let scoringVocabulary = self.vocabulary else { return [] }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
-            let line = Self.judge(candidate, with: loaded)
+            let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)
             let judged = Self.judgedFromCache(
                 line, candidate: candidate, context: context, vocabulary: scoringVocabulary,
                 tokenizer: loaded.tokenizer)
@@ -586,7 +586,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     static let leadIn = "...\n"
 
     /// The whole candidate as the model reads it, keeping only the scores needed for typed-prefix judgements.
-    private static func judge(_ candidate: String, with loaded: ModelContext) -> JudgedLine {
+    private static func judge(
+        _ candidate: String, vocabulary: TokenHealing.Vocabulary, with loaded: ModelContext
+    ) -> JudgedLine {
         let whole = loaded.tokenizer.encode(text: leadIn + candidate)
         guard !whole.isEmpty else {
             return JudgedLine(tokens: [], tokenLogProbabilities: [], prefixLogMasses: [], texts: [])
@@ -596,8 +598,6 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         // Softmax in Float32, since the bf16 logits would round every log-probability to a coarse grid.
         let probabilities = logSoftmax(output.logits.asType(.float32), axis: -1)[0]
         eval(probabilities)
-        let vocabularySize = probabilities.dim(-1)
-        let vocabulary = self.vocabulary ?? .init(bytes: [], ending: [])
         var tokenLogProbabilities: [Float] = []
         var prefixLogMasses: [Float?] = []
         tokenLogProbabilities.reserveCapacity(whole.count)
@@ -606,7 +606,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
             let row = probabilities[position]
             let token = whole[position]
             tokenLogProbabilities.append(row[token].item(Float.self))
-            let bytes = ScoredSpan.written(by: token, in: vocabulary)
+            let bytes = ScoredSpan.written(by: token, in: vocabulary.bytes)
             let continuing = ScoredSpan.continuing(bytes, in: vocabulary).filter { $0 != token }
             prefixLogMasses.append(Self.logMass(of: continuing, in: row))
         }
@@ -621,18 +621,18 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         let values = tokens.map { row[$0].item(Float.self) }
         guard let largest = values.max(), largest > -.infinity else { return nil }
         let sum = values.reduce(Float.zero) { $0 + exp($1 - largest) }
-        return largest + log(sum)
+        return largest + Foundation.log(sum)
     }
 
     /// The judged tokens for a typed prefix, cut from the cached line so a re-typed keystroke skips the forward pass.
     private static func judgedFromCache(
-        _ line: JudgedLine, candidate: String, context: String, vocabulary: inout TokenHealing.Vocabulary,
+        _ line: JudgedLine, candidate: String, context: String, vocabulary: TokenHealing.Vocabulary,
         tokenizer: any MLXLMCommon.Tokenizer
     ) -> [JudgedToken] {
         guard !line.isEmpty else { return [] }
         let typed = tokenizer.encode(
             text: leadIn + CompletionText.typedPart(of: candidate, following: context))
-        return JudgedLine.judged(from: line, typedTokens: typed, vocabulary: &vocabulary)
+        return JudgedLine.judged(from: line, typedTokens: typed, vocabulary: vocabulary)
     }
 }
 

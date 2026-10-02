@@ -200,7 +200,7 @@ struct DictationPipelineLoadingTests {
         let gate = LoadGate()
         let capture = FakeAudioCaptureEngine()
         let pipeline = makePipeline(speech: SlowLoadingSpeechEngine(gate: gate), capture: capture)
-        await pipeline.beginModifierPress(at: .zero)
+        await pipeline.beginModifierPress(measuring: { .zero })
         let loading = Task { await pipeline.prepare() }
         await gate.waitUntilReached()
 

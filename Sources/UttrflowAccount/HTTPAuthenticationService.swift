@@ -34,11 +34,6 @@ public final class HTTPAuthenticationService: AuthenticationService {
         case serverUnreachable
     }
 
-    private struct SignInFailure: Error {
-        let reason: FailureReason
-        let accountError: AccountError
-    }
-
     /// Renews the access token this long before expiry, so no request carries a token that dies in flight.
     private static let renewalMargin: TimeInterval = 60
 
@@ -205,34 +200,30 @@ public final class HTTPAuthenticationService: AuthenticationService {
         try await beginDeviceSignInRequest()
     }
 
-    private func beginDeviceSignInRequest() async throws -> SignInChallenge {
-        do {
-            let response = try await send(post("v1/auth/device/code", DeviceCodeBody(clientID: clientID)))
+    private func beginDeviceSignInRequest() async throws(AccountError) -> SignInChallenge {
+        let response = try await send(post("v1/auth/device/code", DeviceCodeBody(clientID: clientID)))
 
-            guard response.isSuccess else { throw refusal(response) }
-            guard let started = decode(StartedDeviceSignIn.self, from: response.body),
-                let verificationURL = URL(string: started.verificationUriComplete ?? started.verificationUri),
-                Self.isOpenable(verificationURL)
-            else {
-                throw refusal(.responseUnreadable)
-            }
-
-            let state = PKCEPair.base64URL(randomBytes(24))
-            pending.withLock {
-                $0 = .code(
-                    state: state,
-                    deviceCode: started.deviceCode,
-                    interval: .seconds(max(1, started.interval)),
-                    expiresAt: now().addingTimeInterval(TimeInterval(started.expiresIn)))
-            }
-
-            return SignInChallenge(
-                authorisationURL: verificationURL,
-                state: state,
-                method: .code(userCode: started.userCode, verificationURL: verificationURL))
-        } catch {
-            throw error
+        guard response.isSuccess else { throw refusal(response) }
+        guard let started = decode(StartedDeviceSignIn.self, from: response.body),
+            let verificationURL = URL(string: started.verificationUriComplete ?? started.verificationUri),
+            Self.isOpenable(verificationURL)
+        else {
+            throw refusal(.responseUnreadable)
         }
+
+        let state = PKCEPair.base64URL(randomBytes(24))
+        pending.withLock {
+            $0 = .code(
+                state: state,
+                deviceCode: started.deviceCode,
+                interval: .seconds(max(1, started.interval)),
+                expiresAt: now().addingTimeInterval(TimeInterval(started.expiresIn)))
+        }
+
+        return SignInChallenge(
+            authorisationURL: verificationURL,
+            state: state,
+            method: .code(userCode: started.userCode, verificationURL: verificationURL))
     }
 
     /// Whether a server-supplied address is safe to hand to the system to open: `https` with a host.
@@ -264,9 +255,6 @@ public final class HTTPAuthenticationService: AuthenticationService {
                 Self.log.info("sign-in: completed")
                 return profile
             }
-        } catch let failure as SignInFailure {
-            Self.log.error("sign-in: failed reason=\(failure.reason.rawValue, privacy: .public)")
-            throw failure.accountError
         } catch {
             logSignInFailure(error)
             throw error
@@ -281,35 +269,28 @@ public final class HTTPAuthenticationService: AuthenticationService {
         listener: any LoopbackListening
     ) async throws(AccountError) -> Profile {
         defer { Task { await listener.close() } }
-        do {
-            let callback = try await listener.awaitCallback()
-            Self.log.notice("sign-in: the browser came back, exchanging the code")
+        let callback = try await listener.awaitCallback()
+        Self.log.notice("sign-in: the browser came back, exchanging the code")
 
-            // Checked here as well as by the backend: an answer naming another attempt is not ours to spend.
-            guard callback.state == challenge.state else {
-                throw refusal(.attemptMismatch)
-            }
-
-            let response = try await send(
-                post(
-                    "v1/auth/token",
-                    TokenBody(
-                        grantType: "authorization_code",
-                        clientID: clientID,
-                        code: callback.code,
-                        codeVerifier: pkce.verifier,
-                        redirectURI: redirectURI.absoluteString,
-                        device: device?.registration())))
-            Self.log.notice("sign-in: token exchange answered \(response.status, privacy: .public)")
-
-            guard response.isSuccess else { throw refusal(response) }
-            return try await beginSession(issuedBy: response)
-        } catch let failure as SignInFailure {
-            throw failure.accountError
-        } catch {
-            logSignInFailure(error)
-            throw error
+        // Checked here as well as by the backend: an answer naming another attempt is not ours to spend.
+        guard callback.state == challenge.state else {
+            throw refusal(.attemptMismatch)
         }
+
+        let response = try await send(
+            post(
+                "v1/auth/token",
+                TokenBody(
+                    grantType: "authorization_code",
+                    clientID: clientID,
+                    code: callback.code,
+                    codeVerifier: pkce.verifier,
+                    redirectURI: redirectURI.absoluteString,
+                    device: device?.registration())))
+        Self.log.notice("sign-in: token exchange answered \(response.status, privacy: .public)")
+
+        guard response.isSuccess else { throw refusal(response) }
+        return try await beginSession(issuedBy: response)
     }
 
     /// Polls until the code is approved or expires, waiting longer when the server says `slow_down`.
@@ -320,41 +301,34 @@ public final class HTTPAuthenticationService: AuthenticationService {
 
         while true {
             do {
-                do {
-                    try await sleep(wait)
-                } catch {
-                    // Cancellation: the person walked away, and the code expires on its own.
-                    throw refusal(.abandoned)
-                }
-
-                let response = try await send(
-                    post(
-                        "v1/auth/device/token",
-                        DeviceTokenBody(
-                            grantType: "urn:ietf:params:oauth:grant-type:device_code",
-                            clientID: clientID,
-                            deviceCode: deviceCode,
-                            device: device?.registration())))
-
-                if response.isSuccess { return try await beginSession(issuedBy: response) }
-
-                switch decode(ServerError.self, from: response.body)?.error {
-                case "authorization_pending":
-                    break
-                case "slow_down":
-                    wait += .seconds(5)
-                default:
-                    throw refusal(response)
-                }
-
-                guard now() < expiresAt else {
-                    throw refusal(.codeExpired)
-                }
-            } catch let failure as SignInFailure {
-                throw failure
+                try await sleep(wait)
             } catch {
-                logSignInFailure(error)
-                throw error
+                // Cancellation: the person walked away, and the code expires on its own.
+                throw refusal(.abandoned)
+            }
+
+            let response = try await send(
+                post(
+                    "v1/auth/device/token",
+                    DeviceTokenBody(
+                        grantType: "urn:ietf:params:oauth:grant-type:device_code",
+                        clientID: clientID,
+                        deviceCode: deviceCode,
+                        device: device?.registration())))
+
+            if response.isSuccess { return try await beginSession(issuedBy: response) }
+
+            switch decode(ServerError.self, from: response.body)?.error {
+            case "authorization_pending":
+                break
+            case "slow_down":
+                wait += .seconds(5)
+            default:
+                throw refusal(response)
+            }
+
+            guard now() < expiresAt else {
+                throw refusal(.codeExpired)
             }
         }
     }
@@ -679,12 +653,12 @@ public final class HTTPAuthenticationService: AuthenticationService {
             let response = try await send(profileRequest(token, ifNoneMatch: validator))
             Self.log.notice("sign-in: profile answered \(response.status, privacy: .public)")
             guard response.isSuccess else {
-                throw SignInFailure(reason: .serverRefused).accountError
+                throw refusal(.serverRefused)
             }
             do {
                 return try believe(response)
             } catch {
-                throw SignInFailure(reason: .sessionMalformed).accountError
+                throw refusal(.sessionMalformed)
             }
         }
     }
@@ -744,9 +718,9 @@ public final class HTTPAuthenticationService: AuthenticationService {
         return .providerRefused(description: "the server refused sign-in")
     }
 
-    private func refusal(_ failure: FailureReason) -> SignInFailure {
+    private func refusal(_ failure: FailureReason) -> AccountError {
         Self.log.error("sign-in: failed reason=\(failure.rawValue, privacy: .public)")
-        return SignInFailure(reason: failure, accountError: accountError(for: failure))
+        return accountError(for: failure)
     }
 
     private func accountError(for failure: FailureReason) -> AccountError {

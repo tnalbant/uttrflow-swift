@@ -372,7 +372,8 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         let id = nextPressID
         let pressedAt = clock.now
         unsettledPress = (id, pressedAt)
-        await pipeline.beginModifierPress(at: pressedAt)
+        let elapsed = UttrflowCore.stopwatch(from: clock)
+        await pipeline.beginModifierPress(measuring: elapsed)
         let deadline = pressedAt.advanced(by: Self.modifierSettle)
         settleTask = Task { [clock, gestureSink] in
             do {

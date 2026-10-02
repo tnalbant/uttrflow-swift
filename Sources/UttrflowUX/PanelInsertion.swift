@@ -1,5 +1,5 @@
 // Whether the panel can place a clip at the caret, and what it says when it can only copy.
-import Foundation
+public import struct Foundation.UUID
 import UttrflowClipboard
 
 /// Why the panel cannot put a clip at the caret, knowable before Return so the panel can say so.

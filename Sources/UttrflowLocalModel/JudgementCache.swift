@@ -17,7 +17,7 @@ struct JudgedLine: Sendable, Equatable {
 
     /// The per-token log-probability the model gave the candidate at each position past its typed opening, with the cut case conditioned by `span`.
     static func judged(
-        from line: JudgedLine, typedTokens: [Int], vocabulary: inout TokenHealing.Vocabulary
+        from line: JudgedLine, typedTokens: [Int], vocabulary: TokenHealing.Vocabulary
     ) -> [JudgedToken] {
         let bytes = vocabulary.bytes
         guard !line.tokens.isEmpty,

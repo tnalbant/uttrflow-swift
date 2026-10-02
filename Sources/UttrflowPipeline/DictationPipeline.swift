@@ -45,7 +45,7 @@ public actor DictationPipeline {
 
     /// A microphone opened while a modifier press settles, before it belongs to a dictation.
     private var pendingCapture: Task<Void, Never>?
-    private var pendingCaptureStartedAt: (any Clock<Duration>).Instant?
+    private var pendingCaptureElapsed: (@Sendable () -> Duration)?
 
     /// Counts dictations, so a cancel can name the one it abandoned.
     private var generation = 0
@@ -295,15 +295,15 @@ public actor DictationPipeline {
     }
 
     /// Opens the microphone before a modifier shortcut settles, keeping speech from key-down onward.
-    public func beginModifierPress(at instant: Duration) async {
+    public func beginModifierPress(measuring elapsed: @escaping @Sendable () -> Duration) async {
         guard pendingCapture == nil, !isBusy, !isLoading else { return }
-        pendingCaptureStartedAt = instant
+        pendingCaptureElapsed = elapsed
         do {
             try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
                 try await capture.start()
             }
         } catch {
-            pendingCaptureStartedAt = nil
+            pendingCaptureElapsed = nil
             transition(to: .failed(DictationFailure(error)))
             return
         }
@@ -326,9 +326,9 @@ public actor DictationPipeline {
 
     /// Cancels a modifier press that became another shortcut before it settled.
     public func cancelModifierPress() async {
-        guard let pendingCapture else { return }
+        guard pendingCapture != nil else { return }
         self.pendingCapture = nil
-        pendingCaptureStartedAt = nil
+        pendingCaptureElapsed = nil
         await capture.cancel()
     }
 
@@ -336,41 +336,39 @@ public actor DictationPipeline {
     private func startRecordingUsingOpenCapture() async {
         generation += 1
         let mine = generation
-        do {
-            if let pendingCapture {
-                await pendingCapture.value
-                self.pendingCapture = nil
-                let openedAt = pendingCaptureStartedAt
-                pendingCaptureStartedAt = nil
-                if let openedAt {
-                    await metrics.record(
-                        .init(
-                            stage: .keyDownToAudio,
-                            duration: openedAt.duration(to: clock.now),
-                            succeeded: true))
-                }
-            } else {
+        if let pendingCapture {
+            await pendingCapture.value
+            self.pendingCapture = nil
+            let elapsed = pendingCaptureElapsed
+            pendingCaptureElapsed = nil
+            if let elapsed {
+                await metrics.record(
+                    .init(stage: .keyDownToAudio, duration: elapsed(), succeeded: true))
+            }
+        } else {
+            do {
                 try await metrics.measuring(.microphoneOpen, clock: clock) { [capture] in
                     try await capture.start()
                 }
-            }
-            guard !wasCancelled(mine) else {
-                await capture.cancel()
+            } catch {
+                guard !wasCancelled(mine) else { return }
+                transition(to: .failed(DictationFailure(error)))
                 return
             }
-            stopwatch = UttrflowCore.stopwatch(from: clock)
-            takeSettings()
-            spokenFor = nil
-            insertedInto = nil
-            insertedIntoIdentifier = nil
-            destinationIsSecure = false
-            cleaningRecords = []
-            transition(to: .recording)
-            beginWorkingAhead(mine)
-        } catch {
-            guard !wasCancelled(mine) else { return }
-            transition(to: .failed(DictationFailure(error)))
         }
+        guard !wasCancelled(mine) else {
+            await capture.cancel()
+            return
+        }
+        stopwatch = UttrflowCore.stopwatch(from: clock)
+        takeSettings()
+        spokenFor = nil
+        insertedInto = nil
+        insertedIntoIdentifier = nil
+        destinationIsSecure = false
+        cleaningRecords = []
+        transition(to: .recording)
+        beginWorkingAhead(mine)
     }
 
     /// Stops listening and runs the rest: transcribe, tidy, insert.
@@ -477,7 +475,7 @@ public actor DictationPipeline {
     public func cancel() async {
         pendingCapture?.cancel()
         pendingCapture = nil
-        pendingCaptureStartedAt = nil
+        pendingCaptureElapsed = nil
         cancelledGeneration = generation
         earlyWork?.cancel()
         earlyWork = nil
@@ -652,17 +650,17 @@ public actor DictationPipeline {
 
     /// Waits for a previous paste to reach the caret before the new dictation captures its context.
     private func contextAfterPendingInsertion(_ text: String, for mine: Int) async -> AppContext {
-        let wanted = PasteConfirmation.collapsed(text)
+        let wanted = PendingInsertionConfirmation.collapsed(text)
         var waited = Duration.zero
-        while waited < PasteConfirmation.budget, isStillRunning(mine), !Task.isCancelled {
+        while waited < PendingInsertionConfirmation.budget, isStillRunning(mine), !Task.isCancelled {
             let latest = await readContext()
-            let preceding = latest.precedingText.map(PasteConfirmation.collapsed) ?? ""
+            let preceding = latest.precedingText.map(PendingInsertionConfirmation.collapsed) ?? ""
             if preceding.hasSuffix(wanted) {
                 pendingInsertion = nil
                 return latest
             }
-            do { try await clock.sleep(for: PasteConfirmation.interval) } catch { break }
-            waited = min(PasteConfirmation.budget, waited + PasteConfirmation.interval)
+            do { try await clock.sleep(for: PendingInsertionConfirmation.interval) } catch { break }
+            waited = min(PendingInsertionConfirmation.budget, waited + PendingInsertionConfirmation.interval)
         }
         guard isStillRunning(mine), !Task.isCancelled else { return AppContext() }
         return await readContext()
@@ -1026,7 +1024,6 @@ public actor DictationPipeline {
                 do {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
-                    isReady = true
                     await metrics.recordVocabularyPrompt(transcription.vocabularyPrompt)
                     if transcription.isBlank { return speaks ? Heard.missed : Heard.nothing }
                     return Heard.words(transcription)
@@ -1046,6 +1043,7 @@ public actor DictationPipeline {
         guard let heard else {
             throw SpeechEngineError.transcriptionFailed(description: "the recogniser did not answer")
         }
+        isReady = true
         return heard
     }
 
@@ -1362,6 +1360,16 @@ public actor DictationPipeline {
         state = next
         observers.send(next)
         wakeWhatWaitsForRest()
+    }
+}
+
+/// Bounds how long a new dictation waits for a previous insertion to reach the caret.
+private enum PendingInsertionConfirmation {
+    static let budget = Duration.milliseconds(1600)
+    static let interval = Duration.milliseconds(40)
+
+    static func collapsed(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 

@@ -15,7 +15,7 @@ struct TokenHealing {
         private let idsByBytes: [[UInt8]: [Int]]
         private let unrestricted: [Int]
         private let unrestrictedWordComplete: [Int]
-        private let entriesExamined = Mutex(0)
+        private let lookupCounter = LookupCounter()
 
         init(texts: [String], ending: Set<Int>) {
             let byteLevelBPE = Self.usesByteLevelBPE(texts)
@@ -47,15 +47,15 @@ struct TokenHealing {
         /// Tokens whose bytes start with `prefix`, without searching unrelated vocabulary entries.
         func ids(startingWith prefix: [UInt8]) -> [Int] {
             let ids = idsByPrefix[prefix] ?? []
-            entriesExamined.withLock { $0 += ids.count }
+            lookupCounter.entriesExamined.withLock { $0 += ids.count }
             return ids
         }
 
         /// The vocabulary entries inspected to answer indexed prefix lookups.
-        var examinedEntries: Int { entriesExamined.withLock { $0 } }
+        var examinedEntries: Int { lookupCounter.entriesExamined.withLock { $0 } }
 
         /// Resets the lookup counter between operations under test.
-        func resetExaminedEntries() { entriesExamined.withLock { $0 = 0 } }
+        func resetExaminedEntries() { lookupCounter.entriesExamined.withLock { $0 = 0 } }
 
         /// Tokens whose complete byte sequence equals `written`.
         func ids(writing written: [UInt8]) -> [Int] { idsByBytes[written] ?? [] }
@@ -63,7 +63,7 @@ struct TokenHealing {
         /// Token ids whose bytes equal one of the supplied prefixes.
         func ids(writingAny prefixes: [[UInt8]]) -> [Int] {
             let ids = Set(prefixes.flatMap { idsByBytes[$0] ?? [] })
-            entriesExamined.withLock { $0 += ids.count }
+            lookupCounter.entriesExamined.withLock { $0 += ids.count }
             return ids.sorted()
         }
 
@@ -110,6 +110,10 @@ struct TokenHealing {
                 }
                 return nil
             }
+        }
+
+        private final class LookupCounter: Sendable {
+            let entriesExamined = Mutex(0)
         }
 
         /// The tokens a step may produce: those that keep to what is owed, or when nothing is owed any that adds a visible character without ending the line; a word the person finished is never overshot, and what follows it begins with a space.

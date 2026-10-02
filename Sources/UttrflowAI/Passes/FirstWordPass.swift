@@ -256,6 +256,14 @@ public struct FirstWordPass: WholeTextCleaningPass {
         }
     }
 
+    /// Lowercases an ordinary run-on sentence opening without changing names, acronyms, or calendar words.
+    public static func lowercasedAtRunOnSeam(_ word: String, in context: String) -> String? {
+        guard !keepsCapital(word), !isCalendarWord(word), !looksLikeName(word, in: [context]) else {
+            return nil
+        }
+        return WordShape.lowercased(word)
+    }
+
     /// The token without the quotes, brackets and marks around it.
     private static func bareWord(_ token: Substring) -> Substring {
         guard let start = token.firstIndex(where: { $0.isLetter || $0.isNumber }),

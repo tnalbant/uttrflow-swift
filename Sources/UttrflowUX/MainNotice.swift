@@ -1,5 +1,6 @@
 // What the main window says when a change it was asked to make was refused.
-import UttrflowCore
+public import struct Foundation.UUID
+public import UttrflowCore
 
 /// A refused change, said where the user pressed; the window carries the latest one only.
 public struct MainNotice: Sendable, Equatable {

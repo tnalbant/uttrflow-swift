@@ -1,3 +1,4 @@
+import UttrflowAI
 import UttrflowCore
 
 /// One piece of the recording, through every stage that runs before the words are joined.
@@ -160,21 +161,26 @@ enum PieceJoiner {
     /// Lowers a sentence starter while leaving unrecognized proper nouns intact.
     private static func lowercasedOpening(_ text: String, in context: String) -> String {
         guard let start = text.firstIndex(where: { !$0.isWhitespace }),
-            let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex,
-            let first = text[start..<end].first, first.isUppercase,
-            !FirstWordPass.keepsCapital(String(text[start..<end])),
-            !FirstWordPass.isCalendarWord(String(text[start..<end])),
-            !FirstWordPass.looksLikeName(String(text[start..<end]), in: [context]),
+            let first = text[start...].first
+        else { return text }
+        let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex
+        guard
+            first.isUppercase,
+            let lowercased = FirstWordPass.lowercasedAtRunOnSeam(String(text[start..<end]), in: context),
             lowercaseAtRunOnSeam.contains(WordShape(String(text[start..<end])).key)
         else { return text }
-        let word = String(text[start..<end])
-        return text.replacingCharacters(in: start..<end, with: WordShape.lowercased(word))
+        return text.replacingCharacters(in: start..<end, with: lowercased)
     }
 
     private static let lowercaseAtRunOnSeam: Set<String> = [
         "a", "an", "and", "as", "at", "but", "by", "for", "from", "if", "in", "into", "of",
         "on", "or", "so", "that", "the", "then", "these", "this", "those", "to", "when",
         "which", "while", "who", "with",
+    ]
+
+    private static let determiners: Set<String> = [
+        "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
+        "every", "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
     ]
 
     /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
@@ -421,6 +427,14 @@ enum PieceJoiner {
         let bodyEnd: Int
     }
 
+    private struct BoundaryCandidate {
+        let position: Int
+        let opening: Int
+        let length: Int
+        let value: Int
+        let kind: SequenceKind
+    }
+
     /// The spans that are the items of one spoken list, or nothing when the pieces do not spell one.
     private static func listItems(in draft: Draft, starts: [Int]) -> [ListItem] {
         let live = draft.presentIndices
@@ -459,27 +473,27 @@ enum PieceJoiner {
     /// Recognizes announced and cardinal sequences at piece boundaries, where their number is unambiguous.
     private static func boundaryListItems(in draft: Draft, starts: [Int]) -> [ListItem] {
         let live = draft.presentIndices
-        let candidates = starts.compactMap { start in
+        var candidates: [BoundaryCandidate] = []
+        for start in starts {
             guard let found = sequence(draft, live, at: start),
                 let position = live.firstIndex(of: start)
-            else { return nil }
-            return (
-                position: position, opening: start, length: found.length,
-                value: found.value, kind: found.kind
-            )
+            else { continue }
+            candidates.append(
+                BoundaryCandidate(
+                    position: position, opening: start, length: found.length,
+                    value: found.value, kind: found.kind))
         }
         guard let head = candidates.firstIndex(where: { $0.value == 1 }), candidates.count - head >= 2
         else { return [] }
         let kind = candidates[head].kind
         let run = Array(candidates[head...])
-        guard
-            run.enumerated().allSatisfy({ offset, candidate in
-                candidate.kind == kind && candidate.value == offset + 1
-                    && hasClauseBody(
-                        draft, live, from: candidate.position + candidate.length,
-                        to: offset + 1 < run.count ? run[offset + 1].position : live.count)
-            })
-        else { return [] }
+        for (offset, candidate) in run.enumerated() {
+            let nextPosition = offset + 1 < run.count ? run[offset + 1].position : live.count
+            guard candidate.kind == kind, candidate.value == offset + 1,
+                hasClauseBody(
+                    draft, live, from: candidate.position + candidate.length, to: nextPosition)
+            else { return [] }
+        }
         return run.enumerated().map { offset, candidate in
             let end =
                 offset + 1 < run.count

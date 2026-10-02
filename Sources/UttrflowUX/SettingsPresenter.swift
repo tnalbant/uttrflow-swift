@@ -658,8 +658,7 @@ public enum SettingsPresenter {
                             settings, .everything
                         ).with(icon: .symbol("bolt", .amber)),
                         pauseRow(settings, moment),
-                        retrySuggestionModelRow(settings, capabilities),
-                    ]),
+                    ] + (retrySuggestionModelRow(settings, capabilities).map { [$0] } ?? [])),
                 applicationGroup(settings, personalisation),
                 acceptKeyGroup(settings, personalisation),
             ].compactMap(\.self),
