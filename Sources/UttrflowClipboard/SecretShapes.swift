@@ -31,6 +31,7 @@ public enum SecretShapes {
         if NamedSecretStems.present(in: text), hasNamedSecret(text) { return true }
         if CardNumberShape.matches(text) { return true }
         if hasCommandCredential(text) { return true }
+        if BIP39RecoveryPhrase.matches(text) { return true }
         return hasHighEntropyToken(text)
     }
 

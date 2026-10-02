@@ -25,6 +25,11 @@ receive those windows. This is partial protection, because system screenshots, S
 clients and video-call apps have not all honoured AppKit's sharing policy on every macOS release;
 the manual checks in `Docs/ui-tests.md` record what each release actually hides.
 
+English BIP-0039 recovery phrases are masked only when their word count, English-list membership
+and SHA-256 checksum are valid; the bundled wordlist is from [bitcoin/bips](https://github.com/bitcoin/bips/tree/master/bip-0039)
+and is used under its MIT license. This checksum check avoids treating every 12-word sentence as
+a wallet credential; other language lists and invalid checksums are not detected by this rule.
+
 ## Shapes, cheapest first
 
 1. A PEM header (`-----BEGIN`). Certificates are masked with keys; telling them apart by label

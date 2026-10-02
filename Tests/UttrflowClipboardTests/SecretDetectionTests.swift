@@ -60,6 +60,35 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test(
+        "masks checksum-valid English wallet recovery phrases",
+        arguments: [
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exhibit",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agent",
+            "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch saddle",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+        ])
+    func walletRecoveryPhrases(_ phrase: String) {
+        #expect(ClipKindDetector.kind(of: phrase) == .secret)
+    }
+
+    @Test("requires a valid recovery phrase checksum and leaves ordinary sentences alone")
+    func walletRecoveryPhraseNearMisses() {
+        let invalidChecksum =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon above"
+        let ordinarySentence = "the quick brown fox jumps over the lazy dog and then runs"
+        #expect(ClipKindDetector.kind(of: invalidChecksum) != .secret)
+        #expect(ClipKindDetector.kind(of: ordinarySentence) != .secret)
+    }
+
+    @Test("masks a valid recovery phrase when it is surrounded by text")
+    func walletRecoveryPhraseInSurroundingText() {
+        let text =
+            "Backup note: abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about. Keep offline."
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
     @Test("masks vendor tokens in multiline clips without matching prose")
     func vendorTokensInMultilineClips() {
         let tokens = [
