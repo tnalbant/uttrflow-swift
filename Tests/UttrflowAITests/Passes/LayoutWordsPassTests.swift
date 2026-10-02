@@ -65,6 +65,32 @@ struct LayoutWordsPassTests {
                 == "\nReason 1: it is cheap\nReason 2: it is fast\nReason 3: it works")
     }
 
+    @Test(
+        "keeps numbers after dictated line breaks instead of treating the break as a repeated label",
+        arguments: [
+            (
+                "agenda new line number one budget new line number two hiring new line number three billing",
+                "agenda\n\n1. budget\n\n2. hiring\n\n3. billing"
+            ),
+            (
+                "agenda new paragraph number one budget new line number two hiring",
+                "agenda\n\n\n1. budget\n\n2. hiring"
+            ),
+        ]
+    )
+    func keepsNumberedItemsAfterLayoutBreaks(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps repeated step labels with numbered items")
+    func keepsRepeatedStepLabelsWithNumberedItems() {
+        #expect(
+            cleaned(
+                "step number one open the app step number two tap settings",
+                by: sut)
+                == "\nStep 1: open the app\nStep 2: tap settings")
+    }
+
     @Test("does not turn repeated numbered labels into lists where lists are unavailable")
     func leavesRepeatedLabelsAsProseWithoutListLayout() {
         let input = "reason number one it is cheap reason number two it is fast"

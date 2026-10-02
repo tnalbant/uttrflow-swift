@@ -83,6 +83,7 @@ public struct LayoutWordsPass: CleaningPass {
                 isCorroborated(at: position, in: live, of: draft, among: numbered),
                 position > 0,
                 let item = itemNumber(at: position + 1, in: live, of: draft),
+                !followsLayoutBreak(at: position - 1, in: live, of: draft),
                 !draft.shape(at: live[position - 1]).endsSentence
             else { continue }
             let label = live[position - 1]
@@ -94,6 +95,15 @@ public struct LayoutWordsPass: CleaningPass {
                 zip(items, items.dropFirst()).allSatisfy({ pair in pair.1.value == pair.0.value + 1 })
             else { return }
             for item in items { labels[item.marker] = item.label }
+        }
+    }
+
+    /// A layout phrase immediately before an item is a break, not a repeated label.
+    private func followsLayoutBreak(at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        Self.marks.contains { mark in
+            guard mark.mark.allSatisfy(\.isNewline) else { return false }
+            let start = position - mark.words.count + 1
+            return start >= 0 && matches(mark.words, at: start, in: live, of: draft)
         }
     }
 
