@@ -12,6 +12,10 @@ that is the most useful sentence you can write here — it stops the reviewer pr
 
 <!-- Which test covers it, or what you did by hand and what you saw. -->
 
+For changes to `Sources/UttrflowAI/PromptBuilder.swift` or the rules, include the
+`make bakeoff ARGS="--against <saved-result.json>"` comparison output, or explain why a
+corpus comparison could not be run.
+
 ---
 
 - [ ] `make verify` passes locally (lint, PII audit, build, tests, coverage floor, offline audit)

@@ -5,6 +5,54 @@ import Testing
 @testable import UttrflowEval
 
 struct ReloadLeaksTests {
+    @Test("bake-off comparison catches a lost pass, rising lost words, and a missing passing case")
+    func bakeoffComparisonFindsRegressions() {
+        let baseline = measurement(cases: [
+            caseResult("pass-to-fail", passed: true),
+            caseResult("lost-words", passed: false, lost: ["one"]),
+            caseResult("missing", passed: true),
+        ])
+        let current = measurement(cases: [
+            caseResult("pass-to-fail", passed: false),
+            caseResult("lost-words", passed: false, lost: ["one", "two"]),
+        ])
+
+        let comparison = RegressionComparison.compare(current, against: baseline)
+        #expect(
+            comparison?.regressions == [
+                "lost-words: lost words increased from 1 to 2",
+                "missing: previously passing case is missing",
+                "pass-to-fail: previously passing case now fails",
+            ])
+    }
+
+    @Test("bake-off comparison ignores a different candidate")
+    func bakeoffComparisonRequiresMatchingCandidate() {
+        let rules = measurement(cases: [])
+        let other = Measurement(
+            description: CandidateDescription(
+                name: "other", version: "—", parameters: "—", quantisation: "—", size: "0"),
+            report: EvaluationReport(label: "other", scores: [], durations: []))
+        #expect(RegressionComparison.compare(rules, against: other) == nil)
+    }
+
+    private func measurement(cases: [StoredReport.CaseResult]) -> Measurement {
+        let scores = cases.map {
+            CaseScore(
+                caseID: $0.caseID, similarity: $0.passed ? 1 : 0,
+                keptEverythingRequired: $0.lost.isEmpty, lost: $0.lost, isExact: $0.passed)
+        }
+        return Measurement(
+            description: .rules, report: EvaluationReport(label: "rules", scores: scores, durations: []))
+    }
+
+    private func caseResult(_ id: String, passed: Bool, lost: [String] = []) -> StoredReport.CaseResult {
+        StoredReport.CaseResult(
+            caseID: id, category: "everyday", destination: nil, similarity: passed ? 1 : 0,
+            markAccuracy: nil, caseAccuracy: nil, lost: lost, invented: [], brokeShape: [],
+            passed: passed, declined: false)
+    }
+
     @Test("scorecard and fixture report use judged shown rows for category precision")
     func scorecardMatchesFixtureReportPrecision() throws {
         let results = [

@@ -35,14 +35,27 @@ struct Bakeoff: AsyncParsableCommand {
     @Flag(name: .long, help: "Withhold what is on screen, to measure whether it helps.")
     var ignoreContext = false
 
-    @Option(name: .long, help: "Where results are kept between runs.")
+    @Option(name: .long, help: "Where results are kept between runs; comparisons use a -compared sibling.")
     var resultsPath = ".bakeoff"
+
+    @Option(
+        name: .long,
+        help: "Compare each measured candidate with this saved result JSON and fail on regressions.")
+    var against: String?
 
     /// Kept apart so a with-context run cannot overwrite a without-context one.
     private var storeDirectory: String { ignoreContext ? resultsPath + "-no-context" : resultsPath }
 
     func run() async throws {
         let store = ResultStore(directory: URL(fileURLWithPath: storeDirectory))
+        let outputStore = ResultStore(
+            directory: URL(fileURLWithPath: against == nil ? storeDirectory : storeDirectory + "-compared"))
+        guard against == nil || (!summarise && !sample) else {
+            throw CleanExit.message("--against applies to a new bake-off run, not --summarise or --sample.")
+        }
+
+        let baselineURL = against.map { URL(fileURLWithPath: $0).standardizedFileURL }
+        let baseline = try baselineURL.map { try ResultStore.load(from: $0) }
 
         if summarise {
             report(try store.all())
@@ -59,18 +72,53 @@ struct Bakeoff: AsyncParsableCommand {
             "Bake-off — \(EvaluationCorpus.all.count) cases, prompt v\(PromptBuilder.version)"
                 + "\(contextNote)\n")
 
+        var measured: [Measurement] = []
         if models == nil {
-            try store.save(await measureBaseline(kind: .rules, description: .rules))
-            try store.save(await measureBaseline(kind: .foundationModels, description: .appleOnDevice))
-            try store.save(await measureShipping())
+            measured.append(await measureBaseline(kind: .rules, description: .rules))
+            measured.append(await measureBaseline(kind: .foundationModels, description: .appleOnDevice))
+            measured.append(await measureShipping())
         }
         if !baselinesOnly {
             for model in try selectedModels() {
-                try store.save(await measureLocal(model))
+                measured.append(await measureLocal(model))
             }
         }
 
-        report(try store.all())
+        for measurement in measured {
+            if let baselineURL,
+                outputStore.fileURL(for: measurement).standardizedFileURL == baselineURL
+            {
+                throw CleanExit.message(
+                    "Comparison output would overwrite its baseline; choose a different --results-path."
+                )
+            }
+            try outputStore.save(measurement)
+        }
+
+        if against != nil {
+            report(measured)
+        } else {
+            report(try store.all())
+        }
+        if let baseline {
+            let comparisons = measured.compactMap { RegressionComparison.compare($0, against: baseline) }
+            guard !comparisons.isEmpty else {
+                throw CleanExit.message(
+                    "No measured candidate matches baseline \(baseline.description.name) \(baseline.description.parameters)."
+                )
+            }
+            let regressions = comparisons.flatMap(\.regressions)
+            if regressions.isEmpty {
+                print(
+                    "\nNo regressions against \(baseline.description.name) \(baseline.description.parameters)."
+                )
+            } else {
+                print(
+                    "\nRegressions against \(baseline.description.name) \(baseline.description.parameters):")
+                for regression in regressions { print("  \(regression)") }
+                throw CleanExit.message("Bake-off comparison found \(regressions.count) regression(s).")
+            }
+        }
     }
 
     /// Prints raw model output for a handful of cases, because a score never says why.
@@ -462,8 +510,7 @@ struct ResultStore {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(measurement).write(
-            to: directory.appending(path: "\(measurement.description.fileName).json"))
+        try encoder.encode(measurement).write(to: fileURL(for: measurement))
     }
 
     func all() throws -> [Measurement] {
@@ -474,6 +521,44 @@ struct ResultStore {
         return files.filter { $0.pathExtension == "json" }.compactMap { url in
             try? JSONDecoder().decode(Measurement.self, from: Data(contentsOf: url))
         }
+    }
+
+    static func load(from url: URL) throws -> Measurement {
+        do {
+            return try JSONDecoder().decode(Measurement.self, from: Data(contentsOf: url))
+        } catch {
+            throw CleanExit.message("Could not read saved bake-off result at \(url.path): \(error)")
+        }
+    }
+
+    func fileURL(for measurement: Measurement) -> URL {
+        directory.appending(path: "\(measurement.description.fileName).json")
+    }
+}
+
+struct RegressionComparison {
+    let regressions: [String]
+
+    static func compare(_ current: Measurement, against baseline: Measurement) -> RegressionComparison? {
+        guard current.description.fileName == baseline.description.fileName else { return nil }
+        let previous = Dictionary(uniqueKeysWithValues: baseline.report.cases.map { ($0.caseID, $0) })
+        let latest = Dictionary(uniqueKeysWithValues: current.report.cases.map { ($0.caseID, $0) })
+        var regressions: [String] = []
+
+        for (caseID, old) in previous {
+            guard let new = latest[caseID] else {
+                if old.passed { regressions.append("\(caseID): previously passing case is missing") }
+                continue
+            }
+            if old.passed && !new.passed {
+                regressions.append("\(caseID): previously passing case now fails")
+            }
+            if new.lost.count > old.lost.count {
+                regressions.append(
+                    "\(caseID): lost words increased from \(old.lost.count) to \(new.lost.count)")
+            }
+        }
+        return RegressionComparison(regressions: regressions.sorted())
     }
 }
 
