@@ -15,6 +15,7 @@ struct StammersPassTests {
             ("The the plan", "The plan"),
             ("we we we should", "we should"),
             ("the build is is red", "the build is red"),
+            ("do do you want it", "do you want it"),
         ]
     )
     func removesStammer(input: String, expected: String) {
@@ -69,6 +70,18 @@ struct StammersPassTests {
         arguments: ["extension four four two", "port eight zero zero zero", "the code is one one one"]
     )
     func keepsRepeatedNumbers(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "keeps Hindi distributive do before a content word",
+        arguments: [
+            "sab ko do do laddoo diye",
+            "do do roti khao",
+            "do do kitaben lo",
+        ]
+    )
+    func keepsHindiDistributiveDo(input: String) {
         #expect(cleaned(input, by: sut) == input)
     }
 

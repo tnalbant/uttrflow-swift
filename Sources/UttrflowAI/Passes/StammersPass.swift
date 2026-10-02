@@ -16,6 +16,10 @@ public struct StammersPass: CleaningPass {
         var previous: String?
         for (i, index) in live.enumerated() {
             let word = draft.words[index].text.lowercased()
+            if word == previous, Self.preservesHindiDistributiveDo(at: i, in: live, draft: draft) {
+                previous = word
+                continue
+            }
             if word == previous,
                 (!FunctionWords.isContent(word) || MeaningPreservationGuard.isGrammarWord(word)),
                 !Self.legitimateDoubles.contains(word)
@@ -34,6 +38,14 @@ public struct StammersPass: CleaningPass {
             previous = word
         }
         return draft
+    }
+
+    /// Keeps Hindi's doubled numeral when a content word follows it.
+    private static func preservesHindiDistributiveDo(at i: Int, in live: [Int], draft: Draft) -> Bool {
+        guard i > 0, i + 1 < live.count,
+            draft.words[live[i - 1]].text.lowercased() == "do"
+        else { return false }
+        return FunctionWords.isContent(draft.words[live[i + 1]].text.lowercased())
     }
 
     /// Whether a number word sits immediately before or after the doubled pair at `i`.
