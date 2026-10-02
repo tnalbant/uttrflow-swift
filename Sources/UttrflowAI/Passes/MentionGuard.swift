@@ -5,7 +5,8 @@ import UttrflowCore
 enum MentionGuard {
     private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
     private static let finalPeriodCompoundModifiers: Set<String> = [
-        "cooling", "grace", "month", "notice", "time", "trial", "victorian", "waiting",
+        "cooling", "day", "following", "grace", "holding", "month", "notice", "off", "time", "trial",
+        "victorian", "waiting", "week", "year",
     ]
 
     /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
@@ -97,10 +98,9 @@ enum MentionGuard {
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
 
-        // Known period compounds stay words when the tagger cannot identify the compound.
-        if lexicalClass == .noun && head == "period"
-            && (!finalMark || finalPeriodCompoundModifiers.contains(word))
-        {
+        // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
+        if head == "period" && finalMark && finalPeriodCompoundModifiers.contains(word) { return true }
+        if lexicalClass == .noun && head == "period" && !finalMark {
             return true
         }
 

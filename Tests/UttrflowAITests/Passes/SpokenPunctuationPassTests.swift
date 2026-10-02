@@ -49,6 +49,24 @@ struct SpokenPunctuationPassTests {
     }
 
     @Test(
+        "keeps supported period compounds at the end without treating every noun as a modifier",
+        arguments: [
+            ("what is the waiting period", "what is the waiting period"),
+            ("the policy has a cooling off period", "the policy has a cooling off period"),
+            ("you have a six month period", "you have a six month period"),
+            ("over a ten year period", "over a ten year period"),
+            ("a two week period", "a two week period"),
+            ("the holding period", "the holding period"),
+            ("the following period", "the following period"),
+            ("one hundred day period", "one hundred day period"),
+            ("call the office period", "call the office."),
+        ]
+    )
+    func finalPeriodCompounds(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "keeps abbreviation full stops when the standard pipeline adds a clause mark",
         arguments: [
             ("Is it 5 p.m. question mark", "Is it 5 p.m.?"),
