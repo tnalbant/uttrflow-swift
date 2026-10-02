@@ -2,6 +2,8 @@
 
 import CryptoKit
 import Foundation
+import Security
+import Synchronization
 import Testing
 import UttrflowCore
 
@@ -22,6 +24,28 @@ struct ClipboardEncryptionTests {
         func key(createIfMissing: Bool) throws -> SymmetricKey {
             throw CocoaError(.fileWriteUnknown)
         }
+    }
+
+    private struct MissingKeys: StoreKeyProviding {
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            throw StoreKeyError.unavailable(Int32(errSecItemNotFound))
+        }
+    }
+
+    private final class RecoverableKeys: StoreKeyProviding, Sendable {
+        private let value: SymmetricKey
+        private let unavailable = Mutex(false)
+
+        init(value: SymmetricKey) { self.value = value }
+
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            guard !unavailable.withLock({ $0 }) else {
+                throw StoreKeyError.unavailable(Int32(errSecInteractionNotAllowed))
+            }
+            return value
+        }
+
+        func setUnavailable(_ value: Bool) { unavailable.withLock { $0 = value } }
     }
 
     @Test("clipboard indexes and picture bytes are sealed and survive a relaunch")
@@ -148,6 +172,52 @@ struct ClipboardEncryptionTests {
         #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
         #expect(EncryptedStore.isSealed(sealed))
         #expect(try crypto.open(sealed, for: name) == original)
+    }
+
+    @Test("a temporarily unavailable picture key leaves the sealed file for a later retry")
+    func lockedPictureKeyRetries() async throws {
+        let folder = try TemporaryFolder()
+        let keys = RecoverableKeys(value: SymmetricKey(size: .bits256))
+        let crypto = EncryptedStore(keys: keys)
+        let store = ClipboardStore(
+            file: folder.url.appending(path: "clipboard.json"), encryptedStore: crypto)
+        let image = try await store.keep(ClipImageTests.bytes, forClip: UUID(), width: 1, height: 1)
+        let url = await store.imagesFolder.appending(path: image.file)
+        let sealed = try Data(contentsOf: url)
+        #expect(EncryptedStore.isSealed(sealed))
+
+        keys.setUnavailable(true)
+        #expect(await store.imageData(for: image) == nil)
+        #expect(try Data(contentsOf: url) == sealed)
+        #expect(await store.hasImage(for: image))
+        #expect(
+            try FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path) == [
+                image.file
+            ])
+
+        keys.setUnavailable(false)
+        #expect(await store.imageData(for: image) == ClipImageTests.bytes)
+        #expect(try Data(contentsOf: url) == sealed)
+    }
+
+    @Test("a definitely missing picture key sets the sealed file aside")
+    func missingPictureKeySetsAside() async throws {
+        let folder = try TemporaryFolder()
+        let writer = ClipboardStore(
+            file: folder.url.appending(path: "clipboard.json"), encryptedStore: encryptedStore())
+        let image = try await writer.keep(ClipImageTests.bytes, forClip: UUID(), width: 1, height: 1)
+        let url = await writer.imagesFolder.appending(path: image.file)
+        let sealed = try Data(contentsOf: url)
+        let reader = ClipboardStore(
+            file: folder.url.appending(path: "clipboard.json"),
+            encryptedStore: EncryptedStore(keys: MissingKeys()))
+
+        #expect(await reader.imageData(for: image) == nil)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        let aside = try #require(
+            FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)
+                .first { $0.hasPrefix("\(image.file).unreadable-") })
+        #expect(try Data(contentsOf: url.deletingLastPathComponent().appending(path: aside)) == sealed)
     }
 
     /// Reads the damaged history index after its load-time set-aside.

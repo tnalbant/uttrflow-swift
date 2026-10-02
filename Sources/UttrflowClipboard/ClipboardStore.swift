@@ -2,6 +2,7 @@
 
 import UttrflowCore
 import CryptoKit
+import Security
 
 public import struct Foundation.Date
 public import struct Foundation.URL
@@ -383,6 +384,11 @@ public actor ClipboardStore {
         guard let encryptedStore else { return data }
         if EncryptedStore.isSealed(data) {
             do { return try encryptedStore.open(data, for: image.file) } catch {
+                if case StoreKeyError.unavailable(let status) = error,
+                    status != Int32(errSecItemNotFound)
+                {
+                    return nil
+                }
                 let setAside = LocalStore.setAside(url, now: Date())
                 if setAside == nil { unreplaceable.insert(url) }
                 return nil
