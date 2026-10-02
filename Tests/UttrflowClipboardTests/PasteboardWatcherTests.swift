@@ -41,6 +41,14 @@ final class FakeClipboard: ClipboardSource, Sendable {
         }
     }
 
+    /// Changes focus without changing clipboard contents or their writer.
+    func focus(on application: String?, bundleIdentifier: String? = nil) {
+        state.withLock {
+            $0.application = application
+            $0.bundleIdentifier = bundleIdentifier
+        }
+    }
+
     var reads: Int { state.withLock(\.reads) }
     var contentReads: Int { state.withLock(\.contentReads) }
     var htmlReads: Int { state.withLock(\.htmlReads) }
@@ -88,6 +96,9 @@ final class FakeClipboard: ClipboardSource, Sendable {
 
     func frontmostApplicationName() -> String? { state.withLock(\.application) }
     func frontmostApplicationBundleIdentifier() -> String? { state.withLock(\.bundleIdentifier) }
+    func frontmostApplication() -> (name: String?, bundleIdentifier: String?) {
+        state.withLock { ($0.application, $0.bundleIdentifier) }
+    }
 }
 
 @Suite("Noticing that something was copied")
@@ -102,6 +113,7 @@ struct PasteboardWatcherTests {
     @Test("notices a copy and works out what it was")
     func noticesACopy() async {
         let clipboard = FakeClipboard()
+        clipboard.focus(on: "Safari")
         let watcher = watcher(clipboard)
         clipboard.write("https://example.com", from: "Safari")
 
@@ -116,6 +128,7 @@ struct PasteboardWatcherTests {
     @Test("skips excluded bundle identifiers but records unknown and other applications")
     func excludesOnlySelectedApplications() async {
         let clipboard = FakeClipboard()
+        clipboard.focus(on: "Private App", bundleIdentifier: "com.example.private")
         let watcher = watcher(clipboard)
         await watcher.setExcludedApplications(["com.example.private"])
 
@@ -123,10 +136,40 @@ struct PasteboardWatcherTests {
         #expect(await watcher.newClip(at: noon) == nil)
 
         clipboard.write("ordinary copy", bundleIdentifier: "com.example.other")
+        #expect(await watcher.newClip(at: noon) == nil)
+        clipboard.write("ordinary copy", bundleIdentifier: "com.example.other")
         #expect(await watcher.newClip(at: noon)?.clip.text == "ordinary copy")
 
+        clipboard.focus(on: nil)
+        #expect(await watcher.newClip(at: noon) == nil)
         clipboard.write("unknown provenance")
         #expect(await watcher.newClip(at: noon)?.clip.text == "unknown provenance")
+    }
+
+    @Test("drops a copy when the frontmost application changes before polling")
+    func excludesCopyWhenFocusChangesBeforePolling() async {
+        let clipboard = FakeClipboard()
+        clipboard.focus(on: "Private App", bundleIdentifier: "com.example.private")
+        let watcher = watcher(clipboard)
+        await watcher.setExcludedApplications(["com.example.private"])
+
+        clipboard.write("private copy", from: "Private App", bundleIdentifier: "com.example.private")
+        clipboard.focus(on: "Other App", bundleIdentifier: "com.example.other")
+
+        #expect(await watcher.newClip(at: noon) == nil)
+    }
+
+    @Test("does not attribute a copy to an application after focus changes")
+    func leavesSourceUnknownWhenFocusChangesBeforePolling() async throws {
+        let clipboard = FakeClipboard()
+        clipboard.focus(on: "Private App", bundleIdentifier: "com.example.private")
+        let watcher = watcher(clipboard)
+
+        clipboard.write("copy", from: "Private App", bundleIdentifier: "com.example.private")
+        clipboard.focus(on: "Other App", bundleIdentifier: "com.example.other")
+
+        let clip = try #require(await watcher.newClip(at: noon)?.clip)
+        #expect(clip.source == nil)
     }
 
     @Test("records an escaped-quote named secret as hidden without changing the text")

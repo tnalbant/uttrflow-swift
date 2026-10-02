@@ -9,6 +9,17 @@ private import os
 
 /// Notices when the user copies something, by polling, which is the only mechanism macOS offers.
 public actor PasteboardWatcher {
+    private struct ApplicationSample: Equatable {
+        let name: String?
+        let bundleIdentifier: String?
+
+        init(source: any ClipboardSource) {
+            let application = source.frontmostApplication()
+            name = application.name
+            bundleIdentifier = application.bundleIdentifier
+        }
+    }
+
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "clipboard")
 
     /// Where a clipboard read runs, so a writer that never answers holds no thread the app needs.
@@ -42,8 +53,12 @@ public actor PasteboardWatcher {
 
     /// The last change count dealt with, read at construction so neither launch case is wrong.
     private var seen: Int
-    /// Bundle identifiers excluded from capture; nil provenance is deliberately not excluded.
+    /// Bundle identifiers excluded from capture; ambiguous provenance is excluded as well.
     private var excludedApplications: Set<String> = []
+    /// The last application's identity sampled at a clipboard polling tick.
+    private var lastApplication: ApplicationSample
+    /// A focus change during a slow clipboard read makes its pending copy's provenance unknown.
+    private var applicationChangedWhileReading = false
 
     /// How long a promised or Universal Clipboard read may take before the copy is given up on.
     public static let defaultReadLimit = Duration.seconds(2)
@@ -73,6 +88,7 @@ public actor PasteboardWatcher {
         self.readLimit = readLimit
         self.now = now
         self.seen = source.changeCount()
+        self.lastApplication = ApplicationSample(source: source)
     }
 
     // MARK: - Ignoring ourselves
@@ -123,12 +139,24 @@ public actor PasteboardWatcher {
 
     /// Reads the clipboard once, answering a clip only when the user has copied something new.
     public func newClip(at date: Date) async -> NoticedClip? {
+        let application = ApplicationSample(source: source)
+        let applicationChanged = application != lastApplication
+        lastApplication = application
         // A read another process has to answer is still running; a second one would only queue behind it.
-        guard !isReading else { return nil }
+        guard !isReading else {
+            applicationChangedWhileReading = applicationChangedWhileReading || applicationChanged
+            return nil
+        }
         let count = source.changeCount()
-        guard count != seen else { return nil }
+        guard count != seen else {
+            applicationChangedWhileReading = false
+            return nil
+        }
         seen = count
-        if let identifier = source.frontmostApplicationBundleIdentifier(),
+        let provenanceIsUnknown = applicationChanged || applicationChangedWhileReading
+        applicationChangedWhileReading = false
+        if provenanceIsUnknown, !excludedApplications.isEmpty { return nil }
+        if !provenanceIsUnknown, let identifier = application.bundleIdentifier,
             excludedApplications.contains(identifier.lowercased())
         {
             return nil
@@ -158,7 +186,7 @@ public actor PasteboardWatcher {
             return NoticedClip(
                 clip: Clip(
                     text: "", kind: .image, copiedAt: date,
-                    source: source.frontmostApplicationName()),
+                    source: provenanceIsUnknown ? nil : application.name),
                 picture: picture)
         }
 
@@ -184,7 +212,7 @@ public actor PasteboardWatcher {
         return NoticedClip(
             clip: Clip(
                 text: text, kind: classified.kind, copiedAt: date,
-                source: source.frontmostApplicationName(),
+                source: provenanceIsUnknown ? nil : application.name,
                 // Only of a clip already judged to be code, so prose never pays for the detector.
                 language: classified.language,
                 // E — kept beside the plain form, never instead of it.
