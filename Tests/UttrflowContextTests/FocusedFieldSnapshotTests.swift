@@ -21,14 +21,16 @@ private func snapshot(
     textColor: TextColor? = nil,
     isSecure: Bool = false,
     isEnabled: Bool? = nil,
-    isEditable: Bool? = nil
+    isEditable: Bool? = nil,
+    writingDirection: WritingDirection = .unknown
 ) -> FocusedFieldSnapshot {
     FocusedFieldSnapshot(
         bundleIdentifier: bundleIdentifier, applicationName: "Terminal", role: role,
         identifier: identifier, placeholder: placeholder,
         accessibilityDescription: accessibilityDescription, value: value, selection: selection,
         caret: caret, pointSize: pointSize, fontFamily: fontFamily, textColor: textColor,
-        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable, readMicroseconds: 400)
+        isSecure: isSecure, isEnabled: isEnabled, isEditable: isEditable,
+        writingDirection: writingDirection, readMicroseconds: 400)
 }
 
 @Suite("What one reading of the focused field says")
@@ -64,6 +66,15 @@ struct FocusedFieldSnapshotTests {
         #expect(snapshot(isEditable: false).placement == nil)
         #expect(snapshot(isEnabled: true).placement == .inlineGhost)
         #expect(snapshot(isEnabled: nil).placement == .inlineGhost)
+    }
+
+    @Test("An unknown direction defaults to left-to-right placement without disabling right-to-left fields.")
+    func unknownWritingDirectionDoesNotBlockPlacement() {
+        #expect(snapshot(writingDirection: .unknown).placement == .inlineGhost)
+        #expect(snapshot(writingDirection: .leftToRight).placement == .inlineGhost)
+        #expect(snapshot(writingDirection: .rightToLeft).placement == .inlineGhost)
+        #expect(snapshot(isEnabled: false, writingDirection: .unknown).placement == nil)
+        #expect(snapshot(isEditable: false, writingDirection: .rightToLeft).placement == nil)
     }
 
     @Test("The reading carries through to the capability the ladder is decided from.")

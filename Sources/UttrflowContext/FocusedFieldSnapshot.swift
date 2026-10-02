@@ -175,7 +175,7 @@ extension FocusedFieldSnapshot {
     /// Where a suggestion may be drawn for this field, or nothing where none may be.
     public var placement: SuggestionPlacement? {
         isEnabled == false || isEditable == false || isHeldByFullScreenProgram
-            || writingDirection == .unknown ? nil : capability.placement
+            ? nil : capability.placement
     }
 
     /// Whether a terminal's screen belongs to a full-screen program, whose lines are a buffer or a query and not a command.
