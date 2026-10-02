@@ -363,6 +363,38 @@ struct SecretDetectionTests {
         #expect(SecretShapes.matches(text))
     }
 
+    @Test("masks generated credentials in common URL parameter spellings")
+    func generatedCredentialsInURLParameters() {
+        let names = [
+            "X-Amz-Security-Token", "X_Amz_Security_Token", "apikey", "api-key", "api_key",
+            "key", "auth", "jwt", "password", "code",
+        ]
+        let value = "Zx9kLmQ2rT7p" + "Q3vB"
+
+        for name in names {
+            let text = "https://api.example.com/v1?\(name)=\(value)"
+            #expect(
+                ClipKindDetector.kind(of: text) == .secret,
+                "Must mask a generated value for \(name)")
+        }
+    }
+
+    @Test("does not mask short or ordinary URL parameter values")
+    func ordinaryValuesInCredentialURLParameters() {
+        let names = [
+            "X-Amz-Security-Token", "X_Amz_Security_Token", "apikey", "api-key", "api_key",
+            "key", "auth", "jwt", "password", "code",
+        ]
+
+        for name in names {
+            for value in ["home", "en"] {
+                let text = "https://api.example.com/v1?\(name)=\(value)"
+                #expect(!SecretShapes.matches(text), "Must leave \(name)=\(value) alone")
+                #expect(ClipKindDetector.kind(of: text) == .link, "Must classify \(name)=\(value) as a link")
+            }
+        }
+    }
+
     @Test(
         "leaves URL placeholders and webhook documentation pages alone",
         arguments: [

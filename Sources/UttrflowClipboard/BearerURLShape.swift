@@ -64,9 +64,14 @@ enum BearerURLShape {
             let name = pair.prefix { $0 != "=" }
             let value = pair.dropFirst(name.count + 1)
             return value.count >= shortestValue
-                && credentialParameters.contains(percentDecoded(name).lowercased())
+                && credentialParameters.contains(normalizedParameterName(percentDecoded(name)))
                 && SecretShapes.looksGenerated(percentDecoded(value))
         }
+    }
+
+    /// Treat hyphens and underscores as equivalent in credential parameter names.
+    private static func normalizedParameterName(_ name: String) -> String {
+        String(name.lowercased().map { $0 == "-" ? "_" : $0 })
     }
 
     /// The fewest characters a parameter's value needs to be a credential rather than a placeholder.
@@ -74,7 +79,8 @@ enum BearerURLShape {
 
     /// Query and fragment parameters that carry a signature or a token, lowercase.
     private static let credentialParameters: Set<String> = [
-        "sig", "signature", "x-amz-signature", "x-goog-signature",
+        "sig", "signature", "x_amz_signature", "x_goog_signature", "x_amz_security_token",
+        "api_key", "apikey", "key", "auth", "jwt", "password", "code",
         "access_token", "id_token", "refresh_token", "token",
     ]
 
