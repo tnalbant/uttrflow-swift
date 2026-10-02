@@ -63,14 +63,14 @@ struct LayoutWordsPassTests {
     @Test(
         "numbers the items a spoken number opens",
         arguments: [
-            ("number one call mom number two pay rent", "\n1. call mom\n2. pay rent"),
+            ("number one call mom number two pay rent", "1. call mom\n2. pay rent"),
             ("we need number one milk number two eggs", "we need\n1. milk\n2. eggs"),
-            ("we need number twenty one milk number twenty two eggs", "we need\n21. milk\n22. eggs"),
             (
                 "then number two call the landlord number three pay the rent",
                 "then\n2. call the landlord\n3. pay the rent"
             ),
             ("we need number 1 milk number 2 eggs", "we need\n1. milk\n2. eggs"),
+            ("we need number twenty one milk number twenty two eggs", "we need\n21. milk\n22. eggs"),
             (
                 "agenda number one budget number two hiring number three offsite",
                 "agenda\n1. budget\n2. hiring\n3. offsite"
@@ -175,7 +175,7 @@ struct LayoutWordsPassTests {
             ("the build failed. number one is broken", "the build failed. number one is broken"),
             ("here is the plan. number one, fix the build", "here is the plan.\n1. fix the build"),
             ("number one, fix the build", "1. fix the build"),
-            ("number one check logs number two restart the server", "\n1. check logs\n2. restart the server"),
+            ("number one check logs number two restart the server", "1. check logs\n2. restart the server"),
             ("number one is broken", "number one is broken"),
             ("bullet point, the milk", "- the milk"),
             ("we shipped. bullet point, the milk", "we shipped.\n- the milk"),

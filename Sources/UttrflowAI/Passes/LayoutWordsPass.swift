@@ -158,13 +158,24 @@ public struct LayoutWordsPass: CleaningPass {
     private func isCorroborated(
         at position: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
     ) -> Bool {
-        let opensSentence = position == 0 || draft.shape(at: live[position - 1]).endsSentence
-        guard opensSentence, let value = itemValue(at: position, in: live, of: draft) else { return true }
-        guard
-            (value > 1 && numbered.contains(value - 1))
-                || (value < Int.max && numbered.contains(value + 1))
-        else { return false }
-        return isEligibleNumberedRun(at: value, in: live, of: draft)
+        guard live.indices.contains(position), draft.shape(at: live[position]).key == Self.numbering else {
+            return true
+        }
+        let insideSentence = position > 0 && !draft.shape(at: live[position - 1]).endsSentence
+        guard position + 1 < live.count,
+            let item = itemNumber(at: position + 1, in: live, of: draft)
+        else { return true }
+        let hasAdjacentItem =
+            (item.value > 1 && numbered.contains(item.value - 1))
+            || (item.value < Int.max && numbered.contains(item.value + 1))
+        guard hasAdjacentItem else {
+            guard !insideSentence else { return false }
+            let numberEnd = position + item.count
+            guard live.indices.contains(numberEnd) else { return false }
+            let lastNumber = draft.shape(at: live[numberEnd])
+            return lastNumber.endsClause && !lastNumber.endsSentence
+        }
+        return isEligibleNumberedRun(at: item.value, in: live, of: draft)
     }
 
     /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
@@ -210,7 +221,9 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.
     private func itemValue(at position: Int, in live: [Int], of draft: Draft) -> Int? {
-        guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count else {
+        guard live.indices.contains(position), draft.shape(at: live[position]).key == Self.numbering,
+            position + 1 < live.count
+        else {
             return nil
         }
         return itemNumber(at: position + 1, in: live, of: draft)?.value
@@ -232,11 +245,13 @@ public struct LayoutWordsPass: CleaningPass {
             layout.contains(.lists),
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
-        return (item.count + 1, "\n\(item.value). ", true)
+        let lineBreak = position == 0 ? "" : "\n"
+        return (item.count + 1, "\(lineBreak)\(item.value). ", true)
     }
 
     /// The item number, spoken or already a numeral, and how many words it took. See `Docs/cleanup.md`.
     private func itemNumber(at position: Int, in live: [Int], of draft: Draft) -> (value: Int, count: Int)? {
+        guard live.indices.contains(position) else { return nil }
         let key = draft.shape(at: live[position]).key
         if let digits = NumberWords.digits(key) {
             guard let value = Int(digits), value > 0 else { return nil }
