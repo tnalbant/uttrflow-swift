@@ -21,6 +21,19 @@ struct CarbonHotkeyCoexistenceTests {
         let quiet: Set<HotkeyModifier> = [.control, .option, .shift]
         try first.start(binding: HotkeyBinding(keyCode: 105, modifiers: quiet))
         try second.start(binding: HotkeyBinding(keyCode: 107, modifiers: quiet))
+
+        let firstIntruder = CarbonHotkeyMonitor()
+        let secondIntruder = CarbonHotkeyMonitor()
+        defer {
+            firstIntruder.stop()
+            secondIntruder.stop()
+        }
+        #expect(throws: HotkeyError.shortcutUnavailable) {
+            try firstIntruder.start(binding: HotkeyBinding(keyCode: 105, modifiers: quiet))
+        }
+        #expect(throws: HotkeyError.shortcutUnavailable) {
+            try secondIntruder.start(binding: HotkeyBinding(keyCode: 107, modifiers: quiet))
+        }
     }
 
     /// The shared handler belongs to the process, so restarting one monitor must not disarm the other.

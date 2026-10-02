@@ -393,6 +393,8 @@ struct RecordingStoreDiscardEverythingTests {
 
     @Test("discarding everything with no folder yet is nothing to do")
     func nothingToDiscard() async throws {
-        try await RecordingStore(directory: directory()).discardEverything()
+        let folder = directory()
+        try await RecordingStore(directory: folder).discardEverything()
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
     }
 }

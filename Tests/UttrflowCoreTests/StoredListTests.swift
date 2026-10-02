@@ -150,6 +150,7 @@ struct StoredListTests {
     func nothingToRemove() throws {
         let file = URL.temporaryDirectory.appending(path: "uttrflow-absent-\(UUID().uuidString)/list.json")
         try LocalStore.removeSetAside(file)
+        #expect(!FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path))
     }
 
     @Test("Removing several files removes every one it can before reporting the one it could not.")

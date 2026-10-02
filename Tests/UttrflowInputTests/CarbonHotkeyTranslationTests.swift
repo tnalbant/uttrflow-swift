@@ -200,8 +200,11 @@ struct CarbonHotkeyMonitorTests {
 
     @Test("stops without complaint when it was never started")
     @MainActor
-    func stopsWithoutStarting() {
-        CarbonHotkeyMonitor().stop()
+    func stopsWithoutStarting() throws {
+        let monitor = CarbonHotkeyMonitor()
+        monitor.stop()
+        try monitor.start(binding: HotkeyBinding(keyCode: 105, modifiers: [.control, .option, .shift]))
+        defer { monitor.stop() }
     }
 }
 

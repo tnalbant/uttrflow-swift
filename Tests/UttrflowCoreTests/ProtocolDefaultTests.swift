@@ -36,12 +36,6 @@ struct ProtocolDefaultTests {
         #expect(await BareCapture().capturedSoFar(from: 5) == .empty)
     }
 
-    @Test("cleaners and transformers with nothing to prepare can still be warmed")
-    func warmingIsHarmless() async {
-        await BareCleaner().warm(for: nil)
-        await BareTransformer().warm(for: .unknown)
-    }
-
     @Test("a cleaner with no message stage hands a joined message back as it was")
     func messageStageIsIdentity() async {
         let request = TransformationRequest(transcription: Transcription(text: "on my way"))

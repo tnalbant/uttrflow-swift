@@ -630,6 +630,8 @@ struct ClipboardStoreTests {
     func deletingNothing() async throws {
         let file = TemporaryFile()
         try await ClipboardStore(file: file.url).deleteEverything(keeping: week())
+        #expect(!FileManager.default.fileExists(atPath: file.url.path(percentEncoded: false)))
+        #expect(await ClipboardStore(file: file.url).clips(keeping: week()).isEmpty)
     }
 
     // MARK: - Speed

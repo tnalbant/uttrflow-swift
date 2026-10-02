@@ -709,11 +709,4 @@ struct SettingsResetLeftoverTests {
         }
     }
 
-    @Test("the defaults reach nothing and refuse nothing")
-    func defaultsDoNothing() async throws {
-        let elsewhere = KeptElsewhere()
-        try await elsewhere.recordings()
-        try await elsewhere.snippets()
-        try await elsewhere.suggestionConsent()
-    }
 }

@@ -404,13 +404,6 @@ struct HotkeyAndCueValueTests {
         #expect(decoded == .optionSpace)
     }
 
-    /// Sounds off means nothing, without the caller needing to know.
-    @Test("says nothing when the user has turned sounds off")
-    func silentCueIsSilent() {
-        let cue = SilentCue()
-        cue.playStart()
-        cue.playStop()
-    }
 }
 
 @Suite("Being told nothing was heard")

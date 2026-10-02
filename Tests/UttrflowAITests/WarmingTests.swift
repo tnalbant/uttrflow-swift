@@ -4,16 +4,6 @@ import Testing
 @testable import UttrflowCore
 @testable import UttrflowTestSupport
 
-/// A model with nothing of its own to prepare.
-private struct ColdModel: CleanupModel {
-    func availability(for language: LanguageCode?) async -> TransformerAvailability { .available }
-    func rewrite(
-        _ text: String, instructions: String, kind: TransformerKind
-    ) async throws(TransformationError) -> String {
-        text
-    }
-}
-
 /// What `warm()` reaches through the transformer and the router.
 @Suite("Warming the tidier ahead of a dictation")
 struct WarmingTests {
@@ -52,10 +42,5 @@ struct WarmingTests {
         #expect(await first.warmCalls.events == [situation])
         #expect(await floor.warmCalls.events == [situation])
         #expect(await unused.warmCalls.isEmpty)
-    }
-
-    @Test("a model with nothing to prepare can still be asked")
-    func coldModelIsHarmless() async {
-        await ColdModel().warm(instructions: "anything")
     }
 }

@@ -531,6 +531,8 @@ struct PersonalDictionaryStoreTests {
     func clearingNothing() async throws {
         let sandbox = Sandbox()
         try await PersonalDictionaryStore(file: sandbox.file).removeEverything()
+        #expect(sandbox.onDisk() == nil)
+        #expect(!FileManager.default.fileExists(atPath: sandbox.file.path(percentEncoded: false)))
     }
 }
 

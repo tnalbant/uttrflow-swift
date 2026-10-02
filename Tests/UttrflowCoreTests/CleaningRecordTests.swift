@@ -163,8 +163,4 @@ struct CleaningRecordTests {
         #expect(CleaningRecord.Change(step: .fillers).id == .fillers)
     }
 
-    @Test("a recorder with nowhere to put it takes it without complaint")
-    func noOpRecorder() async {
-        await NoOpCleaningRecorder().record(CleaningRecord(changes: []))
-    }
 }

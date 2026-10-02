@@ -219,6 +219,8 @@ struct SelectionWriterTests {
     func emptyWriteIsNotAFailure() throws {
         let field = FakeSelectionField("Hello") { $0.ignoresText = true }
         try SelectionWriter(field: field).replaceSelection(with: "")
+        #expect(field.text == "Hello")
+        #expect(field.textWrites == [""])
     }
 
     @Test("reports a field that refuses the text")
