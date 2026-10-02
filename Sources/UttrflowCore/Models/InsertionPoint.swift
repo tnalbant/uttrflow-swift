@@ -9,9 +9,9 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         case unknown
     }
 
-    /// The most characters kept before the caret.
+    /// The most UTF-16 units kept before the caret.
     public static let precedingLimit = 300
-    /// The most characters kept after the selection.
+    /// The most UTF-16 units kept after the selection.
     public static let followingLimit = 100
 
     /// Text before the caret, or `nil` when the field will not report its value.

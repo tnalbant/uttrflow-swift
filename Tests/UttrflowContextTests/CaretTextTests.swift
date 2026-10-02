@@ -51,6 +51,36 @@ struct CaretTextTests {
         #expect(sides?.following.allSatisfy { $0 == "b" } == true)
     }
 
+    @Test("bounds a long combining sequence by UTF-16 units before the caret")
+    func boundsLongCombiningSequenceBeforeCaret() {
+        let cluster = "a" + String(repeating: "\u{301}", count: 400)
+        let sides = CaretText.around(cluster + "|", selection: cluster.utf16.count..<cluster.utf16.count + 1)
+
+        #expect(sides?.preceding.utf16.count == InsertionPoint.precedingLimit)
+        #expect(sides?.preceding.unicodeScalars.allSatisfy { $0.value == 0x301 } == true)
+    }
+
+    @Test("bounds a long combining sequence by UTF-16 units after the selection")
+    func boundsLongCombiningSequenceAfterSelection() {
+        let cluster = "a" + String(repeating: "\u{301}", count: 200)
+        let sides = CaretText.around("|" + cluster, selection: 1..<1)
+
+        #expect(sides?.following.utf16.count == InsertionPoint.followingLimit)
+        #expect(sides?.following.unicodeScalars.first?.value == 0x61)
+        #expect(sides?.following.unicodeScalars.dropFirst().allSatisfy { $0.value == 0x301 } == true)
+    }
+
+    @Test("keeps surrogate pairs whole when a UTF-16 limit falls inside one")
+    func keepsSurrogatePairsWholeAtLimits() {
+        let before = "😀" + String(repeating: "a", count: InsertionPoint.precedingLimit - 1) + "|"
+        let after = "|" + String(repeating: "a", count: InsertionPoint.followingLimit - 1) + "😀tail"
+        let beforeSides = CaretText.around(before, selection: before.utf16.count - 1..<before.utf16.count)
+        let afterSides = CaretText.around(after, selection: 1..<1)
+
+        #expect(beforeSides?.preceding == String(repeating: "a", count: InsertionPoint.precedingLimit - 1))
+        #expect(afterSides?.following == String(repeating: "a", count: InsertionPoint.followingLimit - 1))
+    }
+
     @Test("counts the selection in UTF-16 units, the way Accessibility reports it")
     func utf16Offsets() {
         let text = "😀 hello"

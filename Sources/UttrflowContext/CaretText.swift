@@ -19,7 +19,35 @@ enum CaretText {
         let caret = String.Index(utf16Offset: start, in: value)
         let after = String.Index(utf16Offset: end, in: value)
         return Sides(
-            preceding: String(value[..<caret].suffix(InsertionPoint.precedingLimit)),
-            following: String(value[after...].prefix(InsertionPoint.followingLimit)))
+            preceding: suffix(value[..<caret], limit: InsertionPoint.precedingLimit),
+            following: prefix(value[after...], limit: InsertionPoint.followingLimit))
+    }
+
+    /// Keeps a UTF-16-bounded suffix without cutting a surrogate pair.
+    private static func suffix(_ text: Substring, limit: Int) -> String {
+        let units = text.utf16
+        guard var start = units.index(units.endIndex, offsetBy: -limit, limitedBy: units.startIndex) else {
+            return String(text)
+        }
+        if splitsSurrogatePair(units, at: start) { start = units.index(after: start) }
+        return String(decoding: units[start..<units.endIndex], as: UTF16.self)
+    }
+
+    /// Keeps a UTF-16-bounded prefix without cutting a surrogate pair.
+    private static func prefix(_ text: Substring, limit: Int) -> String {
+        let units = text.utf16
+        guard var end = units.index(units.startIndex, offsetBy: limit, limitedBy: units.endIndex) else {
+            return String(text)
+        }
+        if splitsSurrogatePair(units, at: end) { end = units.index(before: end) }
+        return String(decoding: units[units.startIndex..<end], as: UTF16.self)
+    }
+
+    /// Whether `index` falls between a UTF-16 high and low surrogate.
+    private static func splitsSurrogatePair(_ units: Substring.UTF16View, at index: String.Index) -> Bool {
+        guard index > units.startIndex, index < units.endIndex else { return false }
+        let previous = units[units.index(before: index)]
+        let next = units[index]
+        return (0xD800...0xDBFF).contains(previous) && (0xDC00...0xDFFF).contains(next)
     }
 }
