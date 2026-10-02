@@ -141,7 +141,8 @@ extension HotkeyError: CataloguedFailure {
 
     public var caseAfter: Self? {
         switch self {
-        case .observationNotPermitted: .shortcutUnavailable
+        case .observationNotPermitted: .accessibilityNeedsRefresh
+        case .accessibilityNeedsRefresh: .shortcutUnavailable
         case .shortcutUnavailable: nil
         }
     }

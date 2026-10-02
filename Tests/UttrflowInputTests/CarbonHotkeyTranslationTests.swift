@@ -206,14 +206,17 @@ struct CarbonHotkeyMonitorTests {
 }
 
 /// Spelled out rather than derived, so a new case obliges someone to write the sentence a user reads.
-private let everyHotkeyError: [HotkeyError] = [.observationNotPermitted, .shortcutUnavailable]
+private let everyHotkeyError: [HotkeyError] = [
+    .observationNotPermitted, .accessibilityNeedsRefresh, .shortcutUnavailable,
+]
 
-/// These two sentences are the whole of what the user sees, so they have to say something.
+/// These sentences are the whole of what the user sees, so they have to say something.
 @Suite("HotkeyError")
 struct HotkeyErrorTests {
     @Test("offers System Settings only for the failure System Settings can fix")
     func recoveries() {
         #expect(HotkeyError.observationNotPermitted.recovery == .openSystemSettings(.accessibility))
+        #expect(HotkeyError.accessibilityNeedsRefresh.recovery == .retry)
         #expect(HotkeyError.shortcutUnavailable.recovery == .retry)
     }
 
@@ -239,6 +242,8 @@ struct HotkeyErrorTests {
     @Test("tells the user which shortcut problem they have")
     func messagesDistinguishTheCases() {
         #expect(HotkeyError.observationNotPermitted.userMessage.contains("System Settings"))
+        #expect(HotkeyError.accessibilityNeedsRefresh.userMessage.contains("off and on"))
+        #expect(HotkeyError.accessibilityNeedsRefresh.userMessage.contains("remove and re-add"))
         #expect(HotkeyError.shortcutUnavailable.userMessage.contains("another app"))
     }
 }

@@ -96,6 +96,7 @@ struct FailurePresentationTests {
         #expect(TextInsertionError.insertionRejected(description: "x").recovery == .pasteManually)
 
         #expect(HotkeyError.observationNotPermitted.recovery == .openSystemSettings(.accessibility))
+        #expect(HotkeyError.accessibilityNeedsRefresh.recovery == .retry)
         #expect(HotkeyError.shortcutUnavailable.recovery == .retry)
     }
 

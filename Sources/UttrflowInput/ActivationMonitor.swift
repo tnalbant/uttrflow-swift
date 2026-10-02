@@ -2,6 +2,7 @@ import Dispatch
 import Foundation
 import Synchronization
 private import OSLog
+private import ApplicationServices
 
 public import UttrflowCore
 
@@ -26,6 +27,8 @@ public final class ActivationMonitor: HotkeyMonitoring {
     private let strokeLeftLock: @Sendable () -> Void
     /// Reads the real keyboard state, so a release the tap never delivers is still noticed.
     private let keyState: any RealKeyStateReading
+    /// Distinguishes a missing Accessibility grant from a stale grant after the system refuses a tap.
+    private let accessibilityIsGranted: @MainActor () -> Bool
     /// The timer comparing real keyboard state against what the recogniser was last told.
     private let reconciliation = Mutex<(any DispatchSourceTimer)?>(nil)
     /// How often that comparison runs, in milliseconds. See `Docs/stuck-recording.md`.
@@ -40,11 +43,13 @@ public final class ActivationMonitor: HotkeyMonitoring {
 
     init(
         source: any KeyboardEventSource, keyState: any RealKeyStateReading = SystemKeyState(),
+        accessibilityIsGranted: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
         strokeLeftLock: @escaping @Sendable () -> Void,
         restSeconds: Int = ActivationMonitor.defaultRestSeconds
     ) {
         self.source = source
         self.keyState = keyState
+        self.accessibilityIsGranted = accessibilityIsGranted
         self.strokeLeftLock = strokeLeftLock
         self.restSeconds = restSeconds
         (events, continuation) = AsyncStream.makeStream()
@@ -93,8 +98,11 @@ public final class ActivationMonitor: HotkeyMonitoring {
                     }
                     strokeLeftLock()
                 }, consumeKeyDown: false)
-        } catch {
-            throw .observationNotPermitted
+        } catch let error {
+            switch error {
+            case .refused:
+                throw accessibilityIsGranted() ? .accessibilityNeedsRefresh : .observationNotPermitted
+            }
         }
     }
 

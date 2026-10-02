@@ -103,6 +103,8 @@ public struct HotkeyBinding: Sendable, Equatable, Codable {
 public enum HotkeyError: UttrflowFailure {
     /// macOS will not let this process observe keys from other apps.
     case observationNotPermitted
+    /// Accessibility is trusted, but macOS still refuses the shortcut tap.
+    case accessibilityNeedsRefresh
     /// The combination cannot be delivered — most often because another app has it.
     case shortcutUnavailable
 
@@ -111,6 +113,8 @@ public enum HotkeyError: UttrflowFailure {
         switch self {
         case .observationNotPermitted:
             "Accessibility access is required to watch for your shortcut. Turn it on in System Settings."
+        case .accessibilityNeedsRefresh:
+            "Accessibility is enabled, but macOS refused the shortcut monitor. Turn it off and on for Uttrflow in System Settings, or remove and re-add Uttrflow, then try again."
         case .shortcutUnavailable:
             "That keyboard shortcut isn't available. It's most likely already in use by another app."
         }
@@ -120,6 +124,7 @@ public enum HotkeyError: UttrflowFailure {
     public var recovery: RecoveryAction? {
         switch self {
         case .observationNotPermitted: .openSystemSettings(.accessibility)
+        case .accessibilityNeedsRefresh: .retry
         // Retrying is what helps: quit whatever holds the combination, or choose another, and ask again.
         case .shortcutUnavailable: .retry
         }

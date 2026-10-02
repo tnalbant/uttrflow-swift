@@ -88,6 +88,23 @@ struct ShortcutArmingTests {
         arming.disarm()
     }
 
+    @Test("does not retry a refused tap while Accessibility still reads as granted")
+    func staleAccessibilityGrantDoesNotCauseAnEndlessRetry() async throws {
+        let attempts = Attempts()
+        let arming = ShortcutArming(
+            onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
+
+        await arming.arm {
+            attempts.count += 1
+            throw .accessibilityNeedsRefresh
+        }
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(attempts.count == 1)
+        #expect(arming.failure == .accessibilityNeedsRefresh)
+        arming.disarm()
+    }
+
     @Test("stops retrying when dictation is turned off")
     func disarmStopsRetries() async throws {
         let attempts = Attempts()
