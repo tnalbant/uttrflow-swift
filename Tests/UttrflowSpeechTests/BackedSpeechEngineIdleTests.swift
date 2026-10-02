@@ -1,4 +1,5 @@
 // Tests that the engine lets an idle recogniser go and loads it again when asked.
+import Foundation
 import Testing
 
 @testable import UttrflowCore

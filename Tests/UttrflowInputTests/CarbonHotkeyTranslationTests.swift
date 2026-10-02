@@ -204,7 +204,7 @@ struct CarbonHotkeyMonitorTests {
         let monitor = CarbonHotkeyMonitor()
         monitor.stop()
         try monitor.start(binding: HotkeyBinding(keyCode: 105, modifiers: [.control, .option, .shift]))
-        defer { monitor.stop() }
+        monitor.stop()
     }
 }
 

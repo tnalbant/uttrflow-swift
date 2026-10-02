@@ -330,7 +330,7 @@ enum BacktrackingPatterns {
         let text = CardNumberShape.printedForm(of: original[...]) ?? original
         return text.split(whereSeparator: \.isNewline).contains { part in
             let line = String(part)
-            line.matches(of: CardNumberShape.candidate).contains { match in
+            return line.matches(of: CardNumberShape.candidate).contains { match in
                 CardNumberShape.standsAlone(match.range, in: line)
                     && CardNumberShape.isCardNumber(match.output.0.filter(\.isNumber))
             }

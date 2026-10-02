@@ -16,7 +16,7 @@ struct DeadlineTests {
         let clock = ManualClock()
         let witness = Witness()
         let racing = Task {
-            await withDeadline(.milliseconds(50), clock: clock) {
+            await withDeadline(.milliseconds(50), clock: clock) { () async -> String? in
                 try? await clock.sleep(for: .seconds(30))
                 guard !Task.isCancelled else { return nil }
                 await witness.finished()
@@ -39,7 +39,7 @@ struct DeadlineTests {
     func slowButTimelyAnswersAreKept() async {
         let clock = ManualClock()
         let racing = Task {
-            await withDeadline(.milliseconds(800), clock: clock) {
+            await withDeadline(.milliseconds(800), clock: clock) { () async -> String? in
                 try? await clock.sleep(for: .milliseconds(20))
                 return "here"
             }
@@ -56,7 +56,7 @@ struct DeadlineTests {
         let clock = ManualClock()
         let witness = Witness()
         let racing = Task {
-            await withDeadline(.milliseconds(allowance), clock: clock) {
+            await withDeadline(.milliseconds(allowance), clock: clock) { () async -> String? in
                 try? await clock.sleep(for: .seconds(30))
                 guard !Task.isCancelled else { return nil }
                 await witness.finished()
@@ -77,7 +77,7 @@ struct DeadlineTests {
         let gate = UnstoppableGate()
         let witness = Witness()
         let racing = Task {
-            await withDeadline(.milliseconds(40), clock: clock) {
+            await withDeadline(.milliseconds(40), clock: clock) { () async -> String? in
                 await withCheckedContinuation { continuation in
                     Task.detached {
                         await gate.wait()
@@ -102,7 +102,7 @@ struct DeadlineTests {
         let clock = ManualClock()
         let witness = Witness()
         let racing = Task {
-            await withDeadline(.milliseconds(30), clock: clock) {
+            await withDeadline(.milliseconds(30), clock: clock) { () async -> String? in
                 try? await clock.sleep(for: .seconds(30))
                 await witness.woke(cancelled: Task.isCancelled)
                 guard !Task.isCancelled else { return nil }

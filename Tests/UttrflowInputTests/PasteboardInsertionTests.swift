@@ -5,6 +5,7 @@ import Testing
 
 @testable import UttrflowCore
 @testable import UttrflowInput
+import UttrflowTestSupport
 
 /// A clipboard that records everything written to it and never touches the real one.
 final class FakePasteboard: Pasteboard {

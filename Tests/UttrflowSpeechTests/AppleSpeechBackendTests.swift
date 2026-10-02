@@ -50,7 +50,7 @@ struct AppleSpeechBackendTests {
         let audioRange = CMTimeRange(
             start: CMTime(seconds: 0, preferredTimescale: 600),
             duration: CMTime(seconds: 1, preferredTimescale: 600))
-        let segment = #require(AppleSpeechTranscriptMapping.segment(text, audioRange: audioRange))
+        let segment = try #require(AppleSpeechTranscriptMapping.segment(text, audioRange: audioRange))
         #expect(
             segment.words == [
                 RawWord(text: "pool", start: 0.1, end: 0.25, probability: 0.9),
@@ -76,7 +76,7 @@ struct AppleSpeechBackendTests {
             start: CMTime(seconds: 0, preferredTimescale: 600),
             duration: CMTime(seconds: 1, preferredTimescale: 600))
 
-        let segment = #require(AppleSpeechTranscriptMapping.segment(text, audioRange: audioRange))
+        let segment = try #require(AppleSpeechTranscriptMapping.segment(text, audioRange: audioRange))
         #expect(segment.words == nil)
         let transcript = RawTranscript(text: "pool request", segments: [segment])
             .transcription(audioDuration: .seconds(1))

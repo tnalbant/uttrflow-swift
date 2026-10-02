@@ -536,7 +536,7 @@ struct CorpusIndependenceTests {
                 \.sentences)
         return EvaluationCorpus.all.flatMap { testCase in
             let corpusText = [testCase.spoken, testCase.expected].map { Scorer.tokens($0) }
-            return fragments.compactMap { fragment in
+            return fragments.compactMap { fragment -> (caseID: String, fragment: String)? in
                 let fragmentWords = Scorer.tokens(fragment)
                 guard fragmentWords.count >= 3,
                     corpusText.contains(where: { containsRun(fragmentWords, in: $0) })

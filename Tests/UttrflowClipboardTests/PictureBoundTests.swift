@@ -89,9 +89,10 @@ struct PictureBoundTests {
     @Test("a PNG with a valid header and truncated pixel stream is unreadable")
     func truncatedPNGUnreadable() throws {
         let header: [UInt8] = [0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]
-        let png =
-            Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
-            + Self.chunk("IHDR", header) + Self.chunk("IDAT", [0x78]) + Self.chunk("IEND", [])
+        var png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        png.append(contentsOf: Self.chunk("IHDR", header))
+        png.append(contentsOf: Self.chunk("IDAT", [0x78]))
+        png.append(contentsOf: Self.chunk("IEND", []))
         let source = try #require(CGImageSourceCreateWithData(png as CFData, nil))
         #expect(PictureFlavour.pixelSize(of: source)?.width == 1)
         #expect(PictureFlavour.pixelSize(of: source)?.height == 1)
