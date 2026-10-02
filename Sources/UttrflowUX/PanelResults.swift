@@ -131,9 +131,15 @@ extension PanelSnapshot {
             let last = scalars.lastIndex(where: { !blank.contains($0) })
         else { return needle.isEmpty }
         // Compares the trimmed range in place, so a long clip is rejected without copying its text.
-        return text.compare(
-            needle, options: SearchFolding.comparisonOptions,
-            range: first..<scalars.index(after: last), locale: locale) == .orderedSame
+        let range = first..<scalars.index(after: last)
+        let foldedNeedle = SearchFolding.folded(needle) ?? needle
+        guard let foldedText = SearchFolding.folded(text[range]) else {
+            return text.compare(
+                foldedNeedle, options: SearchFolding.comparisonOptions,
+                range: range, locale: locale) == .orderedSame
+        }
+        return foldedText.compare(
+            foldedNeedle, options: SearchFolding.comparisonOptions, locale: locale) == .orderedSame
     }
 
     /// Match field, then exact alias or whole text, then pinned, then arrival order, so groups are contiguous for ↓.

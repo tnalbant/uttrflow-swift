@@ -17,6 +17,18 @@ struct PanelCapReachTests {
         #expect(results.rows.first?.clip.id == target.id)
     }
 
+    @Test("a folded whole-text match leads its group past newer content matches")
+    func foldedWholeTextLeads() {
+        for (query, text) in [("don't", "don’t"), ("a b", "a  b"), ("a-b", "a—b")] {
+            let target = PanelFixture.clip(text, minutesAgo: 60)
+            let newer = (1...6).map {
+                PanelFixture.clip("an example containing \(query) here", minutesAgo: $0)
+            }
+            let results = PanelFixture.panel(newer + [target], query: query).results
+            #expect(results.rows.first?.clip.id == target.id)
+        }
+    }
+
     @Test("every picture in a collection named exactly is listed")
     func exactCollectionIsWhole() {
         let receipts = (1...10).map {

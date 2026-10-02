@@ -30,4 +30,16 @@ struct PanelWholeMatchTests {
         let text = "the " + String(repeating: "lorem ipsum dolor ", count: 50_000) + "\n"
         #expect(!PanelSnapshot.isWhole("the", of: PanelFixture.clip(text), locale: locale))
     }
+
+    @Test("matches the text under typographic punctuation and whitespace folding")
+    func foldedPunctuationAndWhitespace() {
+        for (needle, text) in [
+            ("don't", " don\u{2019}t "),
+            ("a b", "a  b"),
+            ("a-b", "a\u{2014}b"),
+            ("a-b", "a\u{2013}b"),
+        ] {
+            #expect(PanelSnapshot.isWhole(needle, of: PanelFixture.clip(text), locale: locale))
+        }
+    }
 }
