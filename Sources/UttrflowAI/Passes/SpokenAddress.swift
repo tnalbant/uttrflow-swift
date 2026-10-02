@@ -35,6 +35,11 @@ struct SpokenAddress: Equatable {
         "file", "filename", "path", "directory", "folder", "package", "open", "edit",
     ]
 
+    /// Common words that can follow "is" in ordinary prose, never a spoken handle's local part.
+    private static let ordinaryAtWords: Set<String> = [
+        "just", "parked", "not", "out", "open", "right", "still", "the",
+    ]
+
     /// One side of an address: how many live positions it spans and the labels its words spell.
     struct Part: Equatable {
         let length: Int
@@ -213,21 +218,33 @@ struct SpokenAddress: Equatable {
         let next = position + first.length
         guard next < run.upperBound else { return nil }
         let mark = draft.shape(at: live[next]).key
-        guard
-            (mark == "underscore" && next + 1 < run.upperBound)
-                || mark == "at" && position > 0
-                    && draft.shape(at: live[position - 1]).key == "is"
-        else { return nil }
+        let isAtHandle =
+            mark == "at" && position > 0
+            && draft.shape(at: live[position - 1]).key == "is"
+        guard (mark == "underscore" && next + 1 < run.upperBound) || isAtHandle else { return nil }
         let secondPosition = next + 1
-        guard let second = part(from: secondPosition, within: run, in: live, of: draft),
-            second.labels.count == 1, second.hasLetter
-        else { return nil }
+        guard let second = part(from: secondPosition, within: run, in: live, of: draft), second.hasLetter
+        else {
+            return nil
+        }
+        if mark == "underscore" {
+            guard second.labels.count == 1 else { return nil }
+        } else {
+            guard isAtHandle,
+                isDomainLike(second) || !ordinaryAtWords.contains(first.spelled.lowercased())
+            else { return nil }
+        }
         let glue = mark == "at" ? "@" : "_"
         let text = first.spelled + glue + second.spelled
         let last = draft.shape(at: live[secondPosition + second.length - 1])
         return SpokenAddress(
             length: secondPosition + second.length - position,
             text: draft.shape(at: live[position]).prefix + text + last.suffix)
+    }
+
+    /// A dotted known domain is strong evidence that the words around "at" name an address.
+    private static func isDomainLike(_ part: Part) -> Bool {
+        part.labels.count > 1 && part.labels.last.map { topLevels.contains($0.lowercased()) } == true
     }
 
     /// The labels spoken from `position`, which stands inside `run`, a spoken or a heard dot carrying on to the next.

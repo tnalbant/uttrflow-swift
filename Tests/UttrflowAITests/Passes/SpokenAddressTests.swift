@@ -84,6 +84,13 @@ struct SpokenAddressTests {
             "send the invoice at 5 dot 30",
             "forward the logs to support, at example.com",
             "forward the logs to support at (example.com)",
+            "it is just at the corner",
+            "the car is parked at the airport",
+            "it is not at all clear",
+            "it is not at the front desk",
+            "she is out at the shops",
+            "the file is open at line ten",
+            "the problem is right at the start",
         ]
     )
     func leavesOrdinaryAtAlone(input: String) {
@@ -117,6 +124,8 @@ struct SpokenAddressTests {
             ("edit the dot env file", "edit the .env file"),
             ("the path is slash users slash sam slash notes", "the path is /users/sam/notes"),
             ("my handle is at sam underscore dev", "my handle is @sam_dev"),
+            ("my handle is sam at discord", "my handle is sam@discord"),
+            ("my handle is sam at example dot com", "my handle is sam@example.com"),
             ("the variable is user underscore id", "the variable is user_id"),
         ]
     )
