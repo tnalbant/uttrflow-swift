@@ -91,9 +91,7 @@ public enum Restatement {
             return start
         }
         guard !weakAnchors.contains(firstAfter) else { return nil }
-        if replacesSingleWord(before: trigger, after: restart, in: live, of: draft) {
-            return trigger - 1
-        }
+        let replacesOneWord = replacesSingleWord(before: trigger, after: restart, in: live, of: draft)
         for candidate in stride(from: trigger - 1, through: earliest, by: -1) {
             if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
@@ -102,10 +100,10 @@ public enum Restatement {
                 return candidate
             }
             if endsSentence(candidate, in: live, of: draft), !(through && candidate == trigger - 1) {
-                return nil
+                return replacesOneWord ? trigger - 1 : nil
             }
         }
-        return nil
+        return replacesOneWord ? trigger - 1 : nil
     }
 
     /// A bare no after a copula and before a comma completes a reported answer clause.

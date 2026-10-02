@@ -48,6 +48,22 @@ struct RestatementTests {
         #expect(Restatement.discardedStart(before: 3, after: 5, in: bare.live, of: bare.draft) == nil)
     }
 
+    @Test(
+        "a repeated verb takes back the whole first attempt before single-word replacement",
+        arguments: [
+            ("send the file to sam actually send the file to priya", 5, 6),
+            ("book a table for two i mean book a table for four", 5, 7),
+            ("open the red folder sorry open the blue folder", 4, 5),
+            ("call the plumber no wait call the electrician", 3, 5),
+            ("add milk i mean add sugar", 2, 4),
+            ("tell sam scratch that tell priya to join", 2, 4),
+        ]
+    )
+    func repeatedVerbTakesBackTheFirstAttempt(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == 0)
+    }
+
     /// A trigger said with a pause comes back as its own sentence, which is read through rather than as a sentence end.
     @Test("a trigger that is a sentence of its own reads through the stop before it")
     func triggerAsItsOwnSentence() {
