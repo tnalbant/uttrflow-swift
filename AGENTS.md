@@ -345,6 +345,29 @@ and measured: the romaniser the rules use, the guard that refuses a translation,
 check before insertion. A change that lets Devanagari or a translation reach the screen is a
 bug, whatever it improves.
 
+## No patchy fixes: root cause and long-term design — NON-NEGOTIABLE
+
+**Find why the defect exists and fix that. A patch, a workaround or a special case is never
+the answer here, however small the bug looks.**
+
+1. **Root cause first.** Before changing code, say why the bug exists and why it was not
+   caught. A fix that makes one symptom go away and leaves the cause in place is rejected.
+2. **No special cases.** Nothing keyed to one phrase, one app, one fixture or one reported
+   sentence. If a rule cannot be stated for the whole class of input, the design is wrong.
+3. **Refactor what you meet.** Code that is the wrong shape for the change is reshaped into
+   a clean seam first: SOLID, DRY, and no abstraction that nothing needs yet (YAGNI). A
+   ground-up rewrite is acceptable when the evidence says the design cannot carry the
+   change; lowering the quality of the code is not acceptable under any deadline.
+4. **Measure before it lands.** A change to recognition, correction or cleanup is judged
+   against the corpus (`make bakeoff`) and records the before and after.
+5. **Extendable by default.** Ask what the next case of the same kind needs, and make that
+   a data or configuration change rather than another branch in the code.
+
+The pull request states the root cause and why it cannot recur; a description that only
+says what changed is incomplete. This is a rule rather than a preference because a fix
+that treats the symptom is cheap today and is paid for by every agent that works in that
+file afterwards.
+
 ## Rules that are not preferences
 
 **Never put a real email address or a real postal address in a fixture.** Use
@@ -528,6 +551,7 @@ target never exercises the broken path. `Docs/` and the comments in
   over 400 lines, unless the file is listed in `OVERSIZED_EXCLUSIONS` with what reviews it
   instead. Adding tests until the exclusion can go is the way out; a shallow test that
   executes lines without asserting behaviour is worse than the exclusion it hides.
+- Root cause, not patches: see "No patchy fixes" above.
 - Swift 6 language mode, strict concurrency, warnings as errors.
 - No force unwraps, no force try, no implicitly unwrapped optionals (lint-enforced).
 - Nothing about the evaluation corpus may reach a shipped app; `Scripts/bundle.sh` checks
