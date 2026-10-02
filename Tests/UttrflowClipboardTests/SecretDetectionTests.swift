@@ -1,5 +1,6 @@
 // Tests for credential detection.
 
+import Foundation
 import Testing
 
 @testable import UttrflowClipboard
@@ -217,6 +218,64 @@ struct SecretDetectionTests {
     func commentsAndObjects(_ text: String) {
         #expect(SecretShapes.hasNamedSecret(text))
         #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test("masks credential fields copied from common config files and headers")
+    func structuredCredentials() {
+        let session = "Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf"
+        let dockerAuth = "dXNlcjpwYXNzd29yZA=="
+        let privateKey = Data(
+            "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAKE\n-----END PRIVATE KEY-----".utf8
+        )
+        .base64EncodedString()
+        let dockerMulti = """
+            {
+              "auths": {
+                "registry.example.com": {
+                  "auth": "\(dockerAuth)"
+                }
+              }
+            }
+            """
+        let cases = [
+            (
+                "A=1\nSECRET_KEY_BASE=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "A=1 SECRET_KEY_BASE=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            ),
+            (
+                "# credentials\nmachine example.com login u password hunter2x9\ndefault login other password k9hunter",
+                "machine example.com login u password hunter2x9"
+            ),
+            (
+                "Host: example.com\nCookie: session=\(session)\nAccept: */*",
+                "Cookie: session=\(session)"
+            ),
+            (
+                "HTTP/1.1 200 OK\nSet-Cookie: __Host-session=\(session); Path=/; HttpOnly\nContent-Type: text/plain",
+                "Set-Cookie: __Host-session=\(session); Path=/; HttpOnly"
+            ),
+            (
+                dockerMulti,
+                #"{"auths":{"registry.example.com":{"auth":"\#(dockerAuth)"}}}"#
+            ),
+            (
+                "apiVersion: v1\nkind: Config\nusers:\n- name: deploy\n  user:\n    client-key-data: \(privateKey)",
+                "client-key-data: \(privateKey)"
+            ),
+        ]
+
+        for (multiline, singleLine) in cases {
+            #expect(ClipKindDetector.kind(of: multiline) == .secret, "Must mask \(multiline.prefix(32))")
+            #expect(ClipKindDetector.kind(of: singleLine) == .secret, "Must also mask its one-line form")
+        }
+    }
+
+    @Test("does not treat cookie prose or an auth type declaration as a credential")
+    func structuredCredentialFalsePositives() {
+        #expect(ClipKindDetector.kind(of: "A sentence about cookies is ordinary prose.") != .secret)
+        #expect(ClipKindDetector.kind(of: "var auth: String") != .secret)
+        #expect(ClipKindDetector.kind(of: "Cookie: theme=dark; layout=compact") != .secret)
+        #expect(ClipKindDetector.kind(of: #"{"auth":"not-a-base64-user-password"}"#) != .secret)
     }
 
     /// A quoted value followed by more of an expression, or a bare value run into a `#`, is not a value that ended.

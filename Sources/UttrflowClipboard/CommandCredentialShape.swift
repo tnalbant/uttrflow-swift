@@ -1,3 +1,5 @@
+import Foundation
+
 // Recognises a credential handed to a command as an argument, or sent as an authorization header.
 
 /// A password on a command line or in a header, which names no secret with `=` or `:` the named-secret rule reads. See Docs/clipboard-secrets.md.
@@ -100,6 +102,7 @@ enum CommandCredentialShape {
     /// Whether one command's words hand a credential to a program or a header.
     private static func handsOverCredential(_ words: [String], read: inout Int) -> Bool {
         guard !words.isEmpty else { return false }
+        if hasNetrcPassword(words) { return true }
         var programs: Set<String> = []
         var subcommands: Set<String> = []
         var htpasswdBatch = false
@@ -135,6 +138,39 @@ enum CommandCredentialShape {
         }
         // `htpasswd -b file user password` and `htpasswd -nb user password` end with the password.
         if htpasswdBatch, let last = words.last, !last.hasPrefix("-"), isCredential(last) { return true }
+        return false
+    }
+
+    /// Whether a netrc machine entry gives a password after its host or default selector.
+    private static func hasNetrcPassword(_ words: [String]) -> Bool {
+        guard let selector = words.first?.lowercased(), selector == "machine" || selector == "default",
+            words.count >= 3
+        else { return false }
+        let fields = words.map { $0.lowercased() }
+        guard let password = fields.firstIndex(of: "password"), password > 1, password + 1 < words.count
+        else {
+            return false
+        }
+        return isCredential(words[password + 1])
+    }
+
+    /// Whether a Cookie header's named session value looks generated.
+    private static func hasGeneratedCookieCredential(_ text: String) -> Bool {
+        let sensitiveNames: Set<String> = [
+            "auth", "auth_token", "access_token", "id_token", "jwt", "refresh_token", "session",
+            "session_id", "session_key", "sessionid", "sid",
+        ]
+        for pair in text.split(separator: ";") {
+            guard let equals = pair.firstIndex(of: "=") else { continue }
+            var name = pair[..<equals].trimmingCharacters(in: .whitespaces).lowercased()
+            for prefix in ["__host-", "__secure-"] where name.hasPrefix(prefix) {
+                name.removeFirst(prefix.count)
+            }
+            guard sensitiveNames.contains(name) else { continue }
+            let token = pair[pair.index(after: equals)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            if SecretShapes.looksGenerated(token) { return true }
+        }
         return false
     }
 
@@ -215,6 +251,13 @@ enum CommandCredentialShape {
         let lowered = name.lowercased()
         // The header name is the last run of name characters before the colon, as `{Authorization` or `Proxy-Authorization` holds.
         let header = String(lowered.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
+        if header == "cookie" || header == "set-cookie" {
+            let rest = word[word.index(after: colon)...]
+            let value =
+                rest.contains(where: { !$0.isWhitespace })
+                ? String(rest) : following.prefix(2).joined(separator: " ")
+            return hasGeneratedCookieCredential(value)
+        }
         guard header.hasSuffix("authorization") || header.contains("-") && namesSecret(header) else {
             return false
         }

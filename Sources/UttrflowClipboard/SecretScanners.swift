@@ -215,7 +215,8 @@ struct NamedSecretScan {
             + joined("client", "secret")
             + joined("encryption", "key") + joined("signing", "key")
             + joined("master", "key") + joined("app", "key") + joined("jwt", "key")
-        return (plurals + singulars).map { Array($0.utf8) }
+        let fileFields = ["secret_key_base", "client-key-data", "client_key_data"]
+        return (plurals + singulars + fileFields).map { Array($0.utf8) }
     }()
 
     /// Whether some line names a secret and gives a value the named-secret rule accepts.

@@ -17,11 +17,13 @@ public enum SecretShapes {
         let literals = ClipBytes.read(text) { _, bytes in
             (
                 pem: ClipBytes.contains(bytes, "-----BEGIN"), jwt: ClipBytes.contains(bytes, "eyJ"),
-                url: ClipBytes.contains(bytes, "://") || ClipBytes.contains(bytes, "hooks.slack.com")
+                url: ClipBytes.contains(bytes, "://") || ClipBytes.contains(bytes, "hooks.slack.com"),
+                dockerAuth: ClipBytes.contains(bytes, "\"auth\"")
             )
         }
         if literals.pem, text.contains(pemHeader) { return true }
         if literals.jwt, hasJSONWebToken(text) { return true }
+        if literals.dockerAuth, DockerAuthShape.matches(text) { return true }
         if literals.url, hasCredentialledURL(text) || hasBearerURL(text) || hasTokenUserinfoURL(text) {
             return true
         }
