@@ -1,5 +1,6 @@
 import Synchronization
 import Testing
+import UttrflowTestSupport
 import Foundation
 
 @testable import UttrflowCore
@@ -73,11 +74,10 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
 
 /// Pauses after Delete has landed, so quit can be interleaved before the replacement is typed.
 private final class PausingTypist: KeystrokeTyping, @unchecked Sendable {
-    private let deleted = Mutex(false)
+    let didDelete = Signal()
     private let typedValues = Mutex<[String]>([])
     private let resumeTyping = DispatchSemaphore(value: 0)
 
-    var didDelete: Bool { deleted.withLock { $0 } }
     var typed: [String] { typedValues.withLock { $0 } }
 
     func type(_ text: String) throws(TextInsertionError) {
@@ -86,7 +86,7 @@ private final class PausingTypist: KeystrokeTyping, @unchecked Sendable {
     }
 
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {
-        deleted.withLock { $0 = true }
+        didDelete.fire()
     }
 
     func allowTyping() { resumeTyping.signal() }
@@ -225,18 +225,27 @@ struct TypedTextInsertionEngineTests {
     @Test("quit waits through the gap between deleting and typing a replacement")
     func quitWaitsForReplacement() async throws {
         let typist = PausingTypist()
-        let engine = TypedTextInsertionEngine(focus: FakeFocus(preceding: "git "), typist: typist)
+        let finishWaitStarted = Signal()
+        let engine = TypedTextInsertionEngine(
+            focus: FakeFocus(preceding: "git "), typist: typist,
+            finishWaitStarted: { finishWaitStarted.fire() })
         let writing = Task { try await engine.write("it commit", replacing: "git ") }
-        while !typist.didDelete { try await Task.sleep(for: .milliseconds(1)) }
+        try await arrival(of: typist.didDelete.fired)
 
-        let draining = Task { await engine.finishWrites() }
-        try await Task.sleep(for: .milliseconds(20))
+        let finished = Mutex(false)
+        let draining = Task {
+            await engine.finishWrites()
+            finished.withLock { $0 = true }
+        }
+        try await arrival(of: finishWaitStarted.fired)
+        #expect(!finished.withLock { $0 })
         #expect(!draining.isCancelled)
         #expect(typist.typed.isEmpty)
 
         typist.allowTyping()
         try await writing.value
         await draining.value
+        #expect(finished.withLock { $0 })
         #expect(typist.typed == ["it commit"])
 
         await #expect(

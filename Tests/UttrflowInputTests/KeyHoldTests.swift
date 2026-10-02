@@ -30,8 +30,7 @@ struct KeyHoldTests {
         var delivered: [String] = []
         hold.begin(now: 100)
         #expect(hold.keep(try #require(Self.key(36)), now: 200))
-        // The fake typist finishes only after the Return was pressed.
-        try await Task.sleep(for: .milliseconds(20))
+        // The fake typist finishes its text before the held Return is released.
         delivered.append("u ubuntu")
         hold.release { delivered.append("key \($0.getIntegerValueField(.keyboardEventKeycode))") }
         #expect(delivered == ["u ubuntu", "key 36"])

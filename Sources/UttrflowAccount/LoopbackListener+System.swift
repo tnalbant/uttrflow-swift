@@ -27,9 +27,22 @@ public actor SystemLoopbackListener: LoopbackListening {
     private var waiting: CheckedContinuation<LoopbackCallback, any Error>?
     /// The callback that arrived, kept in case the wait begins after it.
     private var received: LoopbackCallback?
+    private let onWaiting: @Sendable () -> Void
+    private let onRequestChunk: @Sendable (Data) -> Void
 
     /// Binds nothing until asked.
-    public init() {}
+    public init() {
+        onWaiting = {}
+        onRequestChunk = { _ in }
+    }
+
+    init(
+        onWaiting: @escaping @Sendable () -> Void = {},
+        onRequestChunk: @escaping @Sendable (Data) -> Void = { _ in }
+    ) {
+        self.onWaiting = onWaiting
+        self.onRequestChunk = onRequestChunk
+    }
 
     /// Binds a port and returns the redirect URI; ``AccountError/serverUnreachable`` when none binds.
     public func bind(expecting state: String) async throws(AccountError) -> URL {
@@ -76,6 +89,7 @@ public actor SystemLoopbackListener: LoopbackListening {
     /// Waits for the callback carrying the expected state; cancellation throws the no-answer refusal.
     public func awaitCallback() async throws(AccountError) -> LoopbackCallback {
         if let received { return received }
+        onWaiting()
 
         do {
             return try await withTaskCancellationHandler {
@@ -134,7 +148,10 @@ public actor SystemLoopbackListener: LoopbackListening {
             [weak self] data, _, isComplete, error in
             guard let self else { return }
             var buffered = buffered
-            if let data { buffered.append(data) }
+            if let data {
+                buffered.append(data)
+                self.onRequestChunk(data)
+            }
 
             let request = String(decoding: buffered, as: UTF8.self)
             let readyToParse =

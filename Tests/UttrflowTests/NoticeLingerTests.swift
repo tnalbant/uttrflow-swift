@@ -21,12 +21,14 @@ struct NoticeLingerTests {
 
     @Test("a key pressed within the linger keeps the panel open past it")
     func aKeyKeepsItOpen() async throws {
-        let linger = NoticeLinger(linger: .milliseconds(50))
+        let sleep = SuspendedSleep()
+        let linger = NoticeLinger(linger: .milliseconds(50)) { _ in await sleep.wait() }
         var closed = false
         linger.start { closed = true }
-        try await Task.sleep(for: .milliseconds(10))
+        await sleep.waitUntilSleeping()
         linger.interrupt()
-        try await Task.sleep(for: .milliseconds(500))
+        await sleep.release()
+        await sleep.waitUntilReturned()
         #expect(!closed)
     }
 
@@ -38,5 +40,36 @@ struct NoticeLingerTests {
         linger.start { closes += 1 }
         try await eventually { closes == 1 && !linger.isPending }
         #expect(closes == 1)
+    }
+}
+
+private actor SuspendedSleep {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var sleeping: [CheckedContinuation<Void, Never>] = []
+    private var returned: [CheckedContinuation<Void, Never>] = []
+    private var hasReturned = false
+
+    func wait() async {
+        for waiter in sleeping { waiter.resume() }
+        sleeping.removeAll()
+        await withCheckedContinuation { continuation = $0 }
+        hasReturned = true
+        for waiter in returned { waiter.resume() }
+        returned.removeAll()
+    }
+
+    func waitUntilSleeping() async {
+        guard continuation == nil else { return }
+        await withCheckedContinuation { sleeping.append($0) }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func waitUntilReturned() async {
+        guard !hasReturned else { return }
+        await withCheckedContinuation { returned.append($0) }
     }
 }

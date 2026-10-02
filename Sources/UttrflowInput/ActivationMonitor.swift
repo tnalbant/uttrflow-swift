@@ -35,6 +35,8 @@ public final class ActivationMonitor: HotkeyMonitoring {
     private static let reconciliationMilliseconds = 250
     /// How long a give-up waits before rebuilding, overridable so a test need not wait.
     private let restSeconds: Int
+    private let rest: @MainActor @Sendable (Duration) async -> Void
+    private let reconciliationPass: @Sendable (Bool) -> Void
 
     /// Takes the source it listens through, so a test can hand it strokes instead of a keyboard.
     public convenience init(source: any KeyboardEventSource = SystemKeyboard()) {
@@ -45,13 +47,17 @@ public final class ActivationMonitor: HotkeyMonitoring {
         source: any KeyboardEventSource, keyState: any RealKeyStateReading = SystemKeyState(),
         accessibilityIsGranted: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
         strokeLeftLock: @escaping @Sendable () -> Void,
-        restSeconds: Int = ActivationMonitor.defaultRestSeconds
+        restSeconds: Int = ActivationMonitor.defaultRestSeconds,
+        rest: @escaping @MainActor @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        reconciliationPass: @escaping @Sendable (Bool) -> Void = { _ in }
     ) {
         self.source = source
         self.keyState = keyState
         self.accessibilityIsGranted = accessibilityIsGranted
         self.strokeLeftLock = strokeLeftLock
         self.restSeconds = restSeconds
+        self.rest = rest
+        self.reconciliationPass = reconciliationPass
         (events, continuation) = AsyncStream.makeStream()
     }
 
@@ -136,7 +142,7 @@ public final class ActivationMonitor: HotkeyMonitoring {
             $0?.cancel()
             $0 = Task { @MainActor [weak self] in
                 guard let self else { return }
-                try? await Task.sleep(for: .seconds(self.restSeconds))
+                await self.rest(.seconds(self.restSeconds))
                 guard !Task.isCancelled, let binding = activeBinding.withLock({ $0 }) else { return }
                 do {
                     try start(binding: binding)
@@ -162,9 +168,15 @@ public final class ActivationMonitor: HotkeyMonitoring {
         timer.setEventHandler { [weak self] in
             // A monitor released mid-hold cancels its own timer rather than firing forever.
             guard let self else { timer.cancel(); return }
-            guard recogniser.withLock({ $0?.isDown }) == true else { return }
-            guard !keyState.isDown(binding) else { return }
-            deliverReconciledRelease()
+            guard recogniser.withLock({ $0?.isDown }) == true else {
+                reconciliationPass(false)
+                return
+            }
+            guard !keyState.isDown(binding) else {
+                reconciliationPass(false)
+                return
+            }
+            reconciliationPass(deliverReconciledRelease())
         }
         timer.resume()
         reconciliation.withLock { existing in
@@ -181,10 +193,11 @@ public final class ActivationMonitor: HotkeyMonitoring {
     }
 
     /// Delivers the release the poll found, the same way an owed release from `stop()` is delivered.
-    private func deliverReconciledRelease() {
+    private func deliverReconciledRelease() -> Bool {
         let owed = recogniser.withLock { current in current?.finish() }
-        guard let owed else { return }
+        guard let owed else { return false }
         continuation.yield(owed)
         stopReconciling()
+        return true
     }
 }

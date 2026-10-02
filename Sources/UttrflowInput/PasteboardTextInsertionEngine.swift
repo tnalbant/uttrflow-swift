@@ -12,6 +12,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
     private let confirmation: PasteConfirmation
     private let confirmsArrival: Bool
     private let report: (@Sendable (PasteConfirmation.Outcome) -> Void)?
+    private let onWaitingForGate: @Sendable () -> Void
     /// What was in front when the last paste was posted, which is where its words went.
     private var landedIn: InsertionDestination?
 
@@ -23,12 +24,27 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         confirmsArrival: Bool = true,
         reporting: (@Sendable (PasteConfirmation.Outcome) -> Void)? = nil
     ) {
+        self.init(
+            focus: focus, pasteboard: pasteboard, keystrokes: keystrokes, confirmation: confirmation,
+            confirmsArrival: confirmsArrival, reporting: reporting, onWaitingForGate: {})
+    }
+
+    init(
+        focus: any AccessibilityFocus,
+        pasteboard: any Pasteboard,
+        keystrokes: any KeystrokeSender,
+        confirmation: PasteConfirmation? = nil,
+        confirmsArrival: Bool = true,
+        reporting: (@Sendable (PasteConfirmation.Outcome) -> Void)? = nil,
+        onWaitingForGate: @escaping @Sendable () -> Void
+    ) {
         self.focus = focus
         self.pasteboard = pasteboard
         self.keystrokes = keystrokes
         self.confirmation = confirmation ?? PasteConfirmation(focus: focus)
         self.confirmsArrival = confirmsArrival
         self.report = reporting
+        self.onWaitingForGate = onWaitingForGate
     }
 
     /// Anything but Uttrflow itself. See `Docs/input-paste-eligibility.md`.
@@ -61,7 +77,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         _ text: String, richText: String?, targeting destination: InsertionDestination?
     ) async throws(TextInsertionError) -> InsertionArrival {
         let gate = Self.insertionGate
-        await gate.acquire()
+        await gate.acquire(onWaiting: onWaitingForGate)
         do {
             let result = try await insertWhileSerialized(text, richText: richText, targeting: destination)
             await gate.release()
@@ -168,12 +184,15 @@ private actor PasteboardInsertionGate {
     private var isHeld = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    func acquire() async {
+    func acquire(onWaiting: @Sendable () -> Void) async {
         guard isHeld else {
             isHeld = true
             return
         }
-        await withCheckedContinuation { waiters.append($0) }
+        await withCheckedContinuation {
+            waiters.append($0)
+            onWaiting()
+        }
     }
 
     func release() {

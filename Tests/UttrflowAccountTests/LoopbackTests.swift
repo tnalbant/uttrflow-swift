@@ -5,6 +5,7 @@ import Network
 import Synchronization
 import Testing
 import UttrflowCore
+import UttrflowTestSupport
 
 @testable import UttrflowAccount
 
@@ -236,7 +237,9 @@ struct LoopbackListenerTests {
     }
 
     /// Sends `path` one byte at a time with a short delay, so no single TCP read carries the whole request.
-    private func getSplitByteByByte(_ path: String, port: UInt16) async -> String {
+    private func getSplitByteByByte(
+        _ path: String, port: UInt16, firstChunkRead: AsyncStream<Void>
+    ) async -> String {
         await withCheckedContinuation { continuation in
             let once = Mutex(false)
             let finish: @Sendable (String) -> Void = { text in
@@ -270,7 +273,8 @@ struct LoopbackListenerTests {
                     connection.send(
                         content: Data([request[0]]),
                         completion: .contentProcessed { _ in
-                            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+                            Task {
+                                try? await arrival(of: firstChunkRead)
                                 connection.send(
                                     content: Data(request.dropFirst()),
                                     completion: .contentProcessed { _ in read() })
@@ -289,9 +293,16 @@ struct LoopbackListenerTests {
     /// A request line split across two TCP reads is still recognised once the rest of it arrives.
     @Test("accumulates a request line that arrives in more than one TCP read")
     func aSplitRequestLineIsStillRecognised() async throws {
-        let (listener, port) = try await bound()
+        let firstChunk = Signal()
+        let listener = SystemLoopbackListener(onRequestChunk: { data in
+            if data == Data("G".utf8) { firstChunk.fire() }
+        })
+        let redirect = try await listener.bind(expecting: Self.state)
+        let port = try #require(redirect.port.flatMap { UInt16(exactly: $0) })
 
-        let answer = await getSplitByteByByte("/callback?code=the-code&state=\(Self.state)", port: port)
+        let answer = await getSplitByteByByte(
+            "/callback?code=the-code&state=\(Self.state)", port: port,
+            firstChunkRead: firstChunk.fired)
         #expect(answer.hasPrefix("HTTP/1.1 200"))
         #expect(answer.contains("Signed in"))
 
@@ -319,9 +330,16 @@ struct LoopbackCancellationTests {
     /// A real listener that counts how often it was closed.
     private final class CountingListener: LoopbackListening {
         /// The listener doing the work.
-        let inner = SystemLoopbackListener()
+        let inner: SystemLoopbackListener
+        let waiting: Signal
         /// How many times `close()` ran.
         private let closes = Mutex(0)
+
+        init() {
+            let waiting = Signal()
+            self.waiting = waiting
+            inner = SystemLoopbackListener(onWaiting: { waiting.fire() })
+        }
 
         var timesClosed: Int { closes.withLock { $0 } }
 
@@ -379,10 +397,11 @@ struct LoopbackCancellationTests {
 
     @Test("refuses a wait that is cancelled while it is waiting")
     func aWaitingWaitEndsOnCancel() async throws {
-        let listener = SystemLoopbackListener()
+        let waiting = Signal()
+        let listener = SystemLoopbackListener(onWaiting: { waiting.fire() })
         _ = try await listener.bind(expecting: "the-state")
         let waiter = Task { try await listener.awaitCallback() }
-        try await Task.sleep(for: .milliseconds(100))
+        try await arrival(of: waiting.fired)
         waiter.cancel()
         #expect(await endedWithRefusal(waiter))
     }
@@ -407,7 +426,7 @@ struct LoopbackCancellationTests {
         let backend = service(listener)
         let challenge = try await backend.beginSignIn(with: .google)
         let signIn = Task { try await backend.completeSignIn(challenge) }
-        try await Task.sleep(for: .milliseconds(100))
+        try await arrival(of: listener.waiting.fired)
         signIn.cancel()
         #expect(await endedWithRefusal(signIn))
         await listener.waitUntilClosed()

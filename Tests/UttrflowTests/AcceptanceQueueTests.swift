@@ -35,11 +35,13 @@ struct AcceptanceQueueTests {
     func keepsOrder() async {
         let queue = AcceptanceQueue()
         let journal = Journal()
+        let (gate, open) = AsyncStream<Void>.makeStream()
         queue.enqueue {
-            try? await Task.sleep(for: .milliseconds(30))
+            for await _ in gate { break }
             journal.note("first")
         }
         queue.enqueue { journal.note("second") }
+        open.yield()
         await queue.drained()
         #expect(journal.all == ["first", "second"])
     }

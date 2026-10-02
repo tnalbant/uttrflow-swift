@@ -5,6 +5,7 @@ import ApplicationServices
 import SwiftUI
 import Testing
 import UttrflowClipboard
+import UttrflowTestSupport
 import UttrflowUX
 
 @testable import Uttrflow
@@ -60,7 +61,11 @@ struct QuickPanelScrollRestoreTests {
         window.contentView = host
         window.orderFrontRegardless()
 
-        try await Task.sleep(for: .milliseconds(250))
+        try await eventually {
+            host.subviews
+                .flatMap { descendants(of: $0) }
+                .contains { $0 is NSScrollView && $0.bounds.height > 100 && $0.bounds.width > 300 }
+        }
         askAsAnAssistiveApp()
 
         let scrollView = try #require(

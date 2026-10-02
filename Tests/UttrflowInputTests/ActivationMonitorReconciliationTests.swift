@@ -2,6 +2,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowCore
 @testable import UttrflowInput
@@ -64,7 +65,14 @@ struct ActivationMonitorReconciliationTests {
     func heldKeyIsNotReconciledAway() async throws {
         let source = SilentSource()
         let keyState = FakeKeyState()
-        let monitor = ActivationMonitor(source: source, keyState: keyState, strokeLeftLock: {})
+        let passFinished = Signal()
+        let reconciled = Mutex(true)
+        let monitor = ActivationMonitor(
+            source: source, keyState: keyState, strokeLeftLock: {},
+            reconciliationPass: { didRelease in
+                reconciled.withLock { $0 = didRelease }
+                passFinished.fire()
+            })
         try monitor.start(binding: .optionSpace)
 
         var events = monitor.events.makeAsyncIterator()
@@ -72,8 +80,8 @@ struct ActivationMonitorReconciliationTests {
         let pressed = await events.next()
         #expect(pressed == .pressed)
 
-        // Give the poll a few intervals to run; the key state never says it let go.
-        try await Task.sleep(for: .milliseconds(600))
+        try await arrival(of: passFinished.fired)
+        #expect(!reconciled.withLock { $0 })
 
         // The only release left is the one `stop()` owes, not one the poll invented.
         monitor.stop()

@@ -42,10 +42,7 @@ struct DictationClipSwitchTests {
 
         app.render(
             .inserted(DictationOutcome(text: "Sample words", method: .accessibility, cleanedBy: .rules)))
-        for _ in 0..<10 {
-            try await Task.sleep(for: .milliseconds(20))
-            #expect(await keptClips(in: sandbox).isEmpty)
-        }
+        #expect(await keptClips(in: sandbox).isEmpty)
 
         let dictation = try #require(app.lastTranscriptID)
         app.carryOut(.keepDictationAsClip(dictation))

@@ -69,13 +69,46 @@ struct ActivationMonitorGaveUpTests {
     @MainActor
     func stopCancelsAPendingRebuild() async throws {
         let source = SourceThatGivesUp()
-        let monitor = ActivationMonitor(source: source, strokeLeftLock: {}, restSeconds: 3600)
+        let rest = SuspendedRest()
+        let monitor = ActivationMonitor(
+            source: source, strokeLeftLock: {}, restSeconds: 3600, rest: { _ in await rest.wait() })
         try monitor.start(binding: .optionSpace)
         source.giveUp()
+        await rest.waitUntilStarted()
         monitor.stop()
-
-        // Long enough to notice a rebuild that should not happen; short next to the 3600s rest.
-        try await Task.sleep(for: .milliseconds(100))
+        await rest.release()
+        await rest.waitUntilReturned()
         #expect(source.startCount.withLock { $0 } == 1)
+    }
+}
+
+private actor SuspendedRest {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var returnWaiters: [CheckedContinuation<Void, Never>] = []
+    private var didReturn = false
+
+    func wait() async {
+        for waiter in startWaiters { waiter.resume() }
+        startWaiters.removeAll()
+        await withCheckedContinuation { continuation = $0 }
+        didReturn = true
+        for waiter in returnWaiters { waiter.resume() }
+        returnWaiters.removeAll()
+    }
+
+    func waitUntilStarted() async {
+        guard continuation == nil else { return }
+        await withCheckedContinuation { startWaiters.append($0) }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func waitUntilReturned() async {
+        guard !didReturn else { return }
+        await withCheckedContinuation { returnWaiters.append($0) }
     }
 }

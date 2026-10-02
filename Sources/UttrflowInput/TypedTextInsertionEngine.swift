@@ -26,10 +26,19 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
     private let focus: any AccessibilityFocus
     private let typist: any KeystrokeTyping
     private let writeState = TypedWriteState()
+    private let finishWaitStarted: @Sendable () -> Void
 
     public init(focus: any AccessibilityFocus, typist: any KeystrokeTyping) {
+        self.init(focus: focus, typist: typist, finishWaitStarted: {})
+    }
+
+    init(
+        focus: any AccessibilityFocus, typist: any KeystrokeTyping,
+        finishWaitStarted: @escaping @Sendable () -> Void
+    ) {
         self.focus = focus
         self.typist = typist
+        self.finishWaitStarted = finishWaitStarted
     }
 
     /// Anything but ourselves; Electron apps expose no focused element and still take typing.
@@ -47,7 +56,7 @@ extension TypedTextInsertionEngine: CompletionWriting {
     public func canWrite() async -> Bool { await canInsert() }
 
     /// Waits for an in-flight replacement before the application terminates.
-    public func finishWrites() async { await writeState.closeAndWait() }
+    public func finishWrites() async { await writeState.closeAndWait(onWaiting: finishWaitStarted) }
 
     /// Backspaces then types, which the target's undo sees as several edits. See `Docs/predict-accept.md`.
     public func write(_ text: String, replacing replaced: String) async throws(TextInsertionError) {
@@ -116,12 +125,13 @@ private final class TypedWriteState: Sendable {
         for continuation in waiting { continuation.resume() }
     }
 
-    func closeAndWait() async {
+    func closeAndWait(onWaiting: @Sendable () -> Void) async {
         await withCheckedContinuation { continuation in
             let resumeNow = state.withLock { state -> Bool in
                 state.isClosed = true
                 guard !state.active.isEmpty else { return true }
                 state.waiters.append(continuation)
+                onWaiting()
                 return false
             }
             if resumeNow { continuation.resume() }

@@ -9,10 +9,15 @@ final class NoticeLinger {
     static let standard = Duration.seconds(2.5)
 
     private let linger: Duration
+    private let sleep: @MainActor @Sendable (Duration) async -> Void
     private var task: Task<Void, Never>?
 
-    init(linger: Duration = NoticeLinger.standard) {
+    init(
+        linger: Duration = NoticeLinger.standard,
+        sleep: @escaping @MainActor @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) {
         self.linger = linger
+        self.sleep = sleep
     }
 
     /// Whether a close is still waiting to happen.
@@ -22,7 +27,7 @@ final class NoticeLinger {
     func start(close: @escaping @MainActor () -> Void) {
         task?.cancel()
         task = Task { [weak self, linger] in
-            try? await Task.sleep(for: linger)
+            await sleep(linger)
             guard !Task.isCancelled else { return }
             self?.task = nil
             close()

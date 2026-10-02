@@ -227,19 +227,6 @@ private final class GatedConfirmationFocus: AccessibilityFocus, @unchecked Senda
     func finishConfirmation() { continueConfirmation.signal() }
 }
 
-/// Signals when the second coordinator has passed its eligibility check.
-private final class SignalingFocus: AccessibilityFocus, @unchecked Sendable {
-    private let checked = Mutex(false)
-    func focusedTextField() -> (any FocusedTextField)? { nil }
-    func hasFocusedElement() -> Bool { true }
-    func isSelfFrontmost() -> Bool {
-        checked.withLock { $0 = true }
-        return false
-    }
-    func tail(upTo count: Int) -> FieldTail { .text("previous text") }
-    var didCheckEligibility: Bool { checked.withLock { $0 } }
-}
-
 @Suite("PasteboardTextInsertionEngine")
 struct PasteboardTextInsertionEngineTests {
     @Test("marks the paste route transient")
@@ -290,18 +277,19 @@ struct PasteboardTextInsertionEngineTests {
 
         while !firstFocus.isWaitingForConfirmation { await Task.yield() }
 
-        let secondFocus = SignalingFocus()
+        let secondFocus = FakeFocus()
+        let waitingForGate = Signal()
         let secondEngine = PasteboardTextInsertionEngine(
             focus: secondFocus,
             pasteboard: pasteboard,
             keystrokes: FakeKeystrokeSender(),
             confirmation: PasteConfirmation(
-                focus: secondFocus, clock: ScriptedClock()))
+                focus: secondFocus, clock: ScriptedClock()),
+            onWaitingForGate: { waitingForGate.fire() })
         let second = TextInsertionCoordinator(strategies: [secondEngine], focus: secondFocus)
         let secondTask = Task { try await second.insert("second insertion") }
 
-        while !secondFocus.didCheckEligibility { await Task.yield() }
-        try await Task.sleep(for: .milliseconds(20))
+        try await arrival(of: waitingForGate.fired)
         #expect(pasteboard.writes == ["first insertion"], "the active confirmation still owns the pasteboard")
 
         firstFocus.finishConfirmation()
