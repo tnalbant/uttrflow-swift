@@ -352,6 +352,9 @@ private enum Take {
     static let threePieces = AudioSamples.canonical(
         tone(1.2) + silence(0.5) + tone(1.2) + silence(0.5) + tone(0.4))
 
+    static let fragmentTail = AudioSamples.canonical(
+        tone(1.2) + silence(0.5) + tone(1.2) + silence(0.5) + tone(0.1))
+
     static let speechThenSilence = AudioSamples.canonical(tone(1.2) + silence(1.0))
 }
 
@@ -748,6 +751,36 @@ struct DictationPipelineEarlyWorkTests {
         #expect(
             state.outcome?.text == "W3 X. W2 X. W4 X", "the failed piece is redone in its own place")
         #expect(await speech.calls == 4, "only the failed piece and the tail are left for the end")
+    }
+
+    @Test("a failed early window joins a fragment tail to its pending span")
+    func failedEarlyWindowJoinsFragmentTail() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.fragmentTail))
+        await capture.setCaptured(Take.fragmentTail)
+        let speech = NumberingSpeechEngine(failingCalls: [1])
+        let pipeline = makePipeline(capture: capture, speech: speech)
+
+        await pipeline.startRecording()
+        try await waitForCalls(1, on: speech)
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.text == "W2 X")
+        #expect(await speech.calls == 2)
+    }
+
+    @Test("a silent early window does not remove the preceding finished span")
+    func silentEarlyWindowKeepsPriorSpanBeforeFragmentTail() async throws {
+        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.fragmentTail))
+        await capture.setCaptured(Take.fragmentTail)
+        let speech = NumberingSpeechEngine(silentCalls: [2])
+        let pipeline = makePipeline(capture: capture, speech: speech)
+
+        await pipeline.startRecording()
+        try await waitForCalls(2, on: speech)
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.text == "W1 X. W3 X")
+        #expect(await speech.calls == 3)
     }
 
     @Test("a retried recording is recognised in windows, so a long one is never one request")

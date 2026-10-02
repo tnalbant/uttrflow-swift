@@ -581,6 +581,7 @@ public actor DictationPipeline {
                 // A failed piece is left for the end, where it is reported; the rest still work ahead.
                 earlySpans.append(.pending(earlyCut..<end))
                 earlyCut = end
+                earlyLastWindowStart = start
                 pieceInFlight = false
                 continue
             }
@@ -589,7 +590,7 @@ public actor DictationPipeline {
             guard generation == mine, !wasCancelled(mine) else { return }
             // Cut here, before the tidy, so a key-up mid-tidy still knows what audio is left to recognise.
             earlyCut = end
-            earlyLastWindowStart = start
+            earlyLastWindowStart = heard == nil ? nil : start
             if let heard {
                 let correctionContext = await readContext()
                 let tidy = Task {
