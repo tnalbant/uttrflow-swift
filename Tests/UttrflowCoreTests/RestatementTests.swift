@@ -154,6 +154,21 @@ struct RestatementTests {
             Restatement.discardedStart(before: 4, after: 5, in: apology.live, of: apology.draft) == nil)
     }
 
+    @Test(
+        "does not treat a reported answer after a copula as a restatement",
+        arguments: [
+            ("The vote was no, the board will not proceed", 3, 4),
+            ("The exit code was no, the script did not run", 4, 5),
+            ("The result was no, the sample did not match", 3, 4),
+            ("The status was no, the order is held", 3, 4),
+            ("Tell her the vote is no, the plan stays", 5, 6),
+        ]
+    )
+    func reportedAnswerIsNotADiscardedHalf(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
+    }
+
     /// The frame here opens on "ship", not on an answer, so the correction still stands.
     @Test("still matches a correction in a sentence that opens with an answer")
     func correctionAfterAnAnswerStillMatches() {

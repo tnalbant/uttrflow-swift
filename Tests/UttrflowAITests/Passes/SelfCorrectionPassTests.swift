@@ -160,6 +160,20 @@ struct SelfCorrectionPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "keeps a reported no before its following clause",
+        arguments: [
+            ("The vote was no, the board will not proceed", "The vote was no, the board will not proceed"),
+            ("The exit code was no, the script did not run", "The exit code was no, the script did not run"),
+            ("The result was no, the sample did not match", "The result was no, the sample did not match"),
+            ("The status was no, the order is held", "The status was no, the order is held"),
+            ("Tell her the vote is no, the plan stays", "Tell her the vote is no, the plan stays"),
+        ]
+    )
+    func keepsReportedNo(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     /// A number anchor may not reach back through a full stop, because the number in the sentence before was not the one corrected. See `Docs/cleanup.md`.
     @Test(
         "leaves a number the speaker said in the sentence before the correction",

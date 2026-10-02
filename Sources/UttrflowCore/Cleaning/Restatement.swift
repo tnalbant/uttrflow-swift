@@ -16,6 +16,8 @@ public enum Restatement {
         "solah", "satrah", "atharah", "unnis", "bees",
     ]
 
+    private static let copulas: Set<String> = ["am", "is", "are", "was", "were", "be", "being", "been"]
+
     /// Words that head an answer, which a second answer pairs with rather than takes back.
     public static let answerHeads: Set<String> = [
         "yes", "yeah", "yep", "no", "nope", "sorry", "thanks", "thank", "okay", "ok",
@@ -73,6 +75,7 @@ public enum Restatement {
             return hindiNumberStart(before: trigger, after: restart, in: live, of: draft)
         }
         if triggerWords == ["mera", "matlab"] { return nil }
+        guard !isReportedAnswer(triggerWords, before: trigger, in: live, of: draft) else { return nil }
         let through = standsAlone(trigger, before: restart, in: live, of: draft)
         if NumberWords.isNumber(firstAfter),
             let end = numberEnd(before: trigger, after: restart, in: live, of: draft)
@@ -103,6 +106,17 @@ public enum Restatement {
             }
         }
         return nil
+    }
+
+    /// A bare no after a copula and before a comma completes a reported answer clause.
+    private static func isReportedAnswer(
+        _ trigger: [String], before position: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard trigger == ["no"], position > 0,
+            copulas.contains(draft.shape(at: live[position - 1]).key),
+            draft.shape(at: live[position]).suffix.contains(",")
+        else { return false }
+        return true
     }
 
     /// Hindi triggers take back a number only when the following phrase repeats, so ordinary speech stays intact.
