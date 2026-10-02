@@ -64,6 +64,34 @@ struct RestatementTests {
         #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == 0)
     }
 
+    @Test(
+        "a repeated phrase anchor can reach beyond six words",
+        arguments: [
+            ("send the file to the new client sorry send the file to the vendor", 7, 8),
+            ("meet me at the cafe on main street sorry meet me at the cafe on first street", 8, 9),
+            (
+                "book a table for two at the italian place i mean book a table for four at the italian place",
+                9, 11
+            ),
+            (
+                "send the new file to the client in boston sorry send the new file to the vendor in paris",
+                9, 10
+            ),
+        ])
+    func repeatedPhraseAnchorCanReachFurther(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == 0)
+    }
+
+    @Test("a repeated phrase anchor does not cross a sentence")
+    func repeatedPhraseAnchorDoesNotCrossSentence() {
+        let earlierSentence = reading("send the file. meet me at the cafe no send the file to vendor")
+        #expect(
+            Restatement.discardedStart(
+                before: 8, after: 9, in: earlierSentence.live, of: earlierSentence.draft)
+                == nil)
+    }
+
     /// A trigger said with a pause comes back as its own sentence, which is read through rather than as a sentence end.
     @Test("a trigger that is a sentence of its own reads through the stop before it")
     func triggerAsItsOwnSentence() {

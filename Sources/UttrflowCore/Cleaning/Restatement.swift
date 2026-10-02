@@ -7,8 +7,10 @@ public enum Restatement {
         ["no"], ["sorry"], ["actually"],
     ]
 
-    /// How many words back the discarded half may reach.
+    /// How many words back number corrections may reach.
     public static let reach = 6
+
+    private static let repeatedPhraseReach = 12
 
     private static let hindiNumberWords: Set<String> = [
         "ek", "do", "teen", "char", "chaar", "paanch", "panch", "chhe", "chhah", "che", "saat",
@@ -65,6 +67,7 @@ public enum Restatement {
         before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
     ) -> Int? {
         let earliest = max(0, trigger - reach)
+        let earliestPhraseAnchor = max(0, trigger - repeatedPhraseReach)
         let firstAfter = draft.shape(at: live[restart]).key
         let triggerWords = live[trigger..<restart].map { draft.shape(at: $0).key }
         let isHindiDoubleNegative = triggerWords == ["nahi", "nahi"]
@@ -93,7 +96,7 @@ public enum Restatement {
         guard !weakAnchors.contains(firstAfter) else { return nil }
         let replacesOneWord = replacesSingleWord(
             before: trigger, after: restart, triggerWords: triggerWords, in: live, of: draft)
-        for candidate in stride(from: trigger - 1, through: earliest, by: -1) {
+        for candidate in stride(from: trigger - 1, through: earliestPhraseAnchor, by: -1) {
             if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
                     !coordinates(candidate, before: trigger, in: live, of: draft)
