@@ -167,6 +167,13 @@ struct RestatementTests {
             ("we need ten boxes no twelve. boxes", 4, 5),
             ("ten boxes no twelve", 2, 3),
             ("boxes no twelve boxes", 1, 2),
+            ("ten apples, actually twelve pears", 2, 3),
+            ("ten boxes, no twelve", 2, 3),
+            ("ten boxes sorry twelve", 2, 3),
+            ("ten apples i mean twelve pears", 2, 4),
+            ("boxes no wait twelve boxes", 1, 3),
+            ("i counted ten. boxes sorry twelve boxes", 4, 5),
+            ("we need ten boxes i mean twelve. boxes", 4, 6),
         ])
     func numberWithAnotherUnit(text: String, trigger: Int, restart: Int) {
         let (draft, live) = reading(text)

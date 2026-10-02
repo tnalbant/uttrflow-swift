@@ -301,6 +301,21 @@ struct SelfCorrectionPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "a numeric restart cannot discard a unit when the quantities do not match",
+        arguments: [
+            "ten apples actually twelve pears", "ten boxes no twelve",
+            "we need ten boxes no twelve. boxes", "i counted ten. boxes no twelve boxes",
+            "ten apples, actually twelve pears", "ten boxes, no twelve",
+            "ten boxes sorry twelve", "ten apples i mean twelve pears",
+            "boxes no wait twelve boxes", "i counted ten. boxes sorry twelve boxes",
+            "we need ten boxes i mean twelve. boxes", "say sorry 3 sorry 4",
+        ]
+    )
+    func preservesUnmatchedNumberCorrection(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
     /// A trigger heading a repeated frame coordinates a list, and the first item is not a discarded half. See `Docs/cleanup.md`.
     @Test(
         "leaves a coordinated list whose items are headed by the trigger word itself",

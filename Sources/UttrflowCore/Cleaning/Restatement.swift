@@ -80,9 +80,10 @@ public enum Restatement {
         if triggerWords == ["mera", "matlab"] { return nil }
         guard !isReportedAnswer(triggerWords, before: trigger, in: live, of: draft) else { return nil }
         let through = standsAlone(trigger, before: restart, in: live, of: draft)
-        if NumberWords.isNumber(firstAfter),
-            let end = numberEnd(before: trigger, after: restart, in: live, of: draft)
-        {
+        if NumberWords.isNumber(firstAfter) {
+            guard let end = numberEnd(before: trigger, after: restart, in: live, of: draft) else {
+                return nil
+            }
             guard through || !endsSentence(trigger - 1, in: live, of: draft) else { return nil }
             var start = end
             while start > earliest, NumberWords.isNumber(draft.shape(at: live[start - 1]).key),
