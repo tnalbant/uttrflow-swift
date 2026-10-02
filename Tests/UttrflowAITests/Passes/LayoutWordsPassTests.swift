@@ -69,6 +69,32 @@ struct LayoutWordsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "keeps numbered-item positions valid for reported consecutive-number inputs",
+        arguments: [
+            "Number 5, milk. Number 6, eggs.",
+            "Number five milk. Number six eggs.",
+            "number 10 milk number 11 eggs",
+            "number 5 number 6",
+        ])
+    func keepsConsecutiveNumbersSafe(input: String) {
+        #expect(!cleaned(input, by: sut).isEmpty)
+    }
+
+    @Test("keeps consecutive numbered items safe for each insertion state")
+    func keepsNumberedItemsSafeAcrossInsertionStates() {
+        let precedingTexts: [String?] = [
+            nil, "", "The previous sentence ended. ", "I looked at the numbers ",
+        ]
+        for precedingText in precedingTexts {
+            let pass = LayoutWordsPass(insertionPoint: InsertionPoint(precedingText: precedingText))
+            for first in 1...30 {
+                let input = "Number \(first), milk. Number \(first + 1), eggs."
+                #expect(!cleaned(input, by: pass).isEmpty)
+            }
+        }
+    }
+
     @Test("keeps a repeated label with each numbered item")
     func keepsRepeatedLabelsWithNumberedItems() {
         #expect(

@@ -155,15 +155,15 @@ public struct LayoutWordsPass: CleaningPass {
             (value > 1 && numbered.contains(value - 1))
                 || (value < Int.max && numbered.contains(value + 1))
         else { return false }
-        return isEligibleNumberedRun(at: value, in: live, of: draft, among: numbered)
+        return isEligibleNumberedRun(at: value, in: live, of: draft)
     }
 
     /// A lead-in and items without a stranded coordinator distinguish a list from a sentence.
     private func isEligibleNumberedRun(
-        at value: Int, in live: [Int], of draft: Draft, among numbered: Set<Int>
+        at value: Int, in live: [Int], of draft: Draft
     ) -> Bool {
         let positionsByValue = Dictionary(
-            numbered.compactMap { position -> (Int, Int)? in
+            live.indices.compactMap { position -> (Int, Int)? in
                 guard let item = itemValue(at: position, in: live, of: draft) else { return nil }
                 return (item, position)
             }, uniquingKeysWith: { first, _ in first },
