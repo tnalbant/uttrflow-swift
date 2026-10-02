@@ -81,7 +81,7 @@ public enum DictationPresenter {
         let seconds = timed.reduce(0.0) { $0 + $1.seconds }
         guard seconds > 0 else { return nil }
         let words = timed.reduce(0) { $0 + $1.words }
-        return Int((Double(words) / seconds * 60).rounded())
+        return MainFormatting.roundedInteger(Double(words) / seconds * 60)
     }
 
     /// Counts the utterance when recorded, or reconstructs it from the stored snippet matches for older entries.

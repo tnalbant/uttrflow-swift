@@ -366,7 +366,17 @@ public enum MainFormatting {
 
     /// How long somebody talked, in whole seconds: "11s".
     public static func spoken(_ duration: Duration) -> String {
-        "\(max(0, Int(duration.inSeconds.rounded())))s"
+        guard let seconds = roundedInteger(duration.inSeconds) else { return "—" }
+        return "\(max(0, seconds))s"
+    }
+
+    /// A rounded finite value that fits in the platform integer type.
+    static func roundedInteger(_ value: Double) -> Int? {
+        let rounded = value.rounded()
+        guard rounded.isFinite, rounded >= Double(Int.min), rounded < Double(Int.max) else {
+            return nil
+        }
+        return Int(rounded)
     }
 
     /// A byte count as Finder writes it.

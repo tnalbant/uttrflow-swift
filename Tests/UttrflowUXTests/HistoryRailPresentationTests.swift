@@ -57,6 +57,14 @@ struct HistoryRailPresentationTests {
         #expect(HistoryPresenter.length(of: entry) == "0:09 · 2 words")
     }
 
+    @Test("an out-of-range stored duration leaves the words visible without a clock")
+    func outOfRangeDuration() {
+        let duration = Duration.seconds(Int64.max)
+        let entry = HistoryEntry(text: "Hi there", when: HistoryFixture.now, spokenFor: duration)
+        #expect(HistoryPresenter.clock(duration) == "—")
+        #expect(HistoryPresenter.length(of: entry) == "2 words")
+    }
+
     @Test("a clock writes minutes and two-digit seconds")
     func clock() {
         #expect(HistoryPresenter.clock(.seconds(6)) == "0:06")

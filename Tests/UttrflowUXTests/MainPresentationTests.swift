@@ -201,6 +201,7 @@ struct MainFormattingTests {
         #expect(MainFormatting.spoken(.milliseconds(11_400)) == "11s")
         #expect(MainFormatting.spoken(.milliseconds(11_600)) == "12s")
         #expect(MainFormatting.spoken(.seconds(-3)) == "0s")
+        #expect(MainFormatting.spoken(.seconds(Int64.max)) == "—")
     }
 
     @Test("bytes are written the way the Finder writes them")

@@ -460,12 +460,14 @@ public enum HistoryPresenter {
         let words = MainFormatting.count(
             counted ?? MainFormatting.words(in: entry.text), "word", "words")
         guard let spoken = entry.spokenFor else { return words }
-        return "\(clock(spoken)) · \(words)"
+        let duration = clock(spoken)
+        return duration == "—" ? words : "\(duration) · \(words)"
     }
 
     /// A duration on a clock, minutes and two-digit seconds: "0:06", "12:40".
     static func clock(_ duration: Duration) -> String {
-        let seconds = max(0, Int(duration.inSeconds.rounded()))
+        guard let measured = MainFormatting.roundedInteger(duration.inSeconds) else { return "—" }
+        let seconds = max(0, measured)
         let remainder = seconds % 60
         return "\(seconds / 60):\(remainder < 10 ? "0" : "")\(remainder)"
     }
