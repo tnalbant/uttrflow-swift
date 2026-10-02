@@ -48,6 +48,8 @@ struct DismissalCountdown {
 }
 
 enum DictationSessionEndObserver {
+    static let screenIsLocked = Notification.Name("com.apple.screenIsLocked")
+
     static let notices = [
         NSWorkspace.sessionDidResignActiveNotification,
         NSWorkspace.screensDidSleepNotification,
@@ -62,6 +64,12 @@ enum DictationSessionEndObserver {
         notices.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { _ in onEnd() }
         }
+    }
+
+    static func observeScreenLock(
+        in center: NotificationCenter, onEnd: @escaping @Sendable () -> Void
+    ) -> any NSObjectProtocol {
+        center.addObserver(forName: screenIsLocked, object: nil, queue: .main) { _ in onEnd() }
     }
 }
 
@@ -112,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let secureInput = SecureInputWatch()
     private var secureInputObserver: (any NSObjectProtocol)?
     private var dictationSessionObservers: [any NSObjectProtocol] = []
+    private var screenLockObserver: (any NSObjectProtocol)?
 
     /// Whether the recogniser can dictate, which is not whether its files are on disk.
     private var speechReadiness: SpeechModelReadiness = .notInstalled
@@ -896,6 +905,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ) { [weak self] in
             Task { @MainActor in await self?.queueDictationSessionEnd() }
         }
+        screenLockObserver = DictationSessionEndObserver.observeScreenLock(
+            in: DistributedNotificationCenter.default()
+        ) { [weak self] in
+            Task { @MainActor in await self?.queueDictationSessionEnd() }
+        }
     }
 
     private func removeDictationSessionObservers() {
@@ -903,6 +917,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
         dictationSessionObservers.removeAll()
+        if let screenLockObserver {
+            DistributedNotificationCenter.default().removeObserver(screenLockObserver)
+            self.screenLockObserver = nil
+        }
     }
 
     private func queueDictationSessionEnd() async {

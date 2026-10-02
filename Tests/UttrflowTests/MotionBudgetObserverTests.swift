@@ -74,6 +74,20 @@ struct MotionBudgetObserverTests {
         #expect(received.withLock { $0 } == 3)
     }
 
+    @Test("a screen lock ends dictation")
+    func screenLockEndsDictation() {
+        let center = NotificationCenter()
+        let received = Mutex(0)
+        let observer = DictationSessionEndObserver.observeScreenLock(in: center) {
+            received.withLock { $0 += 1 }
+        }
+        defer { center.removeObserver(observer) }
+
+        center.post(name: DictationSessionEndObserver.screenIsLocked, object: nil)
+
+        #expect(received.withLock { $0 } == 1)
+    }
+
     @Test("shares one observer that starts from the system's reading")
     func sharedReadsTheSystem() {
         #expect(MotionBudgetObserver.shared.budget == MotionBudget.current())
