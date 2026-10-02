@@ -24,3 +24,18 @@ public struct EngineConfiguration: Sendable, Equatable, Codable {
         return transformerPreference.filter(selectable.contains)
     }
 }
+
+extension EngineConfiguration {
+    /// Keeps readable fields and transformer entries when a saved configuration contains unknown values.
+    public init(from decoder: any Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+            self = .default
+            return
+        }
+        self.init(
+            speech: (try? container.decode(SpeechEngineKind.self, forKey: .speech)) ?? Self.default.speech,
+            transformerPreference: (try? container.decode(
+                [ReadableSetting<TransformerKind>].self, forKey: .transformerPreference))?
+                .compactMap(\.value) ?? Self.default.transformerPreference)
+    }
+}

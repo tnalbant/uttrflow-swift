@@ -29,3 +29,24 @@ public struct UserProfile: Sendable, Equatable, Codable {
     /// The profile a user has before they configure anything.
     public static let `default` = UserProfile()
 }
+
+extension UserProfile {
+    /// Keeps readable profile fields and collection entries when neighboring saved values cannot be decoded.
+    public init(from decoder: any Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+            self = .default
+            return
+        }
+        self.init(
+            profession: try? container.decode(String.self, forKey: .profession),
+            preferredLanguages: (try? container.decode(
+                [ReadableSetting<LanguageCode>].self, forKey: .preferredLanguages))?
+                .compactMap(\.value) ?? Self.default.preferredLanguages,
+            technicalDomains: (try? container.decode(
+                [ReadableSetting<String>].self, forKey: .technicalDomains))?
+                .compactMap(\.value) ?? Self.default.technicalDomains,
+            preferredWritingStyle: try? container.decode(String.self, forKey: .preferredWritingStyle),
+            vocabulary: (try? container.decode([ReadableSetting<String>].self, forKey: .vocabulary))?
+                .compactMap(\.value) ?? Self.default.vocabulary)
+    }
+}

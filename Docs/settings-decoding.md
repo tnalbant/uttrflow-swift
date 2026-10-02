@@ -16,6 +16,11 @@ loses every other choice they ever made. Settings are worth less than the confid
 they survive, so a field that cannot be read is treated as the field the user never
 changed.
 
+The engine, profile and suggestion groups follow the same rule for their own fields.
+Within their arrays and app-keyed dictionaries, `ReadableSetting` drops only an element
+that cannot be decoded, preserving the readable choices and array order. A missing or
+unreadable collection uses its field default; an explicitly empty collection stays empty.
+
 The same forgiveness runs the other way. A key this build has no case for —
 `recordingRetentionDays`, which set the retention of audio the app never wrote to disk — is
 a key that keyed decoding is simply never asked for, so a blob an older build left behind

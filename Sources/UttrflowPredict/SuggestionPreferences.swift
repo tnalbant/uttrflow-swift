@@ -211,3 +211,28 @@ public struct SuggestionPreferences: Sendable, Equatable, Codable {
         pausedUntil = isPaused ? moment.addingTimeInterval(Self.pause) : nil
     }
 }
+
+extension SuggestionPreferences {
+    /// Keeps readable choices and app overrides when a saved suggestion preference cannot be decoded.
+    public init(from decoder: any Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+            self = .default
+            return
+        }
+        let turnedOff =
+            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOff))?
+            .compactMap(\.value) ?? []
+        let turnedOn =
+            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOn))?
+            .compactMap(\.value) ?? []
+        self.init(
+            isEnabled: (try? container.decode(Bool.self, forKey: .isEnabled)) ?? Self.default.isEnabled,
+            turnedOff: Set(turnedOff),
+            turnedOn: Set(turnedOn),
+            chosenAcceptKeys: (try? container.decode(
+                [String: ReadableSetting<AcceptKey>].self, forKey: .chosenAcceptKeys))?
+                .compactMapValues(\.value) ?? Self.default.chosenAcceptKeys,
+            isQuiet: (try? container.decode(Bool.self, forKey: .isQuiet)) ?? Self.default.isQuiet,
+            pausedUntil: try? container.decode(Date.self, forKey: .pausedUntil))
+    }
+}
