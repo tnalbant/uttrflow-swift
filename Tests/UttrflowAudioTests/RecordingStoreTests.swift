@@ -210,6 +210,26 @@ struct RecordingStoreTests {
         #expect(waiting.map(\.id) == [newerFinished.id, olderFinished.id])
     }
 
+    @Test("the retention sweep removes stale atomic-write temps and non-recording files")
+    func staleTemporaryFilesExpire() async throws {
+        let sandbox = Sandbox()
+        try FileManager.default.createDirectory(at: sandbox.directory, withIntermediateDirectories: true)
+        let wavTemporary = sandbox.directory.appending(path: "\(UUID().uuidString).wav.tmp")
+        let contextTemporary = sandbox.directory.appending(path: "\(UUID().uuidString).context.tmp")
+        let nonUUIDWav = sandbox.directory.appending(path: "stray.wav")
+        for file in [wavTemporary, contextTemporary, nonUUIDWav] {
+            try Data("temporary".utf8).write(to: file)
+            try FileManager.default.setAttributes(
+                [.creationDate: now.addingTimeInterval(-120)], ofItemAtPath: file.path)
+        }
+        let store = RecordingStore(directory: sandbox.directory, retention: .seconds(60))
+
+        #expect(await store.waiting(now: now).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: wavTemporary.path))
+        #expect(!FileManager.default.fileExists(atPath: contextTemporary.path))
+        #expect(!FileManager.default.fileExists(atPath: nonUUIDWav.path))
+    }
+
     /// The app died while the key was held: the file is on disk with a header that says it is empty.
     @Test("a recording from before a crash is listed with its audio repaired")
     func crashedRecordingIsRecovered() async throws {
@@ -334,12 +354,21 @@ struct RecordingStoreDiscardEverythingTests {
         await store.settle(second.id)
         let stray = folder.appending(path: "not-a-uuid.wav")
         try Data("x".utf8).write(to: stray)
+        let wavTemporary = folder.appending(path: "\(UUID().uuidString).wav.tmp")
+        let contextTemporary = folder.appending(path: "\(UUID().uuidString).context.tmp")
+        let unrelated = folder.appending(path: "notes.txt")
+        try Data("x".utf8).write(to: wavTemporary)
+        try Data("x".utf8).write(to: contextTemporary)
+        try Data("x".utf8).write(to: unrelated)
 
         try await store.discardEverything()
 
         #expect(await store.current() == nil)
         #expect(await store.waiting(now: now).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: stray.path))
+        #expect(!FileManager.default.fileExists(atPath: wavTemporary.path))
+        #expect(!FileManager.default.fileExists(atPath: contextTemporary.path))
+        #expect(!FileManager.default.fileExists(atPath: unrelated.path))
     }
 
     @Test("discarding everything leaves the recording still being written")

@@ -141,10 +141,7 @@ public actor RecordingStore: RecordingKeeper {
         let files = try LocalStore.contents(of: directory)
             .map { directory.appending(path: $0, directoryHint: .notDirectory) }
             .filter { file in
-                guard file.pathExtension == "wav" || file.pathExtension == "context" else { return false }
-                if file.pathExtension == "context" { return true }
-                let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent)
-                return id == nil || id != open?.id
+                file.standardizedFileURL != open?.url.standardizedFileURL
             }
         last = nil
         try LocalStore.removeEach(files)
@@ -160,10 +157,14 @@ public actor RecordingStore: RecordingKeeper {
         // The promise as the rule the three stores share states it; the clock is the caller's.
         let window = RetentionWindow(span: retention.inSeconds, now: now)
         var kept: [KeptRecording] = []
-        for file in files where file.pathExtension == "wav" {
-            guard let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent),
-                id != open?.id
-            else { continue }
+        for file in files {
+            if file.standardizedFileURL == open?.url.standardizedFileURL { continue }
+            guard file.pathExtension == "wav",
+                let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent)
+            else {
+                discardIfExpiredOrphan(file, window: window, now: now)
+                continue
+            }
             RecordingWriter.repair(file)
             let values = try? file.resourceValues(forKeys: [.creationDateKey, .fileSizeKey])
             let when = values?.creationDate ?? now
@@ -191,6 +192,19 @@ public actor RecordingStore: RecordingKeeper {
                     fieldKind: destination(for: id)?.fieldKind))
         }
         return kept.sorted { $0.when > $1.when }
+    }
+
+    /// Removes an unrecognized regular file once its age is outside this store's retention window.
+    private func discardIfExpiredOrphan(_ file: URL, window: RetentionWindow, now: Date) {
+        guard
+            let values = try? file.resourceValues(forKeys: [
+                .creationDateKey, .contentModificationDateKey, .isRegularFileKey,
+            ]),
+            values.isRegularFile == true
+        else { return }
+        let when = values.creationDate ?? values.contentModificationDate ?? now
+        guard !window.keeps(when), window.mayDelete(when) else { return }
+        try? FileManager.default.removeItem(at: file)
     }
 
     public func audio(of id: UUID) async throws(AudioCaptureError) -> AudioSamples {
