@@ -110,6 +110,15 @@ struct PieceJoinerListTests {
         #expect(text == "There are two things to do.\n- Fix the build\n- Review the PR")
     }
 
+    @Test("keeps a bullet line break that begins a paused piece")
+    func bulletBreakAtPieceHead() {
+        let whole = PieceJoiner.join(
+            [piece("Agenda"), piece("\n- budget"), piece("\n- hiring"), piece("\n- roadmap")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "Agenda.\n- Budget\n- Hiring\n- Roadmap")
+    }
+
     @Test("one sequence word is prose, however plainly it counts")
     func oneItemIsProse() {
         #expect(

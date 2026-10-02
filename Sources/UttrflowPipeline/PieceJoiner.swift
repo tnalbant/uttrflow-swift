@@ -252,8 +252,20 @@ enum PieceJoiner {
         var draft = Draft(words: [])
         var starts: [Int] = []
         for text in pieces {
-            let piece = Draft(keepingLineBreaks: text)
+            var piece = Draft(keepingLineBreaks: text)
             guard !piece.words.isEmpty else { continue }
+            let leadingBreaks = String(text.prefix(while: \.isNewline))
+            if !leadingBreaks.isEmpty {
+                if piece.words[0].isListMark {
+                    piece.words[0].text = leadingBreaks + piece.words[0].text
+                    if piece.words.count > 1 {
+                        piece.words[1].text = WordShape.capitalised(piece.words[1].text)
+                    }
+                } else {
+                    piece.words.insert(
+                        Draft.Word(text: leadingBreaks, heard: "", state: .inserted(by: id)), at: 0)
+                }
+            }
             starts.append(draft.words.count)
             draft.words += piece.words
         }
