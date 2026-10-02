@@ -38,12 +38,12 @@ struct SelfCorrectionPassTests {
             ("chaar baje nahi nahi paanch baje", "paanch baje"),
             ("chaar baje mera matlab, paanch baje", "paanch baje"),
             ("call me no call me later", "call me later"),
-            ("send the file to sam actually send the file to priya", "Send the file to priya."),
-            ("book a table for two i mean book a table for four", "Book a table for four."),
-            ("open the red folder sorry open the blue folder", "Open the blue folder."),
-            ("call the plumber no wait call the electrician", "Call the electrician."),
-            ("add milk i mean add sugar", "Add sugar."),
-            ("tell sam scratch that tell priya to join", "Tell priya to join."),
+            ("send the file to sam actually send the file to priya", "send the file to priya"),
+            ("book a table for two i mean book a table for four", "book a table for four"),
+            ("open the red folder sorry open the blue folder", "open the blue folder"),
+            ("call the plumber no wait call the electrician", "call the electrician"),
+            ("add milk i mean add sugar", "add sugar"),
+            ("tell sam scratch that tell priya to join", "tell priya to join"),
             ("at four, no sorry, at five", "at five"),
             ("put it on the table no sorry on the shelf", "put it on the shelf"),
             ("at four no sorry at five I mean at six", "at six"),
@@ -60,16 +60,16 @@ struct SelfCorrectionPassTests {
     @Test(
         "keeps ordinary actually and no between content words",
         arguments: [
-            ("the weather actually improved overnight", "The weather actually improved overnight."),
-            ("sales actually grew last quarter", "Sales actually grew last quarter."),
-            ("the server actually crashed again", "The server actually crashed again."),
-            ("the team actually shipped the release", "The team actually shipped the release."),
-            ("she gave no reason", "She gave no reason."),
-            ("he said no thanks to the offer", "He said no thanks to the offer."),
+            "the weather actually improved overnight",
+            "sales actually grew last quarter",
+            "the server actually crashed again",
+            "the team actually shipped the release",
+            "she gave no reason",
+            "he said no thanks to the offer",
         ]
     )
-    func keepsOrdinaryActuallyAndNo(input: String, expected: String) {
-        #expect(cleaned(input, by: sut) == expected)
+    func keepsOrdinaryActuallyAndNo(input: String) {
+        #expect(cleaned(input, by: sut) == input)
     }
 
     @Test("does not treat ordinary Hindi negation as a correction")
