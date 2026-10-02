@@ -56,6 +56,8 @@ public actor ClipboardStore {
 
     /// Whether this process has already reconciled the pictures folder; see ``sweepOnce()``.
     private var hasSwept = false
+    /// Whether this process has tried sealing every legacy picture, including pictures of unreadable indexes.
+    private var hasMigratedLegacyImages = false
     /// Whether stored clips have been checked once with the detector shipped by this build.
     private var reclassifiedFiles: Set<URL> = []
     /// Pictures of deleted clips an undo can still bring back, left on disk until ``forgetHeldPictures()``.
@@ -754,8 +756,27 @@ public actor ClipboardStore {
         }
         lastUsedOrder = UInt64(normalized.count)
         wholeList = normalized
+        migrateLegacyImagesOnce()
         sweepOnce()
         return normalized
+    }
+
+    /// Seals plaintext pictures on the actor executor without relying on a readable clip index.
+    private func migrateLegacyImagesOnce() {
+        guard !hasMigratedLegacyImages else { return }
+        hasMigratedLegacyImages = true
+        guard let encryptedStore,
+            let files = try? FileManager.default.contentsOfDirectory(
+                at: imagesFolder, includingPropertiesForKeys: [.isRegularFileKey])
+        else { return }
+
+        for url in files where url.pathExtension.lowercased() == "png" {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                let data = try? Data(contentsOf: url), !EncryptedStore.isSealed(data)
+            else { continue }
+            // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
+            try? writeImage(data, named: url.lastPathComponent)
+        }
     }
 
     /// Rechecks each readable index once so a corrected detector can mask clips it previously missed.

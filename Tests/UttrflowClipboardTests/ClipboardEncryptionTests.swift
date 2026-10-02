@@ -18,6 +18,12 @@ struct ClipboardEncryptionTests {
         EncryptedStore(keys: Keys(value: SymmetricKey(size: .bits256)))
     }
 
+    private struct UnavailableKeys: StoreKeyProviding {
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            throw CocoaError(.fileWriteUnknown)
+        }
+    }
+
     @Test("clipboard indexes and picture bytes are sealed and survive a relaunch")
     func filesAreSealed() async throws {
         let folder = try TemporaryFolder()
@@ -65,6 +71,92 @@ struct ClipboardEncryptionTests {
         #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
         #expect(await store.imageData(for: try #require(migrated.image)) == original)
         #expect(EncryptedStore.isSealed(try Data(contentsOf: images.appending(path: name))))
+    }
+
+    @Test("loading seals every legacy PNG and removes an unreferenced picture")
+    func legacyPicturesMigrateOnLoad() async throws {
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "clipboard.json")
+        let name = "legacy.png"
+        let original = ClipImageTests.bytes
+        let clip = Clip(
+            text: "legacy private phrase", kind: .image, copiedAt: Date(),
+            image: ClipImage(file: name, width: 1, height: 1, bytes: original.count))
+        try JSONEncoder().encode([clip]).write(to: file)
+        let images = folder.url.appending(path: "Images", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        try original.write(to: images.appending(path: name))
+        try original.write(to: images.appending(path: "orphan.png"))
+
+        let crypto = encryptedStore()
+        let store = ClipboardStore(file: file, encryptedStore: crypto)
+        _ = await store.clips(keeping: folder.retention)
+
+        let sealed = try Data(contentsOf: images.appending(path: name))
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try crypto.open(sealed, for: name) == original)
+        #expect(!FileManager.default.fileExists(atPath: images.appending(path: "orphan.png").path))
+    }
+
+    @Test("loading seals pictures even when their index is kept unreadable")
+    func legacyPicturesMigrateBesideUnreadableIndex() async throws {
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "clipboard.json")
+        let damagedIndex = Data("{ damaged legacy index".utf8)
+        try damagedIndex.write(to: file)
+        let name = "legacy.png"
+        let original = ClipImageTests.bytes
+        let images = folder.url.appending(path: "Images", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        try original.write(to: images.appending(path: name))
+
+        let crypto = encryptedStore()
+        let store = ClipboardStore(file: file, encryptedStore: crypto)
+        _ = await store.clips(keeping: folder.retention)
+
+        let sealed = try Data(contentsOf: images.appending(path: name))
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try crypto.open(sealed, for: name) == original)
+        #expect(try setAsideIndex(in: folder.url) == damagedIndex)
+    }
+
+    @Test("a failed picture migration preserves plaintext and retries on the next launch")
+    func legacyPictureMigrationRetriesAfterKeyFailure() async throws {
+        let folder = try TemporaryFolder()
+        let file = folder.url.appending(path: "clipboard.json")
+        let name = "legacy.png"
+        let original = ClipImageTests.bytes
+        let clip = Clip(
+            text: "legacy private phrase", kind: .image, copiedAt: Date(),
+            image: ClipImage(file: name, width: 1, height: 1, bytes: original.count))
+        let index = try JSONEncoder().encode([clip])
+        try index.write(to: file)
+        let images = folder.url.appending(path: "Images", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        let imageURL = images.appending(path: name)
+        try original.write(to: imageURL)
+
+        let unavailable = EncryptedStore(keys: UnavailableKeys())
+        _ = await ClipboardStore(file: file, encryptedStore: unavailable).clips(
+            keeping: folder.retention)
+        #expect(try Data(contentsOf: file) == index)
+        #expect(try Data(contentsOf: imageURL) == original)
+
+        let crypto = encryptedStore()
+        _ = await ClipboardStore(file: file, encryptedStore: crypto).clips(keeping: folder.retention)
+        let sealed = try Data(contentsOf: imageURL)
+        #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
+        #expect(EncryptedStore.isSealed(sealed))
+        #expect(try crypto.open(sealed, for: name) == original)
+    }
+
+    /// Reads the damaged history index after its load-time set-aside.
+    private func setAsideIndex(in folder: URL) throws -> Data? {
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        guard let name = names.first(where: { $0.hasPrefix("clipboard.json.unreadable-") }) else {
+            return nil
+        }
+        return try Data(contentsOf: folder.appending(path: name, directoryHint: .notDirectory))
     }
 
     @Test("a damaged encrypted picture is preserved in the unreadable set-aside")
