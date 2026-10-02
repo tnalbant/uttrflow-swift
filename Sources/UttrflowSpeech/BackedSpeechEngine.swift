@@ -12,12 +12,14 @@ public actor BackedSpeechEngine: SpeechEngine {
     private var isLoaded = false
     /// How long the recogniser may sit unused before it is let go; `nil` holds it for the life of the engine.
     private let idleAfter: Duration?
+    private let clock: any Clock<Duration>
+    private let elapsed: () -> Duration
     /// Reports when memory backing a recogniser the app thought ready has been released.
     private let didRelease: (@Sendable () -> Void)?
     private let didLoad: (@Sendable () -> Void)?
     private let willLoad: (@Sendable () -> Void)?
     /// When the recogniser last loaded or answered, which the idle watch measures from.
-    private var lastUsed = ContinuousClock.now
+    private var lastUsed: Duration = .zero
     private var watch: Task<Void, Never>?
     /// The latest load `warm` started; internal so a test can wait for it.
     private(set) var warming: Task<Void, Never>?
@@ -28,6 +30,7 @@ public actor BackedSpeechEngine: SpeechEngine {
         kind: SpeechEngineKind,
         backend: any TranscriptionBackend,
         idleAfter: Duration? = nil,
+        clock: any Clock<Duration> = ContinuousClock(),
         didRelease: (@Sendable () -> Void)? = nil,
         didLoad: (@Sendable () -> Void)? = nil,
         willLoad: (@Sendable () -> Void)? = nil
@@ -35,6 +38,8 @@ public actor BackedSpeechEngine: SpeechEngine {
         self.kind = kind
         self.backend = backend
         self.idleAfter = idleAfter
+        self.clock = clock
+        elapsed = stopwatch(from: clock)
         self.didRelease = didRelease
         self.didLoad = didLoad
         self.willLoad = willLoad
@@ -89,12 +94,13 @@ public actor BackedSpeechEngine: SpeechEngine {
 
     /// Marks the recogniser as just used and keeps an idle watch running while it is loaded.
     private func touched() {
-        lastUsed = .now
+        lastUsed = elapsed()
         guard isLoaded, let idleAfter, watch == nil else { return }
-        watch = Task { [weak self] in
+        let clock = self.clock
+        watch = Task { [weak self, clock] in
             var wait = idleAfter
             while !Task.isCancelled {
-                try? await Task.sleep(for: wait)
+                try? await clock.sleep(for: wait)
                 guard !Task.isCancelled, let self else { return }
                 guard let left = await self.releaseIfIdle(after: idleAfter) else { return }
                 wait = left
@@ -104,16 +110,14 @@ public actor BackedSpeechEngine: SpeechEngine {
 
     /// Lets the recogniser go when unused for `idleAfter`; returns how long to wait before asking again, or `nil` once let go.
     private func releaseIfIdle(after idleAfter: Duration) async -> Duration? {
-        let idle = lastUsed.duration(to: .now)
+        let idle = elapsed() - lastUsed
         guard idle >= idleAfter else { return idleAfter - idle }
         do { try await turn.take() } catch { return nil }
         defer { turn.release() }
         // Measured again under the turn, since a dictation may have run while this waited for it.
-        let stillIdle = lastUsed.duration(to: .now)
+        let stillIdle = elapsed() - lastUsed
         guard stillIdle >= idleAfter else { return idleAfter - stillIdle }
-        watch = nil
-        await backend.unload()
-        isLoaded = false
+        await unloadHeld()
         return nil
     }
 
