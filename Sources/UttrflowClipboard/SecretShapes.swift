@@ -93,6 +93,14 @@ public enum SecretShapes {
         | github_pat_[A-Za-z0-9_]{20,}           # GitHub, fine-grained
         | glpat-[A-Za-z0-9_\-]{16,}              # GitLab
         | xox[baprse]-[A-Za-z0-9\-]{10,}         # Slack
+        | xapp-[A-Za-z0-9\-]{16,}                # Slack app-level tokens
+        | whsec_[A-Za-z0-9_\-]{16,}              # Stripe webhook signing secrets
+        | hf_[A-Za-z0-9]{16,}                    # Hugging Face
+        | pypi-[A-Za-z0-9_\-]{16,}              # PyPI
+        | dckr_pat_[A-Za-z0-9_\-]{16,}           # Docker Hub
+        | lin_api_[A-Za-z0-9_\-]{16,}            # Linear
+        | sbp_[A-Za-z0-9_\-]{16,}                # Supabase
+        | hvs\.[A-Za-z0-9._\-]{16,}              # HashiCorp Vault service tokens
         | (?:AKIA|ASIA)[0-9A-Z]{16}              # AWS access key id
         | AIza[0-9A-Za-z_\-]{35}                 # Google
         | npm_[A-Za-z0-9]{30,}                   # npm

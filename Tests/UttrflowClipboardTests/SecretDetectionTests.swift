@@ -59,6 +59,33 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test("masks vendor tokens in multiline clips without matching prose")
+    func vendorTokensInMultilineClips() {
+        let tokens = [
+            "xapp-1-A0123456789-0123456789-0123456789abcdef",
+            "whsec_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
+            "hf_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
+            "pypi-" + "AgEIcHlwaS5vcmcCJDI1MmQ2MzRhLTAxMjMtNDU2Ny04OWFi",
+            "dckr_pat_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
+            "lin_api_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
+            "sbp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
+            "hvs." + "CAESID0123456789abcdefghijABCDEFGHIJKL",
+        ]
+        let prefixes = ["xapp-", "whsec_", "hf_", "pypi-", "dckr_pat_", "lin_api_", "sbp_", "hvs."]
+
+        for token in tokens {
+            #expect(ClipKindDetector.kind(of: token) == .secret, "Must mask \(token.prefix(8))")
+            #expect(
+                ClipKindDetector.kind(of: "NOTE=staging\nTOKEN=\(token)") == .secret,
+                "Must mask multiline \(token.prefix(8))")
+        }
+
+        for prefix in prefixes {
+            let prose = "The \(prefix) prefix appears in this documentation."
+            #expect(ClipKindDetector.kind(of: prose) != .secret, "Must leave prose about \(prefix) alone")
+        }
+    }
+
     @Test("masks generated passwords with every symbol the byte scanner accepts")
     func generatedPasswordsWithPunctuation() {
         let token = "K9x" + "$+<=>^|~`\\" + "Qz7Tr2Bn8LmVa"
