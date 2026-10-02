@@ -83,6 +83,26 @@ struct QuestionShapeTests {
     }
 
     @Test(
+        "does not read a subject pronoun or demonstrative as an address",
+        arguments: [
+            "that is it", "it is a good idea", "this is a really good idea for us",
+            "that was a good point", "it is my two cents", "i am a hundred percent sure",
+            "these are a few good reasons", "those were a few good days", "we are a hundred percent sure",
+            "he is a very good doctor", "she is a very good nurse", "they are a very good team",
+            "it is good", "she is a nurse", "the report is a good idea", "it is not a good idea",
+        ])
+    func declarativePronounOpeners(text: String) {
+        #expect(!QuestionShape.asks(shapes(text)))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes(text)) == nil)
+    }
+
+    @Test("still reads a name before an inverted question as an address")
+    func namedAddressOpensQuestion() {
+        #expect(QuestionShape.asks(shapes("papa are you around")))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes("papa are you around")) == 0)
+    }
+
+    @Test(
         "keeps dependent clauses inside an inverted question",
         arguments: [
             "is it okay if i leave at five", "is it fine if we start late", "is it okay when i call later",

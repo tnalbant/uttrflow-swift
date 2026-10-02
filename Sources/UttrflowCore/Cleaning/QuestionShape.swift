@@ -98,7 +98,9 @@ public enum QuestionShape {
 
     /// An address can precede an inversion when the clause itself contains an unambiguous subject.
     private static func opensAfterAddress(_ clause: [String]) -> Bool {
-        guard clause.count >= 3, let opener = clause.first, !isQuestionVerb(opener) else { return false }
+        guard clause.count >= 3, let opener = clause.first,
+            !addressSubjectWords.contains(opener), !isQuestionVerb(opener)
+        else { return false }
         let question = Array(clause.dropFirst())
         guard let verb = question.first, let subject = question.dropFirst().first else { return false }
         if pronounVerbs.contains(verb) { return subjects.contains(subject) && !runsOn(question) }
@@ -205,6 +207,11 @@ public enum QuestionShape {
 
     /// Multiword lead-ins that introduce the question which follows them.
     private static let questionLeadIns = ["quick", "question"]
+
+    /// Subject pronouns and demonstratives cannot be vocative names before an inverted clause.
+    private static let addressSubjectWords: Set<String> = [
+        "it", "that", "this", "these", "those", "i", "we", "he", "she", "they",
+    ]
 
     /// English question words.
     static let questionWords: Set<String> = [

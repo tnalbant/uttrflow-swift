@@ -40,6 +40,22 @@ struct TerminalStopPassTests {
         arguments: [
             ("where did you put the keys", "where did you put the keys?"),
             ("papa did you take your medicine", "papa, did you take your medicine?"),
+            ("that is it", "that is it."),
+            ("it is a good idea", "it is a good idea."),
+            ("this is a really good idea for us", "this is a really good idea for us."),
+            ("that was a good point", "that was a good point."),
+            ("it is my two cents", "it is my two cents."),
+            ("i am a hundred percent sure", "i am a hundred percent sure."),
+            ("these are a few good reasons", "these are a few good reasons."),
+            ("those were a few good days", "those were a few good days."),
+            ("we are a hundred percent sure", "we are a hundred percent sure."),
+            ("he is a very good doctor", "he is a very good doctor."),
+            ("she is a very good nurse", "she is a very good nurse."),
+            ("they are a very good team", "they are a very good team."),
+            ("it is good", "it is good."),
+            ("she is a nurse", "she is a nurse."),
+            ("the report is a good idea", "the report is a good idea."),
+            ("it is not a good idea", "it is not a good idea."),
             (
                 "didi can you ask jiju if he's free on saturday",
                 "didi, can you ask jiju if he's free on saturday?"

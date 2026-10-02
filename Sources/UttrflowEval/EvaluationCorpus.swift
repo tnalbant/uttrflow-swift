@@ -53,6 +53,56 @@ public enum EvaluationCorpus {
             expected: "I wanted to come, but my train was cancelled."
         ),
         .init(
+            id: "pronoun-opening-that-is-it", category: .everyday,
+            spoken: "that is it",
+            expected: "That is it."
+        ),
+        .init(
+            id: "pronoun-opening-it-is-good-idea", category: .everyday,
+            spoken: "it is a good idea",
+            expected: "It is a good idea."
+        ),
+        .init(
+            id: "demonstrative-opening-this-is-good-idea", category: .everyday,
+            spoken: "this is a really good idea for us",
+            expected: "This is a really good idea for us."
+        ),
+        .init(
+            id: "demonstrative-opening-that-was-good-point", category: .everyday,
+            spoken: "that was a good point",
+            expected: "That was a good point."
+        ),
+        .init(
+            id: "pronoun-opening-it-is-my-two-cents", category: .everyday,
+            spoken: "it is my two cents",
+            expected: "It is my two cents."
+        ),
+        .init(
+            id: "pronoun-opening-i-am-sure", category: .everyday,
+            spoken: "I am a hundred percent sure",
+            expected: "I am a hundred percent sure."
+        ),
+        .init(
+            id: "pronoun-opening-it-is-good-control", category: .everyday,
+            spoken: "it is good",
+            expected: "It is good."
+        ),
+        .init(
+            id: "pronoun-opening-she-is-nurse-control", category: .everyday,
+            spoken: "she is a nurse",
+            expected: "She is a nurse."
+        ),
+        .init(
+            id: "determiner-opening-report-is-idea-control", category: .everyday,
+            spoken: "the report is a good idea",
+            expected: "The report is a good idea."
+        ),
+        .init(
+            id: "pronoun-opening-it-is-not-idea-control", category: .everyday,
+            spoken: "it is not a good idea",
+            expected: "It is not a good idea."
+        ),
+        .init(
             id: "weekday-and-month-casing", category: .everyday,
             spoken: "can we push the demo to thursday instead of wednesday in august",
             expected: "Can we push the demo to Thursday instead of Wednesday in August.",

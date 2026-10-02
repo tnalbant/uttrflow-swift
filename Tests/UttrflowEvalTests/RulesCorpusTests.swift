@@ -10,6 +10,11 @@ struct RulesCorpusTests {
     /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
     static let rulesMustPass: Set<String> = [
         "np3", "sub1", "sub4", "bec1", "and1", "but1",
+        "pronoun-opening-that-is-it", "pronoun-opening-it-is-good-idea",
+        "demonstrative-opening-this-is-good-idea", "demonstrative-opening-that-was-good-point",
+        "pronoun-opening-it-is-my-two-cents", "pronoun-opening-i-am-sure",
+        "pronoun-opening-it-is-good-control", "pronoun-opening-she-is-nurse-control",
+        "determiner-opening-report-is-idea-control", "pronoun-opening-it-is-not-idea-control",
         "false-start", "self-correction", "single-word-self-correction", "filler-heavy",
         "ellipsis-glued-fillers",
         "noun-spelled-like-a-filler",
