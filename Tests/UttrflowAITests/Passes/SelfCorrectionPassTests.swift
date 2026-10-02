@@ -29,6 +29,8 @@ struct SelfCorrectionPassTests {
             ("send it on tuesday I mean on wednesday", "send it on wednesday"),
             ("the red one scratch that the blue one", "the blue one"),
             ("the blue sorry green", "the green"),
+            ("the blue, actually green", "the green"),
+            ("the red, no blue", "the blue"),
             ("meet on Friday scratch that Thursday", "meet on Thursday"),
             ("at four never mind at five", "at five"),
             ("at four wait sorry at five", "at five"),
@@ -52,6 +54,21 @@ struct SelfCorrectionPassTests {
         ]
     )
     func replacesRestatement(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps ordinary actually and no between content words",
+        arguments: [
+            ("the weather actually improved overnight", "The weather actually improved overnight."),
+            ("sales actually grew last quarter", "Sales actually grew last quarter."),
+            ("the server actually crashed again", "The server actually crashed again."),
+            ("the team actually shipped the release", "The team actually shipped the release."),
+            ("she gave no reason", "She gave no reason."),
+            ("he said no thanks to the offer", "He said no thanks to the offer."),
+        ]
+    )
+    func keepsOrdinaryActuallyAndNo(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 

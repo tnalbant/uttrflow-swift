@@ -45,13 +45,15 @@ enum MentionGuard {
     /// Whether the mark word at `position` is mentioned; `reach` is how far the phrase's own opener may stand.
     static func isMentioned(
         at position: Int, spanning length: Int, in live: [Int], of draft: Draft, reach: Int = 1,
-        kind: SpokenMarkKind = .trailing, bridgedBy bridging: Set<String>? = nil
+        kind: SpokenMarkKind = .trailing, bridgedBy bridging: Set<String>? = nil,
+        corroboratedByLayout: Bool = false
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
-            finalMark: kind == .trailing && position + length == live.count
+            finalMark: kind == .trailing && position + length == live.count,
+            corroboratedByLayout: corroboratedByLayout
         ) {
             return true
         }
@@ -62,7 +64,7 @@ enum MentionGuard {
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
     private static func opensThePhrase(
         ending position: Int, reaching reach: Int, in live: [Int], of draft: Draft,
-        bridgedBy bridging: Set<String>?, finalMark: Bool
+        bridgedBy bridging: Set<String>?, finalMark: Bool, corroboratedByLayout: Bool
     ) -> Bool {
         // A hyphen joins the two words around it, so it heads no phrase and only the word before it speaks.
         let far = draft.shape(at: live[position]).key == "hyphen" ? 1 : reach
@@ -71,7 +73,11 @@ enum MentionGuard {
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
             if back == 1, mentionVerbs.contains(shape.key) { return true }
-            if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
+            if !corroboratedByLayout,
+                back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key)
+            {
+                return true
+            }
             if let bridging {
                 if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
             } else if !isModifier(

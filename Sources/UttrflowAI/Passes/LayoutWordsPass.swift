@@ -134,8 +134,17 @@ public struct LayoutWordsPass: CleaningPass {
         if position == 0, found.mark.allSatisfy(\.isNewline), insertionState != .unknown { return true }
         // Asked of the sentence, not the text, so a sentence before it cannot turn "number one is broken" into an item.
         guard position == 0 || draft.shape(at: live[position - 1]).endsSentence else {
+            var followsLayout = false
+            for index in live[..<position].reversed() {
+                if draft.words[index].edits.contains(where: { $0.by == Self.id && $0.to.hasPrefix("\n") }) {
+                    followsLayout = true
+                    break
+                }
+                if draft.shape(at: index).endsSentence { break }
+            }
             return !MentionGuard.isMentioned(
                 at: position, spanning: length, in: live, of: draft, reach: MentionGuard.phraseReach,
+                corroboratedByLayout: followsLayout,
             )
         }
         // A break straight after a sentence's stop is how people dictate one: "full stop new paragraph".

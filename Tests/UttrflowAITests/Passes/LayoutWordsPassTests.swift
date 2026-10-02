@@ -15,6 +15,23 @@ struct LayoutWordsPassTests {
             ("thanks blank line the second issue", "thanks\n\nthe second issue"),
             ("we need bullet point milk bullet point eggs", "we need\n- milk\n- eggs"),
             (
+                "what's left to pack bullet point the tent bullet point the stove bullet point the first aid kit",
+                "what's left to pack\n- the tent\n- the stove\n- the first aid kit"
+            ),
+            (
+                "the plan bullet point write the spec bullet point review it",
+                "the plan\n- write the spec\n- review it"
+            ),
+            (
+                "priorities this week number one hire a designer number two finish the audit",
+                "priorities this week\n1. hire a designer\n2. finish the audit"
+            ),
+            ("agenda new line one intro new line two demo", "agenda\none intro\ntwo demo"),
+            (
+                "here is the plan. number one, fix the build. number two, ship it",
+                "here is the plan.\n1. fix the build.\n2. ship it"
+            ),
+            (
                 "Shopping list, bullet point milk, bullet point eggs, bullet point bread.",
                 "Shopping list\n- milk\n- eggs\n- bread."
             ),
@@ -256,6 +273,7 @@ struct LayoutWordsPassTests {
             "write new paragraph in the notes",
             "use new line in the example",
             "press bullet point to start a list",
+            "pack bullet point milk then say new line",
         ]
     )
     func keepsVerbLedMentions(input: String) {

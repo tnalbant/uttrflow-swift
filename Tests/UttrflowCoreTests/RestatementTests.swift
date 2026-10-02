@@ -191,6 +191,30 @@ struct RestatementTests {
         let ship = reading("yes we ship on the third no sorry on the fourth")
         #expect(Restatement.discardedStart(before: 6, after: 8, in: ship.live, of: ship.draft) == 3)
     }
+
+    @Test(
+        "ordinary actually and no do not replace a content word without a pause",
+        arguments: [
+            ("the weather actually improved overnight", 2, 3),
+            ("sales actually grew last quarter", 1, 2),
+            ("the server actually crashed again", 2, 3),
+            ("the team actually shipped the release", 2, 3),
+            ("she gave no reason", 2, 3),
+            ("he said no thanks to the offer", 2, 3),
+        ]
+    )
+    func ordinaryActuallyAndNoNeedPause(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
+    }
+
+    @Test("a pause after the discarded word still corroborates actually and no corrections")
+    func pauseCorroboratesSingleWordCorrection() {
+        let actually = reading("the blue, actually green")
+        #expect(Restatement.discardedStart(before: 2, after: 3, in: actually.live, of: actually.draft) == 1)
+        let no = reading("the red, no blue")
+        #expect(Restatement.discardedStart(before: 2, after: 3, in: no.live, of: no.draft) == 1)
+    }
 }
 
 @Suite("Function words")
