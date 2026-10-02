@@ -213,6 +213,8 @@ struct NamedSecretScan {
             ["passwd", "pwd", "pass"] + joined("private", "key") + joined("access", "key")
             + joined("auth", "token")
             + joined("client", "secret")
+            + joined("encryption", "key") + joined("signing", "key")
+            + joined("master", "key") + joined("app", "key") + joined("jwt", "key")
         return (plurals + singulars).map { Array($0.utf8) }
     }()
 
@@ -255,7 +257,7 @@ struct NamedSecretScan {
     }
 
     /// The letters a keyword can start with.
-    private static let initials = Set(keywords.compactMap(\.first))
+    static let initials = Set(keywords.compactMap(\.first))
 
     private static func lowered(_ byte: UInt8) -> UInt8 {
         (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte) ? byte + 32 : byte

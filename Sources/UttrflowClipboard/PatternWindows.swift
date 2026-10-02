@@ -231,42 +231,13 @@ enum CardNumberRuns {
     }
 }
 
-/// Whether a clip holds a separator and the stem of some secret's name, which the named-secret rule cannot match without.
+/// Whether a clip has an assignment separator and an initial used by a named-secret keyword.
 enum NamedSecretStems {
     static func present(in text: String) -> Bool {
         ClipBytes.read(text) { _, bytes in
             guard ClipBytes.contains(bytes, ":") || ClipBytes.contains(bytes, "=") else { return false }
-            for offset in bytes.indices where opensStem(bytes, at: offset) { return true }
-            return false
+            return bytes.contains { NamedSecretScan.initials.contains(lowered($0)) }
         }
-    }
-
-    /// Whether a stem starts here, case-insensitively, with `token`'s `k` also read as U+212A KELVIN SIGN.
-    private static func opensStem(_ bytes: UnsafeBufferPointer<UInt8>, at offset: Int) -> Bool {
-        func has(_ stem: StaticString) -> Bool {
-            let length = stem.utf8CodeUnitCount
-            guard offset + length <= bytes.count else { return false }
-            for index in 0..<length where lowered(bytes[offset + index]) != stem.utf8Start[index] {
-                return false
-            }
-            return true
-        }
-        switch lowered(bytes[offset]) {
-        case UInt8(ascii: "a"): return has("api") || has("access") || has("auth")
-        case UInt8(ascii: "s"): return has("secret")
-        case UInt8(ascii: "p"): return has("pass") || has("pwd") || has("private")
-        case UInt8(ascii: "c"): return has("credential") || has("client")
-        case UInt8(ascii: "t"): return has("token") || (has("to") && hasKelvinEn(bytes, at: offset + 2))
-        default: return false
-        }
-    }
-
-    /// Whether U+212A KELVIN SIGN and then `en` stand at this offset.
-    private static func hasKelvinEn(_ bytes: UnsafeBufferPointer<UInt8>, at offset: Int) -> Bool {
-        guard offset + 5 <= bytes.count else { return false }
-        return bytes[offset] == 0xE2 && bytes[offset + 1] == 0x84 && bytes[offset + 2] == 0xAA
-            && lowered(bytes[offset + 3]) == UInt8(ascii: "e")
-            && lowered(bytes[offset + 4]) == UInt8(ascii: "n")
     }
 
     private static func lowered(_ byte: UInt8) -> UInt8 {

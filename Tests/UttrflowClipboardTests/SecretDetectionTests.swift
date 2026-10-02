@@ -170,6 +170,21 @@ struct SecretDetectionTests {
             "secret_key: \"abcd1234efgh5678\"",
             "secret-keys = abcd1234efgh5678",
             "SECRETKEY=abcd1234efgh5678",
+            "X=123\nENCRYPTION_KEY=9f2b7c4e1a8d3f6b",
+            "X=123\nencryption-key=9f2b7c4e1a8d3f6b",
+            "X=123\nencryptionkey=9f2b7c4e1a8d3f6b",
+            "X=123\nSIGNING_KEY=9f2b7c4e1a8d3f6b",
+            "X=123\nsigning-key=9f2b7c4e1a8d3f6b",
+            "X=123\nsigningkey=9f2b7c4e1a8d3f6b",
+            "X=123\nMASTER_KEY=9f2b7c4e1a8d3f6b",
+            "X=123\nmaster-key=9f2b7c4e1a8d3f6b",
+            "X=123\nmasterkey=9f2b7c4e1a8d3f6b",
+            "X=123\nAPP_KEY=9f2b7c4e1a8d3f6b",
+            "X=123\napp-key=9f2b7c4e1a8d3f6b",
+            "X=123\nappkey=9f2b7c4e1a8d3f6b",
+            "X=123\nJWT_KEY=9f2b7c4e1a8d3f6b",
+            "X=123\njwt-key=9f2b7c4e1a8d3f6b",
+            "X=123\njwtkey=9f2b7c4e1a8d3f6b",
         ])
     func namedSecrets(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
@@ -417,6 +432,7 @@ struct SecretDetectionTests {
         "does not mask a mention of a secret with nothing behind it",
         arguments: [
             "var password: String",
+            "var signing_key: String",
             "let apiKey: String?",
             "password = nil",
             "Change your password: now",
