@@ -11,14 +11,23 @@ public struct ContractionsPass: CleaningPass {
         "hasnt": "hasn't", "havent": "haven't", "hadnt": "hadn't", "couldnt": "couldn't",
         "shouldnt": "shouldn't", "wouldnt": "wouldn't", "ive": "I've", "im": "I'm",
         "youre": "you're", "theyre": "they're", "weve": "we've", "thats": "that's",
+        "youll": "you'll", "theyll": "they'll", "theyve": "they've", "youve": "you've",
+        "wouldve": "would've", "couldve": "could've", "shouldve": "should've", "mightve": "might've",
+        "mustnt": "mustn't", "neednt": "needn't", "yall": "y'all", "oclock": "o'clock",
     ]
 
     /// Words that are also ordinary English, repaired only where the capital says the speaker meant "I".
     static let capitalisedOnly: [String: String] = ["ill": "I'll", "id": "I'd"]
 
-    /// Followers that cannot complete the possessive determiner `its`.
-    private static let itsContractionFollowers: Set<String> = [
-        "a", "an", "the", "not", "been", "being", "gone", "got", "here", "there", "going",
+    /// Followers that make an otherwise ambiguous word read as a contraction.
+    private static let contextualContractions: [String: (contraction: String, followers: Set<String>)] = [
+        "its": (
+            "it's", ["a", "an", "the", "not", "been", "being", "gone", "got", "here", "there", "going"]
+        ),
+        "whats": ("what's", ["up"]),
+        "whos": ("who's", ["there"]),
+        "wheres": ("where's", ["the", "my"]),
+        "hows": ("how's", ["it"]),
     ]
 
     public init() {}
@@ -42,8 +51,9 @@ public struct ContractionsPass: CleaningPass {
         if let capitalised = capitalisedOnly[shape.key] {
             return shape.core.first?.isUppercase == true ? capitalised : nil
         }
-        if shape.key == "its", let next, itsContractionFollowers.contains(next.key) {
-            return shape.core.first?.isUppercase == true ? "It's" : "it's"
+        if let rule = contextualContractions[shape.key], let next, rule.followers.contains(next.key) {
+            return shape.core.first?.isUppercase == true
+                ? WordShape.capitalised(rule.contraction) : rule.contraction
         }
         guard let contraction = unambiguous[shape.key] else { return nil }
         // "I've" and "I'm" carry their own capital; everything else keeps the case it was heard in.

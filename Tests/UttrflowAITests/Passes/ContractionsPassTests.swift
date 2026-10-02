@@ -31,6 +31,18 @@ struct ContractionsPassTests {
             ("theyre late", "they're late"),
             ("weve shipped it", "we've shipped it"),
             ("thats the plan", "that's the plan"),
+            ("youll see", "you'll see"),
+            ("theyll come", "they'll come"),
+            ("theyve left", "they've left"),
+            ("youve won", "you've won"),
+            ("i wouldve gone", "i would've gone"),
+            ("i couldve called", "i could've called"),
+            ("i shouldve stayed", "i should've stayed"),
+            ("i mightve known", "i might've known"),
+            ("mustnt go", "mustn't go"),
+            ("neednt worry", "needn't worry"),
+            ("yall come back", "y'all come back"),
+            ("be there at five oclock", "be there at five o'clock"),
         ]
     )
     func repairs(input: String, expected: String) {
@@ -96,6 +108,27 @@ struct ContractionsPassTests {
     )
     func resolvesItsContraction(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "resolves ambiguous plurals only when the next word identifies the contraction",
+        arguments: [
+            ("whats up", "what's up"),
+            ("Whos there?", "Who's there?"),
+            ("wheres the key", "where's the key"),
+            ("wheres my bag", "where's my bag"),
+            ("hows it going", "how's it going"),
+        ]
+    )
+    func resolvesContextualContraction(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps plural nouns whose spellings also look like contractions")
+    func preservesAmbiguousPlurals() {
+        for input in ["the whats and whys", "the whos who", "the wheres and whys", "the hows and whys"] {
+            #expect(cleaned(input, by: sut) == input)
+        }
     }
 
     @Test("keeps its as a possessive and preserves ordinary plurals")
