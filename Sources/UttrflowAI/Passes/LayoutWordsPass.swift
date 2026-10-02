@@ -41,7 +41,9 @@ public struct LayoutWordsPass: CleaningPass {
                 position += 1
                 continue
             }
-            removeClauseMarkBeforeLayout(at: position, in: live, from: &draft)
+            if found.isList {
+                removeClauseMarkBeforeList(at: position, in: live, from: &draft)
+            }
             if let label = labelledItems[live[position]],
                 let item = itemNumber(at: position + 1, in: live, of: draft)
             {
@@ -61,8 +63,8 @@ public struct LayoutWordsPass: CleaningPass {
         return draft
     }
 
-    /// Removes a comma or semicolon stranded before a layout mark.
-    private func removeClauseMarkBeforeLayout(at position: Int, in live: [Int], from draft: inout Draft) {
+    /// Removes a comma or semicolon stranded before a list marker.
+    private func removeClauseMarkBeforeList(at position: Int, in live: [Int], from draft: inout Draft) {
         guard position > 0 else { return }
         let previous = live[position - 1]
         let shape = draft.shape(at: previous)
@@ -99,13 +101,13 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// At the head, a break depends on the insertion point; an item number keeps its existing behavior.
     private func opening(
-        _ found: (length: Int, mark: String)?, at position: Int
-    ) -> (length: Int, mark: String)? {
+        _ found: (length: Int, mark: String, isList: Bool)?, at position: Int
+    ) -> (length: Int, mark: String, isList: Bool)? {
         guard let found, position == 0 else { return found }
         guard found.mark.allSatisfy(\.isNewline) else { return found }
         switch insertionState {
         case .startOfText:
-            return (found.length, "")
+            return (found.length, "", found.isList)
         case .startOfSentence, .midSentence:
             return found
         case .unknown:
@@ -115,7 +117,7 @@ public struct LayoutWordsPass: CleaningPass {
 
     /// Whether the phrase is dictated layout rather than named; an item opening its sentence needs a mark. See `Docs/cleanup.md`.
     private func isUsed(
-        _ found: (length: Int, mark: String), at position: Int, in live: [Int], of draft: Draft,
+        _ found: (length: Int, mark: String, isList: Bool), at position: Int, in live: [Int], of draft: Draft,
         among numbered: Set<Int>
     ) -> Bool {
         let length = found.length
@@ -196,18 +198,22 @@ public struct LayoutWordsPass: CleaningPass {
     }
 
     /// The layout the words at `position` become: one of the fixed phrases, or a numbered item.
-    private func mark(at position: Int, in live: [Int], of draft: Draft) -> (length: Int, mark: String)? {
+    private func mark(
+        at position: Int, in live: [Int], of draft: Draft
+    ) -> (
+        length: Int, mark: String, isList: Bool
+    )? {
         if let found = Self.marks.first(where: {
             matches($0.words, at: position, in: live, of: draft)
                 && (layout.contains(.lists) || !$0.requiresLists)
         }) {
-            return (found.words.count, found.mark)
+            return (found.words.count, found.mark, found.requiresLists)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
             layout.contains(.lists),
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
-        return (item.count + 1, "\n\(item.value). ")
+        return (item.count + 1, "\n\(item.value). ", true)
     }
 
     /// The item number, spoken or already a numeral, and how many words it took. See `Docs/cleanup.md`.

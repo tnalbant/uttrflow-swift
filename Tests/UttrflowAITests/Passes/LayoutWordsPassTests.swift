@@ -18,7 +18,7 @@ struct LayoutWordsPassTests {
                 "Shopping list, bullet point milk, bullet point eggs, bullet point bread.",
                 "Shopping list\n- milk\n- eggs\n- bread."
             ),
-            ("milk, new line eggs", "milk\neggs"),
+            ("milk, new line eggs", "milk,\neggs"),
             ("milk; next point eggs", "milk\n- eggs"),
             ("milk,\" bullet point eggs", "milk\"\n- eggs"),
             ("milk... bullet point eggs", "milk...\n- eggs"),
@@ -27,6 +27,19 @@ struct LayoutWordsPassTests {
         ]
     )
     func laysOut(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps clause commas before line and paragraph breaks but removes them before list items",
+        arguments: [
+            ("dear sam, new line thanks", "dear sam,\nthanks"),
+            ("best regards, new paragraph sam", "best regards,\n\nsam"),
+            ("milk, bullet point eggs", "milk\n- eggs"),
+            ("milk, number one eggs number two bread", "milk\n1. eggs\n2. bread"),
+        ]
+    )
+    func keepsClauseCommaBeforeBreak(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 
