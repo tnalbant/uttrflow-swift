@@ -73,6 +73,20 @@ struct PanelKeyDecisionTests {
         #expect(copy == .intent(.copy(clip.id)))
     }
 
+    @Test("AppKit Backspace character resolves the selected row's delete action")
+    func appKitBackspaceDeletesSelectedRow() {
+        let clip = PanelFixture.clip("Hello there")
+        var snapshot = PanelFixture.panel([clip])
+        snapshot.selection = clip.id
+        let page = PanelPresenter.present(snapshot)
+
+        #expect(
+            PanelKeyHandling.decision(
+                characters: "\u{7F}", commandHeld: true, shiftHeld: true,
+                isReturn: false, isEscape: false, rowMenuOpen: false, presentation: page)
+                == .intent(.delete(clip.id)))
+    }
+
     @Test("row chords are ignored while either typing sheet is open")
     func rowChordsAreIgnoredByTypingSheets() {
         let clip = PanelFixture.clip("Hello there")

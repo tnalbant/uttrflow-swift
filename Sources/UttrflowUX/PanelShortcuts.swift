@@ -2,7 +2,7 @@
 
 /// A ⌘ chord, named by the character the key reports so a view can match a key press without a key code.
 public struct PanelChord: Sendable, Equatable, Hashable {
-    /// The character, lower-cased; `\u{8}` is the delete key, which reports no printable character.
+    /// The character, lower-cased; AppKit reports Backspace as `\u{7F}`.
     public let character: Character
     /// Whether ⇧ is held as well as ⌘, which keeps a chord off the search field's own editing keys.
     public let isShifted: Bool
@@ -14,7 +14,7 @@ public struct PanelChord: Sendable, Equatable, Hashable {
 
     /// The chord as the user reads it, in the menu and in `Docs/shortcuts.md`.
     public var label: String {
-        "⌘" + (isShifted ? "⇧" : "") + (character == "\u{8}" ? "⌫" : character.uppercased())
+        "⌘" + (isShifted ? "⇧" : "") + (character == "\u{7F}" ? "⌫" : character.uppercased())
     }
 }
 
@@ -46,7 +46,7 @@ extension PanelRowAction {
         case .reindent: PanelChord("i", shifted: true)
         case .makeNote: PanelChord("t", shifted: true)
         // ⌫ and ⌘⌫ edit the query, and a chord that acted only on an empty field would be a trap.
-        case .delete: PanelChord("\u{8}", shifted: true)
+        case .delete: PanelChord("\u{7F}", shifted: true)
         }
     }
 }

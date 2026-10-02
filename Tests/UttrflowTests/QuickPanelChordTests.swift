@@ -33,6 +33,7 @@ struct QuickPanelChordTests {
         #expect(QuickPanel.isRowChord(try key("m", .command)))
         #expect(QuickPanel.isRowChord(try key("p", .command)))
         #expect(QuickPanel.isRowChord(try key("C", [.command, .shift])))
+        #expect(QuickPanel.isRowChord(try key("\u{7F}", [.command, .shift])))
     }
 
     @Test("keys that are not row chords are left to the menu and the field")

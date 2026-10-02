@@ -45,7 +45,7 @@ struct PanelShortcutsTests {
             (.format, PanelChord("f", shifted: true)),
             (.reindent, PanelChord("i", shifted: true)),
             (.makeNote, PanelChord("t", shifted: true)),
-            (.delete, PanelChord("\u{8}", shifted: true)),
+            (.delete, PanelChord("\u{7F}", shifted: true)),
         ]
 
         #expect(PanelRowAction.allCases.count == expected.count)
@@ -93,7 +93,7 @@ struct PanelShortcutsTests {
         for character in "acvxz" {
             #expect(!claimed.contains(PanelChord(character)), "⌘\(character.uppercased()) is the field's")
         }
-        #expect(!claimed.contains(PanelChord("\u{8}")), "⌘⌫ deletes to the start of the query")
+        #expect(!claimed.contains(PanelChord("\u{7F}")), "⌘⌫ deletes to the start of the query")
     }
 
     @Test("a chord performs its action on the highlighted row")
