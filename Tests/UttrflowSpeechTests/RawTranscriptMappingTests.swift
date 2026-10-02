@@ -30,6 +30,12 @@ struct RawTranscriptMappingTests {
             ("(upbeat music) let's begin", "let's begin"),
             ("*pain*", ""),
             ("*thud*", ""),
+            ("*", "*"),
+            ("**", "**"),
+            ("a * b", "a * b"),
+            ("*,", "*,"),
+            ("*music*", ""),
+            ("before *music* after", "before after"),
             ("*painful sound*", ""),
             ("review the ******* Kubernetes", "review the Kubernetes"),
             ("I really mean *really* this time", "I really mean *really* this time"),
@@ -48,6 +54,31 @@ struct RawTranscriptMappingTests {
     )
     func stripsNonSpeechMarkers(input: String, expected: String) {
         #expect(RawTranscript(text: input).transcription(audioDuration: .zero).text == expected)
+    }
+
+    @Test("maps asterisks safely in the recogniser word list")
+    func mapsAsterisksInWords() {
+        let cases: [(String, String, [String])] = [
+            ("*", "*", ["*"]),
+            ("**", "**", ["**"]),
+            ("a * b", "a * b", ["a", "*", "b"]),
+            ("*,", "*,", ["*,"]),
+            ("*music*", "", []),
+            ("before *music* after", "before after", ["before", "after"]),
+        ]
+
+        for (text, expectedText, expectedWords) in cases {
+            let words = text.split(separator: " ").map {
+                RawWord(text: String($0), start: 0, end: 0.1, probability: 0.9)
+            }
+            let mapped = RawTranscript(
+                text: text,
+                segments: [RawSegment(text: text, start: 0, end: 0.1, words: words)]
+            ).transcription(audioDuration: .milliseconds(100))
+
+            #expect(mapped.text == expectedText)
+            #expect(mapped.segments.first?.words.map(\.text) == expectedWords)
+        }
     }
 
     /// A bracket the user actually dictated must survive; only whole markers go.

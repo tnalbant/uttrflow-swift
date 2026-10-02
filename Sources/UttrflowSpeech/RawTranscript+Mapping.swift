@@ -162,9 +162,11 @@ extension RawTranscript {
             }
             let closer: Character = opener == "[" ? "]" : opener == "(" ? ")" : "*"
             guard
-                let close = withoutSpeaker[index...].firstIndex(where: {
-                    guard let closing = $0.text.lastIndex(of: closer) else { return false }
-                    return $0.text[$0.text.index(after: closing)...].allSatisfy(\.isPunctuation)
+                let close = withoutSpeaker[index...].indices.first(where: { candidate in
+                    let text = withoutSpeaker[candidate].text
+                    guard let closing = text.lastIndex(of: closer) else { return false }
+                    if candidate == index && opener == closer && closing == text.startIndex { return false }
+                    return text[text.index(after: closing)...].allSatisfy(\.isPunctuation)
                 })
             else {
                 kept.append(withoutSpeaker[index])
@@ -274,7 +276,7 @@ extension RawTranscript {
                 }
             }
             let closer: Character = remainder[open] == "[" ? "]" : remainder[open] == "(" ? ")" : "*"
-            guard let close = remainder[open...].firstIndex(of: closer) else { break }
+            guard let close = remainder[remainder.index(after: open)...].firstIndex(of: closer) else { break }
 
             let before = remainder[..<open].last
             let after =
