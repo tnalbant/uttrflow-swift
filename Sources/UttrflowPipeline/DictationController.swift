@@ -350,9 +350,10 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 return
             }
             if modifierCaptureIsOpen {
-                await pipeline.adoptModifierPress()
-                cue.playStart()
-                watchTheLimit()
+                if await pipeline.adoptModifierPress(), await pipeline.currentState.isListening {
+                    cue.playStart()
+                    watchTheLimit()
+                }
             } else {
                 await beginListening()
             }

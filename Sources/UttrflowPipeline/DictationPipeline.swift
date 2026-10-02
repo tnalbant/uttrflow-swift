@@ -311,12 +311,17 @@ public actor DictationPipeline {
     }
 
     /// Makes a modifier press's already-open microphone the recording under way.
-    public func adoptModifierPress() async {
-        guard !isBusy, !isLoading else { return }
+    @discardableResult
+    public func adoptModifierPress() async -> Bool {
+        guard !isBusy, !isLoading else {
+            await cancelModifierPress()
+            return false
+        }
         hasTurn = true
         defer { hasTurn = false }
         await speech.warm()
         await startRecordingUsingOpenCapture()
+        return state.isListening
     }
 
     /// Cancels a modifier press that became another shortcut before it settled.

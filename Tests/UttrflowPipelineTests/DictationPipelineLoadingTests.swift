@@ -1,5 +1,6 @@
 // Tests what a dictation tried while the speech model loads is answered with.
 import Testing
+import Synchronization
 
 @testable import UttrflowCore
 @testable import UttrflowPipeline
@@ -85,6 +86,24 @@ private func makePipeline(
         capture: capture, speech: speech, cleaner: PassThroughCleaner(),
         context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
         metrics: RecordingMetricsRecorder(), clock: ManualClock())
+}
+
+/// Records start cues without playing audio.
+private final class LoadingCueSpy: RecordingCueing {
+    private let starts = Mutex(0)
+
+    func playStart() { starts.withLock { $0 += 1 } }
+    func playStop() {}
+    func playWarning() {}
+
+    var startCount: Int { starts.withLock { $0 } }
+}
+
+/// Accepts a binding without connecting to the system hotkey service.
+private struct LoadingHotkeyMonitor: HotkeyMonitoring {
+    @MainActor func start(binding: HotkeyBinding) throws(HotkeyError) {}
+    func stop() {}
+    var events: AsyncStream<HotkeyEvent> { AsyncStream { _ in } }
 }
 
 /// The notice a refused attempt leaves, spelled out so the words on screen are pinned here.
@@ -174,6 +193,59 @@ struct DictationPipelineLoadingTests {
         await pipeline.startRecording()
 
         #expect(await pipeline.currentState == .recording)
+    }
+
+    @Test("a modifier capture is cancelled when adoption is refused during loading")
+    func refusedModifierAdoptionCancelsItsCapture() async {
+        let gate = LoadGate()
+        let capture = FakeAudioCaptureEngine()
+        let pipeline = makePipeline(speech: SlowLoadingSpeechEngine(gate: gate), capture: capture)
+        await pipeline.beginModifierPress(at: .zero)
+        let loading = Task { await pipeline.prepare() }
+        await gate.waitUntilReached()
+
+        let adopted = await pipeline.adoptModifierPress()
+
+        #expect(!adopted)
+        #expect(await capture.calls.events == [.start, .cancel])
+        await gate.open()
+        await loading.value
+    }
+
+    @Test("a refused modifier press plays no cue and starts no recording cap")
+    func refusedModifierPressHasNoCueOrCap() async throws {
+        let gate = LoadGate()
+        let capture = FakeAudioCaptureEngine()
+        let pipeline = makePipeline(speech: SlowLoadingSpeechEngine(gate: gate), capture: capture)
+        let loading = Task { await pipeline.prepare() }
+        await gate.waitUntilReached()
+        let clock = ManualClock()
+        let cue = LoadingCueSpy()
+        let warnings = Mutex(0)
+        let controller = DictationController(
+            pipeline: pipeline, monitor: LoadingHotkeyMonitor(), cue: cue, clock: clock,
+            limit: DictationLimit(warnAfter: .seconds(1), stopAfter: .seconds(2)),
+            onWarning: { _ in warnings.withLock { $0 += 1 } })
+        try await controller.start(
+            binding: HotkeyBinding(keyCode: 58, modifiers: [.option, .command, .control]))
+
+        await controller.handle(.pressed)
+        clock.advance(by: .seconds(3))
+        await controller.handle(.released)
+        await controller.caughtUp()
+        if cue.startCount > 0 {
+            await clock.waitUntilSomethingIsWaiting()
+            clock.advance(by: .seconds(3))
+            await Task.yield()
+        }
+
+        #expect(cue.startCount == 0)
+        #expect(warnings.withLock { $0 } == 0)
+        #expect(await capture.calls.isEmpty)
+        #expect(await pipeline.currentState == .failed(refusal))
+        await controller.stop()
+        await gate.open()
+        await loading.value
     }
 
     @Test("the refusal is the shared notice, informational and with nothing to press")
