@@ -52,7 +52,7 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         let terminal = body.reversed().drop(while: Self.isTrailingSentenceDecoration).first
         if let terminal, sentenceEnds.contains(terminal) {
             let word =
-                body.dropLast(while: Self.isTrailingSentenceDecoration)
+                body.reversed().drop(while: Self.isTrailingSentenceDecoration).reversed()
                 .split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
             let normalizedWord = String(
                 word.lowercased().reversed()

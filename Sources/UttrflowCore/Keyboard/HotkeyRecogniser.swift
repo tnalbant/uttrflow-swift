@@ -55,9 +55,14 @@ public struct HotkeyRecogniser: Sendable, Equatable {
             if stroke.phase == .down, stroke.isFunctionDown { functionHoldIsSpoiled = true }
             return functionHoldIsSpoiled && edge.stopped() != nil ? .cancelled : nil
         }
-        if !stroke.isFunctionDown { defer { functionHoldIsSpoiled = false } }
-        guard !functionHoldIsSpoiled else { return edge.stopped() == nil ? nil : .cancelled }
-        return settle(false)
+        let event: HotkeyEvent?
+        if functionHoldIsSpoiled {
+            event = edge.stopped() == nil ? nil : .cancelled
+        } else {
+            event = settle(false)
+        }
+        if !stroke.isFunctionDown { functionHoldIsSpoiled = false }
+        return event
     }
 
     /// Modifiers held alone, withdrawn when a key or another modifier shows they begin a different shortcut.
