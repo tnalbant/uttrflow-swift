@@ -74,7 +74,9 @@ public struct SnippetExpander: Sendable {
 
     /// The last punctuation mark that can be duplicated by tidying immediately after a trigger.
     private static func terminalMark(in expansion: String) -> Character? {
-        expansion.last(where: { ".!?;:,".contains($0) })
+        guard let last = expansion.last(where: { !$0.isWhitespace }), ".!?;:,".contains(last)
+        else { return nil }
+        return last
     }
 
     /// Whether an adjacent tidy mark is already represented by the expansion's ending punctuation class.

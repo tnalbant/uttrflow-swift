@@ -84,6 +84,32 @@ struct SnippetExpanderTests {
     }
 
     @Test(
+        "keeps tidy punctuation after expansions with internal punctuation",
+        arguments: [
+            ("my email", "my email.", "me@example.com", "Me@example.com."),
+            ("my email", "my email, then call me", "me@example.com", "Me@example.com, then call me"),
+            ("phone", "phone.", "Call 555.1234 now", "Call 555.1234 now."),
+            ("version", "version, please", "Version 2.5 is out", "Version 2.5 is out, please"),
+        ]
+    )
+    func preservesTidyPunctuationAfterInternalMarks(
+        trigger: String, transcript: String, expansion: String, expected: String
+    ) {
+        let expander = SnippetExpander(snippets: [makeSnippet(trigger: trigger, expansion: expansion)])
+
+        #expect(expander.expand(transcript).text == expected)
+    }
+
+    @Test("detects terminal punctuation before trailing whitespace")
+    func duplicateTerminalPunctuationBeforeWhitespace() {
+        let expander = SnippetExpander(snippets: [
+            makeSnippet(trigger: "ok", expansion: "Okay, sounds good. ")
+        ])
+
+        #expect(expander.expand("ok.").text == "Okay, sounds good. ")
+    }
+
+    @Test(
         "matches trigger words joined by written joiners or spaces",
         arguments: [
             ("sign-off", "sign off", "Regards"),
