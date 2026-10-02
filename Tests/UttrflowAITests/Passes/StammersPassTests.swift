@@ -141,4 +141,12 @@ struct StammersPassTests {
     func removesDoubledNumberNotFollowedByNumber(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
+
+    @Test(
+        "keeps an ambiguous doubled number at either edge of a piece",
+        arguments: ["two two", "my pin is two two", "two two four four"]
+    )
+    func keepsDoubledNumberAtPieceEdge(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
 }

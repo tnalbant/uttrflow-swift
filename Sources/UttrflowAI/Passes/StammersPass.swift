@@ -30,6 +30,7 @@ public struct StammersPass: CleaningPass {
             }
             // A doubled number is a digit of one value when another number sits beside the pair, otherwise a stammer.
             if word == previous, NumberWords.isNumber(word),
+                !Self.isDoubledNumberAtPieceEdge(at: i, in: live),
                 !Self.surroundedByNumber(at: i, in: live, draft: draft)
             {
                 draft.remove(at: index, by: Self.id, carryingMarks: true)
@@ -38,6 +39,11 @@ public struct StammersPass: CleaningPass {
             previous = word
         }
         return draft
+    }
+
+    /// Keeps an ambiguous doubled digit when its pair touches a piece boundary.
+    private static func isDoubledNumberAtPieceEdge(at i: Int, in live: [Int]) -> Bool {
+        i == 1 || i == live.count - 1
     }
 
     /// Keeps Hindi's doubled numeral when a content word follows it.

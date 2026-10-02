@@ -55,6 +55,35 @@ struct EndToEndWordSurvivalTests {
         #expect(changedWord == [LostWord(word: "the", stage: "per-piece clean")])
     }
 
+    @Test("keeps every digit when a PIN is cut at any word boundary")
+    func repeatedPINDigitsSurviveEveryPieceBoundary() async throws {
+        let words = "my pin is two two four four".split(separator: " ").map(String.init)
+        let situation = Situation(app: AppContext(), insertion: .unknown, destination: .plain)
+        let formatter = DestinationFormatter.standard(for: situation)
+
+        for boundary in 1..<words.count {
+            let parts = [
+                words[..<boundary].joined(separator: " "),
+                words[boundary...].joined(separator: " "),
+            ]
+            var pieces: [Piece] = []
+            for part in parts {
+                let heard = Transcription(
+                    text: part, detectedLanguage: DetectedLanguage(code: .english, confidence: 1))
+                let request = TransformationRequest(
+                    transcription: heard, situation: situation, scope: .piece)
+                let cleaned = try await router.clean(request)
+                pieces.append(Piece(heard: heard, corrected: .unchanged(part), cleaned: cleaned))
+            }
+            let joined = PieceJoiner.join(pieces, under: formatter)
+            let finished = await router.finishMessage(
+                joined.cleaned.text,
+                for: TransformationRequest(transcription: joined.heard, situation: situation))
+
+            #expect(finished == "My pin is 2244.", "boundary after word \(boundary): \(finished)")
+        }
+    }
+
     private func run(_ input: Input) async throws -> [LostWord] {
         let situation = Situation(
             app: AppContext(), insertion: .unknown, destination: input.destination)
