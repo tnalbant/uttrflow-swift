@@ -183,6 +183,21 @@ struct LayoutWordsPassTests {
     }
 
     @Test(
+        "keeps layout phrases named by verbs as words",
+        arguments: [
+            "type bullet point to start a list",
+            "say new line when you want a break",
+            "make one more next point soon",
+            "write new paragraph in the notes",
+            "use new line in the example",
+            "press bullet point to start a list",
+        ]
+    )
+    func keepsVerbLedMentions(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
         "leaves a layout phrase an opener heads across modifiers",
         arguments: [
             "her first new line was funny", "our best new line got a laugh",

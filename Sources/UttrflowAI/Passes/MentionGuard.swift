@@ -6,6 +6,11 @@ enum MentionGuard {
     /// The tagger calls "trial" a noun before "period", so bridge only for this head.
     private static let attributiveNounsByHead: [String: Set<String>] = ["period": ["trial"]]
 
+    /// Verbs that name the layout phrase which follows them.
+    private static let mentionVerbs: Set<String> = [
+        "type", "say", "make", "write", "use", "press",
+    ]
+
     static let determiners: Set<String> = [
         "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
         "every",
@@ -14,7 +19,8 @@ enum MentionGuard {
 
     /// The ones a modifier may stand between and the mark; a verb takes its object with nothing in between.
     static let phraseOpeners: Set<String> = [
-        "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "my", "your",
+        "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "one", "my",
+        "your",
         "his",
         "her", "its", "their", "our", "another", "any", "some", "same",
     ]
@@ -51,6 +57,7 @@ enum MentionGuard {
             let shape = draft.shape(at: live[position - back])
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
+            if back == 1, mentionVerbs.contains(shape.key) { return true }
             if back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key) { return true }
             if let bridging {
                 if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
