@@ -66,8 +66,12 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     private static func separateLeadingQuestionOpener(_ draft: inout Draft, layout: LayoutPolicy) {
         guard layout.contains(.paragraphs) else { return }
         let live = draft.presentIndices
-        let start = live.dropLast().lastIndex {
-            draft.words[$0].isLayoutMark || draft.shape(at: $0).endsSentence
+        let start = live.indices.dropLast().lastIndex { position in
+            let index = live[position]
+            guard !draft.words[index].isLayoutMark else { return true }
+            return FirstWordPass.endsSentence(
+                draft.words[index].text, followedBy: draft.words[live[position + 1]].text
+            )
         }
         let sentence = Array(live[(start.map { $0 + 1 } ?? 0)...])
         let shapes = sentence.map { draft.shape(at: $0) }
@@ -133,8 +137,12 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// Whether the sentence the draft ends on asks a direct question by its word order.
     static func lastSentenceAsks(_ draft: Draft) -> Bool {
         let live = draft.presentIndices
-        let start = live.dropLast().lastIndex {
-            draft.words[$0].isLayoutMark || draft.shape(at: $0).endsSentence
+        let start = live.indices.dropLast().lastIndex { position in
+            let index = live[position]
+            guard !draft.words[index].isLayoutMark else { return true }
+            return FirstWordPass.endsSentence(
+                draft.words[index].text, followedBy: draft.words[live[position + 1]].text
+            )
         }
         let sentence = live[(start.map { $0 + 1 } ?? 0)...]
         return QuestionShape.asks(sentence.map { draft.shape(at: $0) })

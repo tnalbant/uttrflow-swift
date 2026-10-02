@@ -103,20 +103,25 @@ public struct FirstWordPass: WholeTextCleaningPass {
     static func endsSentence(_ text: String) -> Bool {
         let shape = WordShape(text)
         guard shape.endsSentence else { return false }
-        guard shape.core.last == "." else { return true }
-        let abbreviation = String(shape.core.dropLast()).lowercased()
+        guard let abbreviation = dottedAbbreviation(atSentenceEnd: shape) else { return true }
         return !isAbbreviation(abbreviation)
     }
 
     static func endsSentence(_ text: String, followedBy next: String?) -> Bool {
         let shape = WordShape(text)
         guard shape.endsSentence else { return false }
-        guard shape.core.last == "." else { return true }
-        let abbreviation = String(shape.core.dropLast()).lowercased()
-        guard isAbbreviation(abbreviation) else { return true }
+        guard let abbreviation = dottedAbbreviation(atSentenceEnd: shape), isAbbreviation(abbreviation) else {
+            return true
+        }
         guard let next, let first = next.first else { return false }
-        if isTitle(abbreviation) { return !first.isUppercase }
+        if isTitle(abbreviation) { return false }
         return first.isUppercase
+    }
+
+    /// The abbreviation whose full stop is the last sentence mark, if any.
+    private static func dottedAbbreviation(atSentenceEnd shape: WordShape) -> String? {
+        guard shape.suffix.reversed().first(where: { ".!?…।॥".contains($0) }) == "." else { return nil }
+        return shape.core.lowercased()
     }
 
     private static func isTitle(_ word: String) -> Bool {

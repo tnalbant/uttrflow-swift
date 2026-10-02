@@ -32,6 +32,20 @@ struct SentenceBoundaryPassTests {
     }
 
     @Test(
+        "preserves full stops that belong to abbreviations before lowercase words",
+        arguments: [
+            ("Meet me at 9 a.m. sharp.", "Meet me at 9 a.m. sharp."),
+            ("Call me at 5 p.m. tomorrow.", "Call me at 5 p.m. tomorrow."),
+            ("Use tools, e.g. a hammer.", "Use tools, e.g. a hammer."),
+            ("That is, i.e. the main one.", "That is, i.e. the main one."),
+            ("Apples vs. oranges is a fair fight.", "Apples vs. oranges is a fair fight."),
+        ]
+    )
+    func keepsAbbreviationStops(input: String, expected: String) {
+        #expect(cleaned(input) == expected)
+    }
+
+    @Test(
         "keeps stops after complete phrasal verbs",
         arguments: [
             ("Let us move on. The meeting is over", "Let us move on. The meeting is over."),

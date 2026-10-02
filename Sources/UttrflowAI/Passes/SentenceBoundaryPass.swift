@@ -15,6 +15,7 @@ public struct SentenceBoundaryPass: WholeTextCleaningPass {
             let nextIndex = live[position + 1]
             let shape = draft.shape(at: index)
             guard shape.suffix == ".", !draft.words[nextIndex].isLayoutMark else { continue }
+            guard !InsertionPoint.sentenceAbbreviations.contains(shape.key) else { continue }
             let following = live[(position + 1)...].map { draft.words[$0].text }.joined(separator: " ")
             let heardShape = WordShape(draft.words[nextIndex].heard)
             guard
