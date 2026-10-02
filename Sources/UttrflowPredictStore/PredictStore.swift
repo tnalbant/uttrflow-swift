@@ -463,6 +463,10 @@ public actor PredictStore: PredictionStore {
             guard try supplier(of: text, in: surface) != nil,
                 let id = try identifier(of: surface, creating: true)
             else { return }
+            try database.run("UPDATE surface SET last_used = MAX(last_used, ?) WHERE id = ?") {
+                $0.bind(1, Date().timeIntervalSince1970)
+                $0.bind(2, id)
+            }
             // A line borrowed from another folder is retired here by a row that holds no uses of its own.
             try database.run(
                 """
@@ -496,6 +500,10 @@ public actor PredictStore: PredictionStore {
         guard let id = try identifier(of: surface, creating: false) else { return }
         let text = Spelling.canonical(text)
         try database.transaction { () throws(PredictStoreError) in
+            try database.run("UPDATE surface SET last_used = MAX(last_used, ?) WHERE id = ?") {
+                $0.bind(1, Date().timeIntervalSince1970)
+                $0.bind(2, id)
+            }
             // Keep a scoped tombstone so copies read from other scopes stay forgotten here.
             try database.run(
                 """

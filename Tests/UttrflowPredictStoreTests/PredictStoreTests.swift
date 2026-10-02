@@ -656,6 +656,47 @@ struct RetentionTests {
         #expect(try await store.candidates(for: folderTwo, matching: "dep").count == 1)
     }
 
+    @Test("a superseded borrowed value stays retired when scope capacity is reached")
+    func supersededValueSurvivesScopeEviction() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let source = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/source")
+        let retired = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/retired")
+        let old = Date(timeIntervalSince1970: 1_700_000_000)
+        try await store.record("deploy prod", in: source, at: old)
+        try await store.supersede("deploy prod", with: "deploy staging", in: retired)
+        #expect(try await store.candidates(for: retired, matching: "dep").isEmpty)
+        for index in 0..<PredictStore.surfacesPerField {
+            let scope = Surface(
+                bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/other\(index)")
+            try await store.record(
+                "unrelated \(index)", in: scope, at: old.addingTimeInterval(Double(index + 1)))
+        }
+        try await store.record("deploy prod", in: source, at: Date().addingTimeInterval(1))
+        #expect(try await store.candidates(for: retired, matching: "dep").isEmpty)
+    }
+
+    @Test("a forgotten borrowed value stays retired when scope capacity is reached")
+    func forgottenValueSurvivesScopeEviction() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let source = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/source")
+        let retired = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/retired")
+        let old = Date(timeIntervalSince1970: 1_700_000_000)
+        try await store.record("deploy prod", in: source, at: old)
+        try await store.record("local entry", in: retired, at: old)
+        try await store.forget("deploy prod", in: retired)
+        #expect(try await store.candidates(for: retired, matching: "dep").isEmpty)
+        for index in 0..<PredictStore.surfacesPerField {
+            let scope = Surface(
+                bundleIdentifier: "com.example.editor", role: "AXTextArea", scope: "/other\(index)")
+            try await store.record(
+                "unrelated \(index)", in: scope, at: old.addingTimeInterval(Double(index + 1)))
+        }
+        try await store.record("deploy prod", in: source, at: Date().addingTimeInterval(1))
+        #expect(try await store.candidates(for: retired, matching: "dep").isEmpty)
+    }
+
     @Test("What follows what stops growing at the same cap, and keeps the pairs followed most.")
     func successionsStayWithinTheCap() async throws {
         let corpus = Corpus()
