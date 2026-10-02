@@ -83,6 +83,17 @@ struct CaretLocatorTests {
         #expect(found.direction == .rightToLeft)
     }
 
+    @Test("The caret convenience method passes paragraph direction through to the result")
+    func caretPassesParagraphDirectionThrough() {
+        let found = CaretLocator.caret(
+            at: (location: 2, length: 0), frame: nil, value: "אב",
+            paragraphDirection: .rightToLeft,
+            bounds: { location, _ in
+                location == 1 ? CGRect(x: 82, y: 10, width: 9, height: 16) : nil
+            }, markerBounds: { nil })
+        #expect(found == CGRect(x: 82, y: 10, width: 0, height: 16))
+    }
+
     @Test("Overlapping mixed-direction glyph bounds leave direction unknown")
     func ambiguousCaretDirectionIsUnknown() {
         let found = CaretLocator.result(

@@ -17,13 +17,15 @@ enum CaretLocator {
     ) -> CGRect? {
         result(
             at: selection, frame: frame, pointSize: pointSize, value: value,
-            textSelectionLocation: textSelectionLocation, bounds: bounds, markerBounds: markerBounds
+            textSelectionLocation: textSelectionLocation, paragraphDirection: paragraphDirection,
+            bounds: bounds, markerBounds: markerBounds
         )?.caret
     }
 
     static func result(
         at selection: (location: Int, length: Int)?, frame: CGRect?, pointSize: CGFloat? = nil,
         value: String? = nil, textSelectionLocation: Int? = nil,
+        paragraphDirection: WritingDirection = .unknown,
         bounds: (_ location: Int, _ length: Int) -> CGRect?, markerBounds: () -> CGRect?
     ) -> Result? {
         if let selection,

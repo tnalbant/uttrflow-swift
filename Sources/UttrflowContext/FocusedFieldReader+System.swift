@@ -6,6 +6,11 @@ import UttrflowPredict
 
 private import Synchronization
 
+@_silgen_name("_AXUIElementGetWindow")
+private func axUIElementGetWindow(
+    _ element: AXUIElement, _ windowNumber: UnsafeMutablePointer<CGWindowID>
+) -> AXError
+
 /// The frontmost application's identity, taken on the main thread where `NSWorkspace` is safe to read.
 public struct FrontmostApp: Sendable {
     /// Addresses the app for the Accessibility read.
@@ -390,7 +395,7 @@ public enum FocusedFieldReader {
     /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
     private static func windowNumber(of field: AXUIElement) -> UInt32? {
         var number: CGWindowID = 0
-        guard AXUIElementGetWindow(field, &number) == .success else { return nil }
+        guard axUIElementGetWindow(field, &number) == .success else { return nil }
         return number
     }
 
