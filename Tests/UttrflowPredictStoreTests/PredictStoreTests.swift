@@ -806,6 +806,8 @@ struct RecoveryTests {
         try database.execute("ALTER TABLE surface DROP COLUMN last_used")
         try database.execute("DROP INDEX IF EXISTS surface_recent")
         try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(5)) }
+        let legacyColumns = try database.rows("PRAGMA table_info(surface)", { _ in }) { $0.text(1) }
+        #expect(!legacyColumns.contains("last_used"))
         try Schema.migrate(database)
         let recency = try database.rows("SELECT last_used FROM surface WHERE id = 1", { _ in }) {
             $0.double(0)

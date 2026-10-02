@@ -28,7 +28,6 @@ enum Schema {
           UNIQUE (bundle_id, role, locator, scope)
         )
         """,
-        "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)",
         """
         CREATE TABLE IF NOT EXISTS entry (
           id           INTEGER PRIMARY KEY,
@@ -72,42 +71,45 @@ enum Schema {
             $0.integer(0)
         }.first
         for statement in statements { try database.execute(statement) }
+        let found = try database.rows("SELECT version FROM schema_version LIMIT 1", { _ in }) {
+            $0.integer(0)
+        }
+        if let current = found.first {
+            // A file from a newer build is not something this one can safely write to.
+            guard current <= version else { throw .newerThanThisBuild(version: current) }
+            if current < 2 { try migrateToLowercasedPrefix(database) }
+            // Version 3 adds only `entry_recent`, which `statements` has already created above.
+            if current < 4 {
+                try database.transaction { () throws(PredictStoreError) in
+                    try migrateToCanonicalSpelling(database)
+                }
+                try relowercase(database)
+            }
+            if current < 5 {
+                try database.transaction { () throws(PredictStoreError) in
+                    try migrateToApplicationKeys(database)
+                }
+            }
+            if current < 6 {
+                try database.transaction { () throws(PredictStoreError) in
+                    try migrateToSurfaceRecency(database)
+                }
+            }
+            if current < version {
+                try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(version)) }
+            }
+        } else {
+            try database.run("INSERT INTO schema_version (version) VALUES (?)") {
+                $0.bind(1, Int64(version))
+            }
+        }
+        // The recency index is created after migrations add its indexed column.
+        try database.execute(
+            "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)")
         let schemaVersionAfter = try database.rows("PRAGMA schema_version", { _ in }) {
             $0.integer(0)
         }.first
         if schemaVersionBefore != schemaVersionAfter { try database.markSchemaChanged() }
-        let found = try database.rows("SELECT version FROM schema_version LIMIT 1", { _ in }) {
-            $0.integer(0)
-        }
-        guard let current = found.first else {
-            try database.run("INSERT INTO schema_version (version) VALUES (?)") {
-                $0.bind(1, Int64(version))
-            }
-            return
-        }
-        // A file from a newer build is not something this one can safely write to.
-        guard current <= version else { throw .newerThanThisBuild(version: current) }
-        if current < 2 { try migrateToLowercasedPrefix(database) }
-        // Version 3 adds only `entry_recent`, which `statements` has already created above.
-        if current < 4 {
-            try database.transaction { () throws(PredictStoreError) in
-                try migrateToCanonicalSpelling(database)
-            }
-            try relowercase(database)
-        }
-        if current < 5 {
-            try database.transaction { () throws(PredictStoreError) in
-                try migrateToApplicationKeys(database)
-            }
-        }
-        if current < 6 {
-            try database.transaction { () throws(PredictStoreError) in
-                try migrateToSurfaceRecency(database)
-            }
-        }
-        if current < version {
-            try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(version)) }
-        }
     }
 
     /// Adds indexed scope recency and seeds it from the newest entry in each surface.
@@ -115,8 +117,6 @@ enum Schema {
         if !hasColumn("last_used", in: "surface", database) {
             try database.execute("ALTER TABLE surface ADD COLUMN last_used REAL NOT NULL DEFAULT 0")
         }
-        try database.execute(
-            "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)")
         try database.execute(
             "UPDATE surface SET last_used = COALESCE((SELECT MAX(last_used) FROM entry WHERE entry.surface_id = surface.id), 0)"
         )
