@@ -192,10 +192,18 @@ struct SpokenPunctuationPassTests {
             "during the trial period", "that trial period", "this period of time",
             "I love the Victorian period",
             "the 100 metre dash was close", "a short grace period follows",
+            "a grace period applies", "the notice period expires tomorrow",
+            "a waiting period applies", "the time period was short",
+            "a cooling off period applies", "the six month period ended",
         ]
     )
     func leavesTheHeadOfANounPhrase(input: String) {
         #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("keeps a noun period while converting a separately used period")
+    func keepsNounPeriodAndConvertsUsedPeriod() {
+        #expect(cleaned("the grace period, ship it period", by: sut) == "the grace period, ship it.")
     }
 
     /// The lookback stops at a mark name, so the phrase before one does not reach past it.

@@ -13,9 +13,6 @@ enum MentionGuard {
         return namingWords.contains(draft.shape(at: live[position - 1]).key)
     }
 
-    /// The tagger calls "trial" a noun before "period", so bridge only for this head.
-    private static let attributiveNounsByHead: [String: Set<String>] = ["period": ["trial"]]
-
     /// Verbs that name the layout phrase which follows them.
     private static let mentionVerbs: Set<String> = [
         "type", "say", "make", "write", "use", "press",
@@ -78,9 +75,10 @@ enum MentionGuard {
         return false
     }
 
-    /// Recognizes modifiers in the local noun phrase and ordinal numbers without a word list.
+    /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
     private static func isModifier(_ word: String, before head: String) -> Bool {
-        if NumberFormsPass.ordinalUnits[word] != nil || attributiveNounsByHead[head]?.contains(word) == true {
+        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.digits(word) != nil)
+        {
             return true
         }
         let phrase = "the \(word) \(head)"
@@ -90,6 +88,9 @@ enum MentionGuard {
         let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+
+        // A noun can modify a period even when the tagger cannot identify the compound.
+        if lexicalClass == .noun && head == "period" { return true }
 
         return lexicalClass == .noun && word.hasSuffix("ing")
     }
