@@ -17,11 +17,9 @@ public struct SentenceBoundaryPass: WholeTextCleaningPass {
             guard shape.suffix == ".", !draft.words[nextIndex].isLayoutMark else { continue }
             guard !InsertionPoint.sentenceAbbreviations.contains(shape.key) else { continue }
             let following = live[(position + 1)...].map { draft.words[$0].text }.joined(separator: " ")
-            let heardShape = WordShape(draft.words[nextIndex].heard)
             guard
                 SentenceBoundaryEvidence.sentenceRunsOn(
-                    WordShape.withoutTrailingStop(draft.words[index].text), into: following,
-                    nextWordWasLowercase: heardShape.core.first?.isLowercase == true
+                    WordShape.withoutTrailingStop(draft.words[index].text), into: following
                 )
             else { continue }
 

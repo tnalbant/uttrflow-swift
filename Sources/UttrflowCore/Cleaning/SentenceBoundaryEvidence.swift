@@ -1,15 +1,12 @@
 /// The closed-class and phrase evidence that decides whether a stop fell inside a sentence.
 public enum SentenceBoundaryEvidence {
     /// Whether the words on both sides show that the sentence carried on.
-    public static func sentenceRunsOn(
-        _ text: String, into next: String, nextWordWasLowercase: Bool = false
-    ) -> Bool {
+    public static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
         let previous = text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
         let following = next.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
         guard let last = previous.last, let first = following.first else { return false }
         let previousKeys = previous.map(\.key)
         let followingKeys = following.map(\.key)
-        if nextWordWasLowercase { return true }
         if text.last == ".", subordinators.contains(previous[0].key) { return true }
         if neverLast.contains(last.key) || opensWithAPhrase(following)
             || completesFinalPhrase(previous, following)

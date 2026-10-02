@@ -30,7 +30,43 @@ public enum EvaluationCorpus {
         .init(
             id: "sub4", category: .everyday,
             spoken: "the server. crashed twice last night",
-            expected: "The server crashed twice last night."
+            expected: "The server. Crashed twice last night."
+        ),
+        .init(
+            id: "lowercase-start-after-complete-sentence-ebay", category: .everyday,
+            spoken: "We shipped it. eBay is next",
+            expected: "We shipped it. eBay is next.",
+            mustKeep: ["shipped", "eBay"]
+        ),
+        .init(
+            id: "lowercase-start-after-complete-sentence-pronoun", category: .everyday,
+            spoken: "Please send it today. i will check tomorrow",
+            expected: "Please send it today. I will check tomorrow.",
+            mustKeep: ["send", "check"]
+        ),
+        .init(
+            id: "lowercase-start-after-complete-sentence-vitals", category: .everyday,
+            spoken: "The patient is stable. vitals are normal",
+            expected: "The patient is stable. Vitals are normal.",
+            mustKeep: ["stable", "Vitals"]
+        ),
+        .init(
+            id: "lowercase-start-after-complete-sentence-that", category: .everyday,
+            spoken: "The price is five dollars. that is cheap",
+            expected: "The price is 5 dollars. That is cheap.",
+            mustKeep: ["price", "cheap"]
+        ),
+        .init(
+            id: "lowercase-start-after-complete-sentence-she", category: .everyday,
+            spoken: "He is here. she is not",
+            expected: "He is here. She is not.",
+            mustKeep: ["here", "not"]
+        ),
+        .init(
+            id: "lowercase-start-after-answer-stops", category: .everyday,
+            spoken: "Yes. no. maybe",
+            expected: "Yes. No. Maybe.",
+            mustKeep: ["Yes", "No", "Maybe"]
         ),
         .init(
             id: "bec1", category: .everyday,

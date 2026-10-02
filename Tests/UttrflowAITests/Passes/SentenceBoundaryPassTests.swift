@@ -15,7 +15,6 @@ struct SentenceBoundaryPassTests {
         arguments: [
             ("We need the. Final version of the contract", "We need the final version of the contract."),
             ("My manager. Wants the slides by noon", "My manager wants the slides by noon."),
-            ("the server. crashed twice last night", "The server crashed twice last night."),
             ("I stayed home. Because it was raining", "I stayed home because it was raining."),
             ("I finished the report. And sent it to Maria", "I finished the report and sent it to Maria."),
             ("I wanted to come. But my train was cancelled", "I wanted to come, but my train was cancelled."),
@@ -29,6 +28,22 @@ struct SentenceBoundaryPassTests {
     @Test("keeps a subject-bearing independent sentence after the stop")
     func keepsIndependentSentence() {
         #expect(cleaned("I left. She arrived") == "I left. She arrived.")
+    }
+
+    @Test(
+        "keeps a stop before a lowercase word when the preceding words can end a sentence",
+        arguments: [
+            ("We shipped it. eBay is next", "We shipped it. eBay is next."),
+            ("Please send it today. i will check tomorrow", "Please send it today. I will check tomorrow."),
+            ("The patient is stable. vitals are normal", "The patient is stable. Vitals are normal."),
+            ("the server. crashed twice last night", "The server. Crashed twice last night."),
+            ("The price is five dollars. that is cheap", "The price is 5 dollars. That is cheap."),
+            ("He is here. she is not", "He is here. She is not."),
+            ("Yes. no. maybe", "Yes. No. Maybe."),
+        ]
+    )
+    func keepsCompleteSentencesBeforeLowercaseWords(input: String, expected: String) {
+        #expect(cleaned(input) == expected)
     }
 
     @Test(
