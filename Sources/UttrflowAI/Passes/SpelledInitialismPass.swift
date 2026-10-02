@@ -55,6 +55,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             return nil
         }
         let token = draft.shape(at: live[position])
+        if token.key == "a", position + 1 < live.count,
+            draft.shape(at: live[position + 1]).key == "m",
+            isClockContext(before: position, in: live, draft: draft)
+        {
+            return position + 2
+        }
         let inSpokenPhrase = position > 0 && !draft.shape(at: live[position - 1]).endsClause
         if token.key == "a", inSpokenPhrase, token.core.first?.isUppercase != true {
             let candidateEnd = candidateRunEnd(from: position, in: live, draft: draft)
@@ -77,6 +83,20 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             end += 1
         }
         return end
+    }
+
+    private func isClockContext(before position: Int, in live: [Int], draft: Draft) -> Bool {
+        guard position > 0 else { return false }
+        let previous = draft.shape(at: live[position - 1])
+        if previous.key == "o'clock" { return true }
+        if let hour = Int(previous.key), (1...12).contains(hour) { return true }
+        let clock = previous.key.split(separator: ":", omittingEmptySubsequences: false)
+        if clock.count == 2, let hour = Int(clock[0]), let minute = Int(clock[1]),
+            (1...12).contains(hour), (0...59).contains(minute)
+        {
+            return true
+        }
+        return NumberWords.cardinal([previous.key]).map { (1...12).contains($0.value) } == true
     }
 
     private func candidateRunEnd(from position: Int, in live: [Int], draft: Draft) -> Int {

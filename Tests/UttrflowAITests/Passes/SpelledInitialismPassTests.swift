@@ -51,6 +51,18 @@ struct SpelledInitialismPassTests {
         #expect(CleaningPipeline(passes: [sut]).run(Draft(text: "we need a p")).text == "we need a p")
     }
 
+    @Test(
+        "joins split AM only after a clock expression",
+        arguments: [
+            ("nine a m", "nine AM"),
+            ("6:15 a m", "6:15 AM"),
+            ("five o'clock a m", "five o'clock AM"),
+            ("we need a m", "we need a m"),
+        ])
+    func splitAMContext(input: String, expected: String) {
+        #expect(CleaningPipeline(passes: [sut]).run(Draft(text: input)).text == expected)
+    }
+
     @Test("does not join letters separated by a removed filler")
     func removedFillerBreaksInitialism() {
         var draft = Draft(text: "we said e uh g")
