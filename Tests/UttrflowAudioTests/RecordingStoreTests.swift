@@ -217,17 +217,21 @@ struct RecordingStoreTests {
         let wavTemporary = sandbox.directory.appending(path: "\(UUID().uuidString).wav.tmp")
         let contextTemporary = sandbox.directory.appending(path: "\(UUID().uuidString).context.tmp")
         let nonUUIDWav = sandbox.directory.appending(path: "stray.wav")
+        let freshTemporary = sandbox.directory.appending(path: "\(UUID().uuidString).context.tmp")
         for file in [wavTemporary, contextTemporary, nonUUIDWav] {
             try Data("temporary".utf8).write(to: file)
             try FileManager.default.setAttributes(
                 [.creationDate: now.addingTimeInterval(-120)], ofItemAtPath: file.path)
         }
+        try Data("fresh".utf8).write(to: freshTemporary)
+        try FileManager.default.setAttributes([.creationDate: now], ofItemAtPath: freshTemporary.path)
         let store = RecordingStore(directory: sandbox.directory, retention: .seconds(60))
 
         #expect(await store.waiting(now: now).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: wavTemporary.path))
         #expect(!FileManager.default.fileExists(atPath: contextTemporary.path))
         #expect(!FileManager.default.fileExists(atPath: nonUUIDWav.path))
+        #expect(FileManager.default.fileExists(atPath: freshTemporary.path))
     }
 
     /// The app died while the key was held: the file is on disk with a header that says it is empty.
