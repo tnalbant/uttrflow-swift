@@ -25,12 +25,16 @@ public final class ShapedSoundPlayer: SoundPlayer {
     }
 
     private let state = Mutex(State())
+    private let readyCues = Mutex<Set<CueSound>>([])
     private let queue = DispatchQueue(label: "uttrflow.cue-engine", qos: .userInitiated)
 
     public init() {}
 
     deinit {
-        state.withLock { Self.tearDown(&$0) }
+        state.withLock {
+            Self.tearDown(&$0)
+            readyCues.withLock { $0.removeAll() }
+        }
     }
 
     public func prewarm(_ cues: [CueSound]) {
@@ -38,18 +42,25 @@ public final class ShapedSoundPlayer: SoundPlayer {
         queue.async { [self] in
             state.withLock { state in
                 state.known = cues
+                readyCues.withLock { $0.removeAll() }
                 _ = prepare(cues, in: &state)
-                guard let engine = state.engine, !engine.isRunning else { return }
+                guard let engine = state.engine else { return }
+                guard !engine.isRunning else { refreshReadiness(for: state); return }
                 // Started once and paused, because the first start of a process costs several times a later one.
-                guard (try? engine.start()) != nil else { return Self.tearDown(&state) }
+                guard (try? engine.start()) != nil else {
+                    Self.tearDown(&state)
+                    refreshReadiness(for: state)
+                    return
+                }
                 engine.pause()
+                refreshReadiness(for: state)
             }
         }
     }
 
     @discardableResult
     public func play(_ cue: CueSound) -> Bool {
-        let ready = state.withLock { $0.engine != nil && $0.voices[cue] != nil }
+        let ready = readyCues.withLock { $0.contains(cue) }
         // Started on the queue, so no caller ever waits on the output device waking.
         queue.async { [self] in ready ? sound(cue) : recover(cue) }
         return ready
@@ -61,6 +72,7 @@ public final class ShapedSoundPlayer: SoundPlayer {
             guard let engine = state.engine, let voice = state.voices[cue] else { return false }
             if !engine.isRunning, (try? engine.start()) == nil {
                 Self.tearDown(&state)
+                refreshReadiness(for: state)
                 return false
             }
             // Stopped first, so a retrigger inside the previous cue's tail restarts it.
@@ -79,6 +91,7 @@ public final class ShapedSoundPlayer: SoundPlayer {
         state.withLock { state in
             if !state.known.contains(cue) { state.known.append(cue) }
             _ = prepare(state.known, in: &state)
+            refreshReadiness(for: state)
         }
     }
 
@@ -135,9 +148,17 @@ public final class ShapedSoundPlayer: SoundPlayer {
     private func rebuild() {
         state.withLock { state in
             let known = state.known
+            readyCues.withLock { $0.removeAll() }
             Self.tearDown(&state)
             _ = prepare(known, in: &state)
+            refreshReadiness(for: state)
         }
+    }
+
+    /// Publishes playable cues without making callers wait for engine work.
+    private func refreshReadiness(for state: State) {
+        let cues = state.engine == nil ? [] : Set(state.voices.keys)
+        readyCues.withLock { $0 = cues }
     }
 
     /// Drops the engine and its voices; the next cue builds them again.
