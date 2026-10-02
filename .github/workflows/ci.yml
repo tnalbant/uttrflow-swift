@@ -72,6 +72,11 @@ jobs:
       - name: Verify
         run: make verify
 
+      # Compile every test target even when an earlier audit stops verification before the build.
+      - name: Compile tests
+        if: ${{ !cancelled() }}
+        run: swift build --build-tests
+
       # `make verify`'s test run has crashed on this runner with no error and no exit code —
       # the log simply stops. `coverage.sh` now tees that output to a file as it runs, so if
       # the step above dies mid-run this still has something to show instead of losing it.
