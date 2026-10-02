@@ -109,8 +109,8 @@ public actor PasteboardWatcher {
                 let match = pending.firstIndex(where: { announcement in
                     guard count > announcement.after else { return false }
                     switch announcement.wrote {
-                    case .text(let wrote): text == wrote
-                    case .picture(let wrote): text == nil && picture == wrote
+                    case .text(let wrote): return text == wrote
+                    case .picture(let wrote): return text == nil && picture == wrote
                     }
                 })
             else { return false }
@@ -259,7 +259,7 @@ public actor PasteboardWatcher {
     /// Treats every change up to `count` as seen and forgets any announced write, so nothing from while recording was off is kept.
     public func passOver(upTo count: Int) {
         seen = count
-        announced.withLock { $0 = nil }
+        announced.withLock { $0.removeAll() }
     }
 
     /// Replaces the local exclusion list without restarting the polling task.

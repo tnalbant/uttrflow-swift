@@ -1,16 +1,9 @@
 // The store behind the clipboard panel: what has been copied, in memory and across two files.
 
-import UttrflowCore
+public import UttrflowCore
+public import Foundation
 import CryptoKit
 import Security
-
-public import struct Foundation.Date
-public import struct Foundation.URL
-public import struct Foundation.UUID
-
-public import struct Foundation.Data
-public import class Foundation.FileManager
-public import class Foundation.JSONEncoder
 private import Synchronization
 
 /// Counts the files a store writes while this is bound to `ClipboardStore.writes`.
@@ -503,7 +496,7 @@ public actor ClipboardStore {
             image == nil
             ? ClipKindDetector.classification(of: text)
             : ClipClassification(kind: .image, language: nil)
-        Clip(
+        return Clip(
             id: clip.id, text: text, kind: classified.kind, copiedAt: clip.copiedAt,
             source: clip.source, origin: clip.origin, dictations: clip.dictations,
             // An unlinked dictation copy keeps its first words, the only thing deleting its dictation can match.
@@ -771,7 +764,7 @@ public actor ClipboardStore {
     private func migrateLegacyImagesOnce() {
         guard !hasMigratedLegacyImages else { return }
         hasMigratedLegacyImages = true
-        guard let encryptedStore,
+        guard encryptedStore != nil,
             let files = try? FileManager.default.contentsOfDirectory(
                 at: imagesFolder, includingPropertiesForKeys: [.isRegularFileKey])
         else { return }

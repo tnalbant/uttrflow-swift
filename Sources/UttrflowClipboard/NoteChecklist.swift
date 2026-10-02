@@ -48,18 +48,18 @@ public enum NoteChecklist {
     private static func mark(of tag: String, at range: Range<String.Index>) -> Mark? {
         let lower = tag.lowercased()
         let box = lower.hasPrefix("<input") ? inputBox(tag, lower) : listItemBox(tag, lower)
-        return box.map { Mark(range: range, isChecked: $0.isChecked) }
+        return box.map { Mark(range: range, isChecked: $0) }
     }
 
     /// A real `<input type="checkbox">`, as GitHub writes one.
-    private static func inputBox(_ tag: String, _ lower: String) -> (isChecked: Bool)? {
+    private static func inputBox(_ tag: String, _ lower: String) -> Bool? {
         guard
             lower.contains("type=\"checkbox\"") || lower.contains("type='checkbox'")
                 || lower.contains("type=checkbox")
         else { return nil }
         // A bare `checked` is the HTML spelling; `checked="checked"` is the XHTML one.
         let isChecked = hasAttribute("checked", in: lower)
-        return (isChecked)
+        return isChecked
     }
 
     /// Whether the tag carries this attribute in its own right, so `aria-checked` is not read as `checked`.
@@ -77,14 +77,14 @@ public enum NoteChecklist {
     }
 
     /// Apple Notes and TipTap mark the item rather than writing an input.
-    private static func listItemBox(_ tag: String, _ lower: String) -> (isChecked: Bool)? {
+    private static func listItemBox(_ tag: String, _ lower: String) -> Bool? {
         guard lower.hasPrefix("<li") else { return nil }
         let classes = tokens(of: "class", in: lower)
         let isChecked = classes.contains("checked") || lower.contains("data-checked=\"true\"")
 
         return classes.contains("checked") || classes.contains("unchecked")
             || lower.contains("data-checked=\"true\"") || lower.contains("data-checked=\"false\"")
-            ? (isChecked)
+            ? isChecked
             : nil
     }
 
