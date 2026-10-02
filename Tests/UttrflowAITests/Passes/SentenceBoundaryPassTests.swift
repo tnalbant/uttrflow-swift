@@ -31,6 +31,20 @@ struct SentenceBoundaryPassTests {
         #expect(cleaned("I left. She arrived") == "I left. She arrived.")
     }
 
+    @Test(
+        "keeps stops after complete phrasal verbs",
+        arguments: [
+            ("Let us move on. The meeting is over", "Let us move on. The meeting is over."),
+            ("Hold on. The page is loading", "Hold on. The page is loading."),
+            ("Please sign up. The form is short", "Please sign up. The form is short."),
+            ("We gave up. The team left", "We gave up. The team left."),
+            ("Come in. The door is open", "Come in. The door is open."),
+            ("Log in. The dashboard opens", "Log in. The dashboard opens."),
+        ])
+    func keepsPhrasalVerbStops(input: String, expected: String) {
+        #expect(cleaned(input) == expected)
+    }
+
     @Test("keeps a pronoun I and a known name capitalized when a false stop is removed")
     func keepsNameAndPronounCase() {
         #expect(

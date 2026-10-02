@@ -35,7 +35,7 @@ public enum SentenceBoundaryEvidence {
     }
 
     private static func completesFinalPhrase(_ previous: [WordShape], _ following: [WordShape]) -> Bool {
-        guard let last = previous.last, let first = following.first else { return false }
+        guard let first = following.first else { return false }
         let previousKeys = previous.map(\.key)
         let completesReportedVerb = seamObjectEndings.contains {
             previousKeys.suffix($0.count).elementsEqual($0)
@@ -43,7 +43,6 @@ public enum SentenceBoundaryEvidence {
         let startsObject =
             determiners.contains(first.key)
             || (following.count > 1 && first.core.first?.isUppercase == true)
-        if seamPrepositions.contains(last.key) { return startsObject }
         return completesReportedVerb && (startsObject || following.count > 1)
     }
 
