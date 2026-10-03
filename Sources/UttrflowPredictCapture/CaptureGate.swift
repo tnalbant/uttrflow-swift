@@ -14,7 +14,7 @@ public enum CaptureRefusal: String, Sendable, Equatable, CaseIterable {
     case consentDeclined
     /// The value has the shape of a credential.
     case looksLikeSecret
-    /// The value is a short all-digit code in an application that is not a terminal.
+    /// The value is a short grouped digit code in an application that is not a terminal.
     case sensitiveValue
     /// The value would destroy data if it were ever completed and run.
     case destructive
@@ -60,10 +60,23 @@ public enum CaptureGate {
     /// Whether a value has the shape of a credential, asked of the rules the clipboard already uses.
     public static func looksLikeSecret(_ text: String) -> Bool { SecretShapes.matches(text) }
 
-    /// Whether a value looks like a one-time code, PIN, CVV or compact date in a form field.
+    /// Whether a value contains 2 to 8 digits grouped by whitespace, hyphens or periods.
     public static func looksLikeSensitiveValue(_ text: String, from reading: FieldReading) -> Bool {
         guard !TerminalApplications.contains(reading.bundleIdentifier) else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (2...8).contains(trimmed.count) && trimmed.allSatisfy { $0.isNumber }
+        var digitCount = 0
+        var hasDigitSinceSeparator = false
+        for character in trimmed {
+            if character.isNumber {
+                digitCount += 1
+                hasDigitSinceSeparator = true
+            } else if character.isWhitespace || character == "-" || character == "." {
+                guard hasDigitSinceSeparator else { return false }
+                hasDigitSinceSeparator = false
+            } else {
+                return false
+            }
+        }
+        return (2...8).contains(digitCount) && hasDigitSinceSeparator
     }
 }
