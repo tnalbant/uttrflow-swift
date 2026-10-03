@@ -233,14 +233,18 @@ public actor PredictStore: PredictionStore {
         let evidence: Entry?
         if let a = first.evidence, let b = second.evidence {
             evidence = Entry(
-                text: a.text, count: a.count + b.count, accepted: a.accepted + b.accepted,
+                text: b.lastUsed > a.lastUsed ? b.text : a.text, count: a.count + b.count,
+                accepted: a.accepted + b.accepted,
                 rejected: a.rejected + b.rejected, selfSourced: a.selfSourced + b.selfSourced,
                 lastUsed: max(a.lastUsed, b.lastUsed))
         } else {
             evidence = first.evidence ?? second.evidence
         }
+        // The spelling used most recently is the one offered.
+        let firstUsed = first.evidence?.lastUsed ?? .distantPast
+        let newer = (second.evidence?.lastUsed ?? .distantPast) > firstUsed
         return Candidate(
-            text: first.text, source: first.source, evidence: evidence,
+            text: newer ? second.text : first.text, source: first.source, evidence: evidence,
             editDistance: min(first.editDistance, second.editDistance),
             isIrreversible: first.isIrreversible)
     }
@@ -303,7 +307,8 @@ public actor PredictStore: PredictionStore {
                     $0.bind(3, upper)
                     $0.bind(4, Int64(Self.candidateLimit))
                 }, distance: 0)
-            found += read.filter { seen.insert($0.text.lowercased()).inserted }
+            // Only a row both queries returned is dropped; case variants are summed later by `merged`.
+            found += read.filter { seen.insert($0.text).inserted }
         }
         return found
     }
