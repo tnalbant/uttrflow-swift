@@ -207,8 +207,7 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
             throw StoreKeyError.unavailable(Int32(status))
         }
 
-        // A previously created ad-hoc fallback remains authoritative if a later build
-        // gains Keychain access. Do not replace it with a new Keychain key.
+        // An ad-hoc fallback key on disk stays authoritative when a later build gains Keychain access.
         do {
             return try fileKey(createIfMissing: false)
         } catch StoreKeyError.unavailable(let missing) where missing == Int32(errSecItemNotFound) {

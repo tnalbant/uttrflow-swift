@@ -361,7 +361,7 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowTests",
-            dependencies: ["Uttrflow", "UttrflowTestSupport"],
+            dependencies: ["Uttrflow", "UttrflowPredict", "UttrflowTestSupport"],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
@@ -433,6 +433,7 @@ let package = Package(
         .testTarget(
             name: "UttrflowEvalTests",
             dependencies: ["UttrflowAI", "UttrflowAudio", "UttrflowEval", "UttrflowTestSupport"],
+            exclude: ["Golden"],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(

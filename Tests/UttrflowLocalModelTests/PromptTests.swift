@@ -218,8 +218,6 @@ struct PromptTests {
         #expect(PromptBuilder.leading("abc", within: 0) == "")
         #expect(PromptBuilder.nearestLines("far\nnear", within: 1) == "")
         #expect(PromptBuilder.nearestLines("far\n  \nnear", within: 5) == "far\nnear")
-        #expect(PromptBuilder.head("abcdef", within: 3) == "abc")
-        #expect(PromptBuilder.head("abc", within: 0) == "")
         #expect(PromptBuilder.newest(["new", "older", "oldest"], within: 5) == ["new", "older"])
         #expect(PromptBuilder.newest(["new"], within: 1) == [])
         #expect(PromptBuilder.newest([], within: 100) == [])
@@ -280,7 +278,7 @@ struct PromptTests {
         let prompt = message("yes, ", situation)
         #expect(
             prompt.contains(
-                "window \"" + String(repeating: "t", count: PromptBuilder.locatorCap) + "\", field"))
+                "window \"" + String(repeating: "t", count: PromptBuilder.locatorCap) + "…\", field"))
         #expect(!prompt.contains(String(repeating: "t", count: PromptBuilder.locatorCap + 1)))
         #expect(prompt.contains("Lines this person wrote here before:\non my way\nrunning late, sorry"))
         #expect(prompt.contains("On screen around the field:\nSearch or enter website name"))

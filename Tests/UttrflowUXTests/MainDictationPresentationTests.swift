@@ -219,7 +219,8 @@ struct DictationFiguresTests {
     @Test("a pace outside the integer range is omitted")
     func paceOutsideIntegerRange() {
         let entry = HistoryEntry(
-            text: "hello", when: HistoryFixture.now, spokenFor: .attoseconds(1))
+            text: "hello", when: HistoryFixture.now,
+            spokenFor: Duration(secondsComponent: 0, attosecondsComponent: 1))
         #expect(DictationPresenter.pace(of: [entry]) == nil)
     }
 

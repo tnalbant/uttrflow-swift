@@ -15,7 +15,7 @@ private func correction(
 ) -> DictationCorrection {
     DictationCorrection(
         heard: heard, wrote: wrote, wordRange: range, entryID: entry,
-        reason: "heardAsSeveralWords", heardConfidence: confidence)
+        reason: .heardAsSeveralWords, heardConfidence: confidence)
 }
 
 // MARK: - Tests

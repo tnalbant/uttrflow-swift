@@ -42,14 +42,17 @@ extension CandidateSource {
 public struct DoubtfulSpan: Sendable, Equatable {
     /// The run as the model will read it, spaces and all, which is also what the guard looks for.
     public let heard: String
-    /// The lowest confidence in the run, because a run is only as certain as its weakest word.
+    /// The lowest score the recogniser gave the run, because a run is only as certain as its weakest word.
     public let confidence: Double
+    /// Why the run is doubted, so a surely heard homophone is never printed as a low score.
+    public let reason: DoubtReason
     /// The other readings, best first, each still carrying where it came from; a span with none is never offered to the model.
     public let candidates: [Reading]
 
-    public init(heard: String, confidence: Double, candidates: [Reading]) {
+    public init(heard: String, confidence: Double, reason: DoubtReason = .lowScore, candidates: [Reading]) {
         self.heard = heard
         self.confidence = confidence
+        self.reason = reason
         self.candidates = candidates
     }
 
@@ -99,7 +102,7 @@ public struct DoubtfulWords: Sendable {
             taken.append(run.range)
             found.append(
                 DoubtfulSpan(
-                    heard: run.text, confidence: run.confidence,
+                    heard: run.text, confidence: run.confidence, reason: run.reason,
                     candidates: Array(readings.prefix(Self.maximumCandidatesPerSpan))))
             if found.count == Self.maximumSpans { break }
         }

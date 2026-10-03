@@ -41,18 +41,18 @@ public struct SelfCorrectionPass: CleaningPass {
         guard position + 1 < live.count else { return false }
         let fragment = draft.shape(at: live[position])
         guard fragment.suffix == "-", !fragment.core.isEmpty else { return false }
-        if MeaningPreservationGuard.sameForm(
+        if WordForms.sameForm(
             fragment.key, draft.shape(at: live[position + 1]).key, whenCutOff: true)
         {
             return true
         }
         guard position + 2 < live.count else { return false }
         let restart = draft.shape(at: live[position + 1]).key
-        let completesCutOff = MeaningPreservationGuard.sameForm(
+        let completesCutOff = WordForms.sameForm(
             fragment.key, draft.shape(at: live[position + 2]).key, whenCutOff: true)
         return completesCutOff
             && live[..<position].contains {
-                MeaningPreservationGuard.sameForm(draft.shape(at: $0).key, restart)
+                WordForms.sameForm(draft.shape(at: $0).key, restart)
             }
     }
 

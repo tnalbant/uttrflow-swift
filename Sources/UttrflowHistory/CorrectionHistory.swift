@@ -1,6 +1,7 @@
 // What the Corrections page draws: one change joined to its dictation, a scope, and the list of them.
 public import struct Foundation.Date
 public import struct Foundation.UUID
+public import UttrflowCore
 
 /// One change joined to its dictation, for pages to draw; not `Codable`, so nothing writes the projection.
 public struct Correction: Sendable, Equatable, Identifiable {

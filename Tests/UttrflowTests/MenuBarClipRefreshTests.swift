@@ -2,6 +2,8 @@ import Foundation
 import UttrflowClipboard
 import UttrflowCore
 import UttrflowInput
+import UttrflowPipeline
+import UttrflowTestSupport
 import Testing
 
 @testable import Uttrflow
@@ -24,8 +26,8 @@ struct MenuBarClipRefreshTests {
         let app = AppDelegate(container: sandbox.root, account: HeldSession(signedIn: true).layer)
         let store = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = ClipRetention(days: 30, now: .now)
-        let selected = try await store.record(
-            Clip(text: "The clip the user chose", kind: .text, copiedAt: .now), keeping: retention)
+        let selected = Clip(text: "The clip the user chose", kind: .text, copiedAt: .now)
+        _ = try await store.record(selected, keeping: retention)
 
         await app.readMenuClips()
         let captured = try #require(app.menuBarPresentation.clips.first?.insert.intent)
@@ -71,16 +73,17 @@ struct MenuBarClipRefreshTests {
         let app = AppDelegate(container: sandbox.root)
         let store = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = ClipRetention(days: 30, now: .now)
-        let clip = try await store.record(
+        let recorded = try await store.record(
             Clip(text: "before edit", kind: .text, copiedAt: .now), keeping: retention)
+        let clip = try #require(recorded.first { $0.text == "before edit" })
 
         await app.readMenuClips()
-        #expect(app.menuBarPresentation.clips.first?.text == "before edit")
+        #expect(app.menuBarPresentation.clips.first?.title == "before edit")
 
         try await store.setText("after edit", of: clip.id, keeping: retention)
         #expect(await store.clips(keeping: retention).first?.text == "after edit")
         await app.readMenuClips()
 
-        #expect(app.menuBarPresentation.clips.first?.text == "after edit")
+        #expect(app.menuBarPresentation.clips.first?.title == "after edit")
     }
 }

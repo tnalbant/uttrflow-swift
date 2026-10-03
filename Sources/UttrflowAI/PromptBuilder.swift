@@ -65,7 +65,7 @@ public struct PromptBuilder: Sendable, Equatable {
         for request: TransformationRequest, spoken: String? = nil, doubtful: [DoubtfulSpan] = [],
         preserving switchedOff: Set<PassID> = []
     ) -> String {
-        let spoken = "Spoken: \"\(Self.unquoted(spoken ?? request.transcription.text))\""
+        let spoken = "Spoken: \"\(PromptText.spoken(spoken ?? request.transcription.text))\""
         let preservedSteps = CleaningSteps.offered.map(\.id).filter(switchedOff.contains)
         let preferences =
             preservedSteps.isEmpty
@@ -92,15 +92,18 @@ public struct PromptBuilder: Sendable, Equatable {
         guard !spans.isEmpty else { return nil }
         return spans.prefix(DoubtfulWords.maximumSpans)
             .map {
-                "\"\(unquoted($0.heard))\" (heard at \(hundredths($0.confidence))) — could be: "
-                    + $0.candidates.map { unquoted($0.spelling) }.joined(separator: ", ")
+                "\"\(PromptText.quoted($0.heard))\" \(doubtNote($0)) — could be: "
+                    + $0.candidates.map { PromptText.quoted($0.spelling) }.joined(separator: ", ")
             }
             .joined(separator: "; ")
     }
 
-    /// The text with double quotes made single, so quoted words cannot forge a prompt line.
-    static func unquoted(_ text: String) -> String {
-        text.replacingOccurrences(of: "\"", with: "'")
+    /// The measured score, and for a homophone heard surely the reason it is doubted all the same.
+    static func doubtNote(_ span: DoubtfulSpan) -> String {
+        switch span.reason {
+        case .lowScore: "(heard at \(hundredths(span.confidence)))"
+        case .homophoneClass: "(heard at \(hundredths(span.confidence)), sounds like another word)"
+        }
     }
 
     /// A confidence as two decimal places, without a number formatter for one number.
@@ -114,7 +117,7 @@ public struct PromptBuilder: Sendable, Equatable {
         guard insertion.sentenceState == .midSentence, let preceding = insertion.precedingText else {
             return nil
         }
-        let flattened = TextTidy.collapseWhitespace(preceding).replacingOccurrences(of: "\"", with: "'")
+        let flattened = PromptText.quoted(preceding)
         guard flattened.count > limit else { return flattened }
         let tail = flattened.suffix(limit)
         // A single word longer than the whole budget keeps the hard cut rather than vanishing.

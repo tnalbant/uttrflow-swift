@@ -84,7 +84,7 @@ private func completedPinnedWeightBytes(for model: SpeechModel, in destination: 
     return completed
 }
 
-private func verified(file: URL, expected: SpeechModelFile) throws -> Bool {
+func verified(file: URL, expected: SpeechModelFile) throws -> Bool {
     let values = try? file.resourceValues(forKeys: [.fileSizeKey])
     guard Int64(values?.fileSize ?? -1) == expected.bytes else { return false }
     return try sha256(of: file) == expected.sha256

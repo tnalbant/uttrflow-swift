@@ -3,6 +3,8 @@ import Synchronization
 import Testing
 import UttrflowInput
 import struct Foundation.Data
+import struct Foundation.Date
+import struct Foundation.UUID
 
 @testable import UttrflowCore
 @testable import UttrflowPipeline
@@ -347,7 +349,7 @@ struct DictationStageTimeoutTests {
 
         let retrying = Task { await pipeline.retry(recording.id) }
         await expire(.seconds(2), at: .inserting, of: pipeline, on: clock)
-        await retrying.value
+        _ = await retrying.value
 
         guard case .failed(let failure) = await pipeline.currentState else {
             Issue.record("expected the copy to fail, got \(await pipeline.currentState)")

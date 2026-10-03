@@ -142,7 +142,7 @@ private let snippet = UUID()
 
 private let paymentSheet = DictationCorrection(
     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 2..<4, entryID: entry,
-    reason: "heardAsSeveralWords", heardConfidence: 0.2)
+    reason: .heardAsSeveralWords, heardConfidence: 0.2)
 
 private func makePipeline(
     spoken: String = heard,
@@ -229,7 +229,8 @@ struct DictationPipelineCorrectionTests {
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(),
             speech: LatePasteSpeech(),
-            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels), context: context, inserter: inserter)
+            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels), context: context,
+            inserter: inserter)
 
         await pipeline.startRecording()
         await pipeline.finishRecording()
@@ -313,11 +314,12 @@ struct DictationPipelineCorrectionTests {
 struct DictationPipelineDictionaryRestatementTests {
     private func correctedPipeline(for spoken: String) -> DictationPipeline {
         makePipeline(
-            spoken: spoken, cleaner: RuleBasedTransformer(),
+            spoken: spoken,
+            cleaner: TransformerRouter(engines: [RuleBasedTransformer()], preference: [.rules]),
             corrector: FakeCorrector(proposing: [
                 DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 5..<7,
-                    entryID: entry, reason: "heardAsSeveralWords", heardConfidence: 0.2)
+                    entryID: entry, reason: .heardAsSeveralWords, heardConfidence: 0.2)
             ]))
     }
 
@@ -344,7 +346,8 @@ struct DictationPipelineDictionaryRestatementTests {
     @Test("keeps the control restatement when its heard anchor matches")
     func matchingSpokenAnchorControl() async {
         let pipeline = makePipeline(
-            spoken: "open the payment form sorry payment page", cleaner: RuleBasedTransformer())
+            spoken: "open the payment form sorry payment page",
+            cleaner: TransformerRouter(engines: [RuleBasedTransformer()], preference: [.rules]))
 
         await dictate(with: pipeline)
 
@@ -359,7 +362,8 @@ struct DictationPipelineSnippetTests {
     func expandsAfterTidying() async {
         let expander = FakeExpander()
         let pipeline = makePipeline(
-            cleaner: FakeTranscriptCleaner(tidying: { $0.capitalisedFirst + "." }, producedBy: .foundationModels), snippets: expander)
+            cleaner: FakeTranscriptCleaner(
+                tidying: { $0.capitalisedFirst + "." }, producedBy: .foundationModels), snippets: expander)
 
         await dictate(with: pipeline)
 
@@ -482,7 +486,8 @@ struct DictationPipelineLearningTests {
     @Test("Counts the entry behind a reading the tidier took, as it counts a correction's")
     func countsAReadingTaken() async {
         let learner = FakeLearner()
-        let pipeline = makePipeline(cleaner: FakeTranscriptCleaner(producedBy: .foundationModels, taking: [entry]), learner: learner)
+        let pipeline = makePipeline(
+            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels, taking: [entry]), learner: learner)
 
         await dictate(with: pipeline)
 
@@ -511,7 +516,7 @@ struct DictationPipelineLearningTests {
             paymentSheet,
             DictationCorrection(
                 heard: "my address", wrote: "PaymentSheet", wordRange: 6..<8, entryID: entry,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2),
+                reason: .heardAsSeveralWords, heardConfidence: 0.2),
         ]
         let pipeline = makePipeline(corrector: FakeCorrector(proposing: twice), learner: learner)
 
@@ -528,7 +533,7 @@ struct DictationPipelineLearningTests {
             paymentSheet,
             DictationCorrection(
                 heard: "my address", wrote: "MyAddress", wordRange: 6..<8, entryID: otherEntry,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2),
+                reason: .heardAsSeveralWords, heardConfidence: 0.2),
         ]
         let pipeline = makePipeline(corrector: FakeCorrector(proposing: two), learner: learner)
 
@@ -630,7 +635,8 @@ struct DictationPipelineVocabularyTests {
     func offersTheWholeDictation() async {
         let vocabulary = FakeVocabulary()
         let pipeline = makePipeline(
-            cleaner: FakeTranscriptCleaner(tidying: \.capitalisedFirst, producedBy: .foundationModels), vocabulary: vocabulary)
+            cleaner: FakeTranscriptCleaner(tidying: \.capitalisedFirst, producedBy: .foundationModels),
+            vocabulary: vocabulary)
 
         await dictate(with: pipeline)
 
@@ -650,8 +656,8 @@ struct DictationPipelineVocabularyTests {
         let landedInB = InsertionDestination(
             applicationName: "Public App", bundleIdentifier: "com.example.b")
         let pipeline = makePipeline(
-            vocabulary: vocabulary,
             inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, destination: landedInB))),
+            vocabulary: vocabulary,
             context: FakeContextEngine(context: appA))
 
         await dictate(with: pipeline)
@@ -691,7 +697,8 @@ struct DictationPipelineVocabularyTests {
     func learnsNothingFromAnUnconfirmedInsertion() async {
         let vocabulary = FakeVocabulary()
         let pipeline = makePipeline(
-            inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, arrival: .unconfirmed))), vocabulary: vocabulary)
+            inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, arrival: .unconfirmed))),
+            vocabulary: vocabulary)
 
         await dictate(with: pipeline)
 

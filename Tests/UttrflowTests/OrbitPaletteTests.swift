@@ -22,6 +22,16 @@ struct OrbitPaletteTests {
         return resolved.map { ($0 * 255).rounded() / 255 }
     }
 
+    /// Resolved components as an sRGB hex, alpha left out.
+    private func hex(_ components: [CGFloat]) -> UInt32 {
+        components.prefix(3).reduce(0) { $0 << 8 | UInt32(($1 * 255).rounded()) }
+    }
+
+    /// A colour as it lands on `ground`, blended over it at its own alpha.
+    private func composited(_ colour: [CGFloat], over ground: [CGFloat]) -> UInt32 {
+        blend(hex(colour), over: hex(ground), share: Double(colour[3]))
+    }
+
     @Test("unpacks a hex into red, green and blue in that order")
     func hexChannels() {
         let colour = NSColor(rgb: 0x0B_0C10).usingColorSpace(.sRGB)
@@ -92,10 +102,15 @@ struct OrbitPaletteTests {
             #expect(muted != ordinaryMuted)
             #expect(wash != ordinaryWash)
             #expect(control != ordinaryControl)
-            #expect(contrastRatio(separator[0], card[0]) >= 3)
-            #expect(contrastRatio(control[0], card[0]) >= 3)
-            #expect(contrastRatio(dim[0], card[0]) > contrastRatio(ordinaryDim[0], card[0]))
-            #expect(contrastRatio(muted[0], card[0]) > contrastRatio(ordinaryMuted[0], card[0]))
+            let ground = hex(card)
+            #expect(contrastRatio(composited(separator, over: card), ground) >= 3)
+            #expect(contrastRatio(composited(control, over: card), ground) >= 3)
+            #expect(
+                contrastRatio(composited(dim, over: card), ground)
+                    > contrastRatio(composited(ordinaryDim, over: card), ground))
+            #expect(
+                contrastRatio(composited(muted, over: card), ground)
+                    > contrastRatio(composited(ordinaryMuted, over: card), ground))
         }
     }
 

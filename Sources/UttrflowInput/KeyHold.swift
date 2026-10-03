@@ -1,5 +1,4 @@
 internal import CoreGraphics
-internal import Dispatch
 internal import Synchronization
 
 /// Keys pressed between a swallowed keystroke and its handling, kept back and replayed in order afterwards.
@@ -15,15 +14,23 @@ final class KeyHold: Sendable {
     private let state = Mutex(State())
     /// Whether a bare Tab accept must not be replayed into a disarmed gap.
     private let suppressUnarmedTab = Atomic<Bool>(false)
+    /// The time a hold is measured on, injected so a test can move it by hand.
+    private let clock: ElapsedClock
     /// A copied event, owned by the hold alone from the moment it is kept.
     private struct Kept: @unchecked Sendable {
         let event: CGEvent
     }
 
+    /// A hold measured on `clock`, the continuous clock unless a test passes its own.
+    init(clock: some Clock<Duration> = ContinuousClock()) {
+        self.clock = ElapsedClock(clock)
+    }
+
     /// Starts holding keys back, from the moment a keystroke is swallowed on the tap's thread.
-    func begin(now: UInt64 = DispatchTime.now().uptimeNanoseconds, suppressingUnarmedTab: Bool = false) {
+    func begin(suppressingUnarmedTab: Bool = false) {
         suppressUnarmedTab.store(suppressingUnarmedTab, ordering: .relaxed)
-        state.withLock { $0.since = max(now, 1) }
+        let now = clock.nanoseconds
+        state.withLock { $0.since = now }
     }
 
     /// Whether keys are being held back, which keeps the tap on while nothing is armed.
@@ -35,10 +42,10 @@ final class KeyHold: Sendable {
     /// Keeps a copy of a key-down back and returns true while a hold is in force; false lets it through.
     func keep(
         _ event: CGEvent,
-        now: UInt64 = DispatchTime.now().uptimeNanoseconds,
         afterEligibilityCheck: () -> Void = {}
     ) -> Bool {
-        state.withLock { state in
+        let now = clock.nanoseconds
+        return state.withLock { state in
             let start = state.since
             guard start != 0 else { return false }
             guard now &- start < Self.limitNanoseconds else {

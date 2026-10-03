@@ -13,7 +13,7 @@ public enum Homophones {
     }
 
     /// Returns the hand-kept sound-alike spellings for one word, including the word itself.
-    public static func group(containing word: String) -> Set<String>? {
+    public static func group(containing word: String) -> [String]? {
         let word = lookupKey(word)
         return groups.first { group in group.contains { lookupKey($0) == word } }
     }
@@ -26,11 +26,11 @@ public enum Homophones {
             .trimmingCharacters(in: CharacterSet(charactersIn: "'"))
     }
 
-    /// Sets said identically; a pair whose vowels differ at all — "main" and "man" — belongs in none of them.
-    static let groups: [Set<String>] = [
+    /// Spellings said identically, most frequent first; a pair whose vowels differ at all — "main" and "man" — belongs in none.
+    static let groups: [[String]] = [
         ["allowed", "aloud"], ["bored", "board"], ["brake", "break"], ["capital", "capitol"],
-        ["by", "buy", "bye"], ["cache", "cash"], ["cell", "sell"], ["cent", "scent", "sent"],
-        ["cite", "site", "sight"], ["complement", "compliment"], ["die", "dye"],
+        ["by", "buy", "bye"], ["cache", "cash"], ["cell", "sell"], ["sent", "cent", "scent"],
+        ["site", "sight", "cite"], ["complement", "compliment"], ["die", "dye"],
         ["fair", "fare"], ["ate", "eight"], ["flew", "flu"], ["flour", "flower"],
         ["for", "four"], ["hear", "here"], ["hole", "whole"], ["hour", "our"],
         ["its", "it's"], ["knew", "new"], ["knight", "night"], ["know", "no"],
@@ -39,10 +39,10 @@ public enum Homophones {
         ["plain", "plane"], ["principal", "principle"], ["rain", "reign", "rein"],
         ["road", "rode"], ["root", "route"], ["role", "roll"], ["sail", "sale"], ["scene", "seen"],
         ["sea", "see"], ["son", "sun"], ["stationary", "stationery"], ["steal", "steel"],
-        ["tail", "tale"], ["their", "there", "they're"], ["threw", "through"], ["to", "too", "two"],
+        ["tail", "tale"], ["there", "their", "they're"], ["threw", "through"], ["to", "too", "two"],
         ["toe", "tow"], ["vain", "vein"], ["wait", "weight"], ["way", "weigh"],
         ["wear", "where"], ["weather", "whether"], ["weak", "week"],
-        ["wood", "would"], ["write", "right", "rite"],
+        ["wood", "would"], ["right", "write", "rite"],
         ["your", "you're"],
     ]
 }

@@ -331,14 +331,9 @@ struct TextTransformersTests {
         #expect(TextTransformers.all().contains { $0.kind == .rules })
     }
 
-    @Test("contains no network path unless the build asked for one")
-    func cloudIsCompiledOut() {
-        let kinds = TextTransformers.all().map(\.kind)
-        #if UTTRFLOW_CLOUD
-            #expect(kinds.contains(.cloud))
-        #else
-            #expect(!kinds.contains(.cloud))
-        #endif
+    @Test("contains no hosted engine")
+    func cloudIsAbsent() {
+        #expect(!TextTransformers.all().map(\.kind).contains(.cloud))
     }
 
     @Test("routes to the floor last")

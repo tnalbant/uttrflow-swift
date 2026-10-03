@@ -28,7 +28,7 @@ private let twoRecents = [
 
 extension MenuBarPresentation {
     /// The command whose intent is this one, if the menu is offering it at all.
-    fileprivate func command(_ intent: MenuBarIntent) -> MenuBarCommand? {
+    func command(_ intent: MenuBarIntent) -> MenuBarCommand? {
         commands.first { $0.intent == intent }
     }
 

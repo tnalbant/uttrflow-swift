@@ -93,10 +93,10 @@ bounded by the current line.
 the candidate and draws only what the accept key will add.
 
 **A terminal publishes the prose role and is not prose.** `AXTextArea` is what a document and a
-shell both publish. `TerminalApplications` names the terminals by bundle identifier (read from the
-terminal rows of `DestinationRules.standard`), which is the only signal that separates them, so a
-shell is not held to the prose pause. An editor's terminal pane cannot be told from its editor by
-bundle identifier and is read as prose.
+shell both publish. `TerminalApplications` in `UttrflowCore` names the terminals by bundle
+identifier (read from the terminal rows of `DestinationRules.standard`), which is the only signal
+that separates them, so a shell is not held to the prose pause. An editor's terminal pane cannot
+be told from its editor by bundle identifier and is read as prose.
 
 ## What a field's scope is
 
@@ -120,11 +120,11 @@ way people type it ("haan theek hai"), and never in Devanagari. Uttrflow is not 
 no suggestion puts another script into a field. Dictation holds to the same rule
 ([latin-output.md](latin-output.md)).
 
-`LatinScript.writes` in `UttrflowPredict` is the one question asked of a piece of text: does any
-letter, combining mark or digit in it belong to a script other than Latin? Accents, fullwidth and
-styled Latin, emoji with their selectors, skin tones, flags and keycaps, symbols such as ™, ₹ and
-½, and punctuation of any script never count. Devanagari, Arabic, Cyrillic, Greek, Han, kana and
-the digits of those scripts do.
+`LatinScript.writesOnlyLatin` in `UttrflowCore` is the one question asked of a piece of text:
+does any letter, combining mark or digit in it belong to a script other than Latin? Accents,
+fullwidth and styled Latin, emoji with their selectors, skin tones, flags and keycaps, symbols
+such as ™, ₹ and ½, and punctuation of any script never count. Devanagari, Arabic, Cyrillic,
+Greek, Han, kana and the digits of those scripts do.
 
 | Where | What is refused |
 |---|---|

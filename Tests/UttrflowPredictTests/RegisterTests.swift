@@ -85,11 +85,23 @@ struct RegisterTests {
         #expect(!register.hints.contains("the text here is commands, code or queries rather than prose"))
     }
 
-    @Test("A short symbol sample is ignored, but enough command text still counts.")
+    @Test("Short command structure counts while unstructured punctuation remains prose.")
     func symbolShareNeedsEnoughVisibleCharacters() {
-        #expect(Register.symbolShare(of: ["ls -la"]) == 0)
+        #expect(Register.symbolShare(of: ["ls -la"]) > Register.symbolicShare)
         #expect(Register.symbolShare(of: ["\"I'm good, thanks!\""]) == 0)
         #expect(Register.symbolShare(of: ["ls | grep x"]) > Register.symbolicShare)
+    }
+
+    @Test("Flags and paths make short command punctuation evidence for the command register.")
+    func commandPunctuationCountsAsSymbolEvidence() {
+        let terminal = GenerationSituation(application: "Terminal")
+        let command = "command, query or line of code"
+
+        #expect(Register.infer(from: terminal, typed: "ls -la").kind == command)
+        #expect(Register.infer(from: terminal, typed: "git commit -m 'fix'").kind == command)
+        #expect(Register.infer(from: terminal, typed: "./a.b").kind == command)
+        #expect(Register.symbolShare(of: ["git commit -m 'fix'"]) == 3.0 / 16.0)
+        #expect(Register.symbolShare(of: ["./a.b"]) == 3.0 / 5.0)
     }
 
     @Test("Emoji in a chat are prose, not symbols, so the line stays a reply.")

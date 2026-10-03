@@ -104,6 +104,15 @@ Each wrong row is a class, not a word: anusvara is always "n" though it is said 
 visarga after the unwritten vowel drops the vowel it follows; and the unwritten-vowel rule
 drops the vowel before a final ह cluster and keeps the one a final य or व carries.
 
+### Properties over generated words
+
+`RomaniserPropertyTests` generates 5,000 Devanagari words from the romaniser's own tables
+(consonants, nukta letters, conjuncts, vowel signs, virama, independent vowels, anusvara and
+chandrabindu, visarga) with fixed seeds, and checks what must hold for every word: the output is
+non-empty lower-case ASCII letters; `LatinScript.enforced` is Latin and a second pass changes
+nothing; precomposed and decomposed nukta, chandrabindu and anusvara, and inserted joiners give
+one output and one `soundKey`; and a run of words is written word for word with its spacing
+kept. `UTTRFLOW_SEED` replays one seed. None is broken on the tree this landed on.
 
 ## The script guard
 
@@ -126,7 +135,7 @@ nothing there; `scriptVerdict` reads the draft the only way it needs to: romanis
   `FunctionWords`) are left out of both sides; a negation, a number and a Hindi pronoun never
   are. A dropped or added content word refuses the rewrite, and so does a substituted one unless
   it is:
-  - the same word in another form, by `MeaningPreservationGuard.sameRomanisedForm`: an English
+  - the same word in another form, by `WordForms.sameRomanisedForm`: an English
     inflection by `sameForm`, a Hindi verb or noun and its ending ("aa" and "aata", "log" and
     "logon"), or two cases of one demonstrative ("yah" and "is");
   - an English loanword the rules romanised, written in its English spelling: the two share a

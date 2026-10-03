@@ -115,7 +115,8 @@ struct DictationPipelineSettingsTests {
 
     /// A recogniser that hands back `texts` in order, repeating the last.
     private func pieces(_ texts: [String]) -> FakeSpeechEngine {
-        FakeSpeechEngine(transcribing: .successes(texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }))
+        FakeSpeechEngine(
+            transcribing: .successes(texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }))
     }
 
     /// A long dictation is laid out when its pieces are joined, and that is where the override was missing.
@@ -291,7 +292,7 @@ struct DictationPipelineSettingsTests {
             corrector: FixedCorrector(
                 correction: DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 4..<6,
-                    entryID: UUID(), reason: "heardAsSeveralWords", heardConfidence: 0.2)),
+                    entryID: UUID(), reason: .heardAsSeveralWords, heardConfidence: 0.2)),
             windowing: quick)
 
         await pipeline.startRecording()

@@ -3,6 +3,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowPredict
 
 @testable import Uttrflow
 

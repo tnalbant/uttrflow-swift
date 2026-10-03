@@ -4,15 +4,17 @@ extension CleaningPipeline {
     /// Every pass in the shipped order, for plain text at a caret that says nothing.
     public static let standard = standard(for: .standard(for: .plain), situation: .unknown)
 
-    /// The passes a language model is handed the result of, which are the piece's; the message's are finished after it.
+    /// The piece's passes and the spelled letters joined, so a model is handed "API" rather than "a p i".
     public static func beforeModel(
         for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        piece(
-            numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
-            insertionPoint: situation.insertion, destination: formatter.destination,
-            precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
-            steps: steps)
+        CleaningPipeline(
+            passes: piece(
+                numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
+                insertionPoint: situation.insertion, destination: formatter.destination,
+                precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
+                steps: steps
+            ).passes + initialisms(steps: steps))
     }
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
@@ -25,8 +27,7 @@ extension CleaningPipeline {
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
                 documentName: situation.app.documentName, steps: steps
             ).passes
-                + [SpelledInitialismPass()]
-                + message(for: formatter, situation: situation).passes)
+                + message(for: formatter, situation: situation, steps: steps).passes)
     }
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
@@ -42,7 +43,7 @@ extension CleaningPipeline {
             SpokenPunctuationPass(destination: destination),
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
-            ContractionsPass(), SpelledInitialismPass(), SpacingPass(),
+            ContractionsPass(), SpacingPass(),
         ]
         if destination == .codeEditor,
             !CodeCommentContext.isComment(precedingText: precedingText, documentName: documentName),
@@ -56,12 +57,11 @@ extension CleaningPipeline {
     /// The passes that finish a model's answer to a whole message: the caret's echo taken back, then the message's.
     public static func afterModel(
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
-        spoken: String? = nil
+        spoken: String? = nil, steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
-                + [SpelledInitialismPass()]
-                + message(for: formatter, situation: situation, heard: heard).passes)
+                + message(for: formatter, situation: situation, heard: heard, steps: steps).passes)
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
@@ -77,28 +77,28 @@ extension CleaningPipeline {
         ])
     }
 
-    /// The two passes asked once of a whole message, the first word and the final stop; `heard` is what `.asSpoken` copies.
+    /// The passes asked once of a whole message, spelled letters to the final stop; `heard` is what `.asSpoken` copies.
     public static func message(
-        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
+        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
+        steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        CleaningPipeline(passes: [
-            SentenceBoundaryPass(),
-            FirstWordPass(
-                policy: formatter.firstWord, state: situation.insertion.sentenceState,
-                onScreen: situation.app.textOnScreen, heard: heard,
-                capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                    && formatter.destination != .codeEditor),
-            TerminalStopPass(
-                policy: terminalStop(formatter, in: situation), layout: formatter.layout,
-                insertionPoint: situation.insertion, destination: formatter.destination),
-        ])
+        CleaningPipeline(
+            passes: initialisms(steps: steps) + [
+                SentenceBoundaryPass(),
+                FirstWordPass(
+                    policy: formatter.firstWord, state: situation.insertion.sentenceState,
+                    onScreen: situation.app.textOnScreen, heard: heard,
+                    capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                        && formatter.destination != .codeEditor),
+                TerminalStopPass(
+                    policy: terminalStop(formatter, in: situation), layout: formatter.layout,
+                    insertionPoint: situation.insertion, destination: formatter.destination),
+            ])
     }
 
-    /// The typed whole-text rules that apply once the pieces have been laid out.
-    public static func wholeText(
-        for formatter: DestinationFormatter, situation: Situation, heard: String? = nil
-    ) -> CleaningPipeline {
-        message(for: formatter, situation: situation, heard: heard)
+    /// The one registration of the spelled-letter join, a whole-text pass filtered like every other step.
+    private static func initialisms(steps: CleaningSteps) -> [any CleaningPass] {
+        [SpelledInitialismPass()].filter { steps.runs($0.id) }
     }
 
     /// The formatter's stop policy, except a code editor takes `.always` when the caret sits in a comment.

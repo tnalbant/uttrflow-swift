@@ -1,4 +1,5 @@
 // Tests the model store against real directories.
+import CryptoKit
 import Foundation
 import Synchronization
 import Testing
@@ -43,6 +44,30 @@ private func fixtureModel(variant: String, revision: String, changed: String) ->
         ],
         tokenizerRepository: "example/tokenizer", tokenizerRevision: "tokenizer",
         tokenizerDigests: [:])
+}
+
+/// A model whose pins are the real digests of `"same"` and `"new"`, so verification can pass.
+private func verifiableModel() -> SpeechModel {
+    SpeechModel(
+        variant: "verifiable-fixture", downloadBytes: 7, isMultilingual: true,
+        weightsRepository: "example/model", weightsRevision: "pinned",
+        weightFiles: [
+            "changed.bin": .init(bytes: 3, sha256: hexDigest(SHA256.hash(data: Data("new".utf8)))),
+            "unchanged.bin": .init(bytes: 4, sha256: hexDigest(SHA256.hash(data: Data("same".utf8)))),
+        ],
+        tokenizerRepository: "example/tokenizer", tokenizerRevision: "tokenizer",
+        tokenizerDigests: [:])
+}
+
+/// Writes the files of ``verifiableModel()``, with `changed` as the varying one.
+private func writeVerifiable(into folder: URL, changed: String) throws {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data("same".utf8).write(to: folder.appending(path: "unchanged.bin"))
+    try Data(changed.utf8).write(to: folder.appending(path: "changed.bin"))
+}
+
+private func hexDigest(_ digest: SHA256.Digest) -> String {
+    digest.map { String(format: "%02x", $0) }.joined()
 }
 
 private func isExcludedFromBackup(_ url: URL) throws -> Bool {
@@ -227,6 +252,122 @@ struct FileSystemSpeechModelStoreTests {
 
         #expect(WeightsAssets.missing(for: .base, in: folder).contains(weightFiles[3]))
         #expect(!store.isInstalled(.base))
+    }
+
+    @Test("weights without a revision record that hash to the pin are adopted in place without a download")
+    func adoptsAnUnrecordedVerifiedInstall() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let fetched = Mutex<[ModelComponent]>([])
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, _, _ in
+            fetched.withLock { $0.append(component) }
+        }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "new")
+        try writeTokenizer(into: folder)
+
+        #expect(!store.isInstalled(model))
+        #expect(store.whyNotInstalled(model)?.contains("no record of the pinned weights revision") == true)
+
+        try await store.install(model) { _ in }
+
+        #expect(fetched.withLock { $0 }.isEmpty, "a verified install must fetch nothing")
+        #expect(store.isInstalled(model))
+        #expect(store.whyNotInstalled(model) == nil)
+    }
+
+    @Test("weights without a revision record that differ from the pin are fetched, not adopted")
+    func refusesAnUnrecordedMismatchedInstall() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let fetched = Mutex<[ModelComponent]>([])
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, destination, _ in
+            fetched.withLock { $0.append(component) }
+            try writeVerifiable(into: destination, changed: "new")
+        }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "old")
+        try writeTokenizer(into: folder)
+
+        try await store.install(model) { _ in }
+
+        #expect(fetched.withLock { $0 } == [.weights])
+        #expect(try Data(contentsOf: folder.appending(path: "changed.bin")) == Data("new".utf8))
+        #expect(store.isInstalled(model))
+    }
+
+    @Test("a failed load over intact files keeps its retry")
+    func intactFilesKeepTheRetry() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, _, _, _ in }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "new")
+        try writeTokenizer(into: folder)
+        try await store.install(model) { _ in }
+
+        let failure = WeightsAssets.loadFailure(of: model, in: folder, description: "boom")
+
+        #expect(failure == .modelLoadFailed(description: "boom"))
+        #expect(store.isInstalled(model))
+    }
+
+    @Test("a failed load over a truncated weight file or a missing tokenizer reads as not installed")
+    func absentFilesReadAsNotInstalled() throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let folder = FileSystemSpeechModelStore(root: sandbox.root) { _, _, _, _ in }.location(of: model)
+        try writeVerifiable(into: folder, changed: "ne")
+        try writeTokenizer(into: folder)
+        #expect(WeightsAssets.loadFailure(of: model, in: folder, description: "") == .modelNotInstalled)
+
+        try writeVerifiable(into: folder, changed: "new")
+        TokenizerAssets.remove(from: folder)
+        #expect(WeightsAssets.loadFailure(of: model, in: folder, description: "") == .modelNotInstalled)
+    }
+
+    @Test("a failed load over a same-size corrupted file names the damage and the install repairs only it")
+    func repairsDamagedWeights() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let fetched = Mutex<[ModelComponent]>([])
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, destination, _ in
+            fetched.withLock { $0.append(component) }
+            try writeVerifiable(into: destination, changed: "new")
+        }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "new")
+        try writeTokenizer(into: folder)
+        try await store.install(model) { _ in }
+        fetched.withLock { $0 = [] }
+        try Data("bad".utf8).write(to: folder.appending(path: "changed.bin"))
+        #expect(store.isInstalled(model), "a size check alone cannot see the damage")
+
+        let failure = WeightsAssets.loadFailure(of: model, in: folder, description: "")
+
+        #expect(failure == .modelDamaged(fileCount: 1))
+        #expect(failure.recovery == .downloadSpeechModel)
+        #expect(!store.isInstalled(model))
+        try await store.install(model) { _ in }
+        #expect(fetched.withLock { $0 } == [.weights])
+        #expect(WeightsAssets.areVerified(for: model, in: folder))
+        #expect(store.isInstalled(model))
+    }
+
+    @Test("names why a model is not installed")
+    func namesWhyNotInstalled() throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let store = FileSystemSpeechModelStore(root: sandbox.root, download: writingDownloader())
+        let folder = store.location(of: model)
+
+        #expect(store.whyNotInstalled(model)?.contains("has not been downloaded") == true)
+        try writeVerifiable(into: folder, changed: "new")
+        try FileManager.default.removeItem(at: folder.appending(path: "changed.bin"))
+        #expect(store.whyNotInstalled(model)?.contains("1 weight files are missing") == true)
+        try writeVerifiable(into: folder, changed: "new")
+        try WeightsAssets.recordRevision(of: model, in: folder)
+        #expect(store.whyNotInstalled(model)?.contains("tokenizer") == true)
     }
 
     @Test("a default install removes unused model folders and keeps a model in use")

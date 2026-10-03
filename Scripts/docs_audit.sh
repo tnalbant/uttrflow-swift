@@ -689,6 +689,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 0c. No document shows a tag in the retired YEAR.MONTH.DAY scheme.
+# ---------------------------------------------------------------------------
+#
+# Versions are YY.MMDD.REVISION (RELEASING.md). A `v2026.9.14` example teaches a tag the release
+# workflow refuses. The changelog keeps its historical release links; the scheme explanations
+# name the old version without the `v`, so they are not tags and are not matched.
+printf '\nNo document shows a retired release tag\n'
+
+retired_tag_findings=$(git grep -n -E '(^|[^A-Za-z0-9_])v20[0-9]{2}\.[0-9]+\.[0-9]+' -- '*.md' ':!CHANGELOG.md' || true)
+if [[ -n "$retired_tag_findings" ]]; then
+    fail "a document shows a release tag in the retired YEAR.MONTH.DAY scheme" \
+        "Use the current YY.MMDD.REVISION form, such as v26.0926.0, as RELEASING.md states." \
+        "" $'\n'"$(printf '    %s\n' "$retired_tag_findings")"
+else
+    pass "no document outside CHANGELOG.md shows a retired YEAR.MONTH.DAY tag"
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Every backticked path that claims to be a file in this repository exists.
 # ---------------------------------------------------------------------------
 #
@@ -822,10 +840,9 @@ fi
 # by a third, and a reader who acts on it is as misled as by a wrong exact number. "4,000+"
 # stays true and stays useful, which is what a floor is for.
 #
-# One thing is skipped because it is a record rather than a claim: a line in Swift Testing's
-# own summary format — `Test
-# run with 579 tests in 83 suites` in `Docs/offline.md` is the transcript of one filtered
-# run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
+# One thing is skipped, because it is a record rather than a claim: a line in Swift Testing's
+# own summary format — `Test run with 579 tests in 83 suites` in `Docs/offline.md` is the
+# transcript of one filtered run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
 # `make verify` snippet inside one.
 printf '\nThe test count\n'
 
@@ -1215,31 +1232,29 @@ fi
 # 7e. The Insights artboards match InsightsPresentation, not an invented contract.
 # ---------------------------------------------------------------------------
 #
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
+# The Insights artboards have twice drawn a contract production did not have: first an
+# invented scope, meter and language card, then the bar chart production had replaced with
+# a calendar and range switch. Nothing tied the generator to `InsightsPresentation.swift`.
 printf '\nInsights artboard contract\n'
 
 if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
     fail "Scripts/insights_contract_audit.py is missing or not executable" \
         "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
+        "generator can drift away from the range switch, calendar and figures unnoticed."
 else
     if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
         if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
             pass "the Insights artboards match InsightsPresentation and its tests"
         else
             fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "The audit prints every mismatch: the range switch, the calendar, the figures," \
+                "the empty state, or a retired claim. Fix Design/_gen_app.py," \
                 "then regenerate every Insights artboard."
         fi
     else
         fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
+            "The audit's own self-test either fails the generator as it stands or misses" \
+            "an injected drift. Fix the audit, not the artboard."
     fi
 fi
 

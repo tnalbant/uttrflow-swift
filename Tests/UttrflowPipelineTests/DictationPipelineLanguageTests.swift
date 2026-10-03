@@ -91,7 +91,8 @@ struct DictationPipelineLanguageTests {
         let speech = DriftingSpeechEngine(detecting: detected)
         return (
             DictationPipeline(
-                capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
+                capture: capture, speech: speech,
+                cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
                 context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
                 recordings: recordings, profile: profile,
                 windowing: quick, earlyPoll: earlyPoll),

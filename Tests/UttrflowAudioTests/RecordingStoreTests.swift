@@ -110,7 +110,7 @@ struct RecordingStoreTests {
 
         #expect(
             restored.destination
-                == AppContext(
+                == AppIdentity(
                     applicationName: "Editor", bundleIdentifier: "com.example.editor"))
         #expect(restored.fieldKind == .codeEditor)
     }
@@ -122,8 +122,11 @@ struct RecordingStoreTests {
         let writer = try #require(await store.begin(at: now))
         writer.append(Array(repeating: 0.3, count: 1_600))
         let recording = await store.finish(writer)
-        let legacy = AppContext(applicationName: "Editor", bundleIdentifier: "com.example.editor")
-        let data = try PropertyListEncoder().encode(legacy)
+        let legacy = AppIdentity(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "applicationName": "Editor", "bundleIdentifier": "com.example.editor", "isSecure": false,
+            ], format: .binary, options: 0)
         try data.write(
             to: sandbox.directory.appending(path: "\(recording.id.uuidString).context"),
             options: .atomic)
@@ -188,6 +191,41 @@ struct RecordingStoreTests {
         #expect(await store.waiting(now: now.addingTimeInterval(400 * 86_400)).isEmpty)
         #expect(FileManager.default.fileExists(atPath: writer.url.path))
         // And it is offered for a retry again once the clock is put right.
+        #expect(await store.waiting(now: now) == [finished])
+    }
+
+    @Test("500 waiting recordings are pruned to the newest that fit the byte limit")
+    func manyRecordingsArePrunedToTheByteLimit() async throws {
+        let sandbox = Sandbox()
+        try FileManager.default.createDirectory(at: sandbox.directory, withIntermediateDirectories: true)
+        let audio = try #require(
+            AudioSamples(samples: Array(repeating: 0.1, count: 16_000), sampleRate: 16_000))
+        let wav = WAVEncoder.encode(audio)
+        var ids: [UUID] = []
+        for age in 0..<500 {
+            let id = UUID()
+            let file = sandbox.directory.appending(path: "\(id.uuidString).wav")
+            try wav.write(to: file)
+            try FileManager.default.setAttributes(
+                [.creationDate: now.addingTimeInterval(-Double(age))], ofItemAtPath: file.path)
+            ids.append(id)
+        }
+        let store = RecordingStore(directory: sandbox.directory, byteLimit: 10 * wav.count)
+
+        let waiting = await store.waiting(now: now)
+
+        #expect(waiting.map(\.id) == Array(ids.prefix(10)))
+        let left = try FileManager.default.contentsOfDirectory(atPath: sandbox.directory.path)
+        #expect(left.count == 10)
+    }
+
+    @Test("the newest recording is kept even when it alone is over the byte limit")
+    func theNewestRecordingSurvivesTheByteLimit() async throws {
+        let sandbox = Sandbox()
+        let store = RecordingStore(directory: sandbox.directory, byteLimit: 1)
+        let writer = try #require(await store.begin(at: now))
+        let finished = await store.finish(writer)
+
         #expect(await store.waiting(now: now) == [finished])
     }
 

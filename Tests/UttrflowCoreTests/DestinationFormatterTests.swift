@@ -90,4 +90,16 @@ struct DestinationFormatterTests {
         let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
         #expect(formatter.layout == .singleLine)
     }
+
+    @Test("owes formatting only where its first-word or stop policy would still change the text")
+    func owesFormattingFollowsPolicy() {
+        let text = "average handling time in minutes"
+        for destination in Destination.allCases {
+            let formatter = DestinationFormatter.standard(for: destination)
+            let expected = formatter.firstWord != .asSpoken && formatter.terminalStop != .never
+            #expect(formatter.owesFormatting(text) == expected, "\(destination)")
+            #expect(!formatter.owesFormatting("Average handling time in minutes"), "\(destination)")
+            #expect(!formatter.owesFormatting("average handling time, in minutes"), "\(destination)")
+        }
+    }
 }

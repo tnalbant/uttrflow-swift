@@ -38,14 +38,16 @@ keys ([insertion.md](insertion.md), "Which route each insertion takes"), and no 
 command forces the typed strategy, so typed delivery is measured by dictating or accepting a
 suggestion in the application.
 
-### Before trusting a `--via` run
+### Reading a `--via` run
+
+Every `--via` run is built by `TextInsertion.coordinator(only:)`, the factory the app uses, so a
+forced strategy still asks the focused field whether it is secure, reads the destination and
+reports how long a paste took to land. Each run prints `destination:` and `secure:` under the
+`Inserted via …` line.
 
 `uttrflow-dev doctor` reports the three things that look identical from outside: whether
 Accessibility is granted, whether anything is focused, and whether the focused field reports its
 selection. Run from a terminal, the grant it reads is the terminal's.
-
-Three properties of `Sources/uttrflow-dev/Insert.swift` mean a forced route measures slightly
-less, or something other, than it appears to.
 
 **"Reports success, changes nothing" does not print as success.**
 `SelectionWriter.replaceSelection(with:)` checks that the selection collapses to the expected
@@ -53,21 +55,6 @@ caret after the write. A field that accepts the write and leaves the selection w
 reports no selection afterwards, fails with "The app hasn't confirmed whether the text was
 inserted"; a field whose caret moves while its text does not fails as refused. Record the column
 from that message, not from the screen.
-
-**`--via paste` does not print the confirmation timing.** `Insert` attaches its `report(_:)`
-printout ("words reached the caret after 0.42s") only on the default route, built with
-`TextInsertion.coordinator(reporting:)`. Each `--via` case builds a bare
-`TextInsertionCoordinator` with no reporter. The confirmation still runs, because
-`PasteboardTextInsertionEngine` returns its answer as the `InsertionArrival`, so `--via paste`
-prints the outcome as the arrival word on the `Inserted via …` line. Fill `Confirmed` from a
-`--via paste` run; take any timing from a full-route run.
-
-**A `--via` run cannot measure a secure field.** All three `--via` cases construct
-`TextInsertionCoordinator(strategies:)` without a `focus:`, and `focus` is what the coordinator
-asks `focusedFieldIsSecure()`. With it `nil` the attempt is always marked
-`intoSecureField: false`, and the destination application is not read either. The behaviour
-[insertion.md](insertion.md) describes under "Dictating into a field that hides what is typed" is
-reachable only from the full route.
 
 ## Browsers
 
@@ -109,7 +96,7 @@ true.
 | Finder | search field | yes | | | | once | right | | no | correct | `Published` and `Caret` as for TextEdit. The second live-harness surface ([predict-reliability.md](predict-reliability.md)) |
 | System Settings | search field | | | | | | | | no | | ([predict-ime.md](predict-ime.md)) |
 | — | any single-line `NSTextField` | | | | | | | | no | | The marked range reaches AppKit multi-line text views and nothing else, so it misses single-line fields, where a completion is worth most ([predict-ime.md](predict-ime.md)) |
-| — | any secure field | | see the caveat above | | | | | no | | | A password or PIN field takes the words like any other field and nothing else does: the outcome is marked `intoSecureField` and the words reach no store — no history row, not even a length, no clip, no dictionary lesson — and the floating button neither draws nor reads them. A clipboard write carries `org.nspasteboard.ConcealedType` ([insertion.md](insertion.md)) |
+| — | any secure field | | | | | | | no | | A password or PIN field takes the words like any other field and nothing else does: the outcome is marked `intoSecureField` and the words reach no store — no history row, not even a length, no clip, no dictionary lesson — and the floating button neither draws nor reads them. A clipboard write carries `org.nspasteboard.ConcealedType` ([insertion.md](insertion.md)) |
 
 ## Terminals
 

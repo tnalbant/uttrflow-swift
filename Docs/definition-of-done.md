@@ -64,6 +64,8 @@ Each deviation is deliberate and current. The page named beside it holds the mea
 - **§29 no audio saved.** Each dictation's audio is written beside the live buffer and
   deleted the moment its words land; it is kept for a day only when the words were lost, so
   the dictation can be retried. Nothing leaves the Mac. `Docs/recordings.md`.
+- **§31 no small fallback model.** A local open-weight model ships, because Hindi clean-up must
+  run on the Mac. `Docs/bakeoff.md`.
 
 §31 is not a deviation: no build assembles the local model (see the table above).
 

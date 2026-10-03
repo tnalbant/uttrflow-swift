@@ -511,7 +511,7 @@ public enum DiagnosticsPresenter {
             return card("Not checked yet", [], "Checking", .unknown)
         }
         let origin = inUse == .localModel ? "Downloaded" : "Built in"
-        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "Ready", .good)
+        return card(name(for: inUse), [origin, onDevice], "Ready", .good)
     }
 
     /// The model AI suggestions need, and how far along it is.

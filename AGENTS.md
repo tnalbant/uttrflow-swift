@@ -19,6 +19,7 @@ on-device. This file is for everyone who works on it, by hand or with an agent. 
 | hitting a tooling failure | [Docs/tooling-traps.md](Docs/tooling-traps.md) |
 
 4. [`Docs/README.md`](Docs/README.md), then the page for the module you change.
+5. [`Docs/decisions.md`](Docs/decisions.md) before proposing an approach: what was rejected, and what reopens it.
 
 ## Commands
 
@@ -105,6 +106,8 @@ Each gate fails its command. Thresholds and the full list are in
 - skip a hook or a check (`--no-verify`) or loosen a gate;
 - raise a baseline, except through a script's reported `--after-merge` or `--absorb` path;
 - commit a secret, personal data, or text from a private conversation;
+- commit a plan or a session's working artefact; future work is an issue
+  ([workflow.md](Docs/agents/workflow.md#plans-and-future-work));
 - hand-edit a generated file;
 - rebase, amend or force-push a branch after review: bring in `main` with a merge;
 - describe a security vulnerability in public: report it as `SECURITY.md` says.

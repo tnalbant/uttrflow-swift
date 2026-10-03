@@ -1,6 +1,7 @@
 public import Foundation
 import OSLog
 private import Synchronization
+private import UttrflowCore
 
 /// Runs the gates in order, remembers what they decided, and never makes a keystroke wait.
 public actor Verifier {

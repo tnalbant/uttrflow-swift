@@ -134,6 +134,32 @@ struct CaretLocatorTests {
         #expect(field == CGRect(x: 112, y: 10, width: 0, height: 16))
     }
 
+    @Test(
+        "Bounds after the caret and selection cover the full following grapheme",
+        arguments: ["🇺🇸", "👨‍👩‍👧‍👦", "e\u{301}"]
+    )
+    func followingGraphemeUsesItsFullRange(_ grapheme: String) {
+        let length = grapheme.utf16.count
+        let value = "a" + grapheme + "z"
+        var requested: (Int, Int)?
+        _ = CaretLocator.caret(
+            at: (location: 1, length: 0), frame: nil, value: value,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 40, y: 10, width: 18, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.0 == 1 && requested?.1 == length)
+
+        requested = nil
+        _ = CaretLocator.caret(
+            at: (location: 1, length: length), frame: nil, value: value,
+            bounds: { location, length in
+                requested = (location, length)
+                return CGRect(x: 40, y: 10, width: 18, height: 16)
+            }, markerBounds: { nil })
+        #expect(requested?.0 == 1 && requested?.1 == length)
+    }
+
     @Test("A selection gets its caret from the glyph at its start")
     func selectionUsesStartGlyph() {
         var requested: (Int, Int)?

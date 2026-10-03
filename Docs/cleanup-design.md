@@ -216,6 +216,13 @@ lookback against bodies each rule acts on, so a new pass is one line. The one ex
 sentence that opens on a spoken mark name, which the pass writes onto the word before it on
 purpose.
 
+A sentence-local pass reads no further back than the sentence it is cleaning. A rule
+that gathers context by walking outwards from a word is bounded at the sentence end as
+well as by a word count: `WordShape.key` drops a trailing stop, so without that bound a
+two-word phrase, a number anchor or a determiner can be matched across a boundary the
+speaker set. `Draft.sentenceRun` is the bound, and `SentenceLocalityTests` holds every
+such pass to it.
+
 ## 4. The language model, as the last formatter
 
 The model sees a prompt built from three layers by `PromptBuilder`, each layer a
@@ -339,6 +346,13 @@ alone. Some cleanings only make sense over the whole:
   on a word no sentence ends on ("we moved the review to"), or the next piece opens on a
   preposition a speaker never fronts followed by a name or a determiner ("to Thursday"). A
   seam with no evidence either way keeps its stop.
+- **Spoken groups across a seam.** A digit group or a run of capital letters on both sides of
+  the cut, at most `PieceJoiner.longestSpokenGroup` long, is one number or code said in groups
+  ("555" | "0142", "AB" | "123"), and the groups are joined with a space. Where the evidence says
+  the sentence ran through, a full stop the recogniser wrote at the cut comes off too; a question
+  or exclamation mark stays, and the group row abstains on it. The cost is a sentence that ends
+  on a number before one that opens on a number ("It costs 12." | "13 people came."), which it
+  joins; the measurement is in `PieceJoinerTests`.
 
 Some passes are only correct over the whole message, and their scope is in the type.
 `CleaningPipeline.piece(numbers:digits:…)` is what a piece gets — it takes no

@@ -1,27 +1,6 @@
 // What Uttrflow records against a dictation: corrections, snippet firings and the spoken word count.
 public import struct Foundation.UUID
-
-/// Why Uttrflow changed a word; a closed set whose raw values match `UttrflowAI.CorrectionReason`.
-public enum CorrectionReason: String, Sendable, Equatable, CaseIterable, Codable {
-    /// The replacement is written on the screen being dictated into.
-    case seenOnScreen
-    /// The same word appears elsewhere in this dictation, where it is heard clearly.
-    case saidClearlyElsewhere
-    /// What was heard was loose letters and the replacement is a word.
-    case heardAsStrayLetters
-    /// What was heard was a run of words and the replacement is one written word.
-    case heardAsSeveralWords
-
-    /// The label the Corrections page shows beside the change.
-    public var title: String {
-        switch self {
-        case .seenOnScreen: "Seen on screen"
-        case .saidClearlyElsewhere: "You said it clearly elsewhere"
-        case .heardAsStrayLetters: "Heard as stray letters"
-        case .heardAsSeveralWords: "Heard as several words"
-        }
-    }
-}
+public import UttrflowCore
 
 /// One word Uttrflow replaced, with everything an undo needs so it never searches the finished text.
 public struct RecordedCorrection: Sendable, Equatable, Identifiable, Codable {
@@ -59,18 +38,6 @@ public struct RecordedCorrection: Sendable, Equatable, Identifiable, Codable {
         self.heardConfidence = heardConfidence
         self.isUndone = isUndone
         self.writtenWordIndex = writtenWordIndex
-    }
-
-    /// Builds a change from the raw reason the pipeline carries, or `nil` when this build cannot name it.
-    public init?(
-        id: UUID = UUID(), heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID,
-        reason: String, heardConfidence: Double, isUndone: Bool = false, writtenWordIndex: Int? = nil
-    ) {
-        guard let named = CorrectionReason(rawValue: reason) else { return nil }
-        self.init(
-            id: id, heard: heard, wrote: wrote, wordRange: wordRange, entryID: entryID,
-            reason: named, heardConfidence: heardConfidence, isUndone: isUndone,
-            writtenWordIndex: writtenWordIndex)
     }
 
     /// Reads `isUndone` as `false` and `writtenWordIndex` as unknown when absent; the rest is required. See Docs/core-history-decoding.md.

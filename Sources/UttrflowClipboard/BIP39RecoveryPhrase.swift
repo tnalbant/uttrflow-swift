@@ -11,9 +11,7 @@ enum BIP39RecoveryPhrase {
         var window: [UInt16] = []
         for rawWord in text.split(whereSeparator: \.isWhitespace) {
             let word = String(rawWord).trimmingCharacters(in: .punctuationCharacters)
-            // Wallet exports often prefix each word with its position. Treat only a
-            // standalone positive integer as a list marker; arbitrary numeric text
-            // still breaks a candidate phrase.
+            // A standalone positive integer is a position marker; other numeric text breaks the phrase.
             if !window.isEmpty, isNumberedListMarker(String(rawWord)) { continue }
 
             let normalizedWord = word.lowercased()

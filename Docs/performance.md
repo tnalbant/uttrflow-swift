@@ -233,9 +233,17 @@ breach is listed with the reason, and fails as stale once it is gone.
 
 The wakeup check reads one file at a time and follows no calls, so it does not see a loop whose
 sleep sits in a function the loop calls, two functions that schedule each other, or a timer whose
-interval comes from another file. Counting an idle app's wakeups with `powermetrics` catches every
-shape, but it needs root and a running app, so it is not part of `make verify` or
-`make perf-budget-models`; it is the tool for a battery report that does not match a green audit.
+interval comes from another file's caller. Only a measurement catches every shape, and
+`make idle-wakeups` is its complement: it launches the built `dist/Uttrflow.app` in a throwaway
+`UTTRFLOW_TEST_CONTAINER` (onboarding finished, menu bar only, updates off), waits
+`SETTLE_SECONDS`, then reads `ri_interrupt_wkups`, `ri_pkg_idle_wkups` and processor time with
+`proc_pid_rusage` over `WINDOW_SECONDS` — no root needed — and fails above `WAKEUPS_PER_SECOND`
+or `CPU_PERCENT` in `Scripts/idle_wakeups.py`. It first proves itself on a 20 Hz loop whose sleep
+sits in a called function, which must fail, and a process that only sleeps, which must pass. It
+is not in `make verify`, which builds no bundle, and not yet in CI: the counters are the whole
+process's, AppKit's threads included, and a build of 7 September read 8.35 wakeups a second and
+0.77% of a core idle on an Apple M5 Pro, over a line drawn for the app's own timers. It measures
+the menu-bar state only, since no window can yet be opened without a display.
 
 Memory can only be read with the models loaded, so `make perf-budget-models` runs
 `uttrflow-bakeoff gpu-memory --passes 12 --release` and `uttrflow-bakeoff profile --dictations 10`,

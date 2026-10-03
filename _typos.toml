@@ -43,6 +43,10 @@ extend-exclude = [
   "Sources/UttrflowEval/TranscriptionCorpus.swift",
   "Sources/UttrflowDictionary/GeneralVocabulary.swift",
   "Sources/UttrflowDictionary/DoubleMetaphone.swift",
+  "Sources/UttrflowUX/Resources/confusables.txt",
+  "Sources/UttrflowUX/Resources/Scripts.txt",
+  "Sources/UttrflowUX/Resources/ScriptExtensions.txt",
+  "Sources/UttrflowUX/Resources/PropertyValueAliases.txt",
   "Sources/uttrflow-bakeoff/",
   "Tests/UttrflowPredictTests/",
   "Tests/UttrflowPredictStoreTests/",
@@ -61,6 +65,9 @@ chec = "chec"
 hel = "hel"
 tomor = "tomor"
 ser = "ser"
+numer = "numer"
+whos = "whos"
+wheres = "wheres"
 caf = "caf"
 gud = "gud"
 ANE = "ANE"

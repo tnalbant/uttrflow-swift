@@ -19,10 +19,10 @@ Google Sheets when its window title identifies it. The user can override any app
 
 There is one table of which applications are terminals and editors: the terminal, code editor,
 query editor and document editor rows of `DestinationRules.standard` in `UttrflowCore`, the same
-rows that decide how a dictation into those applications is laid out. `TerminalApplications` and
-the editor list in `AcceptKeys` are read from those rows, lowercased and matched by prefix, and
-`UttrflowContext` re-exports `TerminalApplications` under the same name. Spreadsheets come from
-the destination table too, which can identify Google Sheets from its window title.
+rows that decide how a dictation into those applications is laid out. `TerminalApplications` (in
+`UttrflowCore`) and the editor list in `AcceptKeys` are read from those rows, lowercased and
+matched by prefix, so dictation and suggestions name the one type directly. Spreadsheets come
+from the destination table too, which can identify Google Sheets from its window title.
 `TerminalApplications` has two readers: `AcceptKeys`, to hand a shell the right arrow, and
 `FocusedFieldSnapshot`, to keep a shell's `AXTextArea` out of the prose rule and to strip its
 prompt from the line. An application added to a row is a terminal or an editor to dictation and

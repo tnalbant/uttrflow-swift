@@ -22,7 +22,7 @@ show the order that actually runs.
 |---|---|---|
 | `.foundationModels` | always | Apple's on-device model. |
 | `.rules` | always | Deterministic punctuation, capitalisation and filler removal; the floor every preference ends in. |
-| `.cloud` | only under `UTTRFLOW_CLOUD` | No target defines the flag, so the shipped binary has no clean-up path that reaches the network. See [`offline.md`](offline.md). |
+| `.cloud` | never | No build contains a hosted engine; the case remains only so a stored record or preference naming it still decodes, and the preference drops it. See [`offline.md`](offline.md). |
 | `.localModel` | never | See below. |
 | `.untidied` | never | Not an engine: it is what a record says when every engine was starved or refused and the transcript went in as heard. |
 

@@ -65,29 +65,16 @@ literals) matches these files under `Sources/`:
 | `Sources/Uttrflow/Onboarding/` | `NetworkReachability+System.swift`, `OnboardingAccountLayer.swift`, `OnboardingWindowController.swift` | first-run sign-in, and the banner that says why it failed |
 | `Sources/UttrflowSpeech/TokenizerDownload.swift` | 1 | fetches the speech model's weights and tokenizer at install time |
 | `Sources/UttrflowSpeech/AppleSpeechBackend.swift` | 1 | installs the system speech asset; a known gap, see *What this does not prove* |
-| `Sources/UttrflowAI/HTTPCleanupModel.swift` | 1 | the hosted clean-up model, inside `#if UTTRFLOW_CLOUD` from first line to last |
 | `Sources/uttrflow-dev/SignIn.swift`, `Sources/uttrflow-eval/CorpusConnection.swift` | 2 | developer tools that ship in nothing |
 
 The pattern also matches an `https://example.com` inside an expected transcript in
 `Sources/UttrflowEval/EvaluationCorpus.swift`, which is text, not a call. Every other module under
 `Sources/` has no match, and that is what the audit's first check asserts.
 
-The hosted clean-up model is the only one of these the dictation path runs through, and it is
-compiled out. That the flag is off in the shipped build is confirmed from the artefact, not
-from reading the `#if`:
-
-```
-$ nm -a .build/arm64-apple-macosx/debug/Uttrflow | swift demangle | grep -c 'UttrflowAI.HTTPCleanupModel'
-0
-$ nm -a .build/.../UttrflowAI.build/HTTPCleanupModel.swift.o | swift demangle \
-    | grep -v 'FORCE_LOAD\|reflection_version\|ltmp\|module_hash'
-(nothing)
-```
-
-The object file holds nothing but autolink stubs. The only symbols in the binary that mention
-the cloud are the `cloudEndpoint:` argument labels on `TextTransformers.all` and `.router`: the
-parameter survives, the engine does not. An endpoint passed to a non-cloud build is ignored,
-which `Tests/UttrflowAITests/OfflineGuaranteeTests.swift` asserts.
+No clean-up engine is hosted: `TextTransformers.all` assembles only on-device engines, and
+`Tests/UttrflowAITests/OfflineGuaranteeTests.swift` asserts every assembled and selectable kind
+runs without the network. `TransformerKind.cloud` survives only so a stored record naming it
+still decodes; it is never selectable.
 
 ### Dependencies
 
@@ -298,15 +285,15 @@ module nobody added to it; a list of what is allowed covers a new module by defa
 
 | # | What it asserts | How |
 |---|---|---|
-| 1 | No file under `Sources/` names a way to reach the network, except `UttrflowAccount` and the eight files in `ALLOWED_NETWORK_FILES`; every named exception still exists; the known gap is printed every run | Source grep with `NETWORK_PATTERN` |
+| 1 | No file under `Sources/` names a way to reach the network, except `UttrflowAccount` and the files in `ALLOWED_NETWORK_FILES`; every named exception still exists; the known gap is printed every run | Source grep with `NETWORK_PATTERN` |
 | 1b | No file reads a URL through `Data(contentsOf:)` or its siblings outside the files in `URL_READERS` | Source grep; see the limits below |
-| 2 | The hosted clean-up model is wrapped in `#if UTTRFLOW_CLOUD` from first line to last, and `Package.swift` does not define the flag | `head`/`tail` on the file, grep on `Package.swift` |
+| 2 | No source or target names `UTTRFLOW_CLOUD`, so no build flag can switch a hosted engine back on | grep on `Package.swift` and `Sources/` |
 | 3 | Loading a speech model passes `download: false`, and `HubApi`, `WhisperKit.download` and `AutoTokenizer` are named nowhere but the backend and the install file | Source grep |
 | 4 | A non-`nil` `tokenizerFolder` is pinned, so loading cannot fall back to the hub | Source grep on `WhisperKitBackend.swift` |
 | 5 | The suggestion model checks its cache before the hub, no load takes the hub downloader directly, the hub client is named only in `HUB_CLIENT_FILES`, no client is built with its defaults, no download sends a token or follows `HF_ENDPOINT`, and no model is fetched from a branch | Source grep |
 | 6 | Sparkle is imported in one file in the app shell, and one target depends on it | Source grep, grep on `Package.swift` |
 | 6b | Sentry is imported only in `UttrflowDiagnostics`, one target links it, and only the app depends on that module | Source grep, grep on `Package.swift` |
-| 7 | No linked Uttrflow object can reach the network unless its source file is allowed one, no network-capable dependency outside `ALLOWED_NETWORK_DEPENDENCIES` (`Hub ArgmaxCore HuggingFace EventSource Cmlx`) is linked, and `HTTPCleanupModel` is absent from the built app | one `nm -uA` over every object in `Uttrflow.product/Objects.LinkFileList`, then `nm -a` on the binary |
+| 7 | No linked Uttrflow object can reach the network unless its source file is allowed one, and no network-capable dependency outside `ALLOWED_NETWORK_DEPENDENCIES` (`Hub ArgmaxCore HuggingFace EventSource Cmlx`) is linked | one `nm -uA` over every object in `Uttrflow.product/Objects.LinkFileList` |
 
 Check 7 needs the built binary. With `--require-binary`, or whenever `CI` is set, a missing one
 is a failure, because it is the only check that can see a dependency's network call. A bare

@@ -1,5 +1,6 @@
 import Testing
 import UttrflowContext
+import UttrflowPredict
 
 @testable import Uttrflow
 
@@ -39,6 +40,7 @@ struct RejectedSuggestionRecorderTests {
         await recorder.record("wrong completion", in: surface)
         #expect(await store.attempts == 1)
         #expect(recorder.suppresses("wrong completion", in: surface))
+        #expect(recorder.suppresses("WRONG COMPLETION", in: surface))
         #expect(
             !recorder.suppresses(
                 "wrong completion", in: Surface(bundleIdentifier: "com.example.other", role: "AXTextArea")))
@@ -47,6 +49,18 @@ struct RejectedSuggestionRecorderTests {
         #expect(await store.attempts == 2)
         #expect(await store.successes == 0)
         #expect(recorder.suppresses("wrong completion", in: surface))
+    }
+
+    @Test("A rejected Unicode line suppresses case-folded and canonical equivalents")
+    @MainActor
+    func unicodeRejectionMemory() async {
+        let surface = Surface(bundleIdentifier: "com.example.editor", role: "AXTextArea")
+        let recorder = RejectedSuggestionRecorder(store: ThrowingRejectedStore())
+
+        await recorder.record("Straße café", in: surface)
+
+        #expect(recorder.suppresses("STRASSE CAFE\u{301}", in: surface))
+        #expect(!recorder.suppresses("STRASSE cafe", in: surface))
     }
 
     @Test("A rejected-line counter write succeeds on retry after one failure.")

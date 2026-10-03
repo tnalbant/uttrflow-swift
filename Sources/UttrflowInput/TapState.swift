@@ -13,7 +13,7 @@ final class TapState: @unchecked Sendable {
     /// Whether an application menu is open, which returns claimed keys to the application.
     private let nativeMenuIsOpen = Atomic<Bool>(false)
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
-    let hold = KeyHold()
+    let hold: KeyHold
 
     /// Written by the tap's thread and read by the drain; a slot is written again only once the drain has read it.
     private let ring: UnsafeMutablePointer<UInt32>
@@ -25,15 +25,19 @@ final class TapState: @unchecked Sendable {
     private let read = Atomic<UInt64>(0)
     /// How many disables have counted against the tap inside the current window.
     private let disables = Atomic<Int>(0)
-    /// When the last disable arrived, in uptime nanoseconds.
+    /// When the last disable arrived, in nanoseconds on `clock`.
     private let lastDisable = Atomic<UInt64>(0)
     /// The tap port, retained here so the callback can re-enable it without a lock.
     private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
     /// Woken on every write, so the drain runs off the tap's own thread.
     private let signal: any DispatchSourceUserDataAdd
+    /// The time disables and holds are measured on, injected so a test can move it by hand.
+    private let clock: ElapsedClock
 
-    init(signal: any DispatchSourceUserDataAdd) {
+    init(signal: any DispatchSourceUserDataAdd, clock: some Clock<Duration> = ContinuousClock()) {
         self.signal = signal
+        self.clock = ElapsedClock(clock)
+        hold = KeyHold(clock: clock)
         ring = .allocate(capacity: Self.capacity)
         ring.initialize(repeating: 0, count: Self.capacity)
     }
@@ -80,7 +84,7 @@ final class TapState: @unchecked Sendable {
 
     /// Whether the tap should be turned back on, which it is unless it keeps being disabled within a short window.
     func shouldReEnable() -> Bool {
-        let now = DispatchTime.now().uptimeNanoseconds
+        let now = clock.nanoseconds
         let last = lastDisable.exchange(now, ordering: .relaxed)
         let (count, reEnable) = TapDisableWindow.decide(
             last: last, now: now, count: disables.load(ordering: .relaxed))

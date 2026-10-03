@@ -2,7 +2,7 @@
 
 import Testing
 
-@testable import UttrflowClipboard
+@testable import UttrflowCore
 
 @Suite("Which language a code clip is written in")
 struct CodeLanguageTests {

@@ -483,20 +483,10 @@ struct GrammarGuardTests {
         #expect(
             verdict("She has drove this route before", "She has written this route before")
                 == .rejected(reason: "the rewrite lost or replaced 'drove'", kind: .lostWord))
-        #expect(!MeaningPreservationGuard.sameForm("wrote", "spoken"))
-        #expect(!MeaningPreservationGuard.sameForm("wrote", "writeup"))
     }
 
     @Test("accepts common romanised Hindi respellings and refuses meaning changes")
     func acceptsRomanisedHindiRespellings() {
-        for (first, second) in [
-            ("hai", "he"), ("nahi", "nahin"), ("kar", "kr"), ("mein", "me"), ("yeh", "ye"),
-        ] {
-            #expect(
-                MeaningPreservationGuard.sameForm(
-                    first, second, allowingRomanisedHindiSpellings: true))
-        }
-
         for (original, rewritten) in [
             ("Kal mujhe call karna hai", "Kal mujhe call karna he."),
             ("Main kal office nahi aaunga", "Main kal office nahin aaunga."),
@@ -897,6 +887,21 @@ struct GrammarGuardTests {
         #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
     }
 
+    @Test("an offered reading excuses only the opening, and every other text check still runs")
+    func excusedOpeningStillChecksTheRest() {
+        let draft = Draft(
+            words: "hear is the plan".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["Here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "Here is the plan.", offering: offered).isAccepted)
+        #expect(
+            !sut.verdict(draft: draft, rewritten: "Here is the plan for 30 people.", offering: offered)
+                .isAccepted)
+        #expect(!sut.verdict(draft: draft, rewritten: "Here is the plan.").isAccepted)
+    }
+
     @Test("accepts a doubtful word written as one of the readings it was offered")
     func acceptsAnOfferedReading() {
         let offered = [DoubtfulSpan(heard: "apple", confidence: 0.31, candidates: ["Apple", "apples"])]
@@ -1175,25 +1180,6 @@ struct GrammarGuardTests {
     }
 }
 
-@Suite("IrregularVerbForms")
-struct IrregularVerbFormsTests {
-    @Test("holds every form of a verb in one set and nothing else")
-    func formsShareASet() {
-        #expect(IrregularVerbForms.setIndex["went"] == IrregularVerbForms.setIndex["gone"])
-        #expect(IrregularVerbForms.setIndex["go"] == IrregularVerbForms.setIndex["went"])
-        #expect(IrregularVerbForms.setIndex["bought"] == IrregularVerbForms.setIndex["buy"])
-        #expect(IrregularVerbForms.setIndex["was"] == IrregularVerbForms.setIndex["been"])
-        #expect(IrregularVerbForms.setIndex["went"] != IrregularVerbForms.setIndex["done"])
-        #expect(IrregularVerbForms.setIndex["purchase"] == nil)
-    }
-
-    @Test("gives no form to two verbs, which the index would otherwise trap on")
-    func formsAreUnique() {
-        let forms = IrregularVerbForms.sets.flatMap { $0 }
-        #expect(Set(forms).count == forms.count)
-    }
-}
-
 @Suite("The guard keeps the layout the speaker asked for")
 struct LayoutGuardTests {
     @Test("refuses a rewrite that flattened a line break")
@@ -1403,10 +1389,6 @@ struct GuardMatchStrengthTests {
             #expect(!verdict(spoken, rewritten).isAccepted, "\\(spoken) → \\(rewritten)")
             #expect(!verdict(rewritten, spoken).isAccepted, "\\(rewritten) → \\(spoken)")
         }
-        #expect(MeaningPreservationGuard.sameRomanisedForm("aa", "aata"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("aata", "aa"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("kha", "khila"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("khila", "kha"))
     }
 
     /// Every word of the rewrite is a place a kept word may land, function words included.
@@ -1767,5 +1749,12 @@ struct MeaningGuardIndexEquivalenceTests {
             }
         }
         return .accepted
+    }
+}
+
+extension MeaningPreservationGuard {
+    /// The text-only checks with no opening excused, as the draft verdict runs them.
+    func verdict(original: String, rewritten: String) -> GuardVerdict {
+        Self.textVerdict(original: original, rewritten: rewritten, excusingPreamble: false)
     }
 }

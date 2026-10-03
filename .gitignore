@@ -46,3 +46,8 @@ UITests/*.xcodeproj
 /AGENTS.local.md
 /PLAN.local.md
 /CLAUDE.local.md
+
+# Plans and agent working artefacts: local to each checkout, never committed. Future work
+# is a GitHub issue; see Docs/agents/workflow.md, "Plans and future work".
+/PLAN.md
+/.plans/

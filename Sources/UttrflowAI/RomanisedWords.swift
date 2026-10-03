@@ -27,7 +27,7 @@ extension MeaningPreservationGuard {
             case .substitution:
                 let (spoken, spelt) = (heard[next.heard].word, wrote[next.wrote].word)
                 next = (next.heard + 1, next.wrote + 1)
-                guard sameRomanisedForm(spoken, spelt) || isRespelling(spoken, as: spelt) else {
+                guard WordForms.sameRomanisedForm(spoken, spelt) || isRespelling(spoken, as: spelt) else {
                     return spoken
                 }
             case .deletion:
@@ -85,7 +85,7 @@ extension MeaningPreservationGuard {
     static func isGrammarWord(_ word: String) -> Bool {
         guard !word.contains(where: \.isNumber), !negatingWords.contains(word) else { return false }
         let key = Romaniser.soundKey(word)
-        guard hindiPronouns[key] == nil else { return false }
+        guard WordForms.hindiPronouns[key] == nil else { return false }
         return FunctionWords.holds(word) || hindiGrammarWords.contains(key)
     }
 

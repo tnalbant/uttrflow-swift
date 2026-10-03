@@ -263,6 +263,9 @@ The announcement names what is about to be written rather than the change count,
 made within the same poll as an Uttrflow paste is still recorded. An announcement whose write has
 not arrived is kept, and lapses after `PasteboardWatcher.announcementLifetime` (2 s) so a paste that
 threw cannot leave one armed.
+If a write is refused or its text cannot be read back, its announcement is withdrawn. If the
+watcher gives up on a bounded clipboard read, it withdraws announcements that could have named
+that unread change, so the next same-text copy is recorded normally.
 
 ## Dictating into a field that hides what is typed
 
@@ -291,3 +294,21 @@ and pictures (`Pasteboard.setImage`), goes through the `Pasteboard` port. `make 
 (`Sources/UttrflowInput/SystemInput.swift`) and the reader
 (`Sources/UttrflowClipboard/ClipboardSource+System.swift`) names `NSPasteboard`.
 [offline.md](offline.md) makes the same argument for one module owning the network.
+
+## Remembering where the last dictation landed
+
+A spoken edit command acts on text written earlier into another app, so something has to know
+where it went. `InsertionLedger` holds that, in memory only: it is never persisted and never
+sent. `TextInsertionCoordinator` writes it after every insertion, reading the field and caret
+through `AccessibilityFocus.focusedFieldPlace` once the words are written.
+
+Only an Accessibility write whose arrival is `confirmed` is recorded, because only that route
+reads the words back. An unconfirmed write, a paste, a typed write, a clipboard hand-off, a
+failure, a secure field or a field that cannot be placed empties the ledger instead: a command
+must never act on a span nobody saw arrive. A field is identified by its process, its window and
+the element itself, so asking from any other field empties it as well. It keeps
+`InsertionLedger.capacity` entries and refuses one longer than `InsertionLedger.textLimit`.
+
+Offsets go stale the moment the user types, so a record is never trusted on its own:
+`InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
+end where they were written, through `BackwardSelection.confirms`.

@@ -61,9 +61,7 @@ struct Transcribe: AsyncParsableCommand {
         let store = try modelsDirectory.store()
 
         if kind == .whisperKit, !store.isInstalled(model) {
-            throw CleanExit.message(
-                "\(model.variant) is not installed. Run: uttrflow-dev models install"
-            )
+            throw notInstalled(model, in: store)
         }
 
         let audio = try await obtainAudio()

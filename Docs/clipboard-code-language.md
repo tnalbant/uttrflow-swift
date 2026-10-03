@@ -1,6 +1,6 @@
 # Code language detection
 
-`CodeLanguage.detect(_:)` in `Sources/UttrflowClipboard/CodeLanguage.swift` labels a code clip
+`CodeLanguage.detect(_:)` in `Sources/UttrflowCore/Models/CodeLanguage.swift` labels a code clip
 when the clip alone says which language it is. The label decorates the panel row's language chip
 and the preview, and chooses which formatter may be offered
 ([`clipboard-reindent.md`](clipboard-reindent.md#running-a-formatter)). A wrong label is a small
@@ -46,7 +46,19 @@ Distinct signals count, not occurrences, so `console.log` forty times is one sig
   annotations. A tie names a family, not a language.
 
 Go and Rust are in the set partly to keep Swift honest: both have a function keyword a
-Swift-only detector would misread. JavaScript and TypeScript share an `ecmaScript` supporting list
-so neither can win on syntax they have in common; untyped modern ECMAScript ends up `javascript`,
-the label that stays true either way. HTML is weighted towards document-level elements so JSX
-inside a TypeScript component does not outscore the TypeScript around it.
+Swift-only detector would misread. JavaScript and TypeScript share an `ecmaScript` supporting
+list so neither can win on syntax they have in common; untyped modern ECMAScript ends up
+`javascript`, the label that stays true either way. HTML is weighted towards document-level
+elements so JSX inside a TypeScript component does not outscore the TypeScript around it.
+
+## Shared with dictation
+
+`CodeLanguage` lives in `UttrflowCore`, so the clipboard and the dictation modules ask one
+detector with one scoring table. Two more entry points serve callers that hold something other
+than a whole clip:
+
+- `detect(fragment:)` reads the last `fragmentLength` characters before a caret, drops the line
+  the window cut through, and applies the same bar and margin. A fragment is shorter than most
+  clips, so it answers `nil` more often, which is the intended direction.
+- `from(fileName:)` maps a file name's extension through one table. An extension outside the
+  thirteen languages answers `nil`; it never guesses a near neighbour.

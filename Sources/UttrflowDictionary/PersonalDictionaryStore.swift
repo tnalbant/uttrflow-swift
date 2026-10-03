@@ -75,6 +75,7 @@ public actor PersonalDictionaryStore {
     /// Teaches the dictionary a word, replacing any entry that spells it the same way.
     @discardableResult
     public func add(_ entry: DictionaryEntry) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        let entry = entry.inLatinScript
         guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
             throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
         }
@@ -87,6 +88,7 @@ public actor PersonalDictionaryStore {
 
     /// Replaces the stored snapshot after an archive has been fully validated and merged.
     public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+        let entries = entries.map(\.inLatinScript)
         for entry in entries {
             guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
                 throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
@@ -101,8 +103,9 @@ public actor PersonalDictionaryStore {
     public func add(
         word: String, pronunciation: String, at moment: Date
     ) throws(DictionaryStoreError) -> [DictionaryEntry] {
-        let spelling = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !spelling.isEmpty else { throw .wordIsEmpty }
+        let typed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw .wordIsEmpty }
+        let spelling = Romaniser.romanised(typed)
         let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
         guard PhoneticIndex.supports(word: spelling, pronunciation: sound) else {
             throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
@@ -112,7 +115,7 @@ public actor PersonalDictionaryStore {
         }
         return try add(
             DictionaryEntry(
-                word: spelling, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
+                word: typed, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
                 firstSeen: moment))
     }
 
@@ -237,6 +240,7 @@ public actor PersonalDictionaryStore {
         }
         ledger = sightings
 
+        learnt = learnt.map(\.inLatinScript)
         guard !learnt.isEmpty else { return [] }
         let bounded = Self.boundedEntries(existing + learnt)
         try persist(bounded)
@@ -266,6 +270,18 @@ public actor PersonalDictionaryStore {
     @discardableResult
     public func restore(_ id: UUID) throws(DictionaryStoreError) -> DictionaryEntry? {
         try update(id) { $0.timesReverted = 0 }
+    }
+
+    /// Respells every stored Devanagari word in Latin letters once, answering each change as before and after.
+    @discardableResult
+    public func respellInLatinScript()
+        throws(DictionaryStoreError) -> [(before: DictionaryEntry, after: DictionaryEntry)]
+    {
+        let entries = load()
+        let changes = entries.map { ($0, $0.inLatinScript) }.filter { $0.0 != $0.1 }
+        guard !changes.isEmpty else { return [] }
+        try persist(entries.map(\.inLatinScript))
+        return changes.map { (before: $0.0, after: $0.1) }
     }
 
     /// The one place an entry is found, changed and written back, so the counters cannot disagree.

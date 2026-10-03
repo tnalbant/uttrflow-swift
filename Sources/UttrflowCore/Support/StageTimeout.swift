@@ -1,4 +1,4 @@
-// Per-stage time limits, and the race that enforces one without waiting on a stage that hangs.
+// Per-stage time limits, the Deadline that holds work to one, and the race that enforces it.
 
 private import Synchronization
 
@@ -23,22 +23,57 @@ public enum StageTimeout: Sendable {
     public static let speechModelLoad = Duration.seconds(300)
 }
 
-/// Runs `work`, answering `nil` when `limit` wins; the work is cancelled then, not awaited, since it may hang.
+/// A point in time on an injected clock, after which waiting on work stops.
+public struct Deadline: Sendable {
+    /// How long the work was given when the deadline was set.
+    public let allowance: Duration
+    private let clock: any Clock<Duration>
+    private let elapsed: @Sendable () -> Duration
+
+    /// A deadline `allowance` from now on `clock`.
+    public init(_ allowance: Duration, clock: any Clock<Duration> = ContinuousClock()) {
+        self.allowance = allowance
+        self.clock = clock
+        self.elapsed = Self.stopwatch(on: clock)
+    }
+
+    /// Reads the time since now on `clock`, keeping the clock's own instant type out of the stored value.
+    private static func stopwatch<C: Clock<Duration>>(on clock: C) -> @Sendable () -> Duration {
+        let start = clock.now
+        return { start.duration(to: clock.now) }
+    }
+
+    /// The time left, never below zero.
+    public var remaining: Duration { max(.zero, allowance - elapsed()) }
+
+    /// Whether the allowance has run out.
+    public var isSpent: Bool { remaining == .zero }
+
+    /// Runs `work`, answering `nil` when the deadline wins; the work is cancelled then, not awaited, since it may hang.
+    public func race<Success: Sendable>(
+        _ work: @escaping @Sendable () async throws -> Success
+    ) async throws -> Success? {
+        let race = StageRace<Success>()
+        let limit = remaining
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                race.arm(continuation)
+                race.start(clock: clock, limit: limit, work: work)
+            }
+        } onCancel: {
+            race.finish(.cancelled)
+        }
+        return try race.result()
+    }
+}
+
+/// Runs `work` against a `Deadline` of `limit` on `clock`, answering `nil` when the limit wins.
 public func withStageTimeout<Success: Sendable>(
     _ limit: Duration,
     clock: any Clock<Duration>,
     _ work: @escaping @Sendable () async throws -> Success
 ) async throws -> Success? {
-    let race = StageRace<Success>()
-    await withTaskCancellationHandler {
-        await withCheckedContinuation { continuation in
-            race.arm(continuation)
-            race.start(clock: clock, limit: limit, work: work)
-        }
-    } onCancel: {
-        race.finish(.cancelled)
-    }
-    return try race.result()
+    try await Deadline(limit, clock: clock).race(work)
 }
 
 /// The work's answer if it arrives within `allowance` (at least 1 ms), else `nil`, the work cancelled and not awaited.
@@ -47,7 +82,7 @@ public func withDeadline<Answer: Sendable>(
     clock: any Clock<Duration> = ContinuousClock(),
     _ work: @escaping @Sendable () async -> Answer?
 ) async -> Answer? {
-    let answer = try? await withStageTimeout(max(allowance, .milliseconds(1)), clock: clock) { await work() }
+    let answer = try? await Deadline(max(allowance, .milliseconds(1)), clock: clock).race { await work() }
     return answer ?? nil
 }
 

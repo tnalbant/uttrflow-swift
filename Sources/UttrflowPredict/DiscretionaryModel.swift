@@ -55,4 +55,9 @@ extension DiscretionaryModel {
     where Model == IdleReleasingModel<Inner> {
         await model.whenReloadFails(handler)
     }
+
+    /// Lets the idle-releasing model inside reload on a later query, without loading anything now.
+    public func allowReloadAfterRelease<Inner>() async where Model == IdleReleasingModel<Inner> {
+        await model.allowReloadAfterRelease()
+    }
 }

@@ -2,6 +2,7 @@
 
 public import struct Foundation.Data
 public import struct Foundation.Date
+public import struct Foundation.UUID
 
 private import Synchronization
 private import Dispatch
@@ -94,24 +95,38 @@ public actor PasteboardWatcher {
     // MARK: - Ignoring ourselves
 
     /// Announces a write — call immediately before it — naming its text. See `Docs/insertion.md`.
-    public nonisolated func ignoreNextWrite(of text: String) {
+    @discardableResult
+    public nonisolated func ignoreNextWrite(of text: String) -> @Sendable () -> Void {
         announce(.text(text))
     }
 
     /// K4 — announces a picture write, named by the bytes it puts there. See `Docs/insertion.md`.
-    public nonisolated func ignoreNextPicture(_ data: Data) {
+    @discardableResult
+    public nonisolated func ignoreNextPicture(_ data: Data) -> @Sendable () -> Void {
         announce(.picture(data))
     }
 
     /// Records what is about to be written, reading the count before the write moves it.
-    private nonisolated func announce(_ written: Written) {
+    private nonisolated func announce(_ written: Written) -> @Sendable () -> Void {
         let before = source.changeCount()
         let at = now()
+        let id = UUID()
         announced.withLock { pending in
             pending.removeAll { at.timeIntervalSince($0.at) > Self.announcementLifetime }
             if pending.count == Self.maxPendingAnnouncements { pending.removeFirst() }
-            pending.append(Announcement(after: before, at: at, wrote: written))
+            pending.append(Announcement(id: id, after: before, at: at, wrote: written))
         }
+        return { [self] in withdrawAnnouncement(id) }
+    }
+
+    /// Withdraws a write that the pasteboard refused or that could not be read back.
+    private nonisolated func withdrawAnnouncement(_ id: UUID) {
+        announced.withLock { pending in pending.removeAll { $0.id == id } }
+    }
+
+    /// Drops announcements that could have described a change whose contents stayed unreadable.
+    private nonisolated func withdrawAnnouncements(forChange count: Int) {
+        announced.withLock { pending in pending.removeAll { count > $0.after } }
     }
 
     /// Whether this change is the announced write, matched on what it put there. See `Docs/insertion.md`.
@@ -165,10 +180,16 @@ public actor PasteboardWatcher {
         isReading = true
         defer { isReading = false }
         // Fetched only now, and once, so an idle tick costs one integer read.
-        guard let copied = await bounded({ [source] in source.text() }) else { return nil }
+        guard let copied = await bounded({ [source] in source.text() }) else {
+            withdrawAnnouncements(forChange: count)
+            return nil
+        }
         let rtf: Data?
         if copied == nil {
-            guard let data = await bounded({ [source] in source.rtf() }) else { return nil }
+            guard let data = await bounded({ [source] in source.rtf() }) else {
+                withdrawAnnouncements(forChange: count)
+                return nil
+            }
             rtf = data.flatMap {
                 budget.largestClip == 0 || $0.count <= budget.largestClip ? $0 : nil
             }
@@ -180,7 +201,10 @@ public actor PasteboardWatcher {
         var read: ClipboardPicture?? = .none
         let hasPicture = source.hasPicture()
         if copied == nil, hasPicture, awaitsPicture() {
-            guard let picture = await bounded({ [source] in source.image() }) else { return nil }
+            guard let picture = await bounded({ [source] in source.image() }) else {
+                withdrawAnnouncements(forChange: count)
+                return nil
+            }
             read = .some(picture)
         }
         guard !claims(count, at: date, holding: copied, picture: read??.data) else { return nil }
@@ -336,6 +360,7 @@ private enum Written: Sendable, Equatable {
 
 /// An Uttrflow write that has been announced and not yet seen on the clipboard.
 private struct Announcement: Sendable {
+    let id: UUID
     let after: Int
     let at: Date
     /// What is about to be written, which the change is matched against.

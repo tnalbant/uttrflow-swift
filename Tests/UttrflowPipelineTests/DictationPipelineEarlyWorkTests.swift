@@ -297,7 +297,7 @@ private struct FirstWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: first, wrote: first.uppercased(), wordRange: 0..<1, entryID: entry,
-                reason: "test", heardConfidence: 0.1)
+                reason: .unknown("test"), heardConfidence: 0.1)
         ]
     }
 }
@@ -314,7 +314,7 @@ private actor ScreenWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: "Maddox", wrote: "Madison", wordRange: 0..<1, entryID: UUID(),
-                reason: "seenOnScreen", heardConfidence: 0.2)
+                reason: .seenOnScreen, heardConfidence: 0.2)
         ]
     }
 }
@@ -640,7 +640,8 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
         let before = HeldSwapSpeechEngine()
-        let after = faster()
+        let after = FakeSpeechEngine(
+            kind: .appleSpeech, transcribeOutcome: .success(.fixture(text: "faster")))
         let pipeline = makePipeline(capture: capture, speech: before, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()

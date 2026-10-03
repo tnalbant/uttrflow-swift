@@ -36,7 +36,7 @@ struct ReloadLeaksTests {
         #expect(RegressionComparison.compare(rules, against: other) == nil)
     }
 
-    private func measurement(cases: [StoredReport.CaseResult]) -> Measurement {
+    private func measurement(cases: [StoredReport.CaseResult]) -> uttrflow_bakeoff.Measurement {
         let scores = cases.map {
             CaseScore(
                 caseID: $0.caseID, similarity: $0.passed ? 1 : 0,

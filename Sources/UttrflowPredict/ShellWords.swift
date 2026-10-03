@@ -119,9 +119,13 @@ enum ShellWords {
                 return doubleQuoted()
             case "\\":
                 guard let next = peek() else { return false }
+                if next == "\n" {
+                    index += 2
+                    return true
+                }
                 inWord = true
                 isQuoted = true
-                if next != "\n" { text.append(next) }
+                text.append(next)
                 index += 2
                 return true
             case "$":
