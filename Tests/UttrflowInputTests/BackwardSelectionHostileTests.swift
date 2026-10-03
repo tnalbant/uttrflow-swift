@@ -43,4 +43,26 @@ struct BackwardSelectionHostileTests {
         #expect(BackwardSelection.replacing(in: "", location: 0, length: .max, covering: 0) == 0..<0)
         #expect(BackwardSelection.replacing(in: "🐕a", location: 3, length: .max, covering: 1) == 2..<3)
     }
+
+    @Test("Generated hostile selection ranges never escape the text.")
+    func generatedRangesStayWithinText() {
+        let offsets = [Int.min, -1, 0, 1, 4, 5, 6, Int.max - 1, Int.max, NSNotFound]
+        let lengths = [Int.min, -1, 0, 1, 5, Int.max]
+        for text in ["hello", "🐕a", ""] {
+            let count = text.utf16.count
+            for location in offsets {
+                for length in lengths {
+                    for characters in [Int.min, -1, 0, 1, 2, Int.max] {
+                        guard
+                            let range = BackwardSelection.replacing(
+                                in: text, location: location, length: length, covering: characters)
+                        else { continue }
+                        #expect(range.lowerBound >= 0)
+                        #expect(range.upperBound >= range.lowerBound)
+                        #expect(range.upperBound <= count)
+                    }
+                }
+            }
+        }
+    }
 }

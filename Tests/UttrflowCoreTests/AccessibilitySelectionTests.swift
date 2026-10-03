@@ -8,7 +8,8 @@ private struct MockAccessibilityField {
     let selectedTextRanges: [CFRange]?
 
     var selection: AccessibilitySelection {
-        AccessibilitySelection.resolve(singular: selectedTextRange, plural: selectedTextRanges)
+        AccessibilitySelection.resolve(
+            singular: selectedTextRange, plural: selectedTextRanges, textLength: 20)
     }
 }
 
@@ -37,5 +38,50 @@ struct AccessibilitySelectionTests {
             return
         }
         #expect(range.location == 20 && range.length == 0)
+    }
+
+    @Test("A range outside the reported text is unavailable.")
+    func rejectsRangesOutsideText() {
+        let hostile = [
+            CFRange(location: -1, length: 0),
+            CFRange(location: 6, length: 0),
+            CFRange(location: 4, length: 2),
+            CFRange(location: NSNotFound, length: 0),
+            CFRange(location: Int.max - 1, length: 2),
+            CFRange(location: 2, length: -1),
+        ]
+
+        for range in hostile {
+            guard
+                case .unavailable = AccessibilitySelection.resolve(
+                    singular: range, plural: nil, textLength: 5)
+            else {
+                Issue.record("An invalid range must not be exposed to consumers.")
+                continue
+            }
+        }
+    }
+
+    @Test("A range within the reported text remains available.")
+    func acceptsRangeWithinText() {
+        guard
+            case .range(let range) = AccessibilitySelection.resolve(
+                singular: CFRange(location: 2, length: 3), plural: nil, textLength: 5)
+        else {
+            Issue.record("A valid selection must remain usable.")
+            return
+        }
+        #expect(range.location == 2 && range.length == 3)
+    }
+
+    @Test("A range without a text length cannot be validated.")
+    func rejectsRangeWithoutTextLength() {
+        guard
+            case .unavailable = AccessibilitySelection.resolve(
+                singular: CFRange(location: 2, length: 0), plural: nil, textLength: nil)
+        else {
+            Issue.record("A selection without a known text boundary must remain unavailable.")
+            return
+        }
     }
 }

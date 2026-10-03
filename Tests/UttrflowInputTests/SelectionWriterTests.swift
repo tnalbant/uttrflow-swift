@@ -29,6 +29,7 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
         var reportsValue = true
         var reportsSelection = true
         var readsByRange = true
+        var reportedLength: Int?
         var wholeReads = 0
         var unitsRead = 0
         var refusesText = false
@@ -60,7 +61,10 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
     }
 
     func length() -> Int? {
-        state.withLock { $0.reportsValue && $0.readsByRange ? $0.text.utf16.count : nil }
+        state.withLock {
+            guard $0.reportsValue, $0.readsByRange else { return nil }
+            return $0.reportedLength ?? $0.text.utf16.count
+        }
     }
 
     func text(in range: Range<Int>) -> String? {
@@ -125,6 +129,29 @@ private func isRejection(_ error: TextInsertionError?) -> Bool {
 
 @Suite("Writing into a field through its Accessibility attributes")
 struct SelectionWriterTests {
+    @Test("A hostile starting caret cannot overflow while confirming a write.")
+    func hostileStartingCaretDoesNotOverflow() {
+        for location in [NSNotFound, Int.max, Int.max - 1, Int.min, -1, 5, 6] {
+            for length in [0, 1, Int.max, -1] {
+                let field = FakeSelectionField("hello", caret: location, length: length) {
+                    $0.ignoresText = true
+                }
+                #expect(throws: TextInsertionError.self) {
+                    try SelectionWriter(field: field).replaceSelection(with: "x")
+                }
+            }
+        }
+    }
+
+    @Test("A hostile selection cannot overflow the comparison window.")
+    func hostileSelectionDoesNotOverflowWindow() throws {
+        let field = FakeSelectionField("hello", caret: .max, length: .max) {
+            $0.reportedLength = .max
+            $0.ignoresText = true
+        }
+        try SelectionWriter(field: field).replaceSelection(with: "")
+    }
+
     @Test func rejectsReadableSelectionOnANonSettableElement() {
         let element = MockFocusedAccessibilityElement(
             role: "AXTextField", selectedTextIsReadable: true, selectedTextIsSettable: false)

@@ -26,6 +26,7 @@ struct ArmedSelectionGuard {
     /// Advances the expected caret for text that the armed suggestion allows through.
     mutating func typedThrough(_ text: String) {
         guard let expectedRange else { return }
-        self.expectedRange = NSRange(location: expectedRange.location + text.utf16.count, length: 0)
+        let (location, overflow) = expectedRange.location.addingReportingOverflow(text.utf16.count)
+        self.expectedRange = overflow ? nil : NSRange(location: location, length: 0)
     }
 }

@@ -678,7 +678,8 @@ private func selection(of element: AXUIElement) -> AccessibilitySelection {
     }
     let pluralRanges = (plural as? [AnyObject])?.compactMap { rangeValue($0) }
     return AccessibilitySelection.resolve(
-        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges)
+        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges,
+        textLength: characterCount(of: element))
 }
 
 /// Unwraps one Accessibility value as a character range.
