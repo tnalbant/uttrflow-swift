@@ -1,55 +1,52 @@
 # When the paste strategy volunteers
 
-`PasteboardTextInsertionEngine.canInsert()` declines for one case only: Uttrflow itself
-being the frontmost application. Everything else is worth attempting.
+`PasteboardTextInsertionEngine` (`Sources/UttrflowInput/PasteboardTextInsertionEngine.swift`)
+puts text on the clipboard and posts ⌘V. It is the second strategy on the clip routes — a clip
+pasted from the panel, or inserted from the menu bar or main window — and is not on the dictation
+or completion routes ([insertion.md](insertion.md), "Which route each insertion takes").
+`canInsert()` declines for one case only: Uttrflow itself being the frontmost application.
+Everything else is worth attempting.
 
-Per-application results live in [compatibility.md](compatibility.md), whose `Paste` column this
-page feeds — specifically whether the route volunteers at all.
+Per-application results are in [compatibility.md](compatibility.md), whose `Paste` column this
+page feeds.
 
-## Asking Accessibility first refused the applications pasting exists for
+## It does not ask Accessibility first
 
-The precondition used to be "can the Accessibility API see a focused element", which
-sounds prudent and is wrong twice over.
-
-Editors built on Electron — Cursor is the one this was reported from — expose no focused
-element at all and accept a ⌘V perfectly well. So the check refused to try in exactly the
-applications the paste strategy exists to serve, and every dictation into one of them fell
-through to the clipboard for the user to paste by hand. The same shape appears in web
-views and anything that draws its own text: a focused element that will not report its
-selection, which the Accessibility strategy above cannot write into either.
-
-`Docs/insertion.md` has the other half of the same trap — the Electron field that accepts
-an Accessibility write, answers `.success`, and changes nothing.
+"Can the Accessibility API see a focused element" is the wrong precondition twice over.
+Editors built on a bundled browser engine can expose no focused element at all and still accept a
+⌘V, so the check would refuse exactly the applications the paste strategy serves. The same shape
+appears in web views and anything that draws its own text: a focused element that will not report
+its selection, which the Accessibility strategy cannot write into either.
+[insertion.md](insertion.md), "The Accessibility write that changes nothing", has the other half of
+the trap: a field that accepts an Accessibility write, answers `.success`, and changes nothing.
 
 ## Trying and failing costs nothing
 
-The reason the check was ever narrow is gone. Pasting no longer restores the borrowed
-clipboard, so the worst an attempt can do is leave the words on the clipboard — which is
-precisely what the strategy below it would do. Declining, by contrast, costs the user
-their insertion. So the engine volunteers and the coordinator finds out by trying.
+The paste never restores the previous clipboard, so the worst an attempt can do is leave the words
+on the clipboard, which is what the clipboard floor below it would do anyway. Declining costs the
+user their insertion. So the engine volunteers, and the coordinator finds out by trying.
 
 ## Never into Uttrflow itself
 
-The one refusal. Uttrflow's own windows are where the user is choosing a shortcut or
-reading their clip history, and a ⌘V posted while one of them is in front lands in the
-app's own text rather than in the document the dictation was for.
+Uttrflow's own windows are where the user chooses a shortcut or reads clip history, and a ⌘V
+posted while one is in front lands in the app's own text rather than the document the words were
+for.
 
-## Checked twice, because the answer can go stale between the two
+## Checked again at the write
 
-`canInsert()` and `insert()` are two separate `await`s on the same actor, so real time
-passes between them — long enough for the user to switch to Uttrflow while a dictation
-is still being recognised or cleaned up. A `canInsert()` answered for another app must
-not be trusted by the time the write actually happens.
+`canInsert()` and `insert()` are two separate `await`s, so real time passes between them, long
+enough for the user to switch to Uttrflow. `insert()` therefore asks again
+(`PasteboardPasteAction.requireExternal`) before it writes the clipboard, and once more immediately
+before it posts ⌘V (`postIfExternal`). If Uttrflow is frontmost it throws `.noFocusedTextField`
+without touching the clipboard, and the coordinator moves to the next strategy. When the insertion
+names a destination application, the same two points also require that application to still be
+frontmost (`requireTarget`), and throw `.insertionTargetChanged` otherwise, which stops the route.
 
-So `insert()` asks `isSelfFrontmost()` again, immediately before it writes the clipboard
-and posts ⌘V — not only once, up front. If Uttrflow has become frontmost since
-`canInsert()` ran, `insert()` throws `.noFocusedTextField` without touching the clipboard,
-and `TextInsertionCoordinator`'s fallback chain takes over from there, same as any other
-strategy declining.
+Pastes are serialised: a second paste waits for the first to finish (`PasteboardInsertionGate`), so
+two clip insertions cannot interleave their clipboard writes and keystrokes. After writing, the
+engine reads the clipboard back and compares change counts; a different count means another
+writer owns the clipboard now, and the engine throws `.clipboardChanged` rather than paste their
+contents.
 
-The same re-check sits at the write in `TypedTextInsertionEngine` and in
-`AccessibilityTextInsertionEngine`, for both `insert()` and the completion route's
-`write(_:replacing:)`: every strategy that writes into whatever is focused asks again
-immediately before it backspaces, types or replaces the selection, not only the paste route.
-The Accessibility route runs first, so without its own check a field in Uttrflow's own
-window would take the words before the paste route was ever asked.
+The Accessibility and typed strategies make the same Uttrflow-frontmost check at their writes; see
+[insertion.md](insertion.md), "Never into Uttrflow itself".
