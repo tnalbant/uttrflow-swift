@@ -402,13 +402,7 @@ struct DictationPipelineRecoveryTests {
 
     @Test("the profile the pipeline was built with reaches the cleaner's request")
     func userProfileReachesTheCleaner() async throws {
-        let profile = UserProfile(
-            profession: "cardiologist",
-            preferredLanguages: [.hindi, .english],
-            technicalDomains: ["medicine"],
-            preferredWritingStyle: "concise",
-            vocabulary: ["echocardiogram"]
-        )
+        let profile = UserProfile(preferredLanguages: [.hindi, .english])
         let cleaner = FakeTranscriptCleaner(answering: tidiedText)
         let pipeline = makePipeline(cleaner: cleaner, profile: profile)
 

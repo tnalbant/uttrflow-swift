@@ -483,20 +483,10 @@ struct GrammarGuardTests {
         #expect(
             verdict("She has drove this route before", "She has written this route before")
                 == .rejected(reason: "the rewrite lost or replaced 'drove'", kind: .lostWord))
-        #expect(!MeaningPreservationGuard.sameForm("wrote", "spoken"))
-        #expect(!MeaningPreservationGuard.sameForm("wrote", "writeup"))
     }
 
     @Test("accepts common romanised Hindi respellings and refuses meaning changes")
     func acceptsRomanisedHindiRespellings() {
-        for (first, second) in [
-            ("hai", "he"), ("nahi", "nahin"), ("kar", "kr"), ("mein", "me"), ("yeh", "ye"),
-        ] {
-            #expect(
-                MeaningPreservationGuard.sameForm(
-                    first, second, allowingRomanisedHindiSpellings: true))
-        }
-
         for (original, rewritten) in [
             ("Kal mujhe call karna hai", "Kal mujhe call karna he."),
             ("Main kal office nahi aaunga", "Main kal office nahin aaunga."),
@@ -1384,10 +1374,6 @@ struct GuardMatchStrengthTests {
             #expect(!verdict(spoken, rewritten).isAccepted, "\\(spoken) → \\(rewritten)")
             #expect(!verdict(rewritten, spoken).isAccepted, "\\(rewritten) → \\(spoken)")
         }
-        #expect(MeaningPreservationGuard.sameRomanisedForm("aa", "aata"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("aata", "aa"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("kha", "khila"))
-        #expect(MeaningPreservationGuard.sameRomanisedForm("khila", "kha"))
     }
 
     /// Every word of the rewrite is a place a kept word may land, function words included.

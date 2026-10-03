@@ -79,7 +79,7 @@ the user saw repeated what they had written.
 
 **A terminal publishes the prose role and is not prose.** `AXTextArea` is what a document
 and a shell both publish, so the 400 ms hesitation gate was quieting terminals — the case
-where an instant answer matters most. `TerminalApplications` in `UttrflowPredict` names the
+where an instant answer matters most. `TerminalApplications` in `UttrflowCore` names the
 shells by bundle identifier, which is the only signal that separates them; a fuller dialect
 registry will own that question later. An editor's terminal pane cannot be told from its
 editor by bundle identifier, so those are still read as prose.

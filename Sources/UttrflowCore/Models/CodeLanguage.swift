@@ -1,8 +1,8 @@
-// Which language a code clip is written in.
+// Which language a piece of code is written in, for the clipboard and for dictation.
 
 import Foundation
 
-/// Which language a code clip is written in, when the clip alone says so; `nil` is the usual answer.
+/// Which language a piece of code is written in, when the text alone says so; `nil` is the usual answer.
 public enum CodeLanguage: String, Sendable, Equatable, CaseIterable, Codable {
     case swift
     case python
@@ -45,6 +45,41 @@ extension CodeLanguage {
         if isSQLStatement(sample) { return .sql }
         return highestScoring(in: sample)
     }
+
+    /// The language of the text before a caret, judged on whole lines only and by the same bar as a clip.
+    public static func detect(fragment: String) -> CodeLanguage? {
+        let window = fragment.suffix(fragmentLength)
+        // A line cut by the window is a token sliced in half, which can forge a signal.
+        let whole = window.count < fragment.count ? window.drop(while: { !$0.isNewline }) : window
+        return detect(String(whole))
+    }
+
+    /// The language a file name's extension declares, or `nil` for an extension outside the set.
+    public static func from(fileName: String) -> CodeLanguage? {
+        let name = fileName.split(separator: "/").last.map(String.init) ?? fileName
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return nil }
+        return extensions[name[name.index(after: dot)...].lowercased()]
+    }
+
+    /// How much text before a caret is read: a few lines, enough to corroborate one marker.
+    private static let fragmentLength = 300
+
+    /// Every extension that declares a language; one table, read by every caller that has a file name.
+    private static let extensions: [String: CodeLanguage] = [
+        "swift": .swift,
+        "py": .python, "pyw": .python, "pyi": .python,
+        "rb": .ruby, "rake": .ruby, "gemspec": .ruby,
+        "js": .javascript, "mjs": .javascript, "cjs": .javascript, "jsx": .javascript,
+        "ts": .typescript, "tsx": .typescript, "mts": .typescript, "cts": .typescript,
+        "json": .json, "geojson": .json,
+        "sql": .sql,
+        "sh": .shell, "bash": .shell, "zsh": .shell, "ksh": .shell, "command": .shell,
+        "html": .html, "htm": .html, "xhtml": .html,
+        "css": .css,
+        "go": .go,
+        "rs": .rust,
+        "java": .java,
+    ]
 
     // MARK: - The bar
 

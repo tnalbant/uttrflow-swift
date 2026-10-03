@@ -25,9 +25,9 @@ tables — a prefix list in `UttrflowPredict` and an exact-match set in `Uttrflo
 and they disagreed: the prefix list knew Hyper and Tabby, the set did not, and Warp matched
 under one and not the other. There is one table now: the terminal, code editor and query editor rows of
 `DestinationRules.standard` in `UttrflowCore`, the same rows that decide how a dictation
-into those applications is laid out. `TerminalApplications` and the editor list in
-`AcceptKeys` are read from those rows, lowercased and matched by prefix, and `UttrflowContext`
-re-exports `TerminalApplications` under the same name. An application added to a row is a
+into those applications is laid out. `TerminalApplications` (in `UttrflowCore`) and the editor list in
+`AcceptKeys` are read from those rows, lowercased and matched by prefix, so dictation and
+suggestions name the one type directly. An application added to a row is a
 terminal or an editor to dictation and to AI suggestions at once.
 
 ## Return is the dangerous key

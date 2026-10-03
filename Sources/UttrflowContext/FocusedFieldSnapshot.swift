@@ -271,8 +271,7 @@ extension FocusedFieldSnapshot {
         return found
     }
 
-    /// The marks that end a sentence, and the quotes and brackets that may close one after its mark.
-    private static let sentenceEnds: Set<Character> = [".", "?", "!"]
+    /// The quotes and brackets that may close a sentence after its end mark.
     private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
 
     /// Whether the whitespace at `space` follows a sentence's end mark, spaces, closing quotes and brackets stepped over.
@@ -285,7 +284,7 @@ extension FocusedFieldSnapshot {
             let character = value[index]
             if sentenceClosers.contains(character) || character.isWhitespace { continue }
             // An ellipsis trails off inside a sentence rather than ending it.
-            guard sentenceEnds.contains(character) else { return false }
+            guard SentenceMarks.ends.contains(character) else { return false }
             return !(character == "." && index > lineStart && value[value.index(before: index)] == ".")
         }
         return false

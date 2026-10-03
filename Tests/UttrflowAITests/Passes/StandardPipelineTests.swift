@@ -10,7 +10,9 @@ struct StandardPipelineTests {
         #expect(
             CleaningPipeline.standard.ids == [
                 "fillers", "repeatedPhrase", "stammers", "selfCorrection", "spokenPunctuation", "layoutWords",
-                "numberForms", "contractions", "spelledInitialism", "spacing", "firstWord", "terminalStop",
+                "numberForms", "contractions", "spacing", "spelledInitialism", "sentenceBoundary",
+                "firstWord",
+                "terminalStop",
             ])
     }
 
@@ -18,13 +20,13 @@ struct StandardPipelineTests {
     func beforeModel() {
         #expect(
             CleaningPipeline.beforeModel(for: .standard(for: .plain), situation: .unknown).ids
-                == Array(CleaningPipeline.standard.ids.dropLast(2)))
+                == Array(CleaningPipeline.standard.ids.dropLast(3)))
     }
 
     @Test("joins spoken initialisms after the whole message is assembled")
     func wholeTextInitialisms() {
-        let pipeline = CleaningPipeline.wholeText(for: .standard(for: .plain), situation: .unknown)
-        #expect(pipeline.ids == [.spelledInitialism, .firstWord, .terminalStop])
+        let pipeline = CleaningPipeline.message(for: .standard(for: .plain), situation: .unknown)
+        #expect(pipeline.ids == [.spelledInitialism, SentenceBoundaryPass.id, .firstWord, .terminalStop])
         #expect(pipeline.run(Draft(text: "the a p i is down")).text == "The API is down.")
     }
 

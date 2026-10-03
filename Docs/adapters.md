@@ -175,7 +175,7 @@ A clause, keyword, column, `LIMIT`, semicolon, quote or bracket with no spoken s
 violation, however helpful. So is reordering, completing a statement, or choosing an
 identifier the screen does not show. The guard checks this by aligning spoken and written
 through the table, keeping order with `WordErrorRate.measure` and sameness with
-`MeaningPreservationGuard.sameForm`; no spelling is matched by shape. This is AD.6, and it is
+`WordForms.sameForm`; no spelling is matched by shape. This is AD.6, and it is
 what keeps every adapter inside the promise in `AGENTS.md`, "What dictation is for".
 
 ## 5. Validation and the fallback ladder

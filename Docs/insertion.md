@@ -327,3 +327,21 @@ Uttrflow's own text fields.
 The retry's clipboard floor receives the clipboard panel's shared secret classifier from the app
 composition root. A secret transcript is written with `org.nspasteboard.ConcealedType`; other
 transcripts use the generated marker.
+
+## Remembering where the last dictation landed
+
+A spoken edit command acts on text written earlier into another app, so something has to know
+where it went. `InsertionLedger` holds that, in memory only: it is never persisted and never
+sent. `TextInsertionCoordinator` writes it after every insertion, reading the field and caret
+through `AccessibilityFocus.focusedFieldPlace` once the words are written.
+
+Only an Accessibility write whose arrival is `confirmed` is recorded, because only that route
+reads the words back. An unconfirmed write, a paste, a typed write, a clipboard hand-off, a
+failure, a secure field or a field that cannot be placed empties the ledger instead: a command
+must never act on a span nobody saw arrive. A field is identified by its process, its window and
+the element itself, so asking from any other field empties it as well. It keeps
+`InsertionLedger.capacity` entries and refuses one longer than `InsertionLedger.textLimit`.
+
+Offsets go stale the moment the user types, so a record is never trusted on its own:
+`InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
+end where they were written, through `BackwardSelection.confirms`.
