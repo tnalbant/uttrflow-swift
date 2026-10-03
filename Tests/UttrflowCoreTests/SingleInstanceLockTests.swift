@@ -45,7 +45,7 @@ struct SingleInstanceLockTests {
             let error = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             let description =
                 "the lock holder exited before confirming it held the lock (status \(process.terminationStatus)): \(error)"
-            Issue.record(description)
+            Issue.record(Comment(rawValue: description))
             throw HolderFailure.didNotStart
         }
         return process
