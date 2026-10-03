@@ -109,6 +109,16 @@ Each wrong row is a class, not a word: anusvara is always "n" though it is said 
 visarga after the unwritten vowel drops the vowel it follows; and the unwritten-vowel rule
 drops the vowel before a final ह cluster and keeps the one a final य or व carries.
 
+### Properties over generated words
+
+`RomaniserPropertyTests` generates 5,000 Devanagari words from the romaniser's own tables
+(consonants, nukta letters, conjuncts, vowel signs, virama, independent vowels, anusvara and
+chandrabindu, visarga) with fixed seeds, and checks what must hold for every word: the output is
+non-empty lower-case ASCII letters; `LatinScript.enforced` is Latin and a second pass changes
+nothing; precomposed and decomposed nukta, chandrabindu and anusvara, and inserted joiners give
+one output and one `soundKey`; and a run of words is written word for word with its spacing
+kept. `UTTRFLOW_SEED` replays one seed. None is broken on the tree this landed on.
+
 ## The script guard
 
 A model can answer Devanagari with a translation, with the prompt's own worked example, or in
