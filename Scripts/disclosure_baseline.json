@@ -1,5 +1,5 @@
 {
-  "total": 66,
+  "total": 61,
   "files": {
     ".githooks/commit-msg": 1,
     ".githooks/pre-push": 1,
@@ -8,12 +8,9 @@
     "Design/_gen_predict.py": 1,
     "Design/canvas.json": 1,
     "Docs/app-dictionary-store.md": 1,
-    "Docs/bakeoff-method.md": 2,
     "Docs/cleanup.md": 1,
     "Docs/core-history-accuracy.md": 1,
     "Docs/eval-methodology.md": 2,
-    "Docs/measuring-accuracy.md": 2,
-    "Docs/performance.md": 1,
     "Docs/predict-agent.md": 1,
     "Docs/predict-context.md": 1,
     "Docs/predict-ime.md": 1,

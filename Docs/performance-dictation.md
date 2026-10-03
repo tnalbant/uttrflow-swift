@@ -1,0 +1,328 @@
+# How long a dictation takes, and how accurate it is
+
+A dictation is the recogniser (Whisper large-v3 turbo on CoreML through WhisperKit,
+`Sources/UttrflowSpeech/`) and the tidier (Apple's on-device model, then rules) driven by
+`DictationPipeline` (`Sources/UttrflowPipeline/`). This page holds the measured latency, the wait
+after key-up, word error rate on a synthetic corpus, and what loading the model costs. Readings
+come from `uttrflow-bakeoff profile` (method in [`performance.md`](performance.md)) and from
+`uttrflow-dev bench` with `Scripts/dictation_bench.py` (below). Accuracy against recorded speech is
+[`measuring-accuracy.md`](measuring-accuracy.md); early transcription is
+[`early-transcription.md`](early-transcription.md).
+
+## Latency in the profile
+
+Median and slowest of three runs each, model already loaded, Debug, load average up to 24:
+
+```
+  length   audio   runs  end-to-end          transcription       transformation
+  ───────────────────────────────────────────────────────────────────────────────
+  short    3.42    3     1.68      2.23      0.54      1.39      0.85      1.15
+  medium   13.91   3     2.41      3.31      1.06      1.07      1.33      2.25
+  long     58.10   3     7.36      8.74      4.07      5.14      3.29      3.61
+```
+
+The profile reads audio off disk and types into nothing, so capture and insertion are not in it.
+The app times every stage of a real dictation as a `PipelineStage` — `microphoneOpen`,
+`keyDownToAudio`, `capture`, `drain`, `transcription`, `correction`, `transformation`, `expansion`,
+`insertion` — and shows them on the Diagnostics page.
+
+**The microphone opening** builds the audio graph, queries the input format, installs a tap and
+starts the engine before a single sample exists, while the user is already speaking; it is
+`microphoneOpen`. Creating the recording's file is not part of it: `RecordingStore.begin` hands the
+folder, WAV, backup exclusion, header and creation date to the writer's own task, which creates the
+file before writing the first block it was handed, so nothing captured in between is lost. Timed
+over 300 `begin()` calls against a temporary folder on a quiet Mac:
+
+| `RecordingStore.begin()` | median | p90 | p99 | max |
+|---|---|---|---|---|
+| file work on the writer (shipped) | 13–26 µs | 24–42 µs | 57–125 µs | 62–459 µs |
+| file work inline (not used) | 225–340 µs | 314–513 µs | 540–652 µs | 2.8–4.9 ms |
+
+`uttrflow-dev latency --opens N` opens the real microphone N times through the shipping
+`AVAudioCaptureEngine`, times each `start()` through the same `measuring(.microphoneOpen)` the
+pipeline uses, polls every millisecond for the first sample, and summarises with `StageLatency`.
+One run of 20 opens, debug build, built-in microphone, on a heavily loaded Mac (load average
+339–387), so these are loaded-machine figures; re-run on a quiet Mac before a decision rests on
+them:
+
+| | median | slowest | samples |
+|---|---|---|---|
+| `microphoneOpen` (`start()` returning) | 779 ms | 1454 ms | 20 |
+| start called to first sample | 879 ms | 1555 ms | 20, 0 silent |
+
+The first sample arrives about 100 ms after `start()` returns, one hardware block. For a modifier
+shortcut `keyDownToAudio` starts at key-down and is read when the press is adopted after
+`modifierSettle`, so it records the settle rather than the first sample; for any other shortcut it
+is not recorded. No latency budget is enforced: `Scripts/perf_budget_audit.py` reads energy and
+memory only.
+
+**Dictionary correction** is held to work, not time: `CorrectionEngineTests` checks that a
+10,000-entry dictionary reads no more entries than a 50-entry one and that the screen is read once
+per utterance. **The doubtful-word candidate step** is budgeted at under 5 ms a piece
+([`cleanup-design.md`](cleanup-design.md)); `DoubtfulWordsTests` counts Double Metaphone encodings
+through `DoubleMetaphone.tally` instead of timing, and fails when ten times the screen words costs
+more than one encoding each or a doubtful run costs more than four. A wall-clock bound is not used
+because it failed under a sanitizer build and a busy machine on changes that never touched the
+step.
+
+### Transcription steps every 30 seconds
+
+From an earlier `profile` run, re-confirmed by the one above (superLinear for transcription, linear
+for clean-up). Marginal cost, in extra seconds of work per extra second of speech:
+
+```
+  end-to-end        short→medium 0.142   medium→long 0.162   linear
+  transcription     short→medium 0.069   medium→long 0.093   superLinear
+  transformation    short→medium 0.070   medium→long 0.070   linear
+```
+
+Clean-up costs the same per second of speech whatever the length. Transcription steps at Whisper's
+thirty-second window. Timed either side of the boundary, three runs each:
+
+| audio | transcription |
+|---|---|
+| 24.96 s | 2.12 / 2.14 / 2.15 s |
+| 33.75 s | 3.22 / 3.25 / 3.28 s |
+
+Those 8.8 extra seconds cost 1.14 s against the 0.61 s the in-window rate predicts; the extra
+≈ 0.5 s is a second encoder pass over a window that is mostly padding. A dictation costs roughly
+**1.6 s fixed, plus 0.14 s per second of speech, plus 0.5 s for every thirty-second window after
+the first**; 1.1 s of the fixed part is the clean-up model starting work. That predicts 10.4 s for
+the 58-second passage against 10.74 s measured.
+
+## Loading the model
+
+| | seconds | who pays it |
+|---|---|---|
+| Neural Engine compile, no compiled copy on this Mac and OS | 148–254 | the first launch after install, and after anything that changes the model or the OS |
+| a fresh process, compiled copy cached | 2–9 | every login, and the next dictation after a memory-pressure release |
+| a second recogniser in a live process | 4–9 | nobody — `BackedSpeechEngine` loads once and keeps it |
+
+The cold compile is not the app's work: the app spent 21.6 processor-seconds (0.15 of a core) over
+148 s, while `ANECompilerService`, a system daemon, ran at 88% of a core throughout. A rebuilt
+binary does not empty the compiled copy: a fresh build loaded in 2.25–2.40 s on a quiet machine,
+so the copy belongs to the model and the OS. With the copy cached, a load costs 5.68
+processor-seconds at 0.98 cores. Loading is CoreML preparing four `.mlmodelc` bundles each time a
+recogniser is constructed, so the recogniser is constructed once and kept.
+
+### Launch and WhisperKit's prewarm
+
+`WhisperKitBackend` loads with WhisperKit's prewarm on; only a measurement harness passes
+`prewarm: false` (`uttrflow-bakeoff profile --no-prewarm`). `PerformanceProfiler` watches the first
+load with `PeakMemory.observed`. Six interleaved runs of each, Debug, load average 9–38:
+
+| | seconds | processor seconds | added to the footprint | peak during the load |
+|---|---|---|---|---|
+| prewarm on (shipped) | 2.25–2.40 | 2.19–2.36 | 104.6–108.6 MB | 182.8–186.8 MB footprint, 341–354 MB resident |
+| prewarm off | 1.34–1.38 | 1.32–1.89 | 87.5–92.2 MB | 183.6–186.1 MB footprint, 347–348 MB resident |
+
+On a warm compile prewarm costs about 0.9 s of launch and 16 MB once loaded, and the load's peak is
+the same either way, inside the 400 MB dictation line. The first dictation after a warm launch
+waited 1.05 s against 1.02–1.03 s for the next two. Prewarm exists to hold down the peak of the
+**first** compile, and that peak is not measured:
+
+- **There is no compiled cache to remove.** A load writes nothing under `~/Library/Caches`, the
+  model folder or the per-user cache directory. A cold load is a Neural Engine compile the system
+  has no copy of, and the only levers are a restart and `purge`, which needs root.
+- **Most of that peak is in another process.** `MemoryFootprint` and `/usr/bin/time -l` each report
+  one process, so neither sees `ANECompilerService`, and the number the app can report is not the
+  one an 8 GB Mac runs out of memory on.
+
+Measuring it needs a machine-wide instrument and two restarts, since the first load after one is
+the only cold load there is: run
+`uttrflow-bakeoff profile --dictations 1 --repetitions 1 --transcribe-only` first thing after a
+restart, add `--no-prewarm` after the next, and watch `ANECompilerService` beside both.
+
+## End to end: the words and the wait
+
+`uttrflow-dev bench` plays clips through `DictationPipeline` exactly as a held key would — the
+shipping router, early transcription, the piece joiner — and prints one JSON line per dictation:
+the text, the wait after key-up, each recognition and each tidy with its start and end, processor
+seconds, and the peak footprint sampled every 20 ms. `Scripts/dictation_bench.py` builds the
+corpus, writes the jobs and scores a run. One process loads the recogniser once and plays every
+clip: separate processes would each compile for the Neural Engine at the same moment and stall
+each other, which is why `uttrflow-dev dictate`, one clip per process, cannot run a corpus.
+
+**The corpus is synthetic and invented.** `say` voices for US, UK and Indian English and for Hindi;
+replies of one to four words, passages of 5 s to 2 min (with a 0.9 s breath every third sentence
+from 30 s up, and one 60 s passage without), numbers, email addresses on `example.com`, code
+identifiers, invented proper nouns with and without a vocabulary, Hinglish read in the Latin
+alphabet, spoken punctuation, self-corrections, the `TranscriptionCorpus` passages, Hindi replies
+(`hi-reply`), mixed-language clips (`code-switch`), and ten clips again with brown noise at 20 and
+10 dB SNR, 24 dB quieter and 12 dB hotter (clipping). No recording of a person is involved.
+
+**Two word error rates.** *Raw* is the recogniser's pieces joined, against what was said; *final*
+is the inserted text, against what should be typed. Both lower-case, drop punctuation, spell
+numerals, and split identifiers and addresses into words, so "3.5%" and "three point five percent"
+agree; neither sees capitals or punctuation. Hindi is scored against the Devanagari and the
+romanised passage, whichever is closer.
+
+### Word error rate
+
+One run of the commands below, Release, load average 6–30, each clip all at once with the shipping
+router:
+
+| category | clips | raw | final |
+|---|---|---|---|
+| replies, 1–4 words | 14 | 0.0% | 0.0% |
+| 5 s | 3 | 0.0% | 0.0% |
+| 15 s | 3 | 2.5% | 2.5% |
+| 30 s | 3 | 2.9% | 2.9% |
+| 60 s | 4 | 1.0% | 1.0% |
+| 120 s | 3 | 0.5% | 0.5% |
+| numbers | 4 | 6.0% | 6.0% |
+| email addresses | 3 | 2.2% | 2.2% |
+| code identifiers | 4 | 0.0% | 1.7% |
+| spoken punctuation | 3 | 16.7% | 9.5% |
+| self-corrections | 4 | 2.3% | 0.0% |
+| invented names, no vocabulary | 9 | 28.1% | 28.1% |
+| invented names, in the vocabulary | 9 | 0.0% | 0.0% |
+| `TranscriptionCorpus`, English | 18 | 2.8% | 3.1% |
+
+| voice | clips | raw | final |
+|---|---|---|---|
+| US English | 31 | 2.1% | 2.2% |
+| UK English | 27 | 2.3% | 2.4% |
+| Indian English | 26 | 3.5% | 3.3% |
+
+| audio, over the same ten clips | raw | final |
+|---|---|---|
+| as synthesised | 2.4% | 2.4% |
+| 24 dB quieter | 2.9% | 2.9% |
+| 12 dB hotter, clipping | 3.4% | 3.4% |
+
+The ten `hi-reply` clips, run alone in fast mode with the rules cleaner and the `hi` Languages
+profile, were all decoded as Hindi, raw WER 20.0% and final 32.1%; the two shortest still had word
+errors (`हाँ ठीक है` became `हाप पहे`, `हाँ जी` became `हाजजी`). These are synthetic-voice results,
+not a claim about real speakers.
+
+- **A vocabulary is worth what it costs.** Invented names go from 28% wrong to none when they are in
+  the prompt; the cost is below.
+- **Numbers and names are the English errors.** "4,250 dollars and 75 cents" is written
+  "$4,250.75" (fair, but counted); "Jaxvale" becomes "Jack's Vale". Code identifiers are joined as
+  the recogniser chose; "src" is heard as "source".
+- **Volume barely registers** on synthetic speech. The same audio can still come back differently
+  between runs: "Ship it" at 10 dB SNR came back "Shit is." in one run and as nothing in the next,
+  and split 16 to 34 over 50 runs — the model's own greedy reading and the temperature ladder
+  deciding whether it is shown ([`speech-engines.md`](speech-engines.md)). `score` names every clip
+  run more than once that answered differently.
+- **The tidier changed the words of 2 of 120 English clips**: it removed a stray quotation mark the
+  recogniser left, and turned "thick" into "theek" in a noisy clip. Every other English dictation
+  came out identical to the rules pinned alone.
+
+### The wait
+
+**All at once** hands the whole file over and releases the key, so every piece is recognised and
+tidied after key-up: what a retry does, and the worst case. **Real time** plays the file at speaking
+pace, so early transcription works ahead while the key is held. The wait is key-up to the words
+being ready; recognising and tidying are each dictation's total across its pieces, so in real time
+they can exceed the wait.
+
+| | clips | speech | wait p50 | wait p95 | first piece tidied while held, p50 | recognising p50 | tidying p50 | processor s per speech s | peak footprint |
+|---|---|---|---|---|---|---|---|---|---|
+| replies, all at once | 14 | 0.8 s | 1.07 s | 2.40 s | — | 0.56 s | 0.50 s | 0.110 | 362 MB |
+| replies, rules only | 14 | 0.8 s | 0.60 s | 0.69 s | — | 0.60 s | 0.00 s | 0.080 | 362 MB |
+| 5 s, all at once | 3 | 5.1 s | 1.06 s | 1.14 s | — | 0.57 s | 0.49 s | 0.035 | 258 MB |
+| 15 s, all at once | 3 | 16.8 s | 3.56 s | 4.53 s | — | 1.25 s | 2.31 s | 0.031 | 258 MB |
+| 30 s, all at once | 3 | 31.5 s | 8.41 s | 9.30 s | — | 4.07 s | 6.56 s | 0.030 | 219 MB |
+| 60 s, all at once | 4 | 58.4 s | 10.83 s | 12.25 s | — | 7.45 s | 9.99 s | 0.029 | 255 MB |
+| 120 s, all at once | 3 | 116.2 s | 19.94 s | 22.38 s | — | 15.90 s | 18.47 s | 0.030 | 270 MB |
+| replies, real time | 14 | 0.8 s | 1.67 s | 3.91 s | — | 0.75 s | 0.79 s | 0.147 | 229 MB |
+| 5 s, real time | 3 | 5.1 s | 1.58 s | 2.41 s | — | 0.61 s | 0.97 s | 0.039 | 229 MB |
+| 15 s, real time | 3 | 16.8 s | 2.99 s | 3.68 s | — | 1.29 s | 1.70 s | 0.034 | 228 MB |
+| 30 s, real time | 3 | 31.5 s | 1.93 s | 3.39 s | 16.9 s | 3.10 s | 3.91 s | 0.035 | 229 MB |
+| 60 s, real time | 4 | 58.4 s | 2.75 s | 7.38 s | 17.6 s | 6.32 s | 7.19 s | 0.034 | 287 MB |
+| 120 s, real time | 3 | 116.2 s | 2.03 s | 2.19 s | 15.1 s | 9.79 s | 12.70 s | 0.034 | 372 MB |
+
+- **Early transcription holds the wait near two seconds from 30 s up.** All at once, a two-minute
+  dictation waits 20 s; spoken, 2 s. The 15 s passages have no breath long enough to cut at, so
+  they are one piece and wait for all of it.
+- **For a short dictation the tidier is half the wait.** A reply recognises in about 0.56 s and
+  then waits about 0.5 s more for Apple's model, which returned the rules' answer on every reply
+  measured.
+- **Processor time is 0.03 s per second of speech** above five seconds, inside the 0.1 budget. A
+  reply costs more per second (0.11) because the encoder always reads a full 30-second window.
+- **Peak footprint stays under the 400 MB dictation line**; the highest was 372 MB, during a
+  two-minute real-time dictation.
+
+### What the recognising time is made of
+
+WhisperKit reports its own stages in `TranscriptionResult.timings`. Read with a temporary print
+over 528 decodes of the same corpus:
+
+- **Decoder steps are about four fifths of it**, one Neural Engine call per token, 20 ms each on a
+  quiet machine and 37 ms under a load average of 100–200. The encoder is about a sixth, roughly
+  0.28 s per 30-second window.
+- **Everything on the processor around the steps is under 5%**: the key-value cache copy, logits
+  filtering, sampling and word timestamps.
+- **The temperature fallback never fired** in 528 decodes, so the fallback settings cost nothing on
+  this corpus and cannot be tuned against it.
+- **A vocabulary costs one decoder step per prompt token, every piece.** Four or five invented names
+  are 20–26 tokens and took the median recognition of a 4.6 s clip from 1.61 s to 2.50 s under
+  load; at 20 ms a step a full 111-token prompt is about 2.2 s more for every piece.
+
+### Measured and not used
+
+- **The GPU for the encoder and decoder.** Recognition was about 30% faster (a 15 s clip 0.95 s
+  against 1.33 s) but the footprint was **3.4 GB** against 250 MB, with a first recognition after
+  launch of 2.4–8.1 s while shaders warmed: twelve times the dictation budget on an 8 GB Mac.
+- **Skipping Apple's model for longer dictations.** Identical to the rules on 117 of 120 synthetic
+  English clips, and the tidier is most of the all-at-once wait; but synthetic speech has none of
+  a person's pauses, fillers and slips, so this is not evidence that real dictation would match.
+- **A shorter vocabulary prompt.** The per-token cost above is real and so is the accuracy it buys;
+  trading one for the other needs vocabularies of the size people keep.
+
+## The system recogniser, per piece
+
+`AppleSpeechBackend` settles the asset check, the format query and the transcriber and analyser in
+`load()`, and prepares the next pair once a piece answers, rather than doing all of it inside every
+call. Debug, called directly on one 5.3-second clip, fifteen pieces 300 ms apart, two runs each:
+
+| | median per piece |
+|---|---|
+| settled in `load()`, next pair prepared (shipped) | 101, 93 ms |
+| everything inside every call (not used) | 121, 124 ms |
+
+About 25 ms a piece leaves the wait after key release. A standalone probe of the framework put the
+asset query alone at 5–130 ms per call, largest when the system had been idle.
+
+## Re-running the bench
+
+```
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift build -c release --product uttrflow-dev
+python3 Scripts/dictation_bench.py corpus                                  # .build/bench, about a minute
+python3 Scripts/dictation_bench.py jobs --cleaners shipping,rules > .build/bench/jobs-fast.tsv
+python3 Scripts/dictation_bench.py jobs --mode rt --clean-only \
+    --categories reply,dur5,dur15,dur30,dur60,dur120 > .build/bench/jobs-rt.tsv
+cat .build/bench/jobs-fast.tsv .build/bench/jobs-rt.tsv > .build/bench/jobs.tsv
+.build/release/uttrflow-dev bench .build/bench/jobs.tsv > .build/bench/run.out
+python3 Scripts/dictation_bench.py score .build/bench/run.out
+```
+
+`--categories hi-reply` selects the Hindi replies, whose jobs use the `hi` Languages profile.
+`--categories code-switch` selects an English passage followed by a Hindi one and a Hindi sentence
+followed by an English one, each after a 1.5-second pause; their jobs use both `en,hi` and `hi,en`
+profiles so each piece detects its own language, and both romanised and Devanagari Hindi forms are
+scored.
+
+One clip many times over, which says whether the recogniser answers the same audio the same way:
+
+```
+python3 Scripts/dictation_bench.py jobs --repeat 50 --cleaners rules --categories reply \
+    | grep snr10 > .build/bench/jobs-repeat.tsv
+.build/release/uttrflow-dev bench .build/bench/jobs-repeat.tsv > .build/bench/run-repeat.out
+python3 Scripts/dictation_bench.py score .build/bench/run-repeat.out
+```
+
+`--idle-before <seconds>` waits before each job and emits an `idle` event, so the tidier's kept
+session goes cold between dictations as it does in use; without it every tidy in a run is warm.
+
+```
+.build/release/uttrflow-dev bench .build/bench/jobs.tsv --idle-before 300 > .build/bench/run-cold.out
+```
+
+Each `clean` line names the steps that changed something (`steps`) and any answer refused before
+the one kept (`refused`). Clip audio is named by its voice and words, so changing either speaks it
+again. Run one `bench` at a time: two processes compete for the Neural Engine and each other's
+compile. The full run takes about half an hour, its first load included.
