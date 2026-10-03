@@ -49,22 +49,11 @@ public enum AppContextDescriber {
 
     // MARK: Sanitising
 
-    /// One line with double quotes made single, so screen text cannot forge a prompt line; nil when blank.
+    /// The value as one safe prompt line cut to the limit, or nil when blank.
     static func field(_ value: String?, limit: Int) -> String? {
         guard let value else { return nil }
-        let flattened = TextTidy.collapseWhitespace(value).replacingOccurrences(of: "\"", with: "'")
-        guard !flattened.isEmpty else { return nil }
-        return truncate(flattened, to: limit)
-    }
-
-    /// Cuts at the last word boundary inside the limit, so a quotation does not end in the middle of a name.
-    static func truncate(_ text: String, to limit: Int) -> String {
-        guard text.count > limit else { return text }
-        let head = text.prefix(limit)
-        let cut = head.lastIndex(of: " ").map { head[..<$0] } ?? head
-        // A single word longer than the budget keeps the hard cut rather than becoming a lone ellipsis.
-        let kept = cut.isEmpty ? head : cut
-        return "\(kept)…"
+        let quoted = PromptText.quoted(value, limit: limit)
+        return quoted.isEmpty ? nil : quoted
     }
 }
 
