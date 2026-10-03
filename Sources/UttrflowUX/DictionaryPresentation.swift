@@ -54,6 +54,10 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
     public let timesUsed: String
     /// How often the user has undone it, as text.
     public let timesUndone: String
+    /// "Used 3 times", what VoiceOver reads for the use count.
+    public let timesUsedSpoken: String
+    /// "Undone 2 times", what VoiceOver reads for the undo count.
+    public let timesUndoneSpoken: String
     /// Whether the word has been undone at all, which tints the count.
     public let hasBeenUndone: Bool
     /// Whether the undo count is the reason this word is in trouble; drawn in red before it retires.
@@ -73,6 +77,8 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         added: String,
         timesUsed: String,
         timesUndone: String,
+        timesUsedSpoken: String,
+        timesUndoneSpoken: String,
         hasBeenUndone: Bool,
         undoneIsConcerning: Bool,
         isRetired: Bool,
@@ -86,6 +92,8 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         self.added = added
         self.timesUsed = timesUsed
         self.timesUndone = timesUndone
+        self.timesUsedSpoken = timesUsedSpoken
+        self.timesUndoneSpoken = timesUndoneSpoken
         self.hasBeenUndone = hasBeenUndone
         self.undoneIsConcerning = undoneIsConcerning
         self.isRetired = isRetired
@@ -353,6 +361,8 @@ public enum DictionaryPresenter {
             added: entry.firstSeen.formatted(.dateTime.day().month(.abbreviated).locale(locale)),
             timesUsed: "\(entry.timesUsed)",
             timesUndone: "\(entry.timesReverted)",
+            timesUsedSpoken: "Used \(MainFormatting.count(entry.timesUsed, "time", "times"))",
+            timesUndoneSpoken: "Undone \(MainFormatting.count(entry.timesReverted, "time", "times"))",
             hasBeenUndone: entry.timesReverted > 0,
             undoneIsConcerning: entry.timesReverted > concerningUndos,
             isRetired: isRetired,

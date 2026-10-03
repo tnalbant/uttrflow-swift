@@ -1,5 +1,6 @@
 import Testing
 import UttrflowContext
+import UttrflowPredict
 
 @testable import Uttrflow
 

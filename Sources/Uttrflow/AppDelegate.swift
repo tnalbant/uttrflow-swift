@@ -493,7 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The files a full reset reaches that the settings module has no store for.
     private func keptElsewhere() -> KeptElsewhere {
         let encryptedStore = self.encryptedStore
-        KeptElsewhere(
+        return KeptElsewhere(
             recordings: { [recordings] in try await recordings.discardEverything() },
             snippets: { [snippets] in try await snippets.deleteEverything() },
             suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() },
@@ -952,7 +952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 switch result {
                 case .success:
                     self?.suggestionRuntime =
-                        coordinator.secureInput.isBlocking ? .secureInputBlocked : .running
+                        coordinator.isSecureInputBlocking ? .secureInputBlocked : .running
                 case .failure: self?.suggestionRuntime = .tapFailed
                 }
             }
@@ -1086,7 +1086,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Cleared so that turning the feature off and on loads the model again.
             isModelPreparing = false
             suggestionModel = .loadFailed
-        case .started, .finished, .failed:
+        case .finished, .failed:
             break
         }
     }
@@ -1372,8 +1372,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let arming = shortcutArming
         // Kept as its own state on the menu bar and floating button, never shown as a failed dictation.
         Task {
-            await arming.arm {
-                guard attempt == shortcutArmingAttempt, surfaces.listensForDictation else { return }
+            await arming.arm { () throws(HotkeyError) in
+                guard attempt == self.shortcutArmingAttempt, self.surfaces.listensForDictation else { return }
                 try await controller.start(binding: binding)
             }
             if let failure = arming.failure {
@@ -1857,9 +1857,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.log.info(
                 "delete: undoable=\(held != nil, privacy: .public) flag=\(self.panel?.canUndoDelete == true, privacy: .public)"
             )
-            let deletion = Task { [clipboard, retention] in
+            let deletion = Task { [clipboard, retention] () -> Result<Void, ClipboardStoreError> in
                 await clipboard.forgetHeldPictures()
-                do {
+                do throws(ClipboardStoreError) {
                     _ = try await clipboard.delete(
                         id, keeping: retention, holdingPicture: held != nil)
                     return .success(())
@@ -1970,11 +1970,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             panel?.canUndoDelete = false
             intentWork = Task { [weak self] in
                 guard let self else { return }
-                do {
+                do throws(ClipboardStoreError) {
                     try await claim.waitForDelete()
                     try await self.carryOut(.restore(claim.clip))
-                } catch let failure as ClipboardStoreError {
-                    self.panel?.notice = .writeFailed(failure.userMessage)
+                } catch {
+                    self.panel?.notice = .writeFailed(error.userMessage)
                 }
                 await self.refreshPanelIfOpen()
             }
@@ -2122,9 +2122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 } else {
                     attempt = try await clipInserter.insert(text, richText: richText)
                 }
+                let arrival = forPanel ? "" : " arrival=\(attempt.arrival.rawValue)"
                 Self.log.info(
-                    "clip inserted by \(attempt.method.rawValue, privacy: .public)"
-                        + (forPanel ? "" : " arrival=\(attempt.arrival.rawValue, privacy: .public)"))
+                    "clip inserted by \(attempt.method.rawValue, privacy: .public)\(arrival, privacy: .public)"
+                )
                 if forPanel { self?.reportPanelPaste(.text(attempt)) }
             } catch {
                 // Every strategy refused, including the one that cannot.
@@ -2723,8 +2724,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, vocabularyPrompt: lastVocabularyPrompt,
-                    cleaning: lastCleaning,
                     decoding: lastDecoding,
+                    cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),

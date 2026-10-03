@@ -640,7 +640,8 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
         let before = HeldSwapSpeechEngine()
-        let after = faster()
+        let after = FakeSpeechEngine(
+            kind: .appleSpeech, transcribeOutcome: .success(.fixture(text: "faster")))
         let pipeline = makePipeline(capture: capture, speech: before, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()

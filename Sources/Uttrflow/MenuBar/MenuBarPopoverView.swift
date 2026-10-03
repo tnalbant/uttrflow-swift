@@ -268,7 +268,7 @@ private struct MenuBarRoundButton: View {
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(MenuBarColour.buttonLabel)
                         .lineLimit(1)
-                    if button.isBeta { BetaBadge() }
+                    if isBeta { BetaBadge() }
                 }
             }
             .contentShape(Rectangle())
@@ -276,7 +276,7 @@ private struct MenuBarRoundButton: View {
         .buttonStyle(.plain)
         .disabled(!button.command.isEnabled)
         .accessibilityLabel(
-            button.isBeta ? BetaFeature.accessibilityName(button.command.title) : button.command.title)
+            isBeta ? BetaFeature.accessibilityName(button.command.title) : button.command.title)
     }
 
     private var isBeta: Bool {

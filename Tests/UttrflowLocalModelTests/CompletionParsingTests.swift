@@ -12,14 +12,14 @@ struct CompletionParsingTests {
         let situation = GenerationSituation(application: "Notes")
         let cutOff = MLXCandidateScorer.completions(
             from: .init(
-                text: "see you at the", stop: .length, written: "", tokens: [],
+                forgetGeneration: 0, text: "see you at the", stop: .length, written: "", tokens: [],
                 logProbabilities: [], bytes: []),
             typed: "see you", asking: .one, in: situation)
         #expect(cutOff.isEmpty)
 
         let endedNormally = MLXCandidateScorer.completions(
             from: .init(
-                text: "see you at the", stop: .stop, written: "", tokens: [],
+                forgetGeneration: 0, text: "see you at the", stop: .stop, written: "", tokens: [],
                 logProbabilities: [], bytes: []),
             typed: "see you", asking: .one, in: situation)
         #expect(endedNormally == ["see you at the"])
@@ -30,21 +30,24 @@ struct CompletionParsingTests {
         let situation = GenerationSituation(application: "Notes")
         let cutOff = MLXCandidateScorer.completions(
             from: .init(
-                text: "see you at the park\nsee you after the", stop: .length, written: "", tokens: [],
+                forgetGeneration: 0, text: "see you at the park\nsee you after the", stop: .length,
+                written: "", tokens: [],
                 logProbabilities: [], bytes: []),
             typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
         #expect(cutOff == ["see you at the park"])
 
         let endedOnNewline = MLXCandidateScorer.completions(
             from: .init(
-                text: "see you at the park\nsee you after the park\n", stop: .length, written: "", tokens: [],
+                forgetGeneration: 0, text: "see you at the park\nsee you after the park\n", stop: .length,
+                written: "", tokens: [],
                 logProbabilities: [], bytes: []),
             typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
         #expect(endedOnNewline == ["see you at the park", "see you after the park"])
 
         let unparsableCutLine = MLXCandidateScorer.completions(
             from: .init(
-                text: "see you at the park\nunfinished", stop: .length, written: "", tokens: [],
+                forgetGeneration: 0, text: "see you at the park\nunfinished", stop: .length, written: "",
+                tokens: [],
                 logProbabilities: [], bytes: []),
             typed: "see you", asking: .others(excluding: "see you soon"), in: situation)
         #expect(unparsableCutLine == ["see you at the park"])

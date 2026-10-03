@@ -290,10 +290,10 @@ struct MainIntentWiringTests {
         let clipboard = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = Retention(days: 30, now: .now)
         let window = ClipRetention(days: 30, now: .now)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: .heardAsStrayLetters, heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let undone = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -358,10 +358,10 @@ struct MainIntentWiringTests {
 
         let entry = DictionaryEntry(word: "SQL", origin: .added, firstSeen: .now)
         try await dictionary.add(entry)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: entry.id,
-                reason: .heardAsStrayLetters, heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -506,10 +506,10 @@ struct MainIntentWiringTests {
         let history = DictationHistoryStore(
             file: DictationHistoryStore.defaultFile(in: sandbox.root))
         let retention = Retention(days: 30, now: .now)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: .heardAsStrayLetters, heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))

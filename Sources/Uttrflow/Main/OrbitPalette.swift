@@ -60,7 +60,7 @@ extension NSColor {
             let resolvedAlpha =
                 appearance.highContrastValue(
                     dark: highContrastAlpha, light: highContrastAlpha) ?? alpha
-            NSColor(
+            return NSColor(
                 rgb: appearance.highContrastValue(dark: highContrastDark, light: highContrastLight)
                     ?? (appearance.isDark ? dark : light)
             ).withAlphaComponent(resolvedAlpha)
@@ -89,7 +89,7 @@ extension NSColor {
                 dark: layer.tone.highContrastDark, light: layer.tone.highContrastLight)
             let highContrastOpacity = appearance.highContrastValue(
                 dark: layer.highContrastDarkOpacity, light: layer.highContrastLightOpacity)
-            appearance.isDark
+            return appearance.isDark
                 ? NSColor(rgb: highContrastTone ?? layer.tone.dark)
                     .withAlphaComponent(highContrastOpacity ?? layer.darkOpacity)
                 : NSColor(rgb: highContrastTone ?? layer.tone.light)
@@ -122,17 +122,8 @@ extension NSColor {
 }
 
 extension NSAppearance {
-    func highContrastValue(dark: UInt32?, light: UInt32?) -> UInt32? {
-        switch bestMatch(from: [
-            .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
-        ]) {
-        case .accessibilityHighContrastAqua: light
-        case .accessibilityHighContrastDarkAqua: dark
-        default: nil
-        }
-    }
-
-    func highContrastValue(dark: Double?, light: Double?) -> Double? {
+    /// The value for this appearance's high-contrast variant, or nil when contrast is not increased.
+    func highContrastValue<Value>(dark: Value?, light: Value?) -> Value? {
         switch bestMatch(from: [
             .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
         ]) {

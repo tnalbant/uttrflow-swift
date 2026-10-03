@@ -83,9 +83,11 @@ private final class SeamCorrector: WordCorrecting, Sendable {
         let words = transcription.text.spokenWords.map(String.init)
         let wanted = heard.split(whereSeparator: \.isWhitespace).map(String.init)
         guard wanted.count <= words.count,
-            let start = (0...(words.count - wanted.count)).first(where: { index in
-                words[index..<(index + wanted.count)].map { SpokenToken($0).core.lowercased() }
-                    == wanted.map(\.lowercased)
+            let start = (0...(words.count - wanted.count)).first(where: { (index: Int) -> Bool in
+                let window: [String] = words[index..<(index + wanted.count)].map {
+                    SpokenToken($0).core.lowercased()
+                }
+                return window == wanted.map { $0.lowercased() }
             })
         else { return [] }
         let range = start..<(start + wanted.count)
@@ -156,8 +158,8 @@ struct DictationPipelineSeamTests {
         let pipeline = DictationPipeline(
             capture: capture, speech: SeamSpeechEngine(lines), cleaner: cleaner,
             context: FakeContextEngine(context: context), inserter: SeamInserter(),
-            snippets: snippets,
             corrector: corrector,
+            snippets: snippets,
             windowing: seamWindows, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()

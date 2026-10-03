@@ -52,8 +52,7 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
                 mergedDictionary.append(entry)
             } else {
                 duplicateWords += 1
-                // A fresh install seeds this build's own word before import. Restore the archive's
-                // identity and counters when both copies are that shipped entry.
+                // When both copies are the shipped entry, the archive's identity and counters win.
                 if entry.origin == .shipped,
                     let index = wordIndexes[entry.word.lowercased()],
                     mergedDictionary[index].origin == .shipped

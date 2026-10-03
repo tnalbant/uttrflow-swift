@@ -98,13 +98,13 @@ struct DictionaryRowView: View {
                 .foregroundStyle(PagePalette.text.opacity(0.6))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .accessibilityLabel("Used \(MainFormatting.count(row.timesUsed, "time", "times"))")
+                .accessibilityLabel(row.timesUsedSpoken)
             Text("\(row.timesUndone)×")
                 .monospacedDigit()
                 .foregroundStyle(undoneColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .accessibilityLabel("Undone \(MainFormatting.count(row.timesUndone, "time", "times"))")
+                .accessibilityLabel(row.timesUndoneSpoken)
             controls
         }
         .font(.system(size: 13))

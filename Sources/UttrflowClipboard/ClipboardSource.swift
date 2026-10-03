@@ -25,8 +25,7 @@ public protocol ClipboardSource: Sendable {
     /// The application in front of the user, shown as best-effort provenance.
     func frontmostApplicationName() -> String?
 
-    /// Bundle identifier of the frontmost application when the copy is detected. macOS does not
-    /// identify the process that wrote the pasteboard, so this is best-effort provenance only.
+    /// Bundle identifier of the frontmost application at the copy, a guess since the writer is unknown.
     func frontmostApplicationBundleIdentifier() -> String?
 
     /// Name and bundle identifier sampled from the same frontmost application.

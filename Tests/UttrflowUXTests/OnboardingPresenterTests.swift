@@ -554,7 +554,7 @@ struct OnboardingPresenterTests {
             pressed.subtitle
                 == "Click a text field in another app, then press control and option, say anything, then press again."
         )
-        #expect(!pressed.subtitle.contains("let go"))
+        #expect(pressed.subtitle?.contains("let go") == false)
     }
 
     @Test("offers the way to put right an ending that cannot be tried")

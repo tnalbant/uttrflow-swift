@@ -16,7 +16,7 @@ protocol SuggestionProcessActivityManaging {
 
 @MainActor
 private final class ProcessSuggestionActivity: SuggestionProcessActivityManaging {
-    private var activity: NSObjectProtocol?
+    private var activity: (any NSObjectProtocol)?
 
     func begin() {
         guard activity == nil else { return }
@@ -75,6 +75,8 @@ final class SuggestionCoordinator {
     private let panel = SuggestionPanelController.shared
     private let interceptor = KeyInterceptor()
     private let secureInput = SecureInputWatch()
+    /// Whether secure keyboard entry is holding suggestions off, as this coordinator last saw it.
+    var isSecureInputBlocking: Bool { secureInput.isBlocking }
     private let acceptor: SuggestionAcceptor
     private let focusedFieldValueObserver: any FocusedFieldValueObserving
     /// Keeps background typing work responsive for the coordinator's lifetime.
@@ -1258,9 +1260,10 @@ final class SuggestionCoordinator {
             return
         }
         let shown = panel.show(
-            update.suggestion, typed: session.typed, placement: .inlineGhost, caret: caret,
+            update.suggestion, typed: session.typed, placement: .inlineGhost,
             direction: snapshot.writingDirection == .rightToLeft ? .rightToLeft : .leftToRight,
-            window: snapshot.window, field: snapshot.ghostField, fieldPointSize: snapshot.pointSize,
+            caret: caret, window: snapshot.window, field: snapshot.ghostField,
+            fieldPointSize: snapshot.pointSize,
             selection: session.selection,
             acceptKey: preferences.acceptKeys.key(
                 for: AppContext(

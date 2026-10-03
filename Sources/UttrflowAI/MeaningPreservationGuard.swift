@@ -1361,7 +1361,8 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
     static let numberWords: [String: String] = Dictionary(
-        uniqueKeysWithValues: Array(englishNumberWords) + NumberWords.hindi.map { ($0.key, String($0.value)) })
+        uniqueKeysWithValues: Array(englishNumberWords) + NumberWords.hindi.map { ($0.key, String($0.value)) }
+    )
 
     /// The English number words as digits, read from `NumberWords`.
     private static let englishNumberWords: [String: String] = NumberWords.english.mapValues(String.init)

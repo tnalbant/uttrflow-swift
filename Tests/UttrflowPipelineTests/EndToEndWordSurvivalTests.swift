@@ -1,8 +1,8 @@
 import Testing
 import UttrflowCore
-import UttrflowPipeline
 
 @testable import UttrflowAI
+@testable import UttrflowPipeline
 
 @Suite("End-to-end word survival")
 struct EndToEndWordSurvivalTests {
@@ -31,7 +31,7 @@ struct EndToEndWordSurvivalTests {
                 "input \(input.index) [\(input.destination)]: '\($0.word)' first lost at \($0.stage)"
             }
         }
-        #expect(failures.isEmpty, failures.prefix(20).joined(separator: "\n"))
+        #expect(failures.isEmpty, Comment(rawValue: failures.prefix(20).joined(separator: "\n")))
     }
 
     @Test("the check identifies a known deletion at the stage that introduces it")
@@ -112,7 +112,7 @@ struct EndToEndWordSurvivalTests {
         let padded = situation.insertion.paddedBoundary(for: expanded.text)
         stages.append(("insertion padding", padded))
         let reportWords = Set(input.text.split(whereSeparator: \.isWhitespace).map(String.init))
-        Self.firstLostWords(reference: input.text, stages: stages, reportWords: reportWords)
+        return Self.firstLostWords(reference: input.text, stages: stages, reportWords: reportWords)
     }
 
     private static func firstLostWords(
@@ -230,6 +230,13 @@ private struct SeededGenerator {
         }
         return shuffled
     }
+}
+
+/// Whether a generated dictation holds nothing the clean-up exists to change: no filler, number word or repeat.
+private func noCleaningTriggers(_ text: String) -> Bool {
+    let words = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    return words.allSatisfy { !FillersPass.fillerWords.contains($0) && NumberWords.value(of: $0) == nil }
+        && zip(words, words.dropFirst()).allSatisfy { $0 != $1 }
 }
 
 private func isNumberRewrite(_ spoken: String, _ written: String) -> Bool {

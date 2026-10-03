@@ -123,7 +123,8 @@ struct SuggestionTickingTests {
         #expect(ticking.tick(at: later, ghostIsVisible: true) == .wakeAndSlow)
 
         let activity = later.addingTimeInterval(1)
-        #expect(ticking.noteActivity(at: activity))
+        let startedClock = ticking.noteActivity(at: activity)
+        #expect(startedClock)
         #expect(ticking.tick(at: activity.addingTimeInterval(1), ghostIsVisible: true) == .wake)
     }
 

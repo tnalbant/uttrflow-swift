@@ -123,7 +123,7 @@ private final class Rig {
     let clock: ManualClock
     let metrics: RecordingMetricsRecorder
     let speech: FakeSpeechEngine
-    private var lastAudio: AudioSamples = .empty
+    var lastAudio: AudioSamples = .empty
     private var recogniser: HotkeyRecogniser
     let hands = Hands()
 

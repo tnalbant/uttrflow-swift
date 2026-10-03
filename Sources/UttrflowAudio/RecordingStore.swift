@@ -126,7 +126,7 @@ public actor RecordingStore: RecordingKeeper {
         let recorded = RecordedDestination(app: destination, fieldKind: fieldKind)
         destinations[id] = recorded
         if let data = try? PropertyListEncoder().encode(recorded) {
-            try? data.write(to: destinationURL(of: id), options: .atomic)
+            try? PrivateFile.write(data, to: destinationURL(of: id))
         }
         if last?.id == id, let last {
             self.last = KeptRecording(

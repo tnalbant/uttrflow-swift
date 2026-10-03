@@ -36,7 +36,8 @@ struct GuardNumberWordsTests {
     /// Every word the guard reads as a number comes from `NumberWords`, so a key added only here fails.
     @Test("the guard's number words are exactly NumberWords, English and Hindi")
     func numberWordsHaveOneHome() {
-        let expected = NumberWords.english.merging(NumberWords.hindi) { first, _ in first }.mapValues(String.init)
+        let expected = NumberWords.english.merging(NumberWords.hindi) { first, _ in first }.mapValues(
+            String.init)
         #expect(MeaningPreservationGuard.numberWords == expected)
     }
 
@@ -44,6 +45,8 @@ struct GuardNumberWordsTests {
     @Test("a million spoken and a million written are the same number to the guard")
     func millionIsANumber() {
         #expect(MeaningPreservationGuard.numberWords["million"] == "1000000")
-        #expect(MeaningPreservationGuard.inventedNumber(original: "one million rows", rewritten: "one million rows") == nil)
+        #expect(
+            MeaningPreservationGuard.inventedNumber(
+                original: "one million rows", rewritten: "one million rows") == nil)
     }
 }

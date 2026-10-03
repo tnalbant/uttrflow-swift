@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import UttrflowContext
+import UttrflowPredict
 import UttrflowPredictStore
 
 protocol RejectedSuggestionStore: Sendable {
@@ -34,7 +35,7 @@ final class RejectedSuggestionRecorder {
             if unwritten.count > Self.limit { unwritten.removeFirst() }
             suppressed.insert(rejection)
             Self.log.error(
-                "A rejected suggestion's corpus write failed and is held for retry: \(failure(error), privacy: .public)"
+                "A rejected suggestion's corpus write failed and is held for retry: \(SuggestionLog.failure(error), privacy: .public)"
             )
         }
     }
@@ -53,7 +54,8 @@ final class RejectedSuggestionRecorder {
                 }
             } catch {
                 Self.log.error(
-                    "A rejected suggestion's corpus retry failed: \(failure(error), privacy: .public)")
+                    "A rejected suggestion's corpus retry failed: \(SuggestionLog.failure(error), privacy: .public)"
+                )
                 return
             }
         }
@@ -68,17 +70,6 @@ final class RejectedSuggestionRecorder {
     /// Whether the failed write keeps this line unavailable in its surface this session.
     func suppresses(_ text: String, in surface: Surface) -> Bool {
         suppressed.contains(RejectedSuggestion(text: text, surface: surface))
-    }
-
-    /// Names the error type and case without logging a possible text payload.
-    private func failure(_ error: any Error) -> String {
-        let type = String(describing: Swift.type(of: error))
-        let mirror = Mirror(reflecting: error)
-        if mirror.displayStyle == .enum, let label = mirror.children.first?.label {
-            return "\(type).\(label)"
-        }
-        let bridged = error as NSError
-        return "\(type) domain=\(bridged.domain) code=\(bridged.code)"
     }
 }
 
