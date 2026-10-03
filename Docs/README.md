@@ -159,6 +159,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |
 | [ux-test-harness.md](ux-test-harness.md) | UX test harness traps |
+| [test-flakes.md](test-flakes.md) | Flaky-test report and quarantine expiry |
 | [account-tests-keychain-adhoc.md](account-tests-keychain-adhoc.md) | Ad-hoc-signed builds and the data-protection keychain |
 | [agents/code-quality.md](agents/code-quality.md) | Code quality: limits, checks, comments, tests |
 | [agents/product.md](agents/product.md) | Product rules and invariants |
