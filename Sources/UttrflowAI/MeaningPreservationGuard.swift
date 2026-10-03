@@ -1361,41 +1361,10 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
     static let numberWords: [String: String] = Dictionary(
-        uniqueKeysWithValues: Array(englishNumberWords) + Array(hindiNumberWords))
+        uniqueKeysWithValues: Array(englishNumberWords) + NumberWords.hindi.map { ($0.key, String($0.value)) })
 
-    /// Hindi number words in both scripts, without which every Hindi utterance with a number fails the guard.
-    private static let hindiNumberWords: [String: String] = [
-        "एक": "1", "ek": "1",
-        "दो": "2", "do": "2",
-        "तीन": "3", "teen": "3", "tin": "3",
-        "चार": "4", "char": "4", "chaar": "4",
-        "पांच": "5", "पाँच": "5", "paanch": "5", "panch": "5",
-        "छह": "6", "छे": "6", "chhe": "6", "chah": "6",
-        "सात": "7", "saat": "7", "sat": "7",
-        "आठ": "8", "aath": "8", "ath": "8",
-        "नौ": "9", "nau": "9",
-        "दस": "10", "das": "10",
-        "ग्यारह": "11", "gyarah": "11",
-        "बारह": "12", "barah": "12",
-        "पंद्रह": "15", "pandrah": "15",
-        "बीस": "20", "bees": "20", "bis": "20",
-        "तीस": "30", "tees": "30",
-        "चालीस": "40", "chalis": "40",
-        "पचास": "50", "pachas": "50",
-        "सौ": "100", "sau": "100",
-        "हज़ार": "1000", "हजार": "1000", "hazaar": "1000", "hazar": "1000",
-    ]
-
-    /// The English number words people dictate in practice: times, counts and short quantities.
-    private static let englishNumberWords: [String: String] = [
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
-        "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
-        "eleven": "11", "twelve": "12", "thirteen": "13", "fourteen": "14",
-        "fifteen": "15", "sixteen": "16", "seventeen": "17", "eighteen": "18",
-        "nineteen": "19", "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50",
-        "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
-        "hundred": "100", "thousand": "1000",
-    ]
+    /// The English number words as digits, read from `NumberWords`.
+    private static let englishNumberWords: [String: String] = NumberWords.english.mapValues(String.init)
 
     /// The positions of every spoken number run the rewrite wrote as the one numeral it comes to.
     static func composedNumbers(_ tokens: [GrammarToken], in pool: Set<String>) -> Set<Int> {
