@@ -219,12 +219,10 @@ extension SuggestionPreferences {
             self = .default
             return
         }
-        let turnedOff =
-            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOff))?
-            .compactMap(\.value) ?? []
-        let turnedOn =
-            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOn))?
-            .compactMap(\.value) ?? []
+        let turnedOff = container.readableElements(
+            of: String.self, forKey: .turnedOff, fallback: Array(Self.default.turnedOff))
+        let turnedOn = container.readableElements(
+            of: String.self, forKey: .turnedOn, fallback: Array(Self.default.turnedOn))
         self.init(
             isEnabled: (try? container.decode(Bool.self, forKey: .isEnabled)) ?? Self.default.isEnabled,
             turnedOff: Set(turnedOff),

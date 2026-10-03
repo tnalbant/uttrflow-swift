@@ -20,8 +20,8 @@ extension UserProfile {
             return
         }
         self.init(
-            preferredLanguages: (try? container.decode(
-                [ReadableSetting<LanguageCode>].self, forKey: .preferredLanguages))?
-                .compactMap(\.value) ?? Self.default.preferredLanguages)
+            preferredLanguages: container.readableElements(
+                of: LanguageCode.self, forKey: .preferredLanguages, fallback: Self.default.preferredLanguages)
+        )
     }
 }
