@@ -366,6 +366,10 @@ public enum SettingsEditor {
         }
     }
 
+    /// Why a reset waits, said while a dictation could still write into what it removes.
+    static let finishTheDictationFirst =
+        "A dictation is still under way. Let it finish, then try again."
+
     /// What to say when the disk refused a reset, naming what is still here rather than apologising.
     static func reason(forFailed reset: SettingsReset) -> String {
         switch reset {
