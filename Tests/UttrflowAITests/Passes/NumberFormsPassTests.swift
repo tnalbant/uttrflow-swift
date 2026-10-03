@@ -249,6 +249,26 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "joins a colloquial hundred when it cannot be a time",
+        arguments: [
+            ("blood pressure one twenty seven over eighty two", "blood pressure 127 over 82"),
+            ("bp is one fifty over ninety five", "bp is 150 over 95"),
+            ("ldl one sixty five", "ldl 165"),
+            ("he weighs one ninety", "he weighs 190"),
+            ("route one twenty eight", "route 128"),
+            ("flight one twenty three", "flight 123"),
+            ("interstate four fifty", "interstate 450"),
+            ("meet in room two twelve", "meet in room 212"),
+            ("one oh five over sixty", "105 over 60"),
+            ("one twenty over there", "one 20 over there"),
+            ("I have two twenty dollar bills", "I have two 20 dollar bills"),
+        ]
+    )
+    func colloquialHundreds(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("normalizes dotted times only with a clock cue")
     func dottedTimes() {
         #expect(cleaned("moved to 4.30 p.m. on June 2", by: sut) == "moved to 4:30 p.m. on June 2")
