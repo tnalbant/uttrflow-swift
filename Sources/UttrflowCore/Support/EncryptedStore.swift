@@ -179,24 +179,50 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(lookup as CFDictionary, &item)
+        return try resolveKeychainResult(
+            status: status, data: item as? Data, createIfMissing: createIfMissing
+        ) {
+            data in
+            var insertion = query
+            insertion[kSecValueData as String] = data
+            insertion[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            return SecItemAdd(insertion as CFDictionary, nil)
+        }
+    }
+
+    func resolveKeychainResult(
+        status: OSStatus,
+        data: Data?,
+        createIfMissing: Bool,
+        add: (Data) -> OSStatus
+    ) throws -> SymmetricKey {
         if status == errSecSuccess {
-            guard let data = item as? Data, data.count == 32 else { throw StoreKeyError.invalidKey }
+            guard let data, data.count == 32 else { throw StoreKeyError.invalidKey }
             return SymmetricKey(data: data)
         }
         if status == errSecMissingEntitlement {
             return try fileKey(createIfMissing: createIfMissing)
         }
-        guard status == errSecItemNotFound, createIfMissing else {
+        guard status == errSecItemNotFound else {
             throw StoreKeyError.unavailable(Int32(status))
         }
+
+        // A previously created ad-hoc fallback remains authoritative if a later build
+        // gains Keychain access. Do not replace it with a new Keychain key.
+        do {
+            return try fileKey(createIfMissing: false)
+        } catch StoreKeyError.unavailable(let missing) where missing == Int32(errSecItemNotFound) {
+            guard createIfMissing else { throw StoreKeyError.unavailable(Int32(errSecItemNotFound)) }
+        }
+
         let key = SymmetricKey(size: .bits256)
-        let data = key.withUnsafeBytes { Data($0) }
-        var insertion = query
-        insertion[kSecValueData as String] = data
-        insertion[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let addStatus = SecItemAdd(insertion as CFDictionary, nil)
-        guard addStatus == errSecSuccess else { throw StoreKeyError.unavailable(Int32(addStatus)) }
-        return key
+        let keyData = key.withUnsafeBytes { Data($0) }
+        let addStatus = add(keyData)
+        if addStatus == errSecSuccess { return key }
+        if addStatus == errSecMissingEntitlement {
+            return try fileKey(createIfMissing: true)
+        }
+        throw StoreKeyError.unavailable(Int32(addStatus))
     }
 
     /// Deletes the stable local-store item; deleting an already absent key is a completed reset.
