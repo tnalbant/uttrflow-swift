@@ -44,6 +44,8 @@ extend-exclude = [
   "Sources/UttrflowDictionary/GeneralVocabulary.swift",
   "Sources/UttrflowDictionary/DoubleMetaphone.swift",
   "Sources/uttrflow-bakeoff/",
+  # Official Unicode property tables contain canonical technical names, not project prose.
+  "Sources/UttrflowUX/Resources/",
   "Tests/UttrflowPredictTests/",
   "Tests/UttrflowPredictStoreTests/",
   "Tests/UttrflowLocalModelTests/",
