@@ -26,3 +26,34 @@ struct TitleFragmentWordBoundaryTests {
         }
     }
 }
+
+/// Regression for issue 3363: a common noun in a page's subject does not make a browser tab a chat or email app.
+@Suite("A title names a web app only at its edge", .bug(id: 3363))
+struct TitleNamesWebAppAtEdgeTests {
+    @Test("a page whose subject uses an app's name stays plain")
+    func subjectWordsDecideNothing() {
+        for title in [
+            "Messages API reference", "Signal processing notes", "Spark plan",
+            "Teams overview - Microsoft Learn",
+            "Mail merge guide", "How to use Gmail filters - Help Center",
+        ] {
+            let app = AppContext(bundleIdentifier: "com.apple.Safari", documentName: title)
+            #expect(DestinationClassifier.classify(app) == .plain, "\(title)")
+        }
+    }
+
+    @Test("a hosted app's own name at either end of the title still decides")
+    func edgeNamesDecide() {
+        for (title, expected) in [
+            ("general (Channel) - Example Workspace - Slack", Destination.messaging),
+            ("Discord | #general | Example Server", .messaging),
+            ("(3) WhatsApp", .messaging),
+            ("Chat | Microsoft Teams", .messaging),
+            ("Inbox (12) — Mail", .email),
+            ("Inbox - me@example.com - Outlook", .email),
+        ] {
+            let app = AppContext(bundleIdentifier: "com.apple.Safari", documentName: title)
+            #expect(DestinationClassifier.classify(app) == expected, "\(title)")
+        }
+    }
+}
