@@ -12,6 +12,8 @@ struct SelfCorrectionPassTests {
         arguments: [
             ("th- the build passed", "the build passed"),
             ("w- we are late", "we are late"),
+            ("I- I think so", "I think so"),
+            ("s- we are late", "s- we are late"),
             ("I was go- I went to the store", "I was I went to the store"),
             ("a well-known bug", "a well-known bug"),
             ("send an e-mail and re-run it", "send an e-mail and re-run it"),

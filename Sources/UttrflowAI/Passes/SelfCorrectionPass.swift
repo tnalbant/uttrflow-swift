@@ -40,7 +40,7 @@ public struct SelfCorrectionPass: PieceCleaningPass {
     private func isCutOff(at position: Int, in live: [Int], of draft: Draft) -> Bool {
         guard position + 1 < live.count else { return false }
         let fragment = draft.shape(at: live[position])
-        guard fragment.suffix == "-", !fragment.core.isEmpty else { return false }
+        guard fragment.isCutOff else { return false }
         if WordForms.sameForm(
             fragment.key, draft.shape(at: live[position + 1]).key, whenCutOff: true)
         {
