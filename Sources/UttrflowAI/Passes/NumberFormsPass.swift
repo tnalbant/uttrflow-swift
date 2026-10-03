@@ -2,7 +2,7 @@ import Foundation
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
-public struct NumberFormsPass: CleaningPass {
+public struct NumberFormsPass: PieceCleaningPass {
     public static let id: PassID = .numberForms
 
     /// Which spoken numbers this place wants as numerals.

@@ -2,7 +2,7 @@ import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
-public struct LayoutWordsPass: CleaningPass {
+public struct LayoutWordsPass: PieceCleaningPass {
     public static let id: PassID = .layoutWords
 
     private let layout: LayoutPolicy

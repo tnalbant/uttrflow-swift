@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Removes a run of two to four words said twice in a row, keeping the second: "so I was I was thinking".
-public struct RepeatedPhrasePass: CleaningPass {
+public struct RepeatedPhrasePass: PieceCleaningPass {
     public static let id: PassID = .repeatedPhrase
     public static let removes: RemovalGrant = .repetition
 
