@@ -555,6 +555,18 @@ struct PasteboardWatcherTests {
         #expect(await watcher.newClip(at: noon) == nil)
     }
 
+    @Test("records a same-text copy after the announced write is refused")
+    func refusedWriteDoesNotHideTheUsersCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+
+        let withdraw = watcher.ignoreNextWrite(of: "same words")
+        withdraw()
+        clipboard.write("same words")
+
+        #expect(await watcher.newClip(at: noon)?.clip.text == "same words")
+    }
+
     @Test("still ignores its own write when the copy arrives first")
     func announcementSurvivesUntilItsOwnWriteArrives() async {
         let clipboard = FakeClipboard()

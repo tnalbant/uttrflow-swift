@@ -266,7 +266,10 @@ something within the same poll as an Uttrflow paste had their copy silently
 swallowed, which is the one thing a clipboard manager may not do. The picture path had
 exactly that hole until it was given bytes to name, since it had no text. An announcement
 whose own write has not arrived is kept rather than spent, and lapses after two seconds so
-a paste that threw cannot sit armed.
+a paste that threw cannot sit armed. If a write is refused or its text cannot be read back,
+its announcement is withdrawn. If the watcher gives up on a bounded clipboard read, it
+withdraws announcements that could have named that unread change, so the next same-text
+copy is recorded normally.
 
 ## Dictating into a field that hides what is typed
 

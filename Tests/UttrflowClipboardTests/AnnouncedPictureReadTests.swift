@@ -1,6 +1,8 @@
 // Tests that matching an announced picture reads it once, bounded, and outside the announcement lock (#1502).
 
 import Foundation
+import Dispatch
+import Synchronization
 import Testing
 
 @testable import UttrflowClipboard
@@ -23,6 +25,7 @@ private final class BlockingPictureSource: ClipboardSource, @unchecked Sendable 
 
     func text() -> String? { nil }
     func html() -> String? { nil }
+    func hasPicture() -> Bool { true }
     func markers() -> PasteboardMarkers { PasteboardMarkers() }
     func image() -> (data: Data, width: Int, height: Int)? {
         let blocked = lock.withLock {
@@ -36,6 +39,45 @@ private final class BlockingPictureSource: ClipboardSource, @unchecked Sendable 
         }
         return (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)
     }
+    func frontmostApplicationName() -> String? { nil }
+}
+
+/// Text reads can be held past the watcher's deadline without blocking the test task.
+private final class BlockingTextSource: ClipboardSource, @unchecked Sendable {
+    private struct State {
+        var count = 0
+        var text: String?
+        var blocksNextRead = true
+    }
+
+    private let state = Mutex(State())
+    private let readGate = DispatchSemaphore(value: 0)
+    let entered = DispatchSemaphore(value: 0)
+
+    func write(_ text: String) {
+        state.withLock {
+            $0.count += 1
+            $0.text = text
+        }
+    }
+
+    func releaseRead() { readGate.signal() }
+    func changeCount() -> Int { state.withLock(\.count) }
+    func text() -> String? {
+        let (text, blocks) = state.withLock { value -> (String?, Bool) in
+            let blocks = value.blocksNextRead
+            value.blocksNextRead = false
+            return (value.text, blocks)
+        }
+        if blocks {
+            entered.signal()
+            readGate.wait()
+        }
+        return text
+    }
+    func html() -> String? { nil }
+    func markers() -> PasteboardMarkers { [] }
+    func image() -> (data: Data, width: Int, height: Int)? { nil }
     func frontmostApplicationName() -> String? { nil }
 }
 
@@ -92,5 +134,21 @@ struct AnnouncedPictureReadTests {
 
         #expect(await watcher.newClip(at: Date()) == nil)
         source.release()
+    }
+
+    @Test("a timed out text read withdraws an announcement before the next same-text copy")
+    func timedOutReadWithdrawsAnnouncement() async {
+        let source = BlockingTextSource()
+        let watcher = PasteboardWatcher(source: source, readLimit: .milliseconds(100))
+        watcher.ignoreNextWrite(of: "same words")
+        source.write("same words")
+
+        let tick = Task { await watcher.newClip(at: Date()) }
+        #expect(await signalled(source.entered, within: 5))
+        #expect(await tick.value == nil)
+
+        source.releaseRead()
+        source.write("same words")
+        #expect(await watcher.newClip(at: Date())?.clip.text == "same words")
     }
 }

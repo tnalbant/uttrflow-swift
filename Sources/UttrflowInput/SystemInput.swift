@@ -16,14 +16,14 @@ private func axUIElementGetWindow(
 /// The real clipboard, untestable by construction and so excluded from the coverage gate.
 public struct SystemPasteboard: Pasteboard {
     /// Told what this app is about to write, so the watcher can tell it from a copy. See `Docs/insertion.md`.
-    private let willWrite: @Sendable (String) -> Void
+    private let willWrite: @Sendable (String) -> @Sendable () -> Void
     /// Told the bytes a picture write puts there, which is what names it to the watcher.
-    private let willWritePicture: @Sendable (Data) -> Void
+    private let willWritePicture: @Sendable (Data) -> @Sendable () -> Void
 
     /// Takes the announcements the clipboard watcher needs, and by default makes none.
     public init(
-        willWrite: @escaping @Sendable (String) -> Void = { _ in },
-        willWritePicture: @escaping @Sendable (Data) -> Void = { _ in }
+        willWrite: @escaping @Sendable (String) -> @Sendable () -> Void = { _ in {} },
+        willWritePicture: @escaping @Sendable (Data) -> @Sendable () -> Void = { _ in {} }
     ) {
         self.willWrite = willWrite
         self.willWritePicture = willWritePicture
@@ -43,10 +43,17 @@ public struct SystemPasteboard: Pasteboard {
     }
 
     public func writeText(_ text: String, richText: String?) -> PasteboardWriteResult {
-        willWrite(text)
+        let withdrawAnnouncement = willWrite(text)
         let item = Self.textItem(text, richText: richText)
         clearForThisMacOnly()
-        guard NSPasteboard.general.writeObjects([item]) else { return .refused }
+        guard NSPasteboard.general.writeObjects([item]) else {
+            withdrawAnnouncement()
+            return .refused
+        }
+        guard NSPasteboard.general.string(forType: .string) == text else {
+            withdrawAnnouncement()
+            return .refused
+        }
         return .written(changeCount: NSPasteboard.general.changeCount)
     }
 
@@ -68,21 +75,35 @@ public struct SystemPasteboard: Pasteboard {
     }
 
     public func writeConcealedText(_ text: String) -> PasteboardWriteResult {
-        willWrite(text)
+        let withdrawAnnouncement = willWrite(text)
         // Built whole and written once, so no reader sees the words before the marker.
         let item = Self.textItem(text, richText: nil, marker: Self.concealedType)
         clearForThisMacOnly()
-        guard NSPasteboard.general.writeObjects([item]) else { return .refused }
+        guard NSPasteboard.general.writeObjects([item]) else {
+            withdrawAnnouncement()
+            return .refused
+        }
+        guard NSPasteboard.general.string(forType: .string) == text else {
+            withdrawAnnouncement()
+            return .refused
+        }
         return .written(changeCount: NSPasteboard.general.changeCount)
     }
 
     private func writeMarkedText(
         _ text: String, richText: String?, marker: NSPasteboard.PasteboardType
     ) -> PasteboardWriteResult {
-        willWrite(text)
+        let withdrawAnnouncement = willWrite(text)
         let item = Self.textItem(text, richText: richText, marker: marker)
         clearForThisMacOnly()
-        guard NSPasteboard.general.writeObjects([item]) else { return .refused }
+        guard NSPasteboard.general.writeObjects([item]) else {
+            withdrawAnnouncement()
+            return .refused
+        }
+        guard NSPasteboard.general.string(forType: .string) == text else {
+            withdrawAnnouncement()
+            return .refused
+        }
         return .written(changeCount: NSPasteboard.general.changeCount)
     }
 
@@ -106,9 +127,12 @@ public struct SystemPasteboard: Pasteboard {
 
     /// K4 — the picture flavour, announced by its bytes and kept off Universal Clipboard like every other write.
     public func setImage(_ data: Data) -> PasteboardWriteResult {
-        willWritePicture(data)
+        let withdrawAnnouncement = willWritePicture(data)
         clearForThisMacOnly()
-        guard NSPasteboard.general.setData(data, forType: .png) else { return .refused }
+        guard NSPasteboard.general.setData(data, forType: .png) else {
+            withdrawAnnouncement()
+            return .refused
+        }
         return .written(changeCount: NSPasteboard.general.changeCount)
     }
 
