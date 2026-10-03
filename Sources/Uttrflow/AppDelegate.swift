@@ -3162,18 +3162,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 let merged = try await PersonalDataTransfer.importArchive(
                     Data(contentsOf: source), into: dictionary, and: snippets)
                 let duplicateCount = merged.duplicateWords + merged.duplicateSnippets
-                let message =
+                var message =
                     duplicateCount == 0
                     ? "The archive was imported. No duplicate entries were skipped."
                     : "Imported the archive. Skipped \(merged.duplicateWords) duplicate \(merged.duplicateWords == 1 ? "word" : "words") and \(merged.duplicateSnippets) duplicate \(merged.duplicateSnippets == 1 ? "snippet" : "snippets"). Existing entries were kept."
-                self?.showPersonalDataNotice(title: "Import complete", message: message)
-            } catch let error as PersonalDataTransferError {
-                switch error {
-                case .dictionaryCapacityExceeded:
-                    self?.showPersonalDataNotice(
-                        title: "Import exceeds the dictionary limit",
-                        message: "The merged dictionary would exceed its limit. Nothing was imported.")
+                if merged.skippedInferredWords > 0 {
+                    message +=
+                        " Kept the \(PersonalDictionaryStore.maximumInferredEntries) strongest learned words and skipped \(merged.skippedInferredWords)."
                 }
+                self?.showPersonalDataNotice(title: "Import complete", message: message)
             } catch {
                 self?.showPersonalDataNotice(
                     title: "Import could not be completed",
