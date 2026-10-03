@@ -34,6 +34,26 @@ code-editor-spoken-case-stops-at-comma	userId, then explain it
 code-editor-spoken-empty-parentheses	()
 code-editor-spoken-equals	max retries = 5
 code-editor-spoken-snake-case	max_retries
+code-token-caret-a4	A4 paper please.
+code-token-caret-b12	B12 in the morning.
+code-token-caret-h2	H2 in the outline.
+code-token-caret-i-95	I-95 all afternoon.
+code-token-caret-m2	M2 machine in the lab.
+code-token-caret-q3	Q3 by a small margin.
+code-token-caret-s3	S3 before the end of the day.
+code-token-filler-i-95	Traffic was heavy on. I-95 all afternoon.
+code-token-filler-s3	Upload the archive to S3 before lunch.
+code-token-seam-a4	Print the handout on. A4 paper please.
+code-token-seam-m2	The build runs fastest on the M2 machine.
+code-token-seam-q3	We missed the targets for Q3 by a small margin.
+code-token-word-caret-after	after that we can leave.
+code-token-word-caret-again	again this morning.
+code-token-word-caret-be	be careful with the stairs.
+code-token-word-caret-model	model in the lab.
+code-token-word-caret-quarter	quarter by a little.
+code-token-word-filler-the	Upload the archive to the shared drive.
+code-token-word-seam-after	We finish the review and after that we can leave.
+code-token-word-seam-again	The tests failed on. Again this morning.
 colon-cancer-as-words	She was screened for colon cancer last year.
 colon-health-as-words	Eat more fibre for colon health.
 colon-surgery-as-words	She booked colon surgery for June.

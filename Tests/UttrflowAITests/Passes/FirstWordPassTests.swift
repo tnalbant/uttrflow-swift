@@ -320,6 +320,21 @@ struct FirstWordPassTests {
         #expect(!FirstWordPass.keepsCapital("Ice"))
     }
 
+    @Test(
+        "keeps the capital of a letter-and-digit code, which no sentence start explains",
+        arguments: ["A4", "Q3", "M2", "S3", "B12", "I-95", "H2", "A4,", "\"Q3\""])
+    func keepsCodeCapital(code: String) {
+        #expect(FirstWordPass.keepsCapital(code))
+        #expect(FirstWordPass.lowercasedAtRunOnSeam(code, in: "") == nil)
+    }
+
+    @Test(
+        "still lowers an ordinary word with no digit in it",
+        arguments: ["Be", "After", "Again", "Bring", "Quarter", "Model", "So", "Highway"])
+    func lowersOrdinaryWord(word: String) {
+        #expect(!FirstWordPass.keepsCapital(word))
+    }
+
     /// The first "total" was dropped by a pass, so the case comes from the "Total" that is still there.
     @Test("as spoken reads the case from where the first word stands, not from a copy a pass dropped")
     func asSpokenReadsItsOwnPlace() {
