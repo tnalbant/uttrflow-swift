@@ -4,8 +4,8 @@ import UttrflowCore
 @testable import UttrflowAI
 
 /// Issue #1955: replacing a selection does not duplicate punctuation or end a continuing clause.
-@Suite("Issue 1955")
-struct Issue1955ReproductionTests {
+@Suite("Replacing a selection keeps its punctuation single", .bug(id: 1955))
+struct SelectionReplacementPunctuationTests {
     private let precedingText = "Please send the report to Alex by "
 
     @Test(

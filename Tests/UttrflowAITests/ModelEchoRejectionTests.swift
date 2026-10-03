@@ -6,8 +6,8 @@ import Testing
 @testable import UttrflowTestSupport
 
 /// Issue 2436: the on-device model's pass-through is rejected and the rules engine takes over.
-@Suite("Issue2436")
-struct Issue2436ReproductionTests {
+@Suite("A model's byte-identical echo is rejected", .bug(id: 2436))
+struct ModelEchoRejectionTests {
     private func request(_ text: String) -> TransformationRequest {
         TransformationRequest(transcription: .fixture(text: text, language: .english))
     }

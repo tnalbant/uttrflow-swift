@@ -106,6 +106,9 @@ The ones a first pull request most often misses:
 - **Comments are one line, in the present tense**, and say what the code does now; history and
   measurements go on a `Docs/` page.
 - **Tests assert behaviour somebody cares about**, and their names are sentences.
+- **Test files and suites are named for the behaviour they pin, never for an issue.** A regression
+  case lands beside the others for that behaviour, with the issue number as a `.bug(id:)` trait;
+  `make test-name-audit` refuses a file named `Issue<number>`.
 - **`make verify` is green**: it runs the coverage floor, the PII audit, the disclosure audit and
   the offline audit, among others.
 

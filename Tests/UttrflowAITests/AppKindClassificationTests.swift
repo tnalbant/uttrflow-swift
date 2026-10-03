@@ -4,8 +4,8 @@ import UttrflowCore
 @testable import UttrflowAI
 
 /// Issue #203: the one table classifies every app the prompt's caption can name.
-@Suite("Issue203")
-struct Issue203ReproductionTests {
+@Suite("Every app the caption names is classified once", .bug(id: 203))
+struct AppKindClassificationTests {
     /// One app per divergence the issue named, with the phrase and the destination its row gives it.
     static let apps: [(String, String, String, Destination)] = [
         ("Signal", "org.whispersystems.signal-desktop", "a chat app", .messaging),

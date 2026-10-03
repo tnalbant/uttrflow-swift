@@ -3,8 +3,8 @@ import Testing
 @testable import UttrflowAI
 @testable import UttrflowCore
 
-@Suite("Issue 2261 spoken interjections")
-struct Issue2261SpokenInterjectionsTests {
+@Suite("Spoken interjections", .bug(id: 2261))
+struct SpokenInterjectionsTests {
     private let examples: [(spoken: String, retained: String)] = [
         ("uh huh", "uh-huh"),
         ("uh huh sounds good", "uh-huh sounds good"),

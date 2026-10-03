@@ -4,8 +4,8 @@ import UttrflowCore
 @testable import UttrflowAI
 
 /// Issue #1923: in a terminal the first word of a dictated command must keep its heard case.
-@Suite("Issue1923")
-struct Issue1923ReproductionTests {
+@Suite("A terminal keeps the heard case of a command's first word", .bug(id: 1923))
+struct TerminalHeardCaseTests {
     private let terminal = AppContext(
         applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal")
     private let codeEditor = AppContext(

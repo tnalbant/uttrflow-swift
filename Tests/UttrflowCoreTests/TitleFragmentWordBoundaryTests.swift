@@ -3,8 +3,8 @@ import Testing
 @testable import UttrflowCore
 
 /// Regression for issue 217: a window-title fragment has to stand as words before it picks a formatter.
-@Suite("Issue 217 sweep: a title substring decides nothing mid-word")
-struct Issue217DestinationSweepTests {
+@Suite("A title substring decides nothing mid-word", .bug(id: 217))
+struct TitleFragmentWordBoundaryTests {
     @Test("refuses a fragment buried inside a longer word")
     func refusesAMidWordFragment() {
         let rule = DestinationRule(titleContains: ["Gmail"], destination: .email)

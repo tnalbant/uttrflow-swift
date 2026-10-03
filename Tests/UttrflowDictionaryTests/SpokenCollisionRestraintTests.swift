@@ -5,8 +5,8 @@ import Testing
 @testable import UttrflowDictionary
 
 /// Regression for issue 217: what the dictionary learns off a screen asks the restraint too.
-@Suite("Issue 217 sweep: LearnableWords asks more than the bare key")
-struct Issue217LearnableSweepTests {
+@Suite("LearnableWords asks more than the bare key", .bug(id: 217))
+struct LearnableWordsRestraintTests {
     @Test("refuses a screen term that only collides with a spoken ordinary word")
     func refusesACollision() {
         let found = LearnableWords.seenAndSaid(
@@ -45,8 +45,8 @@ struct Issue217LearnableSweepTests {
 }
 
 /// Regression for issue 217: the same bare key deciding that a replacement is a correction.
-@Suite("Issue 217 sweep: corrected() asks more than the bare key")
-struct Issue217CorrectedSweepTests {
+@Suite("corrected() asks more than the bare key", .bug(id: 217))
+struct CorrectedRestraintTests {
     @Test(
         "refuses an unrelated replacement that only shares the sound skeleton",
         arguments: [("mood", "MDT"), ("but", "Bittl"), ("mad", "Modo"), ("boot", "Bitly")])

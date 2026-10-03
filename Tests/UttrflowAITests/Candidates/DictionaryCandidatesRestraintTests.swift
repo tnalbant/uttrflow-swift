@@ -6,8 +6,8 @@ import UttrflowDictionary
 @testable import UttrflowAI
 
 /// Regression for issue 217: the user's own dictionary is exempt from the restraint the other two sources ask.
-@Suite("Issue 217 sweep: a taught spelling is evidence, so DictionaryCandidates is exempt")
-struct Issue217SweepTests {
+@Suite("A taught spelling is evidence, so DictionaryCandidates is exempt", .bug(id: 217))
+struct DictionaryCandidatesRestraintExemptionTests {
     private static func index(_ words: [String]) -> PhoneticIndex {
         PhoneticIndex(
             entries: words.map {
@@ -67,8 +67,8 @@ struct Issue217SweepTests {
 }
 
 /// Not a defect: a screen word differing only in case is the spelling decision the feature exists for.
-@Suite("Issue 217 sweep: a case variant is a reading, and is offered once")
-struct Issue217CaseSweepTests {
+@Suite("A case variant is a reading, and is offered once", .bug(id: 217))
+struct CaseVariantReadingTests {
     /// "Aarav" over "arav" is a tier-one cleaning, so the capital a screen shows is a reading, not a duplicate.
     @Test("offers a screen word that differs from what was heard only in case")
     func offersACaseVariant() async {

@@ -5,8 +5,8 @@ import Testing
 @testable import UttrflowAI
 
 /// Reproduces uttrflow-swift#2041: a word in `Homophones.groups` is doubtful regardless of confidence.
-@Suite("Homophone-uncertain words (issue #2041)")
-struct Issue2041ReproductionTests {
+@Suite("Homophone-uncertain words", .bug(id: 2041))
+struct HomophoneDoubtTests {
     /// A draft over the *sent* line, where every word is at high confidence.
     private func sureDraft(_ text: String, confidence: Double = 0.8) -> Draft {
         Draft(
