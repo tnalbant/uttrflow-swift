@@ -844,8 +844,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
+                        SpeechEngineError.speechWithoutWords)))
         #expect(inserter.received.isEmpty)
     }
 
@@ -903,8 +902,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
+                        SpeechEngineError.speechWithoutWords)))
     }
 
     @Test("corrections keep pointing at their words after the pieces are joined")

@@ -21,9 +21,9 @@ public enum AudioCaptureError: UttrflowFailure {
         case .noInputDevice:
             "No microphone was found. Connect one and try again."
         case .alreadyRecording:
-            "Recording is already in progress."
+            "The microphone was still busy, so this dictation didn't start. Try again."
         case .notRecording:
-            "There is no recording to stop."
+            "Recording had already ended, so nothing was captured. Try again."
         case .unsupportedInputFormat:
             "This microphone's audio format isn't supported."
         case .engineFailed:

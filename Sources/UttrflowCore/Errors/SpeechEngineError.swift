@@ -14,7 +14,11 @@ public enum SpeechEngineError: UttrflowFailure {
     case audioTooShort
     /// Held the shortcut and said nothing the recogniser could use.
     case nothingHeard
-    /// The recogniser ran and failed.
+    /// Speech was heard, yet the recogniser produced no words for it, even on a second attempt.
+    case speechWithoutWords
+    /// The recogniser did not answer within its stage limit: an overloaded Mac or a hung recogniser.
+    case recogniserTimedOut
+    /// The recogniser ran and reported a fault; `description` is for the log, never the screen.
     case transcriptionFailed(description: String)
 
     /// A plain sentence per case, never naming the engine.
@@ -34,8 +38,12 @@ public enum SpeechEngineError: UttrflowFailure {
             "Too short. Hold the shortcut a moment longer."
         case .nothingHeard:
             "Didn't catch that."
+        case .speechWithoutWords:
+            "Speech was heard but no words came out. Speak closer to the microphone, or check your languages in Settings."
+        case .recogniserTimedOut:
+            "Speech recognition took too long, so your recording was kept. Close some apps and try again."
         case .transcriptionFailed:
-            "Your speech couldn't be transcribed. Try again."
+            "Speech recognition ran into an error. Try again, and report it if it keeps happening."
         }
     }
 
@@ -43,7 +51,7 @@ public enum SpeechEngineError: UttrflowFailure {
     public var recovery: RecoveryAction? {
         switch self {
         case .modelNotInstalled, .modelDownloadFailed, .notEnoughSpace, .modelDamaged: .downloadSpeechModel
-        case .modelLoadFailed, .transcriptionFailed: .retry
+        case .modelLoadFailed, .speechWithoutWords, .recogniserTimedOut, .transcriptionFailed: .retry
         // Nothing to press: the remedy is to speak again, or hold longer, which the shortcut already is.
         case .audioTooShort, .nothingHeard: nil
         }
@@ -56,7 +64,7 @@ public enum SpeechEngineError: UttrflowFailure {
         case .audioTooShort, .nothingHeard: .informational
         // Setup keeps its progress, so asking again resumes rather than restarting the download.
         case .modelNotInstalled, .modelDownloadFailed, .notEnoughSpace, .modelLoadFailed,
-            .modelDamaged, .transcriptionFailed:
+            .modelDamaged, .speechWithoutWords, .recogniserTimedOut, .transcriptionFailed:
             .recoverable
         }
     }
