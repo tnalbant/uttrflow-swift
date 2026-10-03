@@ -38,6 +38,8 @@ struct QuestionShapeTests {
             "report bhej diya kya", "report karoge kya", "kaunsa option better hai", "kaunsi file chahiye",
             "kaunse option sahi hain", "kya hua", "meeting kab hai", "tum kyun nahi aaye",
             "tum kal aa rahe ho na",
+            "may i come in", "may we leave early", "do they know", "had you heard about it",
+            "were you there when it happened", "did it work",
         ])
     func asks(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
@@ -69,6 +71,10 @@ struct QuestionShapeTests {
             "the memory usage keeps growing, which looks like a leak in the cache layer",
             "the author, whose work I had admired, retired last year",
             "the man, whom I met yesterday, sent a follow-up note",
+            "do it now", "do it yourself", "have it ready by friday", "have it your way",
+            "may the force be with you", "may the best team win", "may he rest in peace",
+            "may all your dreams come true", "had i known i would have come", "do this before lunch",
+            "have a seat", "do your best",
         ])
     func leaves(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))

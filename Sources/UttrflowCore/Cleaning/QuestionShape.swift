@@ -9,6 +9,7 @@ public enum QuestionShape {
         // The last clause is where "I sent it, did you see it" asks.
         let openingClause = clauseAfterOpeners(words)
         if opensAQuestion(openingClause) {
+            if isConditionalInversion(openingClause) { return false }
             return !runsOn(openingClause) || questionWords.contains(openingClause[0])
                 || hasInvertedQuestionAfterOpening(openingClause)
         }
@@ -124,7 +125,7 @@ public enum QuestionShape {
         else { return false }
         let question = Array(clause.dropFirst())
         guard let verb = question.first, let subject = question.dropFirst().first else { return false }
-        if pronounVerbs.contains(verb) { return subjects.contains(subject) && !runsOn(question) }
+        if let allowed = narrowInversions[verb] { return allowed.contains(subject) && !runsOn(question) }
         guard verbsBeforeSubject.contains(verb) else { return false }
         if subjects.contains(subject) { return !runsOn(question) }
         // A verb that can take a noun phrase reads as the name's own verb, so "ravi is the owner" stays a statement.
@@ -159,11 +160,10 @@ public enum QuestionShape {
             }
             return false
         }
+        if let allowed = narrowInversions[first] { return allowed.contains(second) }
         if verbsBeforeSubject.contains(first) {
             return subjects.contains(second) || determiners.contains(second)
         }
-        // "Do the dishes" and "have a seat" tell rather than ask, so these ask only before a pronoun.
-        if pronounVerbs.contains(first) { return subjects.contains(second) }
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
     }
 
@@ -222,9 +222,24 @@ public enum QuestionShape {
             guard index + 1 < clause.count,
                 verbsBeforeSubject.contains(clause[index]) || pronounVerbs.contains(clause[index])
             else { return false }
-            return subjects.contains(clause[index + 1])
+            return narrowInversions[clause[index]]?.contains(clause[index + 1]) ?? subjects.contains(clause[index + 1])
         }
     }
+
+    /// Whether an inverted "had" or "were" is the condition of a later counterfactual: "had I known I would have come".
+    private static func isConditionalInversion(_ clause: [String]) -> Bool {
+        guard let first = clause.first, conditionalInverters.contains(first) else { return false }
+        return clause.indices.dropFirst(2).contains { index in
+            index + 1 < clause.count && newSubjects.contains(clause[index])
+                && counterfactualModals.contains(clause[index + 1])
+        }
+    }
+
+    /// Verbs whose inversion can also open a counterfactual condition.
+    private static let conditionalInverters: Set<String> = ["had", "were"]
+
+    /// Modals that close a counterfactual main clause after its inverted condition.
+    private static let counterfactualModals: Set<String> = ["would", "could", "might"]
 
     /// Whether the sentence closes on a question tag: "isn't it", "don't you", or Hindi "… hai kya".
     private static func endsOnATag(_ words: [String]) -> Bool {
@@ -285,6 +300,14 @@ public enum QuestionShape {
 
     /// Verbs that also start a command, so they ask only before a pronoun: "do you", not "do the dishes".
     static let pronounVerbs: Set<String> = ["do", "have", "don't", "haven't"]
+
+    /// Subjects that agree with "do" and "have"; "do it now" and "have it ready" are commands.
+    private static let nonThirdPersonSubjects: Set<String> = ["i", "you", "we", "they"]
+
+    /// Verbs that invert only around these subjects: agreement for "do"/"have", first person for a permission "may".
+    private static let narrowInversions: [String: Set<String>] =
+        Dictionary(uniqueKeysWithValues: pronounVerbs.map { ($0, nonThirdPersonSubjects) })
+        .merging(["may": ["i", "we"]]) { $1 }
 
     /// Common present and past lexical verbs that can follow a question word directly.
     private static let lexicalQuestionVerbs: Set<String> = [
