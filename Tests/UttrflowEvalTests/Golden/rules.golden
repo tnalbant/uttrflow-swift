@@ -123,6 +123,71 @@ filler-between-commas	We should ship it today.
 filler-carrying-a-question-mark	So are we shipping today?
 filler-carrying-an-exclamation-mark	That is amazing!
 filler-heavy	So basically the thing is we need more time.
+fmt-boundary-run-on-three	The bus was late the train was cancelled we walked home.
+fmt-boundary-single-word	Done.
+fmt-boundary-so-joins-clause	It was raining so we stayed inside.
+fmt-boundary-stray-stop-mid-clause	Please water the plants on the balcony.
+fmt-boundary-two-statements	The kettle is broken we need a new one.
+fmt-bracket-aside	Bring a jacket open bracket it gets cold close bracket.
+fmt-code-camel-case	Call fetchOrders before render.
+fmt-code-file-name	Open README.md and package.json.
+fmt-code-markdown-heading-kept	# Release notes.
+fmt-code-snake-case	Rename user_id to account_id.
+fmt-code-version	Upgrade to version 2.4.1.
+fmt-comma-but-clause	I called twice but nobody answered.
+fmt-comma-introductory	However the venue is still free.
+fmt-comma-none-in-short-clause	The book that I lent you is overdue.
+fmt-comma-vocative	Thanks Tomas CU tomorrow.
+fmt-comma-yes-answer	Yes that works for me.
+fmt-correction-actually	We need six boxes.
+fmt-correction-i-mean	Send it on Wednesday.
+fmt-correction-i-mean-it-stays	Please be on time I mean it.
+fmt-correction-no-wait	Meet at the cafe.
+fmt-correction-stammer	The report is ready.
+fmt-destination-document-sentence	The results are below.
+fmt-destination-email-sentence	The invoice is attached.
+fmt-destination-messaging-no-stop	On my way
+fmt-destination-spreadsheet-cell	rent
+fmt-destination-terminal-command	cd projects
+fmt-ellipsis-from-recogniser	I thought... maybe tomorrow.
+fmt-ellipsis-named	Wait for it ellipsis.
+fmt-ellipsis-not-invented	The parcel arrived this morning.
+fmt-ellipsis-spoken-dot-dot-dot	And then dot dot dot nothing happened.
+fmt-ellipsis-trailing-off	Well if you insist...
+fmt-hinglish-already-latin	Kal milte hain.
+fmt-hinglish-number	Hamein das chairs chahiye.
+fmt-hinglish-question	Kya tum kal office aaoge?
+fmt-hinglish-statement	Main report bhej dunga.
+fmt-hinglish-two-sentences	Train late hai main baad mein call karunga.
+fmt-list-bullet-command	\n- Call the plumber\n- Pay the rent
+fmt-list-count-not-list	I have two cats and three dogs.
+fmt-list-first-second-third	First book the hall second send invites third order food.
+fmt-list-inline-series	Pack socks shirts and a towel.
+fmt-list-numbered-spoken	One milk two eggs three bread.
+fmt-number-count	We need 12 chairs.
+fmt-number-money	The ticket costs 40 dollars.
+fmt-number-one-as-pronoun	This one is better.
+fmt-number-percent	Sales grew by 15%.
+fmt-number-time	The call is at 4:30.
+fmt-paragraph-new-line	Dear team\nThe office is closed on Friday.
+fmt-paragraph-new-paragraph	The trip is booked.\n\nThe hotel is near the station.
+fmt-paragraph-next-line	Regards next line Sam.
+fmt-paragraph-noun-stays	I added a new paragraph about pricing.
+fmt-paragraph-two-breaks	First point\n\nSecond point\n\nLast point.
+fmt-paren-aside	The report open paren draft two close paren is attached.
+fmt-question-after-statement	The room is booked do you need a projector.
+fmt-question-can-you	Can you send me the file?
+fmt-question-indirect-is-statement	I wonder where the keys are.
+fmt-question-tag	The meeting is at three isn't it?
+fmt-question-what-time	What time does the shop open?
+fmt-quote-noun-stays	The builder sent a quote for the roof.
+fmt-quote-open-close	The sign read "closed for lunch."
+fmt-quote-said	She said quote CU at noon end quote.
+fmt-token-acronym-kept	The API returns JSON.
+fmt-token-email-address	Write to help@example.com.
+fmt-token-mixed-case-brand	We moved the repo to iCloud drive.
+fmt-token-pronoun-i	I think I left it at home.
+fmt-token-web-address	The page is at docs.example.com/setup.
 full-stop-new-paragraph	The build is green.\n\nThanks everyone.
 function-name	Call get_user with the id and check the response.
 greeting-kept	Hey sarah just checking in on the design review.
