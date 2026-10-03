@@ -22,6 +22,11 @@ public enum NumberWords {
         units[key] ?? teens[key] ?? tens[key] ?? scales[key]
     }
 
+    /// The digit a word stands for when digits are read one at a time, where "oh" is zero.
+    public static func spokenDigit(_ key: String) -> Int? {
+        key == "oh" ? 0 : units[key]
+    }
+
     /// Whether a word is a number, spoken or already in digits.
     public static func isNumber(_ key: String) -> Bool {
         value(of: key) != nil || digits(key) != nil

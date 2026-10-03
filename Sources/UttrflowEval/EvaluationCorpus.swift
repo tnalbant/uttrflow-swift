@@ -130,6 +130,18 @@ public enum EvaluationCorpus {
             expected: "She is a nurse."
         ),
         .init(
+            id: "name-opening-is-the-owner-statement", category: .everyday,
+            spoken: "ravi is the owner of the account",
+            expected: "Ravi is the owner of the account.",
+            mustBeginWith: "Ravi is", mustEndWith: "."
+        ),
+        .init(
+            id: "name-opening-is-the-one-statement", category: .everyday,
+            spoken: "maria is the one who called",
+            expected: "Maria is the one who called.",
+            mustBeginWith: "Maria is", mustEndWith: "."
+        ),
+        .init(
             id: "determiner-opening-report-is-idea-control", category: .everyday,
             spoken: "the report is a good idea",
             expected: "The report is a good idea."

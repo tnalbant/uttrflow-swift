@@ -58,10 +58,10 @@ screen and the run is several words becoming one, which is two signals, which cl
 of two. The longer sentences in `CorrectionRestraintTests` exist to keep that case measured.
 
 So a run of several words has a condition of its own before the evidence is counted at all
-(`WordCorrectionEngine.spells`): the entry must spell the run closed up, or open as it does —
-`ReadingRestraint`'s rule, the same one the readings offered to the model are held to.
-"payment sheet" to `PaymentSheet` and "utter flow" to `Uttrflow` pass it; "air well" to `URL`
-does not. An entry's pronunciation counts as well as its spelling, so
+(`WordCorrectionEngine.spells`): the entry must spell the run closed up, or the run closed up
+must have the entry's Double Metaphone code. An all-capitals entry is said letter by letter, so
+only its pronunciation is read that way. "payment sheet" to `PaymentSheet`, "utter flow" to
+`Uttrflow` and "cube lit" to `Kubelet` pass it; "air well" to `URL` does not. An entry's pronunciation counts as well as its spelling, so
 a user who writes "cube cuttle" against `Kubectl` gets that run back.
 
 ## `maximumChangedInEvery = 5`, with a floor of one

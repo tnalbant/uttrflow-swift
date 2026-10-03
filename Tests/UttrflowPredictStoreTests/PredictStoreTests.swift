@@ -760,18 +760,20 @@ struct RecoveryTests {
     @Test("A database written by a newer build is refused and left exactly as it was, not replaced.")
     func refusesTheFuture() throws {
         let corpus = Corpus()
-        let database = try Database(path: corpus.path)
-        try Schema.migrate(database)
-        try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(99)) }
-        try database.run("INSERT INTO surface (bundle_id, role) VALUES ('com.example.app', 'AXTextArea')") {
-            _ in
+        do {
+            let database = try Database(path: corpus.path)
+            try Schema.migrate(database)
+            try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(99)) }
+            try database.run("INSERT INTO surface (bundle_id, role) VALUES ('com.example.app', 'AXTextArea')")
+            {
+                _ in
+            }
         }
+        let original = try Data(contentsOf: URL(filePath: corpus.path))
         #expect(throws: PredictStoreError.newerThanThisBuild(version: 99)) {
             try PredictStore(path: corpus.path)
         }
-        let version = try database.rows("SELECT version FROM schema_version", { _ in }) { $0.integer(0) }
-        #expect(version == [99])
-        #expect(try database.rows("SELECT COUNT(*) FROM surface", { _ in }) { $0.integer(0) } == [1])
+        #expect(try Data(contentsOf: URL(filePath: corpus.path)) == original)
     }
 
     @Test("A file from the build before gains the recency index and the current version on opening.")

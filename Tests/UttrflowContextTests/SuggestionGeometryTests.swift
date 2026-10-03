@@ -102,6 +102,30 @@ struct SuggestionGeometryTests {
         #expect(anchor?.frame.maxY == caretInMenuBarBand.maxY)
     }
 
+    @Test("A caret above or below the window has no ghost anchor")
+    func caretOutsideWindowHasNoAnchor() {
+        let above = CGRect(x: 620, y: documentWindow.maxY + 1, width: 2, height: 17)
+        let below = CGRect(x: 620, y: documentWindow.minY - 18, width: 2, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: above, window: documentWindow, screen: mainScreen,
+                size: strip) == nil)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: below, window: documentWindow, screen: mainScreen,
+                size: strip) == nil)
+    }
+
+    @Test("A caret outside the visible field has no ghost anchor")
+    func caretOutsideFieldHasNoAnchor() {
+        let visibleField = CGRect(x: 600, y: 490, width: 300, height: 30)
+        let above = CGRect(x: 620, y: visibleField.maxY + 1, width: 2, height: 17)
+        #expect(
+            SuggestionGeometry.anchor(
+                for: .inlineGhost, caret: above, window: documentWindow, field: visibleField,
+                screen: mainScreen, size: strip) == nil)
+    }
+
     @Test("A dot narrower than the minimum still fits where only it does")
     func aSmallSurfaceNeedsOnlyItsOwnWidth() {
         let last = CGRect(x: mainScreen.maxX - 12, y: 500, width: 2, height: 17)

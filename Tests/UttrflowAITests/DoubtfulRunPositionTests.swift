@@ -4,8 +4,8 @@ import Testing
 @testable import UttrflowCore
 
 /// Pins issue #218: the doubtful-run checks read the position the run stands at, not the whole text.
-@Suite("Issue218")
-struct Issue218RegressionTests {
+@Suite("Doubtful-run checks read the position the run stands at", .bug(id: 218))
+struct DoubtfulRunPositionTests {
     private let sut = MeaningPreservationGuard()
 
     private func draft(_ text: String) -> Draft {

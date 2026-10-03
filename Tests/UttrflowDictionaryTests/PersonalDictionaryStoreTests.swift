@@ -667,4 +667,51 @@ struct PersonalDictionaryCacheTests {
         #expect(await store.index() == PhoneticIndex(entries: [replacement]))
         #expect(await store.cache.diskReads == 2)
     }
+
+    // MARK: One word, two spellings
+
+    @Test("refuses a spelling that closes up to one already held")
+    func closedUpDuplicateIsRefused() async throws {
+        let store = PersonalDictionaryStore(file: Sandbox().file)
+        try await store.add(word("OpenAI", from: .added, used: 3))
+        await #expect(throws: DictionaryStoreError.wordAlreadyKnown) {
+            try await store.add(word: "Open AI", pronunciation: "", at: epoch)
+        }
+        #expect(await store.allEntries().map(\.word) == ["OpenAI"])
+    }
+
+    @Test("replacing respells the entry and keeps its identity and counters")
+    func replaceKeepsCounters() async throws {
+        let store = PersonalDictionaryStore(file: Sandbox().file)
+        let held = word("OpenAI", from: .learned, used: 5, reverted: 1)
+        try await store.add(held)
+        try await store.replace(held.id, word: "Open AI", pronunciation: "")
+        let kept = try #require(await store.allEntries().first)
+        #expect(await store.allEntries().count == 1)
+        #expect(kept.id == held.id && kept.word == "Open AI" && kept.origin == .added)
+        #expect(kept.timesUsed == 5 && kept.timesReverted == 1)
+    }
+
+    @Test("merging sums the counters into the kept spelling, which alone is then offered")
+    func mergeSumsCounters() async throws {
+        let store = PersonalDictionaryStore(file: Sandbox().file)
+        let joined = word("OpenAI", used: 4, reverted: 1)
+        let spaced = word("Open AI", used: 2)
+        try await store.replaceAll([joined, spaced])
+        let merged = try #require(try await store.merge(keeping: spaced.id, absorbing: joined.id))
+        #expect(merged.id == spaced.id && merged.timesUsed == 6 && merged.timesReverted == 1)
+        #expect(await store.allEntries().map(\.id) == [spaced.id])
+        let offered = await store.index().candidates(soundingLike: "open ai").map(\.word)
+        #expect(offered == ["Open AI"])
+    }
+
+    @Test("two different words that share a sound are never merged")
+    func soundAlikesStaySeparate() async throws {
+        let store = PersonalDictionaryStore(file: Sandbox().file)
+        let british = word("Colour", used: 2)
+        let american = word("Color", used: 1)
+        try await store.replaceAll([british, american])
+        #expect(try await store.merge(keeping: british.id, absorbing: american.id) == nil)
+        #expect(await store.allEntries().count == 2)
+    }
 }

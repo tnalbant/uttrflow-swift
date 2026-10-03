@@ -5,8 +5,8 @@ import Testing
 @testable import UttrflowTestSupport
 
 /// Issue 2354: a closing spoken period follows a pronoun subject, while a noun phrase keeps its word.
-@Suite("Issue2354")
-struct Issue2354ReproductionTests {
+@Suite("A closing spoken period", .bug(id: 2354))
+struct ClosingSpokenPeriodTests {
     private let cases: [(spoken: String, draft: String, expected: String)] = [
         ("that is it period", "that is it.", "That is it."),
         ("this is final period", "this is final.", "This is final."),

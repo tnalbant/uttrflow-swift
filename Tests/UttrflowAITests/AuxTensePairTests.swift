@@ -5,8 +5,8 @@ import Testing
 @testable import UttrflowCore
 
 /// Issue 2542 follow-up: tense-carrying aux pairs (is/was, will/would, has/had) are not interchange on a rewrite, so the survival check refuses them as lost words rather than letting them fall under the functionWordChurn cap.
-@Suite("Issue 2542 aux tense pairs count as changed words")
-struct Issue2542AuxTenseTests {
+@Suite("Aux tense pairs count as changed words", .bug(id: 2542))
+struct AuxTensePairTests {
     /// The guard under test.
     private let sut = MeaningPreservationGuard()
 

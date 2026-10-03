@@ -630,6 +630,24 @@ private final class InterleavingFocus: AccessibilityFocus, @unchecked Sendable {
 
 @Suite("PasteboardImageInsertionEngine")
 struct PasteboardImageInsertionEngineTests {
+    @Test("does not paste another app's clipboard write after the image")
+    func refusesPasteAfterClipboardChangesDuringImageWrite() {
+        let copiedText = "a newer copy"
+        let pasteboard = FakePasteboard(onImageWrite: { pasteboard in
+            pasteboard.copyFromAnotherApp(copiedText)
+        })
+        let keystrokes = FakeKeystrokeSender()
+        let sut = PasteboardImageInsertionEngine(
+            focus: SwitchableFocus(), pasteboard: pasteboard, keystrokes: keystrokes)
+
+        #expect(throws: TextInsertionError.clipboardChanged) {
+            try sut.insert(Data([0x89, 0x50, 0x4E, 0x47]))
+        }
+
+        #expect(pasteboard.text() == copiedText)
+        #expect(keystrokes.pasteCount == 0, "Cmd+V must not paste the other app's clipboard")
+    }
+
     @Test("rechecks the frontmost application after writing the image")
     func rechecksFrontmostAfterWritingImage() async {
         let imageData = await Task.detached { Data([0x89, 0x50, 0x4E, 0x47]) }.value

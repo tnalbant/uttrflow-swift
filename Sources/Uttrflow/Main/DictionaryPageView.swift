@@ -82,10 +82,15 @@ struct DictionaryRowView: View {
 
     var body: some View {
         PageColumns(widths: DictionaryPageView.widths) {
-            Text(row.word)
-                .fontWeight(.semibold)
-                .foregroundStyle(PagePalette.text)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.word)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(PagePalette.text)
+                    .lineLimit(1)
+                if let soundsLike = row.soundsLike {
+                    PageTintChip(text: soundsLike, tint: PagePalette.clipboardInk)
+                }
+            }
             Text(row.pronunciation)
                 .italic()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
@@ -291,6 +296,12 @@ struct DictionaryEditorView: View {
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)
+            if let replace = editor.replace {
+                HStack {
+                    Spacer(minLength: 0)
+                    PageButton(action: replacing(replace), onIntent: onIntent)
+                }
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -309,6 +320,14 @@ struct DictionaryEditorView: View {
         MainAction(
             title: editor.save.title,
             intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation))
+    }
+
+    /// The Replace action rebuilt from the fields now, as Save is.
+    private func replacing(_ replace: MainAction) -> MainAction {
+        guard case .replaceWord(let id, _, _) = replace.intent else { return replace }
+        return MainAction(
+            title: replace.title,
+            intent: .replaceWord(id, word: draft.word, pronunciation: draft.pronunciation))
     }
 
     private var word: Binding<String> {

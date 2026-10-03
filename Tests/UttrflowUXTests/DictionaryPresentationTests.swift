@@ -398,7 +398,43 @@ struct DictionaryEditorTests {
         #expect(!editor.canSave)
     }
 
-    /// The page refuses exactly what the store refuses: case only, so an accented twin is a new word.
+    @Test("a respelling of a held word names it and offers to replace it")
+    func closedUpDuplicate() throws {
+        let held = HistoryFixture.word("OpenAI", pronunciation: nil)
+        let editor = try #require(
+            HistoryFixture.dictionary(entries: [held], draft: DictionaryDraft(word: "Open AI")).editor)
+        let named = "\u{2018}Open AI\u{2019} is already in your dictionary as \u{2018}OpenAI\u{2019}."
+        #expect(editor.problem == named)
+        #expect(!editor.canSave)
+        #expect(editor.replace?.intent == .replaceWord(held.id, word: "Open AI", pronunciation: ""))
+    }
+
+    @Test("two spellings of one word are flagged as sounding alike and offered a merge")
+    func respellingsAreMergeable() {
+        let joined = HistoryFixture.word("OpenAI", pronunciation: nil)
+        let spaced = HistoryFixture.word("Open AI", pronunciation: nil)
+        let rows = HistoryFixture.dictionary(entries: [joined, spaced]).rows
+        #expect(rows.map(\.soundsLike) == [sounds("Open AI"), sounds("OpenAI")])
+        let merge = MainIntent.mergeWords(keeping: joined.id, absorbing: spaced.id)
+        #expect(rows[0].actions.first?.intent == merge)
+    }
+
+    @Test("different words that share a sound are flagged without a merge")
+    func soundAlikesAreNotMerged() {
+        let british = HistoryFixture.word("Colour", pronunciation: nil)
+        let american = HistoryFixture.word("Color", pronunciation: nil)
+        let rows = HistoryFixture.dictionary(entries: [british, american]).rows
+        #expect(rows.map(\.soundsLike) == [sounds("Color"), sounds("Colour")])
+        let titles = rows.flatMap { $0.actions.map(\.title) }
+        #expect(!titles.contains("Keep this spelling"))
+    }
+
+    /// The chip a row wears when another entry competes for its sound.
+    private func sounds(_ word: String) -> String {
+        "Sounds like \u{2018}\(word)\u{2019}"
+    }
+
+    /// The page refuses exactly what the store refuses: case, spaces and punctuation, so an accented twin is a new word.
     @Test("a word that differs only by an accent is a different word")
     func accentsAreNotDuplicates() throws {
         let editor = try #require(

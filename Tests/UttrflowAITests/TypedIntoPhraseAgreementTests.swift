@@ -4,8 +4,8 @@ import Testing
 import UttrflowCore
 
 /// The "Typed into:" phrase names the place the style block came from, however that place was decided.
-@Suite("Issue203ClassSweep")
-struct Issue203ClassSweepTests {
+@Suite("The Typed into phrase agrees with the style block", .bug(id: 203))
+struct TypedIntoPhraseAgreementTests {
     /// The phrase the prompt shows for a situation, without the window title or the selection.
     private func phrase(_ situation: Situation) -> String {
         AppContextDescriber.describe(situation) ?? ""

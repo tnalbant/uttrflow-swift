@@ -65,6 +65,7 @@ struct TerminalStopPassTests {
                 "hey quick question, do we support ios sixteen or only seventeen and above?"
             ),
             ("papa did the shopping", "papa did the shopping."),
+            ("ravi is the owner of the account", "ravi is the owner of the account."),
             (
                 "papa did the shopping. where is my bag",
                 "papa did the shopping. where is my bag?"
