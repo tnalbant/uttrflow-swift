@@ -320,6 +320,34 @@ symlinks excluded) — mostly the 57.9 MB executable and the 3.8 MB MLX Metal li
 decimal MB (10^6 bytes). A fresh install is therefore **713.3 MB**: the speech model is downloaded
 on first launch, the application ships in the bundle, and the total is both added together.
 
+## Delivery budget
+
+What it costs to build, check and download Uttrflow, as opposed to what it costs to run. The
+limits are in `Scripts/size_budget.json`; `Scripts/size_budget.py` checks them, `Scripts/bundle.sh`
+runs it on every bundle it builds (so `make app` and `make app-preflight` fail over budget), and
+`make size-budget` checks the resolved package count in `make verify`. Raising a limit is a
+reviewed change to the JSON file whose pull request says what grew and why.
+
+| Measure | Measured | Limit | How it was measured |
+|---|---|---|---|
+| `Uttrflow.app`, bytes of regular files | 114,994,749 | 125,000,000 | `make app` on the machine above, local mode, `size_budget.py --app` |
+| `Uttrflow.app` as a `ditto` zip | 27,508,241 | 32,000,000 | the same bundle, `ditto -c -k --keepParent` |
+| Resolved Swift packages | 16 | 16 | `pins` in `Package.resolved` |
+| `make verify` on the CI image | median 11.9 min, p90 14.7, max 17.5 | 20 min | the `Verify` step of the last 60 successful `CI` runs, read with `gh api` from each run's jobs |
+
+The application figure is larger than the one under [Disk](#disk) because the bundle has grown
+since that reading; both sum regular files and exclude symlinks. The `make verify` job as a whole
+(checkout, cache, verify, app bundle) took median 19.4 min, p90 23.6, max 25.8 over the same 60
+runs, and building the app bundle took median 6.0 min. Timing is read from CI rather than a local
+build because a local build shares the machine with whatever else is running. CI writes each
+run's `make verify` time to the job summary; the time limit is read there rather than enforced,
+because one slow runner is not a regression.
+
+Adding a 20 MB file under `Resources` puts the bundle at about 135 MB and fails the app check.
+The package limit has no headroom on purpose: a dependency added by hand or by dependabot
+changes `Package.resolved` and fails `make size-budget` until the limit is raised in review. The
+disk image is not budgeted here; it is built by the release path, not by `bundle.sh`.
+
 ## What these numbers are not
 
 Stated rather than estimated around, because an invented figure in a performance document is worse

@@ -63,28 +63,44 @@ struct PersonalDataTransferTests {
         #expect(await snippets.snippets() == [knownSnippet, newSnippet])
     }
 
-    @Test("rejects an import over the inferred-word limit before either store changes")
-    func refusesOverLimitWithoutWriting() async throws {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appending(path: "uttrflow-personal-data-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let dictionary = PersonalDictionaryStore(file: root.appending(path: "dictionary.json"))
-        let snippets = SnippetStore(file: root.appending(path: "snippets.json"))
-        let entries = (0...PersonalDictionaryStore.maximumInferredEntries).map { index in
-            DictionaryEntry(
-                word: "word\(index)", origin: .observed, firstSeen: .distantPast)
-        }
-        let archive = try PersonalDataArchive(dictionary: entries, snippets: []).encoded()
-
-        do {
-            _ = try await PersonalDataTransfer.importArchive(
+    @Test("keeps the strongest inferred words and every added word and snippet over the limit")
+    func mergesOverLimitKeepingStrongest() async throws {
+        func run() async throws -> (PersonalDataImportReport, [DictionaryEntry], [Snippet]) {
+            let root = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appending(path: "uttrflow-personal-data-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let dictionary = PersonalDictionaryStore(file: root.appending(path: "dictionary.json"))
+            let snippets = SnippetStore(file: root.appending(path: "snippets.json"))
+            let local = (0..<200).map {
+                DictionaryEntry(
+                    word: "local\($0)", origin: .learned,
+                    firstSeen: Date(timeIntervalSince1970: Double($0)), timesUsed: $0 % 7)
+            }
+            try await dictionary.replaceAll(local)
+            try await snippets.save(
+                Snippet(trigger: "my address", expansion: "1 Example Road", created: .distantPast))
+            let imported =
+                (0..<200).map {
+                    DictionaryEntry(
+                        word: "remote\($0)", origin: .observed,
+                        firstSeen: Date(timeIntervalSince1970: Double($0)), timesUsed: $0 % 5)
+                } + [DictionaryEntry(word: "Kubernetes", origin: .added, firstSeen: .distantPast)]
+            let archive = try PersonalDataArchive(
+                dictionary: imported,
+                snippets: [Snippet(trigger: "my email", expansion: "a@example.com", created: .distantPast)]
+            ).encoded()
+            let report = try await PersonalDataTransfer.importArchive(
                 archive, into: dictionary, and: snippets)
-            Issue.record("over-limit archive was accepted")
-        } catch PersonalDataTransferError.dictionaryCapacityExceeded {
-            #expect(await dictionary.allEntries().isEmpty)
-            #expect(await snippets.snippets().isEmpty)
-        } catch {
-            Issue.record("unexpected import error: \(error)")
+            return (report, await dictionary.allEntries(), await snippets.snippets())
         }
+
+        let (report, words, kept) = try await run()
+        let inferred = words.filter { $0.origin == .learned || $0.origin == .observed }
+        #expect(inferred.count == PersonalDictionaryStore.maximumInferredEntries)
+        #expect(report.skippedInferredWords == 144)
+        #expect(words.contains { $0.word == "Kubernetes" && $0.origin == .added })
+        #expect(Set(kept.map(\.expansion)) == ["1 Example Road", "a@example.com"])
+        let (_, again, _) = try await run()
+        #expect(again.map(\.word) == words.map(\.word))
     }
 }

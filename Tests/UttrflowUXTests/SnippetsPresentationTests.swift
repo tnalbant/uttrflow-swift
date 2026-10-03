@@ -21,10 +21,12 @@ extension HistoryFixture {
 
     /// The Snippets page over these inputs.
     static func snippets(
-        _ snippets: [Snippet] = [], draft: SnippetDraft? = nil, query: String = ""
+        _ snippets: [Snippet] = [], draft: SnippetDraft? = nil, query: String = "",
+        arrival: SnippetArrival? = nil
     ) -> SnippetsPresentation {
         SnippetsPresenter.page(
-            for: SnippetsSnapshot(snippets: snippets, draft: draft, query: query, now: now),
+            for: SnippetsSnapshot(
+                snippets: snippets, draft: draft, query: query, now: now, arrival: arrival),
             calendar: calendar, locale: locale)
     }
 }
@@ -153,6 +155,48 @@ struct SnippetsEditorTests {
 
         #expect(editor?.canSave == false)
         #expect(editor?.problem == "You already have a snippet for “My  Address”.")
+    }
+
+    @Test("a trigger dictation rewrites says how it arrives and offers to save that form")
+    func arrivalDiffers() {
+        let editor = HistoryFixture.snippets(
+            draft: SnippetDraft(trigger: "email one", text: "x"),
+            arrival: SnippetArrival(trigger: "email one", arrives: "Email 1.")
+        ).editor
+
+        #expect(editor?.arrival == "Said aloud, this arrives as “Email 1.”.")
+        #expect(
+            editor?.saveArrived?.intent
+                == .saveSnippet(trigger: "Email 1.", text: "x", replacing: nil))
+    }
+
+    @Test("a trigger that arrives as the same words shows no note")
+    func arrivalSame() {
+        let editor = HistoryFixture.snippets(
+            draft: SnippetDraft(trigger: "my address", text: "x"),
+            arrival: SnippetArrival(trigger: "my address", arrives: "My address.")
+        ).editor
+        #expect(editor?.arrival == nil)
+        #expect(editor?.saveArrived == nil)
+    }
+
+    @Test("an arrival measured for an older trigger is not shown")
+    func arrivalStale() {
+        let editor = HistoryFixture.snippets(
+            draft: SnippetDraft(trigger: "email two", text: "x"),
+            arrival: SnippetArrival(trigger: "email one", arrives: "Email 1.")
+        ).editor
+        #expect(editor?.arrival == nil)
+    }
+
+    @Test("a draft that cannot be saved is not offered the arrived form")
+    func arrivalBlockedByProblem() {
+        let editor = HistoryFixture.snippets(
+            draft: SnippetDraft(trigger: "email one", text: " "),
+            arrival: SnippetArrival(trigger: "email one", arrives: "Email 1.")
+        ).editor
+        #expect(editor?.arrival != nil)
+        #expect(editor?.saveArrived == nil)
     }
 
     @Test("a snippet does not clash with itself")

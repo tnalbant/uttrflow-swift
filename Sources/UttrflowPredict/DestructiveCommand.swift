@@ -136,7 +136,8 @@ public enum DestructiveCommand {
         "terraform", "tofu", "redis-cli", "valkey-cli", "keydb-cli", "mongo", "mongosh",
         "crontab", "sh", "bash", "zsh", "dash", "ksh", "fish", "su", "runuser",
         "eval", "mv", "cp", "killall", "pkill", "kill", "rsync", "tee",
-        "echo", "man", "which", "tldr", "type",
+        "echo", "man", "which", "tldr", "type", "help", "info", "whatis", "apropos",
+        "printf", "command",
     ]
 
     /// Programs that destroy whatever they are pointed at.
@@ -164,6 +165,11 @@ public enum DestructiveCommand {
             if TerminalLineCheck.isAssignment(first.text) || reservedWords.contains(name), rest.count > 1 {
                 rest.removeFirst()
                 continue
+            }
+            // `command -v` and `command -V` inspect a name; they do not run the name as a command.
+            let commandOptions = rest.dropFirst().prefix(while: { $0.text.hasPrefix("-") })
+            if name == "command", commandOptions.contains(where: { $0.text == "-v" || $0.text == "-V" }) {
+                return .named(name, Array(rest.dropFirst().map(\.text)))
             }
             guard let wrapper = wrappers[name], rest.count > 1 else {
                 return .named(name, Array(rest.dropFirst().map(\.text)))

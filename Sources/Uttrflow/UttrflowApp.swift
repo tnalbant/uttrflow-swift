@@ -144,10 +144,15 @@ enum UttrflowApp {
             switch SingleInstanceLock.acquire(at: otherStoreFile) {
             case .acquired(let lock):
                 guards.append(lock)
+                // A free lock proves nothing about a build that predates it, so judge the peer by whether it stays running.
+                if let peer = runningPeer(otherIdentifier, excluding: me),
+                    LocklessPeer.outlasts(isRunning: { !peer.isTerminated })
+                {
+                    explainConflict(with: peer)
+                    return nil
+                }
             case .heldElsewhere:
-                if let running = NSWorkspace.shared.runningApplications.first(where: {
-                    $0.processIdentifier != me && $0.bundleIdentifier == otherIdentifier && !$0.isTerminated
-                }) {
+                if let running = runningPeer(otherIdentifier, excluding: me) {
                     explainConflict(with: running)
                 } else {
                     explainLockFailure()
@@ -159,6 +164,14 @@ enum UttrflowApp {
             }
         }
         return guards
+    }
+
+    /// A live process of `identifier` other than `me`.
+    @MainActor
+    private static func runningPeer(_ identifier: String, excluding me: pid_t) -> NSRunningApplication? {
+        NSWorkspace.shared.runningApplications.first {
+            $0.processIdentifier != me && $0.bundleIdentifier == identifier && !$0.isTerminated
+        }
     }
 
     @MainActor

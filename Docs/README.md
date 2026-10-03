@@ -141,6 +141,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 |---|---|
 | [accuracy-targets.md](accuracy-targets.md) | Accuracy targets, the error taxonomy and the release gate |
 | [measure-a-change.md](measure-a-change.md) | Measuring a change |
+| [ci-tiers.md](ci-tiers.md) | Which gate runs per pull request, nightly and before a release |
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
 | [core-word-error-rate.md](core-word-error-rate.md) | Word error rate |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |

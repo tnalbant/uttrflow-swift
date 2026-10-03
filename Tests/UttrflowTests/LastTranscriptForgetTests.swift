@@ -98,4 +98,58 @@ struct LastTranscriptForgetTests {
         #expect(await insertion.inserted == ["Newest words"])
         #expect(app.lastTranscriptID == newest.id)
     }
+
+    private func failed(_ text: String, secure: Bool = false) -> DictationState {
+        .failed(
+            DictationFailure(
+                message: "Not inserted", recovery: .retry, severity: .recoverable,
+                transcript: text, intoSecureField: secure))
+    }
+
+    private func inserted(_ text: String, secure: Bool = false) -> DictationState {
+        .inserted(
+            DictationOutcome(
+                text: text, method: .accessibility, cleanedBy: .rules, intoSecureField: secure))
+    }
+
+    @Test("a failed insertion after an inserted one is what both shortcuts act on")
+    func insertedThenFailed() async throws {
+        let sandbox = Sandbox()
+        let app = dictated("Older words", in: sandbox)
+        let olderID = try #require(app.lastTranscriptID)
+        let insertion = InsertionRecorder()
+        app.clipInserter = insertion
+
+        app.render(failed("Newer words"))
+        await app.perform(.pasteLastTranscript)
+
+        #expect(app.lastTranscript == "Newer words")
+        #expect(await insertion.inserted == ["Newer words"])
+        #expect(app.lastTranscriptID != olderID)
+    }
+
+    @Test("an inserted dictation after a failed one replaces it")
+    func failedThenInserted() {
+        let sandbox = Sandbox()
+        let app = AppDelegate(container: sandbox.root)
+
+        app.render(failed("Salvaged words"))
+        app.render(inserted("Inserted words"))
+
+        #expect(app.lastTranscript == "Inserted words")
+    }
+
+    @Test("a secure field keeps nothing, so the next dictation is the last transcript")
+    func secureThenInserted() {
+        let sandbox = Sandbox()
+        let app = dictated("Older words", in: sandbox)
+
+        app.render(inserted("Hidden words", secure: true))
+        #expect(app.lastTranscript == "Older words")
+        app.render(failed("Hidden failed words", secure: true))
+        #expect(app.lastTranscript == "Older words")
+        app.render(inserted("Newer words"))
+
+        #expect(app.lastTranscript == "Newer words")
+    }
 }
