@@ -59,12 +59,13 @@ struct RomaniserSoundClassTests {
         ("कमला", "kamla"), ("समझ", "samajh"), ("बदलना", "badalna"), ("नमकीन", "namkeen"), ("कमरा", "kamra"),
         ("मकान", "makaan"), ("सरकार", "sarkaar"), ("गलती", "galti"), ("रखना", "rakhna"), ("दोपहर", "dopahar"),
         ("जनवरी", "janvari"), ("चाय", "chai"), ("हँसना", "hansna"),
+        ("दुपहिया", "dupahiya"), ("फ़रवरी", "farvari"),
     ]
 
     /// Inputs the romaniser writes wrongly today; each is expected to fail until its class is fixed.
     static let knownGaps: Set<String> = [
         "मुंबई", "नंबर", "कंबल", "संपर्क", "चंपा", "खंभा", "माँ", "मां", "गाँव", "अतः", "प्रातः", "नमः",
-        "दोपहर", "जनवरी", "चाय", "हँसना",
+        "हँसना",
     ]
 
     /// Checks one case, recording a listed gap as a known issue so a fix shows up as an unexpected pass.

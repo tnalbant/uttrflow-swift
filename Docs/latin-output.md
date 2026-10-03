@@ -38,7 +38,8 @@ chat, not the way a scholar transliterates it. It has no diacritics and never pr
 - **The unwritten vowel is dropped** at the end of a word (कल kal) and between a vowel and a
   consonant that carries its own vowel (करना karna, समझना samajhna), scanning from the right.
   A nasal syllable before it keeps it too (ज़िंदगी zindagi). A conjunct after it keeps it:
-  अनन्या is "ananya", not "annya".
+  अनन्या is "ananya", not "annya". So does a lone ह after it, whose "h" would otherwise join
+  the consonant before into a digraph: दोपहर is "dopahar", not "dophar" (read "dofar").
 - **Long vowels are doubled only where people double them.** आ is "aa" in a first or closed
   syllable (आज aaj, किताब kitaab) and "a" at the end of a word or before another vowel
   (करना karna, जाएगा jayega). ई and ऊ are "ee" and "oo" in a closed syllable or a first
@@ -97,12 +98,14 @@ shows up as an unexpected pass and the list must shrink with it. Measured by tha
 | anusvara before a labial | 6 | 6 | मुंबई munbai, नंबर nanbar, संपर्क sanpark |
 | chandrabindu | 6 | 3 | माँ man, गाँव gaanw |
 | visarga after an unwritten vowel | 4 | 3 | अतः ath, नमः namh |
-| unwritten vowel | 13 | 4 | दोपहर dophar, जनवरी janawri, चाय chaay, हँसना hansana |
+| unwritten vowel | 15 | 1 | हँसना hansana |
 
 Each wrong row is a class, not a word: anusvara is always "n" though it is said "m" before
 प फ ब भ म; a nasal "aa" that is the whole word is shortened as if it ended a longer word; a
 visarga after the unwritten vowel drops the vowel it follows; and the unwritten-vowel rule
-drops the vowel before a final ह cluster and keeps the one a final य or व carries.
+drops the vowel after a nasal syllable that people drop in हँसना. The months जनवरी and
+फ़रवरी, whose dropped vowel is the one the right-to-left scan keeps, and चाय "chai" are in
+`commonSpellings`.
 
 ### Properties over generated words
 
@@ -152,7 +155,9 @@ nothing there; `scriptVerdict` reads the draft the only way it needs to: romanis
 - **Another script.** A rewrite holding any letter outside Latin is refused.
 - **A translation.** When the draft holds Devanagari, each word of the rewrite is looked for
   among the romanised draft's words by `Romaniser.soundKey`, which folds the usual spelling
-  variants together ("theek" and "thik", "woh" and "wo", "hoon" and "hun"). Digits are left to
+  variants together ("theek" and "thik", "woh" and "wo", "hoon" and "hun", a final "ay" and
+  "ai" as in "chaay" and "chai"). A dropped medial "a" is not folded: "karna" and "karana"
+  are two verbs. Digits are left to
   the number checks. More than half the rewrite's words with no counterpart
   (`mostStrangerWords`, 0.5) is a translation: "Meeting is at four o'clock, no no, five
   o'clock." has 8 of 9 words with none and is refused; "Woh kya hai na, yaani mujhe thoda time

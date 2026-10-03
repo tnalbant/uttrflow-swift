@@ -33,6 +33,10 @@ struct ScriptGuardTests {
             ("मैं meeting के लिए बीस मिनट late हो जाऊंगा", "Main meeting ke liye 20 minute late ho jaunga."),
             ("कल सुबह, सौरी, परशो सुबह, कॉल करना.", "Kal subah, sorry, parsho subah, call karna."),
             ("धन्यवाद", "Dhanyawad."),
+            ("मुझे चाय चाहिए", "Mujhe chaay chahiye."),
+            ("मैं दोपहर में मिलूँगा", "Main dopahar mein milunga."),
+            ("हम जनवरी में मिलेंगे", "Hum janvari mein milenge."),
+            ("फ़रवरी में छुट्टी है", "Farvari mein chhutti hai."),
         ])
     func acceptsARomanisation(draft: String, rewritten: String) {
         #expect(sut.scriptVerdict(draft: draft, rewritten: rewritten, examples: examples) == .accepted)
