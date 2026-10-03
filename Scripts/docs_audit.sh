@@ -689,6 +689,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 0c. No document shows a tag in the retired YEAR.MONTH.DAY scheme.
+# ---------------------------------------------------------------------------
+#
+# Versions are YY.MMDD.REVISION (RELEASING.md). A `v2026.9.14` example teaches a tag the release
+# workflow refuses. The changelog keeps its historical release links; the scheme explanations
+# name the old version without the `v`, so they are not tags and are not matched.
+printf '\nNo document shows a retired release tag\n'
+
+retired_tag_findings=$(git grep -n -E '(^|[^A-Za-z0-9_])v20[0-9]{2}\.[0-9]+\.[0-9]+' -- '*.md' ':!CHANGELOG.md' || true)
+if [[ -n "$retired_tag_findings" ]]; then
+    fail "a document shows a release tag in the retired YEAR.MONTH.DAY scheme" \
+        "Use the current YY.MMDD.REVISION form, such as v26.0926.0, as RELEASING.md states." \
+        "" $'\n'"$(printf '    %s\n' "$retired_tag_findings")"
+else
+    pass "no document outside CHANGELOG.md shows a retired YEAR.MONTH.DAY tag"
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Every backticked path that claims to be a file in this repository exists.
 # ---------------------------------------------------------------------------
 #
