@@ -169,6 +169,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [agents/public-boundary.md](agents/public-boundary.md) | What must never reach a tracked file |
 | [disclosure-gate.md](disclosure-gate.md) | The disclosure gate |
 | [tooling-traps.md](tooling-traps.md) | Tooling traps |
+| [python-scripts.md](python-scripts.md) | Python scripts and their imports |
 
 Two pages here tell an operator to run a command in the private backend repository:
 [operator-runbook.md](operator-runbook.md) and [releasing.md](releasing.md). Everything else
