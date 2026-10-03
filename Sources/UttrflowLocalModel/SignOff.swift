@@ -28,7 +28,7 @@ enum SignOff {
             return line
         }
         let name = Array(capitalised.prefix(longestSignature))
-        let own = Set((ownLines + [typed]).flatMap(words(of:)).map { $0.lowercased() })
+        let own = Set(ownLines.flatMap(words(of:)).map { $0.lowercased() })
         // Only a name the person has written is theirs to sign with; any other was read on screen or made up.
         guard name.allSatisfy({ own.contains($0.lowercased()) }) else {
             let closing = String(line[...comma])
