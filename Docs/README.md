@@ -2,7 +2,8 @@
 
 A page per subsystem. Each one holds what the code cannot say for itself: a measured number,
 a platform trap, an approach that was tried and does not work. Comments in the source are one
-line and link here rather than carrying the explanation themselves.
+line and link here rather than carrying the explanation themselves. Every rejected approach is
+indexed, with the condition that reopens it, in [decisions.md](decisions.md).
 
 Nothing here is a tutorial. If you want to run the app, the [README](../README.md) is the
 place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and

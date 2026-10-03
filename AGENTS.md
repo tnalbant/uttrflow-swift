@@ -19,6 +19,7 @@ on-device. This file is for everyone who works on it, by hand or with an agent. 
 | hitting a tooling failure | [Docs/tooling-traps.md](Docs/tooling-traps.md) |
 
 4. [`Docs/README.md`](Docs/README.md), then the page for the module you change.
+5. [`Docs/decisions.md`](Docs/decisions.md) before proposing an approach: what was rejected, and what reopens it.
 
 ## Commands
 
