@@ -423,6 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             refreshMainWindow()
         }
         // These launch tasks do not feed the first window, so let it appear before starting the work.
+        migrateDictionarySpellings()
         seedTheDictionary()
         sweepExpired()
         probeTransformers()
@@ -434,6 +435,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         updates.begin(
             checksAutomatically: settings.checksForUpdatesAutomatically,
             installsAutomatically: settings.installsUpdatesAutomatically)
+    }
+
+    /// Respells legacy dictionary entries before seeding or serving the dictionary.
+    private func migrateDictionarySpellings() {
+        dictionaryMigrationWork = Task(priority: .utility) { [weak self, dictionary] in
+            guard let self else { return }
+            do throws(DictionaryStoreError) {
+                let changes = try await dictionary.respellInLatinScript()
+                guard !changes.isEmpty else { return }
+                let example =
+                    changes.first.map {
+                        " For example, “\($0.before.word)” is now “\($0.after.word)”."
+                    } ?? ""
+                actionNotice = MainNotice(
+                    message:
+                        "Updated \(changes.count) dictionary \(changes.count == 1 ? "spelling" : "spellings") to Latin letters.\(example)",
+                    symbolName: "character.book.closed.fill", tone: .neutral)
+                announce("Updated dictionary spellings to Latin letters.", urgently: false)
+                refreshMainWindow()
+            } catch {
+                Self.log.error(
+                    "dictionary respelling failed: \(SuggestionLog.failure(error), privacy: .public)")
+            }
+        }
     }
 
     /// Builds the telemetry service from the saved switch and starts its hourly flush.
@@ -458,7 +483,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Writes the words this build ships knowing, which happens once and never blocks the launch.
     private func seedTheDictionary() {
-        Task(priority: .utility) { [dictionary] in
+        let migration = dictionaryMigrationWork
+        Task(priority: .utility) { [dictionary, migration] in
+            await migration?.value
             do {
                 try await dictionary.seedShippedWords(at: Date())
             } catch {
@@ -2790,6 +2817,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The complete snippet held for the short main-window undo window.
     private var deletedSnippet: Snippet?
     private var snippetUndoTask: Task<Void, Never>?
+    /// The one launch-time rewrite of legacy dictionary spellings.
+    var dictionaryMigrationWork: Task<Void, Never>?
 
     /// Counts editor requests, so a slow one cannot open over a faster one that followed it.
     private var editorGeneration = 0
@@ -3381,7 +3410,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// A dictation's activity and failure in the menu's vocabulary, placed by which surfaces are shown.
-    nonisolated static func menuBarDictation(for state: DictationState, floatingButtonShown: Bool) -> MenuBarState {
+    nonisolated static func menuBarDictation(
+        for state: DictationState, floatingButtonShown: Bool
+    ) -> MenuBarState {
         let activity: DictationActivity =
             switch state {
             case .idle, .failed: .idle

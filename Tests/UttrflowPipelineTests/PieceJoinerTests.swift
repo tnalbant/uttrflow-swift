@@ -659,6 +659,32 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == "I finished the draft.")
     }
 
+    @Test("keeps a sentence stop between adjacent digit groups")
+    func digitGroupsAfterSentenceStopStaySeparate() {
+        let whole = PieceJoiner.join(
+            [piece("It costs 20."), piece("30 people came.")],
+            under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text == "It costs 20. 30 people came.")
+    }
+
+    @Test("joins number groups across a stop only when the heard piece ends on a scale word")
+    func scaleWordSupportsStoppedGroupContinuation() {
+        let seamed = PieceJoiner.seamed(
+            ["It costs 200.", "30 people came."], heard: ["It costs two hundred", "thirty people came"],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "It costs 200")
+    }
+
+    @Test("joins digit groups across a cut without a sentence stop")
+    func digitGroupsWithoutSentenceStopRunOn() {
+        let seamed = PieceJoiner.seamed(
+            ["Call me at 555", "123"], under: .standard(for: .document))
+
+        #expect(seamed.first == "Call me at 555")
+    }
+
     /// A fronted phrase opens a sentence, and only a preposition a speaker never fronts counts as evidence.
     @Test("still stops a seam where the next piece opens on a fronted phrase")
     func frontedPhraseAtASeamStillStops() {
@@ -811,7 +837,9 @@ struct PieceJoinerSeamTests {
             let words = text.split(separator: " ").map(String.init)
             for cut in 1..<words.count where words[cut - 1].allSatisfy({ $0.isNumber || $0.isUppercase }) {
                 for stop in ["", "."] {
-                    let pieces = [words[..<cut].joined(separator: " ") + stop, words[cut...].joined(separator: " ")]
+                    let pieces = [
+                        words[..<cut].joined(separator: " ") + stop, words[cut...].joined(separator: " "),
+                    ]
                     let whole = PieceJoiner.join(pieces.map { piece($0) }, under: .standard(for: destination))
 
                     #expect(whole.cleaned.text == text, "\(pieces) in \(destination)")
@@ -823,7 +851,8 @@ struct PieceJoinerSeamTests {
     @Test("keeps the stop between two groups when the recogniser heard a question or an exclamation")
     func groupRowAbstainsOnQuestionOrExclamation() {
         for mark in ["?", "!"] {
-            let seamed = PieceJoiner.seamed(["It costs 12" + mark, "13 people came."], under: .standard(for: .document))
+            let seamed = PieceJoiner.seamed(
+                ["It costs 12" + mark, "13 people came."], under: .standard(for: .document))
 
             #expect(seamed.first == "It costs 12" + mark)
         }
