@@ -807,6 +807,7 @@ struct QuickPanelView: View {
             isEscape: press.key == .escape,
             rowMenuOpen: rowMenu.rowID != nil,
             presentation: presentation)
+        guard PanelComposition.panelMayTake(decision, whileComposing: isComposing) else { return .ignored }
         switch decision {
         case .key(let key), .keyAfterClosingMenu(let key):
             return send(key)

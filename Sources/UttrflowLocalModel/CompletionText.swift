@@ -1,6 +1,7 @@
 // The text a suggestion pass is read through: echoes found, copies of the screen cut, runaway lines refused.
 
 import Foundation
+import UttrflowCore
 import UttrflowPredict
 
 /// Everything done to a model's answer that is only text, kept apart from the model so it is tested and counted.
@@ -80,9 +81,6 @@ enum CompletionText {
         return found
     }
 
-    /// Marks that end a sentence; an ellipsis trails off inside one, so it is read past.
-    static let sentenceEnds: Set<Character> = [".", "?", "!"]
-
     /// Marks that may close a sentence after its end mark, a quote or a bracket.
     private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
 
@@ -96,12 +94,12 @@ enum CompletionText {
         let characters = Array(line)
         var index = typed.count
         while index < characters.count {
-            guard sentenceEnds.contains(characters[index]) else {
+            guard SentenceMarks.ends.contains(characters[index]) else {
                 index += 1
                 continue
             }
             var end = index
-            while end + 1 < characters.count, sentenceEnds.contains(characters[end + 1]) { end += 1 }
+            while end + 1 < characters.count, SentenceMarks.ends.contains(characters[end + 1]) { end += 1 }
             let isEllipsis = end > index && characters[index...end].allSatisfy { $0 == "." }
             while end + 1 < characters.count, sentenceClosers.contains(characters[end + 1]) { end += 1 }
             // A mark with no space after it is inside a number, a name or an address, not at a sentence's end.

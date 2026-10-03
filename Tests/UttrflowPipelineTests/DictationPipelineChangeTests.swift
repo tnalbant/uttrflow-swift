@@ -142,7 +142,7 @@ private let snippet = UUID()
 
 private let paymentSheet = DictationCorrection(
     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 2..<4, entryID: entry,
-    reason: "heardAsSeveralWords", heardConfidence: 0.2)
+    reason: .heardAsSeveralWords, heardConfidence: 0.2)
 
 private func makePipeline(
     spoken: String = heard,
@@ -317,7 +317,7 @@ struct DictationPipelineDictionaryRestatementTests {
             corrector: FakeCorrector(proposing: [
                 DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 5..<7,
-                    entryID: entry, reason: "heardAsSeveralWords", heardConfidence: 0.2)
+                    entryID: entry, reason: .heardAsSeveralWords, heardConfidence: 0.2)
             ]))
     }
 
@@ -511,7 +511,7 @@ struct DictationPipelineLearningTests {
             paymentSheet,
             DictationCorrection(
                 heard: "my address", wrote: "PaymentSheet", wordRange: 6..<8, entryID: entry,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2),
+                reason: .heardAsSeveralWords, heardConfidence: 0.2),
         ]
         let pipeline = makePipeline(corrector: FakeCorrector(proposing: twice), learner: learner)
 
@@ -528,7 +528,7 @@ struct DictationPipelineLearningTests {
             paymentSheet,
             DictationCorrection(
                 heard: "my address", wrote: "MyAddress", wordRange: 6..<8, entryID: otherEntry,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2),
+                reason: .heardAsSeveralWords, heardConfidence: 0.2),
         ]
         let pipeline = makePipeline(corrector: FakeCorrector(proposing: two), learner: learner)
 

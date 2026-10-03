@@ -38,3 +38,15 @@ Swift-only detector would misread. JavaScript and TypeScript share an `ecmaScrip
 list so neither can win on syntax they have in common; untyped modern ECMAScript ends up
 `javascript`, the label that stays true either way. HTML is weighted towards document-level
 elements so JSX inside a TypeScript component does not outscore the TypeScript around it.
+
+## Shared with dictation
+
+`CodeLanguage` lives in `UttrflowCore`, so the clipboard and the dictation modules ask one
+detector with one scoring table. Two more entry points serve callers that hold something other
+than a whole clip:
+
+- `detect(fragment:)` reads the last `fragmentLength` characters before a caret, drops the line
+  the window cut through, and applies the same bar and margin. A fragment is shorter than most
+  clips, so it answers `nil` more often, which is the intended direction.
+- `from(fileName:)` maps a file name's extension through one table. An extension outside the
+  thirteen languages answers `nil`; it never guesses a near neighbour.

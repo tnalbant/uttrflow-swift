@@ -189,9 +189,9 @@ def main():
         print("These files gained a text comparison that decides identity by shape:\n")
         for failure in failures:
             print(f"  {failure}")
-        print("\nAsk MeaningPreservationGuard.sameForm whether two spellings are one word,")
+        print("\nAsk WordForms.sameForm whether two spellings are one word,")
         print("spelledInto or isWritten whether it is written out, and WordErrorRate.measure")
-        print("whether it is still there in order. See issue #189 in PLAN.md.")
+        print("whether it is still there in order. See Docs/agents/code-quality.md.")
         return 1
 
     print(f"Word matches: {total} loose, none higher than the baseline.")

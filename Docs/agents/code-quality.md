@@ -76,7 +76,7 @@ Use these owners; do not reimplement them.
 
 | Question | Single owner | Held by |
 |---|---|---|
-| Are two spellings one word? | `MeaningPreservationGuard.sameForm` | `make match-audit` |
+| Are two spellings one word? | `WordForms.sameForm` | `make match-audit` |
 | Is a word written out at its own boundaries? | `spelledInto`, `isWritten` | `make match-audit` |
 | Is a word still there, in the order spoken? | `WordErrorRate.measure` | `make match-audit` |
 | Is a scalar in the Latin range? | `UttrflowCore.LatinScript.isInLatinRange` | tests, `Docs/latin-output.md` |

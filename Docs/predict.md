@@ -79,7 +79,7 @@ the user saw repeated what they had written.
 
 **A terminal publishes the prose role and is not prose.** `AXTextArea` is what a document
 and a shell both publish, so the 400 ms hesitation gate was quieting terminals — the case
-where an instant answer matters most. `TerminalApplications` in `UttrflowPredict` names the
+where an instant answer matters most. `TerminalApplications` in `UttrflowCore` names the
 shells by bundle identifier, which is the only signal that separates them; a fuller dialect
 registry will own that question later. An editor's terminal pane cannot be told from its
 editor by bundle identifier, so those are still read as prose.
@@ -91,7 +91,8 @@ directory — a terminal's working directory — is scoped to itself, which is t
 
 **Status.** Every piece exists and the app runs them: `SuggestionCoordinator` owns the
 loop, verification sits between ranking and drawing, one `MLXCandidateScorer` is wired in as
-both scorer and generator, and `AppDelegate` builds it. `PLAN.md` tracks the phases.
+both scorer and generator, and `AppDelegate` builds it. Remaining work is tracked as GitHub
+issues, not on this page.
 
 ## A suggestion is written in English, in the Latin alphabet
 

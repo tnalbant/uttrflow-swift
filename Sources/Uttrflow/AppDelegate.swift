@@ -3526,7 +3526,7 @@ private struct DictionaryCorrections: WordCorrecting {
         return proposals.map {
             DictationCorrection(
                 heard: $0.heard, wrote: $0.replacement, wordRange: $0.wordRange,
-                entryID: $0.entryID, reason: $0.reason.rawValue,
+                entryID: $0.entryID, reason: $0.reason,
                 heardConfidence: $0.heardConfidence)
         }
     }

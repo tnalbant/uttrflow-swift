@@ -293,7 +293,7 @@ struct MainIntentWiringTests {
         let correction = try #require(
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4))
         let undone = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -361,7 +361,7 @@ struct MainIntentWiringTests {
         let correction = try #require(
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: entry.id,
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4))
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -509,7 +509,7 @@ struct MainIntentWiringTests {
         let correction = try #require(
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4))
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))

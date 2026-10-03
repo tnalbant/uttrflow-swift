@@ -1,6 +1,7 @@
 // Tests for formatting a clip: when it is offered, that the app runs it, and the diff sheet.
 import Foundation
 import UttrflowClipboard
+import UttrflowCore
 import Testing
 
 @testable import UttrflowUX

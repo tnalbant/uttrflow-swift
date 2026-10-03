@@ -2,6 +2,7 @@
 
 public import struct Foundation.Date
 public import struct Foundation.UUID
+public import UttrflowCore
 
 /// What a copied thing is, detected rather than declared; decides the icon, the face and masking.
 public enum ClipKind: String, Sendable, Equatable, CaseIterable, Codable {

@@ -95,7 +95,7 @@ private final class SeamCorrector: WordCorrecting, Sendable {
         return [
             DictationCorrection(
                 heard: heard, wrote: wrote, wordRange: range, entryID: entryID,
-                reason: "heardAsSeveralWords", heardConfidence: 0.2)
+                reason: .heardAsSeveralWords, heardConfidence: 0.2)
         ]
     }
 

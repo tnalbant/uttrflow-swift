@@ -418,7 +418,7 @@ struct PieceJoinerWholeTests {
         let entry = UUID()
         let correction = DictationCorrection(
             heard: "cubernetes", wrote: "Kubernetes", wordRange: 1..<2, entryID: entry,
-            reason: "dictionary", heardConfidence: 0.3)
+            reason: .unknown("dictionary"), heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [
                 piece("First, we deploy it.", heard: "first we deploy it"),
@@ -433,7 +433,7 @@ struct PieceJoinerWholeTests {
     func correctionsSurviveTheLayout() {
         let entry = UUID()
         let correction = DictationCorrection(
-            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: "dictionary",
+            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: .unknown("dictionary"),
             heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [

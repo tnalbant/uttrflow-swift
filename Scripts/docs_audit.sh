@@ -751,7 +751,7 @@ import sys
 # Root files that are load-bearing, so a bare mention of one is worth checking.
 ROOT_ALLOWLIST = {
     "AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
-    "LICENSE.md", "PLAN.md", "Package.resolved", "Package.swift", "README.md",
+    "LICENSE.md", "Package.resolved", "Package.swift", "README.md",
     "RELEASING.md", "SECURITY.md", "TRADEMARK.md",
 }
 EXTENSIONS = (
@@ -840,11 +840,9 @@ fi
 # by a third, and a reader who acts on it is as misled as by a wrong exact number. "4,000+"
 # stays true and stays useful, which is what a floor is for.
 #
-# Two things are skipped, both because they are records rather than claims. PLAN.md is an
-# append-only phase log where each entry states the count on the day it was written, and
-# rewriting those would be a lie. So is a line in Swift Testing's own summary format — `Test
-# run with 579 tests in 83 suites` in `Docs/offline.md` is the transcript of one filtered
-# run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
+# One thing is skipped, because it is a record rather than a claim: a line in Swift Testing's
+# own summary format — `Test run with 579 tests in 83 suites` in `Docs/offline.md` is the
+# transcript of one filtered run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
 # `make verify` snippet inside one.
 printf '\nThe test count\n'
 
@@ -893,7 +891,6 @@ PYTHON
     claims="$(
         git ls-files --cached --others --exclude-standard \
             -- '*.md' 'Makefile' '.githooks/*' '.github/workflows/*' \
-        | grep -v '^PLAN\.md$' \
         | python3 -c "$COUNT_PROGRAM" "$REAL_TESTS"
     )"
 

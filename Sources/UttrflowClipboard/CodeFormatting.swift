@@ -1,6 +1,7 @@
 // The formatter protocol and the allowlist of formatters that may be run.
 
 public import struct Foundation.TimeInterval
+public import UttrflowCore
 
 /// A formatter for one language; a protocol, because the real one runs another program.
 public protocol CodeFormatting: Sendable {

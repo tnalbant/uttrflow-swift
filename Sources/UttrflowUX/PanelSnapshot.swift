@@ -1,6 +1,7 @@
 // The panel's state: the scope and filter tabs, and the snapshot every keystroke transforms.
 public import Foundation
 public import UttrflowClipboard
+public import UttrflowCore
 
 /// Which slice of the clipboard the bottom bar shows: kept, filed, or neither. Combines with ``PanelFilter``.
 public enum PanelScope: String, Sendable, Equatable, CaseIterable, Codable {

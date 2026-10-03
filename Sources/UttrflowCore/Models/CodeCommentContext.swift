@@ -28,25 +28,8 @@ public enum CodeCommentContext {
     ) -> Bool {
         guard let block else { return false }
         var depth = 0
-        var quote: String?
-        var escaped = false
         var index = precedingText.startIndex
         while index < precedingText.endIndex {
-            if let currentQuote = quote {
-                if escaped {
-                    escaped = false
-                    index = precedingText.index(after: index)
-                } else if precedingText[index] == "\\" {
-                    escaped = true
-                    index = precedingText.index(after: index)
-                } else if precedingText[index...].hasPrefix(currentQuote) {
-                    index = precedingText.index(index, offsetBy: currentQuote.count)
-                    quote = nil
-                } else {
-                    index = precedingText.index(after: index)
-                }
-                continue
-            }
             if precedingText[index].isNewline {
                 index = precedingText.index(after: index)
                 continue
@@ -56,15 +39,14 @@ public enum CodeCommentContext {
                 index = precedingText.index(newline, offsetBy: 1)
                 continue
             }
-            if precedingText[index...].hasPrefix("\"\"\"") {
-                quote = "\"\"\""
-                index = precedingText.index(index, offsetBy: 3)
+            switch Quoting.opening(in: precedingText, at: index, styles: QuoteStyle.sourceStrings) {
+            case .closed(let end):
+                index = end
                 continue
-            }
-            if precedingText[index] == "\"" || precedingText[index] == "'" || precedingText[index] == "`" {
-                quote = String(precedingText[index])
-                index = precedingText.index(after: index)
-                continue
+            case .unclosed:
+                return depth > 0
+            case .none:
+                break
             }
             if precedingText[index...].hasPrefix(block.open) {
                 depth += 1
