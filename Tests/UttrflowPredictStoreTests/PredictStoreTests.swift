@@ -139,6 +139,32 @@ struct RecordingTests {
         #expect(found.first?.evidence?.count == 3)
     }
 
+    @Test("A future clock reading is clamped when a line is learned.")
+    func futureLearningTimestampIsClamped() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let future = Date(timeIntervalSince1970: 4_102_444_800)
+        try await store.record("deploy future", in: terminal, at: future)
+
+        let candidate = try await store.candidates(for: terminal, matching: "deploy ").first
+        #expect((candidate?.evidence?.lastUsed ?? .distantFuture) <= Date())
+    }
+
+    @Test("A future timestamp already on disk is clamped when the corpus is read.")
+    func futureStoredTimestampIsClampedOnRead() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("deploy legacy", in: terminal, at: moment)
+        let database = try Database(path: corpus.path)
+        try database.run("UPDATE entry SET last_used = ? WHERE text = ?") {
+            $0.bind(1, 4_102_444_800.0)
+            $0.bind(2, "deploy legacy")
+        }
+
+        let candidate = try await store.candidates(for: terminal, matching: "deploy ").first
+        #expect((candidate?.evidence?.lastUsed ?? .distantFuture) <= Date())
+    }
+
     @Test("A line differing only by case is offered once.")
     func caseVariantsAreDeduplicated() async throws {
         let corpus = Corpus()

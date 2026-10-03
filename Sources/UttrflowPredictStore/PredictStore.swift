@@ -349,7 +349,7 @@ public actor PredictStore: PredictionStore {
                 evidence: Entry(
                     text: text, count: row.integer(1), accepted: row.integer(2),
                     rejected: row.integer(3), selfSourced: row.integer(4),
-                    lastUsed: Date(timeIntervalSince1970: row.double(5))),
+                    lastUsed: Self.clampedLastUsed(row.double(5))),
                 editDistance: distance,
                 isIrreversible: DestructiveCommand.matches(text, failClosedOnUnresolved: true))
         }
@@ -364,12 +364,18 @@ public actor PredictStore: PredictionStore {
         selfSourced: Bool = false, at moment: Date
     ) throws(PredictStoreError) {
         guard !text.isEmpty else { return }
+        let moment = min(moment, Date())
         try database.transaction { () throws(PredictStoreError) in
             try write(
                 Spelling.canonical(text), in: surface, after: previous.map(Spelling.canonical),
                 selfSourced: selfSourced, at: moment)
         }
         try? compactIfNeeded()
+    }
+
+    /// Keeps a stored clock jump from outranking entries used at the actual current time.
+    private static func clampedLastUsed(_ timestamp: Double) -> Date {
+        min(Date(timeIntervalSince1970: timestamp), Date())
     }
 
     /// The steps of a record, which stand or fall together.
@@ -839,7 +845,7 @@ public actor PredictStore: PredictionStore {
                 evidence: Entry(
                     text: row.text(0), count: row.integer(1), accepted: row.integer(2),
                     rejected: row.integer(3), selfSourced: row.integer(4),
-                    lastUsed: Date(timeIntervalSince1970: row.double(5))),
+                    lastUsed: Self.clampedLastUsed(row.double(5))),
                 editDistance: distance,
                 isIrreversible: DestructiveCommand.matches(row.text(0), failClosedOnUnresolved: true))
         }
