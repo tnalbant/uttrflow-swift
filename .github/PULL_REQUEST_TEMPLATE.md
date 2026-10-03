@@ -22,6 +22,7 @@ corpus comparison could not be run. `Docs/measure-a-change.md` says which comman
 - [ ] New behaviour has a test, or there is a reason in the PR why it cannot
 - [ ] No real email address, postal address or personal data in fixtures — `example.com` and invented streets
 - [ ] Comments are one line, present tense, and describe what the code does now
+- [ ] A latency claim says where its clock starts and stops ([rules](../Docs/agents/code-quality.md#measurements-and-thresholds))
 
 If this change stores anything learned about the person, answer each of these and update
 [`Docs/persona-threat-model.md`](../Docs/persona-threat-model.md) in this pull request:

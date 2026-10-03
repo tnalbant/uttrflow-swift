@@ -270,6 +270,17 @@ a given match is right.
    decision that changed it.
 6. **A gate fails when it cannot run.** A check whose tool is missing exits non-zero instead of
    passing, and a count quoted in a document is re-measured by the command in the same commit.
+7. **A latency claim states where its clock starts and stops**, both as named events (key down,
+   last audio frame, words ready, text inserted), and records each sub-stage on its own. A total
+   without its stages cannot say which stage moved.
+8. **Read the artefact before writing the premise.** A claim about a third-party model's
+   internals cites the symbol and its access level, or the run that showed it.
+9. **A derived constant names its source**: the corpus, language and command it was fitted on.
+   A constant fitted on one language is not a default for the others.
+10. **One current table per measurement.** A new run replaces the table on its page; an older run
+    is history and goes in the pull request, not beside the current one.
+
+Evidence for rules 7 to 10: [measurement-claims.md](../measurement-claims.md).
 
 ## Tests and coverage
 
