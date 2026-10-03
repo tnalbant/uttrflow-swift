@@ -98,6 +98,9 @@ words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognis
 A value that is a variable, a substitution or a placeholder (`$TOKEN`, `${token}`, `{token}`,
 `<token>`) is left alone, since it names where the credential is rather than being it.
 
+A `.netrc` password is read in the context of its machine or default block across lines. `account`
+fields are consumed as values, and a `macdef` body is skipped through its blank-line terminator.
+
 A URL whose userinfo is one generated token with no colon (`https://<40 hex>@host/repo`) is
 masked too, by the statistical rule below applied to the userinfo; `https://readonly@host`
 stays a link.
