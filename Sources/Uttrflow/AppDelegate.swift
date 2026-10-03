@@ -1560,12 +1560,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The newest few clips for the popover, or none while the clipboard is switched off.
     func readMenuClips() async {
-        let clips =
-            settings.clipboardEnabled
-            ? Array(await clipboard.clips(keeping: retention).prefix(MenuBarPresenter.clipCount)) : []
+        let clips: [Clip]
+        if settings.clipboardEnabled {
+            clips = Array(await clipboard.clips(keeping: retention).prefix(MenuBarPresenter.clipCount))
+            await reportUnreadableClipboardIndexes()
+        } else {
+            clips = []
+        }
         guard clips != menuClips else { return }
         menuClips = clips
         refreshMenuBar()
+    }
+
+    /// Tells the user once where a damaged clipboard index was preserved.
+    private func reportUnreadableClipboardIndexes() async {
+        let copies = await clipboard.takeUnreadableIndexSetAsides()
+        guard !copies.isEmpty else { return }
+        let locations = copies.map(\.path).joined(separator: ", ")
+        let message = "A damaged clipboard index was preserved at \(locations)."
+        let notice = MainNotice(
+            message: message, symbolName: "externaldrive", tone: .warning)
+        actionNotice = notice
+        panel?.notice = PanelNotice(symbolName: notice.symbolName, message: message)
+        if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
+        announce(message, urgently: false)
+        refreshMainWindow()
     }
 
     /// Records one noticed clip; a refused write loses that clip, and giving up would lose all the rest.
@@ -2195,6 +2214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         panelReads += 1
         let read = panelReads
         let clips = await clipboard.clips(keeping: retention)
+        await reportUnreadableClipboardIndexes()
         let facts = await facts(about: clips)
         // A read that started earlier never replaces a newer list, or a copy shown while opening would go.
         guard read == panelReads else { return }

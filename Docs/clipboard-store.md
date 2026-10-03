@@ -52,12 +52,13 @@ The saved file's path is derived from the history's rather than injected, so the
 together: move or copy the folder and the clipboard arrives whole.
 
 An unreadable file is renamed aside before anything else happens, so the next write starts a
-fresh file instead of replacing the only copy. A file that cannot be moved aside either is left
-where it is, and every write to it is refused. `LocalStore.read(_:from:)` does this for every JSON
-store in the app, and tells a missing file apart from one that is there and cannot be read:
-permission denied, truncated, empty, or a shape from a newer build. Salvaging clip by clip is not
-attempted: the store's own writes are atomic, so the realistic corruption is a whole file somebody
-mangled, and half a clipboard restored is harder to explain than none.
+fresh file instead of replacing the only copy. When a clipboard index is set aside, the app tells
+the user once where its preserved copy is. A file that cannot be moved aside is left where it is,
+and every write to it is refused. `LocalStore.read(_:from:)` does this for every JSON store in the
+app, and tells a missing file apart from one that is there and cannot be read: permission denied,
+truncated, empty, or a shape from a newer build. Salvaging clip by clip is not attempted: the
+store's own writes are atomic, so the realistic corruption is a whole file somebody mangled, and
+half a clipboard restored is harder to explain than none.
 
 ### Moving a clip between the files
 
