@@ -141,7 +141,25 @@ public enum SecretShapes {
     /// The statistical rule read character by character, which any clip can be.
     static func hasHighEntropyTokenByCharacter(_ text: String) -> Bool {
         guard !text.contains(where: \.isNewline) else { return false }
-        return text.split(whereSeparator: \.isWhitespace).contains { looksGenerated(String($0)) }
+        return text.split(whereSeparator: \.isWhitespace).contains { word in
+            quotedPieces(of: Array(word)).contains { looksGenerated(String($0)) }
+        }
+    }
+
+    /// The quote marks a one-line structure such as `{"key":"value"}` frames its values with.
+    private static let quoteMarks: [Character] = ["\"", "'"]
+
+    /// A word cut at its quote marks when each kind is paired, so a quoted value is judged alone; else the word whole.
+    private static func quotedPieces<Element: Equatable>(
+        of word: [Element], marks: [Element]
+    ) -> [ArraySlice<Element>] {
+        let paired = marks.allSatisfy { mark in word.count(where: { $0 == mark }).isMultiple(of: 2) }
+        guard paired, word.contains(where: marks.contains) else { return [word[...]] }
+        return word.split(whereSeparator: marks.contains)
+    }
+
+    private static func quotedPieces(of word: [Character]) -> [ArraySlice<Character>] {
+        quotedPieces(of: word, marks: quoteMarks)
     }
 
     /// The statistical rule read over the bytes of an ASCII clip, where a byte is a character; `nil` for any other clip.
@@ -151,12 +169,21 @@ public enum SecretShapes {
         var start = 0
         for offset in 0...bytes.count
         where offset == bytes.count || bytes[offset] == 0x20 || bytes[offset] == 0x09 {
-            if offset > start, looksGenerated(UnsafeBufferPointer(rebasing: bytes[start..<offset])) {
+            if offset > start, asciiWordLooksGenerated(UnsafeBufferPointer(rebasing: bytes[start..<offset])) {
                 return true
             }
             start = offset + 1
         }
         return false
+    }
+
+    /// `quotedPieces` over an ASCII word, copying it only when it holds a quote mark.
+    private static func asciiWordLooksGenerated(_ word: UnsafeBufferPointer<UInt8>) -> Bool {
+        let marks: [UInt8] = [0x22, 0x27]
+        guard word.contains(where: marks.contains) else { return looksGenerated(word) }
+        return quotedPieces(of: Array(word), marks: marks).contains { piece in
+            piece.withUnsafeBufferPointer { looksGenerated($0) }
+        }
     }
 
     /// `looksGenerated` for an ASCII token, byte for character.

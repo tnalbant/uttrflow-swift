@@ -338,8 +338,7 @@ public struct NumberFormsPass: CleaningPass {
     }
 
     private static func singleDigit(_ key: String) -> String? {
-        if key == "oh" { return "0" }
-        return NumberWords.units[key].map(String.init)
+        NumberWords.spokenDigit(key).map(String.init)
     }
 
     /// A run starts with any digit word, including "oh", and only joins three or more.

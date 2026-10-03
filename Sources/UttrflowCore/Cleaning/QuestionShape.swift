@@ -127,7 +127,8 @@ public enum QuestionShape {
         if pronounVerbs.contains(verb) { return subjects.contains(subject) && !runsOn(question) }
         guard verbsBeforeSubject.contains(verb) else { return false }
         if subjects.contains(subject) { return !runsOn(question) }
-        // A determiner needs a predicate after its noun, so "papa did the shopping" stays a statement.
+        // A verb that can take a noun phrase reads as the name's own verb, so "ravi is the owner" stays a statement.
+        guard !nounPhraseVerbs.contains(verb) else { return false }
         return determiners.contains(subject) && question.count >= 4 && !runsOn(question)
     }
 
@@ -269,6 +270,12 @@ public enum QuestionShape {
         "hadn't",
         "can't", "couldn't", "won't", "wouldn't", "shouldn't",
     ]
+
+    /// Inverting verbs that also head a statement before a noun phrase, unlike a modal, which needs a verb.
+    private static let nounPhraseVerbs: Set<String> = verbsBeforeSubject.subtracting([
+        "can", "could", "will", "would", "should", "shall", "may", "might",
+        "can't", "couldn't", "won't", "wouldn't", "shouldn't",
+    ])
 
     /// Modals that commonly start a request after a spoken statement.
     private static let requestModals: Set<String> = ["can", "could"]

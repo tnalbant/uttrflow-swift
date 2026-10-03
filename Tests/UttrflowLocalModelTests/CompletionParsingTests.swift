@@ -264,6 +264,10 @@ struct CompletionParsingTests {
         #expect(CompletionText.joined("busy nahi", with: " hoon bolo") == "busy nahi hoon bolo")
         #expect(CompletionText.joined("busy nahi ", with: " hoon bolo") == "busy nahi hoon bolo")
         #expect(CompletionText.joined("see you at 8", with: ", then") == "see you at 8, then")
+        #expect(CompletionText.joined("see you", with: "(8pm)") == nil)
+        #expect(CompletionText.joined("she said", with: "\"hello\"") == nil)
+        #expect(CompletionText.joined("cost", with: "$5") == nil)
+        #expect(CompletionText.joined("see you ", with: "(8pm)") == "see you (8pm)")
         #expect(CompletionText.joined("busy nahi", with: "hoon bolo") == nil)
         #expect(CompletionText.joined("git c", with: "ommit -m") == nil)
         #expect(CompletionText.joined("", with: "hoon") == nil)
@@ -549,6 +553,24 @@ struct SignOffTests {
         #expect(
             SignOff.unsigned("Thanks, Sam Collins", typed: "Thanks, Sam", ownLines: ["Collins here"])
                 == "Thanks, Sam Collins")
+    }
+
+    @Test("A recipient name in the typed text is not treated as the sender's signature")
+    func aRecipientNameDoesNotBecomeTheSendersName() {
+        #expect(
+            SignOff.unsigned(
+                "Thanks Rahul, regards, Rahul", typed: "Thanks Rahul, ", ownLines: [])
+                == "Thanks Rahul, regards,")
+    }
+
+    @Test("A closing after a greeting or sentence is not signed with an invented name")
+    func anInventedNameAfterEarlierCommasIsCut() {
+        #expect(
+            SignOff.unsigned("Hi Sam, sure. Best, Raj", typed: "", ownLines: [])
+                == "Hi Sam, sure. Best,")
+        #expect(
+            SignOff.unsigned("Hi Sam, Best, Raj", typed: "", ownLines: [])
+                == "Hi Sam, Best,")
     }
 
     @Test("Words after a comma that are not a closing's signature are left alone")

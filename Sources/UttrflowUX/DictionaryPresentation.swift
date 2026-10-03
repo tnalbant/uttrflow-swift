@@ -66,7 +66,9 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
     public let undoneIsConcerning: Bool
     /// A word that undid itself more often than it helped; dimmed and badged, but still operable.
     public let isRetired: Bool
-    /// Restore on a retired word, delete on any other.
+    /// "Sounds like ‘OpenAI’" when another entry competes for the same sound; absent otherwise.
+    public let soundsLike: String?
+    /// Merge, when the entry sharing its sound is this word spelt another way; then Restore, then Delete.
     public let actions: [MainAction]
 
     /// Builds a row from its parts.
@@ -85,6 +87,7 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         hasBeenUndone: Bool,
         undoneIsConcerning: Bool,
         isRetired: Bool,
+        soundsLike: String? = nil,
         actions: [MainAction]
     ) {
         self.id = id
@@ -101,6 +104,7 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         self.hasBeenUndone = hasBeenUndone
         self.undoneIsConcerning = undoneIsConcerning
         self.isRetired = isRetired
+        self.soundsLike = soundsLike
         self.actions = actions
     }
 }
@@ -194,6 +198,8 @@ public struct DictionaryEditor: Sendable, Equatable {
     public let badge: MainPill
     /// Why this cannot be saved yet, in words. Absent when it can.
     public let problem: String?
+    /// Respells the entry this draft would duplicate; present only when there is one.
+    public let replace: MainAction?
     /// Commits the word.
     public let save: MainAction
     /// Closes the editor unchanged.
@@ -212,6 +218,7 @@ public struct DictionaryEditor: Sendable, Equatable {
         pronunciationNote: String?,
         badge: MainPill,
         problem: String?,
+        replace: MainAction? = nil,
         save: MainAction,
         cancel: MainAction
     ) {
@@ -223,6 +230,7 @@ public struct DictionaryEditor: Sendable, Equatable {
         self.pronunciationNote = pronunciationNote
         self.badge = badge
         self.problem = problem
+        self.replace = replace
         self.save = save
         self.cancel = cancel
     }
@@ -324,7 +332,10 @@ public enum DictionaryPresenter {
             .filter { filter == nil || DictionarySource($0) == filter }
         let standings = WorkingSet.explain(
             entries: snapshot.entries, now: snapshot.now, packed: snapshot.packed)
-        let rows = listed.map { row(for: $0, standing: standings[$0.id], locale: locale) }
+        let rivals = rivals(among: snapshot.entries)
+        let rows = listed.map {
+            row(for: $0, standing: standings[$0.id], rival: rivals[$0.id], locale: locale)
+        }
         let editor = snapshot.draft.map { self.editor(for: $0, in: snapshot) }
         let today = fixedToday(in: snapshot, calendar: calendar)
         // The empty page is the title over the scene, whose own button is the one way to add.
@@ -426,11 +437,37 @@ public enum DictionaryPresenter {
 
     // MARK: - One word
 
-    /// One entry as a row, with Restore on a retired word and Delete on every one.
+    /// For each applied entry, another one filed under a sound it is filed under, a same-spelling one first.
+    static func rivals(among entries: [DictionaryEntry]) -> [UUID: DictionaryEntry] {
+        let applied = entries.filter(\.isTrustworthy)
+        var bySound: [String: [DictionaryEntry]] = [:]
+        for entry in applied {
+            for key in PronunciationCoder.keys(for: entry.soundsLike) {
+                bySound[key, default: []].append(entry)
+            }
+        }
+        var rivals: [UUID: DictionaryEntry] = [:]
+        for entry in applied {
+            let sharing = PronunciationCoder.keys(for: entry.soundsLike)
+                .flatMap { bySound[$0] ?? [] }.filter { $0.id != entry.id }
+            rivals[entry.id] = sharing.first { $0.spellingKey == entry.spellingKey } ?? sharing.first
+        }
+        return rivals
+    }
+
+    /// One entry as a row, with Merge on a respelt duplicate, Restore on a retired word and Delete on every one.
     static func row(
-        for entry: DictionaryEntry, standing: WorkingSet.Standing?, locale: Locale
+        for entry: DictionaryEntry, standing: WorkingSet.Standing?, rival: DictionaryEntry? = nil,
+        locale: Locale
     ) -> DictionaryRow {
         let isRetired = !entry.isTrustworthy
+        // Only a respelling is merged; two words that merely sound alike are the person's to keep.
+        let merge = rival.flatMap { rival in
+            rival.spellingKey == entry.spellingKey
+                ? MainAction(
+                    title: "Keep this spelling", intent: .mergeWords(keeping: entry.id, absorbing: rival.id))
+                : nil
+        }
         return DictionaryRow(
             id: entry.id,
             word: entry.word,
@@ -446,7 +483,9 @@ public enum DictionaryPresenter {
             hasBeenUndone: entry.timesReverted > 0,
             undoneIsConcerning: entry.timesReverted > concerningUndos,
             isRetired: isRetired,
-            actions: (isRetired ? [MainAction(title: "Restore", intent: .restoreWord(entry.id))] : [])
+            soundsLike: rival.map { "Sounds like \u{2018}\($0.word)\u{2019}" },
+            actions: (merge.map { [$0] } ?? [])
+                + (isRetired ? [MainAction(title: "Restore", intent: .restoreWord(entry.id))] : [])
                 + [.delete(.forgetWord(entry.id))])
     }
 
@@ -475,6 +514,11 @@ public enum DictionaryPresenter {
             pronunciationNote: pronunciationNote(for: draft),
             badge: MainPill(text: "New"),
             problem: problem(with: draft, in: snapshot),
+            replace: duplicate(of: draft, in: snapshot).map {
+                MainAction(
+                    title: "Replace",
+                    intent: .replaceWord($0.id, word: draft.word, pronunciation: draft.pronunciation))
+            },
             save: MainAction(
                 title: "Save",
                 intent: .saveWord(word: draft.word, pronunciation: draft.pronunciation)),
@@ -524,11 +568,18 @@ public enum DictionaryPresenter {
         {
             return reading.note(for: word)
         }
-        // Case only, matching ``PersonalDictionaryStore/add(_:)``, so "café" is not refused over "cafe".
-        let clash = snapshot.entries.contains {
-            $0.word.compare(word, options: .caseInsensitive) == .orderedSame
-        }
-        return clash ? "“\(word)” is already in your dictionary." : nil
+        guard let existing = duplicate(of: draft, in: snapshot) else { return nil }
+        return existing.word.compare(word, options: .caseInsensitive) == .orderedSame
+            ? "\u{201C}\(word)\u{201D} is already in your dictionary."
+            : "\u{2018}\(word)\u{2019} is already in your dictionary as \u{2018}\(existing.word)\u{2019}."
+    }
+
+    /// The entry a draft would write again, by the store's own spelling key, so "Open AI" finds "OpenAI".
+    static func duplicate(of draft: DictionaryDraft, in snapshot: DictionarySnapshot) -> DictionaryEntry? {
+        let word = draft.word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return nil }
+        let key = DictionaryEntry.spellingKey(for: word)
+        return snapshot.entries.first { $0.spellingKey == key }
     }
 
     // MARK: - Nothing to show

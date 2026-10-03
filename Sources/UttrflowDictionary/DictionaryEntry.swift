@@ -59,6 +59,15 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
             timesReverted: try values.decode(Int.self, forKey: .timesReverted))
     }
 
+    /// The spelling with case, spaces and punctuation closed up, so "Open AI" and "OpenAI" are one entry.
+    public var spellingKey: String { Self.spellingKey(for: word) }
+
+    /// The key two spellings share when they write the same word; an all-punctuation spelling keys as itself.
+    public static func spellingKey(for spelling: String) -> String {
+        let closed = ReadingRestraint.closedUp(spelling)
+        return closed.isEmpty ? spelling.lowercased() : closed
+    }
+
     /// What the index should key this entry on: how it sounds, not how it is spelt.
     public var soundsLike: String { pronunciation ?? word }
 

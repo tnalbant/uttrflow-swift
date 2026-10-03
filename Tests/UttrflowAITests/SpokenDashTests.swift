@@ -3,8 +3,8 @@ import UttrflowCore
 
 @testable import UttrflowAI
 
-@Suite("Issue 2502 spoken dash in technical destinations")
-struct Issue2502SpokenDashTests {
+@Suite("Spoken dash in technical destinations", .bug(id: 2502))
+struct SpokenDashTests {
     @Test("writes long options and hyphenated names in terminals and editors")
     func writesTechnicalDashes() async throws {
         for destination in [Destination.terminal, .codeEditor, .sqlEditor, .document] {

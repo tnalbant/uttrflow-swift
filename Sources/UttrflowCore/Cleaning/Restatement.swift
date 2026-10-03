@@ -85,12 +85,7 @@ public enum Restatement {
                 return nil
             }
             guard through || !endsSentence(trigger - 1, in: live, of: draft) else { return nil }
-            var start = end
-            while start > earliest, NumberWords.isNumber(draft.shape(at: live[start - 1]).key),
-                !endsSentence(start - 1, in: live, of: draft)
-            {
-                start -= 1
-            }
+            let start = numberStart(through: end, from: earliest, in: live, of: draft)
             guard !coordinates(start, before: trigger, in: live, of: draft) else { return nil }
             return start
         }
@@ -224,6 +219,21 @@ public enum Restatement {
         }
         guard next < live.count, draft.shape(at: live[next]).key == unitKey else { return nil }
         return unit - 1
+    }
+
+    /// The first word of the number ending at `end`, reading a spoken "oh" between digits as the zero it stands for.
+    private static func numberStart(
+        through end: Int, from earliest: Int, in live: [Int], of draft: Draft
+    ) -> Int {
+        var start = end
+        while start > earliest, !endsSentence(start - 1, in: live, of: draft) {
+            let key = draft.shape(at: live[start - 1]).key
+            guard NumberWords.isNumber(key) || NumberWords.spokenDigit(key) != nil else { break }
+            start -= 1
+        }
+        // An "oh" before every digit is an exclamation rather than a zero.
+        while start < end, !NumberWords.isNumber(draft.shape(at: live[start]).key) { start += 1 }
+        return start
     }
 
     /// Whether the word at `position` closes a sentence, which no anchor may reach past to take words out of the sentence before.

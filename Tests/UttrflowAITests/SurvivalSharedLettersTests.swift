@@ -4,8 +4,8 @@ import UttrflowCore
 @testable import UttrflowAI
 
 /// Regression for issue 217 inside the guard: a lossy match is no longer the whole of what `survives` asks.
-@Suite("Issue 217 sweep: a content word does not survive on three shared letters")
-struct Issue217GuardSweepTests {
+@Suite("A content word does not survive on three shared letters", .bug(id: 217))
+struct SurvivalSharedLettersTests {
     private func survives(_ word: String, as candidate: String) -> Bool {
         MeaningPreservationGuard.grammarTokens(candidate)
             .contains { MeaningPreservationGuard.survives(word, as: $0) }

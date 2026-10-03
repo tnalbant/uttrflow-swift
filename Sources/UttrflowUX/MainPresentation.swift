@@ -46,6 +46,10 @@ public enum MainIntent: Sendable, Equatable {
     case forgetWord(UUID)
     /// Trust a word that retired itself, and let it start earning its place again.
     case restoreWord(UUID)
+    /// Respell an existing word as typed in the editor, keeping its counters.
+    case replaceWord(UUID, word: String, pronunciation: String)
+    /// Fold the second spelling of one word into the first, summing their counters.
+    case mergeWords(keeping: UUID, absorbing: UUID)
 
     /// Open the inline snippet editor empty.
     case addSnippet

@@ -65,6 +65,9 @@ public actor ClipboardStore {
     /// Files that could not be read or moved aside, which no write may replace.
     private var unreplaceable: Set<URL> = []
 
+    /// Copies of damaged indexes waiting for the app to tell the user where they were saved.
+    private var unreadableIndexSetAsides: [URL] = []
+
     /// Records that a use is in memory and not yet on disk; the next write, or `flushUse`, carries it.
     private var hasUnwrittenUse = false
 
@@ -105,6 +108,12 @@ public actor ClipboardStore {
         // Time passes while the app idles, so the window drops clips here; the catch-up is best-effort.
         if onDisk.count != stored.count { try? save(onDisk) }
         return retained(stored, keeping: retention)
+    }
+
+    /// Returns each damaged index copy once, so the app can tell the user where it was preserved.
+    public func takeUnreadableIndexSetAsides() -> [URL] {
+        defer { unreadableIndexSetAsides = [] }
+        return unreadableIndexSetAsides
     }
 
     // MARK: - Writing
@@ -866,7 +875,11 @@ public actor ClipboardStore {
         let stored = encryptedStore?.read([Clip].self, from: url) ?? LocalStore.read([Clip].self, from: url)
         if case .unreadable(let setAside) = stored {
             hasUnreadableIndex = true
-            if setAside == nil { unreplaceable.insert(url) }
+            if let setAside {
+                unreadableIndexSetAsides.append(setAside)
+            } else {
+                unreplaceable.insert(url)
+            }
         }
         let clips = stored.value ?? []
         let reclassified = reclassifyStoredClips(clips, at: url)

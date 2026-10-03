@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import UttrflowClipboard
 import UttrflowCore
@@ -11,6 +12,11 @@ import Testing
 @MainActor
 @Suite("Menu bar clipboard snapshot refresh")
 struct MenuBarClipRefreshTests {
+    private struct Keys: StoreKeyProviding {
+        let value = SymmetricKey(size: .bits256)
+        func key(createIfMissing: Bool) throws -> SymmetricKey { value }
+    }
+
     private actor InsertionRecorder: TextInserting {
         private(set) var inserted: [String] = []
 
@@ -85,5 +91,26 @@ struct MenuBarClipRefreshTests {
         await app.readMenuClips()
 
         #expect(app.menuBarPresentation.clips.first?.title == "after edit")
+    }
+
+    @Test("a damaged clipboard index is announced once with its preserved location")
+    func damagedIndexNotice() async throws {
+        let sandbox = Sandbox()
+        let file = ClipboardStore.defaultFile(in: sandbox.root)
+        try FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: file)
+        let app = AppDelegate(
+            container: sandbox.root,
+            account: HeldSession(signedIn: true).layer,
+            encryptedStore: EncryptedStore(keys: Keys()))
+
+        await app.readMenuClips()
+        let notice = try #require(app.actionNotice)
+        #expect(notice.message.contains("clipboard.v1.json.unreadable-"))
+        #expect(notice.message.contains(file.deletingLastPathComponent().path))
+
+        await app.readMenuClips()
+        #expect(app.actionNotice == notice)
     }
 }

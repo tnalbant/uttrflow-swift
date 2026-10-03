@@ -5,8 +5,8 @@ import UttrflowDictionary
 @testable import UttrflowAI
 
 /// Regression for issue 217: a screen word that only collides on a sound key is no reading. See `Docs/cleanup.md`.
-@Suite("Issue 217: an ordinary screen word is no reading of an ordinary spoken word")
-struct Issue217ReadingRestraintTests {
+@Suite("An ordinary screen word is no reading of an ordinary spoken word", .bug(id: 217))
+struct ScreenWordReadingRestraintTests {
     private let source = ScreenCandidates()
 
     /// The encoder is lossy on purpose, which is why every caller has to restrain it rather than trust it.
