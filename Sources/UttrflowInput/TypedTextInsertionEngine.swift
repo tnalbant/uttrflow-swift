@@ -39,9 +39,29 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
 
     /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival {
-        try refuseIfSelfFrontmost()
+        try insert(text, targeting: nil)
+    }
+
+    /// Types only while the captured application is still in front and the dictation still wants the words.
+    public func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try insert(text, targeting: Optional(destination))
+    }
+
+    private func insert(
+        _ text: String, targeting destination: InsertionDestination?
+    ) throws(TextInsertionError) -> InsertionArrival {
+        try refuseIfStale(destination)
         try typist.type(text)
         return .notReported
+    }
+
+    /// The one check made immediately before key events are posted: self in front, destination moved, or cancelled.
+    func refuseIfStale(_ destination: InsertionDestination?) throws(TextInsertionError) {
+        try TextInsertion.requireLive()
+        try refuseIfSelfFrontmost()
+        try TextInsertion.requireTarget(destination, focus: focus)
     }
 }
 
