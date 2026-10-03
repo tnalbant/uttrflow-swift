@@ -203,6 +203,7 @@ let package = Package(
                 "UttrflowHistory", "UttrflowPredict",
                 "UttrflowSettings",
             ],
+            resources: [.process("Resources")],
             swiftSettings: sharedSwiftSettings
         ),
 
