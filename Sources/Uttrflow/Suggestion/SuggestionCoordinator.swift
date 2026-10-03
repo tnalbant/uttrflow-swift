@@ -78,6 +78,12 @@ private enum SuggestionReason {
 /// Runs tab-to-complete end to end: reads the field, asks the corpus, draws, accepts, records.
 @MainActor
 final class SuggestionCoordinator {
+    enum AccessibilityValueChangeAction: Equatable {
+        case ignore
+        case wake
+        case withdrawAndWake
+    }
+
     /// Says why nothing is being suggested, which silence alone cannot.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "predict")
 
@@ -529,12 +535,23 @@ final class SuggestionCoordinator {
         if Self.isUnkeyedAccessibilityChange(lastKeyDown: lastObservedKeyDown, at: moment) {
             insertionPending = true
         }
-        guard armedOffer != nil,
-            moment.timeIntervalSince(lastKeystroke) * 1000 >= Double(Self.fieldReadDebounceInMilliseconds)
-        else { return }
+        let action = Self.accessibilityValueChangeAction(
+            hasArmedOffer: armedOffer != nil, lastKeystroke: lastKeystroke, at: moment)
+        guard action != .ignore else { return }
         noteActivity()
-        withdraw()
+        if action == .withdrawAndWake { withdraw() }
         wake(.tick)
+    }
+
+    /// A late value change schedules the first turn even without a ghost; only an armed ghost can be withdrawn.
+    nonisolated static func accessibilityValueChangeAction(
+        hasArmedOffer: Bool, lastKeystroke: Date, at moment: Date
+    ) -> AccessibilityValueChangeAction {
+        guard hasArmedOffer else { return .wake }
+        guard moment.timeIntervalSince(lastKeystroke) * 1000 >= Double(fieldReadDebounceInMilliseconds) else {
+            return .ignore
+        }
+        return .withdrawAndWake
     }
 
     /// Whether a value change arrived without a nearby key-down to explain it.
