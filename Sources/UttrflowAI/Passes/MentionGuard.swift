@@ -51,6 +51,7 @@ enum MentionGuard {
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
+        if kind == .closing, isOpenQuotation(before: position, in: live, of: draft) { return false }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
             finalMark: kind == .trailing && position + length == live.count,
@@ -60,6 +61,18 @@ enum MentionGuard {
         }
         let next = position + length
         return next < live.count && draft.shape(at: live[next]).key == "of"
+    }
+
+    /// Whether a quotation opened earlier in this sentence is still open, so a closing mark here closes it.
+    private static func isOpenQuotation(before position: Int, in live: [Int], of draft: Draft) -> Bool {
+        for back in stride(from: position - 1, through: 0, by: -1) {
+            let shape = draft.shape(at: live[back])
+            if shape.suffix.contains(where: WordShape.openingQuotes.contains) || shape.endsSentence {
+                return false
+            }
+            if shape.prefix.contains(where: WordShape.openingQuotes.contains) { return true }
+        }
+        return false
     }
 
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
