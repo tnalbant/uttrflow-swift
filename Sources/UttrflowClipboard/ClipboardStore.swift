@@ -93,7 +93,7 @@ public actor ClipboardStore {
 
     /// Where the clipboard lives by default; versioned in the name so a new shape can sit beside it.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("clipboard.v1.json", in: directory)
+        LocalStoreEntry.clipboard.location(in: directory)
     }
 
     // MARK: - Reading

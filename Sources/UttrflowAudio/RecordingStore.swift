@@ -65,7 +65,7 @@ public actor RecordingStore: RecordingKeeper {
         in container: URL = .applicationSupportDirectory,
         for identifier: String? = Bundle.main.bundleIdentifier
     ) -> URL {
-        LocalStore.directory("recordings", in: container, for: identifier)
+        LocalStoreEntry.recordings.location(in: container, for: identifier)
     }
 
     // MARK: - Writing

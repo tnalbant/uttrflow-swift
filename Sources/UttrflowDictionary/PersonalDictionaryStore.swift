@@ -37,7 +37,7 @@ public actor PersonalDictionaryStore {
 
     /// Where the dictionary lives by default; versioned in the name so a new shape can sit beside it.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("dictionary.v1.json", in: directory)
+        LocalStoreEntry.personalDictionary.location(in: directory)
     }
 
     /// Which shipped words this dictionary has been given, named after it so two never share one record.
