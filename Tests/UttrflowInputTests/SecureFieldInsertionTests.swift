@@ -18,6 +18,21 @@ struct SecureFieldInsertionTests {
         #expect(attempt.intoSecureField)
     }
 
+    @Test("a route forced to one strategy still reads the secure field and destination")
+    func forcedRouteReportsSecure() async throws {
+        var focus = FakeFocus(field: FakeTextField(), secure: true)
+        let front = InsertionDestination(applicationName: "Vault", bundleIdentifier: "com.example.vault")
+        focus.frontmost = front
+        let coordinator = TextInsertion.coordinator(
+            focus: focus, pasteboard: FakePasteboard(), only: .accessibility)
+
+        let attempt = try await coordinator.insert("open sesame")
+
+        #expect(coordinator.route == [.accessibility])
+        #expect(attempt.intoSecureField)
+        #expect(attempt.destination == front)
+    }
+
     @Test("a field that turns secure while the fallback runs is reported secure")
     func coordinatorRereadsAfterTheWrite() async throws {
         let focus = TurningSecureFocus()

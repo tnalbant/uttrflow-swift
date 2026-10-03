@@ -39,12 +39,12 @@ table's heading rather than a column in it, since every row under a heading shar
 | Completion | correct / wrong characters / nothing | accept a suggestion in the application |
 | Notes | line breaks, undo, right-to-left, anything surprising | |
 
-### Three things to know before trusting a `--via` run
+### Reading a `--via` run
 
-All three were found while writing this page, by reading
-`Sources/uttrflow-dev/Insert.swift` and `Sources/UttrflowInput/SelectionWriter.swift`
-against the column set above. Each means a forced route measures slightly less, or
-something other, than it looks like it measures.
+Every `--via` run is built by `TextInsertion.coordinator(only:)`, the factory the app
+uses, so a forced strategy still asks the focused field whether it is secure, reads the
+destination and reports how long a paste took to land. Each run prints `destination:`
+and `secure:` under the `Inserted via …` line.
 
 **"Reports success, changes nothing" no longer looks like success.** The column's value
 is named after the defect as it was first seen, and the wording invites you to look for
@@ -55,26 +55,6 @@ unchanged, it reports an unconfirmed insertion and stops before trying paste or 
 An unreadable or unexpected resulting selection takes the same path, since another
 strategy could duplicate text that already landed. Record the column from that message,
 not from the screen.
-
-**`--via paste` does not print the confirmation timing.** `Insert` installs its
-`report(_:)` printout — "words reached the caret after 0.42s" — only on the default route,
-which it builds with `TextInsertion.coordinator(reporting:)`. Each `--via` case builds a
-bare `TextInsertionCoordinator` instead, with no reporter. The confirmation itself still
-runs, because `PasteboardTextInsertionEngine` returns the wait's answer as its
-`InsertionArrival` rather than reporting it sideways — that is the fix
-`Docs/insertion.md` records under "The answer is the return value, not a log line" — so
-`--via paste` still prints the outcome as the arrival word on the `Inserted via …` line.
-What it does not give is **how long** the words took. Fill the `Confirmed` column from a
-`--via paste` run; take any timing from a full-route run.
-
-**A `--via` run cannot measure a secure field.** All three `--via` cases construct
-`TextInsertionCoordinator(strategies:)` without a `focus:`, and `focus` is what the
-coordinator asks `focusedFieldIsSecure()`. With it nil the attempt is always marked
-`intoSecureField: false`, whatever the field is, and the destination application is not
-read either. So the password and PIN behaviour that `Docs/insertion.md` describes under
-"Dictating into a field that hides what is typed" is reachable **only** from the full
-route. A secure row measured with `--via` would record the guard as absent when it is
-merely bypassed. #608 and #610 are the issues for that behaviour.
 
 ## Browsers
 
@@ -116,7 +96,7 @@ is not true. This is the class the paste route exists for.
 | Finder | search field | yes | | | | once | right | | no | correct | `Published` and `Caret` as for TextEdit above. The second of the four live-harness applications ([predict-reliability.md](predict-reliability.md)) |
 | System Settings | search field | | | | | | | | no | | ([predict-ime.md](predict-ime.md)) |
 | — | any single-line `NSTextField` | | | | | | | | no | | The marked range reaches AppKit multi-line text views and nothing else, which means it misses single-line fields — where a completion is worth most ([predict-ime.md](predict-ime.md)) |
-| — | any secure field | | see the caveat above | | | | | no | | A password or PIN field takes the words like any other field and nothing else does: the outcome is marked `intoSecureField` and the words reach no store at all — no history row, not even a length, no clip, no dictionary lesson, and the floating button neither draws nor reads them. A paste writes `org.nspasteboard.ConcealedType` beside the text ([insertion.md](insertion.md)) |
+| — | any secure field | | | | | | | no | | A password or PIN field takes the words like any other field and nothing else does: the outcome is marked `intoSecureField` and the words reach no store at all — no history row, not even a length, no clip, no dictionary lesson, and the floating button neither draws nor reads them. A paste writes `org.nspasteboard.ConcealedType` beside the text ([insertion.md](insertion.md)) |
 
 ## Terminals
 
