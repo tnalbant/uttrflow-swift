@@ -1,8 +1,10 @@
 # Word correction: the numbers and why they are what they are
 
-`WordCorrectionEngine` replaces a word that does not belong in a sentence and otherwise
-does nothing. The default is to do nothing; three conditions must all hold before one word
-moves, and each number below is a hard stop rather than a tuning knob.
+`WordCorrectionEngine` (`Sources/UttrflowAI/CorrectionEngine.swift`, with the scoring in
+`CorrectionEvidence.swift`) replaces a word the recogniser half-heard with a personal-dictionary
+entry, and otherwise does nothing. The default is to do nothing; three conditions must all hold
+before one word moves, and each number below is a hard stop rather than a tuning knob. It runs
+before the tidier; the dictionary itself is `Docs/app-dictionary.md`.
 
 ## The three conditions
 
@@ -24,6 +26,13 @@ complements, a mis-heard word cannot vouch for itself. A half rather than a tune
 because speech engines disagree about what their scores mean; a half is where any
 recogniser claims to be more right than wrong.
 
+Condition one rarely holds for the case this engine is built for. A recogniser that has
+never heard a name is not unsure; it is sure it heard two ordinary words, and scores them
+above the threshold. Raising the threshold does not target names: it makes every word under
+the new line eligible. Decode-time biasing (`Docs/speech-vocabulary-prompt.md`) fixes that
+class before there is anything to correct; this engine's job is the narrower one of a word
+the biasing missed and the situation names.
+
 ## `improvementMargin = 2`
 
 The single most important number in the engine. One signal is a coincidence: at a margin of
@@ -41,19 +50,18 @@ therefore counts the same independent evidence for every eligible word. A word a
 one at 0.05 need the same two-signal advantage to change, while a word at or above 0.5 is
 never proposed and may corroborate another word. `CorrectionEvidenceTests` pins that boundary.
 
-**The margin alone does not hold a run of several words**, which was measured rather than
-argued. Every sentence in the restraint corpus used to be short enough that
-`budget(for:)` was one, so a two-word proposal was discarded by the blast-radius cap and the
-three restraint tests were measuring that cap rather than this margin. Padded to twelve
-words, where the cap allows two changes, the same corpus produced "the salt **URL** enough
-for the coast" and "read **Aditi** nobody": the entry is on screen and the run is several
-words becoming one, which is two signals, which clears a margin of two.
+**The margin alone does not hold a run of several words.** In a sentence short enough that
+`budget(for:)` is one, a two-word proposal is discarded by the blast-radius cap anyway; padded
+to twelve words, where the cap allows two changes, the restraint corpus produces "the salt
+**URL** enough for the coast" and "read **Aditi** nobody" on the margin alone: the entry is on
+screen and the run is several words becoming one, which is two signals, which clears a margin
+of two. The longer sentences in `CorrectionRestraintTests` exist to keep that case measured.
 
-So a run of several words has a condition of its own before the evidence is counted at all:
-the entry must spell the run closed up, or open as it does — `ReadingRestraint`'s rule, which
-the readings offered to the model have always been held to and the dictionary's own
-corrections never were. "payment sheet" to `PaymentSheet` and "utter flow" to `Uttrflow` pass
-it; "air well" to `URL` does not. An entry's pronunciation counts as well as its spelling, so
+So a run of several words has a condition of its own before the evidence is counted at all
+(`WordCorrectionEngine.spells`): the entry must spell the run closed up, or open as it does —
+`ReadingRestraint`'s rule, the same one the readings offered to the model are held to.
+"payment sheet" to `PaymentSheet` and "utter flow" to `Uttrflow` pass it; "air well" to `URL`
+does not. An entry's pronunciation counts as well as its spelling, so
 a user who writes "cube cuttle" against `Kubectl` gets that run back.
 
 ## `maximumChangedInEvery = 5`, with a floor of one
@@ -82,12 +90,11 @@ correctly usually has the evidence on its side.
 
 ## Cost
 
-Ten thousand entries, a forty-word utterance with half the words doubted and a screenful of
-selected text: about half a millisecond per dictation on an M-series Mac. The test does not
-time it, because a wall clock in a parallel suite on a loaded machine fails with nothing wrong.
-It counts instead: the dictionary entries the lookups read are the same over ten thousand
-entries as over fifty, and the screen is read once per utterance however many runs are
-doubted. A lookup that scanned the dictionary, or evidence rebuilt per run, fails it.
+The cost is held by counting rather than timing, because a wall clock in a parallel suite on
+a loaded machine fails with nothing wrong. Over a forty-word utterance with half the words
+doubted and a screenful of selected text, the dictionary entries the lookups read are the same
+over ten thousand entries as over fifty, and the screen is read once per utterance however
+many runs are doubted. A lookup that scanned the dictionary, or evidence rebuilt per run, fails it.
 
 ## The restraint corpus
 
@@ -98,3 +105,9 @@ sentences tempt the dictionary (sixteen do: "clawed" and "clod" find `Claude`, "
 finds `SQL`, "nickel" finds `Nikhil`, "smell" finds `XML`, "readies" finds `Redis`, "griffin"
 finds `Grafana`, "air well" finds `URL`), so silence is restraint rather than coincidence.
 That exact count is pinned by `corpusIsTempting`, so it cannot drift from this page unnoticed.
+
+## Related pages
+
+- `Docs/app-dictionary.md` — the phonetic index and what the dictionary learns.
+- `Docs/speech-vocabulary-prompt.md` — the decode-time biasing that runs before this engine.
+- `Docs/cleanup.md` — the doubtful-words line, which offers the same entries to the model.

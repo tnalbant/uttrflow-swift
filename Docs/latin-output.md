@@ -7,7 +7,9 @@ people type it, never written in Devanagari and never translated.**
 a translator. This holds for every piece of text dictation inserts, whichever engine tidied
 the words, and when no engine tidied them at all.
 
-Three places make it true, from the most specific to the last resort.
+The romaniser and the last-resort check live in `Sources/UttrflowCore/Script/` (`Romaniser.swift`,
+`LatinScript.swift`); the script guard is `Sources/UttrflowAI/ScriptGuard.swift`. Three places make
+it true, from the most specific to the last resort.
 
 | Where | What it does |
 |---|---|
@@ -28,7 +30,7 @@ for decoding straight to Latin, and why none of them is taken — is measured in
 chat, not the way a scholar transliterates it. It has no diacritics and never produces
 "karanā"; it produces "karna".
 
-- **Common spellings first.** A table of 170 frequent words holds the
+- **Common spellings first.** A table of 200 frequent words (`commonSpellings`) holds the
   spelling people actually use: है hai, हाँ haan, ठीक thik, नहीं nahi, मैं main, में mein, क्या
   kya, क्यों kyun, हूँ hoon, and loanwords people write in English (ऑफिस office, मिनट minute).
   Chandrabindu and anusvara key the same entry, so हाँ and हां meet.
@@ -57,7 +59,7 @@ consonant, is covered by a test.
 
 Against the twelve Hindi and Hinglish passages of `TranscriptionCorpus`, whose Devanagari and
 romanised forms are word-for-word parallel (385 words), normalised as every transcription score
-is (`TextNormaliser.standard`):
+is (`TextNormaliser.standard`), by the harness in `RomaniserCorpusTests`:
 
 | | words | characters |
 |---|---|---|
@@ -66,19 +68,13 @@ is (`TextNormaliser.standard`):
 | `Romaniser` | **97.9%** | **99.4%** |
 
 The rules and the table were written with these passages in view, so these are upper bounds:
-there is no held-out Hindi set yet. The clean-up corpus's six Hinglish cases were in view too;
-against their expected text, which also has fillers removed and commas added, the romaniser
-alone matches 92.9% of words and 97.4% of characters. `RomaniserCorpusTests` holds the floor.
+no held-out Hindi set exists. `RomaniserCorpusTests` holds the floor at 96% of words and 99% of
+characters, and checks that `LatinScript.enforced` returns every English passage and
+expectation exactly as written.
 
 The remaining misses are mostly two spellings of one word, where neither is wrong: the
 references write "theek" and "hun" where the table writes "thik" and "hoon", "Are" where it
 writes "arre", "zaroorat" where the rules write "zarurat", "raghunath" for "raghunaath".
-
-On the rules path, the six Hinglish cases of the clean-up corpus went from 0 passing (mean
-similarity 24%) to 5 passing (92%). The sixth, `hinglish-negation-kept`, expects "yah" and
-"theek" where the table writes "yeh" and "thik". English is unchanged byte for byte: every
-English case of the clean-up corpus gets the answer the passes gave before romanising existed,
-and `LatinScript.enforced` returns every English passage and expectation exactly as written.
 
 ### Audited by sound class
 
@@ -91,8 +87,7 @@ compared with the form people type; the expected forms are compiled for this aud
 from any external list.
 
 A case written wrongly today is listed in `knownGaps` and recorded as a known issue, so a fix
-shows up as an unexpected pass and the list must shrink with it. Measured on the tree this
-audit landed on:
+shows up as an unexpected pass and the list must shrink with it. Measured by that test:
 
 | Class | Cases | Wrong | Written today |
 |---|---|---|---|
@@ -109,26 +104,25 @@ Each wrong row is a class, not a word: anusvara is always "n" though it is said 
 visarga after the unwritten vowel drops the vowel it follows; and the unwritten-vowel rule
 drops the vowel before a final ह cluster and keeps the one a final य or व carries.
 
+
 ## The script guard
 
 A model can answer Devanagari with a translation, with the prompt's own worked example, or in
-another script, and before this check the guard accepted all three (issue 700): its tokeniser
-reads no Devanagari, so it compared nothing.
-
-`scriptVerdict` reads the draft the only way it needs to: romanised by `Romaniser`.
+another script. The guard's word tokeniser reads no Devanagari, so the other checks compare
+nothing there; `scriptVerdict` reads the draft the only way it needs to: romanised by
+`Romaniser`.
 
 - **Another script.** A rewrite holding any letter outside Latin is refused.
 - **A translation.** When the draft holds Devanagari, each word of the rewrite is looked for
   among the romanised draft's words by `Romaniser.soundKey`, which folds the usual spelling
   variants together ("theek" and "thik", "woh" and "wo", "hoon" and "hun"). Digits are left to
-  the number checks. More than half the rewrite's words with no counterpart is a translation.
-  Measured on the answers issue 700 recorded: "Meeting is at four o'clock, no no, five o'clock."
-  has 8 of 9 words with none and is refused; "Woh kya hai na, yaani mujhe thoda time chahiye."
-  has 1 of 9 and is accepted.
+  the number checks. More than half the rewrite's words with no counterpart
+  (`mostStrangerWords`, 0.5) is a translation: "Meeting is at four o'clock, no no, five
+  o'clock." has 8 of 9 words with none and is refused; "Woh kya hai na, yaani mujhe thoda time
+  chahiye." has 1 of 9 and is accepted.
 - **A changed word.** Below that, the rewrite's content words are aligned with the romanised
   draft's, in order, by `WordErrorRate.measure` over the same sound keys, with number words read
-  as their digits, fillers dropped and a word said twice in a row kept once (issues 2087 and
-  2416). Grammar words (Hindi auxiliaries, postpositions and particles, and English
+  as their digits, fillers dropped and a word said twice in a row kept once. Grammar words (Hindi auxiliaries, postpositions and particles, and English
   `FunctionWords`) are left out of both sides; a negation, a number and a Hindi pronoun never
   are. A dropped or added content word refuses the rewrite, and so does a substituted one unless
   it is:
@@ -146,7 +140,7 @@ reads no Devanagari, so it compared nothing.
   cannot see: a change of tense on a verb whose stem is kept ("aata" for "aa raha") is accepted,
   and a changed Hindi word that happens to share a two-sound key with the draft's is too.
 - **A worked example.** A rewrite of three or more words, at least 80% of them one example's
-  words in order, is refused when the draft holds fewer than half of that example's words.
+  words in order (`exampleCopied`), is refused when the draft holds fewer than half of that example's words.
   This reads any script, so an English example given back for English that did not say it is
   refused too, while a dictation that really says "add milk and eggs to the shopping list" is
   not.
@@ -161,7 +155,13 @@ where a romanised word opens a sentence. Any other script is written in Latin le
 ICU with its diacritics stripped, and a letter ICU cannot write is dropped rather than inserted.
 Another script's decimal digits become Western ones.
 
-What counts as Latin is deliberately wide, because English text is full of it: accented Latin
+What counts as Latin is wide on purpose, because English text is full of it: accented Latin
 letters, combining diacritics, curly quotes and dashes, currency, superscripts, letter-like
 symbols, ligatures, fullwidth Latin, and emoji with their variation selectors, skin tones and
 keycaps are all left exactly as they were. Only letters and marks of another script change.
+
+## Related pages
+
+- `Docs/cleanup.md` — the catalogue of cleanings, of which this is the one that is never optional.
+- `Docs/ai-model-output.md` — the guard's other checks and what it cannot read in Devanagari.
+- `Docs/speech-engines.md` — why recognition still answers in Devanagari.

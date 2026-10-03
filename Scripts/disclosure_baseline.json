@@ -1,5 +1,5 @@
 {
-  "total": 68,
+  "total": 66,
   "files": {
     ".githooks/commit-msg": 1,
     ".githooks/pre-push": 1,
@@ -9,7 +9,6 @@
     "Design/canvas.json": 1,
     "Docs/app-dictionary-store.md": 1,
     "Docs/bakeoff-method.md": 2,
-    "Docs/cleanup-design.md": 2,
     "Docs/cleanup.md": 1,
     "Docs/core-history-accuracy.md": 1,
     "Docs/eval-methodology.md": 2,
