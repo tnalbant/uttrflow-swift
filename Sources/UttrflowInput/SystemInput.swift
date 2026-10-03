@@ -309,9 +309,17 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
             == ProcessInfo.processInfo.processIdentifier
     }
 
-    /// The same in-process read `isSelfFrontmost` makes, so naming the destination costs no message to another app.
-    public func frontmostApplication() -> InsertionDestination? {
-        guard let application = NSWorkspace.shared.frontmostApplication else { return nil }
+    /// The focused element's owner, which a panel that never activates makes differ from the frontmost. See `Docs/insertion.md`.
+    public func focusedApplication() -> InsertionDestination? {
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        var owner: pid_t = 0
+        let focusOwner = focusedElement().flatMap { AXUIElementGetPid($0, &owner) == .success ? owner : nil }
+        guard
+            let processIdentifier = FocusedElementPreference.destination(
+                focusOwner: focusOwner, frontmost: frontmost?.processIdentifier),
+            let application = processIdentifier == frontmost?.processIdentifier
+                ? frontmost : NSRunningApplication(processIdentifier: processIdentifier)
+        else { return nil }
         return InsertionDestination(
             applicationName: application.localizedName,
             bundleIdentifier: application.bundleIdentifier)
@@ -448,7 +456,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     public func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)? {
         guard let bundleIdentifier = destination.bundleIdentifier,
-            frontmostApplication()?.bundleIdentifier == bundleIdentifier,
+            focusedApplication()?.bundleIdentifier == bundleIdentifier,
             let candidate = focusedElement()
         else { return nil }
         var processIdentifier: pid_t = 0

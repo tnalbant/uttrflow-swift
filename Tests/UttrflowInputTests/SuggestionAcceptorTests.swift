@@ -630,7 +630,7 @@ private struct EchoedFocus: AccessibilityFocus {
     func focusedTextField() -> (any FocusedTextField)? { field }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { false }
     func tail(upTo count: Int) -> FieldTail { .text(String(before.suffix(count))) }
 }
@@ -694,7 +694,7 @@ private struct ChangedFocus: AccessibilityFocus {
     func focusedTextField() -> (any FocusedTextField)? { field }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { isSecure }
     func tail(upTo count: Int) -> FieldTail { tail }
     func windowNumberAndTail(upTo count: Int) -> (windowNumber: UInt32?, tail: FieldTail) {

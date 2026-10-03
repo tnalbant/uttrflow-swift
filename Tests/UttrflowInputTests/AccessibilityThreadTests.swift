@@ -36,7 +36,7 @@ private final class BlockingFocus: AccessibilityFocus, @unchecked Sendable {
     func hasFocusedElement() -> Bool { message(); return false }
     func isSelfFrontmost() -> Bool { false }
     func tail(upTo count: Int) -> FieldTail { message(); return .unreadable }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { message(); return false }
 }
 

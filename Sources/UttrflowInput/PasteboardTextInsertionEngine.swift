@@ -138,7 +138,7 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         try PasteboardPasteAction.postIfExternal(
             focus: focus, keystrokes: keystrokes, targeting: destination)
         // Read as the paste is posted, not after the wait below, so a switch during the wait is not credited.
-        landedIn = focus.frontmostApplication()
+        landedIn = focus.focusedApplication()
         // Posting a paste proves nothing, so this waits for the words the way the write above is read back.
         let outcome =
             confirmsArrival
@@ -172,7 +172,7 @@ enum PasteboardPasteAction {
     ) throws(TextInsertionError) {
         guard let destination else { return }
         guard destination.isKnown, let expected = destination.bundleIdentifier,
-            focus.frontmostApplication()?.bundleIdentifier == expected
+            focus.focusedApplication()?.bundleIdentifier == expected
         else { throw .insertionTargetChanged }
     }
 

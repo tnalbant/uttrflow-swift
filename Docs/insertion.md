@@ -73,11 +73,20 @@ The layout decisions are made against the screen as it was when each piece was c
 what working ahead requires, and `Docs/early-transcription.md` measures what it buys. The
 *record* is a different question: the user may switch windows while the sentence is being
 transcribed, and the words land wherever the caret is by then. So `TextInsertionCoordinator`
-reads the frontmost application immediately after a strategy succeeds and reports it on the
+reads the destination immediately after a strategy succeeds and reports it on the
 `InsertionAttempt`, and the pipeline files the dictation under that rather than under the name
-it read at the start. The read is `NSWorkspace.shared.frontmostApplication`, which
-`isSelfFrontmost` already makes, so it costs no message to another application. A reader that
-cannot say leaves the recording's own reading as the best answer there is.
+it read at the start. A reader that cannot say leaves the recording's own reading as the best
+answer there is.
+
+The destination is the process that owns the focused element, not the frontmost application.
+A launcher, a password-manager quick panel or a floating note can take keyboard focus as a
+non-activating panel while the application underneath stays frontmost; the words land in the
+panel, so the panel's owner is what the context names, what the target-changed check compares
+and what the record files. `FocusedElementPreference.destination` is the one statement of that
+rule: the owner of the element `choose` keeps, and the frontmost application only when
+Accessibility names no owner. `AccessibilityFocus.focusedApplication()` and
+`MacContextEngine`'s focus-owner read both go through it. The probe is in
+[compatibility.md](compatibility.md).
 
 Nothing here can refuse or degrade an insertion: the destination is read after the words are
 written, and is only ever a label on what already happened.

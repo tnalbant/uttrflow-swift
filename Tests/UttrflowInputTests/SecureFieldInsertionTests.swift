@@ -129,7 +129,7 @@ private final class TurningSecureFocus: AccessibilityFocus, @unchecked Sendable 
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
     func precedingText(_ count: Int) -> String? { nil }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool {
         lock.lock()
         defer { lock.unlock() }

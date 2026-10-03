@@ -190,7 +190,7 @@ final class SwitchableFocus: AccessibilityFocus, @unchecked Sendable {
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { selfIsFrontmost.withLock { $0 } }
     func tail(upTo count: Int) -> FieldTail { .text("") }
-    func frontmostApplication() -> InsertionDestination? { nil }
+    func focusedApplication() -> InsertionDestination? { nil }
     func focusedFieldIsSecure() -> Bool { false }
     func precedingText(_ count: Int) -> String? { nil }
 
@@ -208,7 +208,7 @@ private final class SequencedFrontmostFocus: AccessibilityFocus, @unchecked Send
     func focusedTextField() -> (any FocusedTextField)? { nil }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
-    func frontmostApplication() -> InsertionDestination? {
+    func focusedApplication() -> InsertionDestination? {
         index.withLock { index in
             let application = applications[min(index, applications.count - 1)]
             index += 1
@@ -623,7 +623,7 @@ private final class InterleavingFocus: AccessibilityFocus, @unchecked Sendable {
         if shouldInterleave { onTail() }
         return base.tail(upTo: count)
     }
-    func frontmostApplication() -> InsertionDestination? { base.frontmostApplication() }
+    func focusedApplication() -> InsertionDestination? { base.focusedApplication() }
     func focusedFieldIsSecure() -> Bool { base.focusedFieldIsSecure() }
     func precedingText(_ count: Int) -> String? { base.precedingText(count) }
 }

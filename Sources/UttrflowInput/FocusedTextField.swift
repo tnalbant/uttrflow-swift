@@ -55,8 +55,8 @@ public protocol AccessibilityFocus: Sendable {
     /// The containing window rechecked with the accept-path timeout.
     func acceptanceFocusedWindowNumber() -> UInt32?
 
-    /// The application in front right now, which is where a write lands. See `Docs/insertion.md`.
-    func frontmostApplication() -> InsertionDestination?
+    /// The application owning the focused element, which is where a write lands. See `Docs/insertion.md`.
+    func focusedApplication() -> InsertionDestination?
 
     /// Whether the focused field hides what is typed, asked without reading a declared secure field's value.
     func focusedFieldIsSecure() -> Bool
@@ -99,8 +99,8 @@ extension AccessibilityFocus {
     /// Uses the regular window answer when no accept-specific timeout is needed.
     public func acceptanceFocusedWindowNumber() -> UInt32? { focusedWindowNumber() }
 
-    /// A reader with no window server behind it cannot say what is in front, and says so.
-    public func frontmostApplication() -> InsertionDestination? { nil }
+    /// A reader with no window server behind it cannot say what holds the focus, and says so.
+    public func focusedApplication() -> InsertionDestination? { nil }
 
     /// A reader that cannot see the field cannot tell it is secure, and says it is not.
     public func focusedFieldIsSecure() -> Bool { false }

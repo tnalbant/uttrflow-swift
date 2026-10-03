@@ -139,6 +139,22 @@ cell, a remote desktop, a VM window or a game, so there are no rows to write and
 invented here. #626 covers office and a spreadsheet cell, #627 a remote desktop or VM
 window, and #619 is the code-level gap those would confirm.
 
+## Panels that take focus without activating
+
+A non-activating `NSPanel` holding an `NSTextField` as first responder, shown by an accessory
+process on macOS 26.5.1 while another application stayed frontmost:
+
+| Read | Answer |
+|---|---|
+| `NSWorkspace.shared.frontmostApplication` | the other application |
+| system-wide `kAXFocusedUIElementAttribute`, owner by `AXUIElementGetPid` | the panel's process, role `AXTextField` |
+| the frontmost application's own `kAXFocusedUIElementAttribute` | its own editor, or no value |
+| the panel process's own `kAXFocusedUIElementAttribute` | the panel's `AXTextField` |
+
+The two owners differ, so the destination is the focused element's owner
+([insertion.md](insertion.md), "Which application the record names"). A probe of a shipping
+launcher's panel has not been run; this row is the synthetic panel only.
+
 ## How to add a row
 
 One application, one field, twenty minutes. You need Accessibility granted to the
