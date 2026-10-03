@@ -4,8 +4,8 @@ import UttrflowCore
 @testable import UttrflowAI
 
 /// Issue #3554: a numeric correction takes back the whole spoken number, never part of it.
-@Suite("Issue 3554")
-struct Issue3554ReproductionTests {
+@Suite("A numeric correction takes back the whole spoken number", .bug(id: 3554))
+struct NumericCorrectionWholeNumberTests {
     private let pipeline = CleaningPipeline.standard(
         for: DestinationFormatter.standard(for: .plain), situation: .unknown)
 
