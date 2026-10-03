@@ -3007,6 +3007,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             act { try await self.dictionary.remove(id) }
         case .restoreWord(let id):
             act { try await self.dictionary.restore(id) }
+        case .replaceWord(let id, let word, let pronunciation):
+            replaceWord(id, with: word, pronunciation: pronunciation)
+        case .mergeWords(let kept, let absorbed):
+            act { try await self.dictionary.merge(keeping: kept, absorbing: absorbed) }
 
         case .addSnippet:
             editSnippet(SnippetDraft())
@@ -3267,6 +3271,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 editWord(nil)
             } catch {
                 Self.log.error("could not add word: \(error.userMessage, privacy: .public)")
+                wordRefusal = error.userMessage
+                refreshMainWindow()
+            }
+        }
+    }
+
+    /// Respells the word a draft duplicates, closing the editor only once it is in, as saving does.
+    private func replaceWord(_ id: UUID, with word: String, pronunciation: String) {
+        intentWork = Task { [weak self] in
+            guard let self else { return }
+            do throws(DictionaryStoreError) {
+                try await dictionary.replace(id, word: word, pronunciation: pronunciation)
+                editWord(nil)
+            } catch {
+                Self.log.error("could not replace word: \(error.userMessage, privacy: .public)")
                 wordRefusal = error.userMessage
                 refreshMainWindow()
             }
