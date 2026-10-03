@@ -1,6 +1,6 @@
 # Product rules
 
-Uttrflow is a macOS clipboard manager with dictation and inline AI suggestions built in, entirely
+Uttrflow is dictation software for macOS with a clipboard and AI suggestions built in, entirely
 on-device. `PLAN.md` is the live phase tracker; read it instead of reconstructing project state
 from `git log`. Each row below is a promise to the user, with its limit, the module that owns it
 and the page that holds the measurements. A change that breaks a row is a bug, whatever it

@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Uttrflow is a macOS clipboard manager with dictation built in, entirely on-device. This file is
-the entry point for every agent (Claude, Codex, Cursor, Copilot, any other) and every
+Uttrflow is dictation software for macOS with a clipboard and AI suggestions built in, entirely
+on-device. This file is the entry point for every agent (Claude, Codex, Cursor, Copilot, any other) and every
 contributor. `CLAUDE.md`, `.cursor/rules/` and `.github/copilot-instructions.md` only point
 here.
 
