@@ -873,8 +873,8 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            await fail(
-                DictationFailure(missedPieces > 0 ? SpeechEngineError.speechWithoutWords : SpeechEngineError.nothingHeard))
+            let silence: SpeechEngineError = missedPieces > 0 ? .speechWithoutWords : .nothingHeard
+            await fail(DictationFailure(silence))
             return
         }
         // Every piece is done while recording, and the screen it is read against still applies.
