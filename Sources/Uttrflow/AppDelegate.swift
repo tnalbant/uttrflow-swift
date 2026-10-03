@@ -1248,7 +1248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordings: recordings,
             // A retry runs with Uttrflow's own window in front, so its words can only be copied.
             clipboard: TextInsertionCoordinator(strategies: [
-                ClipboardTextInsertionEngine(pasteboard: announcingPasteboard)
+                ClipboardTextInsertionEngine(
+                    pasteboard: announcingPasteboard,
+                    secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile
         )

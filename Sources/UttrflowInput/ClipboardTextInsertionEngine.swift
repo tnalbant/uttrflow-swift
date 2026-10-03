@@ -1,5 +1,4 @@
 public import UttrflowCore
-import UttrflowClipboard
 
 /// The last resort: leaves the text on the clipboard and says so, so the words are never lost.
 public struct ClipboardTextInsertionEngine: TextInsertionEngine {
@@ -9,10 +8,16 @@ public struct ClipboardTextInsertionEngine: TextInsertionEngine {
     private let pasteboard: any Pasteboard
     /// Asked whether the field the words were meant for is secure, so what is left behind is concealed.
     private let focus: (any AccessibilityFocus)?
+    private let secretClassifier: @Sendable (String) -> Bool
 
-    public init(pasteboard: any Pasteboard, focus: (any AccessibilityFocus)? = nil) {
+    public init(
+        pasteboard: any Pasteboard,
+        focus: (any AccessibilityFocus)? = nil,
+        secretClassifier: @escaping @Sendable (String) -> Bool = { _ in false }
+    ) {
         self.pasteboard = pasteboard
         self.focus = focus
+        self.secretClassifier = secretClassifier
     }
 
     /// Always. A clipboard is always available, which is the point of having this.
@@ -26,7 +31,7 @@ public struct ClipboardTextInsertionEngine: TextInsertionEngine {
         }
         let focus = focus
         let writeChangeCount: Int?
-        let isSecret = ClipKindDetector.kind(of: text) == .secret
+        let isSecret = secretClassifier(text)
         let shouldConceal: Bool
         if isSecret {
             shouldConceal = true

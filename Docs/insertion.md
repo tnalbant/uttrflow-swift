@@ -273,6 +273,6 @@ focused Uttrflow field is never the destination through any code path — the re
 honest label, the engine change is the structural guarantee that no caller can fall back into
 Uttrflow's own text fields.
 
-The clipboard floor classifies its text with the same rules as the clipboard panel. A secret
-transcript is written with `org.nspasteboard.ConcealedType`; other transcripts use the generated
-marker.
+The retry's clipboard floor receives the clipboard panel's shared secret classifier from the app
+composition root. A secret transcript is written with `org.nspasteboard.ConcealedType`; other
+transcripts use the generated marker.

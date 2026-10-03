@@ -126,7 +126,7 @@ let package = Package(
         // that accept a suggestion before the application beneath sees them.
         .target(
             name: "UttrflowInput",
-            dependencies: ["UttrflowClipboard", "UttrflowCore", "UttrflowPredict"],
+            dependencies: ["UttrflowCore", "UttrflowPredict"],
             swiftSettings: sharedSwiftSettings
         ),
 
@@ -402,7 +402,9 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowInputTests",
-            dependencies: ["UttrflowInput", "UttrflowPredict", "UttrflowTestSupport"],
+            dependencies: [
+                "UttrflowClipboard", "UttrflowInput", "UttrflowPredict", "UttrflowTestSupport",
+            ],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
