@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import UttrflowPredict
+import UttrflowTestSupport
 
 /// The fields a script may move between, with nothing focused among them.
 private let places: [Surface?] = [

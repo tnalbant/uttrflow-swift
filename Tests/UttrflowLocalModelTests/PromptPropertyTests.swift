@@ -3,6 +3,7 @@ import Testing
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// Words the screen, the person and the field might hold, none of them a heading of the prompt's own.
 private let words = [

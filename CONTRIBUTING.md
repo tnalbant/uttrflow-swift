@@ -47,6 +47,20 @@ make verify
 
 If the failure remains after a clean run, investigate it as a real failure.
 
+## Randomised and property tests
+
+Every randomised test draws from `Seeded` in `UttrflowTestSupport`; a test module never
+declares its own generator. `make verify` runs fixed seeds, so it is the same on every
+run. A property test takes its seeds from `Seeded.seeds(...)` and names the generator
+(`seed=<n>`) in its failure message, so the failure can be replayed alone:
+
+```bash
+UTTRFLOW_SEED=<n> swift test --filter <TestCase>
+```
+
+A test that finds a bug adds the minimal failing case as a fixed example in the same pull
+request.
+
 ## How a change gets in
 
 1. **Fork, and branch from `main`.** Short-lived branches, please — a branch that lives for

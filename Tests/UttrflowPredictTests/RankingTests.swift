@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import UttrflowPredict
+import UttrflowTestSupport
 
 @Suite("Ranking and what it measures")
 struct RankingTests {

@@ -2,6 +2,7 @@ import CoreGraphics
 import Testing
 
 @testable import UttrflowContext
+import UttrflowTestSupport
 
 /// Words a window might show, none of them carrying the `#` that marks a node's own id.
 private let vocabulary = [
