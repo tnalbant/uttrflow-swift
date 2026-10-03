@@ -117,9 +117,9 @@ enum LinkShape {
         if scheme == "http" || scheme == "https" || scheme == "ftp" || scheme == "ssh" || scheme == "ws"
             || scheme == "wss" || scheme == "sftp"
         {
-            return components.host != nil
+            return components.host?.isEmpty == false
         }
-        if scheme == "file" { return components.host != nil || !components.path.isEmpty }
+        if scheme == "file" { return components.host?.isEmpty == false || !components.path.isEmpty }
         if scheme == "mailto" || scheme == "tel" { return !components.path.isEmpty }
         return true
     }

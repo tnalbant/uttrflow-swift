@@ -56,6 +56,8 @@ struct LinkShapeIssue4422Tests {
             "https://",
             "example.com",
             "www.example.com",
+            "file://",
+            "ssh://",
             "ftp://",
         ])
     func proseIsNotALink(_ text: String) {
