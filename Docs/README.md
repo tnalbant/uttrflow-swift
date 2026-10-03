@@ -46,6 +46,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
+| [adapters.md](adapters.md) | Format adapters: one registry for structured writing |
 | [latin-output.md](latin-output.md) | Latin letters only: the romaniser, the script guard and the last check |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
@@ -118,6 +119,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [core-history-undo.md](core-history-undo.md) | Undoing a correction: how the words are found and when they are left alone |
 | [core-history-accuracy.md](core-history-accuracy.md) | The accuracy figure: where its denominator comes from |
 | [history-store-file.md](history-store-file.md) | The dictation history file, and the shape of the store around it |
+| [persona-threat-model.md](persona-threat-model.md) | Learned personal data: assets, adversaries, mitigations with their tests, and residual risks |
 | [local-store-permissions.md](local-store-permissions.md) | Who may read the local store, and the one place its files are written |
 | [local-store-encryption.md](local-store-encryption.md) | Local-store encryption, migration, and reset-key revocation; selected stores are implemented |
 | [retention-clock.md](retention-clock.md) | Retention, and the two things it will not take the wall clock's word for |
@@ -135,6 +137,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 
 | Page | What it covers |
 |---|---|
+| [measure-a-change.md](measure-a-change.md) | Which command measures which kind of change, its run time and what it needs |
 | [measuring-accuracy.md](measuring-accuracy.md) | Making speech accuracy measurable |
 | [core-word-error-rate.md](core-word-error-rate.md) | How word error rate is measured, and why it lives in Core |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
@@ -157,6 +160,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |
 | [ux-test-harness.md](ux-test-harness.md) | UX test harness traps |
+| [test-flakes.md](test-flakes.md) | Flaky-test report and quarantine expiry |
 | [account-tests-keychain-adhoc.md](account-tests-keychain-adhoc.md) | Ad-hoc-signed builds and the data-protection keychain |
 | [agents/code-quality.md](agents/code-quality.md) | Code quality: limits, checks, comments, tests |
 | [agents/product.md](agents/product.md) | Product rules and invariants |

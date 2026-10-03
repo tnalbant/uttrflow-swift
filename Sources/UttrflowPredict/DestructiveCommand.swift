@@ -89,11 +89,53 @@ public enum DestructiveCommand {
         "taskpolicy": Wrapper(valued: ["-c", "-d", "-g", "-t", "-l"]), "arch": Wrapper(valued: ["-arch"]),
         "flock": Wrapper(valued: ["-w", "--timeout", "-E", "--conflict-exit-code"], operands: 1),
         "chroot": Wrapper(valued: ["-u", "-g", "-G"], operands: 1), "pkexec": Wrapper(valued: ["--user"]),
+        "setsid": Wrapper(valued: []),
+        "parallel": Wrapper(valued: [
+            "-j", "--jobs", "--max-procs",
+            "-N", "--max-args",
+            "-n", "--number-of-args",
+            "-a", "--arg-file",
+            "-S", "--sshlogin",
+            "--colsep",
+            "--header",
+            "--tagstring",
+            "--joblog",
+            "--retries",
+            "--timeout",
+            "--files",
+            "--results",
+            "--tmpdir",
+            "--workdir",
+            "--basefile",
+            "--bar",
+            "--load",
+            "--noswap",
+            "--memfree",
+            "--memsuspend",
+            "--block",
+            "--link",
+            "--linkinputsource",
+            "--filter",
+            "--rpl",
+            "--shellquote",
+            "--trc",
+            "--cleanup",
+            "--env",
+            "--eta",
+        ]),
     ]
 
     /// Shell reserved words that stand in front of the command a clause runs, as a loop's `do` and an `if`'s `then` do.
     private static let reservedWords: Set<String> = [
         "do", "then", "else", "elif", "if", "while", "until", "!",
+    ]
+
+    /// Commands that destroys() judges in their own right, so the unknown-carrier failsafe leaves them alone.
+    private static let judgedCommands: Set<String> = [
+        "chmod", "chown", "chgrp", "git", "hg", "svn", "find", "diskutil",
+        "terraform", "tofu", "redis-cli", "valkey-cli", "keydb-cli", "mongo", "mongosh",
+        "crontab", "sh", "bash", "zsh", "dash", "ksh", "fish", "su", "runuser",
+        "eval", "mv", "cp", "killall", "pkill", "kill", "rsync", "tee",
     ]
 
     /// Programs that destroy whatever they are pointed at.
@@ -418,6 +460,20 @@ public enum DestructiveCommand {
             {
                 return true
             }
+        case "su", "runuser":
+            if let script = shellScript(arguments),
+                matches(script, failClosedOnUnresolved: failClosedOnUnresolved)
+            {
+                return true
+            }
+        case "eval":
+            // The arguments are joined into the line the shell re-parses, so a destroyer in any of them is judged as one.
+            let script = arguments.joined(separator: " ")
+            if !script.isEmpty,
+                matches(script, failClosedOnUnresolved: failClosedOnUnresolved)
+            {
+                return true
+            }
         case "mv":
             if lowered.last == "/dev/null" { return true }
         case "cp":
@@ -446,7 +502,18 @@ public enum DestructiveCommand {
             break
         }
 
-        guard sqlVerbs.contains(command) || sqlClients.contains(command) else { return false }
+        guard sqlVerbs.contains(command) || sqlClients.contains(command) else {
+            // An unrecognised carrier word followed by a plain destroyer fails closed, after every known command has judged its own arguments.
+            if judgedCommands.contains(command) || destroyers.contains(command) || verbTools[command] != nil {
+                return false
+            }
+            // Only the first non-flag argument names the command the carrier runs, so `echo "rm -rf /"` is not destructive.
+            for argument in lowered {
+                guard !argument.hasPrefix("-") else { continue }
+                return destroyers.contains(argument)
+            }
+            return false
+        }
         // SQL that drops or empties a table, wherever the verb sits in the statement.
         let sequence = ([command] + lowered).flatMap {
             $0.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "_" }).map(String.init)

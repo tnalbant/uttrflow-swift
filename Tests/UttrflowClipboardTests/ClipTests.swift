@@ -29,14 +29,29 @@ struct ClipTests {
     @Test("summarises to a single line")
     func summary() {
         #expect(clip("one\ntwo\nthree").summary == "one")
+        #expect(clip("one\ntwo").additionalLineCount == 1)
         #expect(clip("").summary.isEmpty)
         #expect(clip("\n\nfirst real line").summary == "first real line")
+        #expect(clip("\n\nfirst real line").additionalLineCount == 2)
     }
 
     @Test("caps a long first line")
     func summaryCap() {
         let text = String(repeating: "a", count: 400) + "\nignored"
         #expect(clip(text).summary == String(repeating: "a", count: 300))
+    }
+
+    @Test("shows the length when the first line is entirely whitespace")
+    func whitespaceSummaryLength() {
+        let text = String(repeating: " ", count: 400) + "\nnext"
+        #expect(clip(text).summary == "Whitespace only · 405 characters")
+        #expect(clip(text).additionalLineCount == 1)
+    }
+
+    @Test("bounds the complete preview and marks truncation")
+    func previewCap() {
+        let text = String(repeating: "x", count: Clip.previewCharacterLimit + 1)
+        #expect(clip(text).preview == String(repeating: "x", count: Clip.previewCharacterLimit) + "\n… preview truncated")
     }
 
     @Test("trims leading and trailing whitespace from the first line")
@@ -47,6 +62,7 @@ struct ClipTests {
     @Test("stops at a CRLF line break")
     func summaryCRLF() {
         #expect(clip("first\r\nsecond").summary == "first")
+        #expect(clip("first\r\nsecond").additionalLineCount == 1)
     }
 
     /// What goes back out must be exactly what came in; the summary is for display only.

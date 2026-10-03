@@ -264,6 +264,32 @@ struct ClipboardStoreTests {
         #expect(clips[0].id == original.id)
     }
 
+    @Test("restoring a deleted duplicate keeps the newer clip and its pin, name, and collection")
+    func restoreDuplicatePreservesNewerClipState() async throws {
+        let file = TemporaryFile()
+        let store = ClipboardStore(file: file.url)
+        let deleted = clip("same text", at: -60)
+        try await store.record(deleted, keeping: week())
+        try await store.delete(deleted.id, keeping: week())
+
+        let newer = clip("same text")
+        try await store.record(newer, keeping: week())
+        try await store.setPinned(true, of: newer.id, keeping: week())
+        try await store.setAlias("/important", of: newer.id, keeping: week())
+        try await store.setCategory("Work", of: newer.id, keeping: week())
+
+        let restored = try await store.restore(deleted, keeping: week())
+
+        #expect(restored.count == 1)
+        #expect(restored[0].id == newer.id)
+        #expect(restored[0].isPinned)
+        #expect(restored[0].alias == "/important")
+        #expect(restored[0].category == "Work")
+        #expect(restored[0].copiedAt == newer.copiedAt)
+        #expect(restored[0].timesCopied == 2)
+        #expect(await ClipboardStore(file: file.url).clips(keeping: week()) == restored)
+    }
+
     @Test("tells two different texts apart, however similar")
     func deduplicationIsExact() async throws {
         let file = TemporaryFile()

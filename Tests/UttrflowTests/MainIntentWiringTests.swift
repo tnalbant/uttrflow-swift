@@ -8,6 +8,7 @@ import UttrflowClipboard
 import UttrflowCore
 import UttrflowDictionary
 import UttrflowHistory
+import UttrflowInput
 import UttrflowUX
 import Testing
 
@@ -659,6 +660,48 @@ struct MainIntentWiringTests {
         app.carryOut(.show(.snippets))
 
         #expect(app.actionNotice == nil)
+    }
+
+    @Test("a refused clipboard write reports failure instead of success")
+    func refusedCopyShowsFailure() async throws {
+        let sandbox = Sandbox()
+        let pasteboard = RefusingPasteboard()
+        let app = AppDelegate(container: sandbox.root, pasteboard: pasteboard)
+
+        app.carryOut(.copy("Copy this back to me"))
+
+        let notice = try #require(app.actionNotice)
+        #expect(notice.message == MainNotice.clipboardCopyFailed.message)
+        #expect(notice.message != "Copied — click where you want it, then press ⌘V")
+        #expect(pasteboard.writeCount == 0)
+    }
+}
+
+private struct RefusingPasteboard: UttrflowInput.Pasteboard {
+    private final class WriteCount: Sendable {
+        private let count = Mutex(0)
+        var value: Int { count.withLock { $0 } }
+        func record() { count.withLock { $0 += 1 } }
+    }
+
+    private let count = WriteCount()
+    var writeCount: Int { count.value }
+    func text() -> String? { nil }
+    func setText(_ text: String) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setText(_ text: String, richText: String?) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setConcealedText(_ text: String) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setImage(_ data: Data) -> PasteboardWriteResult {
+        count.record()
+        return .refused
     }
 }
 

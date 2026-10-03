@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- Three script-controlled fields; posts what the page holds to /log so a probe can compare it with what the field shows. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Controlled field probe</title>
+<style>
+  body { font: 16px system-ui, sans-serif; margin: 24px; }
+  input, [contenteditable] { font: inherit; width: 480px; padding: 6px; border: 1px solid #888; display: block; }
+  [contenteditable] { min-height: 1.4em; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<label id="label" for="field">Message</label>
+<div id="host"></div>
+<script>
+  // input: a single-line input whose value is re-rendered from state, and state is set only from `input` events.
+  // editable: a contenteditable whose state is set only from `input` events.
+  // model: a contenteditable that takes `beforeinput`, cancels it, applies it to its model and re-renders from the model.
+  const kind = new URLSearchParams(location.search).get("field") || "input";
+  const host = document.getElementById("host");
+  const events = [];
+  let state = "start ";
+  let field;
+
+  function note(event) {
+    events.push({ type: event.type, inputType: event.inputType || null, data: event.data ?? null, key: event.key || null });
+  }
+
+  function placeCaretAtEnd() {
+    if (kind === "input") { field.setSelectionRange(field.value.length, field.value.length); return; }
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    range.collapse(false);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function render() {
+    if (kind === "input") { if (field.value !== state) field.value = state; return; }
+    if (field.textContent !== state) { field.textContent = state; placeCaretAtEnd(); }
+  }
+
+  function shown() { return kind === "input" ? field.value : field.textContent; }
+
+  if (kind === "input") {
+    field = document.createElement("input");
+    field.type = "text";
+  } else {
+    field = document.createElement("div");
+    field.contentEditable = "true";
+    field.setAttribute("role", "textbox");
+    field.setAttribute("aria-labelledby", "label");
+  }
+  field.id = "field";
+  host.appendChild(field);
+
+  for (const type of ["keydown", "beforeinput", "input", "change", "compositionstart", "compositionend", "textInput"]) {
+    field.addEventListener(type, note, true);
+  }
+
+  if (kind === "model") {
+    field.addEventListener("beforeinput", (event) => {
+      event.preventDefault();
+      if (event.inputType.startsWith("insert")) state += event.data ?? (event.dataTransfer && event.dataTransfer.getData("text/plain")) ?? "";
+      else if (event.inputType === "deleteContentBackward") state = state.slice(0, -1);
+      render();
+    });
+  } else {
+    field.addEventListener("input", () => { state = shown(); render(); });
+  }
+
+  render();
+  field.focus();
+  placeCaretAtEnd();
+
+  setInterval(() => {
+    fetch("/log", { method: "POST", body: JSON.stringify({ kind, shown: shown(), state, events }) });
+  }, 150);
+</script>
+</body>
+</html>

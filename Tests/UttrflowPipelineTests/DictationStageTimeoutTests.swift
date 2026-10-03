@@ -152,9 +152,15 @@ private final class TimeoutPasteboard: Pasteboard, Sendable {
     private let stored = Mutex<String?>("older copied text")
 
     func text() -> String? { stored.withLock { $0 } }
-    func setText(_ text: String) { stored.withLock { $0 = text } }
-    func setConcealedText(_ text: String) { setText(text) }
-    func setImage(_ data: Data) { stored.withLock { $0 = nil } }
+    func setText(_ text: String) -> PasteboardWriteResult {
+        stored.withLock { $0 = text }
+        return .written(changeCount: nil)
+    }
+    func setConcealedText(_ text: String) -> PasteboardWriteResult { setText(text) }
+    func setImage(_ data: Data) -> PasteboardWriteResult {
+        stored.withLock { $0 = nil }
+        return .written(changeCount: nil)
+    }
 }
 
 @Suite("Dictation pipeline: a stage that never answers", .timeLimit(.minutes(1)))

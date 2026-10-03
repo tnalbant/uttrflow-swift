@@ -53,6 +53,16 @@ struct PanelAliasSheetPresentationTests {
         #expect(sheet?.isConfirmEnabled == false)
     }
 
+    @Test("mixed writing systems explain why a name cannot be saved")
+    func mixedScriptNameHasClearConflict() {
+        let clip = PanelFixture.clip("first")
+        let panel = PanelFixture.panel([clip]).applying([.alias(clip.id), .draft("pаypal")]).state
+        let sheet = PanelPresenter.present(panel).sheet
+
+        #expect(sheet?.conflict == "Use one writing system in a name")
+        #expect(sheet?.isConfirmEnabled == false)
+    }
+
     @Test("the conflict never names a masked secret by its text, and does once it is revealed")
     func theConflictHidesAMaskedHolder() {
         let secret = PanelFixture.clip("Zx9kLmQ2rT7p", kind: .secret, minutesAgo: 2, alias: "db")

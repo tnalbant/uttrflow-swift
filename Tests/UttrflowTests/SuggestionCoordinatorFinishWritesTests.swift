@@ -1,0 +1,31 @@
+// Tests that a quit cannot lose a suggestion accepted just before it.
+
+import Foundation
+import Synchronization
+import Testing
+
+@testable import Uttrflow
+
+@MainActor
+@Suite("SuggestionCoordinator.finishWrites")
+struct SuggestionCoordinatorFinishWritesTests {
+    @Test("finishWrites waits for an in-flight acceptance to record before returning")
+    func waitsForInFlightAcceptance() async throws {
+        let container = FileManager.default.temporaryDirectory
+            .appending(path: "sc-finishwrites-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: container) }
+
+        let coordinator = try SuggestionCoordinator(
+            container: container, preferences: SuggestionPreferences(isEnabled: true))
+
+        let recorded = Mutex(false)
+        coordinator.acceptances.enqueue {
+            try? await Task.sleep(for: .milliseconds(80))
+            recorded.withLock { $0 = true }
+        }
+
+        await coordinator.finishWrites()
+        #expect(recorded.withLock { $0 }, "finishWrites returned before the acceptance recorded")
+    }
+}

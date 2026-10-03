@@ -7,8 +7,12 @@ user chooses. There is no sync or automatic upload.
 
 The file contains dictionary spellings and pronunciations, their origin and usage
 counters, snippet triggers and expansion text, and their dates and usage counters.
-Anyone who can read the chosen file can read that content. Uttrflow writes the
-export with owner-only file permissions.
+The export is not encrypted, and anyone who can read the chosen file can read its
+contents. Before choosing a destination, the user can omit snippets whose trigger
+or expansion matches the credential recognizer, or include every snippet. This
+recognizer covers known credential shapes and cannot identify every private phrase.
+Uttrflow creates an owner-only sibling file before writing archive bytes, then
+atomically replaces the chosen destination.
 
 Import validates the complete versioned archive before writing either store. It
 merges by case-insensitive dictionary spelling and normalized snippet trigger,

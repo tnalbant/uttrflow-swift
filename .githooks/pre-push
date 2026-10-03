@@ -100,7 +100,7 @@ if ((${#pushed[@]})); then
             else
                 printf '\n\033[31m  nothing was pushed\033[0m\n'
                 printf '  A commit message or an added line carries text that must not be\n'
-                printf '  published. See AGENTS.md, "What must never reach a tracked file".\n'
+                printf '  published. See Docs/agents/public-boundary.md.\n'
                 printf '  Amend or rewrite the commit — the branch has not left this machine,\n'
                 printf '  so this is still fixable. After a push it is not.\n\n'
             fi

@@ -927,6 +927,14 @@ private struct QuickPanelRow: View, @MainActor Equatable {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Shows the whole line as a tooltip; whether there is one is `PanelRow.tooltip`'s answer.
                     .help(row.tooltip ?? "")
+                if row.additionalLineCount > 0 {
+                    Text("+\(row.additionalLineCount) lines")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.panelLabelDim)
+                        .fixedSize()
+                        .accessibilityLabel("\(row.additionalLineCount) additional lines")
+                        .help(row.tooltip ?? "")
+                }
                 trailing(row, showsActions: look.showsActions)
             }
             // Tighter on the leading edge: the glyph sits in the gutter, the ⋯ wants the room on the right.

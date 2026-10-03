@@ -2,6 +2,7 @@ import CoreGraphics
 import Testing
 
 @testable import UttrflowContext
+import UttrflowTestSupport
 
 /// The main display of a Mac with a menu bar and a Dock.
 private let mainScreen = CGRect(x: 0, y: 84, width: 1512, height: 862)

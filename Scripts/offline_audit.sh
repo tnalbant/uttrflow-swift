@@ -64,8 +64,7 @@ note() { printf '  · %s\n' "$1"; }
 # network once the model is on disk, and the clipboard, history, dictionary and snippets
 # never leave the Mac. Both reduce to one claim a tree can be checked against — network
 # capability lives in a handful of named files and no other module has any — which is
-# also what AGENTS.md means by "UttrflowAccount is deliberately the only module that can
-# reach a server": one place to look.
+# also the network list in Docs/agents/product.md: one place to look.
 #
 # So this is default-deny over every module under Sources/, discovered at run time. The
 # earlier version named the seven modules to check, and a module nobody added to that

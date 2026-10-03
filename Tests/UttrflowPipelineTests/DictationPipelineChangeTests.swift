@@ -133,53 +133,6 @@ private final class FakeVocabulary: VocabularyLearning, Sendable {
     var lessons: [Lesson] { state.withLock { $0 } }
 }
 
-/// A ``TranscriptCleaning`` that records what it is asked to tidy.
-private final class FakeCleaner: TranscriptCleaning, Sendable {
-    private let state = Mutex<[TransformationRequest]>([])
-    private let tidy: @Sendable (String) -> String
-    private let taking: [UUID]
-
-    init(tidying tidy: @escaping @Sendable (String) -> String = { $0 }, taking: [UUID] = []) {
-        self.tidy = tidy
-        self.taking = taking
-    }
-
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        state.withLock { $0.append(request) }
-        return TransformationResult(
-            text: tidy(request.transcription.text), producedBy: .foundationModels, entriesTaken: taking)
-    }
-
-    var requests: [TransformationRequest] { state.withLock { $0 } }
-}
-
-/// A ``TextInserting`` that records every string it is handed.
-private final class FakeInserter: TextInserting, Sendable {
-    private let state = Mutex<[String]>([])
-    private let refuses: Bool
-    private let arrival: InsertionArrival
-    private let destination: InsertionDestination?
-
-    init(
-        refuses: Bool = false, arrival: InsertionArrival = .notReported,
-        destination: InsertionDestination? = nil
-    ) {
-        self.refuses = refuses
-        self.arrival = arrival
-        self.destination = destination
-    }
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        state.withLock { $0.append(text) }
-        guard !refuses else { throw .clipboardUnavailable }
-        return InsertionAttempt(.accessibility, arrival: arrival, destination: destination)
-    }
-
-    var received: [String] { state.withLock { $0 } }
-}
-
 // MARK: - Fixtures
 
 private let heard = "open the payment sheet and send my address"
@@ -193,8 +146,8 @@ private let paymentSheet = DictationCorrection(
 
 private func makePipeline(
     spoken: String = heard,
-    cleaner: any TranscriptCleaning = FakeCleaner(),
-    inserter: FakeInserter = FakeInserter(),
+    cleaner: any TranscriptCleaning = FakeTranscriptCleaner(producedBy: .foundationModels),
+    inserter: FakeTextInserter = FakeTextInserter(),
     corrector: any WordCorrecting = NoTextChanges(),
     snippets: any SnippetExpanding = NoTextChanges(),
     learner: any DictationLearning = NoTextChanges(),
@@ -276,7 +229,7 @@ struct DictationPipelineCorrectionTests {
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(),
             speech: LatePasteSpeech(),
-            cleaner: FakeCleaner(), context: context, inserter: inserter)
+            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels), context: context, inserter: inserter)
 
         await pipeline.startRecording()
         await pipeline.finishRecording()
@@ -293,7 +246,7 @@ struct DictationPipelineCorrectionTests {
     /// A correction is argued from the sentence as heard, and the tidier's job is to rewrite it.
     @Test("Corrects the transcript before the tidier sees it")
     func correctsBeforeTidying() async {
-        let cleaner = FakeCleaner()
+        let cleaner = FakeTranscriptCleaner(producedBy: .foundationModels)
         let pipeline = makePipeline(
             cleaner: cleaner, corrector: FakeCorrector(proposing: [paymentSheet]))
 
@@ -319,7 +272,7 @@ struct DictationPipelineCorrectionTests {
     /// §19. A dictionary that will not answer costs a correction, never a dictation.
     @Test("A dictionary that refuses costs the correction and not the words")
     func aRefusedDictionaryCostsNothing() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter, corrector: FakeCorrector(refuses: true))
 
@@ -331,7 +284,7 @@ struct DictationPipelineCorrectionTests {
 
     @Test("Leaves the transcript untouched when nothing is proposed")
     func proposesNothing() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(inserter: inserter, corrector: FakeCorrector())
 
         await dictate(with: pipeline)
@@ -343,7 +296,7 @@ struct DictationPipelineCorrectionTests {
     /// Cancelling leaves no trace, for every stage after transcription too.
     @Test("A cancel arriving during correction stops the dictation dead")
     func cancelDuringCorrection() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let trigger = CancelsTheDictation()
         let pipeline = makePipeline(
             inserter: inserter, corrector: CancelsWhileCorrecting(trigger: trigger))
@@ -406,7 +359,7 @@ struct DictationPipelineSnippetTests {
     func expandsAfterTidying() async {
         let expander = FakeExpander()
         let pipeline = makePipeline(
-            cleaner: FakeCleaner(tidying: { $0.capitalisedFirst + "." }), snippets: expander)
+            cleaner: FakeTranscriptCleaner(tidying: { $0.capitalisedFirst + "." }, producedBy: .foundationModels), snippets: expander)
 
         await dictate(with: pipeline)
 
@@ -415,7 +368,7 @@ struct DictationPipelineSnippetTests {
 
     @Test("Inserts the expansion, and says which snippets fired")
     func insertsTheExpansion() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter,
             snippets: FakeExpander(answering: { _ in
@@ -437,7 +390,7 @@ struct DictationPipelineSnippetTests {
     /// A line break is Return in a single-line field, so it would submit the words half-written.
     @Test("A multi-line expansion goes into a single-line field on one line")
     func flattensAnExpansionForOneLine() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter, snippets: signingExpander(),
             context: FakeContextEngine(
@@ -454,7 +407,7 @@ struct DictationPipelineSnippetTests {
 
     @Test("A multi-line expansion keeps its line breaks where the field takes them")
     func keepsAnExpansionsLinesWhereTheyFit() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(inserter: inserter, snippets: signingExpander())
 
         await dictate(with: pipeline)
@@ -476,7 +429,7 @@ struct DictationPipelineSnippetTests {
     /// §19 again, and the same rule the tidier is held to.
     @Test("A snippet store that refuses costs the expansion and not the words")
     func aRefusedStoreCostsNothing() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(inserter: inserter, snippets: FakeExpander(refuses: true))
 
         await dictate(with: pipeline)
@@ -487,7 +440,7 @@ struct DictationPipelineSnippetTests {
     /// The Accessibility route replaces the selection, so an empty insertion would delete it.
     @Test("An expansion that comes back blank is refused, not inserted")
     func aBlankExpansionIsRefused() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter, snippets: FakeExpander(answering: { _ in .unchanged("   ") }))
 
@@ -499,7 +452,7 @@ struct DictationPipelineSnippetTests {
 
     @Test("A cancel arriving during expansion stops the dictation dead")
     func cancelDuringExpansion() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let trigger = CancelsTheDictation()
         let pipeline = makePipeline(
             inserter: inserter, snippets: CancelsWhileExpanding(trigger: trigger))
@@ -529,7 +482,7 @@ struct DictationPipelineLearningTests {
     @Test("Counts the entry behind a reading the tidier took, as it counts a correction's")
     func countsAReadingTaken() async {
         let learner = FakeLearner()
-        let pipeline = makePipeline(cleaner: FakeCleaner(taking: [entry]), learner: learner)
+        let pipeline = makePipeline(cleaner: FakeTranscriptCleaner(producedBy: .foundationModels, taking: [entry]), learner: learner)
 
         await dictate(with: pipeline)
 
@@ -542,7 +495,7 @@ struct DictationPipelineLearningTests {
     func countsAnEntryOnceAcrossBothPaths() async {
         let learner = FakeLearner()
         let pipeline = makePipeline(
-            cleaner: FakeCleaner(taking: [entry, otherEntry]),
+            cleaner: FakeTranscriptCleaner(producedBy: .foundationModels, taking: [entry, otherEntry]),
             corrector: FakeCorrector(proposing: [paymentSheet]), learner: learner)
 
         await dictate(with: pipeline)
@@ -622,7 +575,7 @@ struct DictationPipelineLearningTests {
     func learnsNothingFromAFailedInsertion() async {
         let learner = FakeLearner()
         let pipeline = makePipeline(
-            inserter: FakeInserter(refuses: true),
+            inserter: FakeTextInserter(.failure(.clipboardUnavailable)),
             corrector: FakeCorrector(proposing: [paymentSheet]), learner: learner)
 
         await dictate(with: pipeline)
@@ -635,7 +588,7 @@ struct DictationPipelineLearningTests {
     func countsNothingFromAnUnconfirmedInsertion() async {
         let learner = FakeLearner()
         let pipeline = makePipeline(
-            inserter: FakeInserter(arrival: .unconfirmed),
+            inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, arrival: .unconfirmed))),
             corrector: FakeCorrector(proposing: [paymentSheet]),
             snippets: FakeExpander(answering: { text in
                 ExpandedTranscript(
@@ -653,7 +606,7 @@ struct DictationPipelineLearningTests {
     /// This runs after the dictation is announced as inserted, so a refused note cannot be a failure.
     @Test("A store that refuses the note does not undo the dictation")
     func aRefusedNoteChangesNothing() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter, corrector: FakeCorrector(proposing: [paymentSheet]),
             snippets: FakeExpander(answering: { text in
@@ -677,7 +630,7 @@ struct DictationPipelineVocabularyTests {
     func offersTheWholeDictation() async {
         let vocabulary = FakeVocabulary()
         let pipeline = makePipeline(
-            cleaner: FakeCleaner(tidying: \.capitalisedFirst), vocabulary: vocabulary)
+            cleaner: FakeTranscriptCleaner(tidying: \.capitalisedFirst, producedBy: .foundationModels), vocabulary: vocabulary)
 
         await dictate(with: pipeline)
 
@@ -698,7 +651,7 @@ struct DictationPipelineVocabularyTests {
             applicationName: "Public App", bundleIdentifier: "com.example.b")
         let pipeline = makePipeline(
             vocabulary: vocabulary,
-            inserter: FakeInserter(destination: landedInB),
+            inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, destination: landedInB))),
             context: FakeContextEngine(context: appA))
 
         await dictate(with: pipeline)
@@ -726,7 +679,7 @@ struct DictationPipelineVocabularyTests {
     func learnsNothingFromAFailedInsertion() async {
         let vocabulary = FakeVocabulary()
         let pipeline = makePipeline(
-            inserter: FakeInserter(refuses: true), vocabulary: vocabulary)
+            inserter: FakeTextInserter(.failure(.clipboardUnavailable)), vocabulary: vocabulary)
 
         await dictate(with: pipeline)
 
@@ -738,7 +691,7 @@ struct DictationPipelineVocabularyTests {
     func learnsNothingFromAnUnconfirmedInsertion() async {
         let vocabulary = FakeVocabulary()
         let pipeline = makePipeline(
-            inserter: FakeInserter(arrival: .unconfirmed), vocabulary: vocabulary)
+            inserter: FakeTextInserter(.success(InsertionAttempt(.accessibility, arrival: .unconfirmed))), vocabulary: vocabulary)
 
         await dictate(with: pipeline)
 
@@ -760,7 +713,7 @@ struct DictationPipelineVocabularyTests {
     /// §19: a store that will not take the lesson costs the lesson and nothing else.
     @Test("A dictionary that refuses the lesson does not spoil the dictation")
     func aRefusedLessonChangesNothing() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             inserter: inserter, vocabulary: FakeVocabulary(refuses: true))
 
@@ -791,7 +744,7 @@ struct DictationPipelineContextTests {
     @Test("Reads the screen once and shows the same reading to everything")
     func readsTheScreenOnce() async {
         let context = FakeContextEngine(context: .fixture())
-        let cleaner = FakeCleaner()
+        let cleaner = FakeTranscriptCleaner(producedBy: .foundationModels)
         let corrector = FakeCorrector()
         let pipeline = makePipeline(cleaner: cleaner, corrector: corrector, context: context)
 
@@ -817,7 +770,7 @@ struct DictationPipelineContextTests {
     func resolvesTheSituation() async {
         let context = FakeContextEngine(context: .fixture())
         await context.setInsertionPoint(InsertionPoint(precedingText: "because "))
-        let cleaner = FakeCleaner()
+        let cleaner = FakeTranscriptCleaner(producedBy: .foundationModels)
         let pipeline = makePipeline(cleaner: cleaner, context: context)
 
         await dictate(with: pipeline)

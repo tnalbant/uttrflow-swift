@@ -12,6 +12,7 @@ extension MacContextEngine {
     public convenience init() {
         self.init(
             readFrontmostApplication: { MacContextEngine.frontmostApplication() },
+            readFocusOwner: { await MacContextEngine.focusOwner(of: $0) },
             readFocusedWindow: { await MacContextEngine.focusedWindow(of: $0) },
             ownBundleIdentifier: Bundle.main.bundleIdentifier,
             ownProcessIdentifier: ProcessInfo.processInfo.processIdentifier,
@@ -50,6 +51,36 @@ extension MacContextEngine {
             bundleIdentifier: app.bundleIdentifier,
             processIdentifier: app.processIdentifier
         )
+    }
+
+    /// The application that owns the focused element, from Accessibility on a thread of its own. See `Docs/insertion.md`.
+    static func focusOwner(of frontmost: FrontmostApplication) async -> FrontmostApplication? {
+        guard AXIsProcessTrusted() else { return nil }
+        return await withCheckedContinuation { continuation in
+            readQueue.async { continuation.resume(returning: owner(of: frontmost)) }
+        }
+    }
+
+    /// The element kept by the same preference insertion applies, named by the process that holds it.
+    private static func owner(of frontmost: FrontmostApplication) -> FrontmostApplication? {
+        // Never set on the system-wide element: that is process-wide and would cut dictation's own writes short.
+        let system = AXUIElementCreateSystemWide()
+        let focused = FocusedElementPreference.choose(
+            systemWide: SurfaceProbe.element(
+                system, kAXFocusedUIElementAttribute, timeoutInSeconds: budgetInSeconds),
+            systemWideRole: { SurfaceProbe.string($0, kAXRoleAttribute) },
+            application: {
+                let application = AXUIElementCreateApplication(frontmost.processIdentifier)
+                _ = AXUIElementSetMessagingTimeout(application, budgetInSeconds)
+                return SurfaceProbe.element(
+                    application, kAXFocusedUIElementAttribute, timeoutInSeconds: budgetInSeconds)
+            },
+            applicationRole: { SurfaceProbe.string($0, kAXRoleAttribute) })
+        guard let owner = focused.flatMap(SurfaceProbe.owner(of:)) else { return nil }
+        guard owner != frontmost.processIdentifier else { return frontmost }
+        guard let app = NSRunningApplication(processIdentifier: owner) else { return nil }
+        return FrontmostApplication(
+            name: app.localizedName, bundleIdentifier: app.bundleIdentifier, processIdentifier: owner)
     }
 
     /// Title and selection, from Accessibility on a thread of its own. See `Docs/context-budget.md`.

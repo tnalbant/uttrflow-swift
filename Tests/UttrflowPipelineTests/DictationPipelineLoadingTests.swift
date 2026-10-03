@@ -63,28 +63,12 @@ private final class SlowLoadingSpeechEngine: SpeechEngine, Sendable {
     }
 }
 
-/// A tidier that hands the words back as they came.
-private struct PassThroughCleaner: TranscriptCleaning {
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .rules)
-    }
-}
-
-/// An inserter that always lands.
-private struct LandingInserter: TextInserting {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
 private func makePipeline(
     speech: any SpeechEngine, capture: FakeAudioCaptureEngine
 ) -> DictationPipeline {
     DictationPipeline(
-        capture: capture, speech: speech, cleaner: PassThroughCleaner(),
-        context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
+        capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(),
+        context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
         metrics: RecordingMetricsRecorder(), clock: ManualClock())
 }
 
@@ -259,8 +243,8 @@ struct DictationPipelineLoadingTests {
 struct DictationPipelineLoadDeadlineTests {
     private func makePipeline(speech: FakeSpeechEngine, clock: ManualClock) -> DictationPipeline {
         DictationPipeline(
-            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: PassThroughCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: LandingInserter(),
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             clock: clock, speechLoadLimit: .seconds(300))
     }
 

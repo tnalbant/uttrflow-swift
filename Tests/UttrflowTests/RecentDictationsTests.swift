@@ -56,9 +56,9 @@ struct RecentDictationsTests {
         app.forget(after: .everything)
 
         try await eventually {
-            app.menuBarPresentation.command(.insertRecent(index: 0)) != nil
+            app.menuBarPresentation.lastDictation?.insert.intent != nil
         }
-        #expect(app.menuBarPresentation.command(.copyRecent(index: 0)) != nil)
+        #expect(app.menuBarPresentation.lastDictation?.copy.intent != nil)
         #expect(app.mainWindow == nil)
     }
 
@@ -71,7 +71,7 @@ struct RecentDictationsTests {
         let history = DictationHistoryStore(file: DictationHistoryStore.defaultFile(in: sandbox.root))
         let spoken = "Words that reset removes"
         app.render(.inserted(DictationOutcome(text: spoken, method: .accessibility, cleanedBy: .rules)))
-        #expect(app.menuBarPresentation.command(.insertRecent(index: 0)) != nil)
+        #expect(app.menuBarPresentation.lastDictation?.insert.intent != nil)
 
         try await eventually {
             await history.records(keeping: Retention(days: 30, now: Date())).contains { $0.text == spoken }
@@ -79,10 +79,10 @@ struct RecentDictationsTests {
         try await history.deleteEverything()
 
         app.forget(after: .everything)
-        try await eventually { app.menuBarPresentation.command(.insertRecent(index: 0)) == nil }
+        try await eventually { app.menuBarPresentation.lastDictation == nil }
 
         #expect(app.mainWindow == nil)
-        #expect(app.menuBarPresentation.command(.insertRecent(index: 0)) == nil)
+        #expect(app.menuBarPresentation.lastDictation == nil)
     }
 
     @MainActor

@@ -68,7 +68,7 @@ public struct TextInsertionCoordinator: TextInserting {
             // The strategy's own reading at the moment of sending wins; otherwise read the app after the write.
             let landed = await strategy.destinationAtLanding()
             return InsertionAttempt(
-                strategy.method, arrival: arrival, destination: landed ?? focus?.frontmostApplication(),
+                strategy.method, arrival: arrival, destination: landed ?? focus?.focusedApplication(),
                 intoSecureField: secure)
         }
 

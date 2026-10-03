@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -60,21 +59,6 @@ private actor HeldSpeechEngine: SpeechEngine {
     }
 }
 
-private final class QuietInserter: TextInserting, Sendable {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
-/// A tidier that leaves the words alone, so only the hints the recogniser saw are under test.
-private struct PassThroughCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .foundationModels)
-    }
-
-    func warm(for situation: Situation?) async {}
-}
-
 private enum Take {
     static let rate = AudioSamples.canonicalSampleRate
 
@@ -107,8 +91,8 @@ struct DictationPipelineLanguageTests {
         let speech = DriftingSpeechEngine(detecting: detected)
         return (
             DictationPipeline(
-                capture: capture, speech: speech, cleaner: PassThroughCleaner(),
-                context: FakeContextEngine(context: .fixture()), inserter: QuietInserter(),
+                capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
+                context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
                 recordings: recordings, profile: profile,
                 windowing: quick, earlyPoll: earlyPoll),
             speech
@@ -239,8 +223,8 @@ struct DictationPipelineLanguageTests {
         await capture.setCaptured(Take.threePieces)
         let speech = HeldSpeechEngine()
         let pipeline = DictationPipeline(
-            capture: capture, speech: speech, cleaner: PassThroughCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: QuietInserter(),
+            capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             recordings: RecordingsNotKept(), profile: UserProfile(preferredLanguages: [.english]),
             windowing: quick, earlyPoll: .milliseconds(2))
 

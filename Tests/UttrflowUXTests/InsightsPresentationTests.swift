@@ -531,8 +531,10 @@ struct InsightsWaitingTests {
         let locale = Locale(identifier: "en_US")
         calendar.locale = locale
         calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
-        let now = try #require(calendar.date(from: DateComponents(
-            year: 2026, month: 3, day: 7, hour: 23, minute: 30)))
+        let now = try #require(
+            calendar.date(
+                from: DateComponents(
+                    year: 2026, month: 3, day: 7, hour: 23, minute: 30)))
         let expectedDate = try #require(calendar.date(byAdding: .day, value: 1, to: now))
         let expectedWeekday = expectedDate.formatted(.dateTime.weekday(.wide).locale(locale))
 

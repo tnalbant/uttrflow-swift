@@ -6,7 +6,7 @@ typing it. This is the design the second tier of cleaning is built against
 testable ideas, so that a new cleaning is a new value in a table or a new pass in a
 list, never a new branch in the pipeline.
 
-The goal it serves is fixed (`AGENTS.md`, "What dictation is for"): **an accurate
+The goal it serves is fixed (`Docs/agents/product.md`, "Dictation and clean-up"): **an accurate
 transcript, cleaned of the noise of speaking and laid out as the speaker would have
 typed it. Never a rewrite.**
 
@@ -146,6 +146,11 @@ The eight shipped values, and the decisions that differ:
 
 Everything a formatter decides is a policy value with two or three cases, so a change is
 a value change and a test change, never a new branch. `Formatter.registry` is one file.
+
+A decision that needs the grammar of what is being written (a SQL statement, a shell
+command, a formula) is not a destination decision. It belongs to a format adapter, whose
+prose-level policy is this formatter and whose registry holds these values as its prose
+entries: [adapters.md](adapters.md).
 
 ## 3. Pass — one deterministic cleaning
 
@@ -357,6 +362,8 @@ that cannot be done in a pass or in that one call waits until it can.
 
 - A new app: a row in `DestinationRules.swift`.
 - A new formatter decision: a case on a policy enum and a value in the registry.
+- A new kind of structured writing: a format adapter and its notation rows, never a
+  `destination ==` branch ([adapters.md](adapters.md)).
 - A new cleaning: a `CleaningPass` and a corpus case; it appears in the formatters that
   list it.
 - A new style rule for one place: a line in that destination's prompt block and an

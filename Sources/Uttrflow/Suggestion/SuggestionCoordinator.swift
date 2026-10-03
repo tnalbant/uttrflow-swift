@@ -155,7 +155,7 @@ final class SuggestionCoordinator {
     /// Whether the last field read reported marked text, so a Return next confirms a conversion rather than ending the line.
     private var composingAtLastRead = false
     /// The accepted lines still being written to the corpus, which a held key never waits on.
-    private let acceptances = AcceptanceQueue()
+    let acceptances = AcceptanceQueue()
     /// Set when a paste or a dictation put text in the field that capture has not yet been told was never typed.
     private var insertionPending = false
     /// Printable keyboard input not yet checked against the next accessibility read.
@@ -388,8 +388,11 @@ final class SuggestionCoordinator {
         FocusedFieldReader.releaseFullTrees()
     }
 
-    /// Waits for a replacement already posted by the typed fallback to finish.
-    func finishWrites() async { await acceptor.finishWrites() }
+    /// Waits for an accepted line's corpus write and the typed fallback's posted replacement to finish.
+    func finishWrites() async {
+        await acceptances.drained()
+        await acceptor.finishWrites()
+    }
 
     // MARK: What wakes the loop
 

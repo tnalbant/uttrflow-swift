@@ -70,10 +70,10 @@ private let samples: [MenuBarIntent] =
         .recover(.pasteManually), .recover(.showRecentDictations), .recover(.retryFromRecording),
         .recover(.copyTranscript),
     ]
-    + [0, 7].flatMap { index -> [MenuBarIntent] in
+    + [UUID(), UUID()].flatMap { id -> [MenuBarIntent] in
         [
-            .insertRecent(index: index), .copyRecent(index: index), .insertClip(index: index),
-            .copyClip(index: index),
+            .insertRecent(id: id), .copyRecent(id: id), .insertClip(id: id),
+            .copyClip(id: id),
         ]
     }
 

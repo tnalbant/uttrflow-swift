@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowClipboard
 
@@ -622,10 +623,12 @@ struct MenuBarEnablementTests {
                 == MenuBarRow(
                     title: twoRecents[0].title, tooltip: twoRecents[0].fullText,
                     insert: MenuBarCommand(
-                        title: "Paste", intent: .insertRecent(index: 0), tooltip: twoRecents[0].fullText),
+                        title: "Paste", intent: .insertRecent(id: twoRecents[0].id),
+                        tooltip: twoRecents[0].fullText),
                     copy: MenuBarCommand(
-                        title: "Copy", intent: .copyRecent(index: 0), tooltip: twoRecents[0].fullText)))
-        #expect(shown.command(.insertRecent(index: 1)) == nil)
+                        title: "Copy", intent: .copyRecent(id: twoRecents[0].id),
+                        tooltip: twoRecents[0].fullText)))
+        #expect(shown.command(.insertRecent(id: UUID())) == nil)
     }
 
     /// Reaching for an old dictation mid-insertion would race the one already on its way.
@@ -635,15 +638,15 @@ struct MenuBarEnablementTests {
         for activity in [DictationActivity.listening, .working] {
             let shown = MenuBarPresenter.present(
                 MenuBarState(activity: activity, recents: twoRecents, clips: clips))
-            #expect(shown.command(.insertRecent(index: 0))?.isEnabled == false)
-            #expect(shown.command(.copyRecent(index: 0))?.isEnabled == false)
-            #expect(shown.command(.insertClip(index: 0))?.isEnabled == false)
+            #expect(shown.command(.insertRecent(id: twoRecents[0].id))?.isEnabled == false)
+            #expect(shown.command(.copyRecent(id: twoRecents[0].id))?.isEnabled == false)
+            #expect(shown.command(.insertClip(id: clips[0].id))?.isEnabled == false)
         }
         for activity in [DictationActivity.idle, .inserted, .unconfirmed, .copied] {
             let shown = MenuBarPresenter.present(
                 MenuBarState(activity: activity, recents: twoRecents, clips: clips))
-            #expect(shown.command(.insertRecent(index: 0))?.isEnabled == true)
-            #expect(shown.command(.insertClip(index: 0))?.isEnabled == true)
+            #expect(shown.command(.insertRecent(id: twoRecents[0].id))?.isEnabled == true)
+            #expect(shown.command(.insertClip(id: clips[0].id))?.isEnabled == true)
         }
     }
 
@@ -672,12 +675,13 @@ struct MenuBarClipListTests {
         (0..<count).map { PanelFixture.clip("Clip number \($0)", minutesAgo: $0) }
     }
 
-    @Test("shows the five newest, each by its position")
+    @Test("shows the five newest and carries each clip identity")
     func fiveNewest() {
-        let shown = MenuBarPresenter.present(MenuBarState(clips: clips(7)))
+        let allClips = clips(7)
+        let shown = MenuBarPresenter.present(MenuBarState(clips: allClips))
         #expect(shown.clips.map(\.title) == (0..<5).map { "Clip number \($0)" })
-        #expect(shown.clips.map(\.insert.intent) == (0..<5).map { .insertClip(index: $0) })
-        #expect(shown.clips.map(\.copy.intent) == (0..<5).map { .copyClip(index: $0) })
+        #expect(shown.clips.map(\.insert.intent) == allClips.prefix(5).map { .insertClip(id: $0.id) })
+        #expect(shown.clips.map(\.copy.intent) == allClips.prefix(5).map { .copyClip(id: $0.id) })
     }
 
     @Test("is absent while the clipboard is switched off")

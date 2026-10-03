@@ -115,6 +115,7 @@ public final class OnboardingFlow {
         let settings = settingsStore.load()
         return OnboardingPresenter.page(
             for: state, hotkey: settings.hotkey, activation: settings.hotkeyActivation,
+            shortcuts: settings.shortcuts,
             signsInAsStandIn: authentication.signsInAsStandIn,
             sharesUsageStatistics: settings.sharesUsageStatistics)
     }

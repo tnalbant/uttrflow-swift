@@ -35,6 +35,18 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .link)
     }
 
+    @Test("masks Telegram bot tokens in single-line and multiline text")
+    func telegramBotAddresses() {
+        let address = "https://api.telegram.org/bot123456789:AbCdEfGhIjKlMnOpQrStUvWxYz012345678/sendMessage"
+        #expect(ClipKindDetector.kind(of: address) == .secret)
+        #expect(ClipKindDetector.kind(of: "curl -X POST \(address)\n# send this request") == .secret)
+        #expect(ClipKindDetector.kind(of: "https://api.telegram.org/bot123456789/sendMessage") == .link)
+        #expect(
+            ClipKindDetector.kind(
+                of: "https://example.com/bot123456789:AbCdEfGhIjKlMnOpQrStUvWxYz012345678/sendMessage")
+                == .link)
+    }
+
     /// Assembled rather than written out, because GitHub's push protection matches these shapes as-is.
     private static let gitLabToken = "glpat-" + "x7Kd9Pq2LmRt4Vw8Nz1C"
     private static let shopifyToken = "shpat_" + "a1b2c3d4e5f6a7b8" + "c9d0e1f2a3b4c5d6"

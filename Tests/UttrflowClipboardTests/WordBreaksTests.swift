@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import UttrflowClipboard
+import UttrflowTestSupport
 
 /// `WordBreaks` stands for the `\b` in the named-secret pattern, so it is measured against `\b` itself.
 @Suite("The word boundaries the secret readers find are the ones `\\b` draws")

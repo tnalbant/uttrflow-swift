@@ -670,9 +670,10 @@ Read them together, because each one alone is misleading in the same direction:
    candidate is scored, and capture never records from it. Passwords, passcodes,
    one-time codes, PINs, card numbers, card security codes, social security numbers,
    account and routing numbers, dates of birth and security answers are treated as
-   secure when the field name, placeholder or description says so. A short all-digit
-   value outside a terminal is also never learned, because a bare OTP, PIN, CVV or
-   compact date has no safe context once it has reached the corpus. A password field that a
+   secure when the field name, placeholder or description says so. A short value of 2 to 8
+   digits, grouped only by whitespace, hyphens or periods, outside a terminal is also never
+   learned, because an OTP, PIN, CVV or compact date has no safe context in the corpus. A
+   password field that a
    completion has ever seen is a password in a database.
 5. **Self-sourced evidence is discounted.** An entry that reached the corpus because the
    user accepted our own suggestion counts a quarter of one they typed. Without it,

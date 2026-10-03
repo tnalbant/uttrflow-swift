@@ -146,7 +146,7 @@ def main():
         print("These files gained multi-line comment blocks:\n")
         for failure in failures:
             print(f"  {failure}")
-        print(f"\nSee the comment rule in AGENTS.md.")
+        print(f"\nSee the comment rule in Docs/agents/code-quality.md.")
         print(f"Shrinking another file does not pay for growing this one.")
         return 1
 

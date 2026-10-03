@@ -103,6 +103,11 @@ issue-template-test: ## Prove the issue template audit catches the bug it was wr
 dependabot-labels-test: ## Keep Dependabot's automatically created default labels enabled.
 	@python3 Scripts/dependabot_labels_test.py
 
+.PHONY: flake-audit
+flake-audit: ## Refuse a quarantined flaky test past its expiry, and prove the flake report. Needs no build.
+	@python3 Scripts/flake_report_test.py
+	@python3 Scripts/flake_report.py --check-quarantine
+
 .PHONY: store-permissions
 store-permissions: ## Prove nothing writes a local store's files except through PrivateFile. Needs no build.
 	@python3 Scripts/store_permissions_audit.py
@@ -232,7 +237,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit root-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit ratchet-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit root-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit ratchet-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.

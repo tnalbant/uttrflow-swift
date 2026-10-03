@@ -11,6 +11,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
     private struct State {
         var count = 0
         var text: String?
+        var rtf: Data?
         var html: String?
         var picture: (data: Data, width: Int, height: Int)?
         var application: String?
@@ -26,13 +27,14 @@ final class FakeClipboard: ClipboardSource, Sendable {
 
     /// Writes to the clipboard as another application would: the contents change and the count goes up.
     func write(
-        _ text: String?, html: String? = nil,
+        _ text: String?, html: String? = nil, rtf: Data? = nil,
         picture: (data: Data, width: Int, height: Int)? = nil, from application: String? = nil,
         marked markers: PasteboardMarkers = [], bundleIdentifier: String? = nil
     ) {
         state.withLock {
             $0.count += 1
             $0.text = text
+            $0.rtf = rtf
             $0.html = html
             $0.picture = picture
             $0.application = application
@@ -74,6 +76,8 @@ final class FakeClipboard: ClipboardSource, Sendable {
         }
     }
 
+    func rtf() -> Data? { state.withLock(\.rtf) }
+
     /// Arms a write that lands while the watcher is reading the markers of the copy before it.
     func writeWhileMarkersAreRead(_ text: String, marked markers: PasteboardMarkers = []) {
         state.withLock { $0.landsDuringMarkers = (text, markers) }
@@ -93,6 +97,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
 
     /// K4 — a picture the test put on the clipboard.
     func image() -> (data: Data, width: Int, height: Int)? { state.withLock(\.picture) }
+    func hasPicture() -> Bool { state.withLock { $0.picture != nil } }
 
     func frontmostApplicationName() -> String? { state.withLock(\.application) }
     func frontmostApplicationBundleIdentifier() -> String? { state.withLock(\.bundleIdentifier) }
@@ -331,6 +336,50 @@ struct PasteboardWatcherTests {
 
         #expect(noticed?.clip.text == "Hello world")
         #expect(noticed?.clip.richText == "<p>Hello <b>world</b></p>")
+    }
+
+    @Test("records an RTF-only copy as plain text")
+    func rtfOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let rtf = Data(#"{\rtf1\ansi Hello \b world\b0}"#.utf8)
+        clipboard.write(nil, rtf: rtf)
+
+        #expect(await watcher.newClip(at: noon)?.clip.text == "Hello world")
+    }
+
+    @Test("refuses RTF over the single-clip bound before importing it")
+    func oversizedRTFCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = PasteboardWatcher(
+            source: clipboard, budget: .standard.limiting(largestClip: 20), now: { noon })
+        clipboard.write(nil, rtf: Data(repeating: 0x61, count: 21))
+
+        #expect(await watcher.newClip(at: noon) == nil)
+    }
+
+    @Test("keeps a picture attached to copied text")
+    func textAndPictureCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let image = (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)
+        clipboard.write("described picture", picture: image)
+
+        let noticed = await watcher.newClip(at: noon)
+        #expect(noticed?.clip.text == "described picture")
+        #expect(noticed?.clip.kind != .image)
+        #expect(noticed?.picture?.data == image.data)
+    }
+
+    @Test("records a picture-only copy")
+    func pictureOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, picture: (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1))
+
+        let noticed = await watcher.newClip(at: noon)
+        #expect(noticed?.clip.kind == .image)
+        #expect(noticed?.picture?.data == Data([0x47, 0x49, 0x46]))
     }
 
     @Test("ignores a rich-only copy that is blank as plain text")
