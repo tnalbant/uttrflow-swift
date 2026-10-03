@@ -86,8 +86,9 @@ milliseconds, not hundreds.
      mail's body) beside at least two lines stamped with a time of day. A web page's menus,
      links and buttons are short lines too, and on their own they are not a conversation;
    - `symbolShare`: the share of visible characters that are neither letters nor digits,
-     over `preceding`, the typed text and the recent lines (shell lines sit near 0.14,
-     prose under 0.06; the line is 0.10);
+     excluding sentence punctuation such as apostrophes, commas and sentence endings.
+     Samples shorter than 8 visible characters provide no symbol evidence (shell lines sit
+     near 0.14, prose under 0.06; the line is 0.10);
    - `usesSentenceCase`: whether at least half the person's lines here start upper-case and
      end with sentence punctuation, or nothing when they have written nothing here yet;
    - `writesAddresses`: whether this person's lines here are web addresses, or (with none of

@@ -69,6 +69,29 @@ struct RegisterTests {
         #expect(!register.hints.contains { $0.hasPrefix("this person writes") })
     }
 
+    @Test("Sentence punctuation in a short chat reply does not make it code.")
+    func sentencePunctuationKeepsAChatReplyInProse() {
+        let chat = GenerationSituation(
+            application: "Chat",
+            surroundings: "Priya: ready?\nMe: almost.\nPriya: let me know!",
+            recentLines: ["ok, will do.", "sure, I'll send it."],
+            isMultiline: true)
+        let register = Register.infer(from: chat, typed: "I'm good, thanks!")
+
+        #expect(register.isConversational)
+        #expect(register.symbolShare < Register.symbolicShare)
+        #expect(register.kind == "reply")
+        #expect(register.endsAtSentence)
+        #expect(!register.hints.contains("the text here is commands, code or queries rather than prose"))
+    }
+
+    @Test("A short symbol sample is ignored, but enough command text still counts.")
+    func symbolShareNeedsEnoughVisibleCharacters() {
+        #expect(Register.symbolShare(of: ["ls -la"]) == 0)
+        #expect(Register.symbolShare(of: ["\"I'm good, thanks!\""]) == 0)
+        #expect(Register.symbolShare(of: ["ls | grep x"]) > Register.symbolicShare)
+    }
+
     @Test("Emoji in a chat are prose, not symbols, so the line stays a reply.")
     func emojiAreNotSymbols() {
         let chat = GenerationSituation(
