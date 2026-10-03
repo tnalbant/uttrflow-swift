@@ -310,7 +310,7 @@ public struct MeaningPreservationGuard: Sendable {
         return (paragraphs, lines)
     }
 
-    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, or invents a number.
+    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, invents a number, or adds quotation or exclamation marks.
     static func textVerdict(original: String, rewritten: String, excusingPreamble: Bool) -> GuardVerdict {
         let originalWords = TextTidy.words(original)
         let rewrittenWords = TextTidy.words(rewritten)
@@ -353,6 +353,9 @@ public struct MeaningPreservationGuard: Sendable {
         }
         if Self.addsQuotationPair(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
+        }
+        if rewritten.count(where: { $0 == "!" }) > original.count(where: { $0 == "!" }) {
+            return .rejected(reason: "the rewrite added an exclamation mark", kind: .inventedExclamation)
         }
         return .accepted
     }
