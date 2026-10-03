@@ -82,4 +82,44 @@ struct LayoutKeyCodeTests {
         #expect(LayoutKeyCode.code(for: controlCharacter, in: data) == nil)
         #expect(LayoutKeyCode.stroke(for: controlCharacter, in: data) == nil)
     }
+
+    /// The UTF-16 units a planned keypress carries, whichever kind it is.
+    private func units(of keypresses: [LayoutKeyCode.Keypress]) -> [UniChar] {
+        keypresses.flatMap { keypress -> [UniChar] in
+            switch keypress {
+            case .key(let unit, _): [unit]
+            case .text(let units): units
+            }
+        }
+    }
+
+    @Test("US: accented letters and emoji go as Unicode strings while the rest keeps its keys")
+    func usFallsBackPerCharacter() throws {
+        let data = try layoutData(id: "com.apple.keylayout.US")
+        let text = "caf\u{E9} Zo\u{EB} \u{1F600} \u{20B9}5"
+        let plan = LayoutKeyCode.keypresses(for: text) { LayoutKeyCode.stroke(for: $0, in: data) }
+        #expect(units(of: plan) == Array(text.utf16))
+        let cKey = LayoutKeyCode.Stroke(code: 8, flags: [])
+        #expect(plan.first == .key(UniChar(UnicodeScalar("c").value), cKey))
+        #expect(plan[3] == .text([0xE9]))
+        #expect(plan.contains(.text(Array("\u{1F600}".utf16))))
+        #expect(plan.contains(.text([0x20B9])))
+    }
+
+    @Test("Russian and Devanagari: Latin dictation is still typed in full, as Unicode strings")
+    func nonLatinLayoutTypesLatinText() throws {
+        let text = "Hello, I am here at 5 pm."
+        for id in ["com.apple.keylayout.Russian", "com.apple.keylayout.Devanagari-QWERTY"] {
+            let data = try layoutData(id: id)
+            let plan = LayoutKeyCode.keypresses(for: text) { LayoutKeyCode.stroke(for: $0, in: data) }
+            #expect(units(of: plan) == Array(text.utf16), "\(id)")
+            #expect(plan.first == .text([UniChar(UnicodeScalar("H").value)]), "\(id)")
+        }
+    }
+
+    @Test("with no layout at all every scalar is sent as its string")
+    func noLayoutSendsStrings() {
+        let plan = LayoutKeyCode.keypresses(for: "ok\u{1F600}") { _ in nil }
+        #expect(plan == [.text([0x6F]), .text([0x6B]), .text(Array("\u{1F600}".utf16))])
+    }
 }

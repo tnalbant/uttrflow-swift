@@ -32,11 +32,12 @@ with Shift, Option or both set when the layout needs them (`LayoutKeyCode.stroke
 field that reads the Unicode string gets the character, and a field that reads physical keys gets
 a matching key and modifiers instead of key code 0.
 
-The whole text is resolved before any event is posted. If any scalar has no single key on the
-selected layout — a character above U+FFFF, or one reached only through a dead key — typing
-refuses the whole string, and a suggestion checks `canType(_:)` before deleting the text it would
-replace. A dictation refused this way stays under Recent with a Copy action
-([insertion.md](insertion.md)).
+A scalar with no single key on the selected layout — a character above U+FFFF, one reached only
+through a dead key (é on a US layout), or any Latin letter while a Devanagari, Cyrillic, Arabic,
+Hebrew or Greek layout is selected — is posted as its own key pair with key code 0, no modifiers
+and the scalar's UTF-16 units as the Unicode string (`LayoutKeyCode.keypresses(for:stroke:)`).
+One unmapped character therefore never refuses the rest of the text; it falls back to the plain
+Unicode-string event the typed route used before layout keys were added.
 
 The event format alone does not establish which representation a particular application uses.
 The `Completion` column in [compatibility.md](compatibility.md) records observed results by

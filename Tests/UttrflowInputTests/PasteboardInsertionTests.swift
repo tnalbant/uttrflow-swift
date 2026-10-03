@@ -738,7 +738,6 @@ private final class PanelRouteTypist: KeystrokeTyping, @unchecked Sendable {
         lock.unlock()
     }
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
-    func canType(_ text: String) -> Bool { true }
 }
 
 @Suite("Clipboard-free dictation insertion")
@@ -797,7 +796,6 @@ private final class RouteRecordingTypist: KeystrokeTyping, @unchecked Sendable {
         lock.unlock()
     }
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
-    func canType(_ text: String) -> Bool { true }
 }
 
 @Suite("ClipboardTextInsertionEngine")

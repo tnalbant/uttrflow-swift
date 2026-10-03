@@ -10,13 +10,6 @@ public protocol KeystrokeTyping: Sendable {
 
     /// Presses Delete `count` times, which is the only way this route takes typed characters back.
     func deleteBackwards(_ count: Int) throws(TextInsertionError)
-
-    /// Whether every character can be represented by a physical key on the active layout.
-    func canType(_ text: String) -> Bool
-}
-
-extension KeystrokeTyping {
-    public func canType(_ text: String) -> Bool { true }
 }
 
 /// Puts text in by typing it, for the fields Accessibility cannot write into.
@@ -66,9 +59,6 @@ extension TypedTextInsertionEngine: CompletionWriting {
     public func write(
         _ text: String, replacing replaced: String, confirmedPreceding: String?
     ) async throws(TextInsertionError) {
-        guard typist.canType(text) else {
-            throw .insertionRejected(description: "the current keyboard layout cannot type every character")
-        }
         guard let write = writeState.begin() else {
             throw .insertionRejected(description: "the application is terminating")
         }
