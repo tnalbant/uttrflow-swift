@@ -33,7 +33,7 @@ public actor PredictStore: PredictionStore {
 
     /// Where the corpus lives, beside the clipboard and the history, versioned in its name.
     public static func defaultFile(in directory: URL) -> URL {
-        LocalStore.file("predict.v1.sqlite", in: directory)
+        LocalStoreEntry.predict.location(in: directory)
     }
 
     /// Opens and migrates, and on corruption starts again rather than leaving the app broken.

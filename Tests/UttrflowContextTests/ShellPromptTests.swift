@@ -54,6 +54,17 @@ struct ShellPromptTests {
         #expect(ShellPrompt.input(in: "root@host:~# apt update") == "apt update")
     }
 
+    @Test("recognises dollar and root prompts with whitespace before their marker")
+    func spacedDollarAndRootPrompts() {
+        #expect(ShellPrompt.input(in: "~/proj $ ls") == "ls")
+        #expect(ShellPrompt.input(in: "user@host ~/p $ git st") == "git st")
+        #expect(ShellPrompt.input(in: "/ # ls") == "ls")
+        #expect(ShellPrompt.input(in: "bash-5.1# ls") == "ls")
+        #expect(ShellPrompt.input(in: "sh-4.2# ls") == "ls")
+        #expect(ShellPrompt.input(in: "host# ls") == "ls")
+        #expect(ShellPrompt.input(in: "echo 5 $ ") == "echo 5 $ ")
+    }
+
     @Test("A python prompt is a run of chevrons.")
     func pythonPrompt() {
         #expect(ShellPrompt.input(in: ">>> import os") == "import os")

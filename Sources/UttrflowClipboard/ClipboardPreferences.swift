@@ -33,7 +33,7 @@ public struct ClipboardPreferencesFile: Sendable {
     public init(path: String) { self.path = path }
 
     public static func defaultFile(in directory: URL) -> URL {
-        LocalStore.file("clipboard-preferences.v1.json", in: directory)
+        LocalStoreEntry.clipboardPreferences.location(in: directory)
     }
 
     public func load() -> ClipboardPreferences {

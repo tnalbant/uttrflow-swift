@@ -282,6 +282,11 @@ struct DictionaryEditorView: View {
                 Text(editor.pronunciationHint)
                     .font(.system(size: 11.5))
                     .foregroundStyle(PagePalette.faint)
+                if let note = editor.pronunciationNote {
+                    Text(note)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(PagePalette.text)
+                }
             }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,

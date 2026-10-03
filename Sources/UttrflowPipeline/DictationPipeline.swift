@@ -873,8 +873,8 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            await fail(
-                DictationFailure(missedPieces > 0 ? Self.untranscribed : SpeechEngineError.nothingHeard))
+            let silence: SpeechEngineError = missedPieces > 0 ? .speechWithoutWords : .nothingHeard
+            await fail(DictationFailure(silence))
             return
         }
         // Every piece is done while recording, and the screen it is read against still applies.
@@ -1039,7 +1039,7 @@ public actor DictationPipeline {
             return nil
         case .missed:
             // Alone, or while recording where the end decodes it again, a miss fails; otherwise the rest still go in.
-            guard skips, !whole else { throw Self.untranscribed }
+            guard skips, !whole else { throw SpeechEngineError.speechWithoutWords }
             missedPieces += 1
             return nil
         }
@@ -1077,15 +1077,11 @@ public actor DictationPipeline {
         }
         // Busy for ever is what refuses every later dictation. See `Docs/stuck-recording.md`.
         guard let heard else {
-            throw SpeechEngineError.transcriptionFailed(description: "the recogniser did not answer")
+            throw SpeechEngineError.recogniserTimedOut
         }
         isReady = true
         return heard
     }
-
-    /// Speech the recogniser produced no words for, which must not pass for silence.
-    private static let untranscribed = SpeechEngineError.transcriptionFailed(
-        description: "speech in a recording piece produced no words")
 
     /// What the recogniser made of one window.
     private enum Heard: Sendable {

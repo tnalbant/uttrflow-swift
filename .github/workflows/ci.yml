@@ -66,7 +66,7 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # `make verify` is lint, the PII audit, a full build, 8,000+ tests, the 95% per-module
+      # `make verify` is lint, the PII audit, a full build, the test suite, the 95% per-module
       # coverage floor, and the offline audit. The app bundle and its signature are checked
       # separately by app-preflight below, matching the local sequence in CONTRIBUTING.md.
       - name: Start the verify clock

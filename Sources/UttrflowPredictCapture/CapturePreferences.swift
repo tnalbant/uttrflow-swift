@@ -100,7 +100,7 @@ public struct CapturePreferencesFile: Sendable {
 
     /// Where the answers live, beside the corpus they gate.
     public static func defaultFile(in directory: URL) -> URL {
-        LocalStore.file("predict-consent.v1.json", in: directory)
+        LocalStoreEntry.predictConsent.location(in: directory)
     }
 
     /// Reads what was saved; an unreadable file is set aside so the next save cannot erase it.

@@ -379,6 +379,16 @@ public enum MenuBarEmphasis: Sendable, Equatable, CaseIterable {
     case live
     /// Something is waiting on the user.
     case attention
+
+    /// The SF Symbol beside the status line: one dot, or a shape per emphasis when colour must not carry it alone.
+    public func marker(differentiatesWithoutColour: Bool) -> String {
+        guard differentiatesWithoutColour else { return "circlebadge.fill" }
+        return switch self {
+        case .normal: "circle.fill"
+        case .live: "record.circle"
+        case .attention: "exclamationmark.triangle.fill"
+        }
+    }
 }
 
 /// A row of the menu, in the order the menu shows them.

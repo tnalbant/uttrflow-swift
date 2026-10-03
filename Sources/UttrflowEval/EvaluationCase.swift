@@ -42,6 +42,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let mustEndWith: String?
     /// The spoken runs the recogniser was unsure of, which is what makes a case about a doubtful reading fire.
     public let doubtful: [String]
+    /// The formatting case classes this case exercises, which is what the coverage matrix counts.
+    public let classes: [FormattingClass]
 
     public init(
         id: String,
@@ -55,7 +57,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         destination: Destination = .plain,
         mustBeginWith: String? = nil,
         mustEndWith: String? = nil,
-        doubtful: [String] = []
+        doubtful: [String] = [],
+        classes: [FormattingClass] = []
     ) {
         self.id = id
         self.category = category
@@ -69,6 +72,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.mustBeginWith = mustBeginWith
         self.mustEndWith = mustEndWith
         self.doubtful = doubtful
+        self.classes = classes
     }
 
     /// Below the correction engine's threshold, which is the line a doubtful word has to fall under.

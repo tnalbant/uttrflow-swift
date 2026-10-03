@@ -229,10 +229,12 @@ struct DictationStageTimeoutTests {
         await expire(StageTimeout.transcription, at: .transcribing, of: pipeline, on: clock)
         await settle(finishing)
 
-        guard case .failed = await pipeline.currentState else {
+        guard case .failed(let failure) = await pipeline.currentState else {
             Issue.record("expected the dictation to fail, got \(await pipeline.currentState)")
             return
         }
+        // A hang is told apart from a fault, since its remedy is to wait or free the Mac.
+        #expect(failure.speechEngineError == .recogniserTimedOut)
         // The point of the whole thing: not busy, so the next dictation can start.
         #expect(await pipeline.currentState.isBusy == false)
         // An expired stage is a failed one, or the failure counts never see a hung recogniser.
