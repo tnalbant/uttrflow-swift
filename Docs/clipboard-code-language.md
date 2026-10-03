@@ -6,6 +6,10 @@ and the preview, and chooses which formatter may be offered
 ([`clipboard-reindent.md`](clipboard-reindent.md#running-a-formatter)). A wrong label is a small
 lie the user discounts on every scan, so `nil` is the usual answer.
 
+`CodeShapes.matches(_:)` checks whether clipboard text has enough source structure to treat it as code.
+It recognizes HTML, Markdown, consecutive YAML/TOML pairs and standalone statements. Known diagnostics
+and unstructured prose stay text; language detection runs afterward.
+
 | Value | Constant | Why |
 | --- | --- | --- |
 | 3 points | `bar` | one near-unique marker plus corroboration, never a single token |
