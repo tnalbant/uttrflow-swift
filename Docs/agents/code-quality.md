@@ -161,10 +161,13 @@ Dependencies are declared in `Package.swift`; a cycle fails the build.
 | Everything else | logic, stores, models, presentation, evaluation | 0 |
 
 ```bash
-grep -rlE '^import (AppKit|ApplicationServices|SwiftUI|Cocoa)' Sources/UttrflowCore Sources/UttrflowAI Sources/UttrflowPredict
+make layering-audit
 ```
 
-prints nothing, and the same holds for every module in the second row.
+fails on a UI-framework import in any module of the second row, and on a `Package.swift` target
+dependency from one of those modules to a module of the first row. The count is baselined in
+`Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
+--report` lists what is left.
 
 A change that adds a module states, in the pull request: the module's one-sentence
 responsibility, the modules it depends on and why none points the wrong way, its public surface in

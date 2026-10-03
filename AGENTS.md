@@ -274,6 +274,7 @@ Every row is checked by a command. Breaking one is a bug whatever it improves.
 | Force unwraps, `try!`, implicitly unwrapped optionals | 0 | `make lint` |
 | Compiler warnings | 0 | `make build` |
 | Spelling matches decided by shape | never rises | `make match-audit` |
+| Logic-module UI imports and platform dependencies | never rises | `make layering-audit` |
 | Real personal data in fixtures | 0 | `make pii-audit` |
 | Connections on the dictation path | 0 | `make offline-audit` |
 | Session-only text in a tracked file, commit or PR | 0 | `make disclosure-audit` |

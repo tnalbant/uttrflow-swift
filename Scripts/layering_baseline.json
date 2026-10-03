@@ -1,0 +1,8 @@
+{
+  "files": {
+    "Package.swift: UttrflowPredictCapture -> UttrflowClipboard": 1,
+    "Package.swift: UttrflowUX -> UttrflowClipboard": 1,
+    "Sources/UttrflowAudio/RecordingCue+System.swift": 1
+  },
+  "total": 3
+}
