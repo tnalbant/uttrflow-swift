@@ -148,6 +148,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
 | [probe-log.md](probe-log.md) | Where, when and on which build every probe number was measured |
 | [bakeoff.md](bakeoff.md) | Local model bake-off |
+| [mutation-guard.md](mutation-guard.md) | Which meaning-guard checks a test would miss, by mutation |
 | [bakeoff-method.md](bakeoff-method.md) | How the bake-off measures, and why each row is there |
 
 ## Building, testing and shipping
