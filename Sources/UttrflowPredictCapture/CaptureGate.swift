@@ -1,6 +1,7 @@
 // Every reason a finished value may not be learned, and the answer the capture path asks for.
 private import Foundation
 private import UttrflowClipboard
+private import UttrflowCore
 private import UttrflowPredict
 public import UttrflowPredictStore
 

@@ -1,6 +1,7 @@
 public import UttrflowPredict
 
 import Foundation
+private import UttrflowCore
 
 /// What a focused text field says about itself, before any of it is believed.
 public struct FieldReading: Sendable, Equatable {
