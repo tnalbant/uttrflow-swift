@@ -152,9 +152,16 @@ public enum QuestionShape {
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
                 }
+                let verbIndex = offset + 1
+                let following = clause.dropFirst(verbIndex + 1).first
                 if lexicalQuestionVerbs.contains(word) {
-                    let following = clause.dropFirst().drop(while: { $0 != word }).dropFirst().first
-                    return following.map { !subjects.contains($0) && !determiners.contains($0) } ?? true
+                    guard following.map({ !subjects.contains($0) && !determiners.contains($0) }) ?? true
+                    else { return false }
+                    return !isFreeRelativeSubject(clause, verbIndex: verbIndex)
+                }
+                // A word straight after the question word that takes an object is its verb: "who owns the service".
+                if offset == 0, let following, determiners.contains(following) {
+                    return !isFreeRelativeSubject(clause, verbIndex: verbIndex)
                 }
             }
             return false
@@ -165,6 +172,18 @@ public enum QuestionShape {
         // "Do the dishes" and "have a seat" tell rather than ask, so these ask only before a pronoun.
         if pronounVerbs.contains(first) { return subjects.contains(second) }
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
+    }
+
+    /// Whether the question word clause is the subject of a later main verb, as in "what works for you is fine".
+    private static func isFreeRelativeSubject(_ clause: [String], verbIndex: Int) -> Bool {
+        for index in clause.indices.dropFirst(verbIndex + 1) {
+            let word = clause[index]
+            if subordinateWords.contains(word) || questionWords.contains(word) { return false }
+            guard verbsBeforeSubject.contains(word) else { continue }
+            // A subject after the later verb inverts a second question rather than closing a statement.
+            return !subjects.contains(clause.dropFirst(index + 1).first ?? "")
+        }
+        return false
     }
 
     /// Whether an unembedded Hindi question word appears in the clause.
