@@ -88,7 +88,7 @@ extension AccessibilityTextInsertionEngine {
     ) throws(TextInsertionError) {
         guard let destination else { return }
         guard destination.isKnown, let expected = destination.bundleIdentifier,
-            focus.frontmostApplication()?.bundleIdentifier == expected
+            focus.focusedApplication()?.bundleIdentifier == expected
         else { throw .insertionTargetChanged }
     }
 }
