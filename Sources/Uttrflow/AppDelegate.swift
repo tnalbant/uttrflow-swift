@@ -2532,6 +2532,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // A refusal describes one attempt, and describes nothing once the typing changes.
             wordRefusal = nil
             snippetRefusal = nil
+            measureSnippetArrival()
             redrawPages([.dictionary, .snippets])
         }
         return window
@@ -2748,7 +2749,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         SnippetsPresenter.page(
             for: SnippetsSnapshot(
                 snippets: knownSnippets, draft: snippetDraft, refusal: snippetRefusal,
-                query: query(for: .snippets), now: now))
+                query: query(for: .snippets), now: now, arrival: snippetArrival))
     }
 
     /// Reads the account the pages draw from.
@@ -2788,6 +2789,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Why the last Save was refused, per editor, until the next keystroke clears it.
     private var wordRefusal: String?
     private var snippetRefusal: String?
+    /// How the snippet draft's trigger arrives when said, measured off the main actor as the user types.
+    private var snippetArrival: SnippetArrival?
+    private var snippetArrivalWork: Task<Void, Never>?
     /// Why the last delete, flag, restore or undo did not happen, until one of them works or the page changes.
     private(set) var actionNotice: MainNotice?
     /// The complete snippet held for the short main-window undo window.
@@ -3246,7 +3250,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         snippetEditorIsOpen = draft != nil
         snippetRefusal = nil
         mainWindow?.editSnippet(draft)
+        measureSnippetArrival()
         refreshMainWindow()
+    }
+
+    /// Runs the open draft's trigger through dictation's own cleaning, so the editor can say what the matcher will see.
+    private func measureSnippetArrival() {
+        snippetArrivalWork?.cancel()
+        guard let trigger = snippetDraft?.trigger, !trigger.isEmpty, let pipeline else { return }
+        guard snippetArrival?.trigger != trigger else { return }
+        snippetArrivalWork = Task { [weak self] in
+            let arrives = await pipeline.arrival(ofSpoken: trigger)
+            guard let self, !Task.isCancelled, snippetDraft?.trigger == trigger else { return }
+            snippetArrival = SnippetArrival(trigger: trigger, arrives: arrives)
+            redrawPages([.snippets])
+        }
     }
 
     /// Saves a snippet, closing the editor only once it is in, as saving a word does.
