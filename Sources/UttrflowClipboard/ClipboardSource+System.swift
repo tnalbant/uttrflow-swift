@@ -23,11 +23,22 @@ public struct SystemClipboardSource: ClipboardSource {
         NSPasteboard.general.string(forType: .string)
     }
 
+    /// RTF bytes within the same single-clip bound used for plain text.
+    public func rtf() -> Data? {
+        guard
+            let data = NSPasteboard.general.data(forType: .rtf),
+            budget.largestClip == 0 || data.count <= budget.largestClip
+        else {
+            return nil
+        }
+        return data
+    }
+
     public func markers() -> PasteboardMarkers {
         PasteboardMarkers(types: NSPasteboard.general.types?.map(\.rawValue) ?? [])
     }
 
-    /// The formatted flavour, HTML only; RTF would need a conversion on a tick that must stay cheap.
+    /// The formatted flavour, HTML only; RTF has its own bounded import.
     public func html() -> String? {
         NSPasteboard.general.string(forType: .html)
     }
@@ -35,6 +46,11 @@ public struct SystemClipboardSource: ClipboardSource {
     /// The picture on the clipboard as PNG, judged by its header first and never via a TIFF macOS translates for us.
     public func image() -> (data: Data, width: Int, height: Int)? {
         Self.picture(on: .general, within: budget)
+    }
+
+    public func hasPicture() -> Bool {
+        guard let types = NSPasteboard.general.types else { return false }
+        return types.contains { Self.pictureFlavours.contains($0) }
     }
 
     /// The flavours asked for, compressed first: asking for TIFF makes macOS decode a JPEG or HEIC into one.

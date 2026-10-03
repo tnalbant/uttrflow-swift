@@ -166,9 +166,20 @@ public actor PasteboardWatcher {
         defer { isReading = false }
         // Fetched only now, and once, so an idle tick costs one integer read.
         guard let copied = await bounded({ [source] in source.text() }) else { return nil }
+        let rtf: Data?
+        if copied == nil {
+            guard let data = await bounded({ [source] in source.rtf() }) else { return nil }
+            rtf = data.flatMap {
+                budget.largestClip == 0 || $0.count <= budget.largestClip ? $0 : nil
+            }
+        } else {
+            rtf = nil
+        }
+        let rtfText = rtf.flatMap(RichTextPlainForm.plainText(fromRTF:))
         // Read once, bounded and outside the lock, and only when a picture announcement could claim it.
         var read: ClipboardPicture?? = .none
-        if copied == nil, awaitsPicture() {
+        let hasPicture = source.hasPicture()
+        if copied == nil, hasPicture, awaitsPicture() {
             guard let picture = await bounded({ [source] in source.image() }) else { return nil }
             read = .some(picture)
         }
@@ -181,7 +192,15 @@ public actor PasteboardWatcher {
         guard source.changeCount() == count else { return nil }
 
         // K4 — a picture, asked first because the branch below returns for anything textless.
-        if copied == nil, let picture = await pictureRead(read) {
+        let picture: ClipboardPicture?
+        if let read {
+            picture = read
+        } else if hasPicture {
+            picture = await bounded({ [source] in source.image() }) ?? nil
+        } else {
+            picture = nil
+        }
+        if copied == nil, rtfText == nil, let picture {
             guard !markers.contains(.concealed), source.changeCount() == count else { return nil }
             return NoticedClip(
                 clip: Clip(
@@ -198,7 +217,8 @@ public actor PasteboardWatcher {
         // Before the conversion, which costs in proportion to the HTML however the bound would judge it.
         guard fitsTheBound(copied ?? "", html) else { return nil }
         // E1 — the plain form is derived only here, where the alternative is no clip at all.
-        guard let text = copied ?? html.map(RichTextPlainForm.plainText(fromHTML:)),
+        guard
+            let text = copied ?? rtfText ?? html.map(RichTextPlainForm.plainText(fromHTML:)),
             ClipContent.isWorthKeeping(text)
         else { return nil }
 
@@ -216,7 +236,8 @@ public actor PasteboardWatcher {
                 // Only of a clip already judged to be code, so prose never pays for the detector.
                 language: classified.language,
                 // E — kept beside the plain form, never instead of it.
-                richText: html))
+                richText: html),
+            picture: picture)
     }
 
     /// Whether a picture announcement is armed, asked without reading the clipboard.
@@ -227,12 +248,6 @@ public actor PasteboardWatcher {
                 return false
             }
         }
-    }
-
-    /// The picture the claim already read, or a fresh bounded read when the claim had no need of one.
-    private func pictureRead(_ read: ClipboardPicture??) async -> ClipboardPicture? {
-        if let read { return read }
-        return await bounded({ [source] in source.image() }) ?? nil
     }
 
     /// One clipboard read, given up on once ``readLimit`` has passed, since the writing app answers it.

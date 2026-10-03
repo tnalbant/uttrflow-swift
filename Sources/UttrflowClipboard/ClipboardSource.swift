@@ -9,14 +9,18 @@ public protocol ClipboardSource: Sendable {
 
     /// The current contents as text, or `nil` when the clipboard holds something else.
     func text() -> String?
+    /// The RTF flavour, read only when the clipboard has no plain text.
+    func rtf() -> Data?
     /// The formatted flavour, read alongside the plain one, never instead of it.
     func html() -> String?
 
     /// The nspasteboard.org markers on the current contents, read once per change.
     func markers() -> PasteboardMarkers
 
-    /// The picture on the clipboard as PNG bytes and pixel size, read only when there is no text.
+    /// The picture on the clipboard as PNG bytes and pixel size, read for copies that may have text or RTF.
     func image() -> (data: Data, width: Int, height: Int)?
+    /// Whether the current pasteboard advertises a picture flavour without reading its bytes.
+    func hasPicture() -> Bool
 
     /// The application in front of the user, shown as best-effort provenance.
     func frontmostApplicationName() -> String?
@@ -30,6 +34,12 @@ public protocol ClipboardSource: Sendable {
 }
 
 extension ClipboardSource {
+    /// Sources without a picture-flavour probe remain usable.
+    public func hasPicture() -> Bool { false }
+
+    /// Sources without RTF remain usable.
+    public func rtf() -> Data? { nil }
+
     /// Sources without application provenance remain usable; unknown apps are never excluded.
     public func frontmostApplicationBundleIdentifier() -> String? { nil }
 

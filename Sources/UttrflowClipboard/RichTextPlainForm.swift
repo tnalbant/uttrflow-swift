@@ -1,5 +1,19 @@
+import AppKit
+public import struct Foundation.Data
+
 /// The plain text of a rich clip, for a target with no formatting. See Docs/clipboard-plain-form.md.
 public enum RichTextPlainForm: Sendable {
+    /// The plain text of bounded RTF, or `nil` when AppKit cannot read it.
+    public static func plainText(fromRTF data: Data) -> String? {
+        guard
+            let richText = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil)
+        else { return nil }
+        return richText.string
+    }
+
     /// The readable plain-text form of `html`; total, so unparseable input yields text rather than an error.
     public static func plainText(fromHTML html: String) -> String {
         var tokenizer = HTMLTokenizer(html)
