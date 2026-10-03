@@ -1,5 +1,4 @@
 // What the main window says when a change it was asked to make was refused.
-public import struct Foundation.UUID
 public import UttrflowCore
 
 /// A refused change, said where the user pressed; the window carries the latest one only.
@@ -36,14 +35,6 @@ extension MainNotice {
     public static let clipboardCopyFailed = MainNotice(
         message: "Could not copy to the clipboard. Please try again.",
         symbolName: "exclamationmark.triangle", tone: .warning)
-
-    /// Announces the word a correction just added and offers to remove that inferred entry.
-    public static func learnedCorrection(_ word: String, id: UUID) -> MainNotice {
-        MainNotice(
-            message: "Learned “\(word)” from that correction.",
-            symbolName: "character.book.closed.fill", tone: .neutral,
-            action: MainAction(title: "Undo", intent: .undoLearnedWord(id)))
-    }
 
     /// Explains a first rules-only dictation caused by Apple Intelligence readiness.
     public static func appleIntelligenceUnavailable(_ reason: TransformerUnavailableReason) -> MainNotice {
