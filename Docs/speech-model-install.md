@@ -36,6 +36,13 @@ The store checks pinned byte counts and a recorded weights revision on every men
 600 MB there is not affordable. The downloader hashes each staged file before reusing it, so a
 revision bump fetches only changed files while the complete replacement stays in staging.
 
+An install made before the revision record existed has every pinned file and no record, so it
+reads as not installed. `install(_:onProgress:)` hashes such a folder in place first: when every
+file matches its pinned digest it writes the record and fetches nothing, and otherwise the
+ordinary repair runs. `whyNotInstalled(_:)` names which of these cases applies, and the
+`uttrflow-dev` refusals print it. Measured on an Apple M5 Pro with a pre-record install of the
+default model: `uttrflow-dev models install` adopted it in 4 seconds with no `.partial` folder.
+
 ## Missing components are ordered weights-first
 
 The weights are the wait: they own the progress bar, so asking for them first means the bar

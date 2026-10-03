@@ -50,7 +50,7 @@ struct Bench: AsyncParsableCommand {
         let model = try resolve(modelVariant)
         let store = try modelsDirectory.store()
         guard store.isInstalled(model) else {
-            throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
+            throw notInstalled(model, in: store)
         }
         let parsed = try String(contentsOfFile: jobs, encoding: .utf8)
             .split(separator: "\n").filter { !$0.isEmpty }.map { try BenchJob(line: String($0)) }
