@@ -546,14 +546,15 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
-        beginPass()
-        defer { endPass() }
         let generation = forgetGeneration
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
             guard let container else { return [] }
             guard let vocabulary = self.vocabulary else { return [] }
+            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.
+            beginPass()
+            defer { endPass() }
             let judged = await container.perform { loaded in
                 Self.judgedFromCache(
                     line, candidate: candidate, context: context, vocabulary: vocabulary,
@@ -571,6 +572,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
             return []
         }
         guard let scoringVocabulary = self.vocabulary else { return [] }
+        beginPass()
+        defer { endPass() }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
             let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)
             let judged = Self.judgedFromCache(
