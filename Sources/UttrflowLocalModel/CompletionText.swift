@@ -194,7 +194,8 @@ enum CompletionText {
     static func joined(_ typed: String, with answer: String) -> String? {
         guard let last = typed.last, let first = answer.first else { return nil }
         guard last.isWhitespace || first.isWhitespace || first.isPunctuation else { return nil }
-        return typed + answer
+        let continuation = last.isWhitespace ? answer.drop(while: \.isWhitespace) : answer[...]
+        return typed + continuation
     }
 
     /// The text up to the last word cut by the budget, or nothing when the cut fell inside its only word.

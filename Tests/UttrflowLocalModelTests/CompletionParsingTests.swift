@@ -262,6 +262,7 @@ struct CompletionParsingTests {
     func anEchoLessAnswerJoinsOnlyAtABoundary() {
         #expect(CompletionText.joined("busy nahi ", with: "hoon bolo") == "busy nahi hoon bolo")
         #expect(CompletionText.joined("busy nahi", with: " hoon bolo") == "busy nahi hoon bolo")
+        #expect(CompletionText.joined("busy nahi ", with: " hoon bolo") == "busy nahi hoon bolo")
         #expect(CompletionText.joined("see you at 8", with: ", then") == "see you at 8, then")
         #expect(CompletionText.joined("busy nahi", with: "hoon bolo") == nil)
         #expect(CompletionText.joined("git c", with: "ommit -m") == nil)
