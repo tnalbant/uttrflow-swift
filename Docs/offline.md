@@ -332,7 +332,8 @@ keeps the per-file resolution affordable in a gate.
   module names no networking type and its object file carries no networking symbol. Both
   halves of the audit are blind to it. Check 1b names every file that uses one, so a new one
   has to be argued for; it does not establish that the existing ones are local, which was done
-  by reading them.
+  by reading them. `Sources/UttrflowTestSupport/GoldenFile.swift` reads the repository fixture beside
+  its calling test, derived from that test's `#filePath`; it is not linked into the app.
 - **A dependency is judged whole, not per file.** The per-object check applies to Uttrflow's
   own modules, where the audit has a file-level claim to make. For a dependency it asserts only
   that the set of network-capable dependencies has not grown, which says nothing about when any

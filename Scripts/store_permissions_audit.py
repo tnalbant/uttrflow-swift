@@ -36,6 +36,8 @@ ALLOWED = {
     "UttrflowCore/Support/PrivateFile.swift": (
         None, "is the helper every other path goes through"),
     "UttrflowEval/": (None, "the evaluation harness, which never ships and writes no user data"),
+    "UttrflowTestSupport/": (
+        None, "reads and rewrites golden fixtures beside tests, never user data"),
     "uttrflow-bakeoff/": (None, "a developer tool, run from a terminal against a corpus"),
     "uttrflow-dev/": (None, "a developer tool, run from a terminal"),
     "uttrflow-eval/": (None, "a developer tool, run from a terminal"),
