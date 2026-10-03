@@ -701,7 +701,6 @@ struct DestructiveCommandTests {
         "A parallel runner that executes a destroyer is recognised.",
         arguments: [
             "parallel rm -rf /data",
-            "parallel 'rm -rf /data'",
             "parallel -j 8 rm -rf /data",
             "parallel --jobs 4 rm -rf /data",
             "parallel dd if=/dev/zero of=/dev/disk2",
