@@ -483,7 +483,8 @@ public enum MenuBarPresenter {
 
         let statusLine = statusLine(for: state)
         return MenuBarPresentation(
-            icon: icon(for: state.activity, failure: state.failure),
+            icon: icon(
+                for: state.activity, failure: state.failure, dictationEnabled: state.features.dictation),
             statusLine: statusLine,
             emphasis: emphasis,
             accessibilityLabel: spokenForm(of: statusLine),
@@ -500,8 +501,11 @@ public enum MenuBarPresenter {
     // MARK: The icon
 
     /// States differ at a glance, so the bar alone says whether the microphone is live or text arrived.
-    static func icon(for activity: DictationActivity, failure: FailurePresentation?) -> MenuBarIcon {
+    static func icon(
+        for activity: DictationActivity, failure: FailurePresentation?, dictationEnabled: Bool = true
+    ) -> MenuBarIcon {
         if let failure { return icon(for: failure) }
+        guard dictationEnabled else { return .symbol("mic.slash") }
         return switch activity {
         case .idle: .mark
         case .listening: .symbol("mic.fill")
@@ -541,6 +545,7 @@ public enum MenuBarPresenter {
         case .notInstalled:
             return SpeechModelLoad.missing.status
         case .ready:
+            guard state.features.dictation else { return "Dictation off" }
             return switch state.activity {
             case .idle: "Ready"
             case .listening: listeningLine(for: state.recordingAdvice)

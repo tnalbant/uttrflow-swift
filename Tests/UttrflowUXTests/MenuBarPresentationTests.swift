@@ -73,6 +73,19 @@ struct MenuBarIconTests {
         #expect(enabled.icon == disabled.icon)
     }
 
+    @Test("shows dictation switched off apart from resting, in the icon and the status line")
+    func dictationOffDiffersFromRest() {
+        let resting = MenuBarPresenter.present(MenuBarState(activity: .idle))
+        for activity in DictationActivity.allCases {
+            let off = MenuBarPresenter.present(
+                MenuBarState(activity: activity, features: MenuBarFeatures(dictation: false)))
+            #expect(off.icon == .symbol("mic.slash"))
+            #expect(off.icon != resting.icon)
+            #expect(off.statusLine == "Dictation off")
+            #expect(off.accessibilityLabel != resting.accessibilityLabel)
+        }
+    }
+
     @Test("overrides every activity when something needs fixing")
     func attentionOutranksActivity() {
         for activity in DictationActivity.allCases {
