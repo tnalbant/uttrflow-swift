@@ -362,6 +362,18 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: #"{"auth":"not-a-base64-user-password"}"#) != .secret)
     }
 
+    /// Quote marks frame a value rather than belong to it, so each quoted value is judged on its own.
+    @Test("judges each quoted value of a one-line structure on its own")
+    func quotedValuesJudgedAlone() {
+        for key in ["auth", "name", "branch"] {
+            #expect(ClipKindDetector.kind(of: #"{"\#(key)":"not-a-base64-user-password"}"#) != .secret)
+            #expect(ClipKindDetector.kind(of: "{'\(key)':'release-2nd-build-v2'}") != .secret)
+            #expect(ClipKindDetector.kind(of: #"{"\#(key)":"Zx9kLmQ2rT7pQ3vB8nW4"}"#) == .secret)
+            #expect(ClipKindDetector.kind(of: "{'\(key)':'Zx9kLmQ2rT7pQ3vB8nW4'} é") == .secret)
+        }
+        #expect(ClipKindDetector.kind(of: #"Zx9kLm"Q2rT7pQ3vB8nW4"#) == .secret)
+    }
+
     /// A quoted value followed by more of an expression, or a bare value run into a `#`, is not a value that ended.
     @Test(
         "does not mask a quoted string that only starts an expression",
