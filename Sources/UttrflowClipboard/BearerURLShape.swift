@@ -116,6 +116,16 @@ enum BearerURLShape {
     /// Incoming-webhook addresses of the chat services, which post as whoever holds them.
     private static func isWebhook(host: String, path: [Substring]) -> Bool {
         switch host {
+        case "api.telegram.org":
+            guard let bot = path.first, bot.hasPrefix("bot"), let colon = bot.firstIndex(of: ":") else {
+                return false
+            }
+            let identifier = bot[bot.index(bot.startIndex, offsetBy: 3)..<colon]
+            let token = bot[bot.index(after: colon)...]
+            return !identifier.isEmpty && identifier.allSatisfy(\.isNumber)
+                && identifier.allSatisfy(\.isASCII)
+                && token.count == 35 && token.allSatisfy(\.isASCII)
+                && token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
         case "hooks.slack.com":
             guard ["services", "workflows", "triggers"].contains(path.first ?? ""), path.count >= 4,
                 hasIdentifier(path[1], prefix: "T"), hasIdentifier(path[2], prefix: "B")

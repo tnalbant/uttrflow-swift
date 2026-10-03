@@ -73,6 +73,10 @@ a wallet credential; other language lists and invalid checksums are not detected
 8. A credential handed to a command or sent in a header (below).
 9. The statistical rule below.
 
+## Telegram bot addresses
+
+The Telegram Bot API token is a bearer credential in the first path segment: `bot`, a decimal bot identifier, a colon, and a 35-character token. `BearerURLShape` recognizes that complete shape only on `api.telegram.org`; the ordinary entropy rule skips URLs because their punctuation and surrounding address distort the token signal. The host and path are parsed together, so an unrelated URL with a similar path stays a link.
+
 ## A credential handed to a command
 
 A credential inside a one-line command is not a named secret: the named-secret rule needs the
