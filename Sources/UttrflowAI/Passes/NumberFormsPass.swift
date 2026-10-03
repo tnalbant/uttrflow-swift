@@ -342,7 +342,7 @@ public struct NumberFormsPass: CleaningPass {
         return NumberWords.units[key].map(String.init)
     }
 
-    /// A run starts with any digit word, including "oh", and only joins three or more.
+    /// Joins three or more digit words with a nonzero one among them and no scale after them.
     private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard let first = singleDigit(keys[start]) else { return nil }
         var text = first
@@ -351,7 +351,8 @@ public struct NumberFormsPass: CleaningPass {
             text.append(digit)
             end += 1
         }
-        guard text.count >= 3 else { return nil }
+        guard text.count >= 3, text.contains(where: { $0 != "0" }) else { return nil }
+        guard !(joined(end, shapes) && NumberWords.scales[keys[end]] != nil) else { return nil }
         return Phrase(text: text, count: end - start)
     }
 

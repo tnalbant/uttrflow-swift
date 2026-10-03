@@ -168,6 +168,19 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "keeps a run of only zero words as words",
+        arguments: ["oh oh oh that is great", "zero zero zero", "oh oh no"]
+    )
+    func keepsAllZeroRuns(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("does not join single digits that a scale word follows")
+    func keepsDigitsBeforeAScale() {
+        #expect(!cleaned("it was one one one hundred", by: sut).contains("111 hundred"))
+    }
+
     @Test("keeps a digit string after an intervening is")
     func keepsExtensionDigitsAfterIs() {
         #expect(cleaned("my extension is 445", by: sut) == "my extension is 445")
