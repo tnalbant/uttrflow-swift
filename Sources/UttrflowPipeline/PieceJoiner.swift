@@ -82,7 +82,12 @@ enum PieceJoiner {
     ) -> [String] {
         let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
         return pieces.enumerated().map { index, text in
-            guard index > 0, sentenceRunsOn(pieces[index - 1], into: text) else {
+            guard index > 0,
+                sentenceRunsOn(pieces[index - 1], into: text)
+                    || groupRunsAcross(
+                        pieces[index - 1], into: text,
+                        previousWasHeardEndingOnScale: heardScaleEnding(heard, at: index - 1))
+            else {
                 return index == pieces.count - 1
                     ? text : endedAtSeam(text, before: pieces[index + 1], under: formatter)
             }
@@ -241,7 +246,8 @@ enum PieceJoiner {
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
             !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline))
         else { return text }
-        return sentenceRunsOn(text, into: next) ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
+        return sentenceRunsOn(text, into: next)
+            ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
     }
 
     /// Whether a piece ends with the spoken command that opens a new line.
@@ -259,19 +265,30 @@ enum PieceJoiner {
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
         SentenceBoundaryEvidence.sentenceRunsOn(text, into: next)
             || trailingTriggerDiscardsWords(in: text, before: next)
-            || groupRunsAcross(text, into: next)
     }
 
     /// The longest digit group or letter run a speaker says in one breath, as in a phone number's "555" or a code's "AB".
     static let longestSpokenGroup = 6
 
-    /// Whether the seam falls between two groups of one spoken number or code, with no mark at the cut but a full stop.
-    private static func groupRunsAcross(_ text: String, into next: String) -> Bool {
+    /// Whether the seam falls inside a spoken group, with scale-word evidence required after a stop.
+    private static func groupRunsAcross(
+        _ text: String, into next: String, previousWasHeardEndingOnScale: Bool = false
+    ) -> Bool {
         guard let last = text.split(whereSeparator: \.isWhitespace).last.map({ WordShape(String($0)) }),
             let first = next.split(whereSeparator: \.isWhitespace).first.map({ WordShape(String($0)) })
         else { return false }
-        return (last.suffix.isEmpty || last.suffix == ".") && first.prefix.isEmpty && isSpokenGroup(last.core)
+        let noSentenceStop = last.suffix.isEmpty
+        return (noSentenceStop || (last.suffix == "." && previousWasHeardEndingOnScale))
+            && first.prefix.isEmpty && isSpokenGroup(last.core)
             && isSpokenGroup(first.core)
+    }
+
+    /// Whether the recognizer heard the preceding piece end on a number scale word.
+    private static func heardScaleEnding(_ heard: [String], at index: Int) -> Bool {
+        guard heard.indices.contains(index),
+            let last = heard[index].split(whereSeparator: \.isWhitespace).last
+        else { return false }
+        return NumberWords.scales[WordShape(String(last)).key] != nil
     }
 
     /// A rendered digit group, or a run of capital letters said one at a time, no longer than `longestSpokenGroup`.
