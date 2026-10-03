@@ -2740,7 +2740,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             for: DictionarySnapshot(
                 entries: knownWords, draft: wordDraft, refusal: wordRefusal,
                 query: query(for: .dictionary), filter: scope(for: .dictionary),
-                corrections: corrections, now: now))
+                corrections: corrections, now: now,
+                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt))
     }
 
     /// The Snippets page as the last reading of the snippets draws it.

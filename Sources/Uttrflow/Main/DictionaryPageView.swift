@@ -12,9 +12,9 @@ struct DictionaryPageView: View {
     /// Reports the chosen filter chip.
     var onFilter: (String) -> Void = { _ in }
 
-    /// The artboard's columns: word, sound, source, used, undone, and the row's controls.
+    /// The artboard's columns: word, sound, source, recogniser prompt, used, undone, and the row's controls.
     static let widths: [PageColumnWidth] = [
-        .share(1.1), .share(1.1), .share(1), .fixed(55), .fixed(60), .fixed(76),
+        .share(1.1), .share(1.1), .share(1), .share(1), .fixed(55), .fixed(60), .fixed(76),
     ]
 
     var body: some View {
@@ -61,7 +61,7 @@ struct DictionaryPageView: View {
     private var table: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             PageTableHeader(
-                titles: ["Write it as", "Say it like", "From", "Used", "Undone", ""],
+                titles: ["Write it as", "Say it like", "From", "Recogniser", "Used", "Undone", ""],
                 widths: Self.widths)
             ForEach(presentation.rows) { row in
                 PageDivider()
@@ -93,6 +93,12 @@ struct DictionaryRowView: View {
                 .accessibilityLabel(row.pronunciation == "—" ? "No pronunciation" : row.pronunciation)
             PageTintChip(text: row.source.title, tint: DictionarySourceTint.color(row.source))
                 .help(row.origin)
+            PageTintChip(
+                text: row.prompt.text,
+                tint: row.prompt.isInPrompt ? PagePalette.dictation : PagePalette.neutral
+            )
+            .help(row.prompt.spoken)
+            .accessibilityLabel(row.prompt.spoken)
             Text("\(row.timesUsed)×")
                 .monospacedDigit()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
