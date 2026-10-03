@@ -23,6 +23,15 @@ corpus comparison could not be run.
 - [ ] No real email address, postal address or personal data in fixtures — `example.com` and invented streets
 - [ ] Comments are one line, present tense, and describe what the code does now
 
+If this change stores anything learned about the person, answer each of these and update
+[`Docs/persona-threat-model.md`](../Docs/persona-threat-model.md) in this pull request:
+
+- [ ] Where it is stored, encrypted or not, and with what file permissions
+- [ ] How it is reset, and that reset personalisation clears it
+- [ ] Whether it is in the export archive and in retention
+- [ ] What a log line or crash report could reveal about it
+- [ ] What the settings screen shows of it
+
 Add a reason only when it changes what a reader should do. Put durable measurements or
 architectural rationale in `Docs/`; put development history in this description or the commit.
 
