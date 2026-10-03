@@ -13,6 +13,8 @@ public struct CaseScore: Sendable, Equatable {
     public let keptEverythingRequired: Bool
     /// Words that should have survived and did not.
     public let lost: [String]
+    /// Reference words the rewrite dropped with nothing in their place, in reference order.
+    public let deleted: [String]
     /// Words the rewrite invented that the case forbids; worse than losing one.
     public let invented: [String]
     /// The exact beginning or ending the case required and the rewrite did not have.
@@ -26,7 +28,7 @@ public struct CaseScore: Sendable, Equatable {
         caseID: String, similarity: Double, markAccuracy: Double = 1, caseAccuracy: Double = 1,
         keptEverythingRequired: Bool,
         lost: [String], isExact: Bool, declined: Bool = false, invented: [String] = [],
-        brokeShape: [String] = []
+        brokeShape: [String] = [], deleted: [String] = []
     ) {
         self.caseID = caseID
         self.similarity = similarity
@@ -38,11 +40,13 @@ public struct CaseScore: Sendable, Equatable {
         self.declined = declined
         self.invented = invented
         self.brokeShape = brokeShape
+        self.deleted = deleted
     }
 
-    /// Passes only when everything required survives and the rewrite stays close to the reference.
+    /// Passes only when no reference word is dropped, nothing required is lost and the rewrite stays close.
     public var passed: Bool {
-        !declined && keptEverythingRequired && invented.isEmpty && brokeShape.isEmpty && similarity >= 0.8
+        !declined && keptEverythingRequired && deleted.isEmpty && invented.isEmpty && brokeShape.isEmpty
+            && similarity >= 0.8
     }
 }
 
