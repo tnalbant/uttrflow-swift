@@ -37,10 +37,10 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         }
 
         guard !text.isEmpty else { return }
-        let (expectedLocation, overflow) =
-            selectionBefore?.location.addingReportingOverflow(
-                text.utf16.count) ?? (0, true)
-        guard let selectionBefore, !overflow,
+        guard let selectionBefore else { throw .insertionUnconfirmed }
+        let (expectedLocation, overflow) = selectionBefore.location.addingReportingOverflow(
+            text.utf16.count)
+        guard !overflow,
             let after = field.selectedRange(), after.length == 0,
             after.location == expectedLocation
         else { throw .insertionUnconfirmed }
