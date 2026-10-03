@@ -174,6 +174,7 @@ final class SuggestionCoordinator {
         container: URL, preferences: SuggestionPreferences,
         scoring: (any CandidateScoring)? = nil, generating: (any CandidateGenerating)? = nil,
         encryptedStore: EncryptedStore? = nil,
+        environmentIndex: EnvironmentIndex? = nil,
         focusedFieldValueObserver: (any FocusedFieldValueObserving)? = nil,
         processActivity: any SuggestionProcessActivityManaging = ProcessSuggestionActivity(),
         focusedSelectionReader: @escaping @Sendable () async -> FocusedFieldSelection? = {
@@ -193,7 +194,7 @@ final class SuggestionCoordinator {
         // Lines learned before the credential rules last widened are removed once, off the typing path.
         Task.detached(priority: .utility) { _ = try? await CaptureGate.sweepSecrets(from: store) }
         // One index behind both, so asking the machine for a completion also warms what attests it.
-        let index = EnvironmentIndex(reader: SystemEnvironmentReader())
+        let index = environmentIndex ?? EnvironmentIndex(reader: SystemEnvironmentReader())
         environment = EnvironmentSource(index: index)
         // The model, when the app hands one over, is what turns a habit into a validated suggestion.
         verifier = Verifier(index: index, scoring: scoring, supersession: store)
