@@ -13,6 +13,9 @@ struct SuggestionLogTests {
     private static let typed = "zephyr quokka marmalade"
     /// An invented completion of it.
     private static let offered = "zephyr quokka marmalade trombone"
+    /// A distinctive application name and bundle identifier for privacy assertions.
+    private static let appName = "Private Editor"
+    private static let appBundle = "com.example.private-editor"
 
     /// Whether any of the invented words reached the line.
     private static func leaks(_ line: String) -> Bool {
@@ -33,8 +36,8 @@ struct SuggestionLogTests {
         (
             "generate",
             SuggestionLog.generate(
-                application: "TextEdit", typed: typed, got: 1, elapsedMilliseconds: 40,
-                firstCompletion: offered)
+                application: appName, typed: typed, got: 1, elapsedMilliseconds: 40,
+                firstCompletion: offered, revealApplication: false)
         ),
         (
             "alternativesFailed",
@@ -71,12 +74,32 @@ struct SuggestionLogTests {
         #expect(Self.lines.first { $0.0 == "attest" }?.1.contains("dropped=2") == true)
     }
 
-    @Test("a stall names the step it waited on and the application's bundle identifier")
-    func aStallNamesItsStepAndApplication() {
-        let line = SuggestionLog.stall(step: .generate, application: "com.example.notes", afterSeconds: 10)
-        #expect(line == "STALL step=generate app=com.example.notes after=10s left behind")
-        let unknown = SuggestionLog.stall(step: nil, application: nil, afterSeconds: 10)
-        #expect(unknown == "STALL step=unknown app=unknown after=10s left behind")
+    @Test("a stall hides application identity unless debugging requests it")
+    func aStallHidesItsApplicationByDefault() {
+        let line = SuggestionLog.stall(
+            step: .generate, application: Self.appBundle, afterSeconds: 10, revealApplication: false)
+        #expect(line == "STALL step=generate app=private after=10s left behind")
+        let unknown = SuggestionLog.stall(
+            step: nil, application: nil, afterSeconds: 10, revealApplication: false)
+        #expect(unknown == "STALL step=unknown app=private after=10s left behind")
+    }
+
+    @Test("application identity is hidden unless the debug switch is enabled")
+    func applicationIdentityIsPrivateByDefault() {
+        let generate = SuggestionLog.generate(
+            application: Self.appName, typed: Self.typed, got: 1, elapsedMilliseconds: 1,
+            firstCompletion: nil, revealApplication: false)
+        let stall = SuggestionLog.stall(
+            step: .read, application: Self.appBundle, afterSeconds: 1, revealApplication: false)
+        let fieldRead = "FIELD_READ front=\(SuggestionLog.application(Self.appBundle, reveal: false))"
+        let turn = "TURN front=\(SuggestionLog.application(Self.appBundle, reveal: false))"
+        let off = "OFF app=\(SuggestionLog.application(Self.appBundle, reveal: false))"
+        for line in [generate, stall, fieldRead, turn, off] {
+            #expect(!line.contains(Self.appName), line)
+            #expect(!line.contains(Self.appBundle), line)
+            #expect(line.contains("private"), line)
+        }
+        #expect(SuggestionLog.application(Self.appName, reveal: true) == Self.appName)
     }
 
     @Test("an error is named by its type and case, and its payload is left out")
