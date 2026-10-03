@@ -462,7 +462,7 @@ public enum MenuBarPresenter {
 
         let statusLine = statusLine(for: state)
         return MenuBarPresentation(
-            icon: icon(for: state.activity, needsAttention: needsAttention),
+            icon: icon(for: state.activity, failure: state.failure),
             statusLine: statusLine,
             emphasis: emphasis,
             accessibilityLabel: spokenForm(of: statusLine),
@@ -478,8 +478,8 @@ public enum MenuBarPresenter {
     // MARK: The icon
 
     /// States differ at a glance, so the bar alone says whether the microphone is live or text arrived.
-    static func icon(for activity: DictationActivity, needsAttention: Bool) -> MenuBarIcon {
-        guard !needsAttention else { return .symbol("exclamationmark.triangle.fill") }
+    static func icon(for activity: DictationActivity, failure: FailurePresentation?) -> MenuBarIcon {
+        if let failure { return icon(for: failure) }
         return switch activity {
         case .idle: .mark
         case .listening: .symbol("mic.fill")
@@ -489,6 +489,12 @@ public enum MenuBarPresenter {
         case .unconfirmed: .symbol("questionmark.circle")
         case .copied: .symbol("doc.on.clipboard")
         }
+    }
+
+    /// A failure's glyph differs by shape from every activity, so it never looks like rest or success.
+    static func icon(for failure: FailurePresentation) -> MenuBarIcon {
+        if failure.placement == .menuBar { return .symbol("exclamationmark.triangle.fill") }
+        return failure.severity == .informational ? .symbol("info.circle") : .symbol("xmark.circle")
     }
 
     // MARK: The status line

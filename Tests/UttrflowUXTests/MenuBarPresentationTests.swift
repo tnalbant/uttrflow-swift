@@ -8,14 +8,14 @@ import UttrflowClipboard
 // MARK: - Fixtures
 
 /// A blocking failure: the microphone is off, so nothing can be dictated at all.
-private let microphoneOff = FailurePresenter.present(PermissionError.microphoneDenied)
+private let microphoneOff = FailurePresenter.present(PermissionError.microphoneDenied, floatingButtonShown: true)
 
 /// A degraded one: the words arrived, just on the clipboard rather than in the app.
 private let clipboardFallback = FailurePresenter.present(
-    TextInsertionError.insertionRejected(description: "read-only field"))
+    TextInsertionError.insertionRejected(description: "read-only field"), floatingButtonShown: true)
 
 /// One with nothing to offer, to prove the menu does not invent a row for it.
-private let noWayOut = FailurePresenter.present(AudioCaptureError.unsupportedInputFormat)
+private let noWayOut = FailurePresenter.present(AudioCaptureError.unsupportedInputFormat, floatingButtonShown: true)
 
 private let twoRecents = [
     MenuBarRecent(
@@ -89,9 +89,36 @@ struct MenuBarIconTests {
     func degradedFailureDoesNotLightTheMenuBar() {
         let shown = MenuBarPresenter.present(MenuBarState(failure: clipboardFallback))
         #expect(!shown.isAttentionNeeded)
-        #expect(shown.icon == .mark)
+        #expect(shown.icon == .symbol("xmark.circle"))
         // It is still the news of the moment, so it still leads the menu.
         #expect(shown.statusLine == clipboardFallback.headline)
+    }
+
+    /// With no floating button the menu bar is the only surface left, so a non-blocking failure lights it.
+    @Test("lights the menu bar for a non-blocking failure when no floating button is shown")
+    func failureWithoutTheButtonLightsTheMenuBar() {
+        for severity in FailureSeverity.allCases {
+            let failure = FailurePresenter.present(
+                message: "Didn't catch that.", recovery: nil, severity: severity, floatingButtonShown: false)
+            let shown = MenuBarPresenter.present(MenuBarState(failure: failure))
+            #expect(shown.isAttentionNeeded, "\(severity)")
+            #expect(shown.icon == .symbol("exclamationmark.triangle.fill"))
+            #expect(shown.statusLine == "Didn't catch that.")
+        }
+    }
+
+    /// Shape, not colour alone: an informational notice and a failure differ from each other and from rest.
+    @Test("gives a notice beside the button a glyph of its own by severity")
+    func failureGlyphFollowsSeverity() {
+        let informational = FailurePresenter.present(
+            message: "Didn't catch that.", recovery: nil, severity: .informational, floatingButtonShown: true)
+        let shown = MenuBarPresenter.present(MenuBarState(failure: informational))
+        #expect(shown.icon == .symbol("info.circle"))
+        let icons = DictationActivity.allCases.map {
+            MenuBarPresenter.present(MenuBarState(activity: $0)).icon
+        }
+        #expect(!icons.contains(.symbol("info.circle")))
+        #expect(!icons.contains(.symbol("xmark.circle")))
     }
 
     @Test("shows copied, unconfirmed and inserted outcomes as different icons")

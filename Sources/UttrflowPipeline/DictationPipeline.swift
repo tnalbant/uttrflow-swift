@@ -167,7 +167,7 @@ public actor DictationPipeline {
     var runningCleaner: any TranscriptCleaning { inUse?.cleaner ?? cleaner }
 
     /// The overrides this dictation is being run with, for the same reason.
-    private var runningOverrides: DestinationOverrides { inUse?.overrides ?? destinationOverrides }
+    var runningOverrides: DestinationOverrides { inUse?.overrides ?? destinationOverrides }
 
     /// The languages this dictation is being listened for and tidied in, for the same reason.
     var runningProfile: UserProfile { inUse?.profile ?? profile }

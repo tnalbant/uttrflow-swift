@@ -58,6 +58,8 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
     public let timesUsedSpoken: String
     /// "Undone 2 times", what VoiceOver reads for the undo count.
     public let timesUndoneSpoken: String
+    /// Whether the recogniser is given the word now, and why not when it is not.
+    public let prompt: DictionaryPromptChip
     /// Whether the word has been undone at all, which tints the count.
     public let hasBeenUndone: Bool
     /// Whether the undo count is the reason this word is in trouble; drawn in red before it retires.
@@ -79,6 +81,7 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         timesUndone: String,
         timesUsedSpoken: String,
         timesUndoneSpoken: String,
+        prompt: DictionaryPromptChip,
         hasBeenUndone: Bool,
         undoneIsConcerning: Bool,
         isRetired: Bool,
@@ -94,10 +97,65 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
         self.timesUndone = timesUndone
         self.timesUsedSpoken = timesUsedSpoken
         self.timesUndoneSpoken = timesUndoneSpoken
+        self.prompt = prompt
         self.hasBeenUndone = hasBeenUndone
         self.undoneIsConcerning = undoneIsConcerning
         self.isRetired = isRetired
         self.actions = actions
+    }
+}
+
+/// One row's recogniser-prompt chip: short text, the full reason, and whether the word is given.
+public struct DictionaryPromptChip: Sendable, Equatable {
+    /// "In prompt · 3".
+    public let text: String
+    /// The whole reason, read by VoiceOver and shown on hover.
+    public let spoken: String
+    /// Whether the recogniser is given this word.
+    public let isInPrompt: Bool
+
+    /// Builds a chip from its parts.
+    public init(text: String, spoken: String, isInPrompt: Bool) {
+        self.text = text
+        self.spoken = spoken
+        self.isInPrompt = isInPrompt
+    }
+
+    /// The chip for one standing, worded from ``WorkingSet/Standing`` and never a second ranking.
+    public init(_ standing: WorkingSet.Standing?) {
+        switch standing {
+        case .inPrompt(let rank):
+            self.init(
+                text: "In prompt · \(rank)", spoken: "Given to the recogniser, ranked \(rank)",
+                isInPrompt: true)
+        case .belowLimit(let rank, let limit):
+            self.init(
+                text: "Ranked \(rank) · top \(limit)",
+                spoken: "Not given to the recogniser: ranked \(rank), and only \(limit) words are given",
+                isInPrompt: false)
+        case .sharesSound(let holder):
+            self.init(
+                text: "Sounds like \(holder)",
+                spoken: "Not given to the recogniser: \u{201C}\(holder)\u{201D} already holds its sound",
+                isInPrompt: false)
+        case .retired:
+            self.init(
+                text: "Retired", spoken: "Not given to the recogniser: undone more often than kept",
+                isInPrompt: false)
+        case .unusedInferred:
+            self.init(
+                text: "Unused",
+                spoken:
+                    "Not given to the recogniser: never kept in \(Int(WorkingSet.unusedInferredLifetimeDays)) days",
+                isInPrompt: false)
+        case .tooLong(let rank):
+            self.init(
+                text: "No room · \(rank)",
+                spoken: "Not given to the recogniser: ranked \(rank), but the last prompt had no room for it",
+                isInPrompt: false)
+        case nil:
+            self.init(text: "—", spoken: "Not ranked", isInPrompt: false)
+        }
     }
 }
 
@@ -182,12 +240,16 @@ public struct DictionarySnapshot: Sendable, Equatable {
     public let corrections: [Correction]
     /// The clock the page is drawn against.
     public let now: Date
+    /// The words the last recogniser prompt held, as Diagnostics lists them; `nil` before any was packed.
+    public let packed: [String]?
 
     /// Builds a snapshot; everything but the clock defaults to empty.
     public init(
         entries: [DictionaryEntry] = [], draft: DictionaryDraft? = nil, refusal: String? = nil,
-        query: String = "", filter: String = "", corrections: [Correction] = [], now: Date
+        query: String = "", filter: String = "", corrections: [Correction] = [], now: Date,
+        packed: [String]? = nil
     ) {
+        self.packed = packed
         self.entries = entries
         self.draft = draft
         self.refusal = refusal
@@ -256,7 +318,9 @@ public enum DictionaryPresenter {
         let filter = self.filter(named: snapshot.filter)
         let listed = matches(snapshot.entries, query: snapshot.query, locale: locale)
             .filter { filter == nil || DictionarySource($0) == filter }
-        let rows = listed.map { row(for: $0, locale: locale) }
+        let standings = WorkingSet.explain(
+            entries: snapshot.entries, now: snapshot.now, packed: snapshot.packed)
+        let rows = listed.map { row(for: $0, standing: standings[$0.id], locale: locale) }
         let editor = snapshot.draft.map { self.editor(for: $0, in: snapshot) }
         let today = fixedToday(in: snapshot, calendar: calendar)
         // The empty page is the title over the scene, whose own button is the one way to add.
@@ -267,7 +331,11 @@ public enum DictionaryPresenter {
                 title: "Dictionary",
                 caption: isBare
                     ? nil
-                    : caption(for: snapshot.entries.count(where: \.isTrustworthy)),
+                    : caption(for: snapshot.entries.count(where: \.isTrustworthy))
+                        + promptNote(
+                            inPrompt: standings.values.count {
+                                if case .inPrompt = $0 { true } else { false }
+                            }),
                 search: snapshot.entries.isEmpty
                     ? nil
                     : MainSearchField(placeholder: searchPlaceholder, query: snapshot.query),
@@ -290,6 +358,11 @@ public enum DictionaryPresenter {
     static func caption(for count: Int) -> String {
         let lede = "Names and terms Uttrflow would otherwise get wrong."
         return count == 0 ? lede : "\(lede) · \(MainFormatting.count(count, "word", "words"))"
+    }
+
+    /// " · 19 given to the recogniser", or nothing when no word is.
+    static func promptNote(inPrompt: Int) -> String {
+        inPrompt == 0 ? "" : " · \(inPrompt) given to the recogniser"
     }
 
     // MARK: - Today's fixes
@@ -350,7 +423,9 @@ public enum DictionaryPresenter {
     // MARK: - One word
 
     /// One entry as a row, with Restore on a retired word and Delete on every one.
-    static func row(for entry: DictionaryEntry, locale: Locale) -> DictionaryRow {
+    static func row(
+        for entry: DictionaryEntry, standing: WorkingSet.Standing?, locale: Locale
+    ) -> DictionaryRow {
         let isRetired = !entry.isTrustworthy
         return DictionaryRow(
             id: entry.id,
@@ -363,6 +438,7 @@ public enum DictionaryPresenter {
             timesUndone: "\(entry.timesReverted)",
             timesUsedSpoken: "Used \(MainFormatting.count(entry.timesUsed, "time", "times"))",
             timesUndoneSpoken: "Undone \(MainFormatting.count(entry.timesReverted, "time", "times"))",
+            prompt: DictionaryPromptChip(standing),
             hasBeenUndone: entry.timesReverted > 0,
             undoneIsConcerning: entry.timesReverted > concerningUndos,
             isRetired: isRetired,

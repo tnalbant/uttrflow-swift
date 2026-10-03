@@ -128,4 +128,52 @@ struct WorkingSetTests {
         let words = WorkingSet.words(from: [untouched, heavilyUsed], now: epoch)
         #expect(words == ["HeavilyUsed", "Untouched"])
     }
+
+    @Test(
+        "explains every standing an entry can have",
+        arguments: [
+            ("In", WorkingSet.Standing.inPrompt(rank: 1)),
+            ("Past", .belowLimit(rank: 3, limit: 2)),
+            ("Nicole", .sharesSound(with: "Nikhil")),
+            ("Wrong", .retired),
+            ("Stale", .unusedInferred),
+            ("Huge", .tooLong(rank: 2)),
+        ])
+    func explainsEachStanding(spelling: String, expected: WorkingSet.Standing) {
+        let entries = [
+            word("In", from: .added, used: 9),
+            word("Huge", from: .added, used: 8),
+            word("Past", from: .added, used: 1, daysAgo: 20),
+            word("Nikhil", from: .added, used: 5, daysAgo: 400),
+            word("Nicole", from: .added, used: 1, daysAgo: 400),
+            word("Wrong", from: .learned, used: 20, reverted: 19),
+            word("Stale", from: .observed, daysAgo: 45),
+        ]
+        let standings = WorkingSet.explain(entries: entries, limit: 2, now: epoch, packed: ["In"])
+        let entry = entries.first { $0.word == spelling }
+        #expect(entry.flatMap { standings[$0.id] } == expected)
+    }
+
+    @Test("marks in the prompt exactly the words it offers, for any dictionary")
+    func explainAgreesWithWords() {
+        var generator = SystemRandomNumberGenerator()
+        let origins = WordOrigin.allCases
+        for _ in 0..<200 {
+            let entries = (0..<Int.random(in: 0...60, using: &generator)).map { index in
+                word(
+                    "Word\(index)x\(Int.random(in: 0...9, using: &generator))",
+                    from: origins.randomElement(using: &generator) ?? .added,
+                    used: Int.random(in: 0...12, using: &generator),
+                    reverted: Int.random(in: 0...6, using: &generator),
+                    daysAgo: Double.random(in: 0...90, using: &generator))
+            }
+            let limit = Int.random(in: 0...30, using: &generator)
+            let standings = WorkingSet.explain(entries: entries, limit: limit, now: epoch)
+            let offered = entries.filter { standings[$0.id]?.isOffered == true }.map(\.word)
+            let words = WorkingSet.words(from: entries, limit: limit, now: epoch)
+            #expect(Set(offered) == Set(words))
+            #expect(offered.count == words.count)
+            #expect(standings.count == entries.count)
+        }
+    }
 }

@@ -72,7 +72,7 @@ public final class SingleInstanceLock: Sendable {
         }
     }
 
-    private static func seconds(_ duration: Duration) -> Double {
+    static func seconds(_ duration: Duration) -> Double {
         let parts = duration.components
         return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
     }

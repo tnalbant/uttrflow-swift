@@ -186,6 +186,17 @@ struct SnippetEditorView: View {
                     .frame(minHeight: 44, maxHeight: 180)
                     .padding(.horizontal, -5)
             }
+            if let arrival = editor.arrival {
+                HStack(spacing: 8) {
+                    Text(arrival)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(PagePalette.text)
+                    Spacer(minLength: 0)
+                    if let saveArrived = editor.saveArrived {
+                        PageButton(action: saveArrived, onIntent: onIntent)
+                    }
+                }
+            }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,
                 canSave: editor.canSave, onIntent: onIntent)

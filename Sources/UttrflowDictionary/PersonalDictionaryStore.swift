@@ -86,16 +86,19 @@ public actor PersonalDictionaryStore {
         return kept
     }
 
-    /// Replaces the stored snapshot after an archive has been fully validated and merged.
-    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+    /// Replaces the stored snapshot after an archive has been fully validated and merged, returning what was kept.
+    @discardableResult
+    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let entries = entries.map(\.inLatinScript)
         for entry in entries {
             guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
                 throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
             }
         }
-        try persist(Self.boundedEntries(entries))
+        let kept = Self.boundedEntries(entries)
+        try persist(kept)
         cachedIndex = nil
+        return kept
     }
 
     /// Writes what the user typed in as a word of their own. See `Docs/app-dictionary-store.md`.
