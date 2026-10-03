@@ -1,9 +1,12 @@
 # The development build
 
-`make app-dev` produces `dist/Uttrflow-Dev.app`: the same code as `make app`, under a
-different identity and data folder. Only one Uttrflow build can listen for the dictation
-shortcut and microphone at a time. Launching a second build shows both app names and exits;
-quit the running build before starting the other.
+`make app-dev` runs `Scripts/bundle.sh development` and produces `dist/Uttrflow-Dev.app`: the
+same code as `make app`, under its own bundle identifier, so it keeps its own settings, data
+folder, Keychain items and privacy grants. Only one Uttrflow build can listen for the
+dictation shortcut and microphone at a time: launching a second build shows an alert naming
+both apps and exits, so quit the running build before starting the other. The identity logic
+is `LocalStore` and `UttrflowBuildIdentity` in `Sources/UttrflowCore/Support/`; the launch
+check is in `Sources/Uttrflow/UttrflowApp.swift`.
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -13,8 +16,8 @@ open dist/Uttrflow-Dev.app
 
 ## What differs, and what it buys
 
-`Scripts/bundle.sh development` takes `Resources/Uttrflow-Info.plist` and changes four
-things in a temporary copy. Nothing else in the build differs, and `make app` is
+`Scripts/bundle.sh development` copies `Resources/Uttrflow-Info.plist` to a temporary file and
+changes these keys in the copy. Nothing else in the build differs, and `make app` is
 untouched.
 
 | Key | Shipped | Development |
@@ -29,17 +32,22 @@ so changing it separates all of them at once:
 
 - **Its defaults domain.** `~/Library/Preferences/com.uttrflow.Uttrflow.dev.plist`, so
   the settings the development build writes are not the settings the installed app reads.
-- **Its Application Support folder.** `LocalStore` in `UttrflowCore` derives the folder
-  name from `Bundle.main.bundleIdentifier` rather than hard-coding `Uttrflow`, so the
-  clipboard, the history, the dictionary, the snippets and the predict corpus land in
-  `~/Library/Application Support/Uttrflow.dev/`.
+- **Its Application Support folder.** `LocalStore.folder(for:)` derives the folder name
+  from `Bundle.main.bundleIdentifier`: the shipped identifier writes under `Uttrflow`, and
+  `com.uttrflow.Uttrflow.<variant>` writes under `Uttrflow.<variant>`. So the clipboard, the
+  history, the dictionary, the snippets and the predict corpus land in
+  `~/Library/Application Support/Uttrflow.dev/`. Any other identifier falls back to the
+  production folder.
 - **Its Keychain items and process identity**, so its credentials stay separate from the installed app.
 
 The distinct identities do not let both builds dictate at once. The shortcut and microphone
-are system-wide, so Uttrflow checks for other running `com.uttrflow.Uttrflow*` builds and
-allows only one to start. This coordination lock does not change either build's data folder.
-If a custom identifier falls back to the production data folder, the launch alert explains
-that and shows how to give the build an isolated identifier.
+are system-wide, so at launch Uttrflow takes a shared coordination lock
+(`Uttrflow/instance-coordination.lock` in Application Support) and its own build's
+`instance.lock`, and refuses to start beside any other running `com.uttrflow.Uttrflow*`
+build. A second copy of the *same* build hands off to the running one and exits. The locks
+do not change either build's data folder. If a custom identifier falls back to the
+production data folder, the launch alert says so and names the
+`com.uttrflow.Uttrflow.<variant>` form that isolates it.
 
 The update feed is removed because a development build that found the release would
 install it over itself, which is the one way this build can turn back into the other one.
@@ -84,3 +92,6 @@ ln -s ~/Library/Application\ Support/Uttrflow/Models \
 
 `Uttrflow Dev` in the menu bar's application menu and in the App Switcher, a menu bar
 mark with a blue `Dev` label, and `Uttrflow-Dev.app` on disk.
+
+Related: `Docs/packaging.md` (the bundle modes), `Docs/releasing.md` (what the update feed
+is), `Docs/account-keychain.md` (where a session is kept).

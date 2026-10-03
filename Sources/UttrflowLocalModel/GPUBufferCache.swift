@@ -12,7 +12,7 @@ public struct GPUMemoryReading: Sendable, Equatable {
     public let peak: Int
 }
 
-/// Keeps MLX's GPU buffer cache from growing with every differently sized pass. See `Docs/performance.md`.
+/// Keeps MLX's GPU buffer cache from growing with every differently sized pass. See `Docs/performance-suggestions.md`.
 public enum GPUBufferCache {
     /// The most freed GPU memory MLX may keep for reuse, measured as costing a pass no time.
     public static let limit = 256 * 1_048_576

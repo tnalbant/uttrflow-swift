@@ -1,9 +1,20 @@
 # Capturing the microphone
 
-`UttrflowAudio` turns whatever the microphone delivers into canonical mono 16 kHz `[Float]`
-samples and plays a cue at each end of a recording. This page holds the measured traps behind
-the one-line comments. `Docs/microphone.md` covers the hardware moving under the app;
-`Docs/silence.md` covers what happens to audio with no speech in it.
+`UttrflowAudio` (`Sources/UttrflowAudio/`) turns whatever the microphone delivers into canonical
+mono 16 kHz `[Float]` samples and plays a cue at each end of a recording.
+`AVAudioEngineMicrophoneSource` owns the engine and its tap, `AudioResampler` converts,
+`SampleAccumulator` holds the samples, `AVAudioCaptureEngine` is the actor the pipeline talks to,
+and `CueSounds.swift` names the cues. This page holds the measured traps behind the one-line
+comments. [`microphone.md`](microphone.md) covers the hardware moving under the app;
+[`silence.md`](silence.md) covers what happens to audio with no speech in it.
+
+| Constant | Value | What it is |
+|---|---|---|
+| `AVAudioEngineMicrophoneSource.tapBufferSize` | 4096 frames | the tap's buffer, about 85 ms at 48 kHz |
+| `AudioResampler.maxFramesPerConversion` | 2048 frames | the slice fed to `AVAudioConverter` |
+| `SampleAccumulator.blockSize` | 4096 samples | one storage block of canonical audio |
+| `SampleAccumulator.release` | 0.62 | the share of the momentary level a silent block keeps |
+| `TapDrain.cap` | 250 ms | the longest key-up drain |
 
 ## AVAudioConverter
 
@@ -55,44 +66,44 @@ Measured on an Apple M5 Pro, macOS 26.5; the converter fed in the same 2048-fram
   selects channel 0 cleanly in each layout.
 - The lowest passband gain is always the 7 kHz tone, so both settings roll off before the
   canonical Nyquist; the worst alias is the 9 kHz tone, inside the transition band.
-- At the default, 44.1 and 48 kHz (the rates microphones actually deliver) leak a 9 kHz tone at
+- At the default, 44.1 and 48 kHz (the rates microphones deliver) leak a 9 kHz tone at
   roughly -20 dB; the highest quality pushes that below -100 dB.
 - CPU, 60 s of 48 kHz mono in 4096-frame blocks: about 1.5 ms per audio second at the default
   and 3.5 ms at the highest quality.
 
-**Decision: the default is measured and kept.** Changing it requires the corpus WER
-(`make bakeoff`) at both settings, which needs the quality to be selectable on the production
-path, and an audio-thread budget to compare the CPU cost with; neither is recorded yet.
+The default is kept. Changing it requires the corpus WER (`make bakeoff`) at both settings,
+which needs the quality to be selectable on the production path, and an audio-thread budget to
+compare the CPU cost with; neither exists yet.
 
-## Microphone access is read before the engine, not after it
+## Microphone access is read before the engine
 
 `EngineDevice.open()` refuses with `AudioCaptureError.microphoneDenied` unless
 `AVCaptureDevice.authorizationStatus(for: .audio)` is `authorized`, and it does so before an
-`AVAudioEngine` exists. Nothing else in the capture path reads the authorisation: the only
-hardware check `open()` had was `format.sampleRate > 0`, which catches a missing device and not
-a refused one, because a refused microphone still reports the device's real format.
+`AVAudioEngine` exists. Nothing else in the capture path reads the authorisation, and the
+hardware check after it, `format.sampleRate > 0` and a channel count above zero, catches a
+missing device and not a refused one, because a refused microphone still reports the device's
+real format.
 
-What that cost, before the guard: the engine opened, the tap delivered, and the samples carried
-no speech — so `VoiceActivity` refused the recording and the user was told "Didn't catch that."
-with no recovery action, for a permission only System Settings can give back. Measured here on
-macOS 26.5.1: three seconds of digital silence through `uttrflow-dev transcribe` comes back
+Without the guard the engine opens, the tap delivers, and the samples carry no speech, so
+`VoiceActivity` refuses the recording and the user is told "Didn't catch that." with no recovery
+action, for a permission only System Settings can give back. Measured on macOS 26.5.1: three
+seconds of digital silence through `uttrflow-dev transcribe` comes back
 `SpeechEngineError.nothingHeard`, which is `informational` and offers nothing
 ([probe-log.md](probe-log.md#rows)).
 
 The guard covers the reopen after a hardware change as well as the first open, because
 `InputDeviceSession` reaches the device through the same `open()`.
 
-**What is not measured.** Whether a refused microphone taps zeros or never calls back at all —
-revoking access needs a Mac whose privacy settings can be changed, and it was not available.
-Either way the guard fires first, and either way the message without it was wrong: silence reads
-as `nothingHeard`, and an empty recording as `audioTooShort`.
+**Not measured:** whether a refused microphone taps zeros or never calls back at all. Either way
+the guard fires first, and either way the message without it is wrong: silence reads as
+`nothingHeard`, and an empty recording as `audioTooShort`.
 
 ## The level meter
 
 - A microphone tap runs on a real-time thread that must never wait on an actor, so
   `SampleAccumulator` is a lock-guarded box. One producer, one consumer, and every critical
-  section is short and allocation-free — see the block storage below, which is what keeps the
-  producer's section short now that it is read while it writes. `momentaryLevel` is `nonisolated` on the capture
+  section is short and allocation-free; the block storage below is what keeps the producer's
+  section short while it is read as it writes. `momentaryLevel` is `nonisolated` on the capture
   engine for the same reason: a meter on the main actor reads it twenty times a second and must
   not queue behind a `stop()` that is converting a recording.
 - The momentary level is root mean square, not the block's peak: a meter driven by peaks reads
@@ -109,12 +120,12 @@ as `nothingHeard`, and an empty recording as `audioTooShort`.
 
 ## Why the samples are stored in blocks
 
-Working ahead reads the audio while it is still growing: `capturedSoFar()` is called once a
-second for the whole of a dictation. When the accumulator was one `[Float]`, handing that array
-out made it non-uniquely referenced, so the very next `append` — which runs on the tap's
-real-time thread, inside the same lock — had to copy the whole buffer before it could add
-anything. At canonical mono 16 kHz that is 15.4 MB at four minutes, once per read, charged to
-the one thread that must never pay for anything.
+Working ahead reads the audio while it is still growing: `capturedSoFar(from:)` is called once
+a second for the whole of a dictation. A single `[Float]` is not used: handing that array out
+makes it non-uniquely referenced, so the very next `append`, which runs on the tap's real-time
+thread inside the same lock, would copy the whole buffer before it could add anything. At
+canonical mono 16 kHz that is 15.4 MB at four minutes, once per read, charged to the one thread
+that must never pay for anything.
 
 So the samples live in fixed 4096-sample blocks. A block is written until it is full, then
 sealed and never touched again, and a fresh one is opened with its capacity reserved up front.
@@ -125,13 +136,12 @@ rather than by the length of the recording.
 
 `copiedOnAppend` counts the samples the capture thread has had to copy because its storage moved
 under it, which is what makes the invariant above checkable instead of asserted: it is zero
-across any number of reads, and on the single-array shape it grew by the whole buffer every time.
+across any number of reads, where a single array grows it by the whole buffer on every read.
 `Tests/UttrflowAudioTests/SampleAccumulatorTests.swift` holds the measurement.
 
-**What is not measured.** Whether the old copy ever made the tap late. The block budget is 85 ms
-and a 15 MB copy is on the order of a millisecond or two, so the step from the copy to a dropped
-block and a missing syllable is plausible and has never been observed. The allocation behaviour
-is what is measured here; the latency is not.
+**Not measured:** whether a whole-buffer copy would make the tap late. The block budget is 85 ms
+and a 15 MB copy is on the order of a millisecond or two, so a dropped block is plausible and has
+not been observed. The allocation behaviour is measured; the latency is not.
 
 ## Draining the tap at key-up
 
@@ -143,8 +153,8 @@ and when the user lets go quickly it takes the tail of the final word.
 
 So `MicrophoneSource.stop(draining:)` waits before tearing anything down. `TapDrain` returns as soon
 as the next block arrives and at the latest when the window closes, and the window is one tap period
-computed from the buffer size and the rate the device is actually running at — not a constant, so it
-stays right if the buffer is ever tuned. It is capped at 250 ms, because a device that misreports its
+computed from the buffer size and the rate the device is actually running at
+(`TapDrain.window(tapFrames:sampleRate:)`), not a constant, so it follows the buffer size. It is capped at 250 ms, because a device that misreports its
 rate would otherwise hold key-up open for as long as it liked.
 
 A cancelled recording does not drain: its audio is discarded, so waiting for more of it would only
@@ -177,22 +187,23 @@ the engine start happens on the player's own queue) while the sound goes on afte
 in the recording.
 
 The tail is not. `AVAudioCaptureEngine.stop()` plays the stop cue after the microphone source has
-stopped and before the buffer is taken, so none of it is recorded. The drain below sits in front of
-that, so the cue now lands up to one tap period after the key comes up rather than immediately. The controller and the engine hold the same cue, which is what keeps a stop
-from sounding after a start that did not. A cancelled recording plays no stop cue.
+stopped and before the buffer is taken, so none of it is recorded. The key-up drain sits in front
+of that, so the stop cue lands up to one tap period after the key comes up. The controller and the
+engine hold the same cue, which is what keeps a stop from sounding after a start that did not. A
+cancelled recording plays no stop cue.
 
 What mitigates it, in descending order of effect:
 
 1. Acoustic echo cancellation. `AVAudioInputNode.setVoiceProcessingEnabled(true)` cut the bleed
    from +14.2 dB to +1.5 dB over room noise. Not adopted: it belongs to the capture engine, not
-   the cue; it changed the input format from 1 channel to 9 on this machine, which the resampler
-   would reduce to channel 0; and it imposes AGC and noise suppression the recogniser has not
-   been tuned against.
+   the cue; it changed the input format from 1 channel to 9 on the Mac measured, which the
+   resampler would reduce to one channel; and it imposes AGC and noise suppression the recogniser
+   has not been tuned against.
 2. Being quiet and soft, which is all the cue can do by itself. The low-pass takes off the bright
    top that carries furthest into a microphone. Measured on the source samples, before speakers or
-   room: the shaped start cue peaks at −14.0 dBFS against −16.7 dBFS for the unshaped `Tink` at
-   0.4 it replaced, and its first 700 ms average −36.1 dBFS RMS against −36.7 dBFS. It is 1.94 s
-   long, most of it a quiet tail.
+   room: the shaped start cue peaks at −14.0 dBFS against −16.7 dBFS for an unshaped `Tink` at
+   0.4, and its first 700 ms average −36.1 dBFS RMS against −36.7 dBFS. It is 1.94 s long, most
+   of it a quiet tail.
 
 Deliberately not a mitigation: waiting for the start cue to finish before opening the
 microphone. It buys silence at the cost of half a second before the user may speak.
@@ -201,7 +212,7 @@ microphone. It buys silence at the cost of half a second before the user may spe
 sweep with `Tink` through `BackedSpeechEngine` found no word errors at the loudest measured
 real leak (−11.5 dBFS); a fixed-window trim would convert a probabilistic bleed into
 deterministic word loss for users who press and speak, so the cue stays in the buffer. That sweep
-used the earlier `Tink` start cue, not the shaped one.
+used an unshaped `Tink` start cue, not the shaped one.
 
 ## Changing the cue sounds
 
@@ -221,7 +232,7 @@ public static let warning = CueSound("Glass", semitones: -3, lowPassHz: 3000, vo
   `playbackRate`, a `lowpass` filter at `Q` 0.5 and a gain node sounds the same here.
 - `volume` is linear gain from 0 to 1.
 
-`CueSoundsTests` pins the values, so a change edits the test beside it. Whatever the start cue
+`CueSoundsTests` (`Tests/UttrflowAudioTests/CueSoundsTests.swift`) pins the values, so a change edits the test beside it. Whatever the start cue
 becomes lands in the recording; re-measure it against the numbers under *Cue bleed*.
 
 ## Playing a system sound reliably
@@ -235,11 +246,11 @@ becomes lands in the recording; re-measure it against the numbers under *Cue ble
   same named sound unshaped through `NSSound` at the cue's volume; when that fails too, the cue is
   silent and dictation carries on. An engine that fails to start after `play` has returned leaves
   that one cue silent and hands the next to `NSSound` while it rebuilds.
-- Shaping happens once, at prewarm, into one 48 kHz mono buffer per cue, each on its own player
+- Shaping happens once, at prewarm, into one 48 kHz (`ShapedSoundPlayer.outputRate`) mono buffer per cue, each on its own player
   node so a stop cue never cuts off a start cue still sounding. The first engine start of a process
   costs about 37 ms, paid at prewarm; a start from pause costs 8 to 40 ms depending on how long the
   output device has been idle, and happens on the player's queue rather than the caller's.
-- The engine pauses one second after the last cue ends, so the output device is not held open
+- The engine pauses one second (`ShapedSoundPlayer.idleSeconds`) after the last cue ends, so the output device is not held open
   between dictations, and it is rebuilt when the output device changes.
 - `play()` on an `NSSound` that is still playing returns `false` and does nothing, so a second
   dictation inside the previous cue's half-second tail would be silent and, worse, would report

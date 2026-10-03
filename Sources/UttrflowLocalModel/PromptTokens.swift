@@ -1,4 +1,4 @@
-// Tokenises a suggestion prompt the way the chat template does, paying only for the lines that changed. See `Docs/performance.md`.
+// Tokenises a suggestion prompt the way the chat template does, paying only for the lines that changed. See `Docs/performance-suggestions.md`.
 import Foundation
 private import Synchronization
 

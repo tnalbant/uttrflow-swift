@@ -53,7 +53,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         self.confidenceMemory = initialConfidenceMemory
     }
 
-    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance.md`.
+    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance-suggestions.md`.
     private let weights: ReloadableWeights<ModelContainer>
 
     /// How many passes are using the model now, which a release waits out before it empties the weights.
@@ -227,7 +227,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         let cache: [KVCache]
     }
 
-    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance.md`.
+    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance-suggestions.md`.
     struct KeptPrefix<Cache>: @unchecked Sendable {
         // Held by one pass at a time, which is what makes writing to it safe.
         let tokens: [Int]
@@ -546,14 +546,15 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
-        beginPass()
-        defer { endPass() }
         let generation = forgetGeneration
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
         if let line = judgementCache.recall(candidate: candidate) {
             judgementCacheHits += 1
             guard let container else { return [] }
             guard let vocabulary = self.vocabulary else { return [] }
+            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.
+            beginPass()
+            defer { endPass() }
             let judged = await container.perform { loaded in
                 Self.judgedFromCache(
                     line, candidate: candidate, context: context, vocabulary: vocabulary,
@@ -571,6 +572,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
             return []
         }
         guard let scoringVocabulary = self.vocabulary else { return [] }
+        beginPass()
+        defer { endPass() }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
             let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)
             let judged = Self.judgedFromCache(
@@ -638,7 +641,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 }
 
 extension WeightLoading<ModelContainer> {
-    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance.md`.
+    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance-suggestions.md`.
     static let mlx = WeightLoading(
         build: { try await MLXCandidateScorer.buildContainer(from: $0) },
         refill: { container, directory in

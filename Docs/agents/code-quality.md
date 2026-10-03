@@ -80,7 +80,7 @@ Use these owners; do not reimplement them.
 | Is a word written out at its own boundaries? | `spelledInto`, `isWritten` | `make match-audit` |
 | Is a word still there, in the order spoken? | `WordErrorRate.measure` | `make match-audit` |
 | Is a scalar in the Latin range? | `UttrflowCore.LatinScript.isInLatinRange` | tests, `Docs/latin-output.md` |
-| Does text write only Latin? | `LatinScript.writes` in `UttrflowPredict`, built on the row above | tests, `Docs/latin-output.md` |
+| Does text write only Latin? | `LatinScript.writesOnlyLatin` in `UttrflowCore`, built on the row above | tests, `Docs/latin-output.md` |
 | What is the current line? | `FocusedFieldSnapshot.currentLine` | tests, `Docs/predict.md` |
 | Which application is a terminal? | `TerminalApplications` | tests, `Docs/predict.md` |
 | How much memory may the clipboard use? | `ClipboardBudget.standard` | `Docs/clipboard-budget.md` |
@@ -157,10 +157,13 @@ Dependencies are declared in `Package.swift`; a cycle fails the build.
 | Everything else | logic, stores, models, presentation, evaluation | 0 |
 
 ```bash
-grep -rlE '^import (AppKit|ApplicationServices|SwiftUI|Cocoa)' Sources/UttrflowCore Sources/UttrflowAI Sources/UttrflowPredict
+make layering-audit
 ```
 
-prints nothing, and the same holds for every module in the second row.
+fails on a UI-framework import in any module of the second row, and on a `Package.swift` target
+dependency from one of those modules to a module of the first row. The count is baselined in
+`Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
+--report` lists what is left.
 
 A change that adds a module states, in the pull request: the module's one-sentence
 responsibility, the modules it depends on and why none points the wrong way, its public surface in

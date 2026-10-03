@@ -1,7 +1,13 @@
 # Releasing Uttrflow
 
-A release can be cut by hand on a Mac, as this page describes, or by pushing a tag through
-the workflow documented in [`RELEASING.md`](../RELEASING.md).
+A release is a build of `main` named by a tag, wrapped in a disk image, and published to the
+public `uttrflow/releases` repository, where the download button and every installed copy's
+updater find it. The scripts are `Scripts/bundle.sh` (build and sign, see
+`Docs/packaging.md`), `Scripts/notarise.sh` and `Scripts/notarise_dmg.sh`, `Scripts/dmg.sh`,
+and `Scripts/publish.sh`; the Makefile targets below drive them. A release can be cut by hand
+on a Mac, as this page describes, or by pushing a tag through `.github/workflows/release.yml`,
+documented in [`RELEASING.md`](../RELEASING.md). Releasing is a maintainer's job; agents never
+tag.
 
 ## The version
 
@@ -9,299 +15,214 @@ Calendar versioning, in `Resources/Uttrflow-Info.plist`, edited by hand:
 
 | Key | Example | What it is |
 | --- | --- | --- |
-| `CFBundleShortVersionString` | `26.0926.0` | The version people see: `YY.MMDD.REVISION` — two-digit year, month and day, then the release number that day from 0. |
+| `CFBundleShortVersionString` | `26.0926.0` | The version people see: `YY.MMDD.REVISION`, two-digit year, month and day, then the release number that day from 0. |
 | `CFBundleVersion` | `10` | The build counter. Goes up by one every release; the updater compares this, not the date. |
 
-Bump both in the commit that cuts the release. The tag is `v` and the version, `v26.0926.0`,
-and a candidate for it is `v26.0926.0-rc.1`. A second release on the same day is
-`v26.0926.1`. Month before day, with the leading zero kept, so versions sort in date order
-within a year (`0110` for 1 October is above `0926`); the release workflow compares the tag
-to the plist as text, so write the plist exactly as the tag.
+Bump both in the commit that cuts the release. The tag is `v` and the version, `v26.0926.0`;
+a candidate for it is `v26.0926.0-rc.1`; a second release that day is `v26.0926.1`. Month
+before day, leading zero kept, so versions sort in date order within a year (`0110` for
+1 October is above `0926`). The release workflow compares the tag to the plist as text, and
+`Scripts/release_tag_ancestry.sh` refuses a tag whose commit is not on `main`.
 
-**Earlier schemes.** `2026.9.14` (`YEAR.MONTH.DAY`) was used before this one. A `26.x`
-version is numerically below it, which is harmless for updates because Sparkle orders by
-`CFBundleVersion`, and that counter keeps rising across every change of scheme.
+The retired schemes, `2026.9.14` (`YEAR.MONTH.DAY`) and semantic versions up to `0.5.0`, are
+numerically above a `26.x` version. That is harmless: Sparkle orders by `CFBundleVersion`
+(the appcast's `sparkle:version`), and that counter only rises across every scheme.
 
-Releases up to `0.5.0` used semantic versioning. Every date version is larger in its first
-number, so nothing that orders versions can place `2026.9.14` below `0.5.0` — and Sparkle
-does not order by it anyway: the appcast's `sparkle:version` is `CFBundleVersion`, and an
-installed copy updates only when that number is larger than its own. That is why the
-counter must keep rising across the change of scheme: 0.5.0 shipped with `8`.
-
-**Five-part calendar versioning was tried and rejected.** `YEAR.MONTH.DAY.HOUR.PATCH` works
-technically — a five-component version signs, verifies `--deep --strict`, and Spotlight
-reports `kMDItemVersion` correctly — but Apple documents these keys as three integers, so
-it is outside spec and the App Store would refuse it. The date alone is three integers.
+**A five-part `YEAR.MONTH.DAY.HOUR.PATCH` version is not used.** It signs, verifies
+`--deep --strict`, and Spotlight reports `kMDItemVersion` correctly, but Apple documents these
+keys as three integers, so it is outside the specification and the App Store refuses it.
 
 ## A test build
 
-No Apple account, no certificate, nothing to configure — for the local build:
+No Apple account, no certificate, nothing to configure:
 
 ```bash
-make app               # ad-hoc signature, no hardened runtime — what a test build ships
+make app               # ad-hoc signature, no hardened runtime
 make dmg               # dist/Uttrflow-<version>.dmg
 ```
 
-That produces a `.dmg` on this Mac and nothing more. **`make publish` is a separate,
-externally visible step**, not part of a test build: it pushes to the public
-`uttrflow/releases` repository and can make this unsigned image the default download at
-`/releases/latest/download/Uttrflow.dmg`. It needs a `gh` login authenticated against
-`uttrflow/releases` and a Sparkle EdDSA private key `publish.sh` can find, in the login
-keychain or `SPARKLE_PRIVATE_KEY` — `Scripts/publish.sh` refuses without either. Run
-`make publish-dry-run` first to see what it would do without doing it:
+That produces a disk image on this Mac and nothing more. **`make publish` is a separate,
+externally visible step**: it pushes to the public `uttrflow/releases` repository and can make
+this unsigned image the default download. Run `make publish-dry-run` first to see what it
+would do without doing any of it.
 
-```bash
-make publish-dry-run   # say what would happen, do none of it
-make publish           # a release on uttrflow/releases, with the signed update archive
-```
+**A test build is `make app`, not `make app-hardened`.** An ad-hoc signature has no Team ID,
+and library validation, part of the hardened runtime, requires the app and the code it loads
+to share one, so an ad-hoc *hardened* build cannot load `Sparkle.framework`: it dies at launch
+with "different Team IDs". Hardening a test build would mean shipping the library-validation
+exception to every tester, letting any library signed by anyone load into a process holding
+microphone and Accessibility access, for no benefit until the build is notarised.
+`make app-hardened` remains the rehearsal: it adds that exception to a *copy* of the
+entitlements, says so, and `bundle.sh` check 4c refuses a distribution build that carries it.
+What it rehearses is the microphone trap: a hardened build without the audio-input
+entitlement does not prompt and does not error, and every sample is exactly 0.0, invisibly on
+any Mac that already granted this bundle identifier. `Docs/packaging.md` has the measurement.
 
-**`make app`, not `app-hardened`, until there is a Developer ID.** This reversed when
-Sparkle arrived, and the reason is worth reading before somebody reverses it back.
+### Gatekeeper and an unsigned download
 
-An ad-hoc signature has no Team ID. Library validation — part of the hardened runtime —
-requires that an app and the code it loads share one, so an ad-hoc *hardened* build
-cannot load `Sparkle.framework` at all: it dies at launch with "different Team IDs". The
-only way to harden a test build is to disable library validation, and that entitlement
-would then be in the build every tester runs, letting any library signed by anyone load
-into a process holding microphone and Accessibility access. That is a permanent cost for
-no benefit, because the hardened runtime buys nothing until it is paired with
-notarisation.
-
-`make app-hardened` still exists and is still worth running before a release — it is now
-purely a rehearsal, it adds the library-validation exception to a *copy* of the
-entitlements and says so, and `bundle.sh` check 4c refuses a distribution build that
-carries it. What it rehearses is the microphone trap below.
-
-The day a Developer ID exists this goes back to `app-dist`: the app and every nested
-piece of Sparkle carry the same team, library validation passes on its merits, and
-nothing needs an exception.
-
-The trap `app-hardened` exists to catch: a hardened build **without** the audio-input
-entitlement does not prompt and does not error — `requestAccess` returns false, the
-engine starts, and every sample is exactly 0.0. It is invisible on a Mac that has
-already granted this bundle identifier, which includes the one that built it.
-
-This is published as a **full release**, so `/releases/latest/download/Uttrflow.dmg`
-resolves to it and `uttrflow.com/download` serves it. That is deliberate: the day a
-Developer ID exists, publishing a notarised image is the entire migration — same command,
-same URL, no site deploy, and the page drops the `xattr` note on its own because it reads
-`gatekeeper` out of `latest.json`.
-
-The cost is stated rather than hidden: until then, the public download button serves a
-build macOS calls damaged. `publish.sh` prints that in capitals before it uploads.
-
-The tag is not affected by any of this. It used to be: an unsigned build was published as
-`v<version>-test.<sha>`, reserving the bare tag for a notarised release of the same
-version. That reservation only ever cost something — it put the word "test" in the name of
-the build people actually install, and it overrode the tag that triggered the run, so an
-`-rc` candidate was flattened into a full release and moved `latest.json` in spite of the
-soak this document describes. A tagged run now publishes under its own tag, and a hand-run
-one under `v<version>`.
-
-Gatekeeper refuses an un-notarised app that arrived through a browser, saying it is
-damaged. It is not. The release notes carry the fix, and so does the download page:
+Gatekeeper refuses an un-notarised app that arrived through a browser, saying it is damaged.
+It is not. The release notes `publish.sh` writes carry the fix:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Uttrflow.app
 ```
 
-Transferring with `scp`, `rsync` or a USB stick sets no quarantine attribute at all, so
-none of that is needed — it is the *receiving application* that stamps the file, not the
-signature.
+Copying with `scp`, `rsync` or a USB stick sets no quarantine attribute, so none of that is
+needed: the receiving application stamps the file, not the signature.
+
+An unsigned build is published as a **full release**, so
+`/releases/latest/download/Uttrflow.dmg` resolves to it. That makes notarisation a drop-in
+change: publishing a notarised image is the same command and the same URL, and `latest.json`
+records `gatekeeper` (`notarised` or `unsigned`) so the download page shows the `xattr`
+instruction only when it applies. The cost is that the public download is a build macOS calls
+damaged until then, and `publish.sh` prints that in capitals before it uploads.
 
 ## Pointing a build at the backend
 
-A shipped build needs two things before it talks to `uttrflow-backend`, and it needs
-**both** or neither — both are checked in today:
+A shipped build needs two things before it talks to the account backend, and needs **both** or
+neither:
 
-1. **`UttrflowBackendURL` in `Resources/Uttrflow-Info.plist`** — the origin of the
-   deployed service, currently `https://api.uttrflow.com`.
+1. **`UttrflowBackendURL`** in `Resources/Uttrflow-Info.plist`: the origin of the deployed
+   service.
 2. **`Ed25519EntitlementVerifier.releasePublicKeyBase64`** in
-   `Sources/UttrflowAccount/EntitlementSignature.swift` — the backend's entitlement
-   public key, base64, which `npm run keygen` prints on the backend side.
+   `Sources/UttrflowAccount/EntitlementSignature.swift`: the backend's entitlement public key,
+   base64.
 
 `OnboardingAccountLayer.forThisBuild()` checks for both and falls back to the in-process
-development backend when either is missing. That pairing is deliberate: a build with an
-address and no key signs somebody in and then refuses the entitlement it was just handed,
-with a signature error nobody can act on. A build with a key and no address never reaches
-a server at all. Rotating either value is a coordinated release: the app and the backend
-must agree on the same URL and key pair, or every build built against the old one starts
-failing closed against a rotated backend. See `Docs/operator-runbook.md`.
-
-Neither value is a secret. A public key is public, and the address is in every packet the
-app sends.
+development backend when either is missing. A build with an address and no key would sign
+somebody in and then refuse the entitlement it was handed; a build with a key and no address
+never reaches a server. `bundle.sh` check 1b refuses a hardened build missing either. Rotating
+either value is a coordinated release with the backend; see `Docs/operator-runbook.md`.
+Neither value is a secret: a public key is public, and the address is in every packet the app
+sends.
 
 ## A real release
 
-Needs an Apple Developer Program membership. As of 2026-08-26 there is none:
-`security find-identity -v -p codesigning` reports zero identities.
+Needs an Apple Developer Program membership and a Developer ID Application certificate
+(`security find-identity -v -p codesigning` lists what this Mac holds), plus the notarytool
+keychain profile `Docs/packaging.md` describes.
 
 ```bash
-# once, ever
-xcrun notarytool store-credentials uttrflow-notary \
-  --apple-id you@example.com --team-id TEAMID --password APP-SPECIFIC-PASSWORD
-
-export UTTRFLOW_SIGNING_IDENTITY="Developer ID Application: NAME (TEAMID)"
-
-make release      # stamp nothing, build, notarise app, build image, notarise image
-make publish      # release + rewrite latest.json
+export UTTRFLOW_SIGNING_IDENTITY="Developer ID Application: NAME (TEAMID)"   # or IDENTITY=… on the make line
+make release      # build, notarise app, build image, notarise image
+make publish      # release on uttrflow/releases, then latest.json and appcast.xml
 ```
 
-`make release` runs four steps and **the order is the whole point**:
+`make release` runs four steps, each a separate `$(MAKE)` line so `-j` cannot reorder them
+(`make release-order-test` proves it), and **the order is the point**:
 
-1. `app-dist` — Developer ID, hardened runtime, secure timestamp
-2. `notarise` — Apple vouches for the **app**, ticket stapled into the bundle
-3. `dmg` — the image is built **from the already-stapled app**
-4. `notarise-dmg` — Apple vouches for the **image**, ticket stapled into it
+1. `app-dist`: Developer ID, hardened runtime, secure timestamp
+2. `notarise`: Apple vouches for the **app**; the ticket is stapled into the bundle
+3. `dmg`: the image is built **from the already-stapled app**
+4. `notarise-dmg`: Apple vouches for the **image**; the ticket is stapled into it
 
-Apple staples the ticket to whatever was *submitted*, and Gatekeeper checks whatever the
-user *opened*. Notarise only the image and the app works until somebody drags it out and
-ejects the image; notarise only the app and the download itself is refused before the app
-inside is ever looked at. Both, in that order.
+Apple staples the ticket to whatever was *submitted*, and Gatekeeper checks whatever the user
+*opened*. Notarise only the image and the app works until somebody drags it out and ejects the
+image; notarise only the app and the download itself is refused before the app inside is
+looked at.
 
 ## Publishing
 
-By hand, `Scripts/publish.sh` uses this Mac's `gh` login and the signing key in its
-keychain. In the workflow, the same script receives `RELEASES_TOKEN` and
-`SPARKLE_PRIVATE_KEY` from repository secrets.
+`Scripts/publish.sh` (`make publish`) needs a `gh` login that can write to `uttrflow/releases`
+and the Sparkle EdDSA private key, from the login keychain or `SPARKLE_PRIVATE_KEY`. By hand it
+uses this Mac's `gh` login and keychain; in the release workflow it receives `RELEASES_TOKEN`
+and `SPARKLE_PRIVATE_KEY` from repository secrets.
 
-It reads the version and the notarisation state **out of the image** rather than taking
-them as arguments, so the tag cannot disagree with the file it names. It refuses when
-`dist/` holds more than one image — `ls` sorts alphabetically, and a stale `0.1.0` sorted
-ahead of a newer version once already, which would have published the wrong build under
-the right command with no sign of it.
+It reads the version, the build commit and the notarisation state **out of the image** rather
+than taking them as arguments, so the release cannot disagree with the file it names. It
+refuses an image built from a dirty checkout, and refuses when `dist/` holds more than one
+image, because a directory listing can sort an old version ahead of a new one and publish the
+wrong build under the right command.
 
 ```bash
-make publish-dry-run                        # say what would happen, do none of it
-./Scripts/publish.sh dist/Uttrflow-1.2.dmg  # name one explicitly
+make publish-dry-run                                 # say what would happen, do none of it
+./Scripts/publish.sh dist/Uttrflow-26.0926.0.dmg     # name one explicitly
 ```
+
+The tag names the release. A run triggered by a pushed tag publishes under exactly that tag;
+a hand run uses `v<version>` from the plist. **A tag with anything after the version is a
+prerelease**: `v26.0926.0-rc.1` publishes as one, GitHub keeps it out of `/latest/`, and
+`publish.sh` leaves `latest.json` and `appcast.xml` alone, so neither the site nor the updater
+offers it. That is the soak; `v26.0926.0` releases it. A rerun after the release was created
+resumes the feed update instead of failing (`make publish-resume-test`).
 
 ## Updating
 
 A published release carries two files: `Uttrflow.dmg`, which a person downloads, and
 `Uttrflow.zip`, which an installed copy fetches. `publish.sh` builds the zip from the app
-*inside the mounted image* — so the two cannot be different builds — signs it with the
-EdDSA key in this Mac's login keychain, and writes `appcast.xml` beside `latest.json`.
+*inside the mounted image*, so the two cannot be different builds, signs it with the EdDSA
+key, and writes `appcast.xml` beside `latest.json` with one item. The app's feed is
+`SUFeedURL` in the plist, an address on the account backend that serves that appcast, so the
+app talks to one host; it checks every six hours (`SUScheduledCheckInterval` 21600).
 
-The app asks `api.uttrflow.com/v1/updates/macos/appcast.xml`, which serves that file. It
-does not ask GitHub, for two reasons in `internal/api/updates.go`: the app talks to one
-host, and a check every six hours from every install is a heartbeat nobody else should
-receive.
+**The EdDSA private key** lives in the release Mac's login keychain and in the repository's
+secrets as `SPARKLE_PRIVATE_KEY`. Losing it breaks no installed copy, but no future release
+can be signed for them and every one must be replaced by hand, because the public half is
+compiled into each build. Export it with Sparkle's `generate_keys -x` and keep the export
+safe.
 
-**The private key exists in the release Mac's login keychain and, once added, in the
-repository's secrets**, as "Private key for signing Sparkle updates". Losing it does not
-break installed copies — it means no
-future release can be signed for them, and every one of them has to be replaced by hand,
-because the public half is compiled into each build. Export it with `generate_keys -x`
-before this Mac is ever wiped.
+`bundle.sh` check 4a refuses a build with `SUFeedURL` set and no usable `SUPublicEDKey`: a
+feed with nothing to verify against installs whatever it is handed. It parses the feed URL by
+scheme and host: `https` with a host ships, and `http` is accepted only for exact loopback
+hosts (`127.0.0.1`, `localhost`, `::1`), for rehearsing an update on one Mac.
+`bundle.sh distribution` and `publish.sh` both refuse a loopback feed. `make update-feed-test`
+proves the parsing.
 
-A build with `SUFeedURL` set and no usable `SUPublicEDKey` is refused by `bundle.sh`
-check 4a: a feed with nothing to verify against installs whatever it is handed.
-The same check parses the feed URL by scheme and host: `https` with a host is shippable,
-and `http` is accepted only for exact loopback hosts (`127.0.0.1`, `localhost`, `::1`).
-Loopback feeds are for rehearsal builds only; `bundle.sh distribution` and `publish.sh`
-both refuse to publish an app that points installed copies back at the release Mac.
+`SUVerifyUpdateBeforeExtraction` is `true`, so Sparkle checks the archive against
+`SUPublicEDKey` before it unpacks anything, and accepts no substitute for that signature but a
+Developer ID signature from the running app's own team. Check 4a refuses a build with a feed
+and without it, `UpdateController` does not start the updater without it, and
+`UpdateConfigurationTests` fails if it leaves the plist. The development build has no feed;
+see `Docs/development-build.md`. `Docs/app-updates.md` covers the updater inside the app.
 
-`SUVerifyUpdateBeforeExtraction` is `true` in `Resources/Uttrflow-Info.plist`, so Sparkle
-checks the archive against `SUPublicEDKey` before it unpacks anything. The only substitute
-it accepts for that signature is a Developer ID signature from the running app's own team.
-Check 4a refuses a build with a feed and without this setting, `UpdateController` does not
-start the updater without it, and `UpdateConfigurationTests` fails if it leaves the plist.
+## The signing identity
 
-## A stable signing identity
-
-Every build without a Developer ID is signed ad hoc, and its designated requirement is
-`identifier "com.uttrflow.Uttrflow"` (`bundle.sh`, the signing step): it names the bundle
-identifier only. Privacy grants and keychain access follow the designated requirement, so a
-shipped build should be identified by a certificate as well.
-
-Recommended, in order of preference:
-
-1. **A Developer ID** (see "A real release"). The requirement then pins the team, the build
-   can be notarised, and Sparkle's Developer ID fallback becomes usable.
-2. **Until then, a self-signed code-signing identity kept only in a dedicated release
-   keychain** on the release Mac:
-   1. Create a keychain for it: `security create-keychain -P ~/Library/Keychains/uttrflow-release.keychain-db`.
-   2. In Keychain Access, Certificate Assistant, "Create a Certificate": a name such as
-      "Uttrflow Release Signing", identity type "Self Signed Root", certificate type
-      "Code Signing", stored in that keychain.
-   3. Note its SHA-1: `security find-identity -p codesigning ~/Library/Keychains/uttrflow-release.keychain-db`.
-   4. Change `bundle.sh` so a release-bound ad-hoc mode signs with `--sign <SHA-1>` and the
-      requirement `designated => identifier "com.uttrflow.Uttrflow" and certificate leaf = H"<SHA-1>"`,
-      and update check 6 to expect it.
-   5. Export the identity (`.p12`) and keep it with the exported EdDSA key; if the release
-      workflow signs, add it to the repository's secrets and import it into a temporary
-      keychain in `release.yml`.
-   6. Rehearse the first such update from the current published build: it installs on the
-      EdDSA signature, and the privacy grants are asked for once more because the
-      requirement changed. Later updates keep them.
-
-Nothing in the app grants trust by bundle identifier on its own: the single-instance
-hand-off and the check that skips reading Uttrflow's own windows compare identifiers, and
-neither unlocks anything.
+Every build without a Developer ID is signed ad hoc with the designated requirement
+`identifier "com.uttrflow.Uttrflow"`: it names the bundle identifier and nothing else.
+Privacy grants and keychain access follow the designated requirement, so an ad-hoc build is
+identified by its identifier alone. A Developer ID build's requirement also pins the Team ID
+(check 6), which is what makes Sparkle's Developer ID fallback usable. Nothing in the app
+grants trust by bundle identifier on its own: the single-instance hand-off and the check that
+skips reading Uttrflow's own windows compare identifiers, and neither unlocks anything.
 
 ## Where downloads live
 
-The public repository **[uttrflow/releases](https://github.com/uttrflow/releases)**. It
-holds disk images and `latest.json` and no source code. Downloads stay separate because a
-second copy of either is a second answer to which build a version is.
+The public repository **[uttrflow/releases](https://github.com/uttrflow/releases)** holds disk
+images, update archives, `latest.json` and `appcast.xml`, and no source code.
 
-One repository serves every platform. A release is a version of the *product*, not of a
-build, and splitting per platform would let `1.2.3` exist for macOS and not for Windows
-with nothing enforcing they are the same code.
-
-The published asset is **`Uttrflow.dmg`, with no version in the name**. That is what makes
+The published asset is **`Uttrflow.dmg`, with no version in the name**. That makes
 
 ```
 https://github.com/uttrflow/releases/releases/latest/download/Uttrflow.dmg
 ```
 
-a permanent address: GitHub resolves it to the newest release carrying an asset of
-exactly that name. A version in the filename would make that URL a 404 the day after it
-was written. The local file keeps its version — a developer building by hand wants it —
-and `publish.sh` renames the copy it uploads. Opposite needs, met in different places.
+a permanent address: GitHub resolves it to the newest full release carrying an asset of
+exactly that name, and a versioned filename would turn the URL into a 404 after the next
+release. The local file keeps its version for whoever builds by hand, and `publish.sh` renames
+the copy it uploads.
 
-`latest.json` is what `uttrflow.com/download` reads to name the version and its size. The
-page treats it as decoration and never as the source of the link, so a stale, missing or
-unreachable manifest costs a caption rather than the download.
+`latest.json` names the version, its size and `gatekeeper` for the download page, which treats
+it as a caption and never as the source of the link, so a stale or missing manifest costs a
+caption rather than the download.
 
-When a second platform exists, it uploads into the **same release**, and `latest.json`
-must be written only after every platform has uploaded — otherwise the page can advertise
-a version that exists for one OS and 404s for another.
+## The gate before a release
 
-## CI, and why the gate is still local
+`.github/workflows/ci.yml` runs `make verify` on every pull request into `main` and every push
+to `main`, with dependency review beside it on pull requests; Scorecard runs on pushes to
+`main` and weekly, and CodeQL weekly. The release
+workflow runs `make verify` again before it builds. macOS runners are the only option: the
+project builds against macOS 26 frameworks and its tests drive the real Accessibility,
+clipboard and speech APIs.
 
-GitHub Actions bills macOS runners at **ten times** Linux, and this project cannot use
-Linux: it builds against macOS 26 frameworks and its tests drive the real Accessibility,
-clipboard and speech APIs. While the source was private, fifty-one runs over two days
-consumed **97% of the free plan's 2,000 monthly minutes**, after which jobs stopped
-starting — silently, for days, while the repository went on looking green. A gate that can
-fail without saying so is worse than no gate, because it is trusted.
-
-The repository is public now, and public repositories are not billed for Actions, so
-`.github/workflows/ci.yml` runs `make verify` on every pull request and on `main`, with
-dependency review and Scorecard beside it. That is the check a contributor sees. CodeQL
-runs weekly instead: it is the second macOS job of a pair the free plan's five concurrent
-runners cannot deliver, and it was starving the one that gates a merge.
-
-The gate that stops a red commit reaching `main` in the first place is still
-**`.githooks/pre-push`**, which runs the same `make verify` — lint, PII audit, build, the
-full test suite and the coverage floor — before anything is pushed. A push that would fail
-CI never leaves the machine.
+The local gate is **`.githooks/pre-push`**, installed once per clone:
 
 ```bash
-make hooks     # once per clone: hooks are not cloned, this sets core.hooksPath
+make hooks     # sets core.hooksPath; hooks are not cloned
 ```
 
-Two details that were learned rather than designed:
-
-- **It verifies the pushed commit, in a worktree of its own.** The first version checked
-  the working tree and was immediately blocked by a lint error in a file its commit never
-  touched, belonging to a concurrent session still typing. What is pushed is a commit; the
-  working tree is whatever is on the desk. The worktree is reused so `.build` stays warm
-  (~47s warm, ~114s cold) and lives inside `.git`, so it never appears in `git status`.
-- **Only `main` is gated.** Blocking branches teaches people to reach for `--no-verify`,
-  which turns the gate off for `main` too.
-
-Windows and Linux runners bill at 2× and 1×, so when a second platform exists, building
-*it* on Actions is affordable. The 10× problem is specific to macOS.
+It runs the disclosure audit on every commit pushed to any branch, and runs `make verify` (lint,
+PII audit, build, the full test suite, the coverage floor) before a push to `main`. It verifies
+the **pushed commit**, not the working tree, in a worktree of its own under the git directory,
+reused so its `.build` stays warm and never shown in `git status`. Only `main` gets the full
+`make verify`: blocking every branch would teach people to reach for `--no-verify`, which
+turns the gate off for `main` too.

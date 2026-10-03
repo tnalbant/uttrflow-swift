@@ -9,7 +9,7 @@ import UttrflowEval
 import UttrflowPipeline
 import UttrflowSpeech
 
-/// Plays a list of clips through `DictationPipeline` and prints one JSON line per dictation. See `Docs/performance.md`.
+/// Plays a list of clips through `DictationPipeline` and prints one JSON line per dictation. See `Docs/performance-dictation.md`.
 struct Bench: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Dictate a list of clips through the whole pipeline, loading the recogniser once.",

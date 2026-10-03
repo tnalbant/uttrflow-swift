@@ -9,7 +9,7 @@ public enum SpeechEngineFactory {
         kind: SpeechEngineKind,
         model: SpeechModel = .default,
         modelFolder: URL,
-        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance.md.
+        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance-dictation.md.
         idleAfter: Duration? = nil,
         didRelease: (@Sendable () -> Void)? = nil,
         didLoad: (@Sendable () -> Void)? = nil,

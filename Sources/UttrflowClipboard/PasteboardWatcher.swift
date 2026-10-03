@@ -27,7 +27,7 @@ public actor PasteboardWatcher {
     private static let readQueue = DispatchQueue(
         label: "com.uttrflow.clipboard-read", qos: .userInitiated, attributes: .concurrent)
 
-    /// How often the change count is read; the panel catches up as it opens, so this is set by battery. See `Docs/performance.md`.
+    /// How often the change count is read; the panel catches up as it opens, so this is set by battery. See `Docs/performance-idle.md`.
     public static let pollInterval = Duration.milliseconds(500)
 
     /// How far the system may move one poll to coalesce it with other wakeups: a fifth of the interval.

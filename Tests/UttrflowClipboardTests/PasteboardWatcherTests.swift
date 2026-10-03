@@ -703,7 +703,7 @@ struct PasteboardWatcherTests {
         await task.value
     }
 
-    /// The panel catches up as it opens, so the poll is set by battery rather than by the gesture. See `Docs/performance.md`.
+    /// The panel catches up as it opens, so the poll is set by battery rather than by the gesture. See `Docs/performance-idle.md`.
     @Test("polls no more than twice a second")
     func interval() {
         #expect(PasteboardWatcher.pollInterval >= .milliseconds(500))

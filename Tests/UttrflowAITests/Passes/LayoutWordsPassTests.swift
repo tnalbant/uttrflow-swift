@@ -381,7 +381,7 @@ struct LayoutWordsPassTests {
     @Test(
         "does not turn spoken layout phrases into marks when the destination has no list layout",
         arguments: [
-            LayoutPolicy.singleLine, LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
+            LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
         ]
     )
     func respectsLayoutPolicy(layout: LayoutPolicy) {
@@ -407,5 +407,37 @@ struct LayoutWordsPassTests {
         #expect(draft.words[2].state == .removed(by: LayoutWordsPass.id))
         #expect(draft.words[3].state == .removed(by: LayoutWordsPass.id))
         #expect(draft.words[1].isLayoutMark && draft.words[1].isListMark)
+    }
+
+    private static let oneLine = LayoutWordsPass(layout: .singleLine)
+
+    @Test(
+        "writes a spoken list in a one-line field as one line kept apart by the list separator",
+        arguments: [
+            ("bullet point red bullet point green", "red, green"),
+            ("bullet point red bullet point green bullet point blue", "red, green, blue"),
+            ("number one milk number two eggs", "milk, eggs"),
+            ("tags new line draft new line review", "tags, draft, review"),
+            ("draft new paragraph review", "draft, review"),
+            ("urgent blank line later", "urgent, later"),
+            ("bullet point red next point green", "red, green"),
+            ("we need bullet point milk bullet point eggs", "we need, milk, eggs"),
+            ("bullet point paris, france bullet point rome", "paris, france; rome"),
+            ("first. new line second", "first. second"),
+        ]
+    )
+    func oneLineList(input: String, expected: String) {
+        #expect(cleaned(input, by: Self.oneLine) == expected)
+    }
+
+    @Test(
+        "leaves the list words alone in a one-line field when they are not a list",
+        arguments: [
+            "the bullet point was too long", "number one is broken", "red",
+            "she drew a new line on the map", "my number one priority", "the next point matters",
+        ]
+    )
+    func oneLineNonList(input: String) {
+        #expect(cleaned(input, by: Self.oneLine) == input)
     }
 }

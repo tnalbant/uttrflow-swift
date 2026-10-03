@@ -1,166 +1,111 @@
 # The recording that never stops
 
-## What users saw
+A dictation must always end: if it does not, the menu bar stays lit, the shortcut does nothing,
+and the only way out is to force-quit. Three unrelated causes can keep one running, and each has
+its own guard. The key-state reconciliation is in `Sources/UttrflowInput/ActivationMonitor.swift`,
+`CarbonHotkeyMonitor.swift` and `RealKeyState.swift`; the stage limits are in
+`Sources/UttrflowCore/Support/StageTimeout.swift`; the length cap is `DictationLimit`
+(`Sources/UttrflowCore/Support/DictationLimit.swift`), enforced by `DictationController`.
 
-Hold the shortcut, let go, and the app stays listening. The menu bar stays lit, the
-shortcut does nothing from then on, and the only way out is to force-quit. Sometimes it
-happens on the first dictation after launch; sometimes after hours of working fine.
+## 1. The release event never arrives
 
-## There are three causes, and they are unrelated
+The pipeline leaves `.recording` only when it is told the key came up, so any path that loses the
+release would wedge the app, and both monitors have one:
 
-### 1. The release event never arrives
+- **`ActivationMonitor`**, over `SystemKeyboard`'s session event tap, watches the dictation
+  shortcut. The system can disable the tap while the key is held, and **secure input** — any
+  password field in any application, including the login window — withholds key-up and
+  flags-changed events from it. The press gets through and the release does not.
+- **`CarbonHotkeyMonitor`**, used by every other shortcut, relies on `kEventHotKeyReleased`, which
+  `RegisterEventHotKey` does not always send: lifting the modifier before the key loses it, and so
+  does a window server that drops the registration.
 
-The pipeline leaves `.recording` when it is told the key came up. Nothing else moves it.
-So any path that loses the release wedges the app, and both monitors have one:
+`HeldModifierEdge.isDown` would then stay `true`, with no other way to close the microphone.
 
-- **`ActivationMonitor`**, over `SystemKeyboard`'s listen-only session tap, is what the
-  dictation shortcut uses. The tap being disabled while the key is held (#141's
-  re-enable happens after the event is already lost) or **secure input** turning on
-  mid-hold — any password field, in any application, including the login window and
-  1Password — withholds key-up and flags-changed events from it. The press gets
-  through, the release does not.
-- **`CarbonHotkeyMonitor`**, used by every other shortcut, relies on
-  `kEventHotKeyReleased`, which `RegisterEventHotKey` does not always send: lifting the
-  modifier before the key loses it, and so does a window server that drops the
-  registration.
+So neither monitor trusts the event. While a press is outstanding, each compares against the real
+key state every 250 ms (`reconciliationMilliseconds`) — `ActivationMonitor` through
+`SystemKeyState`, which reads `CGEventSource.flagsState` and `keyState` for the binding, and
+`CarbonHotkeyMonitor` through `CGEventSource.keyState` for its registered key — and feeds the answer
+to the same recogniser an event would. A release that is never delivered is noticed within a
+quarter of a second. The poll is the source of truth and the event is the fast path.
 
-`HeldModifierEdge.isDown` then stays `true` for ever, and there is no second way to
-close the microphone.
+**The poll runs only while a press is outstanding.** It starts when a monitor reports a press and
+stops when it reports or reconciles the release. A timer running while no press is outstanding
+would wake an idle app four times a second for its whole life, and one left behind by a monitor
+dropped without `stop()` would keep firing for the life of the process — long enough to keep a test
+binary alive after every test has passed. A monitor released mid-hold cancels its own timer.
 
-**The fix is to stop trusting the event.** Both monitors now compare against the real
-key state every 250 ms — `SystemKeyState`, reading `CGEventSource`, for
-`ActivationMonitor`'s `HotkeyRecogniser`, and `CGEventSource.keyState` directly for
-`CarbonHotkeyMonitor`'s registered key — and feed the answer to the same
-`HeldModifierEdge` an event would. A release that is never delivered is noticed within a
-quarter of a second, which is under what anybody perceives as a hang.
+## 2. A stage never returns
 
-Reading the hardware rather than waiting to be told is the whole idea. The poll is the
-source of truth and the event is the fast path.
+Every stage of a dictation runs somebody else's code — a CoreML decode, an on-device language
+model, an Accessibility round trip into another application — and none of it promises to return.
+A stage that hangs would leave `DictationState.isBusy` true, and `startRecording()` refuses while
+`isBusy`, so every later dictation would be refused: the same symptom as a lost release, from a
+different direction.
 
-**The poll runs only while a press is outstanding.** It starts when a monitor reports a
-press and stops when it reports or reconciles the release. It checks the real key state
-every 250 ms, including after a physical release whose event was lost, so the missed
-release is noticed within one interval. A timer running while no press is outstanding
-would wake an idle menu-bar app four times a second for its whole life, and a monitor
-dropped without `stop()` could leave one firing for the life of the process. That second
-half is not hypothetical: it kept a CI runner's test binary alive for forty minutes after
-every test had passed.
+So every stage runs under `withStageTimeout`, with these limits:
 
-### 2. A stage never returns
+| Stage | Limit | On timeout |
+|---|---|---|
+| Loading the speech model | `StageTimeout.speechModelLoad`, 300 s | the load fails with `modelLoadFailed` and can be retried; see [startup.md](startup.md) |
+| Stopping capture | `StageTimeout.quick`, 15 s | the dictation fails, and the pipeline returns to idle |
+| Transcription | `StageTimeout.transcription`, 120 s | the dictation fails, and the pipeline returns to idle |
+| Reading the screen | `StageTimeout.quick`, 15 s | the dictation goes on with no context |
+| Tidying | `StageTimeout.transformation`, 30 s, as a backstop | each engine has its own allowance inside it — `StageTimeout.engine` (20 s) for a model, `StageTimeout.rules` (2 s) for the deterministic floor — and the router spends them in turn, so a model that hangs costs its own turn and the floor still answers; only if the floor is starved too do the words go in untidied |
+| Correction, snippet expansion | `StageTimeout.quick`, 15 s | the stage is skipped and the words go in as they were |
+| Insertion | `StageTimeout.quick`, 15 s | the dictation fails with `insertionTimedOut`, carrying the transcript so it can still be offered |
 
-Every stage of a dictation runs somebody else's code — a CoreML decode, an on-device
-language model, an Accessibility round trip into another application — and none of it
-promises to return. There were **no timeouts anywhere** in the pipeline, the speech
-layer or the AI layer.
+A timeout does not have to produce a good outcome; it has to produce one, so the next dictation can
+start. `withStageTimeout` cancels the work when the limit wins, not only its timer, because
+abandoned work would go on having effects nobody is waiting for: an application that stops
+answering Accessibility for longer than the limit could otherwise receive the words after the user
+was told the dictation failed. Each irreversible act on an insertion route therefore checks
+`Task.isCancelled` immediately before it happens — the Accessibility write, the clipboard write
+before a paste, and the clipboard floor. The floor included: the words are already kept under
+Recent, and the clipboard is the user's.
 
-A stage that hangs leaves `DictationState.isBusy` true. `startRecording()` guards on
-`isBusy`, so **every later dictation is refused** — the shortcut is dead for the rest of
-the process's life, with no hotkey involved at all. This is the same symptom from a
-completely different direction, which is why fixing the monitors alone would not have
-been enough.
+A transcript that reaches the screen with no tidying pass run over it is recorded as `.untidied`,
+not as `.rules`, so it is not mistaken for one the deterministic engine wrote.
 
-**The fix is `withStageTimeout`**, applied to every stage. The limits are in
-`StageTimeout`. What happens on expiry follows §19 — the user's words are never lost:
+## 3. Nobody let go at all
 
-| Stage | On timeout |
-|---|---|
-| capture, transcription | the dictation fails, and the pipeline returns to idle |
-| tidying | each engine has its own allowance inside the stage's, so a model that hangs costs its own turn and the deterministic floor still answers; only if that is starved too do the words go in untidied |
-| correction, expansion | the stage is skipped and the words go in as they were |
-| insertion | the dictation fails, carrying the transcript so it can still be offered |
+Neither guard above helps a recording started hands-free and then left: nothing was pressed, so
+there is no release to reconcile, and no stage is hanging. `DictationController` holds every
+dictation to `DictationLimit.default`:
 
-The point is not that a timeout produces a good outcome. It is that it produces *an*
-outcome, so the next dictation can start — and only one. `withStageTimeout` cancels the work
-when the limit wins, not only its timer, because the abandoned work went on having effects
-nobody was waiting for any more: an application that stopped answering Accessibility for
-fifteen seconds used to have the words pasted into whatever window was in front by the time it
-came back, over a clipboard the user had been told to go and use.
+| `DictationLimit` field | Value | What happens |
+|---|---|---|
+| `warnAfter` | 180 s | the menu bar and the floating button count down: "Listening… 1 min left", then every `countdownStep` (10 s), "50 sec left" to "10 sec left" |
+| `stopAfter` | 240 s | the dictation finishes itself, and is transcribed and inserted |
 
-So each irreversible act on the insertion path asks first whether its stage is still running —
-the Accessibility write, the pasteboard write before the paste keystroke, and the clipboard
-floor. The floor included: "cannot fail" means the words are never lost, and they are already
-kept under Recent; it does not mean taking somebody's clipboard after they were told the
-dictation failed.
+It is a soft cap. Reaching it keeps everything said; a hard cut would lose the last sentence spoken
+and say so afterwards. The minute of warning lets a speaker end their own sentence rather than have
+it ended for them. The limit is not a setting.
 
-Tidying is the one stage where "an outcome" was worse than it needed to be. One budget wrapped
-the whole route, and the route's parts differ by four orders of magnitude in cost: a model that
-hung for thirty seconds spent the deterministic floor's opportunity as well as its own, so the
-engine that exists for exactly that case never ran and the user was handed the raw transcript —
-no capitals, no stop, fillers still in — after a thirty-second wait. Each engine now declares its
-own allowance (`StageTimeout.engine` for a model, `StageTimeout.rules` for the floor) and the
-router spends them one at a time, with `StageTimeout.transformation` left as the backstop for the
-stage as a whole.
+A dictation that is listening also ends when the screen locks, the user session resigns, the
+displays sleep or the Mac is about to sleep (`DictationSessionEndObserver`).
+`DictationController.endForSessionEnding()` finishes it through the normal stop path, so the
+captured words are still transcribed, and since capture ends before sleep, no cap is left to fire
+on wake.
 
-A transcript that reaches the screen with no pass run over it is recorded as `.untidied` rather
-than as `.rules`. It used to claim the deterministic engine had written it, which made the one
-record worth finding indistinguishable from an ordinary one.
+## Testing a timeout without hanging the suite
 
-### 3. Nobody let go at all
+The tests that drive `StageTimeout` hold a `ManualClock` and must move it at exactly the right
+moment: a stage's deadline can only be expired once that stage has installed it. Polling for a
+sleeper and then advancing is two steps — the count is read, the lock is released, and the advance
+happens later against a clock that may have changed. If the sleeper that satisfied the check
+belonged to the previous stage and was torn down in between, the clock moves with nothing
+installed, the next stage installs a deadline nothing ever reaches, and the test awaits a value
+that cannot arrive. Under Swift Testing's concurrency the run then stops producing output and never
+finishes. The race is timing-dependent: it survives a fast machine and appears on a loaded one.
 
-Neither fix above helps a recording that is running because the user started one in
-toggle mode and walked away. Nothing was pressed, so there is no release to reconcile
-against, and no stage is hanging.
+So the wait and the advance are one step. `ManualClock.advanceWhenSomethingIsWaiting(by:)` parks the
+request when nothing is sleeping yet, and `sleep` carries it out inside the same lock acquisition
+that installs the sleeper. `ManualClock` exposes no sleeper count, because one cannot be read
+without inviting the two-step back.
 
-`DictationLimit` is the answer and was **specified, tested and wired to nothing** — every
-reference to it was its own definition or its own test. It is now wired into
-`DictationController`:
-
-| at | what happens |
-|---|---|
-| 3 minutes | the menu bar and the floating button count down — "Listening… 1 min left", then every ten seconds, "50 sec left" to "10 sec left" |
-| 4 minutes | the dictation **finishes itself**, and is transcribed and inserted |
-
-It is a soft cap, and the distinction is the whole point. Reaching it keeps everything
-said; a hard cut would lose the last sentence somebody spoke and tell them afterwards,
-which is the worst moment to find out. The minute of warning between the two is what
-lets a speaker end their own sentence rather than have it ended for them.
-
-The limits are `DictationLimit.default` and nothing reads them from settings yet.
-
-A press-to-toggle or double-tap dictation also ends when the screen locks, the active user session changes, or the Mac sleeps. Uttrflow finishes the recording through the normal stop path, preserving captured words for transcription. Because sleep ends capture before suspension, no active cap remains to fire on wake. CoreAudio delivery across sleep still depends on hardware; capture ends before sleep rather than relying on an audio-engine interruption.
-
-## Testing a timeout without hanging the whole suite
-
-The tests that drive `StageTimeout` hold a `ManualClock` and have to move it at exactly
-the right moment: a stage's deadline can only be expired once that stage has installed
-it. The obvious way to arrange that is to poll:
-
-```swift
-while clock.sleeperCount == 0 { await Task.yield() }   // something is waiting
-clock.advance(by: limit)                               // so expire it
-```
-
-**That is two steps, and it is wrong.** The count is read, the lock is released, and the
-advance happens later against a clock that may have changed. Instrumenting the tidying
-test caught the window open on 1 run in 25:
-
-```
-PROBE advance stage=tidying limit=30.0s sleepers=0 now=0.0s
-```
-
-Non-zero when the loop exited, zero by the time the advance ran. The sleeper that
-satisfied the guard belonged to the *previous* stage and was torn down in between.
-
-The cost of losing that race is not a failed test. The clock moves to 30s with nothing
-installed; the tidying stage then installs its deadline at 60s; nothing ever advances
-again; `withStageTimeout` never returns, so `finishRecording()` never returns, so the
-test awaits a value that cannot arrive. Swift Testing runs tests concurrently, so the
-run stops producing output and never finishes — no failure, no summary, just an idle
-process until CI kills the job at its 45-minute cap. That happened on `main` and on a
-pull request branch, and cost two runner-hours before it was tracked down.
-
-It is timing-dependent, so it survives a fast machine — 40 stress runs under CPU load
-did not reproduce it — and bites a loaded runner, where these tests took 11 seconds
-each instead of the whole suite taking three.
-
-**So the wait and the advance are one step.** `advanceWhenSomethingIsWaiting(by:)` parks
-the request when nothing is sleeping yet, and `sleep` carries it out inside the same
-lock acquisition that installs the sleeper, where nothing can come apart in between.
-`sleeperCount` is gone rather than deprecated: it cannot be read without inviting the
-same two-step back.
-
-One thing the atomicity does not fix on its own is picking the *right* deadline. When a
-stage begins, the previous stage's deadline can still be installed, and advancing then
-expires that one instead. `expire` therefore advances until the pipeline leaves the
-stage rather than exactly once; firing an already-resolved deadline is harmless, because
-the race it belonged to has an outcome and ignores a second answer.
+Atomicity does not pick the right deadline on its own: when a stage begins, the previous stage's
+deadline can still be installed, and advancing then expires that one instead. The `expire` helper
+in `Tests/UttrflowPipelineTests/DictationStageTimeoutTests.swift` therefore advances until the
+pipeline leaves the stage rather than exactly once; firing an already-resolved deadline is
+harmless, because its race already has an outcome and ignores a second answer.

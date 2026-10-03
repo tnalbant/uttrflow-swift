@@ -1,37 +1,38 @@
 # Quitting
 
-## The promise, and what it cost
+When macOS asks Uttrflow to quit, `AppDelegate.applicationShouldTerminate` answers
+`.terminateLater` and `AppQuitCoordinator.finish` (`Sources/Uttrflow/AppQuitCoordinator.swift`)
+lets the dictation in flight land before the process exits, within a fixed budget, then replies.
+A dictation's words exist only in memory until they are inserted (the audio kept for a retry is
+described in [`recordings.md`](recordings.md)), so quitting mid-dictation without waiting would
+lose them silently.
 
-Quitting mid-dictation used to take the audio, the transcript and the cleaned text with
-it, silently. Nothing is written to disk until the words land, so the only way not to
-lose them is not to exit until they have somewhere to go. `applicationShouldTerminate`
-therefore answers `.terminateLater` and waits.
+## What it does, in order
 
-**It waited for ever.** The condition was `DictationState.isBusy`, and `isBusy` includes
-`.recording` — so the app was waiting for a key the user might never lift:
+All of it runs inside `AppDelegate.quitBudget`, 15 seconds from the quit request:
 
-- **Toggle mode.** Press the shortcut, start dictating, walk away, then quit from the
-  menu or the Dock. Nothing is going to end that recording, so nothing is going to
-  release the quit.
-- **A recording that is stuck** for any of the reasons in `Docs/stuck-recording.md`.
-  The app was then unquittable as well as unusable.
+1. Flush the clipboard's held uses (`ClipboardStore.flushUse`), so the eviction order survives the
+   quit; see [`clipboard-store.md`](clipboard-store.md#what-fails-quietly-and-what-does-not).
+2. Finish the completion store's pending writes.
+3. If a dictation is still recording, finish it (`finishRecording`).
+4. Wait until the pipeline leaves its busy state: transcription, clean-up and insertion.
+5. Stop the dictation controller.
 
-Either way macOS eventually offers Force Quit, which is what users reported doing.
+Then, on every path, including the budget running out, flush telemetry and reply
+`reply(toApplicationShouldTerminate: true)`.
 
-## What it does now
+## A recording is finished, not waited on
 
-**A recording is finished rather than waited on.** It is waiting on the user, not on the
-app, and finishing it keeps the words — which is the whole point of waiting at all.
+A recording is waiting on the user, not on the app: in toggle mode, or with a recording stuck for
+any of the reasons in [`stuck-recording.md`](stuck-recording.md), nothing is going to end it, so
+waiting for `DictationState.isBusy` to clear would wait for ever and leave Force Quit as the only
+way out. Finishing the recording keeps the words, which is the whole point of waiting at all.
 
-**The wait is bounded**, at fifteen seconds from the quit request, and the reply is sent
-on every path. That budget covers flushing held clipboard uses, finishing a recording,
-and waiting for transcription, clean-up and insertion to leave the pipeline busy state.
-An unanswered `.terminateLater` is an application that cannot be quit, which is a worse
-failure than the one the wait exists to prevent.
+## The wait is bounded
 
-## What that costs
+The reply is sent on every path, because an unanswered `.terminateLater` is an application that
+cannot be quit, which is a worse failure than the one the wait exists to prevent.
 
-A dictation still transcribing when the fifteen seconds run out is lost. In practice that
-is a very long recording quit almost immediately after it ended — an ordinary dictation
-transcribes in about a second. The trade is deliberate: the words matter, and an app that
-will not quit matters more.
+The cost: a dictation still transcribing when the fifteen seconds run out is lost. That is a very
+long recording quit almost immediately after it ended; an ordinary dictation transcribes in about a
+second. The trade is deliberate: the words matter, and an app that will not quit matters more.

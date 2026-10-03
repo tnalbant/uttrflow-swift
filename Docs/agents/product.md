@@ -28,7 +28,7 @@ the module name when you edit code.
 
 | Rule | Limit | Held by |
 |---|---|---|
-| Output is Latin script only | 0 Devanagari or other non-Latin characters inserted or suggested; 0 translated words | `LatinScript.writes`, `Docs/latin-output.md` |
+| Output is Latin script only | 0 Devanagari or other non-Latin characters inserted or suggested; 0 translated words | `LatinScript.writesOnlyLatin`, `Docs/latin-output.md` |
 | Dictation, history, clipboard, dictionary, snippets and suggestion data stay on this Mac | 0 uploads; 0 connections on the dictation path | `make offline-audit`, `Docs/offline.md` |
 | Local stores are private | 0 writes outside `PrivateFile`; files excluded from backup | `make store-permissions`, `Docs/local-store-permissions.md` |
 | The log never carries text a person typed, read or said | 0 such messages | `make log-audit`, `Docs/logging.md` |

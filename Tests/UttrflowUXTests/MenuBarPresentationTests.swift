@@ -48,7 +48,8 @@ struct MenuBarIconTests {
         #expect(
             icons == [
                 .mark, .symbol("mic.fill"), .symbol("sparkles"), .symbol("checkmark"),
-                .symbol("questionmark.circle"), .symbol("doc.on.clipboard"),
+                .symbol("exclamationmark.circle"), .symbol("questionmark.circle"),
+                .symbol("doc.on.clipboard"),
             ])
         #expect(Set(icons).count == DictationActivity.allCases.count)
     }
@@ -110,6 +111,15 @@ struct MenuBarIconTests {
         #expect(DictationActivity.completion(method: .typed, arrival: .confirmed) == .inserted)
     }
 
+    @Test("says part of the speech is missing only when a piece decoded to no words", arguments: [0, 1, 3])
+    func missedPiecesReachTheStatusLine(missed: Int) {
+        let activity = DictationActivity.completion(method: .typed, arrival: .confirmed, missedPieces: missed)
+        let shown = MenuBarPresenter.present(MenuBarState(activity: activity))
+        #expect(activity == (missed > 0 ? .partial : .inserted))
+        #expect(shown.statusLine == (missed > 0 ? MissedSpeech.line : "Inserted"))
+        #expect(shown.accessibilityLabel.contains("part not transcribed") == (missed > 0))
+    }
+
     @Test("marks a live microphone even with nothing wrong")
     func listeningIsItsOwnEmphasis() {
         #expect(MenuBarPresenter.present(MenuBarState(activity: .listening)).emphasis == .live)
@@ -129,8 +139,8 @@ struct MenuBarStatusTests {
         }
         #expect(
             lines == [
-                "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — not confirmed",
-                "Copied — press ⌘V",
+                "Ready", "Listening…", "Tidying up…", "Inserted", "Inserted — part not transcribed",
+                "Inserted — not confirmed", "Copied — press ⌘V",
             ])
         for (activity, line) in [
             (DictationActivity.copied, "Copied — press ⌘V"),
@@ -855,14 +865,14 @@ struct MenuBarPrintedShortcutTests {
     @Test(
         "the AI suggestions switch says what its model is waiting on, in the words Settings uses",
         arguments: [
-            (SuggestionModelReadiness.loading, "AI Suggestions — Getting ready"),
-            (.downloading(fractionCompleted: nil), "AI Suggestions — Getting ready"),
-            (.downloading(fractionCompleted: 0.42), "AI Suggestions — Getting ready — 42%"),
-            (.downloading(fractionCompleted: 1.7), "AI Suggestions — Getting ready — 100%"),
-            (.releasedForMemory, "AI Suggestions — Paused to free memory"),
-            (.failed, "AI Suggestions — The model could not be fetched"),
-            (.ready, "AI Suggestions"),
-            (.notAsked, "AI Suggestions"),
+            (SuggestionModelReadiness.loading, "AI Suggestions, Beta — Getting ready"),
+            (.downloading(fractionCompleted: nil), "AI Suggestions, Beta — Getting ready"),
+            (.downloading(fractionCompleted: 0.42), "AI Suggestions, Beta — Getting ready — 42%"),
+            (.downloading(fractionCompleted: 1.7), "AI Suggestions, Beta — Getting ready — 100%"),
+            (.releasedForMemory, "AI Suggestions, Beta — Paused to free memory"),
+            (.failed, "AI Suggestions, Beta — The model could not be fetched"),
+            (.ready, "AI Suggestions, Beta"),
+            (.notAsked, "AI Suggestions, Beta"),
         ])
     func suggestionsSwitchShowsTheModel(model: SuggestionModelReadiness, title: String) {
         let shown = MenuBarPresenter.present(
@@ -877,7 +887,7 @@ struct MenuBarPrintedShortcutTests {
         let shown = MenuBarPresenter.present(
             MenuBarState(features: MenuBarFeatures(suggestions: false), suggestionModel: .failed))
         let item = shown.commands.first { $0.intent == .setFeature(.suggestions, isOn: true) }
-        #expect(item?.title == "AI Suggestions")
+        #expect(item?.title == "AI Suggestions, Beta")
     }
 }
 

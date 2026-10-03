@@ -279,7 +279,7 @@ struct PanelChipTests {
 
         #expect(page.categories.map(\.title) == ["Personal", "Prod"])
         #expect(page.categories.map(\.shortcut) == [2, 3])
-        #expect(page.categories.map(\.isActive) == [false, true])
+        #expect(page.categories.map(\.isActive) == [true, false])
         #expect(page.categories.map(\.category) == ["Personal", "Prod"])
         #expect(page.categories.map(\.id) == ["Personal", "Prod"])
     }

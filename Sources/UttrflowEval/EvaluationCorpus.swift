@@ -5,7 +5,7 @@ public import UttrflowCore
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
-        + grammar
+        + grammar + oneLineField
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -2804,6 +2804,61 @@ public enum EvaluationCorpus {
             destination: .messaging,
             mustBeginWith: "He come",
             mustEndWith: "yesterday"
+        ),
+    ]
+    // MARK: One-line fields of no known purpose
+
+    static let oneLineFieldContext = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+
+    static let oneLineField: [EvaluationCase] = [
+        .init(
+            id: "one-line-name", category: .oneLineField, spoken: "jordan rivera", expected: "Jordan Rivera",
+            context: oneLineFieldContext, mustEndWith: "a"
+        ),
+        .init(
+            id: "one-line-title", category: .oneLineField, spoken: "project plan", expected: "Project plan",
+            context: oneLineFieldContext, mustEndWith: "n"
+        ),
+        .init(
+            id: "one-line-rename", category: .oneLineField, spoken: "quarterly report final",
+            expected: "Quarterly report final",
+            context: oneLineFieldContext, mustEndWith: "l"
+        ),
+        .init(
+            id: "one-line-room", category: .oneLineField, spoken: "room twelve", expected: "Room 12",
+            context: oneLineFieldContext, mustEndWith: "2"
+        ),
+        .init(
+            id: "one-line-phrase", category: .oneLineField, spoken: "blue cotton shirt",
+            expected: "Blue cotton shirt",
+            context: oneLineFieldContext, mustEndWith: "t"
+        ),
+        .init(
+            id: "one-line-reason", category: .oneLineField, spoken: "waiting on the vendor",
+            expected: "Waiting on the vendor",
+            context: oneLineFieldContext, mustEndWith: "r"
+        ),
+        .init(
+            id: "one-line-question", category: .oneLineField, spoken: "is the office open on sunday",
+            expected: "Is the office open on Sunday?",
+            context: oneLineFieldContext, mustEndWith: "?"
+        ),
+        .init(
+            id: "one-line-exclaim", category: .oneLineField, spoken: "happy birthday!",
+            expected: "Happy birthday!",
+            context: oneLineFieldContext, mustEndWith: "!"
+        ),
+        .init(
+            id: "one-line-two-sentences", category: .oneLineField,
+            spoken: "the door is locked. use the side entrance",
+            expected: "The door is locked. Use the side entrance.",
+            context: oneLineFieldContext, mustEndWith: "."
+        ),
+        .init(
+            id: "one-line-three-sentences", category: .oneLineField,
+            spoken: "bring a laptop. arrive early. park at the back",
+            expected: "Bring a laptop. Arrive early. Park at the back.",
+            context: oneLineFieldContext, mustEndWith: "."
         ),
     ]
 }

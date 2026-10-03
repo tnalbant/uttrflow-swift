@@ -231,4 +231,20 @@ struct LatinScriptTests {
         #expect(LatinScript.westernDigit("7") == nil)
         #expect(LatinScript.westernDigit("x") == nil)
     }
+    @Test(
+        "treats a change between Latin and Devanagari inside a token as a word boundary",
+        arguments: [
+            ("PostgreSQLमें", "PostgreSQL mein"), ("PRभेज", "PR bhej"), ("मैंPR", "main PR"),
+            ("PR-भेज", "PR-bhej"), ("PR'में", "PR'mein"), ("में-PR", "mein-PR"), ("PR में", "PR mein"),
+            ("v2में", "v2 mein"),
+        ])
+    func scriptChangeIsBoundary(mixed: String, typed: String) {
+        #expect(Romaniser.romanised(mixed) == typed)
+    }
+
+    @Test("leaves English text byte-identical")
+    func englishUntouched() {
+        let english = "PostgreSQL in v2, PR-sent; don't."
+        #expect(Romaniser.romanised(english) == english)
+    }
 }

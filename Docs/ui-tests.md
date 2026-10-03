@@ -1,21 +1,11 @@
 # Driving the real app
 
-`make verify` proves the logic. It cannot prove the app opens a window, because there is no
-window in a `swift test` process. That gap is what this suite is for, and it is deliberately
-small: everything a headless test can assert belongs in a headless test, where it runs in
-milliseconds and never flakes.
-
-## Where it lives, and why it is not a SwiftPM target
-
-SwiftPM cannot express a UI-testing bundle — `bundle.ui-testing` is an Xcode product type. So
-`UITests/project.yml` describes one target, `Scripts/uitest.sh` generates a project from it with
-XcodeGen, and the generated `.xcodeproj` is gitignored. The configuration is the source; the
-project is build output.
-
-Nothing about the app's own build changes. SwiftPM still compiles it and `Scripts/bundle.sh`
-still assembles it; the suite drives `dist/Uttrflow.app` through
-`XCUIApplication(url:)` rather than building its own copy. That is the whole reason this can be
-added without porting the project to Xcode.
+`make uitest` drives the built `dist/Uttrflow.app` through an XCUITest suite: that it launches,
+that every settings pane draws, that quitting leaves nothing running, and that a test launch
+uses disposable stores and locks. `make verify` proves the logic but cannot prove the app opens
+a window, because a `swift test` process has none; this suite covers that gap and nothing
+more. Everything a headless test can assert belongs in a headless test, where it runs in
+milliseconds and never flakes. The tests are in `UITests/UttrflowUITests/`.
 
 ```bash
 brew install xcodegen   # once
@@ -23,63 +13,59 @@ make app                # the bundle under test
 make uitest
 ```
 
-`make uitest` always writes its result bundle to `dist/uitest.xcresult`, which is where
-`xcodebuild` insists on writing fresh each run. Running it twice in a row does not fail on the
-second attempt: `Scripts/uitest_result_path.sh` moves a bundle already there aside, under its own
-timestamp, before `xcodebuild` runs, so the previous run's result stays on disk for debugging
-instead of being deleted or blocking the next run.
+## Where it lives, and why it is not a SwiftPM target
+
+SwiftPM cannot express a UI-testing bundle; `bundle.ui-testing` is an Xcode product type. So
+`UITests/project.yml` describes one target, `Scripts/uitest.sh` generates a project from it
+with XcodeGen, and the generated `.xcodeproj` is gitignored. The configuration is the source;
+the project is build output.
+
+The app's own build does not change. SwiftPM and `Scripts/bundle.sh` still build and assemble
+it, and the suite launches `dist/Uttrflow.app` through `XCUIApplication(url:)` rather than
+building its own copy (`AppUnderTest` in `UITests/UttrflowUITests/Support/AppUnderTest.swift`).
+A missing bundle fails with "Run `make app` first" rather than a timeout.
+
+`make uitest` writes its result bundle to `dist/uitest.xcresult`. `xcodebuild` refuses to write
+into one that exists, so `Scripts/uitest_result_path.sh` first moves a previous bundle aside
+under a timestamped name, keeping it for debugging. `make uitest-result-path`, part of
+`make verify`, proves a second run does not fail.
 
 ## Why it is not in `make verify`
 
-Three reasons, in order of how much they matter:
+- **It needs a windowing session.** On a machine with no logged-in GUI session a UI test fails
+  for a reason unrelated to the change under test.
+- **Keyboard and microphone tests need permissions `make verify` never asks for.** Anything
+  touching the keyboard tap, the microphone or a global hotkey needs Accessibility granted to
+  both the app and the test runner, which a hosted runner cannot grant.
+- **It would slow the gate** for tests that cannot run there anyway.
 
-- **It needs a windowing session.** A UI test on a machine with no logged-in GUI session fails
-  for a reason that has nothing to do with the change under test.
-- **It needs permissions `make verify` never asks for.** Anything touching the keyboard tap, the
-  microphone or a global hotkey needs Accessibility granted to both the app and the test runner.
-  A GitHub-hosted runner cannot grant that, and cannot be made to.
-- **It is slow enough to change how the gate feels.** `make verify` already takes 9–18 minutes on
-  CI. The gate should not grow for tests that cannot run there anyway.
+The suite as written needs no permission, no state and no keyboard, so it runs anywhere a
+screen exists. Exercising a real shortcut with posted `CGEvent`s needs a machine with
+Accessibility pre-granted; until then the manual procedure in `Docs/shortcuts.md` covers it,
+and `Docs/soak.md` covers long-lived teardown.
 
-## The two tiers
+## Isolation
 
-**Launch and draw** — the tests here now. No permission, no state, no keyboard. That the app
-comes up, that every settings pane renders, that quitting leaves nothing running. These can run
-anywhere a screen exists, including a hosted runner.
+Each launch gets its own disposable container through the test-only
+`UTTRFLOW_TEST_CONTAINER` environment variable, read in `Sources/Uttrflow/UttrflowApp.swift`.
+App data and the singleton locks live in that folder, and settings and onboarding use the
+defaults suite `com.uttrflow.UITests.<container name>`. In that mode the app also starts with
+onboarding finished, uses an in-memory account, turns off automatic update checks and installs,
+and makes the login item inert. `AppUnderTest.terminate(_:)` waits up to 20 seconds for exit,
+then removes the defaults suite and the folder. A UI run therefore neither reads nor writes the
+installed app's state and does not contend for its locks.
 
-**Keyboard and lifetime** — not written yet, and needs a machine with Accessibility pre-granted.
-Posting `CGEvent`s to exercise a real shortcut is the automated form of the manual procedure
-`shortcuts.md` already describes. A soak run — hours of synthetic activity, then a clean quit,
-asserting object counts stayed flat — belongs here too, and is the only thing that can catch the
-teardown crash class.
+Selectors are the titles the presenters produce. When a pane is renamed this suite is where it
+is felt, which is the cost of testing what the user sees rather than what the code returns.
 
-## What to be careful of
+## Screen-capture privacy
 
-Each launch gets a unique disposable container through the test-only
-`UTTRFLOW_TEST_CONTAINER` environment variable. App data, singleton locks and the settings and
-onboarding defaults suite all use that container's identity. `AppUnderTest.terminate(_:)` waits
-for exit and removes it, so a UI run neither reads nor writes the installed app's local state and
-does not contend for the installed app's singleton locks. UI-test mode also uses an in-memory
-account, suppresses automatic update checks, and makes login-item actions inert. This is the
-isolation needed before the keyboard and lifetime tier can be repeated safely.
-
-Selectors are titles the presenters produce. When a pane is renamed, this suite is where it is
-felt, which is the cost of testing what the user sees rather than what the code returns.
-
-## Screen capture privacy
-
-The clipboard panel, the main window and the suggestion overlay set `NSWindow.sharingType` to
-`.none`; `WindowSharingTests` covers that AppKit configuration. Before a release on a new macOS
-minor version, check the actual capture tools below because not every capture path has honoured
-that setting on every release.
-
-| macOS | Screenshot | QuickTime recording | Video-call share | Notes |
-|---|---|---|---|---|
-| 14 | not checked | not checked | not checked | Record the app version and capture tool used. |
-| 15 | not checked | not checked | not checked | Record the app version and capture tool used. |
-| 26 | not checked | not checked | not checked | Record the app version and capture tool used. |
-
-For each row, open the quick panel on copied text and a copied picture, open the History page
-with a recent dictation visible, and show an inline suggestion in another app. The captured
-output should omit those Uttrflow windows; if a tool still captures them, record that limit here
-and keep ordinary secret masking as the fallback protection.
+The quick panel, the main window and the suggestion overlay set `NSWindow.sharingType` to
+`.none` through `PrivateWindowSharing` (`Sources/Uttrflow/Privacy/PrivateWindowSharing.swift`);
+`WindowSharingTests` covers that configuration. Not every capture path honours the setting on
+every macOS release, so before a release on a new macOS version check it by hand: open the quick
+panel on copied text and on a copied picture, open the History page with a recent dictation
+visible, and show an inline suggestion in another app, then take a screenshot, a screen
+recording and a video-call screen share. The captures should omit those windows. If one does
+not, record the macOS version, the capture tool and the app version on this page, and rely on
+ordinary secret masking as the fallback protection.

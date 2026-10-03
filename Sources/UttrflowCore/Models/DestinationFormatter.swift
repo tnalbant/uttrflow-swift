@@ -14,6 +14,11 @@ public enum TerminalStopPolicy: Sendable, Equatable, Codable {
     case never
     /// Withheld when the text holds this many sentences or fewer.
     case offForShortMessages(sentences: Int)
+
+    /// The policy in a one-line field of no known purpose, which holds a value: one sentence there gets no stop.
+    var inOneLineField: TerminalStopPolicy {
+        self == .always ? .offForShortMessages(sentences: 1) : self
+    }
 }
 
 /// How a numeral's digits are grouped, which is a separate question from which numbers become numerals.
@@ -180,7 +185,9 @@ public struct DestinationFormatter: Sendable, Equatable {
         return DestinationFormatter(
             destination: base.destination,
             firstWord: isSearch ? .asSpoken : base.firstWord,
-            terminalStop: isSearch ? .never : (ruleStop ?? base.terminalStop),
+            terminalStop: isSearch
+                ? .never
+                : (ruleStop ?? (isSingleLine ? base.terminalStop.inOneLineField : base.terminalStop)),
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock)

@@ -4,7 +4,7 @@ import UttrflowEval
 import UttrflowLocalModel
 import UttrflowPredict
 
-/// Runs the suggestion model over many differently sized moments, some cancelled, and reports MLX's GPU memory after each. See `Docs/performance.md`.
+/// Runs the suggestion model over many differently sized moments, some cancelled, and reports MLX's GPU memory after each. See `Docs/performance-suggestions.md`.
 struct GPUMemory: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gpu-memory",

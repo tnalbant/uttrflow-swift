@@ -11,16 +11,20 @@ public enum DictationActivity: Sendable, Equatable, CaseIterable {
     case working
     /// Text was confirmed in the target app.
     case inserted
+    /// Text was confirmed, but part of the speech decoded to no words and is missing from it.
+    case partial
     /// The target did not confirm the text, which remains on the clipboard.
     case unconfirmed
     /// Text remains on the clipboard for the user to paste.
     case copied
 
     /// Carries the insertion outcome through the menu without claiming text arrived when it did not.
-    public static func completion(method: TextInsertionMethod, arrival: InsertionArrival) -> Self {
+    public static func completion(
+        method: TextInsertionMethod, arrival: InsertionArrival, missedPieces: Int = 0
+    ) -> Self {
         if method == .clipboard { return .copied }
         if arrival == .unconfirmed { return .unconfirmed }
-        return .inserted
+        return MissedSpeech.isMissing(missedPieces) ? .partial : .inserted
     }
 }
 
@@ -481,6 +485,7 @@ public enum MenuBarPresenter {
         case .listening: .symbol("mic.fill")
         case .working: .symbol("sparkles")
         case .inserted: .symbol("checkmark")
+        case .partial: .symbol("exclamationmark.circle")
         case .unconfirmed: .symbol("questionmark.circle")
         case .copied: .symbol("doc.on.clipboard")
         }
@@ -513,6 +518,7 @@ public enum MenuBarPresenter {
             case .listening: listeningLine(for: state.recordingAdvice)
             case .working: "Tidying up…"
             case .inserted: "Inserted"
+            case .partial: MissedSpeech.line
             case .unconfirmed: "Inserted — not confirmed"
             case .copied: "Copied — press ⌘V"
             }
@@ -637,7 +643,7 @@ public enum MenuBarPresenter {
         guard state.failure?.severity != .blocking else { return false }
         guard state.speechModel == .ready else { return false }
         return switch state.activity {
-        case .idle, .inserted, .unconfirmed, .copied: true
+        case .idle, .inserted, .partial, .unconfirmed, .copied: true
         case .listening, .working: false
         }
     }
@@ -651,7 +657,7 @@ public enum MenuBarPresenter {
     static func isBusy(_ activity: DictationActivity) -> Bool {
         switch activity {
         case .listening, .working: true
-        case .idle, .inserted, .unconfirmed, .copied: false
+        case .idle, .inserted, .partial, .unconfirmed, .copied: false
         }
     }
 
