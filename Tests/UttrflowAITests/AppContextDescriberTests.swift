@@ -298,6 +298,7 @@ struct PromptBuilderContextTests {
             #expect(instructions.contains("\"\(AppContextDescriber.label)\" line"))
             #expect(instructions.contains("\"\(AppContextDescriber.selectionLabel)\""))
             #expect(instructions.contains("\"\(PromptBuilder.caretLabel)\" line"))
+            #expect(instructions.contains("\"\(PromptBuilder.doubtfulLabel)\" line"))
         }
     }
 
@@ -310,10 +311,5 @@ struct PromptBuilderContextTests {
             #expect(examples.contains("I still need to call warmUpAll before the reload."))
             #expect(examples.contains("Write a helper that clears the cache when the app wakes up."))
         }
-    }
-
-    @Test("is version 11")
-    func version() {
-        #expect(PromptBuilder.version == 11)
     }
 }

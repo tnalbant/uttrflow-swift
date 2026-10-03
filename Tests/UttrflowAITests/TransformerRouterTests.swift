@@ -411,11 +411,6 @@ struct PromptContractTests {
         #expect(PromptBuilder.standard.userPrompt(for: request) == "Spoken: \"hello there\"")
     }
 
-    @Test("is versioned, so a measurement can be tied to the prompt that produced it")
-    func versioned() {
-        #expect(PromptBuilder.version >= 1)
-    }
-
 }
 
 /// One engine's allowance is its own, so a hang cannot spend the floor's turn.

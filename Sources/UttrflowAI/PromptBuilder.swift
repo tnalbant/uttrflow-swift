@@ -2,13 +2,13 @@ public import UttrflowCore
 
 /// Builds the model's instructions and user prompt from three layers: the contract, the destination's block and the situation. See `Docs/cleanup.md`.
 public struct PromptBuilder: Sendable, Equatable {
-    /// Bumped whenever any wording changes, so a measured result can be tied to the prompt that produced it.
-    public static let version = 11
-
     /// The label the text before a mid-sentence caret sits behind; the contract teaches the model to read it.
     public static let caretLabel = "Text before the caret:"
     /// The label the half-heard runs and their readings sit behind.
     public static let doubtfulLabel = "Doubtful words:"
+    /// The label the cleanup steps the user switched off sit behind.
+    static let preservedLabel =
+        "Cleanup steps switched off by the user; preserve these words, even when examples suggest otherwise:"
     /// The most characters of preceding text quoted to the model.
     public static let caretLimit = 120
 
@@ -71,7 +71,7 @@ public struct PromptBuilder: Sendable, Equatable {
             preservedSteps.isEmpty
             ? []
             : [
-                "Cleanup steps switched off by the user; preserve these words, even when examples suggest otherwise: "
+                "\(Self.preservedLabel) "
                     + preservedSteps.map { CleaningSteps.name(of: $0) }.joined(separator: ", ")
             ]
         return (situationBlock(for: request.situation, doubtful: doubtful) + preferences + [spoken])
