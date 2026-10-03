@@ -180,9 +180,8 @@ private final class Rig {
         await controller.drained()
     }
 
-    /// Holds on past the settle, so a press that is waiting counts.
+    /// Holds on past the settle, so a press that is waiting counts; a settle sleep installed later finds its deadline passed.
     func waitOutTheSettle() async {
-        while await capture.state != .recording { await Task.yield() }
         clock.advance(by: DictationController<ManualClock>.modifierSettle)
         await controller.settling()
         await controller.drained()
