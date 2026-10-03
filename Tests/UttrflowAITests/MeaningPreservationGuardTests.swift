@@ -808,6 +808,24 @@ struct GrammarGuardTests {
         rejected("we should ship this", "We should ‘ship this.’")
     }
 
+    @Test("rejects an exclamation mark read from tone, which the transcript does not carry")
+    func rejectsInventedExclamation() {
+        #expect(
+            verdict("that is a great idea", "That is a great idea!")
+                == .rejected(reason: "the rewrite added an exclamation mark", kind: .inventedExclamation))
+        rejected("we won the deal", "We won the deal!")
+        rejected("wow that is fast", "Wow! That is fast.")
+        rejected("are you serious?", "Are you serious?!")
+        rejected("great! see you then", "Great! See you then!")
+    }
+
+    @Test("keeps an exclamation mark the speaker said or the recogniser wrote")
+    func keepsEvidencedExclamation() {
+        #expect(verdict("that is amazing!", "That is amazing!").isAccepted)
+        #expect(verdict("great! see you then", "Great! See you then.").isAccepted)
+        #expect(verdict("great! see you then", "Great. See you then.").isAccepted)
+    }
+
     @Test("keeps quotation pairs the speaker said")
     func keepsSpokenQuotationPairs() {
         accepted("\"we should ship this\"", "\"We should ship this.\"")
