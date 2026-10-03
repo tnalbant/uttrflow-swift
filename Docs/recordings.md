@@ -90,6 +90,12 @@ A waiting recording is deleted once it is older than `RecordingStore.defaultRete
 24 hours. There is no setting for it: the window exists to bound what a crash can leave
 behind, not to be a preference.
 
+Age alone does not bound the folder: a run of failed or retried dictations can each leave a
+recording inside the window. So the list also keeps only the newest recordings whose stored
+sizes fit `RecordingStore.defaultByteLimit` together, and deletes the older ones as it reads.
+The newest recording is always kept, since it is the retry a failed dictation just offered.
+A 240-second recording is about 7.7 MB as 16-bit WAV, so the limit holds about 33 of the longest.
+
 `AppDelegate.sweepExpired` does the deleting, at launch and after every dictation that
 finishes or fails, whether or not a window is open — a menu-bar-only user may never open
 the page that lists recordings. The same sweep drops transcripts past the History
