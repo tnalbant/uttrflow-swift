@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import UttrflowPredict
+import UttrflowTestSupport
 
 @Suite("Staying quiet")
 struct QuietingTests {

@@ -136,6 +136,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 
 | Page | What it covers |
 |---|---|
+| [measure-a-change.md](measure-a-change.md) | Which command measures which kind of change, its run time and what it needs |
 | [measuring-accuracy.md](measuring-accuracy.md) | Making speech accuracy measurable |
 | [core-word-error-rate.md](core-word-error-rate.md) | How word error rate is measured, and why it lives in Core |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
@@ -158,6 +159,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |
 | [ux-test-harness.md](ux-test-harness.md) | UX test harness traps |
+| [test-flakes.md](test-flakes.md) | Flaky-test report and quarantine expiry |
 | [account-tests-keychain-adhoc.md](account-tests-keychain-adhoc.md) | Ad-hoc-signed builds and the data-protection keychain |
 | [agents/code-quality.md](agents/code-quality.md) | Code quality: limits, checks, comments, tests |
 | [agents/product.md](agents/product.md) | Product rules and invariants |

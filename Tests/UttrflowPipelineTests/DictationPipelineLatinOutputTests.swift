@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 
 @testable import UttrflowAI
@@ -27,36 +26,6 @@ private actor HearingSpeechEngine: SpeechEngine {
     }
 }
 
-/// An inserter that keeps what it was handed.
-private final class KeepingInserter: TextInserting, Sendable {
-    private let kept = Mutex<[String]>([])
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        kept.withLock { $0.append(text) }
-        return InsertionAttempt(.accessibility)
-    }
-
-    var texts: [String] { kept.withLock { $0 } }
-}
-
-/// A tidier that hands back the words as heard, in whatever script they came.
-private struct EchoingCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .foundationModels)
-    }
-
-    func warm(for situation: Situation?) async {}
-}
-
-/// A tidier that always fails, so the words go in untidied.
-private struct FailingCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        throw .noCapableTransformer
-    }
-
-    func warm(for situation: Situation?) async {}
-}
-
 @Suite("Dictation pipeline: Latin letters only")
 struct DictationPipelineLatinOutputTests {
     /// One short take, heard as `heard`, tidied by `cleaner`, and what was inserted.
@@ -73,18 +42,18 @@ struct DictationPipelineLatinOutputTests {
             (0..<Int(1.2 * Double(rate))).map { 0.3 * Float(sin(Double($0) * 0.07)) })
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
         await capture.setCaptured(take)
-        let inserter = KeepingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = DictationPipeline(
             capture: capture, speech: HearingSpeechEngine(hearing: heard), cleaner: cleaner,
             context: FakeContextEngine(context: .fixture()), inserter: inserter, snippets: snippets)
         await pipeline.startRecording()
         await pipeline.finishRecording()
-        return inserter.texts
+        return inserter.received
     }
 
     @Test("romanises Devanagari that no tidier romanised, whether the tidy failed or handed the words back")
     func romanisesUntidiedDevanagari() async {
-        for cleaner: any TranscriptCleaning in [FailingCleaner(), EchoingCleaner()] {
+        for cleaner: any TranscriptCleaning in [FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.noCapableTransformer))), FakeTranscriptCleaner(producedBy: .foundationModels)] {
             let inserted = await dictate("हाँ ठीक है।", cleaner: cleaner)
             #expect(inserted.count == 1)
             #expect(inserted.allSatisfy { !Romaniser.containsDevanagari($0) && LatinScript.isLatin($0) })
@@ -97,7 +66,7 @@ struct DictationPipelineLatinOutputTests {
         let snippet = Snippet(
             trigger: "greeting", expansion: "हाँ ठीक है", created: Date(timeIntervalSince1970: 0))
         let inserted = await dictate(
-            "greeting", cleaner: EchoingCleaner(), snippets: StoredSnippetExpander(snippet: snippet))
+            "greeting", cleaner: FakeTranscriptCleaner(producedBy: .foundationModels), snippets: StoredSnippetExpander(snippet: snippet))
 
         #expect(inserted == ["Haan thik hai"])
         #expect(inserted.allSatisfy { !Romaniser.containsDevanagari($0) && LatinScript.isLatin($0) })
@@ -115,7 +84,7 @@ struct DictationPipelineLatinOutputTests {
 
     @Test("writes another script in Latin letters rather than insert it")
     func transliteratesOtherScripts() async {
-        let inserted = await dictate("Привет", cleaner: EchoingCleaner())
+        let inserted = await dictate("Привет", cleaner: FakeTranscriptCleaner(producedBy: .foundationModels))
         #expect(inserted.count == 1)
         #expect(inserted.allSatisfy { LatinScript.isLatin($0) })
     }
@@ -124,7 +93,7 @@ struct DictationPipelineLatinOutputTests {
         "inserts English exactly as the tidier wrote it",
         arguments: ["Okay, see you at 5 p.m. 👍", "Café “naïve” — résumé…", "x² ≤ ½, ₹1,50,000 and 3.5%"])
     func leavesEnglishAlone(text: String) async {
-        #expect(await dictate(text, cleaner: EchoingCleaner()) == [text])
+        #expect(await dictate(text, cleaner: FakeTranscriptCleaner(producedBy: .foundationModels)) == [text])
     }
 }
 

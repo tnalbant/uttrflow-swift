@@ -32,6 +32,11 @@ extension MainNotice {
     /// What an error nobody foresaw says, so a type name never reaches the screen.
     public static let unforeseenMessage = "Something went wrong. Please try again."
 
+    /// The system clipboard refused the requested contents.
+    public static let clipboardCopyFailed = MainNotice(
+        message: "Could not copy to the clipboard. Please try again.",
+        symbolName: "exclamationmark.triangle", tone: .warning)
+
     /// Announces the word a correction just added and offers to remove that inferred entry.
     public static func learnedCorrection(_ word: String, id: UUID) -> MainNotice {
         MainNotice(

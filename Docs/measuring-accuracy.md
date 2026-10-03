@@ -1,7 +1,13 @@
 # Making speech accuracy measurable
 
-A proposal, written after WhisperKit 1.1.0 was declined because nobody could say whether
-it was better or worse. This is about the smallest thing that would have answered that.
+**What is built:** the passages, the scorer, `uttrflow-eval record`, `uttrflow-eval transcribe`
+and its regression gate all exist and work offline. **What is open:** nobody has recorded the
+corpus yet, and whether a recording is ever committed is an owner decision (see
+[committing the audio](#committing-the-audio-a-real-decision-not-a-detail)). To pick the
+command a given change needs, start at [measure-a-change.md](measure-a-change.md).
+
+This page was first written after WhisperKit 1.1.0 was declined because nobody could say whether
+it was better or worse, and it keeps the reasoning for the smallest thing that answers that.
 
 **The package depends on 1.1.0 anyway, and that is not a change of mind.** `Package.swift`
 declared `from: "0.18.0"` when this repository was published on 29 August; dependabot raised
@@ -188,7 +194,7 @@ contributor who wants to change the speech engine to spend fifteen minutes is pr
 and it avoids publishing a voice for a benefit — shared audio — that a regression check does
 not actually need.
 
-## What is not proposed
+## What is not built
 
 No new tooling. Every command above exists. The gap is a recording session and a decision
 about where the audio lives, and inventing a corpus format or a scoring harness to sit

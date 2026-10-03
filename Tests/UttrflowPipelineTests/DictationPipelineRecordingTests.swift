@@ -9,51 +9,6 @@ import Testing
 
 // MARK: - Doubles
 
-/// A ``TranscriptCleaning`` that hands the words back untouched.
-private struct RecordingFakeCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .rules)
-    }
-}
-
-private final class ContextRecordingCleaner: TranscriptCleaning, Sendable {
-    private let state = Mutex<[TransformationRequest]>([])
-
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        state.withLock { $0.append(request) }
-        return TransformationResult(text: request.transcription.text, producedBy: .rules)
-    }
-
-    var requests: [TransformationRequest] { state.withLock { $0 } }
-}
-
-/// A ``TextInserting`` that records what it is handed and answers as scripted.
-private final class RecordingFakeInserter: TextInserting, Sendable {
-    private struct State: Sendable {
-        var outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError>
-        var received: [String] = []
-    }
-
-    private let state: Mutex<State>
-
-    init(
-        outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError> = .success(
-            InsertionAttempt(.accessibility))
-    ) {
-        state = Mutex(State(outcome: outcome))
-    }
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        let outcome = state.withLock { state -> ScriptedOutcome<InsertionAttempt, TextInsertionError> in
-            state.received.append(text)
-            return state.outcome
-        }
-        return try outcome.resolve()
-    }
-
-    var received: [String] { state.withLock { $0.received } }
-}
-
 /// An error from outside the product's own vocabulary.
 private struct OddError: Error {}
 
@@ -96,14 +51,14 @@ struct DictationPipelineRecordingTests {
 
     private func makePipeline(
         speech: FakeSpeechEngine = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said))),
-        inserter: RecordingFakeInserter = RecordingFakeInserter(),
-        clipboard: RecordingFakeInserter? = nil,
+        inserter: FakeTextInserter = FakeTextInserter(),
+        clipboard: FakeTextInserter? = nil,
         recordings: FakeRecordingKeeper
     ) -> DictationPipeline {
         DictationPipeline(
             capture: FakeAudioCaptureEngine(),
             speech: speech,
-            cleaner: RecordingFakeCleaner(),
+            cleaner: FakeTranscriptCleaner(),
             context: FakeContextEngine(context: .fixture()),
             inserter: inserter,
             recordings: recordings,
@@ -147,8 +102,8 @@ struct DictationPipelineRecordingTests {
         let capture = FakeAudioCaptureEngine()
         let pipeline = DictationPipeline(
             capture: capture, speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said))),
-            cleaner: RecordingFakeCleaner(), context: FakeContextEngine(context: .fixture()),
-            inserter: RecordingFakeInserter(), recordings: recordings)
+            cleaner: FakeTranscriptCleaner(), context: FakeContextEngine(context: .fixture()),
+            inserter: FakeTextInserter(), recordings: recordings)
         await pipeline.startRecording()
         await capture.setStopOutcome(.failure(.engineFailed(description: "gone")))
         await pipeline.finishRecording()
@@ -165,8 +120,8 @@ struct DictationPipelineRecordingTests {
         let capture = FakeAudioCaptureEngine()
         let pipeline = DictationPipeline(
             capture: capture, speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said))),
-            cleaner: RecordingFakeCleaner(), context: FakeContextEngine(context: .fixture()),
-            inserter: RecordingFakeInserter(), recordings: recordings)
+            cleaner: FakeTranscriptCleaner(), context: FakeContextEngine(context: .fixture()),
+            inserter: FakeTextInserter(), recordings: recordings)
         await pipeline.startRecording()
         await capture.setStopOutcome(.failure(.engineFailed(description: "gone")))
         await pipeline.finishRecording()
@@ -205,7 +160,7 @@ struct DictationPipelineRecordingTests {
         let recordings = FakeRecordingKeeper(current: recording)
         let state = await dictate(
             makePipeline(
-                inserter: RecordingFakeInserter(outcome: .failure(.noFocusedTextField)),
+                inserter: FakeTextInserter(.failure(.noFocusedTextField)),
                 recordings: recordings))
 
         #expect(state.failure?.transcript == said)
@@ -243,8 +198,8 @@ struct DictationPipelineRecordingTests {
         let audio = AudioSamples.silence(seconds: 3)
         let recordings = FakeRecordingKeeper(waiting: [recording], audioOutcome: .success(audio))
         let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
-        let inserter = RecordingFakeInserter()
-        let clipboard = RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard)))
+        let inserter = FakeTextInserter()
+        let clipboard = FakeTextInserter(.success(InsertionAttempt(.clipboard)))
         let pipeline = makePipeline(
             speech: speech, inserter: inserter, clipboard: clipboard, recordings: recordings)
 
@@ -272,14 +227,14 @@ struct DictationPipelineRecordingTests {
             id: UUID(), when: Date(), duration: .seconds(2), destination: destination,
             fieldKind: .codeEditor)
         let recordings = FakeRecordingKeeper(waiting: [recording])
-        let cleaner = ContextRecordingCleaner()
+        let cleaner = FakeTranscriptCleaner()
         let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
         let words = Mutex<[AppContext]>([])
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(), speech: speech, cleaner: cleaner,
             context: FakeContextEngine(
                 context: .fixture(applicationName: "Mail", bundleIdentifier: "com.apple.mail")),
-            inserter: RecordingFakeInserter(),
+            inserter: FakeTextInserter(),
             speechWords: { context in
                 words.withLock { $0.append(context) }
                 return ["DestinationName"]
@@ -287,7 +242,7 @@ struct DictationPipelineRecordingTests {
             destinationOverrides: DestinationOverrides().setting(
                 .email, for: "com.apple.dt.Xcode", named: "Xcode"),
             recordings: recordings,
-            clipboard: RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard))))
+            clipboard: FakeTextInserter(.success(InsertionAttempt(.clipboard))))
 
         #expect(await pipeline.retry(recording.id))
 
@@ -307,11 +262,11 @@ struct DictationPipelineRecordingTests {
         let speech = FakeSpeechEngine(transcribeOutcome: .failure(.transcriptionFailed(description: "x")))
         let recordings = FakeRecordingKeeper(waiting: [recording])
         let pipeline = DictationPipeline(
-            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: RecordingFakeCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: RecordingFakeInserter(),
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             speechWords: { _ in words.next() },
             recordings: recordings,
-            clipboard: RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard))))
+            clipboard: FakeTextInserter(.success(InsertionAttempt(.clipboard))))
 
         await pipeline.retry(recording.id)
         #expect(await recordings.discarded.isEmpty)
@@ -327,11 +282,11 @@ struct DictationPipelineRecordingTests {
         let words = WordsInTurn(["OldName"], ["NewName"])
         let speech = FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: said)))
         let pipeline = DictationPipeline(
-            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: RecordingFakeCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: RecordingFakeInserter(),
+            capture: FakeAudioCaptureEngine(), speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             speechWords: { _ in words.next() },
             recordings: FakeRecordingKeeper(waiting: [recording]),
-            clipboard: RecordingFakeInserter(outcome: .success(InsertionAttempt(.clipboard))))
+            clipboard: FakeTextInserter(.success(InsertionAttempt(.clipboard))))
 
         _ = await dictate(pipeline)
         await pipeline.retry(recording.id)
@@ -350,8 +305,8 @@ struct DictationPipelineRecordingTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(audio))
         await capture.setCaptured(audio)
         let pipeline = DictationPipeline(
-            capture: capture, speech: speech, cleaner: RecordingFakeCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: RecordingFakeInserter(),
+            capture: capture, speech: speech, cleaner: FakeTranscriptCleaner(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             speechWords: { _ in words.next() },
             windowing: SpeechWindowing(
                 minimumLength: 1, sentencePause: 0.3, comfortableLength: 2, anyPause: 0.2,

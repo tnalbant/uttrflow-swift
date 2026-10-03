@@ -35,11 +35,24 @@ struct SingleInstanceLockTests {
             "python3", "-c", script, file.path(percentEncoded: false),
         ]
         let output = Pipe()
+        let errors = Pipe()
         process.standardOutput = output
+        process.standardError = errors
         try process.run()
-        let line = output.fileHandleForReading.availableData
-        try #require(String(decoding: line, as: UTF8.self).hasPrefix("held"))
+        let line = output.fileHandleForReading.readData(ofLength: 5)
+        guard String(decoding: line, as: UTF8.self) == "held\n" else {
+            process.waitUntilExit()
+            let error = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let description =
+                "the lock holder exited before confirming it held the lock (status \(process.terminationStatus)): \(error)"
+            Issue.record(description)
+            throw HolderFailure.didNotStart
+        }
         return process
+    }
+
+    private enum HolderFailure: Error {
+        case didNotStart
     }
 
     @Test("The first copy takes the lock, creating its folder.")

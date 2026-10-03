@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -8,48 +7,17 @@ import Testing
 
 // MARK: - Doubles
 
-/// A recogniser that reads out a scripted line per call, so a dictation's pieces are known in advance.
-private actor ScriptedSpeechEngine: SpeechEngine {
-    let kind = SpeechEngineKind.whisperKit
-    private let lines: [String]
-    private(set) var calls = 0
-
-    init(_ lines: [String]) {
-        self.lines = lines
+/// A recogniser that reads out a scripted line per call and hears nothing once they run out.
+private func reading(_ lines: [String]) -> FakeSpeechEngine {
+    let heard = lines.map {
+        Transcription(text: $0, detectedLanguage: DetectedLanguage(code: .english, confidence: 1))
     }
-
-    func prepare() async throws(SpeechEngineError) {}
-
-    func transcribe(
-        _ audio: AudioSamples, options: TranscriptionOptions
-    ) async throws(SpeechEngineError) -> Transcription {
-        calls += 1
-        guard calls <= lines.count else { throw .nothingHeard }
-        return Transcription(
-            text: lines[calls - 1], detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
-            audioDuration: audio.duration)
-    }
+    return FakeSpeechEngine(transcribing: .successes(heard, afterwards: .failure(.nothingHeard)))
 }
 
 /// A tidier that finishes each piece the way the real one does — a capital at the front, a full stop at the end.
-private struct FinishingCleaner: TranscriptCleaning {
-    func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
-        let finished = WordShape.finished(WordShape.capitalised(request.transcription.text))
-        return TransformationResult(text: finished, producedBy: .foundationModels)
-    }
-
-    func warm(for situation: Situation?) async {}
-}
-
-private final class CollectingInserter: TextInserting, Sendable {
-    private let received = Mutex<[String]>([])
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        received.withLock { $0.append(text) }
-        return InsertionAttempt(.accessibility)
-    }
-
-    var texts: [String] { received.withLock { $0 } }
+private func finishing() -> FakeTranscriptCleaner {
+    FakeTranscriptCleaner(tidying: { WordShape.finished(WordShape.capitalised($0)) }, producedBy: .foundationModels)
 }
 
 /// A recording with a clear pause between each of its three phrases.
@@ -87,9 +55,9 @@ struct DictationPipelineJoinTests {
     private func dictate(_ lines: [String], seeing context: AppContext) async -> String? {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = DictationPipeline(
-            capture: capture, speech: ScriptedSpeechEngine(lines), cleaner: FinishingCleaner(),
+            capture: capture, speech: reading(lines), cleaner: finishing(),
             context: FakeContextEngine(context: context), inserter: inserter, windowing: quick,
             earlyPoll: .milliseconds(2))
 

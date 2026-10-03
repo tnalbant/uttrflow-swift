@@ -67,6 +67,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
     static let truncationMarker = "…"
 
     private let readFrontmostApplication: @Sendable () async -> FrontmostApplication?
+    private let readFocusOwner: @Sendable (FrontmostApplication) async -> FrontmostApplication?
     private let readFocusedWindow: @Sendable (FrontmostApplication) async -> FocusedWindow?
     private let ownBundleIdentifier: String?
     private let ownProcessIdentifier: Int32
@@ -85,9 +86,11 @@ public final class MacContextEngine: ContextEngine, Sendable {
     /// What keeps the activation subscription open; boxed so it can be filled once `self` is fully built.
     private let activationToken = Mutex<(any Sendable)?>(nil)
 
-    /// Substitutes both readings and the activation feed; `MacContextEngine+System.swift` wires up the real ones.
+    /// Substitutes the readings and the activation feed; `MacContextEngine+System.swift` wires up the real ones.
     init(
         readFrontmostApplication: @escaping @Sendable () async -> FrontmostApplication?,
+        readFocusOwner: @escaping @Sendable (FrontmostApplication) async -> FrontmostApplication? = { _ in nil
+        },
         readFocusedWindow: @escaping @Sendable (FrontmostApplication) async -> FocusedWindow?,
         ownBundleIdentifier: String?,
         ownProcessIdentifier: Int32,
@@ -95,6 +98,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
         observeActivations: (@escaping @Sendable (FrontmostApplication) -> Void) -> any Sendable = { _ in () }
     ) {
         self.readFrontmostApplication = readFrontmostApplication
+        self.readFocusOwner = readFocusOwner
         self.readFocusedWindow = readFocusedWindow
         self.ownBundleIdentifier = ownBundleIdentifier
         self.ownProcessIdentifier = ownProcessIdentifier
@@ -125,11 +129,19 @@ public final class MacContextEngine: ContextEngine, Sendable {
         await withinBudget { [self] in
             // Identity first and banked the moment it arrives, since everything after it can hang.
             let frontmost = await readFrontmostApplication()
-            guard let subject = subject(inFrontOf: frontmost, for: requestNumber) else { return }
+            guard let early = subject(inFrontOf: frontmost, for: requestNumber) else { return }
+            reading.record(application: early)
+            guard let frontmost, early == frontmost else { return }
+
+            // A panel that never activates holds focus over the frontmost application, so its owner is the destination.
+            let destination = FocusedElementPreference.destination(
+                focusOwner: await readFocusOwner(frontmost), frontmost: frontmost)
+            guard let destination, let subject = subject(inFrontOf: destination, for: requestNumber)
+            else { return }
             reading.record(application: subject)
 
             // Uttrflow's own window in front means the focused window is Uttrflow's, and belongs to nobody else.
-            guard subject == frontmost else { return }
+            guard subject == destination else { return }
             reading.record(window: await readFocusedWindow(subject))
         }
 

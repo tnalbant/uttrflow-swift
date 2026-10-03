@@ -1,6 +1,7 @@
 import Testing
 
 @testable import UttrflowPredict
+import UttrflowTestSupport
 
 /// Words the person or the screen might use, prose and command alike.
 private let words = [

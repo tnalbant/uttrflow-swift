@@ -5,7 +5,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 
 ROOTS = ("Sources",)
@@ -26,13 +25,19 @@ PREFIX_COMPARED = re.compile(
 # A fixed-width prefix kept as a String, which is a stem being named: `String(word.prefix(3))`.
 PREFIX_KEPT = re.compile(r"String\([^()]*\.prefix\(([0-9]+)\)\)")
 
-# A named width still bounds a word to a short stem: `prefix(openingLettersShared)`.
+# A named width bounding an operand of a text comparison: `word.prefix(openingLettersShared) == ...`.
 NAMED_PREFIX = re.compile(
-    r"\.(?:prefix|suffix)\(\s*([A-Za-z_$][\w$]*)\s*\)"
-    r"(?=.*(?:hasPrefix\(|hasSuffix\(|==|!=))"
-    r"|(?:hasPrefix\(|hasSuffix\(|==|!=).*\.(?:prefix|suffix)"
+    r"\.(?:prefix|suffix)\(\s*([A-Za-z_$][\w$]*)\s*\)\)*\s*(?:==|!=)"
+    r"|(?:==|!=|hasPrefix\(|hasSuffix\()\s*(?:String\()?[\w$.]*\.(?:prefix|suffix)"
     r"\(\s*([A-Za-z_$][\w$]*)\s*\)"
 )
+
+# A width declared as a literal integer, which is the only kind the audit can judge.
+WIDTH_DECLARATION = re.compile(r"\blet\s+([A-Za-z_$][\w$]*)\s*(?::\s*Int\s*)?=\s*([0-9]+)\b")
+
+
+class UnresolvedWidth(Exception):
+    """A named width bounds a comparison and no literal declaration says how wide it is."""
 
 # A suffix table is a set of endings, not a whole-word equality test.
 SUFFIX_TABLE = re.compile(r"(?:\w+Endings|endings)\.map\s*\{[^}]*\+\s*\$0")
@@ -63,10 +68,8 @@ def findings_in(path):
             if int(match.group(1)) <= STEM_WIDTH:
                 yield number, "a fixed-width prefix is kept as a word", line.strip()
         for match in NAMED_PREFIX.finditer(code):
-            widths = {candidate for candidate in match.groups() if candidate}
-            if any(
-                (declared_width(width) or STEM_WIDTH + 1) <= STEM_WIDTH for width in widths
-            ) and not ("limit" in widths and "Array(" in code and ".sorted()" in code):
+            name = match.group(1) or match.group(2)
+            if declared_width(name, f"{path}:{number}") <= STEM_WIDTH:
                 yield number, "a named short width bounds a text comparison", line.strip()
                 break
         if SUFFIX_TABLE.search(code):
@@ -80,19 +83,22 @@ def findings_in(path):
             yield number, "a word is matched by being swallowed by another", line.strip()
 
 
-def declared_width(name):
-    """Returns a named integer width declared in Sources, when it is statically known."""
-    try:
-        result = subprocess.run(
-            ["rg", "-n", rf"(?:static\s+)?let\s+{re.escape(name)}\s*=\s*([0-9]+)", *ROOTS],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
-        return None
-    match = re.search(r"(?:static\s+)?let\s+" + re.escape(name) + r"\s*=\s*([0-9]+)", result.stdout)
-    return int(match.group(1)) if match else None
+def declared_widths():
+    """Maps each literal integer declared under ROOTS to its smallest value, read in Python so no tool can be missing."""
+    widths = {}
+    for path in swift_files():
+        with open(path, errors="ignore") as source:
+            for name, value in WIDTH_DECLARATION.findall(source.read()):
+                widths[name] = min(int(value), widths.get(name, int(value)))
+    return widths
+
+
+def declared_width(name, where):
+    """Returns the declared width of `name`, and fails rather than guess when there is none."""
+    widths = declared_widths()
+    if name not in widths:
+        raise UnresolvedWidth(f"{where}: no `let {name} = <integer>` under {', '.join(ROOTS)}")
+    return widths[name]
 
 
 def swift_files():
@@ -126,7 +132,11 @@ def main():
     parser.add_argument("--report", action="store_true", help="list what is left, with the line")
     arguments = parser.parse_args()
 
-    counts, detail = survey()
+    try:
+        counts, detail = survey()
+    except UnresolvedWidth as unresolved:
+        print(f"Cannot judge a named width, so the audit fails rather than pass it: {unresolved}")
+        return 2
     total = sum(counts.values())
 
     if arguments.report:

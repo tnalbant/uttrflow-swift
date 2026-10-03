@@ -88,6 +88,8 @@ column that decides whether anything can be drawn at all.
 | Google Chrome 153, macOS 26.5.1 | multi-line | only after `AXEnhancedUserInterface` | | | | | right | yes | | | As the single-line row. The text-marker selection (`AXSelectedTextMarkerRange` measured with `AXLengthForTextMarkerRange` from the field's start) agreed with `AXSelectedTextRange` across a line break, and is what the reader uses where the range is refused ([predict-reliability.md](predict-reliability.md)) |
 | Google Chrome 153, macOS 26.5.1 | rich editor in a page | yes | | | | | right | yes | | | A code editor that renders its own text keeps an empty one-pixel textarea focused at the caret, so the field has neither a line nor a caret. The reader now reads the line off the rendered row the textarea sits on, split at the textarea's position, and takes that row's height for the caret; measured on a SQL-mode editor with `SELECT id, name FROM users WHERE` typed: line read whole, caret at the line's end, `inlineGhost`, about 8 ms a read ([predict-reliability.md](predict-reliability.md)) |
 | Safari 26.5, macOS 26.5.1 | code editor in a page | yes | | | | | right | yes | | | WebKit widens the hidden textarea such an editor keeps at the caret to about 1 000 × 14 pt, so an empty text area one bare line tall (18 pt at most) is taken as the parked input too. WebKit also lays each highlighted run of a line straight into the tall editor rather than into a line element, so such runs share a row by their parent and their line band. Measured on a SQL-mode editor with `SELECT id, name FROM users WHERE` typed: line read whole, caret at the line's end, `inlineGhost`, about 8 ms a read warm ([predict-reliability.md](predict-reliability.md)) |
+| Google Chrome 154.0.8037.97, macOS 26.5.1 | script-controlled input and contenteditable in a page | | reports success, changes nothing | | | | | yes | | | Neither the text shown nor the page's own state changes, for an input and for two kinds of `contenteditable`; the caret check reports it unconfirmed. An `AXValue` write instead shows the text in a `contenteditable` without telling the page, and a model-driven editor's next keystroke reverts it ([insertion.md](insertion.md), "A web field's own state") |
+| WebKit `WKWebView` (Safari 26.5's engine), macOS 26.5.1 | script-controlled input and contenteditable in a page | | reports success, changes nothing | | | | | yes | | | As the Chrome row for `AXSelectedText`. An `AXValue` write reaches the page as delete-all then insert-all events ([insertion.md](insertion.md), "A web field's own state") |
 | Safari | address bar | | | | | | | | unknown | | Not settled either way. The marked-range walk could not resolve a focused element for a `WKWebView` at all, and walking the web view's subtree found no text element, so WebKit's own answer is unmeasured — Chromium's result does not speak for it ([predict-ime.md](predict-ime.md)) |
 
 ## Applications built on a bundled browser engine
@@ -136,6 +138,22 @@ An address bar — the fourth live-harness surface — is measured under Browser
 cell, a remote desktop, a VM window or a game, so there are no rows to write and none are
 invented here. #626 covers office and a spreadsheet cell, #627 a remote desktop or VM
 window, and #619 is the code-level gap those would confirm.
+
+## Panels that take focus without activating
+
+A non-activating `NSPanel` holding an `NSTextField` as first responder, shown by an accessory
+process on macOS 26.5.1 while another application stayed frontmost:
+
+| Read | Answer |
+|---|---|
+| `NSWorkspace.shared.frontmostApplication` | the other application |
+| system-wide `kAXFocusedUIElementAttribute`, owner by `AXUIElementGetPid` | the panel's process, role `AXTextField` |
+| the frontmost application's own `kAXFocusedUIElementAttribute` | its own editor, or no value |
+| the panel process's own `kAXFocusedUIElementAttribute` | the panel's `AXTextField` |
+
+The two owners differ, so the destination is the focused element's owner
+([insertion.md](insertion.md), "Which application the record names"). A probe of a shipping
+launcher's panel has not been run; this row is the synthetic panel only.
 
 ## How to add a row
 

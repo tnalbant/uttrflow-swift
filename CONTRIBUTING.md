@@ -47,6 +47,20 @@ make verify
 
 If the failure remains after a clean run, investigate it as a real failure.
 
+## Randomised and property tests
+
+Every randomised test draws from `Seeded` in `UttrflowTestSupport`; a test module never
+declares its own generator. `make verify` runs fixed seeds, so it is the same on every
+run. A property test takes its seeds from `Seeded.seeds(...)` and names the generator
+(`seed=<n>`) in its failure message, so the failure can be replayed alone:
+
+```bash
+UTTRFLOW_SEED=<n> swift test --filter <TestCase>
+```
+
+A test that finds a bug adds the minimal failing case as a fixed example in the same pull
+request.
+
 ## How a change gets in
 
 1. **Fork, and branch from `main`.** Short-lived branches, please — a branch that lives for
@@ -56,7 +70,9 @@ If the failure remains after a clean run, investigate it as a real failure.
    `make hooks` installs that hook. CI then builds and verifies the signed app bundle
    separately; those packaging, resource, entitlement, and signing checks are not part of
    `make verify`. When a change can affect them, run the same sequence CI uses:
-   `make verify` followed by `make app-preflight`.
+   `make verify` followed by `make app-preflight`. A change to dictation, clean-up, latency or
+   memory also needs a before-and-after measurement; [`Docs/measure-a-change.md`](Docs/measure-a-change.md)
+   says which command, how long it takes and what it needs.
 3. **Open a pull request against `main`.** CI runs on it. It must be green.
 4. **A maintainer reviews and merges.** Nobody can push to `main` directly, including the
    maintainer.

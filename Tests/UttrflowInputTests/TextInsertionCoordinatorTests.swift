@@ -402,7 +402,7 @@ struct FakeFocus: AccessibilityFocus {
     }
     func hasFocusedElement() -> Bool { somethingFocused ?? (field != nil) }
     func isSelfFrontmost() -> Bool { isSelf }
-    func frontmostApplication() -> InsertionDestination? { frontmost }
+    func focusedApplication() -> InsertionDestination? { frontmost }
     func focusedFieldIsSecure() -> Bool { secure }
     func precedingText(_ count: Int) -> String? {
         guard let value else { return preceding }
@@ -428,7 +428,7 @@ private final class TargetRaceFocus: AccessibilityFocus, Sendable {
     func focusedTextField(in destination: InsertionDestination) -> (any FocusedTextField)? { field }
     func hasFocusedElement() -> Bool { true }
     func isSelfFrontmost() -> Bool { false }
-    func frontmostApplication() -> InsertionDestination? {
+    func focusedApplication() -> InsertionDestination? {
         state.withLock { state in
             let index = min(state.index, applications.count - 1)
             state.index += 1
@@ -611,7 +611,7 @@ final class SwitchingDuringWaitFocus: AccessibilityFocus, @unchecked Sendable {
         return .text(read > 1 ? "hello there" : "")
     }
 
-    func frontmostApplication() -> InsertionDestination? {
+    func focusedApplication() -> InsertionDestination? {
         reads.withLock { $0 } > 1 ? Self.other : Self.target
     }
 }

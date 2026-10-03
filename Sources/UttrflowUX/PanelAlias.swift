@@ -10,15 +10,26 @@ public struct AliasProposal: Sendable, Equatable {
     public let wasCorrected: Bool
     /// The clip that already answers to this alias, if there is one.
     public let takenBy: Clip.ID?
+    /// Whether the spelling mixes writing systems that cannot be resolved to one script.
+    public let mixesScripts: Bool
+    /// Whether the bundled Unicode data was available for the comparison.
+    public let canCompareUnicodeNames: Bool
 
     /// An empty alias is not a conflict, it is simply nothing to save.
-    public var isUsable: Bool { !corrected.isEmpty && takenBy == nil }
+    public var isUsable: Bool {
+        !corrected.isEmpty && takenBy == nil && !mixesScripts && canCompareUnicodeNames
+    }
 
     /// Builds a proposal.
-    public init(corrected: String, wasCorrected: Bool, takenBy: Clip.ID?) {
+    public init(
+        corrected: String, wasCorrected: Bool, takenBy: Clip.ID?, mixesScripts: Bool = false,
+        canCompareUnicodeNames: Bool = true
+    ) {
         self.corrected = corrected
         self.wasCorrected = wasCorrected
         self.takenBy = takenBy
+        self.mixesScripts = mixesScripts
+        self.canCompareUnicodeNames = canCompareUnicodeNames
     }
 }
 
@@ -36,7 +47,8 @@ public enum PanelAlias {
 
     /// Whether two reduced aliases spell the same name under the search comparison.
     static func matches(_ first: String, _ second: String, locale: Locale) -> Bool {
-        handle(first, locale: locale).equals(handle(second, locale: locale), ignoringCaseAndAccentsIn: locale)
+        guard case .success(let rules) = AliasUnicodeRules.loaded else { return false }
+        return rules.skeleton(first, locale: locale) == rules.skeleton(second, locale: locale)
     }
 
     /// What saving `typed` as `clip`'s alias would do; the clip itself is not a conflict with itself.
@@ -46,12 +58,21 @@ public enum PanelAlias {
         let corrected = handle(typed, locale: locale)
         // Compared against the typed text minus its slash, so dropping the slash is not a correction.
         let asTyped = String(typed.drop { $0 == "/" })
+        guard case .success(let rules) = AliasUnicodeRules.loaded else {
+            return AliasProposal(
+                corrected: corrected, wasCorrected: !corrected.isEmpty && corrected != asTyped,
+                takenBy: nil, canCompareUnicodeNames: false)
+        }
+        let mixesScripts = rules.mixesScripts(typed)
+        let typedSkeleton = rules.skeleton(typed, locale: locale)
         let holder = clips.first {
-            $0.id != clip && $0.alias.map { matches($0, typed, locale: locale) } == true
+            $0.id != clip
+                && $0.alias.map { rules.skeleton($0, locale: locale) == typedSkeleton } == true
         }
         return AliasProposal(
             corrected: corrected,
             wasCorrected: !corrected.isEmpty && corrected != asTyped,
-            takenBy: corrected.isEmpty ? nil : holder?.id)
+            takenBy: corrected.isEmpty ? nil : holder?.id,
+            mixesScripts: mixesScripts)
     }
 }

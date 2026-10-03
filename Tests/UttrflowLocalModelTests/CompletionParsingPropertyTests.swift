@@ -2,6 +2,7 @@ import Testing
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// Words a line might be made of, none of which forms one of the prompt's own headings.
 private let words = [
