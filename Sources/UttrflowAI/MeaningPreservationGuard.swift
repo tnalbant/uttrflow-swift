@@ -133,7 +133,7 @@ public struct MeaningPreservationGuard: Sendable {
     static func restored(_ removals: [UnauthorisedRemoval]) -> [(pass: PassID, token: GrammarToken)] {
         removals.flatMap { removal in
             grammarTokens(removal.text)
-                .filter { $0.isPlain && (isContent($0) || negatingWords.contains($0.matching)) }
+                .filter { $0.isPlain && (isContent($0) || isNegation($0.matching)) }
                 .map { (removal.pass, $0) }
         }
     }
@@ -146,10 +146,10 @@ public struct MeaningPreservationGuard: Sendable {
         var negations = negators(in: grammarTokens(kept))
         let romanisedHindiContext = hasRomanisedHindiContext(grammarTokens(kept) + written)
         for (pass, token) in restored {
-            let isNegation = negatingWords.contains(token.matching)
-            if isNegation { negations += 1 }
+            let negates = Self.isNegation(token.matching)
+            if negates { negations += 1 }
             let present =
-                isNegation
+                negates
                 ? negators(in: written) >= negations
                 : written.contains {
                     survives(token.matching, as: $0, allowingRomanisedHindiSpellings: romanisedHindiContext)
@@ -709,12 +709,12 @@ public struct MeaningPreservationGuard: Sendable {
         let rewritten = alignment.rewritten
         // Non-Latin negations are commonly romanised by the cleanup model; their existing count check remains authoritative.
         let keptNegations = kept.indices.filter {
-            kept[$0].isPlain && negatingWords.contains(kept[$0].matching)
+            kept[$0].isPlain && isNegation(kept[$0].matching)
         }
         guard !keptNegations.isEmpty else { return .accepted }
         let written = rewritten + echo
         let writtenNegations = written.indices.filter {
-            written[$0].isPlain && negatingWords.contains(written[$0].matching)
+            written[$0].isPlain && isNegation(written[$0].matching)
         }
         guard keptNegations.count == writtenNegations.count else { return .accepted }
 
@@ -761,7 +761,7 @@ public struct MeaningPreservationGuard: Sendable {
                 clause += 1
                 clauseStart = index
             }
-            if negatingWords.contains(token.matching) {
+            if isNegation(token.matching) {
                 let clauseEnd =
                     tokens[(index + 1)...].firstIndex {
                         ["but", "and", "or"].contains($0.matching)
@@ -776,7 +776,7 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Negations and function words do not identify the proposition a negation belongs to.
     private static func isAnchor(_ token: GrammarToken) -> Bool {
-        token.isPlain && !negatingWords.contains(token.matching) && !FunctionWords.holds(token.lookup)
+        token.isPlain && !isNegation(token.matching) && !FunctionWords.holds(token.lookup)
     }
 
     /// Whether an identifier is spelled wholly from said words, every part of it one of them and in the order they were said.
@@ -1180,14 +1180,19 @@ public struct MeaningPreservationGuard: Sendable {
     private static func hasRomanisedHindiContext(_ tokens: [GrammarToken]) -> Bool {
         tokens.contains { token in
             let word = token.matching
-            return negatingWords.contains(word) || WordForms.hindiVerbStems.contains(word)
+            return isNegation(word) || WordForms.hindiVerbStems.contains(word)
                 || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
         }
     }
 
     /// How many words in `tokens` turn a sentence's meaning around.
     static func negators(in tokens: [GrammarToken]) -> Int {
-        tokens.filter { negatingWords.contains($0.matching) }.count
+        tokens.filter { isNegation($0.matching) }.count
+    }
+
+    /// Whether a word reverses a sentence, read without its apostrophes so "doesn't" and "doesnt" are one negation.
+    static func isNegation(_ word: String) -> Bool {
+        negatingWords.contains(word.replacingOccurrences(of: "'", with: ""))
     }
 
     /// The words that reverse a sentence, apostrophes aside; dropping or adding one is the worst edit the model can make.

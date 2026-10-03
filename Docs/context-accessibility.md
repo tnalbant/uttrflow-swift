@@ -59,6 +59,20 @@ reliable one but is absent when Uttrflow runs unbundled, from the command line; 
 identifier always holds. The bundle identifiers are compared only once ours is known, so an
 application that reports no bundle identifier never matches an Uttrflow that has none either.
 
+## Text an application does not publish is not read
+
+Canvas editors, remote windows and some web editors publish no text through Accessibility. Their
+context is empty, and that is the answer. Three ways of getting the text anyway are rejected:
+
+| Route | Why it is rejected |
+| --- | --- |
+| Post select-all and copy, then read the clipboard | Overwrites the user's clipboard, moves their selection, and costs a round trip through another app's event loop. |
+| Capture the screen | Needs the Screen Recording permission, which the product does not ask for. |
+| Recognise text in a capture | All of the above, plus a recognition pass of 100 ms or more, and it reads text the person never typed: menus, other windows, other people's messages. |
+
+`Scripts/context_reach_audit.py` (`make context-reach-audit`, run by `make verify`) fails when a
+context module names the clipboard, posts a key event, or uses screen capture or text recognition.
+
 ## Core Foundation casts
 
 Every element and value that comes back from Accessibility is checked by type ID and then

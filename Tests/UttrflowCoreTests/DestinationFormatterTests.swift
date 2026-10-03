@@ -102,4 +102,19 @@ struct DestinationFormatterTests {
             #expect(!formatter.owesFormatting("average handling time, in minutes"), "\(destination)")
         }
     }
+
+    @Test("a one-line field of no known purpose withholds the stop from one sentence only")
+    func oneLineFieldStop() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.terminalStop == .offForShortMessages(sentences: 1))
+        #expect(DestinationFormatter.standard(for: .plain).terminalStop == .always)
+    }
+
+    @Test("a one-line field keeps a stricter destination policy")
+    func oneLineFieldKeepsNever() {
+        let app = AppContext(isMultiline: false)
+        let situation = Situation(app: app, insertion: .unknown, destination: .spreadsheet)
+        #expect(DestinationFormatter.standard(for: situation).terminalStop == .never)
+    }
 }

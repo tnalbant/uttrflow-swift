@@ -1467,7 +1467,7 @@ real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:

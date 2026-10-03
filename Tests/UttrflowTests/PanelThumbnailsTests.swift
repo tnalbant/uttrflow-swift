@@ -159,6 +159,7 @@ struct PanelThumbnailsTests {
         present.count()
 
         #expect(thumbnails.thumbnail(for: file) == nil)
+        thumbnails.prepare(file)
         await thumbnails.waitForIdle(file: file)
         #expect(thumbnails.thumbnail(for: file) === restored)
         #expect(counter.calls == 2)
@@ -295,6 +296,7 @@ struct PanelThumbnailsTests {
         }
         let thumbnails = PanelThumbnails(source: source, budget: 1)
 
+        thumbnails.prepare(file)
         let result = thumbnails.thumbnail(for: file)
         let decodeStillHeld = !decoding.hasEnded
         decoding.release()
@@ -388,9 +390,9 @@ struct PanelThumbnailsCapacityTests {
         await thumbnails.waitForIdle(file: file(2))
         thumbnails.prepare(file(3))  // pushes 1 out
         await thumbnails.waitForIdle(file: file(3))
-        _ = thumbnails.thumbnail(for: file(2))  // still remembered
-        // 1 was forgotten by 3, so reading it kicks off a fresh off-main decode.
-        _ = thumbnails.thumbnail(for: file(1))
+        thumbnails.prepare(file(2))  // still remembered
+        // 1 was forgotten by 3, so asking for it again kicks off a fresh off-main decode.
+        thumbnails.prepare(file(1))
         await thumbnails.waitForIdle(file: file(1))
 
         #expect(counter.files == [file(1), file(2), file(3), file(1)])

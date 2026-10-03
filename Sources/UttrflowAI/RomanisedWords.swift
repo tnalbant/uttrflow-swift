@@ -83,7 +83,7 @@ extension MeaningPreservationGuard {
 
     /// Whether a word only ties the sentence together, so adding or dropping it changes no content: never a number, a negation or a Hindi pronoun.
     static func isGrammarWord(_ word: String) -> Bool {
-        guard !word.contains(where: \.isNumber), !negatingWords.contains(word) else { return false }
+        guard !word.contains(where: \.isNumber), !isNegation(word) else { return false }
         let key = Romaniser.soundKey(word)
         guard WordForms.hindiPronouns[key] == nil else { return false }
         return FunctionWords.holds(word) || hindiGrammarWords.contains(key)
