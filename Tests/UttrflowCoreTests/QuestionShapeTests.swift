@@ -32,6 +32,7 @@ struct QuestionShapeTests {
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
             "what I mean is we should wait",
+            "who owns the service that is down", "what about the release",
             "This duplicates the logic in the helper class can we reuse that instead",
             "I don't have access to the production database can someone grant it",
             "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya", "report bhej di kya",
@@ -49,7 +50,8 @@ struct QuestionShapeTests {
         "leaves a statement, an indirect question and a command alone",
         arguments: [
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
-            "what works for you is fine", "the person who owns the notification service is unclear",
+            "what works for you is fine", "who owns the house is unclear",
+            "the person who owns the notification service is unclear",
             "where I put the keys is a mystery",
             "I don't know why the build failed", "when the build finishes we ship",
             "do the dishes before you leave",
