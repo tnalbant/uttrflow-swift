@@ -162,7 +162,7 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
 
     private static var defaultFileURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return LocalStore.file("local-store-encryption-key.v1", in: support)
+        return LocalStoreEntry.encryptionKey.location(in: support)
     }
 
     /// Reads the current user's key and creates it only for a new or successfully decoded legacy store.

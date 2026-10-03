@@ -976,3 +976,18 @@ struct MenuBarUnheardSuggestionTests {
         }
     }
 }
+
+@Suite("Status marker without colour")
+struct MenuBarEmphasisMarkerTests {
+    @Test("every emphasis has its own shape when colour must not carry it")
+    func shapesDifferWithoutColour() {
+        let markers = MenuBarEmphasis.allCases.map { $0.marker(differentiatesWithoutColour: true) }
+        #expect(Set(markers).count == MenuBarEmphasis.allCases.count)
+    }
+
+    @Test("the plain dot stays when colour may carry the emphasis")
+    func dotWithColour() {
+        let markers = Set(MenuBarEmphasis.allCases.map { $0.marker(differentiatesWithoutColour: false) })
+        #expect(markers == ["circlebadge.fill"])
+    }
+}

@@ -30,7 +30,7 @@ public final class SingleInstanceLock: Sendable {
         in directory: URL = .applicationSupportDirectory,
         for identifier: String? = Bundle.main.bundleIdentifier
     ) -> URL {
-        LocalStore.file("instance.lock", in: directory, for: identifier)
+        LocalStoreEntry.instanceLock.location(in: directory, for: identifier)
     }
 
     /// The shared lock that serializes startup across builds without merging their data folders.

@@ -28,7 +28,7 @@ public actor SnippetStore {
 
     /// Where the snippets live, versioned in the name; only a test passes a `directory`.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("snippets.v1.json", in: directory)
+        LocalStoreEntry.snippets.location(in: directory)
     }
 
     // MARK: - Reading

@@ -341,6 +341,7 @@ speaking cannot treat the second half of what they say differently from the firs
 
 ## Related pages
 
+- `Docs/formatting-matrix.md` — which formatting case classes the corpus covers, generated from its tags.
 - `Docs/cleanup-design.md` — the types behind this catalogue.
 - `Docs/ai-model-output.md` — what the model gets wrong and the guard checks that catch it.
 - `Docs/ai-context-line.md` — the "Typed into:" caption.

@@ -188,6 +188,8 @@ public struct DictionaryEditor: Sendable, Equatable {
     public let pronunciationLabel: String
     /// What the second field is for, said in the row, since the label alone does not explain it.
     public let pronunciationHint: String
+    /// What the index will do with the pronunciation as typed; absent when it keys as an ordinary sounded phrase.
+    public let pronunciationNote: String?
     /// "New".
     public let badge: MainPill
     /// Why this cannot be saved yet, in words. Absent when it can.
@@ -207,6 +209,7 @@ public struct DictionaryEditor: Sendable, Equatable {
         wordLabel: String,
         pronunciationLabel: String,
         pronunciationHint: String,
+        pronunciationNote: String?,
         badge: MainPill,
         problem: String?,
         save: MainAction,
@@ -217,6 +220,7 @@ public struct DictionaryEditor: Sendable, Equatable {
         self.wordLabel = wordLabel
         self.pronunciationLabel = pronunciationLabel
         self.pronunciationHint = pronunciationHint
+        self.pronunciationNote = pronunciationNote
         self.badge = badge
         self.problem = problem
         self.save = save
@@ -468,6 +472,7 @@ public enum DictionaryPresenter {
             wordLabel: "Write it as",
             pronunciationLabel: "Say it like",
             pronunciationHint: pronunciationHint(for: draft),
+            pronunciationNote: pronunciationNote(for: draft),
             badge: MainPill(text: "New"),
             problem: problem(with: draft, in: snapshot),
             save: MainAction(
@@ -494,6 +499,14 @@ public enum DictionaryPresenter {
             """
     }
 
+    /// What the pronunciation will do once saved, when that is not what a reader would assume; a refusal shows as the problem instead.
+    static func pronunciationNote(for draft: DictionaryDraft) -> String? {
+        guard let reading = PronunciationReading.of(pronunciation: draft.pronunciation, for: draft.word),
+            !reading.refusesSaving
+        else { return nil }
+        return reading.note(for: draft.word)
+    }
+
     /// Why a draft cannot be saved; an existing word is refused, since re-adding resets its counters.
     static func problem(with draft: DictionaryDraft, in snapshot: DictionarySnapshot) -> String? {
         let word = draft.word.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -505,6 +518,11 @@ public enum DictionaryPresenter {
         guard PhoneticIndex.supports(word: word, pronunciation: draft.pronunciation) else {
             return
                 "The spelling and pronunciation can each have at most \(PhoneticIndex.maximumWordsPerEntry) words."
+        }
+        if let reading = PronunciationReading.of(pronunciation: draft.pronunciation, for: word),
+            reading.refusesSaving
+        {
+            return reading.note(for: word)
         }
         // Case only, matching ``PersonalDictionaryStore/add(_:)``, so "café" is not refused over "cafe".
         let clash = snapshot.entries.contains {

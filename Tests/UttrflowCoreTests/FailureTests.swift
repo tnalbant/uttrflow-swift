@@ -16,12 +16,12 @@ struct FailureCatalogueTests {
         #expect(AccountError.everyCase.count == 4)
         #expect(SnippetStoreError.everyCase.count == 4)
         #expect(AudioCaptureError.everyCase.count == 6)
-        #expect(SpeechEngineError.everyCase.count == 8)
+        #expect(SpeechEngineError.everyCase.count == 10)
         #expect(TransformationError.everyCase.count == 4)
         #expect(TextInsertionError.everyCase.count == 9)
         #expect(HotkeyError.everyCase.count == 3)
         #expect(DictionaryStoreError.everyCase.count == 5)
-        #expect(allFailures.count == 47)
+        #expect(allFailures.count == 49)
     }
 
     /// A backwards link loops and a repeated case hides the one it displaces; both show as a duplicate.
@@ -36,6 +36,30 @@ struct FailureCatalogueTests {
             HotkeyError.everyCase.map { "\($0)" },
         ] {
             #expect(Set(cases).count == cases.count, "a case is chained twice: \(cases)")
+        }
+    }
+}
+
+@Suite("Failures that need different remedies")
+struct DistinctRemedyTests {
+    @Test("gives every speech failure its own sentence")
+    func speechFailuresAreDistinct() {
+        let messages = SpeechEngineError.everyCase.map(\.userMessage)
+        #expect(Set(messages).count == messages.count, "two speech failures share a sentence: \(messages)")
+    }
+
+    @Test("gives every recording failure its own sentence")
+    func recordingFailuresAreDistinct() {
+        let messages = AudioCaptureError.everyCase.map(\.userMessage)
+        #expect(Set(messages).count == messages.count, "two recording failures share a sentence: \(messages)")
+    }
+
+    @Test("never shows a state assertion to a person")
+    func noAssertionReachesTheScreen() {
+        for failure in allFailures {
+            let message = failure.userMessage.lowercased()
+            #expect(!message.contains("recording is already"), "\(failure): \(message)")
+            #expect(!message.contains("no recording to stop"), "\(failure): \(message)")
         }
     }
 }

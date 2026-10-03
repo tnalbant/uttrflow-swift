@@ -241,7 +241,7 @@ struct OnboardingLogo: View {
                 .shadow(color: .black.opacity(0.35), radius: 10, y: 10)
                 .frame(width: 84, height: 84)
             Text("uttrflow")
-                .font(BrandFont.display(size: 58, weight: .semibold))
+                .font(BrandFont.wordmark(size: 58, weight: .semibold))
                 .tracking(-1.6)
                 .foregroundStyle(Color(rgb: BrandPalette.Onboarding.logoInk))
                 .fixedSize()
