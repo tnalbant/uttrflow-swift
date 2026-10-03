@@ -75,8 +75,6 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 
 # The files outside that module which may name a networking type, and why each may.
 #
-#   the cloud island   — all of it inside `#if UTTRFLOW_CLOUD`, which no shipping build
-#                        defines. Checks 2 and 7 prove that separately.
 #   the tokenizer      — fetched beside the weights at install time so that loading never
 #                        has to. Check 4 proves loading cannot reach it.
 #   the Apple backend  — not sanctioned. Listed in KNOWN_GAP_FILES below, and reported on
@@ -86,10 +84,8 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 #                        connection, and it happens before any dictation.
 #   the developer CLIs — `uttrflow-dev sign-in` and the evaluation harness. Neither is in
 #                        a shipped product; `Scripts/bundle.sh` is what proves that.
-CLOUD_ISLAND='Sources/UttrflowAI/HTTPCleanupModel.swift'
 DOWNLOAD_ISLAND='Sources/UttrflowSpeech/TokenizerDownload.swift'
 ALLOWED_NETWORK_FILES=(
-    "$CLOUD_ISLAND"
     "$DOWNLOAD_ISLAND"
     'Sources/UttrflowSpeech/AppleSpeechBackend.swift'
     'Sources/Uttrflow/Onboarding/NetworkReachability+System.swift'
@@ -179,8 +175,8 @@ if [[ -n "${offenders//[[:space:]]/}" ]]; then
         "Dictation must not be able to reach the network, and the clipboard, history," \
         "dictionary and snippets must not be able to leave the Mac. Every module under" \
         "Sources/ is covered by that unless it is named above. Move the call into" \
-        "$ALLOWED_NETWORK_MODULE, behind an explicit user-initiated action, or behind" \
-        "UTTRFLOW_CLOUD — or add the file above with the reason it is safe." \
+        "$ALLOWED_NETWORK_MODULE, behind an explicit user-initiated action, or add the" \
+        "file above with the reason it is safe." \
         "" $'\n'"$offenders"
 else
     pass "no network call site in $modules modules outside $ALLOWED_NETWORK_MODULE and ${#ALLOWED_NETWORK_FILES[@]} named files"
@@ -242,32 +238,16 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. The cloud model is still entirely inside its compile-time island.
+# 2. No hosted clean-up engine can be switched back on by a build flag.
 # ---------------------------------------------------------------------------
-printf '\nThe cloud island\n'
+printf '\nNo hosted engine\n'
 
-if [[ ! -f "$CLOUD_ISLAND" ]]; then
-    note "$CLOUD_ISLAND has gone; nothing to gate"
+if grep -rqE 'UTTRFLOW_CLOUD' Package.swift Sources; then
+    fail "UTTRFLOW_CLOUD is named again" \
+        "A compile-time switch for a hosted engine is a network path one flag away" \
+        "from the shipping build. The product cleans speech on this Mac only."
 else
-    if [[ "$(head -n 1 "$CLOUD_ISLAND")" != "#if UTTRFLOW_CLOUD" ]]; then
-        fail "$CLOUD_ISLAND no longer opens with #if UTTRFLOW_CLOUD" \
-            "The hosted model is the only network path Uttrflow has. If it is not" \
-            "wrapped from the very first line, some of it compiles into the app."
-    elif [[ "$(tail -n 1 "$CLOUD_ISLAND")" != "#endif" ]]; then
-        fail "$CLOUD_ISLAND no longer ends with #endif" \
-            "Code after the #endif compiles unconditionally, which is how a network" \
-            "call gets into a build that promises not to have one."
-    else
-        pass "the hosted model is wrapped from first line to last"
-    fi
-fi
-
-if grep -rqE 'UTTRFLOW_CLOUD' Package.swift; then
-    fail "Package.swift now defines UTTRFLOW_CLOUD" \
-        "That switches the hosted model on for every target, which contradicts the" \
-        "product's stated promise that the shipping build has no network path."
-else
-    pass "no target defines UTTRFLOW_CLOUD"
+    pass "no source or target names UTTRFLOW_CLOUD"
 fi
 
 # ---------------------------------------------------------------------------
@@ -591,16 +571,12 @@ else
             # wholesale (#665). Only its onboarding objects are, and only while the
             # source list says so.
             #
-            # The cloud island is deliberately absent: it compiles out, so its object
-            # must hold no networking symbol at all, and this is what proves the `#if`
-            # rather than reading it.
             # Keyed by module as well as by object, because a basename on its own would
             # let a `TelemetryService.swift` in the clipboard inherit the account's
             # allowance. SwiftPM names each module's object directory after the directory
             # under Sources/, so the two line up.
             allowed_objects=""
             while IFS= read -r file; do
-                [[ "$file" == "$CLOUD_ISLAND" ]] && continue
                 relative="${file#Sources/}"
                 allowed_objects+="${relative%%/*}/$(basename "$file").o "
             done < <(
@@ -666,18 +642,6 @@ else
             else
                 pass "no Uttrflow object outside the allowed files can reach the network"
             fi
-        fi
-
-        # The compile-time gate, verified against the shipped artefact rather than
-        # assumed from reading the #if.
-        cloud_symbols="$(nm -a "$APP_BINARY" 2>/dev/null | xcrun swift demangle 2>/dev/null \
-            | grep -c 'UttrflowAI\.HTTPCleanupModel' || true)"
-        if [[ "$cloud_symbols" -gt 0 ]]; then
-            fail "HTTPCleanupModel is in the built app ($cloud_symbols symbols)" \
-                "The hosted model was supposed to be compiled out entirely. It is not," \
-                "so the shipping binary contains a network path after all."
-        else
-            pass "HTTPCleanupModel is absent from the built app"
         fi
     fi
 fi

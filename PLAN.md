@@ -263,8 +263,6 @@ Delivered:
   declines. Built on the `FallbackRunner` written in Phase 0, which has now earned it.
 - `MeaningPreservationGuard` — every check exists because a real model did the thing it
   catches.
-- `HTTPCleanupModel` behind `UTTRFLOW_CLOUD`, off. Verified to compile both ways;
-  `URLSession` appears nowhere outside that guard.
 - `uttrflow-dev clean`, and `transcribe` now tidies by default.
 
 Result: **211 tests. AI, Core and Permissions 100%; Speech 98.76%; Audio 96.60%.**
@@ -736,8 +734,7 @@ wrote down. Ten sections are checked, each verdict from running the check.
 ### Offline
 
 `Docs/offline.md`, `Scripts/offline_audit.sh`. Every network call site is enumerated
-against the **linked binary**, not the source: `HTTPCleanupModel` is provably absent from
-the app, and the only modules in it that can open a connection are the model downloader
+against the **linked binary**, not the source: the only modules in it that can open a connection are the model downloader
 and the tokenizer fetch. Proof is per-process — `sandbox-exec` denying network with
 `SIGKILL`, so an exit 0 means zero network syscalls rather than errors that were
 swallowed — and no system network setting was touched.
