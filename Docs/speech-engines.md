@@ -27,6 +27,22 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   conversion so neither the converter's truncation nor its filter delay drops audio.
 - Excluded from the coverage gate: it can only be exercised by real speech.
 
+## Where the speech model runs
+
+`WhisperKitBackend.computeOptions` names the Core ML compute units for each stage rather than
+taking the package's defaults, so an upgrade cannot move the model to other hardware unnoticed.
+The values equal WhisperKit's own defaults on macOS 14 and later; nothing changed when they were
+written down.
+
+| Stage | Compute units |
+|---|---|
+| Mel spectrogram | `.cpuAndGPU` |
+| Audio encoder | `.cpuAndNeuralEngine` |
+| Text decoder | `.cpuAndNeuralEngine` |
+
+`WhisperKitContractTests.computeUnitsArePinned` fails if the app's values leave this table or the
+linked package's defaults leave the app's.
+
 ## Keeping WhisperKit off the network
 
 - WhisperKit treats a missing tokenizer as a reason to visit Hugging Face rather than a reason

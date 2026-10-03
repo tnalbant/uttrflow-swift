@@ -446,4 +446,12 @@ struct CleaningPipelineTests {
     func empty() {
         #expect(CleaningPipeline(passes: []).run(Draft(text: "hello")).text == "hello")
     }
+
+    @Test("romanising keeps each Devanagari word's origin and leaves Latin words Latin")
+    func romanisingKeepsOrigin() {
+        let draft = Draft(romanising: Transcription(text: "मैं meeting में था"))
+        #expect(draft.text == "main meeting mein tha")
+        #expect(draft.words.indices.map(draft.isHindi(at:)) == [true, false, true, true])
+        #expect(draft.originalText == "main meeting mein tha")
+    }
 }

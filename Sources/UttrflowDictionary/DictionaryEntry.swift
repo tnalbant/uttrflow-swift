@@ -1,5 +1,6 @@
 // One dictionary entry and where it came from.
 
+import UttrflowCore
 public import struct Foundation.Date
 public import struct Foundation.UUID
 
@@ -60,6 +61,14 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
 
     /// What the index should key this entry on: how it sounds, not how it is spelt.
     public var soundsLike: String { pronunciation ?? word }
+
+    /// The entry spelt in Latin letters, a Devanagari spelling kept as its pronunciation. See `Docs/latin-output.md`.
+    public var inLatinScript: DictionaryEntry {
+        guard Romaniser.containsDevanagari(word) else { return self }
+        return DictionaryEntry(
+            id: id, word: Romaniser.romanised(word), pronunciation: pronunciation ?? word, origin: origin,
+            firstSeen: firstSeen, timesUsed: timesUsed, timesReverted: timesReverted)
+    }
 
     /// Uses the word survived, undos netted out; safe to compute because both counters stay in domain.
     public var netUses: Int { timesUsed - timesReverted }

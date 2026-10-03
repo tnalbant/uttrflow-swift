@@ -86,7 +86,6 @@ struct SuggestionMomentTests {
         #expect(!context.canDraw)
         #expect(Quieting.reason(context) == .nowhereToDraw)
     }
-    }
 
     @Test("The situation holds the preceding text, the screen around the field and the recent lines")
     func theSituationHoldsWhatTheSnapshotHolds() {

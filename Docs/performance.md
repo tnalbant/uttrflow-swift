@@ -335,10 +335,17 @@ already on `main` is listed under the issue that fixes it, and fails as stale on
 
 The wakeup check reads one file at a time and follows no calls, so it does not see a loop whose
 sleep sits in a function the loop calls, two functions that schedule each other, or a timer whose
-interval comes from another file's caller. Only a measurement catches every shape: counting an
-idle app's wakeups over a fixed period with `powermetrics` would, but it needs root and a running
-app, so it is not part of `make verify` or `make perf-budget-models`, and is the thing to reach for
-when a battery report does not match a green audit.
+interval comes from another file's caller. Only a measurement catches every shape, and
+`make idle-wakeups` is its complement: it launches the built `dist/Uttrflow.app` in a throwaway
+`UTTRFLOW_TEST_CONTAINER` (onboarding finished, menu bar only, updates off), waits
+`SETTLE_SECONDS`, then reads `ri_interrupt_wkups`, `ri_pkg_idle_wkups` and processor time with
+`proc_pid_rusage` over `WINDOW_SECONDS` — no root needed — and fails above `WAKEUPS_PER_SECOND`
+or `CPU_PERCENT` in `Scripts/idle_wakeups.py`. It first proves itself on a 20 Hz loop whose sleep
+sits in a called function, which must fail, and a process that only sleeps, which must pass. It
+is not in `make verify`, which builds no bundle, and not yet in CI: the counters are the whole
+process's, AppKit's threads included, and a build of 7 September read 8.35 wakeups a second and
+0.77% of a core idle on an Apple M5 Pro, over a line drawn for the app's own timers. It measures
+the menu-bar state only, since no window can yet be opened without a display.
 
 Memory itself can only be read with the models loaded, so `make perf-budget-models` runs
 `uttrflow-bakeoff gpu-memory --release` and `uttrflow-bakeoff profile` and each exits non-zero
@@ -1103,9 +1110,28 @@ a paste.
 shortcut builds the audio graph, queries the input format, installs a tap and starts the engine
 before a single sample exists — and the user is already speaking while that runs. It is charged to
 `microphoneOpen`, a stage of its own rather than part of `capture`, which times the ending of a
-recording. **No figure is recorded here yet**: taking one needs a Mac that can run
-`uttrflow-dev record` and compare the first sample's timestamp against key-down, and it should be
-written down here when somebody does. Whether the opening swallows a syllable or is imperceptible
+recording. `uttrflow-dev latency --opens N` opens the real microphone N times through the
+shipping `AVAudioCaptureEngine`, times each `start()` through the same `measuring(.microphoneOpen)`
+the pipeline uses, polls every millisecond for the first sample, and summarises with
+`StageLatency`. One run, 20 opens, debug build, built-in microphone, Apple M5 Pro, 48 GB,
+macOS 26.5.1, **load average 339–387** (many parallel builds), so read it as a loaded-machine
+figure, not a quiet one:
+
+| | median | slowest | samples |
+|---|---|---|---|
+| `microphoneOpen` (`start()` returning) | 779 ms | 1454 ms | 20 |
+| start called to first sample | 879 ms | 1555 ms | 20, 0 silent |
+
+The first sample arrives about 100 ms after `start()` returns, every time, which is one hardware
+block. Re-run it on a quiet Mac before any decision rests on the size of the opening.
+
+**`keyDownToAudio` does not yet measure what its name says.** For a modifier shortcut the
+stopwatch starts at key-down and is read when the press is adopted after `modifierSettle`, not
+when the first sample arrives, so it records the settle; for any other shortcut it is not recorded
+at all. **Budgets are not set**: `Scripts/perf_budget_audit.py` reads energy and memory from
+source and has nowhere to hold a latency limit, and what the limits should be is an open owner
+decision. Insertion is timed in the product (`.insertion`) but not here: it needs Accessibility
+and a focused field in another app. Whether the opening swallows a syllable or is imperceptible
 decides whether anything about the audio graph's lifetime is worth changing — and the obvious
 change, keeping an input graph alive between recordings, is a privacy question before it is a
 latency one.

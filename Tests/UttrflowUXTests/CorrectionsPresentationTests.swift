@@ -1,5 +1,6 @@
 // Tests for the Corrections page: dictionary-backed rows, scope, search, and empty states.
 import Foundation
+import UttrflowCore
 import UttrflowSettings
 import Testing
 

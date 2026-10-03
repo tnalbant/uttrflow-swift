@@ -1,3 +1,5 @@
+import UttrflowCore
+
 /// Where the caret is, read live from the field so the model, not a hardcoded list, infers the dialect.
 public struct GenerationSituation: Sendable, Equatable {
     /// The application as the user knows it, e.g. "Terminal", "DBeaver", "Safari".
@@ -37,7 +39,7 @@ public struct GenerationSituation: Sendable, Equatable {
         self.preceding = preceding
         self.windowTitle = windowTitle
         self.surroundings = surroundings
-        self.recentLines = recentLines.filter { LatinScript.writes($0) }
+        self.recentLines = recentLines.filter { LatinScript.writesOnlyLatin($0) }
         self.timedTurnLines = timedTurnLines
         self.isMultiline = isMultiline
         self.choices = choices
@@ -46,7 +48,7 @@ public struct GenerationSituation: Sendable, Equatable {
     /// Whether everything the model is shown of the moment is in the Latin alphabet: the title, the field, the screen and the text before the line.
     public var readsOnlyLatin: Bool {
         [application, field, document, preceding, windowTitle, surroundings].allSatisfy {
-            $0.map { LatinScript.writes($0) } ?? true
+            $0.map { LatinScript.writesOnlyLatin($0) } ?? true
         }
     }
 

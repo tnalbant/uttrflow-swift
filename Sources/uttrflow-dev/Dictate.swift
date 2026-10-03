@@ -27,7 +27,7 @@ struct Dictate: AsyncParsableCommand {
         let model = try resolve(modelVariant)
         let store = try modelsDirectory.store()
         guard store.isInstalled(model) else {
-            throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
+            throw notInstalled(model, in: store)
         }
         let audio = try AudioFileReader.read(contentsOf: URL(fileURLWithPath: file))
         guard !audio.isEmpty else { throw CleanExit.message("The file holds no audio.") }

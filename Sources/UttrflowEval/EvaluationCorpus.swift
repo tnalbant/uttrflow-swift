@@ -4,7 +4,8 @@ public import UttrflowCore
 /// The hand-written cases every clean-up candidate is measured against.
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
-        everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + grammar
+        everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
+        + grammar
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -2340,6 +2341,83 @@ public enum EvaluationCorpus {
             mustBeginWith: "camel",
             mustEndWith: "paren."
         ),
+    ]
+
+    // MARK: Letter-and-digit codes, whose capital no sentence start explains
+
+    /// A notes document with the caret where the words land.
+    private static func codeTokenCase(
+        _ id: String, after preceding: String = "", spoken: String, expected: String, begins: String
+    ) -> EvaluationCase {
+        .init(
+            id: "code-token-" + id, category: .technical, spoken: spoken, expected: expected,
+            context: AppContext(
+                applicationName: "Notes", bundleIdentifier: "com.apple.Notes", documentName: "Planning",
+                precedingText: preceding),
+            destination: .document, mustBeginWith: begins)
+    }
+
+    static let codeToken: [EvaluationCase] = [
+        codeTokenCase(
+            "caret-a4", after: "Print the handout on ", spoken: "A4 paper please",
+            expected: "A4 paper please.", begins: "A4 paper"),
+        codeTokenCase(
+            "caret-q3", after: "We missed the targets for ", spoken: "Q3 by a small margin",
+            expected: "Q3 by a small margin.", begins: "Q3 by"),
+        codeTokenCase(
+            "caret-m2", after: "The build runs fastest on the ", spoken: "M2 machine in the lab",
+            expected: "M2 machine in the lab.", begins: "M2 machine"),
+        codeTokenCase(
+            "caret-s3", after: "Upload the archive to ", spoken: "S3 before the end of the day",
+            expected: "S3 before the end of the day.", begins: "S3 before"),
+        codeTokenCase(
+            "caret-b12", after: "The doctor suggested more ", spoken: "B12 in the morning",
+            expected: "B12 in the morning.", begins: "B12 in"),
+        codeTokenCase(
+            "caret-i-95", after: "Traffic was heavy on ", spoken: "I-95 all afternoon",
+            expected: "I-95 all afternoon.", begins: "I-95 all"),
+        codeTokenCase(
+            "caret-h2", after: "Move that heading to an ", spoken: "H2 in the outline",
+            expected: "H2 in the outline.", begins: "H2 in"),
+        codeTokenCase(
+            "seam-a4", spoken: "Print the handout on. A4 paper please",
+            expected: "Print the handout on A4 paper please.", begins: "Print the handout on A4"),
+        codeTokenCase(
+            "seam-q3", spoken: "We missed the targets for. Q3 by a small margin",
+            expected: "We missed the targets for Q3 by a small margin.", begins: "We missed the targets for Q3"),
+        codeTokenCase(
+            "seam-m2", spoken: "The build runs fastest on the. M2 machine",
+            expected: "The build runs fastest on the M2 machine.", begins: "The build runs fastest on the M2"),
+        codeTokenCase(
+            "filler-s3", spoken: "Upload the archive to um. S3 before lunch",
+            expected: "Upload the archive to S3 before lunch.", begins: "Upload the archive to S3"),
+        codeTokenCase(
+            "filler-i-95", spoken: "Traffic was heavy on uh. I-95 all afternoon",
+            expected: "Traffic was heavy on I-95 all afternoon.", begins: "Traffic was heavy on I-95"),
+        codeTokenCase(
+            "word-caret-be", after: "Tell them to ", spoken: "Be careful with the stairs",
+            expected: "be careful with the stairs.", begins: "be careful"),
+        codeTokenCase(
+            "word-caret-after", after: "We finish the review and ", spoken: "After that we can leave",
+            expected: "after that we can leave.", begins: "after that"),
+        codeTokenCase(
+            "word-caret-again", after: "The tests failed ", spoken: "Again this morning",
+            expected: "again this morning.", begins: "again this"),
+        codeTokenCase(
+            "word-caret-quarter", after: "Revenue fell last ", spoken: "Quarter by a little",
+            expected: "quarter by a little.", begins: "quarter by"),
+        codeTokenCase(
+            "word-caret-model", after: "The build runs fastest on the new ", spoken: "Model in the lab",
+            expected: "model in the lab.", begins: "model in"),
+        codeTokenCase(
+            "word-seam-after", spoken: "We finish the review and. After that we can leave",
+            expected: "We finish the review and after that we can leave.", begins: "We finish the review and after"),
+        codeTokenCase(
+            "word-seam-again", spoken: "The tests failed on. Again this morning",
+            expected: "The tests failed on again this morning.", begins: "The tests failed on again"),
+        codeTokenCase(
+            "word-filler-the", spoken: "Upload the archive to um. The shared drive",
+            expected: "Upload the archive to the shared drive.", begins: "Upload the archive to the"),
     ]
 
     // MARK: Grammar slips and dialect

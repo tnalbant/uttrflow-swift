@@ -250,18 +250,18 @@ extension MenuBarPresenter {
         guard let recent = state.recents.first else { return nil }
         return row(
             title: recent.title, tooltip: recent.isSecret ? nil : recent.fullText,
-            insert: .insertRecent(index: 0),
-            copy: .copyRecent(index: 0), in: state)
+            insert: .insertRecent(id: recent.id),
+            copy: .copyRecent(id: recent.id), in: state)
     }
 
     /// The newest clips while the clipboard is on, a secret masked and a picture named by its size.
     static func clipRows(for state: MenuBarState) -> [MenuBarRow] {
         guard state.features.clipboard else { return [] }
-        return state.clips.prefix(clipCount).enumerated().map { index, clip in
+        return state.clips.prefix(clipCount).map { clip in
             let isSecret = clip.kind == .secret
             return row(
                 title: title(of: clip), tooltip: isSecret ? nil : clip.text,
-                insert: .insertClip(index: index), copy: .copyClip(index: index), in: state)
+                insert: .insertClip(id: clip.id), copy: .copyClip(id: clip.id), in: state)
         }
     }
 

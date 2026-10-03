@@ -80,6 +80,45 @@ similarity 24%) to 5 passing (92%). The sixth, `hinglish-negation-kept`, expects
 English case of the clean-up corpus gets the answer the passes gave before romanising existed,
 and `LatinScript.enforced` returns every English passage and expectation exactly as written.
 
+### Audited by sound class
+
+`RomaniserSoundClassTests` checks the romaniser by the structure of the script rather than by
+reported word: every consonant with every vowel sign in a closed first syllable (30 × 11 = 330
+cases), independent vowels, common conjuncts (क्ष, त्र, ज्ञ, श्र and doubled stops), final
+halant, anusvara before each consonant class, chandrabindu, nukta letters, visarga and digits,
+and, separately, unwritten-vowel cases, which need a rule rather than a table. Each case is
+compared with the form people type; the expected forms are compiled for this audit, not copied
+from any external list.
+
+A case written wrongly today is listed in `knownGaps` and recorded as a known issue, so a fix
+shows up as an unexpected pass and the list must shrink with it. Measured on the tree this
+audit landed on:
+
+| Class | Cases | Wrong | Written today |
+|---|---|---|---|
+| consonant × vowel sign | 330 | 0 | |
+| independent vowel, conjunct, final halant, nukta, digit | 40 | 0 | |
+| anusvara before velar, palatal, retroflex, dental, sibilant | 15 | 0 | |
+| anusvara before a labial | 6 | 6 | मुंबई munbai, नंबर nanbar, संपर्क sanpark |
+| chandrabindu | 6 | 3 | माँ man, गाँव gaanw |
+| visarga after an unwritten vowel | 4 | 3 | अतः ath, नमः namh |
+| unwritten vowel | 13 | 4 | दोपहर dophar, जनवरी janawri, चाय chaay, हँसना hansana |
+
+Each wrong row is a class, not a word: anusvara is always "n" though it is said "m" before
+प फ ब भ म; a nasal "aa" that is the whole word is shortened as if it ended a longer word; a
+visarga after the unwritten vowel drops the vowel it follows; and the unwritten-vowel rule
+drops the vowel before a final ह cluster and keeps the one a final य or व carries.
+
+### Properties over generated words
+
+`RomaniserPropertyTests` generates 5,000 Devanagari words from the romaniser's own tables
+(consonants, nukta letters, conjuncts, vowel signs, virama, independent vowels, anusvara and
+chandrabindu, visarga) with fixed seeds, and checks what must hold for every word: the output is
+non-empty lower-case ASCII letters; `LatinScript.enforced` is Latin and a second pass changes
+nothing; precomposed and decomposed nukta, chandrabindu and anusvara, and inserted joiners give
+one output and one `soundKey`; and a run of words is written word for word with its spacing
+kept. `UTTRFLOW_SEED` replays one seed. None is broken on the tree this landed on.
+
 ## The script guard
 
 A model can answer Devanagari with a translation, with the prompt's own worked example, or in
@@ -103,7 +142,7 @@ reads no Devanagari, so it compared nothing.
   `FunctionWords`) are left out of both sides; a negation, a number and a Hindi pronoun never
   are. A dropped or added content word refuses the rewrite, and so does a substituted one unless
   it is:
-  - the same word in another form, by `MeaningPreservationGuard.sameRomanisedForm`: an English
+  - the same word in another form, by `WordForms.sameRomanisedForm`: an English
     inflection by `sameForm`, a Hindi verb or noun and its ending ("aa" and "aata", "log" and
     "logon"), or two cases of one demonstrative ("yah" and "is");
   - an English loanword the rules romanised, written in its English spelling: the two share a

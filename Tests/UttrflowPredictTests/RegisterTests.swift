@@ -69,6 +69,41 @@ struct RegisterTests {
         #expect(!register.hints.contains { $0.hasPrefix("this person writes") })
     }
 
+    @Test("Sentence punctuation in a short chat reply does not make it code.")
+    func sentencePunctuationKeepsAChatReplyInProse() {
+        let chat = GenerationSituation(
+            application: "Chat",
+            surroundings: "Priya: ready?\nMe: almost.\nPriya: let me know!",
+            recentLines: ["ok, will do.", "sure, I'll send it."],
+            isMultiline: true)
+        let register = Register.infer(from: chat, typed: "I'm good, thanks!")
+
+        #expect(register.isConversational)
+        #expect(register.symbolShare < Register.symbolicShare)
+        #expect(register.kind == "reply")
+        #expect(register.endsAtSentence)
+        #expect(!register.hints.contains("the text here is commands, code or queries rather than prose"))
+    }
+
+    @Test("Short command structure counts while unstructured punctuation remains prose.")
+    func symbolShareNeedsEnoughVisibleCharacters() {
+        #expect(Register.symbolShare(of: ["ls -la"]) > Register.symbolicShare)
+        #expect(Register.symbolShare(of: ["\"I'm good, thanks!\""]) == 0)
+        #expect(Register.symbolShare(of: ["ls | grep x"]) > Register.symbolicShare)
+    }
+
+    @Test("Flags and paths make short command punctuation evidence for the command register.")
+    func commandPunctuationCountsAsSymbolEvidence() {
+        let terminal = GenerationSituation(application: "Terminal")
+        let command = "command, query or line of code"
+
+        #expect(Register.infer(from: terminal, typed: "ls -la").kind == command)
+        #expect(Register.infer(from: terminal, typed: "git commit -m 'fix'").kind == command)
+        #expect(Register.infer(from: terminal, typed: "./a.b").kind == command)
+        #expect(Register.symbolShare(of: ["git commit -m 'fix'"]) == 3.0 / 16.0)
+        #expect(Register.symbolShare(of: ["./a.b"]) == 3.0 / 5.0)
+    }
+
     @Test("Emoji in a chat are prose, not symbols, so the line stays a reply.")
     func emojiAreNotSymbols() {
         let chat = GenerationSituation(

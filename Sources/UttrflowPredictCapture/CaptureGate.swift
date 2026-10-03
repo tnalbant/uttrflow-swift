@@ -1,6 +1,7 @@
 // Every reason a finished value may not be learned, and the answer the capture path asks for.
 private import Foundation
 private import UttrflowClipboard
+private import UttrflowCore
 private import UttrflowPredict
 public import UttrflowPredictStore
 
@@ -14,7 +15,7 @@ public enum CaptureRefusal: String, Sendable, Equatable, CaseIterable {
     case consentDeclined
     /// The value has the shape of a credential.
     case looksLikeSecret
-    /// The value is a short all-digit code in an application that is not a terminal.
+    /// The value is a short grouped digit code in an application that is not a terminal.
     case sensitiveValue
     /// The value would destroy data if it were ever completed and run.
     case destructive
@@ -49,21 +50,37 @@ public enum CaptureGate {
     }
 
     /// The version of the credential rules, raised whenever they widen so lines learned before are swept once.
-    public static let secretRulesVersion = 1
+    public static let secretRulesVersion = 2
 
     /// Removes every learned line the credential rules now recognise, once per `secretRulesVersion`, and counts them.
     @discardableResult
     public static func sweepSecrets(from store: PredictStore) async throws(PredictStoreError) -> Int {
-        try await store.sweep("looksLikeSecret", version: secretRulesVersion, removing: looksLikeSecret)
+        try await store.sweep("looksLikeSecret", version: secretRulesVersion) { text, surface in
+            let reading = FieldReading(bundleIdentifier: surface.bundleIdentifier, role: surface.role)
+            return looksLikeSecret(text) || looksLikeSensitiveValue(text, from: reading)
+        }
     }
 
     /// Whether a value has the shape of a credential, asked of the rules the clipboard already uses.
     public static func looksLikeSecret(_ text: String) -> Bool { SecretShapes.matches(text) }
 
-    /// Whether a value looks like a one-time code, PIN, CVV or compact date in a form field.
+    /// Whether a value contains 2 to 8 digits grouped by whitespace, hyphens or periods.
     public static func looksLikeSensitiveValue(_ text: String, from reading: FieldReading) -> Bool {
         guard !TerminalApplications.contains(reading.bundleIdentifier) else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (2...8).contains(trimmed.count) && trimmed.allSatisfy { $0.isNumber }
+        var digitCount = 0
+        var hasDigitSinceSeparator = false
+        for character in trimmed {
+            if character.isNumber {
+                digitCount += 1
+                hasDigitSinceSeparator = true
+            } else if character.isWhitespace || character == "-" || character == "." {
+                guard hasDigitSinceSeparator else { return false }
+                hasDigitSinceSeparator = false
+            } else {
+                return false
+            }
+        }
+        return (2...8).contains(digitCount) && hasDigitSinceSeparator
     }
 }

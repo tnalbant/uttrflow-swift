@@ -1,4 +1,5 @@
 import CoreFoundation
+import Foundation
 import UttrflowUX
 
 /// Reads the user's Globe-key action from the preference macOS uses for Keyboard settings.

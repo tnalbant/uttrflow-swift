@@ -100,7 +100,7 @@ struct SettingsTests {
     func roundTrip() throws {
         let settings = Settings(
             engines: EngineConfiguration(speech: .appleSpeech, transformerPreference: [.rules]),
-            profile: UserProfile(profession: "surgeon", preferredLanguages: [.hindi]),
+            profile: UserProfile(preferredLanguages: [.hindi]),
             hotkeyActivation: .pressToToggle,
             showsFloatingButton: false,
             floatingButtonAnchor: .rightEdge,

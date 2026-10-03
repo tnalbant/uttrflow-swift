@@ -418,7 +418,7 @@ struct PieceJoinerWholeTests {
         let entry = UUID()
         let correction = DictationCorrection(
             heard: "cubernetes", wrote: "Kubernetes", wordRange: 1..<2, entryID: entry,
-            reason: "dictionary", heardConfidence: 0.3)
+            reason: .unknown("dictionary"), heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [
                 piece("First, we deploy it.", heard: "first we deploy it"),
@@ -433,7 +433,7 @@ struct PieceJoinerWholeTests {
     func correctionsSurviveTheLayout() {
         let entry = UUID()
         let correction = DictationCorrection(
-            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: "dictionary",
+            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: .unknown("dictionary"),
             heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [
@@ -712,10 +712,40 @@ struct PieceJoinerSeamTests {
     @Test("joins a split currency amount across pieces")
     func joinsSplitCurrencyAmount() {
         let whole = PieceJoiner.join(
-            [piece("The total came to"), piece("400"), piece("and $20")],
+            [piece("The total came to"), piece("400", heard: "four hundred"), piece("and $20")],
             under: .standard(for: .document))
 
         #expect(whole.cleaned.text == "The total came to $420")
+    }
+
+    @Test(
+        "never adds an integer that was not a spoken scale to the next amount",
+        arguments: [
+            ("we owe him 12", "we owe him twelve", "and $5"), ("seats 12", "seats twelve", "and $5"),
+            ("we owe him 3", "we owe him three", "and $5"), ("page 7", "page seven", "and $5"),
+            ("table 20", "table twenty", "and $5"), ("room 400", "room four hundred", "and $400"),
+            ("gate 1,000", "gate one thousand", "and $5,000"), ("bus 100", "bus one hundred", "and $500"),
+        ])
+    func keepsUnrelatedIntegerApartFromAmount(cleaned: String, heard: String, amount: String) {
+        let seamed = PieceJoiner.seamed(
+            [cleaned, amount], heard: [heard, amount], under: .standard(for: .document))
+
+        #expect(seamed.last == amount)
+    }
+
+    @Test("joins a spoken scale with the smaller amount after it at every scale")
+    func joinsEveryScaleWithSmallerAmount() {
+        let cases: [(String, String, String, String)] = [
+            ("400", "four hundred", "and $20", "$420"),
+            ("2,000", "two thousand", "and $50", "$2050"),
+            ("3,000,000", "three million", "and $5", "$3,000,005"),
+        ]
+        for (number, heard, amount, sum) in cases {
+            let seamed = PieceJoiner.seamed(
+                ["It cost " + number, amount], heard: ["it cost " + heard, amount],
+                under: .standard(for: .document))
+            #expect(seamed.first == "It cost " + sum)
+        }
     }
 
     @Test("keeps separate figures apart when the second number has no currency")
@@ -732,5 +762,56 @@ struct PieceJoinerSeamTests {
         let whole = PieceJoiner.join([piece("On my way")], under: .standard(for: .messaging))
 
         #expect(whole.cleaned.text == "On my way")
+    }
+
+    /// Invented numbers and codes said in groups; the 555 0100 to 0199 range is reserved for fiction.
+    static let groupsAcrossPause = [
+        "555 0100", "555 0142", "Call 555 0187", "415 555 0123", "Dial 0800 555 0150",
+        "Order 7731 4402", "The code is QX 4417", "AB 123", "Card 1234 5678 9012 3456",
+        "Ref ZK 2290 18", "PIN 0000 1111", "Room KT 404",
+    ]
+
+    /// Sentences that end on a number before one that opens on a number, which the group row joins.
+    static let sentencesAcrossNumbers = [
+        ("It costs 12.", "13 people came."), ("We sold 40.", "25 came back."),
+        ("The score was 3.", "2 goals were late."), ("I counted 7.", "8 were missing."),
+        ("Page 10.", "11 is blank."), ("She is 30.", "40 is next year."),
+        ("We need 6.", "5 are here."), ("Gate 9.", "10 minutes to board."),
+    ]
+
+    @Test(
+        "joins the groups of one spoken number or code at every cut, with or without the recogniser's stop",
+        arguments: [Destination.document, .messaging, .plain, .email])
+    func groupsAcrossPauseJoin(destination: Destination) {
+        for text in Self.groupsAcrossPause {
+            let words = text.split(separator: " ").map(String.init)
+            for cut in 1..<words.count where words[cut - 1].allSatisfy({ $0.isNumber || $0.isUppercase }) {
+                for stop in ["", "."] {
+                    let pieces = [words[..<cut].joined(separator: " ") + stop, words[cut...].joined(separator: " ")]
+                    let whole = PieceJoiner.join(pieces.map { piece($0) }, under: .standard(for: destination))
+
+                    #expect(whole.cleaned.text == text, "\(pieces) in \(destination)")
+                }
+            }
+        }
+    }
+
+    @Test("keeps the stop between two groups when the recogniser heard a question or an exclamation")
+    func groupRowAbstainsOnQuestionOrExclamation() {
+        for mark in ["?", "!"] {
+            let seamed = PieceJoiner.seamed(["It costs 12" + mark, "13 people came."], under: .standard(for: .document))
+
+            #expect(seamed.first == "It costs 12" + mark)
+        }
+    }
+
+    /// The group row's measured cost: these were ended before it and are joined by it.
+    @Test("joins a sentence that ends on a number to one that opens on a number")
+    func groupRowCost() {
+        let kept = Self.sentencesAcrossNumbers.filter { first, next in
+            PieceJoiner.seamed([first, next], under: .standard(for: .document)).first == first
+        }
+
+        #expect(kept.isEmpty)
     }
 }

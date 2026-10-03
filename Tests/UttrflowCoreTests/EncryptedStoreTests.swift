@@ -63,6 +63,60 @@ struct EncryptedStoreTests {
         #expect(store.read([String].self, from: file).value == ["private"])
     }
 
+    @Test("file fallback keeps one key across provider instances and removes it on reset")
+    func fileKeyFallbackPersistsAndRevokes() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyFile = directory.appending(path: "key.v1")
+        let first = KeychainStoreKeyProvider(fileURL: keyFile)
+        let key = try first.resolveKeychainResult(
+            status: errSecItemNotFound,
+            data: nil,
+            createIfMissing: true
+        ) { _ in errSecMissingEntitlement }
+        #expect(try Data(contentsOf: keyFile).count == 32)
+        #expect(
+            try first.resolveKeychainResult(
+                status: errSecItemNotFound,
+                data: nil,
+                createIfMissing: false
+            ) { _ in
+                Issue.record("Must reuse the existing fallback without adding a Keychain item");
+                return errSecSuccess
+            }
+            .withUnsafeBytes { Data($0) }
+                == key.withUnsafeBytes { Data($0) })
+
+        try first.revokeKey()
+        #expect(!FileManager.default.fileExists(atPath: keyFile.path))
+        #expect(throws: (any Error).self) {
+            try first.resolveKeychainResult(
+                status: errSecItemNotFound,
+                data: nil,
+                createIfMissing: false
+            ) { _ in
+                Issue.record("Must not add while reading a missing key"); return errSecSuccess
+            }
+        }
+    }
+
+    @Test("does not use the file fallback for unrelated Keychain failures")
+    func keychainFailuresStayFailClosed() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let provider = KeychainStoreKeyProvider(fileURL: directory.appending(path: "key.v1"))
+
+        #expect(throws: (any Error).self) {
+            try provider.resolveKeychainResult(
+                status: errSecInteractionNotAllowed,
+                data: nil,
+                createIfMissing: true
+            ) { _ in
+                Issue.record("Must not try to add after a locked-keychain response"); return errSecSuccess
+            }
+        }
+    }
+
     @Test("rejects a different key and leaves the source bytes set aside")
     func wrongKey() throws {
         let directory = try folder()

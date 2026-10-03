@@ -1,10 +1,10 @@
 # Definition of done
 
 **Reconstructed, not quoted.** The original PRD is not in this repository and is no longer
-to hand. What follows is assembled from what the code and `PLAN.md` say the requirements
-were — every `§` reference below appears in a source comment or in the plan, written at
-the time the requirement was being satisfied, and the wording is that comment's rather
-than the PRD's.
+to hand. What follows is assembled from what the code and the phase log kept during the
+build say the requirements were — every `§` reference below appears in a source comment or
+in that log, written at the time the requirement was being satisfied, and the wording is
+that comment's rather than the PRD's.
 
 That is a real limitation and it cuts one way in particular: **this document can only
 check promises somebody wrote down. A requirement nobody implemented left no comment, so
@@ -50,16 +50,28 @@ there, nothing else moved.
 
 ## Deviations
 
-Recorded in full under *Deviations from the PRD* in `PLAN.md`. In brief:
+This section is the record of every deliberate departure from the PRD, kept so the
+requirement and the code never quietly disagree. A new deviation is added here in the
+change that makes it.
 
 - **§16 recording panel** — the floating button *is* the recorder, so one thing moves on
   screen rather than two.
+- **§29 "no audio saved"** — deviated, deliberately, and current. Each dictation's audio is
+  written beside the live buffer and deleted the moment its words land; it is kept for a
+  day only when the words were lost (a crash, or a recogniser that never answered), so the
+  dictation can be retried from the Dictation page. Nothing leaves the Mac, and the privacy
+  copy says exactly this. `Docs/recordings.md` has the detail; the promise table above
+  matches it.
+- **§31 "no tiny fallback LLM"** — a local open-weight model ships, because Apple's
+  on-device Foundation Models have no Hindi and Hindi clean-up must still run on the Mac
+  (`Docs/bakeoff.md`).
 - **Context does not turn speech into SQL.** The largest deviation, and the one that
-  narrows the product most. Seven prompt designs were tried; every one strong enough to
-  produce SQL also invented content the speaker never said. Context does spelling only.
-- **§29 is still a deviation.** `PLAN.md` and `Docs/recordings.md` both record it as
-  deliberate and current, matching the promise table above; an earlier draft of this
-  section said the opposite and was wrong.
+  narrows the product most. Seven prompt designs were tried against the real on-device
+  model; every wording strong enough to produce SQL also invented content the speaker never
+  said, and the prompts carrying SQL examples leaked SQL keywords into dictations with no
+  context at all. Context does spelling only. The corpus case `sql-editor-totals` still
+  expects SQL and still fails; that score is this decision, not an unfixed defect.
+  Someone who wanted to dictate queries does not get to.
 
 ## What this document cannot tell you
 

@@ -2,7 +2,8 @@
 
 A page per subsystem. Each one holds what the code cannot say for itself: a measured number,
 a platform trap, an approach that was tried and does not work. Comments in the source are one
-line and link here rather than carrying the explanation themselves.
+line and link here rather than carrying the explanation themselves. Every rejected approach is
+indexed, with the condition that reopens it, in [decisions.md](decisions.md).
 
 Nothing here is a tutorial. If you want to run the app, the [README](../README.md) is the
 place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
@@ -25,6 +26,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [audio-capture.md](audio-capture.md) | Capturing the microphone |
 | [silence.md](silence.md) | Silence, and why it has to be caught before the recogniser |
 | [speech-engines.md](speech-engines.md) | The speech engines, and what WhisperKit does when nobody is looking |
+| [decoder-evidence.md](decoder-evidence.md) | What WhisperKit can say about a doubtful word, and at what cost |
 | [speech-vocabulary-prompt.md](speech-vocabulary-prompt.md) | Conditioning Whisper on the user's own words |
 | [speech-model-install.md](speech-model-install.md) | Installing a speech model, one component at a time |
 | [early-transcription.md](early-transcription.md) | Working ahead while the key is held |
@@ -45,6 +47,8 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
+| [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
+| [adapters.md](adapters.md) | Format adapters: one registry for structured writing |
 | [latin-output.md](latin-output.md) | Latin letters only: the romaniser, the script guard and the last check |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
@@ -117,6 +121,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [core-history-undo.md](core-history-undo.md) | Undoing a correction: how the words are found and when they are left alone |
 | [core-history-accuracy.md](core-history-accuracy.md) | The accuracy figure: where its denominator comes from |
 | [history-store-file.md](history-store-file.md) | The dictation history file, and the shape of the store around it |
+| [persona-threat-model.md](persona-threat-model.md) | Learned personal data: assets, adversaries, mitigations with their tests, and residual risks |
 | [local-store-permissions.md](local-store-permissions.md) | Who may read the local store, and the one place its files are written |
 | [local-store-encryption.md](local-store-encryption.md) | Local-store encryption, migration, and reset-key revocation; selected stores are implemented |
 | [retention-clock.md](retention-clock.md) | Retention, and the two things it will not take the wall clock's word for |
@@ -134,13 +139,17 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 
 | Page | What it covers |
 |---|---|
+| [accuracy-targets.md](accuracy-targets.md) | Accuracy targets, the error taxonomy and the release gate |
+| [measure-a-change.md](measure-a-change.md) | Which command measures which kind of change, its run time and what it needs |
 | [measuring-accuracy.md](measuring-accuracy.md) | Making speech accuracy measurable |
 | [core-word-error-rate.md](core-word-error-rate.md) | How word error rate is measured, and why it lives in Core |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
 | [eval-context-cases.md](eval-context-cases.md) | The context pairs in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
+| [probe-log.md](probe-log.md) | Where, when and on which build every probe number was measured |
 | [bakeoff.md](bakeoff.md) | Local model bake-off |
+| [mutation-guard.md](mutation-guard.md) | Which meaning-guard checks a test would miss, by mutation |
 | [bakeoff-method.md](bakeoff-method.md) | How the bake-off measures, and why each row is there |
 
 ## Building, testing and shipping
@@ -156,6 +165,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |
 | [ux-test-harness.md](ux-test-harness.md) | UX test harness traps |
+| [test-flakes.md](test-flakes.md) | Flaky-test report and quarantine expiry |
 | [account-tests-keychain-adhoc.md](account-tests-keychain-adhoc.md) | Ad-hoc-signed builds and the data-protection keychain |
 | [agents/code-quality.md](agents/code-quality.md) | Code quality: limits, checks, comments, tests |
 | [agents/product.md](agents/product.md) | Product rules and invariants |
@@ -163,6 +173,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [agents/public-boundary.md](agents/public-boundary.md) | What must never reach a tracked file |
 | [disclosure-gate.md](disclosure-gate.md) | The disclosure gate |
 | [tooling-traps.md](tooling-traps.md) | Tooling traps |
+| [python-scripts.md](python-scripts.md) | Python scripts and their imports |
 
 Two pages here tell an operator to run a command in the private backend repository:
 [operator-runbook.md](operator-runbook.md) and [releasing.md](releasing.md). Everything else

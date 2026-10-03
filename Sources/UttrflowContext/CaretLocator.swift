@@ -77,7 +77,8 @@ enum CaretLocator {
         bounds: (_ location: Int, _ length: Int) -> CGRect?
     ) -> Result? {
         if selection.length > 0 {
-            guard let rect = bounds(selection.location, 1), rect.height > 0 else { return nil }
+            let length = followingCharacterLength(in: value, atUTF16Offset: textSelectionLocation) ?? 1
+            guard let rect = bounds(selection.location, length), rect.height > 0 else { return nil }
             return Result(
                 caret: CGRect(x: rect.minX, y: rect.minY, width: 0, height: rect.height),
                 direction: .unknown)
@@ -102,7 +103,8 @@ enum CaretLocator {
         let before =
             location > 0 && !followsLineBreak
             ? bounds(location - precedingLength, precedingLength) : nil
-        let after = bounds(location, 1)
+        let followingLength = followingCharacterLength(in: value, atUTF16Offset: textLocation) ?? 1
+        let after = bounds(location, followingLength)
         if let before, before.height > 0, let after, after.height > 0,
             abs(before.minY - after.minY) <= 2, abs(before.maxY - after.maxY) <= 2
         {
@@ -145,6 +147,16 @@ enum CaretLocator {
         else { return nil }
         let start = text.index(before: end)
         return text[start..<end].utf16.count
+    }
+
+    /// The UTF-16 length of the complete character immediately after the caret.
+    private static func followingCharacterLength(in text: String?, atUTF16Offset offset: Int) -> Int? {
+        guard let text, offset >= 0 else { return nil }
+        let utf16 = text.utf16
+        guard offset < utf16.count,
+            let start = String.Index(utf16.index(utf16.startIndex, offsetBy: offset), within: text)
+        else { return nil }
+        return text.index(after: start).utf16Offset(in: text) - offset
     }
 
     /// Whether the UTF-16 unit before the caret ends a line, matching Accessibility's selection offsets.

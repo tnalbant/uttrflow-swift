@@ -2,6 +2,7 @@
 
 public import struct Foundation.Date
 public import struct Foundation.UUID
+public import UttrflowCore
 
 /// What a copied thing is, detected rather than declared; decides the icon, the face and masking.
 public enum ClipKind: String, Sendable, Equatable, CaseIterable, Codable {
@@ -19,6 +20,8 @@ public enum ClipKind: String, Sendable, Equatable, CaseIterable, Codable {
 /// One thing the user copied, shaped to be identified at a glance and pasted without a second thought.
 public struct Clip: Sendable, Equatable, Identifiable, Codable {
     private static let summaryCharacterLimit = 300
+    /// Full-text previews stay small even when a copied document is near the clipboard budget.
+    public static let previewCharacterLimit = 10_000
 
     public let id: UUID
     /// Exactly what was copied, never trimmed or normalised, so what goes out is what came in.
@@ -186,7 +189,23 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
             }
             firstLine.append(character)
         }
-        return firstLine.trimmingCharacters(in: .whitespaces)
+        let visible = firstLine.trimmingCharacters(in: .whitespaces)
+        if !visible.isEmpty { return visible }
+        guard !text.isEmpty else { return "" }
+        return "Whitespace only · \(text.count) characters"
+    }
+
+    /// The number of following lines, counting a trailing newline as content that will be pasted.
+    public var additionalLineCount: Int {
+        text.reduce(into: 0) { count, character in
+            if character.isNewline { count += 1 }
+        }
+    }
+
+    /// The bounded text offered before paste; a suffix makes truncation explicit.
+    public var preview: String {
+        guard text.count > Self.previewCharacterLimit else { return text }
+        return String(text.prefix(Self.previewCharacterLimit)) + "\n… preview truncated"
     }
 }
 

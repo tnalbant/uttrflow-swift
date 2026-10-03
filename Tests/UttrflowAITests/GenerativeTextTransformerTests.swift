@@ -779,4 +779,25 @@ struct RuleBasedTransformerTests {
         #expect(result.text == "Namaste main aaj aaunga.")
     }
 
+    @Test(
+        "accepts an unchanged answer where the destination has nothing to add",
+        arguments: [
+            ("average handling time in minutes", Destination.spreadsheet),
+            ("kubectl get pods namespace prod", .terminal),
+        ])
+    func acceptsUnchangedWhereNothingIsOwed(text: String, destination: Destination) async throws {
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in text })
+        #expect(try await sut.transform(request(text, destination: destination)).text == text)
+    }
+
+    @Test("refuses an unchanged answer in prose that still wants a capital and a stop")
+    func refusesUnchangedProse() async {
+        let text = "we should meet on monday morning"
+        let sut = GenerativeTextTransformer(
+            kind: .foundationModels, model: FakeCleanupModel { _ in text })
+        await #expect(throws: TransformationError.self) {
+            try await sut.transform(request(text, destination: .document))
+        }
+    }
 }

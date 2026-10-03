@@ -160,3 +160,32 @@ The abandoned load finishes whenever it can, and a load that finishes late is ig
 A cold load is still 154 seconds. Nothing here makes it faster; it makes the app honest
 about it. Making it faster is a separate question — the load is CoreML compiling and
 paging in a 632 MB model, and the lever is the model, not this code.
+
+## From process start to the shortcut being heard
+
+As a login item the app starts while the whole session does, and the shortcut is the product, so
+the launch is measured to the moment the dictation shortcut is first armed or refused.
+
+- **What marks it.** `ShortcutArming` tells `LaunchMilestone` its first outcome, once. The time is
+  `ProcessAge`, read from the kernel's start time for this process, so work before `main` counts.
+  A later re-arming from Settings is not the launch and is not recorded.
+- **Where it is said.** One line under the `launch` category, and a `ShortcutSettled` signpost
+  carrying the same line, so Instruments places it on the launch timeline:
+
+```
+log show --last 10m --predicate 'subsystem == "com.uttrflow.Uttrflow" && category == "launch"'
+```
+
+  `LaunchReport` is the one home for that line, written by the app and read back by the harness.
+  A start time the kernel did not give is said as `unknown`, never as a number.
+- **How to measure it.** `uttrflow-dev launch --app dist/Uttrflow.app --runs 5` starts the built
+  bundle against a fresh temporary container (signed in, onboarded, no login item), waits for the
+  line, quits the app, and prints each run with the minimum, median and maximum.
+  A refusal ends the wait as well, and the line says `refused`: a bundle without
+  Accessibility is refused, and the time to that refusal is still the launch's.
+
+### What is not yet decided
+
+There is no budget yet. The budget is set from a cold launch (after a restart) and a warm one on
+the base 8 GB Mac, and neither has been recorded. A warm number from a 48 GB development Mac sets
+nothing for that machine, and a cold number needs a restart this harness cannot do.

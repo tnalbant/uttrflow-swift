@@ -3,7 +3,7 @@ import UttrflowCore
 
 @testable import UttrflowAI
 
-/// Holds every sentence-local pass to reading no further back than the sentence it is cleaning. See `PLAN.md`.
+/// Holds every sentence-local pass to reading no further back than the sentence it is cleaning. See `Docs/cleanup-design.md`, section 3.
 @Suite("Sentence locality")
 struct SentenceLocalityTests {
     /// A complete sentence whose last word is bait for some rule's lookback.

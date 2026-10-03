@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let menuBar = MenuBarController()
     private let dock = DockPanelController()
     private var recents = RecentDictations()
-    /// The newest clips as the popover last read them, so a row's position finds the clip it shows.
+    /// The newest clips as the popover last read them, resolved by identity when a row is chosen.
     private var menuClips: [Clip] = []
     /// Where dictations are kept between launches, and the only thing that decides what is deleted.
     private let history: DictationHistoryStore
@@ -186,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let allowModelReload: (@Sendable () async -> Void)?
     /// Waits out calm so a test can advance the pressure timer without wall-clock delay.
     private let waitForCalm: @Sendable (Duration) async throws -> Void
+    private let pasteboardOverride: (any UttrflowInput.Pasteboard)?
     /// Asks which clean-up engines can run, held as a seam so availability changes are testable.
     private let transformerReadiness: @Sendable (UserProfile) async -> Set<TransformerKind>
     /// Whether the weights have been asked for and not let go since, so turning the feature on twice does not ask twice.
@@ -241,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
-        }
+        }, pasteboard: (any UttrflowInput.Pasteboard)? = nil
     ) {
         self.container = container
         self.onboardingRecordStore = onboardingRecordStore
@@ -260,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.allowModelReload = allowModelReload
         self.waitForCalm = waitForCalm
         self.transformerReadiness = transformerReadiness
+        pasteboardOverride = pasteboard
         history = DictationHistoryStore(
             file: DictationHistoryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         recordings = RecordingStore(
@@ -303,9 +305,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let formatter: any CodeFormatting = SystemCodeFormatter()
 
     /// The one pasteboard that announces its writes, so no inserter can silently forget to. See `Docs/insertion.md`.
-    private lazy var announcingPasteboard = SystemPasteboard(
-        willWrite: { [clipboardWatcher] in clipboardWatcher.ignoreNextWrite(of: $0) },
-        willWritePicture: { [clipboardWatcher] in clipboardWatcher.ignoreNextPicture($0) })
+    private lazy var announcingPasteboard: any UttrflowInput.Pasteboard =
+        pasteboardOverride
+        ?? SystemPasteboard(
+            willWrite: { [clipboardWatcher] in clipboardWatcher.ignoreNextWrite(of: $0) },
+            willWritePicture: { [clipboardWatcher] in clipboardWatcher.ignoreNextPicture($0) })
 
     /// Puts a chosen clip where the caret is, announcing the write so it is not read as a copy.
     lazy var clipInserter: any TextInserting = TextInsertion.coordinator(
@@ -489,7 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The files a full reset reaches that the settings module has no store for.
     private func keptElsewhere() -> KeptElsewhere {
         let encryptedStore = self.encryptedStore
-        KeptElsewhere(
+        return KeptElsewhere(
             recordings: { [recordings] in try await recordings.discardEverything() },
             snippets: { [snippets] in try await snippets.deleteEverything() },
             suggestionConsent: { [weak self] in try await self?.forgetEveryConsentAnswer() },
@@ -948,7 +952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 switch result {
                 case .success:
                     self?.suggestionRuntime =
-                        coordinator.secureInput.isBlocking ? .secureInputBlocked : .running
+                        coordinator.isSecureInputBlocking ? .secureInputBlocked : .running
                 case .failure: self?.suggestionRuntime = .tapFailed
                 }
             }
@@ -1082,7 +1086,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Cleared so that turning the feature off and on loads the model again.
             isModelPreparing = false
             suggestionModel = .loadFailed
-        case .started, .finished, .failed:
+        case .finished, .failed:
             break
         }
     }
@@ -1248,7 +1252,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordings: recordings,
             // A retry runs with Uttrflow's own window in front, so its words can only be copied.
             clipboard: TextInsertionCoordinator(strategies: [
-                ClipboardTextInsertionEngine(pasteboard: announcingPasteboard)
+                ClipboardTextInsertionEngine(
+                    pasteboard: announcingPasteboard,
+                    secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile
         )
@@ -1366,8 +1372,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let arming = shortcutArming
         // Kept as its own state on the menu bar and floating button, never shown as a failed dictation.
         Task {
-            await arming.arm {
-                guard attempt == shortcutArmingAttempt, surfaces.listensForDictation else { return }
+            await arming.arm { () throws(HotkeyError) in
+                guard attempt == self.shortcutArmingAttempt, self.surfaces.listensForDictation else { return }
                 try await controller.start(binding: binding)
             }
             if let failure = arming.failure {
@@ -1607,7 +1613,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.log.notice("copy last transcript: nothing dictated yet")
             return
         }
-        announcingPasteboard.setText(text)
+        guard announcingPasteboard.setText(text).didWrite else {
+            showClipboardCopyFailure()
+            return
+        }
+        sayCopiedForMainWindow()
     }
 
     /// The shortcut is a toggle, so the same key puts the panel away again.
@@ -1737,36 +1747,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             insert(text, concealed: true, targeting: destination, used: used, forPanel: true)
         case .copyAndSay(let text, let notice, let used):
             // Stays open: the panel is the only surface left to say this on.
-            putOnClipboard(text, used: used)
-            panel?.notice = notice
+            let copied = putOnClipboard(text, used: used)
+            panel?.notice = copied ? notice : Self.clipboardCopyFailedNotice
             if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
-            closeAfterReading()
+            if copied { closeAfterReading() }
         case .copyConcealedAndSay(let text, let notice, let used):
-            putOnClipboard(text, concealed: true, used: used)
-            panel?.notice = notice
+            let copied = putOnClipboard(text, concealed: true, used: used)
+            panel?.notice = copied ? notice : Self.clipboardCopyFailedNotice
             if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
-            closeAfterReading()
+            if copied { closeAfterReading() }
         case .copyImageAndSay(let clip, let notice):
             let owner = PanelLateRequest(opens: quickPanel.opens, sheet: panel?.sheet)
             Task { [weak self] in
                 guard let self else { return }
-                let copied = await putImageOnClipboard(clip)
+                let outcome = await putImageOnClipboard(clip)
                 guard owner.isSameOpen(panel, opens: quickPanel.opens) else { return }
                 // A picture that went between the draw and the keypress is said, never claimed as copied.
-                panel?.notice = copied ? notice : Self.pictureMissingNotice(clip)
+                switch outcome {
+                case .copied:
+                    panel?.notice = notice
+                    closeAfterReading()
+                case .missingPicture:
+                    panel?.notice = Self.pictureMissingNotice(clip)
+                    closeAfterReading()
+                case .writeRefused:
+                    panel?.notice = Self.clipboardCopyFailedNotice
+                }
                 if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
-                closeAfterReading()
             }
         case .closeAndCopy(let text, let richText, let used):
             // Onto the clipboard and no further: the user will paste it somewhere else.
-            putOnClipboard(text, richText: richText, used: used)
-            closeQuickPanel()
+            if putOnClipboard(text, richText: richText, used: used) {
+                closeQuickPanel()
+            } else {
+                panel?.notice = Self.clipboardCopyFailedNotice
+                if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
+            }
         case .closeAndCopyConcealed(let text, let used):
-            putOnClipboard(text, concealed: true, used: used)
-            closeQuickPanel()
+            if putOnClipboard(text, concealed: true, used: used) {
+                closeQuickPanel()
+            } else {
+                panel?.notice = Self.clipboardCopyFailedNotice
+                if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
+            }
         case .closeAndCopyImage(let clip):
-            closeQuickPanel()
-            Task { [weak self] in _ = await self?.putImageOnClipboard(clip) }
+            let owner = PanelLateRequest(opens: quickPanel.opens, sheet: panel?.sheet)
+            Task { [weak self] in
+                guard let self else { return }
+                let outcome = await putImageOnClipboard(clip)
+                guard owner.isSameOpen(panel, opens: quickPanel.opens), outcome == .copied else {
+                    if owner.isSameOpen(panel, opens: quickPanel.opens) {
+                        panel?.notice =
+                            outcome == .missingPicture
+                            ? Self.pictureMissingNotice(clip) : Self.clipboardCopyFailedNotice
+                        if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
+                        if outcome == .missingPicture { closeAfterReading() }
+                    }
+                    return
+                }
+                closeQuickPanel()
+            }
         case .applyAndRedraw(let change):
             if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
             apply(change)
@@ -1817,9 +1857,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.log.info(
                 "delete: undoable=\(held != nil, privacy: .public) flag=\(self.panel?.canUndoDelete == true, privacy: .public)"
             )
-            let deletion = Task { [clipboard, retention] in
+            let deletion = Task { [clipboard, retention] () -> Result<Void, ClipboardStoreError> in
                 await clipboard.forgetHeldPictures()
-                do {
+                do throws(ClipboardStoreError) {
                     _ = try await clipboard.delete(
                         id, keeping: retention, holdingPicture: held != nil)
                     return .success(())
@@ -1930,11 +1970,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             panel?.canUndoDelete = false
             intentWork = Task { [weak self] in
                 guard let self else { return }
-                do {
+                do throws(ClipboardStoreError) {
                     try await claim.waitForDelete()
                     try await self.carryOut(.restore(claim.clip))
-                } catch let failure as ClipboardStoreError {
-                    self.panel?.notice = .writeFailed(failure.userMessage)
+                } catch {
+                    self.panel?.notice = .writeFailed(error.userMessage)
                 }
                 await self.refreshPanelIfOpen()
             }
@@ -1999,15 +2039,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Puts a picture's PNG on the clipboard through the one pasteboard; false when its file has gone.
-    private func putImageOnClipboard(_ clip: Clip) async -> Bool {
+    private enum ImageCopyOutcome: Equatable { case copied, missingPicture, writeRefused }
+
+    /// Puts a picture's PNG on the clipboard through the one pasteboard.
+    private func putImageOnClipboard(_ clip: Clip) async -> ImageCopyOutcome {
         guard let image = clip.image, let data = await clipboard.imageData(for: image) else {
             Self.log.error("picture missing at copy: \(clip.id, privacy: .public)")
-            return false
+            return .missingPicture
         }
+        guard announcingPasteboard.setImage(data).didWrite else { return .writeRefused }
         markUsed(clip.id)
-        announcingPasteboard.setImage(data)
-        return true
+        return .copied
     }
 
     /// K4 — pastes a picture, on its own path because the Accessibility route writes only strings.
@@ -2080,9 +2122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 } else {
                     attempt = try await clipInserter.insert(text, richText: richText)
                 }
+                let arrival = forPanel ? "" : " arrival=\(attempt.arrival.rawValue)"
                 Self.log.info(
-                    "clip inserted by \(attempt.method.rawValue, privacy: .public)"
-                        + (forPanel ? "" : " arrival=\(attempt.arrival.rawValue, privacy: .public)"))
+                    "clip inserted by \(attempt.method.rawValue, privacy: .public)\(arrival, privacy: .public)"
+                )
                 if forPanel { self?.reportPanelPaste(.text(attempt)) }
             } catch {
                 // Every strategy refused, including the one that cannot.
@@ -2131,14 +2174,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Through the one pasteboard, so the write is announced and stays on this Mac. See `Docs/insertion.md`.
+    @discardableResult
     private func putOnClipboard(
         _ text: String, richText: String? = nil, concealed: Bool = false, used: Clip.ID?
-    ) {
-        markUsed(used)
+    ) -> Bool {
         // A secret goes up marked, so no other clipboard history records it in plain text.
-        guard !concealed else { return announcingPasteboard.setConcealedText(text) }
+        let result: PasteboardWriteResult
+        guard !concealed else {
+            result = announcingPasteboard.setConcealedText(text)
+            if result.didWrite { markUsed(used) }
+            return result.didWrite
+        }
         // E2, E3 — both flavours, so the receiving application takes the one it understands.
-        announcingPasteboard.setText(text, richText: richText)
+        result = announcingPasteboard.setText(text, richText: richText)
+        if result.didWrite { markUsed(used) }
+        return result.didWrite
     }
 
     /// Tells the user, on screen and through VoiceOver, that the words are on the clipboard, where the panel would have said so.
@@ -2148,6 +2198,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             symbolName: "doc.on.clipboard", tone: .neutral)
         actionNotice = notice
         announce(notice.message, urgently: false)
+        refreshMainWindow()
+    }
+
+    private static var clipboardCopyFailedNotice: PanelNotice {
+        PanelNotice.writeFailed(MainNotice.clipboardCopyFailed.message)
+    }
+
+    private func showClipboardCopyFailure() {
+        actionNotice = .clipboardCopyFailed
+        announce(MainNotice.clipboardCopyFailed.message, urgently: false)
         refreshMainWindow()
     }
 
@@ -2341,6 +2401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordingAdvice: recordingAdvice,
             recents: recents.previews.map {
                 MenuBarRecent(
+                    id: $0.id,
                     title: $0.title,
                     fullText: $0.isSecret ? $0.title : $0.dictation.text,
                     isSecret: $0.isSecret)
@@ -2368,30 +2429,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             toggleDictation()
         case .recover(let action):
             perform(action)
-        case .insertRecent(let index):
-            guard let recent = recents.entries[safe: index] else { return }
+        case .insertRecent(let id):
+            guard let recent = recents.entries.first(where: { $0.id == id }) else { return }
             // The app's own inserter: a fresh one would get the unannouncing pasteboard.
             insert(
                 recent.text, concealed: DictationTextPresentation(recent.text).isSecret, used: nil)
-        case .copyRecent(let index):
-            guard let recent = recents.entries[safe: index] else { return }
+        case .copyRecent(let id):
+            guard let recent = recents.entries.first(where: { $0.id == id }) else { return }
             // And through the helper that announces the write, for the same reason.
-            putOnClipboard(
+            if !putOnClipboard(
                 recent.text, concealed: DictationTextPresentation(recent.text).isSecret, used: nil)
-        case .insertClip(let index):
-            guard let clip = menuClips[safe: index] else { return }
+            {
+                showClipboardCopyFailure()
+            }
+        case .insertClip(let id):
+            guard let clip = menuClips.first(where: { $0.id == id }) else { return }
             if clip.image != nil {
                 insertImage(clip)
             } else {
                 insert(clip.text, concealed: clip.kind == .secret, used: clip.id)
             }
-        case .copyClip(let index):
-            guard let clip = menuClips[safe: index] else { return }
+        case .copyClip(let id):
+            guard let clip = menuClips.first(where: { $0.id == id }) else { return }
             if clip.image != nil {
-                Task { [weak self] in _ = await self?.putImageOnClipboard(clip) }
+                Task { [weak self] in
+                    guard let self else { return }
+                    if await putImageOnClipboard(clip) != .copied { showClipboardCopyFailure() }
+                }
             } else {
-                putOnClipboard(
+                if !putOnClipboard(
                     clip.text, richText: clip.richText, concealed: clip.kind == .secret, used: clip.id)
+                {
+                    showClipboardCopyFailure()
+                }
             }
         case .open(let destination):
             show(destination)
@@ -2654,8 +2724,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, vocabularyPrompt: lastVocabularyPrompt,
-                    cleaning: lastCleaning,
                     decoding: lastDecoding,
+                    cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
                     machine: MachineDescription.current)),
@@ -2823,8 +2893,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .recover(let action): perform(action)
         case .go(let destination): show(destination)
         case .copy(let text):
-            putOnClipboard(text, concealed: DictationTextPresentation(text).isSecret, used: nil)
-            sayCopiedForMainWindow()
+            if putOnClipboard(text, concealed: DictationTextPresentation(text).isSecret, used: nil) {
+                sayCopiedForMainWindow()
+            } else {
+                showClipboardCopyFailure()
+            }
         case .insert(let text): insert(text, used: nil)
         case .dictate:
             toggleDictation()
@@ -3033,21 +3106,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Writes both personal lists to a private, user-chosen JSON file.
     @MainActor
     private func exportPersonalData() {
+        let disclosure = NSAlert()
+        disclosure.alertStyle = .warning
+        disclosure.messageText = "The export file is not encrypted"
+        disclosure.informativeText = PersonalDataExport.disclosureMessage
+        disclosure.addButton(withTitle: "Exclude secret snippets")
+        disclosure.addButton(withTitle: "Include all snippets")
+        disclosure.addButton(withTitle: "Cancel")
+        let choice: PersonalDataExport.Choice
+        switch disclosure.runModal() {
+        case .alertFirstButtonReturn: choice = .excludeSecretSnippets
+        case .alertSecondButtonReturn: choice = .includeAllSnippets
+        default: return
+        }
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "Uttrflow-Personal-Data.json"
         panel.canCreateDirectories = true
-        panel.message = "This file contains your personal dictionary and snippet text."
+        panel.message = "This JSON file is not encrypted."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
-        intentWork = Task { [weak self, dictionary, snippets] in
+        intentWork = Task { [weak self, dictionary, snippets, choice] in
             do {
-                let archive = PersonalDataArchive(
-                    dictionary: await dictionary.allEntries(), snippets: await snippets.snippets())
-                try archive.encoded().write(to: destination, options: .atomic)
-                try FileManager.default.setAttributes(
-                    [.posixPermissions: PrivateFile.fileMode],
-                    ofItemAtPath: destination.path(percentEncoded: false))
+                let archive = PersonalDataExport.archive(
+                    dictionary: await dictionary.allEntries(), snippets: await snippets.snippets(),
+                    choice: choice)
+                try PrivateFile.writeOwnerOnlyAtomically(try archive.encoded(), to: destination)
                 self?.showPersonalDataNotice(
                     title: "Personal data exported",
                     message: "Your dictionary and snippets were saved to the file you chose.")
@@ -3442,7 +3527,7 @@ private struct DictionaryCorrections: WordCorrecting {
         return proposals.map {
             DictationCorrection(
                 heard: $0.heard, wrote: $0.replacement, wordRange: $0.wordRange,
-                entryID: $0.entryID, reason: $0.reason.rawValue,
+                entryID: $0.entryID, reason: $0.reason,
                 heardConfidence: $0.heardConfidence)
         }
     }

@@ -50,7 +50,7 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
             return isBlank && text.contains(where: \.isNewline) ? .startOfSentence : .startOfText
         }
         let terminal = body.reversed().drop(while: Self.isTrailingSentenceDecoration).first
-        if let terminal, sentenceEnds.contains(terminal) {
+        if let terminal, SentenceMarks.ends.contains(terminal) || terminal == SentenceMarks.ellipsis {
             let word =
                 body.reversed().drop(while: Self.isTrailingSentenceDecoration).reversed()
                 .split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
@@ -96,9 +96,6 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// What a line may open with that is a marker rather than words: a list item, a quotation, a heading.
     private static let openingMarkers: [String] =
         Draft.bulletTokens.sorted() + ["#", ">", "\"", "'", "\u{201C}", "\u{2018}", "(", "[", "{"]
-
-    /// The marks after which a new sentence begins, including the system's single-character ellipsis substitution.
-    private static let sentenceEnds: Set<Character> = [".", "!", "?", "…"]
 
     /// Whether one trailing character does not change the sentence end before it.
     private static func isTrailingSentenceDecoration(_ character: Character) -> Bool {

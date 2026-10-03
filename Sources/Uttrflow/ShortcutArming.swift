@@ -1,3 +1,4 @@
+import ApplicationServices
 import UttrflowCore
 import UttrflowInput
 
@@ -14,26 +15,32 @@ final class ShortcutArming {
 
     private let accessibilityIsGranted: @MainActor () -> Bool
     private let retryInterval: Duration
+    /// Told the first outcome, which is when a launch's shortcut starts being heard or refused.
+    private let launch: LaunchMilestone
     private var retryTask: Task<Void, Never>?
 
     init(
         onChange: @escaping @MainActor () -> Void,
         accessibilityIsGranted: @escaping @MainActor () -> Bool = { AXIsProcessTrusted() },
-        retryInterval: Duration = .seconds(2)
+        retryInterval: Duration = .seconds(2),
+        launch: LaunchMilestone = LaunchMilestone()
     ) {
         self.onChange = onChange
         self.accessibilityIsGranted = accessibilityIsGranted
         self.retryInterval = retryInterval
+        self.launch = launch
     }
 
     /// Arms through `start`, keeping a failure as this state rather than reporting it as a dictation.
-    func arm(_ start: @MainActor () async throws(HotkeyError) -> Void) async {
+    func arm(_ start: @escaping @MainActor () async throws(HotkeyError) -> Void) async {
         do {
             try await start()
             failure = nil
+            launch.shortcutSettled(.armed)
             stopRetrying()
         } catch {
             failure = error
+            launch.shortcutSettled(.refused)
             if error == .observationNotPermitted {
                 retryUntilPermissionGranted(start)
             } else {

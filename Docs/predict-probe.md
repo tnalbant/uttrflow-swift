@@ -9,7 +9,8 @@ it feeds the `Published`, `Caret` and `Value` columns of
 [compatibility.md](compatibility.md).
 
 Apple M5 Pro, release build, SQLite 3.53.2. Every timing is a median of 100 runs after
-20 warm-up runs.
+20 warm-up runs. The retrieval rows, and a re-take under load, are in
+[probe-log.md](probe-log.md#rows).
 
 ## Retrieval — settled
 

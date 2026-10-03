@@ -252,6 +252,27 @@ OVERSIZED_EXCLUSIONS = {
     "UttrflowContext/FocusedFieldReader+System.swift": (
         "FocusedFieldSnapshot holds everything decided from what it reads, and is tested"
     ),
+    "Uttrflow/MenuBar/MenuBarController.swift": (
+        "its panel's keyboard, Escape and emptying are tested in MenuBarPanelTests and its sign-in "
+        "gate in SignInGateWiringTests; the right-click menu it builds has no test"
+    ),
+    "Uttrflow/Panel/QuickPanelController.swift": (
+        "its chords are tested in QuickPanelChordTests, its notices in QuickPanelAnnouncementTests, "
+        "its sharing in WindowSharingTests and its edges in PanelResizeTests; placement has no test"
+    ),
+    "Uttrflow/Settings/SettingsPaneView.swift": (
+        "views only; the version row's accessibility is tested in SettingsVersionAccessibilityTests "
+        "and the rest is checked by looking at the pane"
+    ),
+    "Uttrflow/Suggestion/SuggestionPanelController.swift": (
+        "the ghost's drawing is tested in SuggestionSurfaceTests, its claim in "
+        "SuggestionUnplacedClaimTests, its sharing in WindowSharingTests and its Mission Control "
+        "hiding in SuggestionPanelMissionControlTests"
+    ),
+    "UttrflowInput/SystemInput.swift": (
+        "field eligibility is tested in SelectionWriterTests and the pasteboard in "
+        "PasteboardMarkerWriteTests and ClipboardAnnouncementTests; the CGEvent typing has no test"
+    ),
 }
 
 

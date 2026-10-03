@@ -26,7 +26,7 @@ final class NoticeLinger {
     /// Starts the wait again; `close` runs only if nothing interrupts it first.
     func start(close: @escaping @MainActor () -> Void) {
         task?.cancel()
-        task = Task { [weak self, linger] in
+        task = Task { [weak self, linger, sleep] in
             await sleep(linger)
             guard !Task.isCancelled else { return }
             self?.task = nil

@@ -163,4 +163,17 @@ struct CleaningRecordTests {
         #expect(CleaningRecord.Change(step: .fillers).id == .fillers)
     }
 
+    @Test("a step's summary quotes up to the limit of each kind and counts the rest")
+    func summaryQuotesThenCounts() {
+        let change = CleaningRecord.Change(
+            step: .fillers, removed: ["um", "uh", "er"], replaced: [.init(from: "stop", to: ".")],
+            inserted: [","], removedCount: 5)
+        #expect(
+            change.summary(quoting: 2)
+                == "removed 5: um, uh and 3 more; rewrote 1: stop → .; added 1: ,")
+        #expect(
+            change.summary(quoting: 12)
+                == "removed 5: um, uh, er and 2 more; rewrote 1: stop → .; added 1: ,")
+        #expect(CleaningRecord.Change(step: .fillers).summary(quoting: 4) == "")
+    }
 }

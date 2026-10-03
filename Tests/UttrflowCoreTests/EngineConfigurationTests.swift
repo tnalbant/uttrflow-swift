@@ -61,13 +61,18 @@ struct EngineConfigurationTests {
 
 @Suite("Engine kinds")
 struct EngineKindsTests {
-    @Test("excludes the cloud transformer from a build without cloud support")
-    func cloudIsNotSelectableByDefault() {
-        #if UTTRFLOW_CLOUD
-            #expect(TransformerKind.selectable.contains(.cloud))
-        #else
-            #expect(!TransformerKind.selectable.contains(.cloud))
-        #endif
+    @Test("never offers the retired hosted engine")
+    func cloudIsNeverSelectable() {
+        #expect(!TransformerKind.selectable.contains(.cloud))
+    }
+
+    /// No build ever wrote it, but a record or preference naming it by hand must still load.
+    @Test("a stored record naming the retired hosted engine still decodes")
+    func cloudStillDecodes() throws {
+        let json = Data(#"{"speech":"whisperKit","transformerPreference":["cloud","rules"]}"#.utf8)
+        let decoded = try JSONDecoder().decode(EngineConfiguration.self, from: json)
+        #expect(decoded.transformerPreference == [.cloud, .rules])
+        #expect(decoded.resolvedTransformerPreference == [.rules])
     }
 
     /// MLX is quarantined behind `UttrflowLocalModel`; no transformer assembly links it, whatever flags are set.

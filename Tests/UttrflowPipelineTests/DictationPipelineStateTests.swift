@@ -1,5 +1,4 @@
 // Tests the pipeline's states and the guards that apply mid-dictation.
-import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -47,68 +46,6 @@ private actor Gate {
         for continuation in held { continuation.resume() }
         held.removeAll()
     }
-}
-
-/// A ``TranscriptCleaning`` that records requests, answers as scripted, and can hold at a gate first.
-private final class FakeCleaner: TranscriptCleaning, Sendable {
-    private struct State: Sendable {
-        var outcome: ScriptedOutcome<TransformationResult, TransformationError>
-        var requests: [TransformationRequest] = []
-    }
-
-    private let state: Mutex<State>
-    private let gate: Gate?
-
-    init(
-        outcome: ScriptedOutcome<TransformationResult, TransformationError> = .success(
-            TransformationResult(text: tidied, producedBy: .foundationModels)),
-        gate: Gate? = nil
-    ) {
-        self.state = Mutex(State(outcome: outcome))
-        self.gate = gate
-    }
-
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        let outcome = state.withLock {
-            state -> ScriptedOutcome<TransformationResult, TransformationError> in
-            state.requests.append(request)
-            return state.outcome
-        }
-        if let gate { await gate.pass() }
-        return try outcome.resolve()
-    }
-
-    var requests: [TransformationRequest] { state.withLock { $0.requests } }
-}
-
-/// A ``TextInserting`` that records every string it is handed and answers as scripted.
-private final class FakeInserter: TextInserting, Sendable {
-    private struct State: Sendable {
-        var outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError>
-        var received: [String] = []
-    }
-
-    private let state: Mutex<State>
-
-    init(
-        outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError> = .success(
-            InsertionAttempt(.accessibility))
-    ) {
-        self.state = Mutex(State(outcome: outcome))
-    }
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        let outcome = state.withLock {
-            state -> ScriptedOutcome<InsertionAttempt, TextInsertionError> in
-            state.received.append(text)
-            return state.outcome
-        }
-        return try outcome.resolve()
-    }
-
-    var received: [String] { state.withLock { $0.received } }
 }
 
 /// A ``SpeechEngine`` that holds at a gate, so the pipeline can be caught in `transcribing`.
@@ -175,13 +112,15 @@ private actor GatedCaptureEngine: AudioCaptureEngine {
 
 private let spoken = "um i'll be about twenty minutes late to the meeting"
 private let tidied = "I'll be about twenty minutes late to the meeting."
+private let tidiedAnswer = ScriptedSequence<TransformationResult, TransformationError>(
+    .success(TransformationResult(text: tidied, producedBy: .foundationModels)))
 
 private func makePipeline(
     capture: any AudioCaptureEngine = FakeAudioCaptureEngine(),
     speech: any SpeechEngine = FakeSpeechEngine(
         transcribeOutcome: .success(.fixture(text: spoken))),
-    cleaner: FakeCleaner = FakeCleaner(),
-    inserter: FakeInserter = FakeInserter(),
+    cleaner: FakeTranscriptCleaner = FakeTranscriptCleaner(answering: tidiedAnswer),
+    inserter: FakeTextInserter = FakeTextInserter(),
     context: FakeContextEngine = FakeContextEngine(context: .fixture())
 ) -> DictationPipeline {
     DictationPipeline(
@@ -235,8 +174,9 @@ struct DictationPipelineStateTests {
         let metrics = RecordingMetricsRecorder()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(), speech: FakeSpeechEngine(),
-            cleaner: FakeCleaner(), context: FakeContextEngine(context: .fixture()),
-            inserter: FakeInserter(), metrics: metrics, clock: ManualClock())
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer),
+            context: FakeContextEngine(context: .fixture()),
+            inserter: FakeTextInserter(), metrics: metrics, clock: ManualClock())
 
         await pipeline.startRecording()
 
@@ -314,7 +254,9 @@ struct DictationPipelineStateTests {
     func startWhileTidyingIsIgnored() async {
         let capture = FakeAudioCaptureEngine()
         let gate = Gate()
-        let pipeline = makePipeline(capture: capture, cleaner: FakeCleaner(gate: gate))
+        let pipeline = makePipeline(
+            capture: capture,
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer, holding: { await gate.pass() }))
         await pipeline.startRecording()
         let dictation = Task { await pipeline.finishRecording() }
         await gate.waitUntilReached()
@@ -364,7 +306,7 @@ struct DictationPipelineStateTests {
     @Test("does nothing when asked to finish while it is not recording")
     func finishWhenNotRecordingIsIgnored() async {
         let capture = FakeAudioCaptureEngine()
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(capture: capture, inserter: inserter)
 
         await pipeline.finishRecording()
@@ -376,7 +318,7 @@ struct DictationPipelineStateTests {
 
     @Test("does not run a second time when a finished dictation is finished again")
     func finishAfterInsertionIsIgnored() async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(inserter: inserter)
         await pipeline.startRecording()
         await pipeline.finishRecording()
@@ -409,8 +351,7 @@ struct DictationPipelineStateTests {
     @Test("the finished dictation carries whether the words were seen to arrive")
     func outcomeCarriesTheArrival() async {
         let pipeline = makePipeline(
-            inserter: FakeInserter(
-                outcome: .success(InsertionAttempt(.pasteboard, arrival: .unconfirmed))))
+            inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, arrival: .unconfirmed))))
 
         await pipeline.startRecording()
         await pipeline.finishRecording()
@@ -475,8 +416,8 @@ struct DictationPipelineStateTests {
     func cancelWhileRecordingLeavesNoTrace() async {
         let capture = FakeAudioCaptureEngine()
         let speech = FakeSpeechEngine()
-        let cleaner = FakeCleaner()
-        let inserter = FakeInserter()
+        let cleaner = FakeTranscriptCleaner(answering: tidiedAnswer)
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             capture: capture, speech: speech, cleaner: cleaner, inserter: inserter)
         await pipeline.startRecording()
@@ -542,8 +483,8 @@ struct DictationPipelineStateTests {
     /// Saying nothing is not an error, and a failure for it would be something to dismiss.
     @Test("returns quietly to idle when nothing was said")
     func silenceEndsQuietly() async {
-        let cleaner = FakeCleaner()
-        let inserter = FakeInserter()
+        let cleaner = FakeTranscriptCleaner(answering: tidiedAnswer)
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "   "))),
             cleaner: cleaner,
@@ -647,11 +588,12 @@ struct DictationPipelineStateTests {
         "inserts nothing when tidying leaves nothing, rather than deleting the selection",
         arguments: ["", "   ", ".", "…"])
     func tidyingToNothingInsertsNothing(tidiedAway: String) async {
-        let inserter = FakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "um"))),
-            cleaner: FakeCleaner(
-                outcome: .success(TransformationResult(text: tidiedAway, producedBy: .rules))),
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .success(TransformationResult(text: tidiedAway, producedBy: .rules)))),
             inserter: inserter
         )
         let states = await pipeline.states()

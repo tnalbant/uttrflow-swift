@@ -102,9 +102,10 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)
+        let preceding = String(draft.text.dropLast(word.count))
         return asks
-            ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?")
-            : WordShape.finished(word)
+            ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?", after: preceding)
+            : WordShape.finished(word, after: preceding)
     }
 
     /// Whether the caret line has an opening bracket without its matching close.
@@ -169,7 +170,9 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 !(opening?.isListMark ?? false),
                 !(destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft))
             {
-                draft.replace(at: last, with: WordShape.finished(draft.words[last].text), by: id)
+                let preceding = paragraph.dropLast().map { draft.words[$0].text }.joined(separator: " ")
+                draft.replace(
+                    at: last, with: WordShape.finished(draft.words[last].text, after: preceding), by: id)
             }
             if word.text.hasPrefix("\n\n") || word.isListMark {
                 opening = word

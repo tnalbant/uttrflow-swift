@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 
+import UttrflowCore
 import UttrflowPredict
 
 @testable import UttrflowContext
@@ -59,6 +60,41 @@ struct FocusedFieldSnapshotTests {
     @Test("A password field can take nothing, however much else it answers.")
     func secureFieldsTakeNothing() {
         #expect(snapshot(isSecure: true).placement == nil)
+    }
+
+    @Test("Credential prompts in terminals hide their reply from the current line")
+    func credentialPromptsAreSecure() {
+        let prompts = [
+            "[sudo] password for dev: hidden-reply",
+            "dev@example.test's password: hidden-reply",
+            "Enter passphrase for key '/Users/example/.ssh/id_ed25519': hidden-reply",
+            "Enter passphrase: hidden-reply",
+            "PIN: hidden-reply",
+            "Security token: hidden-reply",
+            "Password for admin: hidden-reply",
+            "Token: hidden-reply",
+        ]
+
+        for prompt in prompts {
+            let terminal = snapshot(
+                value: prompt, selection: NSRange(location: prompt.utf16.count, length: 0))
+            #expect(terminal.isSecure, "prompt: \(prompt)")
+            #expect(terminal.value == nil, "prompt: \(prompt)")
+            #expect(terminal.currentLine.isEmpty, "prompt: \(prompt)")
+            let context = PredictionContext(typed: terminal.currentLine, isSecure: terminal.isSecure)
+            #expect(Quieting.reason(context) == .secureField, "prompt: \(prompt)")
+        }
+    }
+
+    @Test("Credential-looking commands remain ordinary terminal input")
+    func credentialCommandsRemainReadable() {
+        let command = "echo 'Password: example'"
+        let terminal = snapshot(
+            value: "user@host:~/dir$ \(command)",
+            selection: NSRange(location: "user@host:~/dir$ \(command)".utf16.count, length: 0))
+
+        #expect(!terminal.isSecure)
+        #expect(terminal.currentLine == command)
     }
 
     @Test("A field reported disabled cannot host a suggestion")

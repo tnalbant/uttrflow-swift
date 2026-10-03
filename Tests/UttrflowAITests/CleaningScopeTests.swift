@@ -22,16 +22,35 @@ struct CleaningScopeTests {
         #expect(!ids.contains(FirstWordPass.id))
         #expect(!ids.contains(TerminalStopPass.id))
         #expect(
-            CleaningPipeline.wholeText(for: .standard(for: .messaging), situation: .unknown).ids
-                == [SpelledInitialismPass.id, FirstWordPass.id, TerminalStopPass.id])
+            CleaningPipeline.message(for: .standard(for: .messaging), situation: .unknown).ids
+                == [SpelledInitialismPass.id, SentenceBoundaryPass.id, FirstWordPass.id, TerminalStopPass.id])
         #expect(
             CleaningPipeline.piece(numbers: .fromTen, digits: .thousands).passes
                 .allSatisfy { !($0 is any WholeTextCleaningPass) })
         #expect(
-            CleaningPipeline.wholeText(
+            CleaningPipeline.message(
                 for: .standard(for: .messaging), situation: .unknown
             ).passes
                 .allSatisfy { $0 is any WholeTextCleaningPass })
+    }
+
+    @Test("no pipeline runs a pass twice, and a whole-text pass never runs on a piece")
+    func everyPassIsRegisteredOnce() {
+        let formatter = DestinationFormatter.standard(for: .messaging)
+        let pipelines = [
+            CleaningPipeline.standard(for: formatter, situation: .unknown),
+            CleaningPipeline.beforeModel(for: formatter, situation: .unknown),
+            CleaningPipeline.afterModel(for: formatter, situation: .unknown),
+            CleaningPipeline.message(for: formatter, situation: .unknown),
+            CleaningPipeline.piece(numbers: .fromTen, digits: .thousands),
+        ]
+        for pipeline in pipelines {
+            #expect(Set(pipeline.ids).count == pipeline.ids.count)
+        }
+        #expect(
+            CleaningPipeline.afterModel(for: formatter, situation: .unknown).passes
+                .filter { $0 is any WholeTextCleaningPass }.map(\.id)
+                == CleaningPipeline.message(for: formatter, situation: .unknown).ids)
     }
 
     @Test("the rules leave a piece's stop and case as the recogniser gave them")

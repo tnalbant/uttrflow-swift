@@ -42,6 +42,27 @@ public struct CleaningRecord: Sendable, Equatable {
         }
 
         public var isEmpty: Bool { removedCount == 0 && replacedCount == 0 && insertedCount == 0 }
+
+        /// What the step did, quoting at most `limit` words of each kind and counting the rest.
+        public func summary(quoting limit: Int) -> String {
+            let rewrites = replaced.map { "\($0.from) → \($0.to)" }
+            return [
+                Self.part("removed", removed, of: removedCount, quoting: limit),
+                Self.part("rewrote", rewrites, of: replacedCount, quoting: limit),
+                Self.part("added", inserted, of: insertedCount, quoting: limit),
+            ].compactMap(\.self).joined(separator: "; ")
+        }
+
+        private static func part(
+            _ verb: String, _ words: [String], of total: Int, quoting limit: Int
+        )
+            -> String?
+        {
+            guard total > 0 else { return nil }
+            let quoted = words.prefix(limit).joined(separator: ", ")
+            let shown = min(words.count, limit)
+            return "\(verb) \(total): \(quoted)" + (total > shown ? " and \(total - shown) more" : "")
+        }
     }
 
     /// An engine's answer that was thrown away before this one, and the reason it was refused.

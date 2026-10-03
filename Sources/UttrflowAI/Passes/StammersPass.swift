@@ -20,7 +20,7 @@ public struct StammersPass: CleaningPass {
                 previous = word
                 continue
             }
-            if word == previous,
+            if word == previous, !draft.isHindi(at: index),
                 (!FunctionWords.isContent(word) || MeaningPreservationGuard.isGrammarWord(word)),
                 !Self.legitimateDoubles.contains(word)
             {

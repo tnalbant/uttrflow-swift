@@ -1,7 +1,7 @@
 // A SpeechEngine that answers as scripted.
 public import UttrflowCore
 
-/// A ``SpeechEngine`` that returns a scripted transcription.
+/// A ``SpeechEngine`` that answers each transcription as scripted, in order, taking the scripted time.
 public actor FakeSpeechEngine: SpeechEngine {
     public struct TranscribeCall: Sendable, Equatable {
         public let audio: AudioSamples
@@ -14,7 +14,8 @@ public actor FakeSpeechEngine: SpeechEngine {
     public let transcribeCalls = CallLog<TranscribeCall>()
 
     private var prepareOutcome: ScriptedOutcome<Void, SpeechEngineError>
-    private var transcribeOutcome: ScriptedOutcome<Transcription, SpeechEngineError>
+    private var transcribeOutcomes: ScriptedSequence<Transcription, SpeechEngineError>
+    private let transcribeTakes: ScriptedDuration
     /// Whether `prepare()` blocks until ``finishHungLoads()``, ignoring cancellation, as a stuck model load does.
     private var prepareHangs: Bool
     private var hungLoads: [CheckedContinuation<Void, Never>] = []
@@ -25,9 +26,23 @@ public actor FakeSpeechEngine: SpeechEngine {
         transcribeOutcome: ScriptedOutcome<Transcription, SpeechEngineError> = .success(.fixture()),
         prepareHangs: Bool = false
     ) {
+        self.init(
+            kind: kind, prepareOutcome: prepareOutcome, transcribing: ScriptedSequence(transcribeOutcome),
+            prepareHangs: prepareHangs)
+    }
+
+    /// An engine that answers each transcription with the next of `outcomes`, each call taking `takes`.
+    public init(
+        kind: SpeechEngineKind = .whisperKit,
+        prepareOutcome: ScriptedOutcome<Void, SpeechEngineError> = .ok,
+        transcribing outcomes: ScriptedSequence<Transcription, SpeechEngineError>,
+        takes: ScriptedDuration = .instant,
+        prepareHangs: Bool = false
+    ) {
         self.kind = kind
         self.prepareOutcome = prepareOutcome
-        self.transcribeOutcome = transcribeOutcome
+        self.transcribeOutcomes = outcomes
+        self.transcribeTakes = takes
         self.prepareHangs = prepareHangs
     }
 
@@ -56,7 +71,9 @@ public actor FakeSpeechEngine: SpeechEngine {
         options: TranscriptionOptions
     ) async throws(SpeechEngineError) -> Transcription {
         await transcribeCalls.append(.init(audio: audio, options: options))
-        return try transcribeOutcome.resolve()
+        let outcome = transcribeOutcomes.next()
+        await transcribeTakes.elapse()
+        return try outcome.resolve()
     }
 
     // MARK: Scripting
@@ -66,6 +83,6 @@ public actor FakeSpeechEngine: SpeechEngine {
     }
 
     public func setTranscribeOutcome(_ outcome: ScriptedOutcome<Transcription, SpeechEngineError>) {
-        transcribeOutcome = outcome
+        transcribeOutcomes = ScriptedSequence(outcome)
     }
 }

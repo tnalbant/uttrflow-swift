@@ -7,7 +7,7 @@ Each of these costs time the first time and is cheap once known.
   the failure. zsh has `$pipestatus` (lowercase, 1-indexed), not `$PIPESTATUS`.
 - **zsh does not word-split unquoted variables.** `kill -9 $PIDS` passes one newline-joined
   blob and fails with "illegal pid". Pipe to `xargs -n1`, or use `${=PIDS}`.
-- **`DEVELOPER_DIR` is not inherited.** A hook or subagent does not read an interactive
+- **`DEVELOPER_DIR` is not inherited.** A git hook does not read an interactive shell
   profile; export `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` before any swift
   command.
 - **MLX targets cannot be built by `swift build`.** They need `xcodebuild` plus the Metal
@@ -24,5 +24,5 @@ Each of these costs time the first time and is cheap once known.
 - **Quote every glob in zsh.** `grep --include='*.swift'` unquoted aborts the whole command with
   "no matches found" when nothing matches, and the failure reads like an empty result. Quote the
   pattern, and quote paths that contain spaces.
-- **A shared `.build` corrupts under two concurrent builds.** Run `swift build` and
-  `swift test` only inside your own worktree, and give parallel subagents their own.
+- **A shared `.build` corrupts under two concurrent builds.** Run one build per checkout or
+  worktree at a time.

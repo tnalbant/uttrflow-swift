@@ -45,6 +45,8 @@ ALLOWED = {
         None, "writes a downloaded tokenizer, which is public"),
     "UttrflowCore/Support/SingleInstanceLock.swift": (
         {"open(O_CREAT)"}, "opens its lock 0600, and needs the descriptor to flock it"),
+    "UttrflowSpeech/ModelDirectoryUseLease.swift": (
+        {"open(O_CREAT)"}, "opens a model folder's use lock 0600, and needs the descriptor to flock it"),
     "UttrflowAudio/RecordingWriter.swift": (
         {"open(O_CREAT)"}, "opens each recording 0600, and writes through the descriptor"),
 }

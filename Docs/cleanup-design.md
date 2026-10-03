@@ -2,11 +2,11 @@
 
 How dictated words become the text the speaker would have typed, in the place they are
 typing it. This is the design the second tier of cleaning is built against
-(`PLAN.md`, Phase 11). It replaces case-by-case fixes with four small, separately
+(its phases are in section 10). It replaces case-by-case fixes with four small, separately
 testable ideas, so that a new cleaning is a new value in a table or a new pass in a
 list, never a new branch in the pipeline.
 
-The goal it serves is fixed (`AGENTS.md`, "What dictation is for"): **an accurate
+The goal it serves is fixed (`Docs/agents/product.md`, "Dictation and clean-up"): **an accurate
 transcript, cleaned of the noise of speaking and laid out as the speaker would have
 typed it. Never a rewrite.**
 
@@ -147,6 +147,11 @@ The eight shipped values, and the decisions that differ:
 Everything a formatter decides is a policy value with two or three cases, so a change is
 a value change and a test change, never a new branch. `Formatter.registry` is one file.
 
+A decision that needs the grammar of what is being written (a SQL statement, a shell
+command, a formula) is not a destination decision. It belongs to a format adapter, whose
+prose-level policy is this formatter and whose registry holds these values as its prose
+entries: [adapters.md](adapters.md).
+
 ## 3. Pass — one deterministic cleaning
 
 ```swift
@@ -194,6 +199,13 @@ public struct Draft: Sendable, Equatable {
 A pass is a pure function over a value; each is tested on its own with the corpus
 cases that belong to it, with the model switched off, so a pass that works keeps
 working when the model changes.
+
+A sentence-local pass reads no further back than the sentence it is cleaning. A rule
+that gathers context by walking outwards from a word is bounded at the sentence end as
+well as by a word count: `WordShape.key` drops a trailing stop, so without that bound a
+two-word phrase, a number anchor or a determiner can be matched across a boundary the
+speaker set. `Draft.sentenceRun` is the bound, and `SentenceLocalityTests` holds every
+such pass to it.
 
 ## 4. The language model, as the last formatter
 
@@ -310,8 +322,14 @@ alone. Some cleanings only make sense over the whole:
   side of the cut show the sentence ran through it: the piece ends on a word no sentence ends
   on ("we moved the review to"), or the next piece opens on a preposition a speaker never
   fronts followed by a name or a determiner ("to Thursday"), which is a phrase continuing the
-  clause before it. A seam with no evidence either way keeps its stop, which is what #183
-  asked for.
+  clause before it. A digit group or a run of capital letters on both sides of the cut, at
+  most `PieceJoiner.longestSpokenGroup` long, is one number or code said in groups ("555" |
+  "0142", "AB" | "123"), and the groups are joined with a space. Where the evidence says the
+  sentence ran through, a full stop the recogniser wrote at the cut comes off too; a question
+  or exclamation mark stays, and the group row abstains on it. A seam with no evidence either
+  way keeps its stop, which is what #183 asked for. The group row's cost is a sentence that
+  ends on a number before one that opens on a number ("It costs 12." | "13 people came."),
+  which it joins; its measurement is in `PieceJoinerTests`.
 
 Some passes are only correct over the whole message, and their scope is in the type.
 `CleaningPipeline.piece(numbers:digits:steps:)` is what a piece gets — it takes no
@@ -357,6 +375,8 @@ that cannot be done in a pass or in that one call waits until it can.
 
 - A new app: a row in `DestinationRules.swift`.
 - A new formatter decision: a case on a policy enum and a value in the registry.
+- A new kind of structured writing: a format adapter and its notation rows, never a
+  `destination ==` branch ([adapters.md](adapters.md)).
 - A new cleaning: a `CleaningPass` and a corpus case; it appears in the formatters that
   list it.
 - A new style rule for one place: a line in that destination's prompt block and an

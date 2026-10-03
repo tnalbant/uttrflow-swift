@@ -47,23 +47,45 @@ struct AppContextTests {
         #expect(context.followingText == " after")
     }
 
-    @Test("reads a context written before secure fields were told apart as not secure")
-    func decodesOldContextAsNotSecure() throws {
-        let json = Data(#"{"applicationName":"Notes","precedingText":"before"}"#.utf8)
-        let context = try JSONDecoder().decode(AppContext.self, from: json)
+    @Test("prints and mirrors only the application, never the field's text")
+    func redactsFieldText() {
+        let context = AppContext(
+            applicationName: "Notes", bundleIdentifier: "com.example.notes", documentName: "title-marker",
+            selectedText: "selected-marker", precedingText: "before-marker", followingText: "after-marker")
+        var dumped = ""
+        dump(context, to: &dumped)
+        let printed = [String(describing: context), String(reflecting: context), "\(context)", dumped]
 
-        #expect(context == AppContext(applicationName: "Notes", precedingText: "before"))
-        #expect(context.isSecure == false)
+        for line in printed {
+            #expect(line.contains("Notes"))
+            for marker in ["title-marker", "selected-marker", "before-marker", "after-marker"] {
+                #expect(!line.contains(marker), "\(marker) leaked into \(line)")
+            }
+        }
     }
 
-    @Test("keeps a secure context secure across encoding")
-    func roundTripsSecure() throws {
-        let context = AppContext(applicationName: "Notes", isSecure: true)
+    @Test("the storable identity keeps the application and drops the title and field text")
+    func identityDropsText() throws {
+        let context = AppContext(
+            applicationName: "Notes", bundleIdentifier: "com.example.notes", documentName: "title",
+            precedingText: "before")
         let decoded = try JSONDecoder().decode(
-            AppContext.self, from: try JSONEncoder().encode(context))
+            AppIdentity.self, from: try JSONEncoder().encode(context.identity))
 
-        #expect(decoded == context)
-        #expect(decoded.isSecure)
+        #expect(decoded == AppIdentity(applicationName: "Notes", bundleIdentifier: "com.example.notes"))
+        #expect(
+            AppContext(identity: decoded)
+                == AppContext(applicationName: "Notes", bundleIdentifier: "com.example.notes"))
+    }
+
+    @Test("no stored type can encode a value that holds field text")
+    func storedTypesCannotHoldFieldText() {
+        #expect(!(AppContext.unknown is any Encodable))
+        #expect(!(AppContext.unknown is any Decodable))
+        let kept = KeptRecording(id: UUID(), when: Date(), duration: .seconds(1), destination: AppIdentity())
+        for child in Mirror(reflecting: kept).children {
+            #expect(!(child.value is AppContext), "\(child.label ?? "?") holds an AppContext")
+        }
     }
 
     @Test("a secure field alone does not make a context worth a prompt")

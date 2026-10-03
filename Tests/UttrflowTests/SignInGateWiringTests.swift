@@ -27,8 +27,8 @@ private let everyDestination: [UttrflowUX.Destination] =
 /// Every menu item but Quit, which would end the test run.
 private let everyMenuIntentButQuit: [MenuBarIntent] = [
     .startDictation, .stopDictation, .recover(.retry), .recover(.showRecentDictations),
-    .recover(.retryFromRecording), .insertRecent(index: 0), .copyRecent(index: 0),
-    .insertClip(index: 0), .copyClip(index: 0), .open(.main(.home)), .open(.main(.account)),
+    .recover(.retryFromRecording), .insertRecent(id: UUID()), .copyRecent(id: UUID()),
+    .insertClip(id: UUID()), .copyClip(id: UUID()), .open(.main(.home)), .open(.main(.account)),
     .open(.settings(.general)), .open(.onboarding), .openClipboard,
     .setFeature(.dictation, isOn: false),
 ]

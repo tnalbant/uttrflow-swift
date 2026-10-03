@@ -14,17 +14,16 @@ nothing worse than running an older build after a newer one.
   `heardConfidence` has no honest default — a missing score read as zero would claim the
   recogniser was certain about words it never scored — so it stays required, and a file
   missing it costs that one change.
-- `reason` stays required: a change this build cannot name must not be drawn under a name
-  somebody guessed for it. A fifth `CorrectionReason` creates exactly that case for every
-  user who runs an older build again, and it is contained one level up rather than
-  defaulted away.
+- `reason` stays required, but a spelling this build cannot name decodes to
+  `CorrectionReason.unknown`, shown as "Other" and written back verbatim. A fifth reason
+  from a newer build is therefore kept, shown and undoable on an older one, never renamed.
 - `RecordedChanges.init(from:)` reads both lists entry by entry through `Salvaged`, a
   `Decodable` wrapper that never throws, so an entry this build cannot read is left out
   rather than thrown. The `try?` there is the point, not a swallowed error: the changes a
   user cannot see are the ones they cannot undo, and a build that cannot read a change has
   nothing true to say about it.
-- The write path gives the same answer: `AppDelegate` builds each `RecordedCorrection`
-  through the failable initialiser and `compactMap`s away any reason it cannot name.
+- The write path carries the reason as the one `UttrflowCore.CorrectionReason` from the
+  engine to the store, so no string conversion can lose a correction between them.
 
 ## Why the decoders are hand-written
 

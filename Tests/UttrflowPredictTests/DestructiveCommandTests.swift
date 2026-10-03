@@ -92,6 +92,16 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Argument consumers and package-manager removals remain ordinary.",
+        arguments: [
+            "echo rm", "echo please rm this", "man rm", "which dd", "tldr shred", "type rm",
+            "npm rm lodash", "pnpm remove lodash", "yarn remove lodash",
+        ])
+    func leavesHarmlessDestroyerNamesAlone(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A destroying command is recognised however it is reached or spelled.",
         arguments: [
             "/bin/rm -rf build", "\\rm -rf build", "sudo -E rm -rf /var", "sudo -u root rm -rf x",
@@ -401,6 +411,45 @@ struct DestructiveCommandTests {
         ])
     func wrappedOrdinaryCommands(_ line: String) {
         #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "Carriers that re-parse or pass through to the command they carry are judged by it.",
+        arguments: [
+            "eval \"rm -rf ~\"", "eval 'rm -rf ~/Documents'", "eval \"dd if=/dev/zero of=/dev/disk2\"",
+            "setsid rm -rf build", "setsid dd if=/dev/zero of=/dev/disk2",
+            "parallel rm -rf ~/Documents", "parallel -j 4 rm -rf ~/Documents",
+            "su -c \"rm -rf ~\"", "su -c 'rm -rf /var'", "su -c \"dd if=/dev/zero of=/dev/disk2\"",
+            "runuser -c \"rm -rf ~\"", "runuser -c 'rm -rf /tmp'",
+            "sudo eval \"rm -rf ~\"", "nice eval \"rm -rf x\"",
+        ])
+    func carrierCarriesDestroyer(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "Carriers carrying an ordinary command are ordinary.",
+        arguments: [
+            "eval \"echo hi\"", "eval 'ls -la'", "eval \"date\"",
+            "setsid ls", "setsid make verify", "setsid date",
+            "parallel ls", "parallel -j 4 ls", "parallel echo done",
+            "su -c \"echo hi\"", "su -c 'ls -la'", "su alice -c \"echo hi\"",
+            "runuser -c \"echo hi\"", "runuser -c 'ls'",
+        ])
+    func carrierCarriesOrdinary(_ line: String) {
+        #expect(
+            !DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")
+    }
+
+    @Test(
+        "An unknown carrier word followed by a destroyer fails closed, never reaching the carrier as the command.",
+        arguments: [
+            "unknown-wrapper rm -rf build", "fakecarrier dd if=/dev/zero of=/dev/disk2",
+        ])
+    func unknownCarrierFailsClosed(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
     }
 
     @Test(

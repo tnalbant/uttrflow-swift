@@ -1,0 +1,56 @@
+import Foundation
+import Testing
+import UttrflowContext
+import UttrflowPredict
+import UttrflowPredictCapture
+
+@testable import Uttrflow
+
+@Suite("Credential prompts in terminals")
+struct TerminalCredentialPromptTests {
+    @Test("sudo, ssh and gpg prompts refuse suggestions and learning")
+    func credentialPromptsAreSecure() {
+        let prompts = [
+            "[sudo] password for dev: hidden-reply",
+            "dev@example.test's password: hidden-reply",
+            "Enter passphrase for key '/Users/example/.ssh/id_ed25519': hidden-reply",
+            "Enter passphrase: hidden-reply",
+            "PIN: hidden-reply",
+            "Security token: hidden-reply",
+            "Password for admin: hidden-reply",
+            "Token: hidden-reply",
+        ]
+        var preferences = CapturePreferences()
+        preferences.record(.allowed, for: "com.apple.Terminal")
+
+        for value in prompts {
+            let snapshot = FocusedFieldSnapshot(
+                bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+                value: value, selection: NSRange(location: value.utf16.count, length: 0))
+            let reading = SuggestionMoment.reading(of: snapshot)
+            let context = SuggestionMoment.context(of: snapshot, millisecondsSinceKeystroke: 1_000)
+
+            #expect(snapshot.isSecure, "prompt: \(value)")
+            #expect(snapshot.value == nil, "prompt: \(value)")
+            #expect(snapshot.currentLine.isEmpty, "prompt: \(value)")
+            #expect(reading.isSecure, "prompt: \(value)")
+            #expect(Quieting.reason(context) == .secureField, "prompt: \(value)")
+            #expect(
+                CaptureGate.refusal(toRecord: "hidden-reply", from: reading, given: preferences)
+                    == .secureField,
+                "prompt: \(value)")
+        }
+    }
+
+    @Test("A shell command mentioning a password remains readable")
+    func commandRemainsOrdinary() {
+        let command = "echo 'Password: example'"
+        let value = "dev@host:~/dir$ \(command)"
+        let snapshot = FocusedFieldSnapshot(
+            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+            value: value, selection: NSRange(location: value.utf16.count, length: 0))
+
+        #expect(!snapshot.isSecure)
+        #expect(snapshot.currentLine == command)
+    }
+}

@@ -79,7 +79,7 @@ the user saw repeated what they had written.
 
 **A terminal publishes the prose role and is not prose.** `AXTextArea` is what a document
 and a shell both publish, so the 400 ms hesitation gate was quieting terminals — the case
-where an instant answer matters most. `TerminalApplications` in `UttrflowPredict` names the
+where an instant answer matters most. `TerminalApplications` in `UttrflowCore` names the
 shells by bundle identifier, which is the only signal that separates them; a fuller dialect
 registry will own that question later. An editor's terminal pane cannot be told from its
 editor by bundle identifier, so those are still read as prose.
@@ -91,7 +91,8 @@ directory — a terminal's working directory — is scoped to itself, which is t
 
 **Status.** Every piece exists and the app runs them: `SuggestionCoordinator` owns the
 loop, verification sits between ranking and drawing, one `MLXCandidateScorer` is wired in as
-both scorer and generator, and `AppDelegate` builds it. `PLAN.md` tracks the phases.
+both scorer and generator, and `AppDelegate` builds it. Remaining work is tracked as GitHub
+issues, not on this page.
 
 ## A suggestion is written in English, in the Latin alphabet
 
@@ -100,7 +101,7 @@ the way people type it ("haan theek hai"), and never in Devanagari. Uttrflow is 
 translator, and no suggestion ever puts another script into a field. This is a product
 decision, not a limitation waiting to be lifted, and dictation holds to the same rule.
 
-`LatinScript.writes` in `UttrflowPredict` is the one question asked about a piece of text: does
+`LatinScript.writesOnlyLatin` in `UttrflowCore` is the one question asked about a piece of text: does
 any letter, combining mark or digit in it belong to a script other than Latin? Accents
 (café, naïve, a decomposed é), fullwidth and styled Latin, emoji with their variation
 selectors, skin tones, flags and keycaps, symbols such as ™, ₹ and ½, and punctuation of any
@@ -670,9 +671,10 @@ Read them together, because each one alone is misleading in the same direction:
    candidate is scored, and capture never records from it. Passwords, passcodes,
    one-time codes, PINs, card numbers, card security codes, social security numbers,
    account and routing numbers, dates of birth and security answers are treated as
-   secure when the field name, placeholder or description says so. A short all-digit
-   value outside a terminal is also never learned, because a bare OTP, PIN, CVV or
-   compact date has no safe context once it has reached the corpus. A password field that a
+   secure when the field name, placeholder or description says so. A short value of 2 to 8
+   digits, grouped only by whitespace, hyphens or periods, outside a terminal is also never
+   learned, because an OTP, PIN, CVV or compact date has no safe context in the corpus. A
+   password field that a
    completion has ever seen is a password in a database.
 5. **Self-sourced evidence is discounted.** An entry that reached the corpus because the
    user accepted our own suggestion counts a quarter of one they typed. Without it,

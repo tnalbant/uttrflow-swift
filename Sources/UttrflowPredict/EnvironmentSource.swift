@@ -1,4 +1,5 @@
 public import struct Foundation.Date
+private import UttrflowCore
 
 /// One kind of thing this machine knows about itself, each read a different way.
 public enum EnvironmentKind: Sendable, Hashable {

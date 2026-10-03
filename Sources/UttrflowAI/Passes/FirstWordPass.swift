@@ -218,11 +218,12 @@ public struct FirstWordPass: WholeTextCleaningPass {
         "december",
     ]
 
-    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, or an acronym.
+    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, an acronym, or a letter-and-digit code.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
+        if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }
         return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
     }
 
@@ -248,7 +249,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return lines.contains { line in
                 zip(line, line.dropFirst()).contains { previous, token in
                     let candidate = bareWord(token)
-                    let startsSentence = previous.last.map(sentenceEnds.contains) ?? false
+                    let startsSentence = previous.last.map(SentenceMarks.ends.contains) ?? false
                     return (candidate.first?.isUppercase ?? false) && candidate.lowercased() == wanted
                         && !startsSentence
                 }
@@ -271,6 +272,4 @@ public struct FirstWordPass: WholeTextCleaningPass {
         else { return "" }
         return token[start...end]
     }
-
-    private static let sentenceEnds: Set<Character> = [".", "!", "?"]
 }

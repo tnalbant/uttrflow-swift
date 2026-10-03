@@ -29,8 +29,8 @@ root="$(git rev-parse --show-toplevel)"
 if ! python3 "$root/Scripts/disclosure_audit.py" --text --label "the commit message" \
         < "$message_file"; then
     printf '\033[31m  the commit was not made\033[0m\n'
-    printf '  The message carries text that must not be published. See AGENTS.md,\n'
-    printf '  "What must never reach a tracked file". Your message is kept at\n'
+    printf '  The message carries text that must not be published. See\n'
+    printf '  Docs/agents/public-boundary.md. Your message is kept at\n'
     printf '  %s — edit it and commit again.\n\n' "$message_file"
     exit 1
 fi

@@ -1,7 +1,9 @@
 import Testing
+import UttrflowCore
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// Words a line might be made of, none of which forms one of the prompt's own headings.
 private let words = [
@@ -53,7 +55,9 @@ struct ParseCase: Sendable, CustomTestStringConvertible {
             line = random.pick(["", " ", "\t", "   "]) + line + random.pick(["", " ", "\t"])
             lines.append(line)
             // A line in another script is never offered, however well it continues the typing.
-            if let whole, LatinScript.writes(whole), !expected.contains(whole) { expected.append(whole) }
+            if let whole, LatinScript.writesOnlyLatin(whole), !expected.contains(whole) {
+                expected.append(whole)
+            }
             if random.chance(0.15) { lines.append(line) }
         }
         response = lines.joined(separator: random.pick(["\n", "\r\n", "\n\n"]))

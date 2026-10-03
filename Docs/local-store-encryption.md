@@ -30,10 +30,19 @@ reviewed recovery flow.
 
 The service identity must remain stable across product upgrades. Do not key it by a build
 hash: losing the item would make existing ciphertext unreadable. Development builds and
-tests must use an injected key provider or isolated test service; a keychain error must not
-fall back to plaintext or to a newly generated key for an encrypted file. Before rollout,
-exercise the signed release and ad-hoc development paths because their Keychain access
-requirements differ; a build that cannot retrieve the stable item must fail closed.
+tests must use an injected key provider or isolated test service. When the data-protection
+Keychain returns `errSecMissingEntitlement`, the provider stores the same 32-byte key in
+`Application Support/Uttrflow/local-store-encryption-key.v1` using `PrivateFile` (owner-only
+directory and file permissions, excluded from backup). This path is stable across ad-hoc
+updates and app code identities. The fallback applies only to that entitlement error;
+locked Keychain and other Keychain failures remain errors. A malformed key file also fails
+closed. Neither route falls back to plaintext or creates a new key to open an encrypted
+file.
+
+The fallback key file has the same local-device protection boundary as the owner account:
+processes running as that user can read it. A restored store folder on another Mac cannot
+be opened unless the key file is also transferred. The signed release and ad-hoc paths
+still require an integration check against the exact packaged artifact before rollout.
 
 ## File envelope
 

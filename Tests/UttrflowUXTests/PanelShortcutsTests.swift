@@ -80,7 +80,7 @@ struct PanelShortcutsTests {
                     continue
                 }
                 resolvedChords.insert(chord)
-                #expect(page.intent(for: chord) == action.intent, action.title)
+                #expect(page.intent(for: chord) == action.intent, Comment(rawValue: action.title))
             }
         }
         #expect(resolvedChords == Set(PanelRowAction.allCases.map(\.chord)))

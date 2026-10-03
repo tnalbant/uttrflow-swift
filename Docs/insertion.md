@@ -28,17 +28,65 @@ leaves its placement uncertain, so the result stops the fallback chain and asks 
 to check the field before retrying; another strategy could duplicate a write that already
 landed.
 
+## A web field's own state
+
+The caret check proves the field's visible text and caret moved. A page whose field is
+driven by script keeps its own copy of the text and updates it from `input` and
+`beforeinput` events, so a write that changes the screen without raising one would leave
+the page holding the old text: Send posts what the page holds, and the next keystroke
+re-renders the old text over the dictation. Whether an Accessibility write can do that is
+measured, not assumed, by `Scripts/web_field_probe/probe.sh`.
+
+The fixture is three fields that start as `start `: a single-line input re-rendered from
+state that `input` events set; a `contenteditable` whose state `input` events set; and a
+`contenteditable` that cancels `beforeinput`, applies it to its model and re-renders from
+the model, the shape of a structured rich-text editor. Each is written with `one two three`
+through one attribute, then sent one key press `x`; the page reports what it shows and what
+it holds after each. Windows open in the background and every write goes to that process
+only. Google Chrome 154.0.8037.97 and WebKit through `WKWebView` (the engine Safari 26.5
+ships), macOS 26.5.1:
+
+| Attribute | Engine | Field | Shown after the write | Page state | Caret check | After `x` |
+|---|---|---|---|---|---|---|
+| `AXSelectedText` | both | all three | unchanged | unchanged | unconfirmed | `start x` |
+| `AXValue` | Chrome | input | written | written, one `input` event | confirmed | appended |
+| `AXValue` | Chrome | contenteditable | written | **old**, no event | unconfirmed (caret at 0) | `xstart one two three` |
+| `AXValue` | Chrome | model editor | written | **old**, no event | unconfirmed (caret at 0) | **`start x`: the write is undone** |
+| `AXValue` | WebKit | input, contenteditable | written | written, `deleteContent` then `insertText` | confirmed | appended |
+| `AXValue` | WebKit | model editor | `start start one two three` | the same | unconfirmed | appended |
+
+**The attribute dictation writes cannot produce a visible but uncommitted field.** Both
+engines answer an `AXSelectedText` write with `.success` and change nothing at all, shown
+or held, and `SelectionWriter`'s caret check reports it. The Chrome input, re-run with its
+window in front, behaved the same. That unconfirmed answer stops the dictation before the
+typed route runs, although nothing landed; #4603 is the fix.
+
+**`AXValue` is not a fix to reach for.** It is the write that produces exactly that defect:
+in a Chrome `contenteditable` the text appears, the page never hears of it, and a model
+editor's next keystroke puts the old text back. WebKit replaces the value as delete-all
+then insert-all, which a model editor applies on top of what it already holds. A whole-value
+write also replaces the field rather than the selection.
+
 ## Which application the record names
 
 The layout decisions are made against the screen as it was when each piece was cut — that is
 what working ahead requires, and `Docs/early-transcription.md` measures what it buys. The
 *record* is a different question: the user may switch windows while the sentence is being
 transcribed, and the words land wherever the caret is by then. So `TextInsertionCoordinator`
-reads the frontmost application immediately after a strategy succeeds and reports it on the
+reads the destination immediately after a strategy succeeds and reports it on the
 `InsertionAttempt`, and the pipeline files the dictation under that rather than under the name
-it read at the start. The read is `NSWorkspace.shared.frontmostApplication`, which
-`isSelfFrontmost` already makes, so it costs no message to another application. A reader that
-cannot say leaves the recording's own reading as the best answer there is.
+it read at the start. A reader that cannot say leaves the recording's own reading as the best
+answer there is.
+
+The destination is the process that owns the focused element, not the frontmost application.
+A launcher, a password-manager quick panel or a floating note can take keyboard focus as a
+non-activating panel while the application underneath stays frontmost; the words land in the
+panel, so the panel's owner is what the context names, what the target-changed check compares
+and what the record files. `FocusedElementPreference.destination` is the one statement of that
+rule: the owner of the element `choose` keeps, and the frontmost application only when
+Accessibility names no owner. `AccessibilityFocus.focusedApplication()` and
+`MacContextEngine`'s focus-owner read both go through it. The probe is in
+[compatibility.md](compatibility.md).
 
 Nothing here can refuse or degrade an insertion: the destination is read after the words are
 written, and is only ever a label on what already happened.
@@ -218,7 +266,10 @@ something within the same poll as an Uttrflow paste had their copy silently
 swallowed, which is the one thing a clipboard manager may not do. The picture path had
 exactly that hole until it was given bytes to name, since it had no text. An announcement
 whose own write has not arrived is kept rather than spent, and lapses after two seconds so
-a paste that threw cannot sit armed.
+a paste that threw cannot sit armed. If a write is refused or its text cannot be read back,
+its announcement is withdrawn. If the watcher gives up on a bounded clipboard read, it
+withdraws announcements that could have named that unread change, so the next same-text
+copy is recorded normally.
 
 ## Dictating into a field that hides what is typed
 
@@ -272,3 +323,25 @@ The Accessibility engine now also refuses when Uttrflow is in front
 focused Uttrflow field is never the destination through any code path — the rename is the
 honest label, the engine change is the structural guarantee that no caller can fall back into
 Uttrflow's own text fields.
+
+The retry's clipboard floor receives the clipboard panel's shared secret classifier from the app
+composition root. A secret transcript is written with `org.nspasteboard.ConcealedType`; other
+transcripts use the generated marker.
+
+## Remembering where the last dictation landed
+
+A spoken edit command acts on text written earlier into another app, so something has to know
+where it went. `InsertionLedger` holds that, in memory only: it is never persisted and never
+sent. `TextInsertionCoordinator` writes it after every insertion, reading the field and caret
+through `AccessibilityFocus.focusedFieldPlace` once the words are written.
+
+Only an Accessibility write whose arrival is `confirmed` is recorded, because only that route
+reads the words back. An unconfirmed write, a paste, a typed write, a clipboard hand-off, a
+failure, a secure field or a field that cannot be placed empties the ledger instead: a command
+must never act on a span nobody saw arrive. A field is identified by its process, its window and
+the element itself, so asking from any other field empties it as well. It keeps
+`InsertionLedger.capacity` entries and refuses one longer than `InsertionLedger.textLimit`.
+
+Offsets go stale the moment the user types, so a record is never trusted on its own:
+`InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
+end where they were written, through `BackwardSelection.confirms`.

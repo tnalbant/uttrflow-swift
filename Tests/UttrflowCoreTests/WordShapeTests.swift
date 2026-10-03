@@ -37,6 +37,27 @@ struct WordShapeTests {
         #expect(WordShape.finished(text) == text)
     }
 
+    @Test(
+        "a closing bracket takes the stop after it, unless the brackets hold the whole sentence",
+        arguments: [
+            ("days)", "i called him twice (on different", "days)."),
+            ("client)", "Send it to the team (not the", "client)."),
+            ("appendix)", "Done. (see the", "appendix.)"),
+            ("appendix)", "(see the", "appendix.)"),
+            ("(appendix)", "", "(appendix.)"),
+            ("appendix.)", "(see the", "appendix.)"),
+            ("days).", "twice (on different", "days)."),
+            ("days)\"", "\"twice (on different", "days).\""),
+            ("appendix)\"", "\"(see the", "appendix.)\""),
+            ("b))", "x (a (", "b))."),
+            ("b))", "(a (", "b.))"),
+            ("later)", "Fine.\n(we talk", "later.)"),
+        ]
+    )
+    func finishesAfterABracket(word: String, preceding: String, expected: String) {
+        #expect(WordShape.finished(word, after: preceding) == expected)
+    }
+
     @Test("adds a full stop to an unmarked Devanagari sentence")
     func finishesUnmarkedDevanagariSentence() {
         #expect(WordShape.finished("है") == "है.")

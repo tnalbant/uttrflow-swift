@@ -73,6 +73,10 @@ a wallet credential; other language lists and invalid checksums are not detected
 8. A credential handed to a command or sent in a header (below).
 9. The statistical rule below.
 
+## Telegram bot addresses
+
+The Telegram Bot API token is a bearer credential in the first path segment: `bot`, a decimal bot identifier, a colon, and a 35-character token. `BearerURLShape` recognizes that complete shape only on `api.telegram.org`; the ordinary entropy rule skips URLs because their punctuation and surrounding address distort the token signal. The host and path are parsed together, so an unrelated URL with a similar path stays a link.
+
 ## A credential handed to a command
 
 A credential inside a one-line command is not a named secret: the named-secret rule needs the
@@ -98,6 +102,9 @@ words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognis
 A value that is a variable, a substitution or a placeholder (`$TOKEN`, `${token}`, `{token}`,
 `<token>`) is left alone, since it names where the credential is rather than being it.
 
+A `.netrc` password is read in the context of its machine or default block across lines. `account`
+fields are consumed as values, and a `macdef` body is skipped through its blank-line terminator.
+
 A URL whose userinfo is one generated token with no colon (`https://<40 hex>@host/repo`) is
 masked too, by the statistical rule below applied to the userinfo; `https://readonly@host`
 stays a link.
@@ -106,9 +113,11 @@ stays a link.
 
 The suggestion corpus may already hold a line a newer rule recognises. At launch
 `CaptureGate.sweepSecrets` asks `PredictStore.sweep` to delete every stored line, every
-retirement pointing at one, and every succession naming one that `SecretShapes.matches` now
-recognises. The corpus records the version it was swept with in its `sweep` table, so the pass
-runs once per `CaptureGate.secretRulesVersion`; raise that constant whenever a shape is added.
+retirement pointing at one, and every succession naming one that either `SecretShapes.matches`
+or the nonterminal one-time-code rule now refuses. The pass uses each entry's stored surface,
+so it does not remove numeric terminal commands. The corpus records the version it was swept with
+in its `sweep` table, so the pass runs once per `CaptureGate.secretRulesVersion`; raise that
+constant whenever either rule widens.
 
 ## Reading in linear time
 

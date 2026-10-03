@@ -76,4 +76,31 @@ struct CommandCredentialTests {
         #expect(!SecretShapes.hasCommandCredential("echo 'unclosed\nmysql -u root -p appdb"))
         #expect(SecretShapes.hasCommandCredential("ls | sshpass -p sunshine ssh host"))
     }
+
+    @Test(
+        "A netrc password is read inside its machine or default block",
+        arguments: [
+            "machine example.com\nlogin u\npassword hunter2x9",
+            "default\nlogin u\npassword hunter2x9",
+            "machine example.com login u password hunter2x9",
+            "machine example.com\nlogin u\naccount acct\npassword hunter2x9",
+            "machine example.com\nmacdef init\npassword ordinary\n\nmachine next.example\nlogin u\npassword hunter2x9",
+        ])
+    func multilineNetrc(_ text: String) {
+        #expect(SecretShapes.matches(text))
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test("A netrc macro body is not a password directive")
+    func netrcMacroBody() {
+        let text = "machine example.com\nmacdef init\npassword ordinary\n\n"
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
+    }
+
+    @Test("Password in ordinary prose is not a netrc credential")
+    func prosePassword() {
+        #expect(!SecretShapes.hasCommandCredential("Please enter your password on the next line."))
+        #expect(!SecretShapes.matches("Please enter your password on the next line."))
+    }
 }

@@ -1,27 +1,6 @@
 // A proposed word correction, its reason, and how a set of them is applied and reverted.
 public import struct Foundation.UUID
-
-/// Why one word was swapped, stored as a value the Corrections page shows; case order is priority.
-public enum CorrectionReason: String, Sendable, Equatable, CaseIterable, Codable {
-    /// The replacement is written on the screen being dictated into.
-    case seenOnScreen
-    /// The same word appears elsewhere in this dictation, heard clearly.
-    case saidClearlyElsewhere
-    /// The heard text is loose letters and the replacement is a word; named from the losing side.
-    case heardAsStrayLetters
-    /// The heard text is several words and the replacement one written word; named from the losing side.
-    case heardAsSeveralWords
-
-    /// The label the Corrections page shows beside the change.
-    public var summary: String {
-        switch self {
-        case .seenOnScreen: "Seen on screen"
-        case .saidClearlyElsewhere: "You said it clearly elsewhere"
-        case .heardAsStrayLetters: "Heard as stray letters"
-        case .heardAsSeveralWords: "Heard as several words"
-        }
-    }
-}
+public import UttrflowCore
 
 /// One proposed, never applied, change to a run of spoken words, carrying everything an undo needs.
 public struct WordCorrection: Sendable, Equatable {
