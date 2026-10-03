@@ -335,6 +335,39 @@ struct MultiWordCorrectionTests {
                 DictionaryEntry(word: entry, origin: .added, firstSeen: .now), asHeard: heard))
     }
 
+    @Test(
+        "keeps a run the entry reads as when closed up",
+        arguments: [
+            ("Uttrflow", "utter flow"), ("Kubelet", "cube lit"), ("Zorvath", "zore vath"),
+            ("Priyanka", "pre yanka"), ("SQLite", "sequel lite"),
+        ])
+    func keepsARunItReadsAs(entry: String, heard: String) {
+        #expect(
+            WordCorrectionEngine.spells(
+                DictionaryEntry(word: entry, origin: .added, firstSeen: .now), asHeard: heard))
+    }
+
+    @Test(
+        "refuses a run that sounds like neither the entry nor its letters",
+        arguments: [("Gauri", "g r p c x"), ("Calloway", "post gress q l"), ("Gauri", "c r d t")])
+    func refusesAnUnrelatedRun(entry: String, heard: String) {
+        #expect(
+            WordCorrectionEngine.spells(
+                DictionaryEntry(word: entry, origin: .added, firstSeen: .now), asHeard: heard)
+                == false)
+    }
+
+    @Test("corrects a run the recogniser split into words that sound like the entry")
+    func correctsUtterFlow() throws {
+        let uttrflow = DictionaryEntry(word: "Uttrflow", origin: .added, firstSeen: .now)
+        let proposals = WordCorrectionEngine().proposals(
+            for: CorrectionFixtures.spoken("I dictated this note with ?utter ?flow on my laptop today"),
+            against: PhoneticIndex(entries: [uttrflow]),
+            seeing: CorrectionFixtures.showing("Uttrflow settings"))
+
+        #expect(try #require(proposals.only).replacement == "Uttrflow")
+    }
+
     /// A shared sound key cannot make two unrelated spellings plausible readings.
     @Test("refuses a single-word phonetic collision that does not open alike")
     func refusesAnUnrelatedSingleWordReading() {

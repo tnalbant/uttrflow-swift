@@ -62,16 +62,28 @@ public struct WordCorrectionEngine: Sendable {
         return nil
     }
 
-    /// Whether an entry writes out a multi-word run, or a one-word reading opens alike.
+    /// Whether an entry writes out or reads as a multi-word run, or a one-word reading opens alike.
     static func spells(_ entry: DictionaryEntry, asHeard heard: String) -> Bool {
         if WordShape.words(heard).count > 1 {
             return MeaningPreservationGuard.isWritten(heard, in: entry.word)
                 || MeaningPreservationGuard.isWritten(heard, in: entry.soundsLike)
+                || reads(entry, as: heard)
         }
         // Either the spelling or the pronunciation the user wrote for it, which is what that field is for.
         return [entry.word, entry.soundsLike].contains {
             ReadingRestraint.closedUp($0) == ReadingRestraint.closedUp(heard)
                 || ReadingRestraint.opensAlike($0, heard: heard)
+        }
+    }
+
+    /// Whether the run closed up sounds like the entry read as one word; an all-capitals spelling is said letter by letter, so only its pronunciation is read.
+    static func reads(_ entry: DictionaryEntry, as heard: String) -> Bool {
+        let run = DoubleMetaphone.code(for: ReadingRestraint.closedUp(heard))
+        guard !run.isSilent else { return false }
+        let isLetters = entry.word.allSatisfy { $0.isUppercase || !$0.isLetter }
+        let readings = isLetters ? [entry.pronunciation].compactMap { $0 } : [entry.word, entry.soundsLike]
+        return readings.contains {
+            run.sounds(like: DoubleMetaphone.code(for: ReadingRestraint.closedUp($0)))
         }
     }
 
