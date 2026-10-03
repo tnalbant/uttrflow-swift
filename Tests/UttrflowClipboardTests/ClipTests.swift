@@ -62,6 +62,7 @@ struct ClipTests {
     @Test("stops at a CRLF line break")
     func summaryCRLF() {
         #expect(clip("first\r\nsecond").summary == "first")
+        #expect(clip("first\r\nsecond").additionalLineCount == 1)
     }
 
     /// What goes back out must be exactly what came in; the summary is for display only.

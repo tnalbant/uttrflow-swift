@@ -196,7 +196,9 @@ public struct Clip: Sendable, Equatable, Identifiable, Codable {
 
     /// The number of following lines, counting a trailing newline as content that will be pasted.
     public var additionalLineCount: Int {
-        max(text.split(separator: "\n", omittingEmptySubsequences: false).count - 1, 0)
+        text.reduce(into: 0) { count, character in
+            if character.isNewline { count += 1 }
+        }
     }
 
     /// The bounded text offered before paste; a suffix makes truncation explicit.
