@@ -103,6 +103,30 @@ struct PieceJoinerListTests {
         #expect(layouts[0] == "- Finish onboarding\n- Fix login\n- Review design")
     }
 
+    @Test(
+        "lays out a spoken sequence the same at every cut between its sentences",
+        arguments: [Destination.document, .messaging, .email],
+        [
+            ["We need a plan.", "First, finish onboarding.", "Second, fix login.", "Third, review design."],
+            ["First, milk.", "Second, eggs."],
+            ["First place went to Sam.", "Second place went to Priya.", "Third place went to Lee."],
+            ["There are two things to do.", "First, fix the build.", "Second, review the PR."],
+            ["Second, review the PR.", "Third, ship it."],
+        ])
+    func sequenceLayoutHoldsAtEveryCut(destination: Destination, sentences: [String]) {
+        let cuts = (0..<(1 << (sentences.count - 1))).map { mask in
+            sentences.indices.dropFirst().reduce(into: [sentences[0]]) { pieces, index in
+                if mask & (1 << (index - 1)) != 0 {
+                    pieces.append(sentences[index])
+                } else {
+                    pieces[pieces.count - 1] += " " + sentences[index]
+                }
+            }
+        }
+        let layouts = Set(cuts.map { joined($0, destination) })
+        #expect(layouts.count == 1, "\(layouts)")
+    }
+
     @Test("keeps the prose a list is introduced with, above the items")
     func leadInStaysProse() {
         let text = joined(
