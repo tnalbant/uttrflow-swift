@@ -84,11 +84,18 @@ struct CommandCredentialTests {
             "default\nlogin u\npassword hunter2x9",
             "machine example.com login u password hunter2x9",
             "machine example.com\nlogin u\naccount acct\npassword hunter2x9",
-            "machine example.com\nmacdef init\npassword ordinary\n\nlogin u\npassword hunter2x9",
+            "machine example.com\nmacdef init\npassword ordinary\n\nmachine next.example\nlogin u\npassword hunter2x9",
         ])
     func multilineNetrc(_ text: String) {
         #expect(SecretShapes.matches(text))
         #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test("A netrc macro body is not a password directive")
+    func netrcMacroBody() {
+        let text = "machine example.com\nmacdef init\npassword ordinary\n\n"
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
     }
 
     @Test("Password in ordinary prose is not a netrc credential")
