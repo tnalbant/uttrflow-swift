@@ -47,6 +47,12 @@ struct SecretDetectionTests {
                 == .link)
     }
 
+    /// An invented hex key, built from pieces so no history scanner reads a whole credential here.
+    private static let hexKey = ["9f2b", "7c4e", "1a8d", "3f6b"].joined()
+
+    /// An invented 64-hex key base, built the same way.
+    private static let keyBase = String(repeating: "0123456789abcdef", count: 4)
+
     /// Assembled rather than written out, because GitHub's push protection matches these shapes as-is.
     private static let gitLabToken = "glpat-" + "x7Kd9Pq2LmRt4Vw8Nz1C"
     private static let shopifyToken = "shpat_" + "a1b2c3d4e5f6a7b8" + "c9d0e1f2a3b4c5d6"
@@ -130,7 +136,7 @@ struct SecretDetectionTests {
     @Test("masks vendor tokens in multiline clips without matching prose")
     func vendorTokensInMultilineClips() {
         let tokens = [
-            "xapp-1-A0123456789-0123456789-0123456789abcdef",
+            "xapp-" + "1-A0123456789-0123456789-0123456789abcdef",
             "whsec_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
             "hf_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
             "pypi-" + "AgEIcHlwaS5vcmcCJDI1MmQ2MzRhLTAxMjMtNDU2Ny04OWFi",
@@ -238,21 +244,21 @@ struct SecretDetectionTests {
             "secret_key: \"abcd1234efgh5678\"",
             "secret-keys = abcd1234efgh5678",
             "SECRETKEY=abcd1234efgh5678",
-            "X=123\nENCRYPTION_KEY=9f2b7c4e1a8d3f6b",
-            "X=123\nencryption-key=9f2b7c4e1a8d3f6b",
-            "X=123\nencryptionkey=9f2b7c4e1a8d3f6b",
-            "X=123\nSIGNING_KEY=9f2b7c4e1a8d3f6b",
-            "X=123\nsigning-key=9f2b7c4e1a8d3f6b",
-            "X=123\nsigningkey=9f2b7c4e1a8d3f6b",
-            "X=123\nMASTER_KEY=9f2b7c4e1a8d3f6b",
-            "X=123\nmaster-key=9f2b7c4e1a8d3f6b",
-            "X=123\nmasterkey=9f2b7c4e1a8d3f6b",
-            "X=123\nAPP_KEY=9f2b7c4e1a8d3f6b",
-            "X=123\napp-key=9f2b7c4e1a8d3f6b",
-            "X=123\nappkey=9f2b7c4e1a8d3f6b",
-            "X=123\nJWT_KEY=9f2b7c4e1a8d3f6b",
-            "X=123\njwt-key=9f2b7c4e1a8d3f6b",
-            "X=123\njwtkey=9f2b7c4e1a8d3f6b",
+            "X=123\nENCRYPTION_KEY=" + hexKey,
+            "X=123\nencryption-key=" + hexKey,
+            "X=123\nencryptionkey=" + hexKey,
+            "X=123\nSIGNING_KEY=" + hexKey,
+            "X=123\nsigning-key=" + hexKey,
+            "X=123\nsigningkey=" + hexKey,
+            "X=123\nMASTER_KEY=" + hexKey,
+            "X=123\nmaster-key=" + hexKey,
+            "X=123\nmasterkey=" + hexKey,
+            "X=123\nAPP_KEY=" + hexKey,
+            "X=123\napp-key=" + hexKey,
+            "X=123\nappkey=" + hexKey,
+            "X=123\nJWT_KEY=" + hexKey,
+            "X=123\njwt-key=" + hexKey,
+            "X=123\njwtkey=" + hexKey,
         ])
     func namedSecrets(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
@@ -290,7 +296,7 @@ struct SecretDetectionTests {
     @Test("masks credential fields copied from common config files and headers")
     func structuredCredentials() {
         let session = "Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEf"
-        let dockerAuth = "dXNlcjpwYXNzd29yZA=="
+        let dockerAuth = Data("user:password".utf8).base64EncodedString()
         let privateKey = Data(
             "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAKE\n-----END PRIVATE KEY-----".utf8
         )
@@ -306,8 +312,8 @@ struct SecretDetectionTests {
             """
         let cases = [
             (
-                "A=1\nSECRET_KEY_BASE=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-                "A=1 SECRET_KEY_BASE=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                "A=1\nSECRET_KEY_BASE=" + Self.keyBase,
+                "A=1 SECRET_KEY_BASE=" + Self.keyBase
             ),
             (
                 "# credentials\nmachine example.com login u password hunter2x9\ndefault login other password k9hunter",
