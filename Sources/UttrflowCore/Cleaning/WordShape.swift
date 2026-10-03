@@ -24,6 +24,9 @@ public struct WordShape: Equatable, Sendable {
     /// Whether the word closes a clause or a sentence.
     public var endsClause: Bool { suffix.contains(where: { ",.;:!?".contains($0) }) }
 
+    /// Whether the word is a spoken cut-off: letters left hanging on a bare hyphen.
+    public var isCutOff: Bool { suffix == "-" && !core.isEmpty }
+
     /// Whether the word closes a sentence.
     public var endsSentence: Bool { suffix.contains(where: { ".!?।॥".contains($0) }) }
 
