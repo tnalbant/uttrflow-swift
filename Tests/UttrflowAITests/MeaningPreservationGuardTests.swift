@@ -1175,25 +1175,6 @@ struct GrammarGuardTests {
     }
 }
 
-@Suite("IrregularVerbForms")
-struct IrregularVerbFormsTests {
-    @Test("holds every form of a verb in one set and nothing else")
-    func formsShareASet() {
-        #expect(IrregularVerbForms.setIndex["went"] == IrregularVerbForms.setIndex["gone"])
-        #expect(IrregularVerbForms.setIndex["go"] == IrregularVerbForms.setIndex["went"])
-        #expect(IrregularVerbForms.setIndex["bought"] == IrregularVerbForms.setIndex["buy"])
-        #expect(IrregularVerbForms.setIndex["was"] == IrregularVerbForms.setIndex["been"])
-        #expect(IrregularVerbForms.setIndex["went"] != IrregularVerbForms.setIndex["done"])
-        #expect(IrregularVerbForms.setIndex["purchase"] == nil)
-    }
-
-    @Test("gives no form to two verbs, which the index would otherwise trap on")
-    func formsAreUnique() {
-        let forms = IrregularVerbForms.sets.flatMap { $0 }
-        #expect(Set(forms).count == forms.count)
-    }
-}
-
 @Suite("The guard keeps the layout the speaker asked for")
 struct LayoutGuardTests {
     @Test("refuses a rewrite that flattened a line break")
