@@ -483,7 +483,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Writes the words this build ships knowing, which happens once and never blocks the launch.
     private func seedTheDictionary() {
-        Task(priority: .utility) { [dictionary] in
+        let migration = dictionaryMigrationWork
+        Task(priority: .utility) { [dictionary, migration] in
+            await migration?.value
             do {
                 try await dictionary.seedShippedWords(at: Date())
             } catch {
@@ -3393,7 +3395,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// A dictation's activity and failure in the menu's vocabulary, placed by which surfaces are shown.
-    nonisolated static func menuBarDictation(for state: DictationState, floatingButtonShown: Bool) -> MenuBarState {
+    nonisolated static func menuBarDictation(
+        for state: DictationState, floatingButtonShown: Bool
+    ) -> MenuBarState {
         let activity: DictationActivity =
             switch state {
             case .idle, .failed: .idle
