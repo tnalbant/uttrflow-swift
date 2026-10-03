@@ -119,6 +119,14 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         windowTitle: String? = nil,
         windowNumber: UInt32? = nil
     ) {
+        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
+        let line = Self.caretLine(
+            of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
+        let isSecure =
+            isSecure
+            || (TerminalApplications.contains(bundleIdentifier)
+                && ShellPrompt.isCredentialPrompt(in: line.text))
+
         self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName
         self.role = role
@@ -127,7 +135,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.placeholder = placeholder
         self.accessibilityDescription = accessibilityDescription
         self.document = document
-        self.value = value
+        self.value = isSecure ? nil : value
         self.selection = selection
         self.caret = caret
         self.writingDirection = writingDirection
@@ -147,10 +155,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
         self.windowNumber = windowNumber
-        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
-        let line = Self.caretLine(
-            of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
-        self.currentLine = line.text
+        self.currentLine = isSecure ? "" : line.text
         self.isLineCut = line.isCut
     }
 }

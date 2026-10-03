@@ -1,4 +1,5 @@
 private import Synchronization
+import Foundation
 
 /// How many characters were read while this was bound to `ShellPrompt.tally`.
 package final class CharacterTally: Sendable {
@@ -17,6 +18,12 @@ public enum ShellPrompt {
     /// The characters a prompt ends with, every one of which a command may also legitimately contain.
     private static let terminators: Set<Character> = [
         "%", "$", "#", ">", "✗", "✔", "✓", "❯", "➜", "➤", "\u{e0b0}",
+    ]
+
+    /// Credential labels used to keep terminal replies out of prediction and capture.
+    private static let credentialLabels: Set<String> = [
+        "password", "passphrase", "enter passphrase", "pin", "passcode", "token",
+        "security token", "[sudo] password",
     ]
 
     /// How far into a line a prompt is looked for, since a prompt is short and a pasted line need not be.
@@ -164,6 +171,17 @@ public enum ShellPrompt {
         if let typed = afterArrowPrompt(in: line) { return typed }
         guard let terminator = promptEnd(in: line) else { return line }
         return String(line[line.index(after: terminator)...].drop(while: \.isWhitespace))
+    }
+
+    /// Whether a terminal line is asking for a credential rather than a shell command.
+    static func isCredentialPrompt(in line: String) -> Bool {
+        let prefix = line.prefix(searchLimit).prefix(while: { $0 != ":" })
+        guard prefix.count < min(line.count, searchLimit) else { return false }
+        let label = String(prefix).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if credentialLabels.contains(label) { return true }
+        if label.hasPrefix("[sudo] password for ") || label.hasPrefix("password for ") { return true }
+        if label.hasSuffix("'s password") || label.hasSuffix("’s password") { return true }
+        return label.hasPrefix("enter passphrase for key ")
     }
 
     /// The marks an arrow prompt draws after the branch when the tree has changes, or has none.
