@@ -918,17 +918,25 @@ public actor DictationPipeline {
             guard !wasCancelled(mine) else { return }
             let situation = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides)
             let formatter = DestinationFormatter.standard(for: situation)
-            output =
-                FirstWordPass(
-                    policy: formatter.firstWord, state: insertionContext.insertionPoint.sentenceState,
-                    onScreen: [
-                        insertionContext.documentName, insertionContext.selectedText,
-                        insertionContext.precedingText, insertionContext.followingText,
-                    ].compactMap { $0 }, heard: whole.heard.text,
-                    capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                        && formatter.destination != .codeEditor
-                )
-                .apply(Draft(keepingLineBreaks: output)).text
+            // Re-casing is owed only for tidied words whose caret or destination moved since they were cased.
+            let casedFor = appContext ?? AppContext()
+            let caretMoved =
+                insertionContext.insertionPoint.sentenceState != casedFor.insertionPoint.sentenceState
+                || formatter.firstWord != joiningFormatter.firstWord
+                || formatter.destination != joiningFormatter.destination
+            if whole.cleaned.producedBy != .untidied, caretMoved {
+                output =
+                    FirstWordPass(
+                        policy: formatter.firstWord, state: insertionContext.insertionPoint.sentenceState,
+                        onScreen: [
+                            insertionContext.documentName, insertionContext.selectedText,
+                            insertionContext.precedingText, insertionContext.followingText,
+                        ].compactMap { $0 }, heard: whole.heard.text,
+                        capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                            && formatter.destination != .codeEditor
+                    )
+                    .apply(Draft(keepingLineBreaks: output)).text
+            }
         } else {
             insertionContext = appContext ?? .unknown
         }
