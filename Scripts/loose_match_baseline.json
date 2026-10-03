@@ -1,8 +1,8 @@
 {
   "files": {
-    "Sources/UttrflowAI/MeaningPreservationGuard.swift": 1,
     "Sources/UttrflowAI/Passes/CaretEchoPass.swift": 1,
     "Sources/UttrflowAI/RomanisedWords.swift": 3,
+    "Sources/UttrflowAI/WordForms.swift": 1,
     "Sources/UttrflowDictionary/ReadingRestraint.swift": 1
   },
   "total": 6

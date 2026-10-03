@@ -132,7 +132,7 @@ reads no Devanagari, so it compared nothing.
   `FunctionWords`) are left out of both sides; a negation, a number and a Hindi pronoun never
   are. A dropped or added content word refuses the rewrite, and so does a substituted one unless
   it is:
-  - the same word in another form, by `MeaningPreservationGuard.sameRomanisedForm`: an English
+  - the same word in another form, by `WordForms.sameRomanisedForm`: an English
     inflection by `sameForm`, a Hindi verb or noun and its ending ("aa" and "aata", "log" and
     "logon"), or two cases of one demonstrative ("yah" and "is");
   - an English loanword the rules romanised, written in its English spelling: the two share a

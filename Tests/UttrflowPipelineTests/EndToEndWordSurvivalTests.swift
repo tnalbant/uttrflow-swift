@@ -137,14 +137,14 @@ struct EndToEndWordSurvivalTests {
                 case .match, .insertion:
                     return nil
                 }
-                if let replacement, MeaningPreservationGuard.sameForm(word, replacement) { return nil }
-                guard reportWords.contains(where: { MeaningPreservationGuard.sameForm(word, $0) }) else {
+                if let replacement, WordForms.sameForm(word, replacement) { return nil }
+                guard reportWords.contains(where: { WordForms.sameForm(word, $0) }) else {
                     return nil
                 }
                 guard !losses.contains(where: { $0.word == word }) else { return nil }
                 guard
                     !current.contains(where: {
-                        MeaningPreservationGuard.sameForm(word, $0)
+                        WordForms.sameForm(word, $0)
                     })
                 else { return nil }
                 if let replacement, isNumberRewrite(word, replacement) { return nil }
