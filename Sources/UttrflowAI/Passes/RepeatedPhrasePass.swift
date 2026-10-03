@@ -66,6 +66,12 @@ enum FalseStartRestart {
         "she", "she'd", "she'll", "she's", "they", "they'd", "they'll", "they're", "they've",
     ]
 
+    /// Finite forms that cannot complete a modal, so a modal before them was abandoned rather than stammered.
+    private static let finiteAfterModal: Set<String> = [
+        "can", "could", "will", "would", "shall", "should", "may", "might", "must",
+        "am", "is", "are", "was", "were", "has", "does", "did",
+    ]
+
     /// The incomplete prefix length when a restart follows at a clause boundary.
     static func prefixLength(at position: Int, in live: [Int], of draft: Draft) -> Int? {
         guard position == 0 || isClauseBoundary(before: position, in: live, of: draft) else { return nil }
@@ -80,7 +86,7 @@ enum FalseStartRestart {
             return 4
         }
         if remaining >= 4, ["can", "could", "would", "should"].contains(key(0)),
-            isSubject(key(1)), key(2) == key(1), isRestartVerb(key(3)),
+            isSubject(key(1)), key(2) == key(1), finiteAfterModal.contains(key(3)),
             isUnbroken(0..<2, at: position, in: live, of: draft)
         {
             return 2

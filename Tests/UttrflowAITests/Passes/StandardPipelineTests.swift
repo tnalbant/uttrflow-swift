@@ -190,6 +190,21 @@ struct StandardPipelineTests {
     }
 
     @Test(
+        "keeps the modal question when only the pronoun after it is stammered",
+        arguments: [
+            ("can you you help me with this", "Can you help me with this?"),
+            ("could you you send me the file", "Could you send me the file?"),
+            ("can i i borrow your pen", "Can I borrow your pen?"),
+            ("can you you please check", "Can you please check?"),
+            ("would we we need a visa", "Would we need a visa?"),
+            ("could they they join us", "Could they join us?"),
+        ]
+    )
+    func stammeredPronounAfterModal(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
         "keeps complete clauses that can resemble an abandoned start",
         arguments: [
             ("I said I'd go", "I said I'd go."),
