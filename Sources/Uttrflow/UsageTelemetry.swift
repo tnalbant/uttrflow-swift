@@ -18,6 +18,8 @@ final class UsageTelemetry {
     let service: TelemetryService
     /// When the dictation under way stopped listening, which is where the user's wait begins.
     private var waitStarted: ContinuousClock.Instant?
+    /// Whether a non-terminal pipeline state has arrived and still needs an outcome.
+    private var dictationIsInProgress = false
     /// The hourly flush.
     private var timer: Task<Void, Never>?
 
@@ -45,15 +47,27 @@ final class UsageTelemetry {
     {
         let spoken = language.map(TelemetryLanguage.init) ?? .other
         switch state {
-        case .recording, .idle:
+        case .recording:
+            dictationIsInProgress = true
             waitStarted = nil
+        case .idle:
+            if dictationIsInProgress {
+                service.recorder.recordDictation(
+                    .cancelled, language: spoken, processing: waited(until: instant))
+            } else {
+                waitStarted = nil
+            }
+            dictationIsInProgress = false
         case .transcribing, .tidying, .inserting:
+            dictationIsInProgress = true
             if waitStarted == nil { waitStarted = instant }
         case .inserted(let outcome):
+            dictationIsInProgress = false
             service.recorder.recordDictation(
                 .completed, language: spoken, audio: outcome.spokenFor ?? .zero,
                 processing: waited(until: instant), charactersInserted: outcome.text.count)
         case .failed:
+            dictationIsInProgress = false
             service.recorder.recordDictation(.failed, language: spoken, processing: waited(until: instant))
         }
     }
