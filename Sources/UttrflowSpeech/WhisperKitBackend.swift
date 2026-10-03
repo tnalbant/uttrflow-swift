@@ -1,6 +1,7 @@
 // The WhisperKit recogniser, and the decoding rules a conditioning prompt would otherwise cost it.
 public import Foundation
 public import UttrflowCore
+import CoreML
 import OSLog
 import WhisperKit
 
@@ -23,6 +24,13 @@ public actor WhisperKitBackend: TranscriptionBackend {
     static let shortestClip = Duration.seconds(Double(VocabularyPrompt.windowClipTime)) + .milliseconds(20)
 
     public nonisolated var minimumDuration: Duration { Self.shortestClip }
+
+    /// Where each Core ML stage runs, named so a package upgrade cannot move the model to other hardware.
+    static let computeOptions = ModelComputeOptions(
+        melCompute: .cpuAndGPU,
+        audioEncoderCompute: .cpuAndNeuralEngine,
+        textDecoderCompute: .cpuAndNeuralEngine
+    )
 
     /// Where the load's own measurements go; `Docs/startup.md` is the only record of what this costs.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "speech")
@@ -53,6 +61,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
                     modelFolder: modelFolder.path,
                     // Tokenizer search stays in the model's directory, never the Hugging Face cache.
                     tokenizerFolder: modelFolder,
+                    computeOptions: Self.computeOptions,
                     verbose: false,
                     logLevel: .error,
                     prewarm: prewarm,
