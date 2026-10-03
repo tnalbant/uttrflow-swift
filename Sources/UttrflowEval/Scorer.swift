@@ -18,6 +18,7 @@ public enum Scorer {
             isPresent(forbidden, in: rewritten, tokenised: sentences)
         }
 
+        let alignment = WordErrorRate.measure(reference: wanted, hypothesis: produced).alignment
         return CaseScore(
             caseID: reference.id,
             similarity: overlap(produced, wanted),
@@ -27,7 +28,8 @@ public enum Scorer {
             lost: lost,
             isExact: normalisedWhitespace(rewritten) == normalisedWhitespace(reference.expected),
             invented: invented,
-            brokeShape: brokenShape(of: rewritten, against: reference)
+            brokeShape: brokenShape(of: rewritten, against: reference),
+            deleted: alignment.compactMap { if case .deletion(let word) = $0 { word } else { nil } }
         )
     }
 
