@@ -162,6 +162,10 @@ log-audit: ## Prove no log message carries text a person typed, read or said. Ne
 perf-budget: ## Prove the source keeps to the energy and memory budget, and that each check still bites. No build.
 	@python3 Scripts/perf_budget_audit.py --self-test
 
+.PHONY: idle-wakeups
+idle-wakeups: ## Fail when the built app, idle in the menu bar, wakes or computes over the budget. Needs `make app` first.
+	@python3 Scripts/idle_wakeups.py --self-test
+
 # Needs the speech model and the suggestion model on disk, so it runs on a Mac rather than in CI.
 .PHONY: perf-budget-models
 perf-budget-models: ## Fail when the model harness reads memory over the budget. Needs both models installed.
