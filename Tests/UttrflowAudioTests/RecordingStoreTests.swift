@@ -110,7 +110,7 @@ struct RecordingStoreTests {
 
         #expect(
             restored.destination
-                == AppContext(
+                == AppIdentity(
                     applicationName: "Editor", bundleIdentifier: "com.example.editor"))
         #expect(restored.fieldKind == .codeEditor)
     }
@@ -122,8 +122,11 @@ struct RecordingStoreTests {
         let writer = try #require(await store.begin(at: now))
         writer.append(Array(repeating: 0.3, count: 1_600))
         let recording = await store.finish(writer)
-        let legacy = AppContext(applicationName: "Editor", bundleIdentifier: "com.example.editor")
-        let data = try PropertyListEncoder().encode(legacy)
+        let legacy = AppIdentity(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "applicationName": "Editor", "bundleIdentifier": "com.example.editor", "isSecure": false,
+            ], format: .binary, options: 0)
         try data.write(
             to: sandbox.directory.appending(path: "\(recording.id.uuidString).context"),
             options: .atomic)

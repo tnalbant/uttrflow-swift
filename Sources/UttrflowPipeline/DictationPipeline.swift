@@ -436,7 +436,7 @@ public actor DictationPipeline {
         takeSettings()
         spokenFor = audio.duration
         let kept = (await recordings.waiting(now: Date())).first(where: { $0.id == recording })
-        recordingDestination = kept?.destination
+        recordingDestination = kept?.destination.map(AppContext.init(identity:))
         recordingFieldKind = kept?.fieldKind
         insertedInto = recordingDestination?.applicationName
         insertedIntoIdentifier = recordingDestination?.bundleIdentifier

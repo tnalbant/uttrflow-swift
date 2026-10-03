@@ -2,7 +2,7 @@
 public import UttrflowCore
 
 /// What the product should do with one utterance; `expected` is a reference, not the only right answer.
-public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
+public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public enum Category: String, Sendable, Equatable, CaseIterable, Codable {
         /// Everyday speech: fillers, false starts, missing punctuation.
         case everyday

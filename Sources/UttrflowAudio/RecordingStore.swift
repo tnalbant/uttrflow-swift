@@ -4,23 +4,22 @@ public import UttrflowCore
 
 /// The private facts carried beside a recording, with support for the earlier app-only sidecar.
 private struct RecordedDestination: Sendable, Codable {
-    let app: AppContext
+    let app: AppIdentity
     let fieldKind: Destination?
 
-    init(app: AppContext, fieldKind: Destination?) {
-        self.app = AppContext(
-            applicationName: app.applicationName, bundleIdentifier: app.bundleIdentifier)
+    init(app: AppIdentity, fieldKind: Destination?) {
+        self.app = app
         self.fieldKind = fieldKind
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let app = try container.decodeIfPresent(AppContext.self, forKey: .app) {
+        if let app = try container.decodeIfPresent(AppIdentity.self, forKey: .app) {
             self.init(
                 app: app, fieldKind: try container.decodeIfPresent(Destination.self, forKey: .fieldKind))
         } else {
-            // Before field kinds were saved, the sidecar itself was an AppContext plist.
-            self.init(app: try AppContext(from: decoder), fieldKind: nil)
+            // Before field kinds were saved, the sidecar itself was the app's name and bundle.
+            self.init(app: try AppIdentity(from: decoder), fieldKind: nil)
         }
     }
 
@@ -123,7 +122,7 @@ public actor RecordingStore: RecordingKeeper {
 
     public func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) {
         guard last?.id == id || FileManager.default.fileExists(atPath: url(of: id).path) else { return }
-        let recorded = RecordedDestination(app: destination, fieldKind: fieldKind)
+        let recorded = RecordedDestination(app: destination.identity, fieldKind: fieldKind)
         destinations[id] = recorded
         if let data = try? PropertyListEncoder().encode(recorded) {
             try? data.write(to: destinationURL(of: id), options: .atomic)
