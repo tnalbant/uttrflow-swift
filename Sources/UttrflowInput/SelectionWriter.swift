@@ -42,8 +42,7 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
             after.location == selectionBefore.location + text.utf16.count
         else { throw .insertionUnconfirmed }
 
-        // A success that changed nothing is the failure this catches. See `Docs/insertion.md`.
-        // Replacing a selection with its own text is meant to leave the field as it was.
+        // A success that changed nothing is the failure caught here, unless the selection already held the text. See `Docs/insertion.md`.
         if let before, let after = snapshot(window), before == after, !text.isEmpty, selected != text {
             throw .insertionRejected(
                 description: "the field accepted the text and did not change")
