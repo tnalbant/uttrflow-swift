@@ -484,7 +484,7 @@ public enum SettingsPresenter {
     static func tidied(at level: SettingsTidyingLevel) -> String {
         switch level {
         case .light: "So I think we should ship it on friday."
-        case .standard: "I think we should ship it on Friday."
+        case .standard: "So I think we should ship it on Friday."
         }
     }
 
