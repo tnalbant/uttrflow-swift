@@ -539,23 +539,55 @@ public actor PredictStore: PredictionStore {
     public func sweep(
         _ name: String, version: Int, removing refuses: @Sendable (String) -> Bool
     ) throws(PredictStoreError) -> Int {
+        try sweep(name, version: version) { text, _ in refuses(text) }
+    }
+
+    /// Removes every stored line `refuses` matches on its surface, once per `version`, and counts the lines removed.
+    @discardableResult
+    public func sweep(
+        _ name: String, version: Int, removing refuses: @Sendable (String, Surface) -> Bool
+    ) throws(PredictStoreError) -> Int {
         let swept = try database.rows("SELECT version FROM sweep WHERE name = ?", { $0.bind(1, name) }) {
             $0.integer(0)
         }
         if let swept = swept.first, swept >= version { return 0 }
         var removed = 0
         try database.transaction { () throws(PredictStoreError) in
-            let entries = try database.rows("SELECT id, text, superseded_by FROM entry", { _ in }) {
-                (Int64($0.integer(0)), $0.text(1), $0.optionalText(2))
+            let entries = try database.rows(
+                """
+                SELECT entry.id, entry.text, entry.superseded_by,
+                       surface.bundle_id, surface.role, surface.locator, surface.scope
+                FROM entry JOIN surface ON surface.id = entry.surface_id
+                """, { _ in }
+            ) {
+                (
+                    Int64($0.integer(0)), $0.text(1), $0.optionalText(2),
+                    Surface(
+                        bundleIdentifier: $0.text(3), role: $0.text(4), locator: $0.text(5),
+                        scope: $0.text(6))
+                )
             }
-            for (id, text, replacement) in entries where refuses(text) || replacement.map(refuses) == true {
+            for (id, text, replacement, surface) in entries
+            where refuses(text, surface) || replacement.map({ refuses($0, surface) }) == true {
                 try database.run("DELETE FROM entry WHERE id = ?") { $0.bind(1, id) }
                 removed += 1
             }
-            let successions = try database.rows("SELECT rowid, previous, next FROM succession", { _ in }) {
-                (Int64($0.integer(0)), $0.text(1), $0.text(2))
+            let successions = try database.rows(
+                """
+                SELECT succession.rowid, succession.previous, succession.next,
+                       surface.bundle_id, surface.role, surface.locator, surface.scope
+                FROM succession JOIN surface ON surface.id = succession.surface_id
+                """, { _ in }
+            ) {
+                (
+                    Int64($0.integer(0)), $0.text(1), $0.text(2),
+                    Surface(
+                        bundleIdentifier: $0.text(3), role: $0.text(4), locator: $0.text(5),
+                        scope: $0.text(6))
+                )
             }
-            for (row, previous, next) in successions where refuses(previous) || refuses(next) {
+            for (row, previous, next, surface) in successions
+            where refuses(previous, surface) || refuses(next, surface) {
                 try database.run("DELETE FROM succession WHERE rowid = ?") { $0.bind(1, row) }
             }
             try database.run(

@@ -12,6 +12,10 @@ struct SecretSweepTests {
     private static let moment = Date(timeIntervalSince1970: 1_800_000_000)
     private static let shell = Surface(
         bundleIdentifier: "com.example.terminal", role: "AXTextArea", scope: "/work")
+    private static let browser = Surface(
+        bundleIdentifier: "com.apple.Safari", role: "AXTextField", scope: "example.test")
+    private static let terminal = Surface(
+        bundleIdentifier: "com.apple.Terminal", role: "AXTextArea", scope: "/work")
 
     /// Every line written straight to the store, as an older build without the widened rules wrote them.
     private static let learned = [
@@ -75,5 +79,24 @@ struct SecretSweepTests {
 
         #expect(try await CaptureGate.sweepSecrets(from: store) >= 1)
         #expect(try await store.entryCount() == 0)
+    }
+
+    @Test("A widened one-time-code rule sweeps old browser codes without deleting shell commands")
+    func sweepsPreviouslyLearnedCodes() async throws {
+        let scratch = Scratch()
+        let store = try PredictStore(path: scratch.path("predict.sqlite"))
+        #expect(
+            try await store.sweep(
+                "looksLikeSecret", version: 1, removing: CaptureGate.looksLikeSecret) == 0)
+        try await store.record("hello", in: Self.browser, at: Self.moment)
+        try await store.record("123456", in: Self.browser, after: "hello", at: Self.moment)
+        try await store.record("123456", in: Self.terminal, at: Self.moment)
+
+        #expect(try await CaptureGate.sweepSecrets(from: store) == 1)
+        #expect(try await store.entryCount() == 2)
+        #expect(try await store.candidates(for: Self.browser, matching: "123").isEmpty)
+        #expect(try await store.successors(for: Self.browser, after: "hello").isEmpty)
+        #expect(try await store.candidates(for: Self.terminal, matching: "123").map(\.text) == ["123456"])
+        #expect(try await CaptureGate.sweepSecrets(from: store) == 0)
     }
 }

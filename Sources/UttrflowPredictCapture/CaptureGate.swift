@@ -49,12 +49,15 @@ public enum CaptureGate {
     }
 
     /// The version of the credential rules, raised whenever they widen so lines learned before are swept once.
-    public static let secretRulesVersion = 1
+    public static let secretRulesVersion = 2
 
     /// Removes every learned line the credential rules now recognise, once per `secretRulesVersion`, and counts them.
     @discardableResult
     public static func sweepSecrets(from store: PredictStore) async throws(PredictStoreError) -> Int {
-        try await store.sweep("looksLikeSecret", version: secretRulesVersion, removing: looksLikeSecret)
+        try await store.sweep("looksLikeSecret", version: secretRulesVersion) { text, surface in
+            let reading = FieldReading(bundleIdentifier: surface.bundleIdentifier, role: surface.role)
+            return looksLikeSecret(text) || looksLikeSensitiveValue(text, from: reading)
+        }
     }
 
     /// Whether a value has the shape of a credential, asked of the rules the clipboard already uses.
