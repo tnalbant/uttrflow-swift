@@ -193,9 +193,19 @@ enum CompletionText {
     /// The typed text with an answer that left out its echo joined on, or nothing when no boundary says how: a space on either side, or punctuation opening the answer, joins as written; letters against letters could be the rest of a word or a new one run together, and no reading is better than a wrong line.
     static func joined(_ typed: String, with answer: String) -> String? {
         guard let last = typed.last, let first = answer.first else { return nil }
-        guard last.isWhitespace || first.isWhitespace || first.isPunctuation else { return nil }
+        guard last.isWhitespace || first.isWhitespace || isClosingPunctuation(first) else { return nil }
         let continuation = last.isWhitespace ? answer.drop(while: \.isWhitespace) : answer[...]
         return typed + continuation
+    }
+
+    /// Closing punctuation attaches to the preceding word without a space.
+    private static func isClosingPunctuation(_ character: Character) -> Bool {
+        guard let scalar = character.unicodeScalars.first, character.unicodeScalars.count == 1 else {
+            return false
+        }
+        return scalar.properties.generalCategory == .closePunctuation
+            || scalar.properties.generalCategory == .finalPunctuation
+            || ",.!?;:%…'\"".unicodeScalars.contains(scalar)
     }
 
     /// The text up to the last word cut by the budget, or nothing when the cut fell inside its only word.
