@@ -33,6 +33,7 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
         var unitsRead = 0
         var refusesText = false
         var ignoresText = false
+        var movesCaretOnly = false
         var refusesSelection = false
         var textWrites: [String] = []
         var selectionWrites: [Range<Int>] = []
@@ -82,6 +83,11 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
             state.textWrites.append(text)
             guard !state.refusesText else { return .cannotComplete }
             guard !state.ignoresText else { return .success }
+            if state.movesCaretOnly {
+                state.location += text.utf16.count
+                state.length = 0
+                return .success
+            }
             if let concurrentText = state.concurrentTextBeforeWrite {
                 let concurrentRange = NSRange(location: state.location, length: state.length)
                 state.text = (state.text as NSString).replacingCharacters(
@@ -147,6 +153,15 @@ struct SelectionWriterTests {
         #expect(field.text == "same")
         #expect(field.selection == 4..<4, "a genuine write still collapses the selection to a caret past it")
         #expect(field.textWrites == ["same"], "no fallback should have written a second time")
+    }
+
+    @Test("rejects a write that moves the caret over a different selection and leaves the text as it was")
+    func caretMovedButDifferentSelectionUnchangedIsRejected() {
+        let field = FakeSelectionField("other", caret: 0, length: 5) { $0.movesCaretOnly = true }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: "words")
+        }
+        #expect(error == .insertionRejected(description: "the field accepted the text and did not change"))
     }
 
     @Test("does not claim a write landed when the field still reports its old value")

@@ -43,6 +43,8 @@ the old start plus the text's UTF-16 length. A missing or different selection th
 `insertionUnconfirmed`, which stops the route and asks the user to check the field before
 retrying. A write that moves the caret but leaves the surrounding text unchanged throws
 `insertionRejected` ("the field accepted the text and did not change"), and the next strategy runs.
+A selection that already held the same text is the exception: replacing it changes nothing by
+definition, so the moved caret alone confirms the write and no fallback writes the words again.
 
 ## A web field's own state
 

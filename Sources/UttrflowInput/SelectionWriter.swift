@@ -30,6 +30,7 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         let selectionBefore = field.selectedRange()
         let window = window(around: selectionBefore)
         let before = snapshot(window)
+        let alreadyHeld = selectedText(selectionBefore) == text
 
         let result = field.setSelectedText(text)
         guard result == .success else {
@@ -41,8 +42,8 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
             after.location == selectionBefore.location + text.utf16.count
         else { throw .insertionUnconfirmed }
 
-        // A success that changed nothing is the failure this catches. See `Docs/insertion.md`.
-        if let before, let after = snapshot(window), before == after, !text.isEmpty {
+        // A success that changed nothing is the failure this catches, unless the selection already held the text. See `Docs/insertion.md`.
+        if !alreadyHeld, let before, let after = snapshot(window), before == after {
             throw .insertionRejected(
                 description: "the field accepted the text and did not change")
         }
@@ -93,6 +94,16 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
             return (window, window.utf16.count, length)
         }
         return field.value().map { ($0, caret, $0.utf16.count) }
+    }
+
+    /// The text the selection covers before the write, when the field will say.
+    private func selectedText(_ selection: CFRange?) -> String? {
+        guard let selection, selection.length > 0 else { return nil }
+        let range = selection.location..<(selection.location + selection.length)
+        if let text = field.text(in: range) { return text }
+        guard let value = field.value(), range.upperBound <= value.utf16.count else { return nil }
+        let units = Array(value.utf16)[range]
+        return String(decoding: units, as: UTF16.self)
     }
 
     /// Units either side of the selection the no-change check compares.
