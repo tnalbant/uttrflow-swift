@@ -60,6 +60,9 @@ public protocol AccessibilityFocus: Sendable {
 
     /// Whether the focused field hides what is typed, asked without reading a declared secure field's value.
     func focusedFieldIsSecure() -> Bool
+
+    /// The focused field and its caret, or `nil` when it is secure, has a selection or will not say.
+    func focusedFieldPlace() -> FieldPlace?
 }
 
 extension AccessibilityFocus {
@@ -104,4 +107,7 @@ extension AccessibilityFocus {
 
     /// A reader that cannot see the field cannot tell it is secure, and says it is not.
     public func focusedFieldIsSecure() -> Bool { false }
+
+    /// A reader that cannot tell one field from another cannot place a write.
+    public func focusedFieldPlace() -> FieldPlace? { nil }
 }

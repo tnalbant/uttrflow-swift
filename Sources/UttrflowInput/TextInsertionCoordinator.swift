@@ -5,10 +5,16 @@ public struct TextInsertionCoordinator: TextInserting {
     private let strategies: [any TextInsertionEngine]
     /// Asked where the words went the moment they are written, since the recording's answer may be stale.
     private let focus: (any AccessibilityFocus)?
+    /// Where confirmed writes are remembered for a later command, or `nil` where nothing asks.
+    private let ledger: InsertionLedger?
 
-    public init(strategies: [any TextInsertionEngine], focus: (any AccessibilityFocus)? = nil) {
+    public init(
+        strategies: [any TextInsertionEngine], focus: (any AccessibilityFocus)? = nil,
+        ledger: InsertionLedger? = nil
+    ) {
         self.strategies = strategies
         self.focus = focus
+        self.ledger = ledger
     }
 
     /// The strategies that will be tried, in order.
@@ -43,6 +49,27 @@ public struct TextInsertionCoordinator: TextInserting {
     }
 
     private func insert(
+        _ text: String, richText: String?, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) -> InsertionAttempt {
+        do {
+            let attempt = try await write(text, richText: richText, targeting: destination)
+            await remember(attempt, text: text)
+            return attempt
+        } catch {
+            ledger?.clear()
+            throw error
+        }
+    }
+
+    /// Reads the caret after the write, so the ledger holds the span the words occupy now.
+    private func remember(_ attempt: InsertionAttempt, text: String) async {
+        guard let ledger else { return }
+        let focus = focus
+        let place = await AccessibilityThread.run(orElse: FieldPlace?.none) { focus?.focusedFieldPlace() }
+        ledger.note(attempt, text: text, endingAt: place)
+    }
+
+    private func write(
         _ text: String, richText: String?, targeting destination: InsertionDestination?
     ) async throws(TextInsertionError) -> InsertionAttempt {
         let usable =
