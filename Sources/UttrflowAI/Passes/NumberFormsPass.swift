@@ -14,7 +14,7 @@ public struct NumberFormsPass: PieceCleaningPass {
     /// Words after which a lone digit is a numeral, digit groups run together, and no separator is used.
     static let contextWords: Set<String> = [
         "port", "version", "extension", "page", "chapter", "step", "number", "line", "section", "figure",
-        "table", "level", "room", "floor",
+        "table", "level", "room", "floor", "route", "flight", "interstate", "highway", "bus", "gate",
     ]
     static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
@@ -226,6 +226,14 @@ public struct NumberFormsPass: PieceCleaningPass {
                 isPhrase = true
             }
         }
+        if !isPhrase, !inContext, item.spoken, item.count == 1,
+            let hundred = NumberWords.colloquialHundred(unbroken(from: position, keys: keys, shapes: shapes)),
+            readsAsOneQuantity(hundred, at: position, keys: keys, shapes: shapes)
+        {
+            text = String(hundred.value)
+            end = position + hundred.count
+            isPhrase = true
+        }
         if !isPhrase, inContext, item.spoken {
             if joined(end, shapes), keys[end] == "of",
                 let following = NumberWords.cardinal(unbroken(from: end + 1, keys: keys, shapes: shapes))
@@ -252,6 +260,16 @@ public struct NumberFormsPass: PieceCleaningPass {
             return nil
         }
         return Phrase(text: text, count: end - position)
+    }
+
+    /// Whether a colloquial hundred is one value: its tail cannot be a minute, or it is a ratio's first term.
+    private static func readsAsOneQuantity(
+        _ hundred: (value: Int, count: Int), at position: Int, keys: [String], shapes: [WordShape]
+    ) -> Bool {
+        if hundred.value % 100 >= 60 { return true }
+        let after = position + hundred.count
+        return joined(after, shapes) && keys[after] == "over" && joined(after + 1, shapes)
+            && NumberWords.isNumber(keys[after + 1])
     }
 
     /// Requires temporal evidence when the hour and minute form one phrase.

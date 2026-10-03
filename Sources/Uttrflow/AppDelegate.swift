@@ -385,6 +385,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// What is typed into each page's search field, kept per page because six of them have one.
     private var queries: [MainTab: String] = [:]
     private var scopes: [MainTab: String] = [:]
+    /// The order each page's list is read in, kept per page so choosing one never reorders another.
+    private var sorts: [MainTab: String] = [:]
 
     /// How long a finished result stays up, so the last dictation does not sit over every app.
     static let successLingers = Duration.seconds(2)
@@ -2792,7 +2794,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             for: DictionarySnapshot(
                 entries: knownWords, draft: wordDraft, refusal: wordRefusal,
                 query: query(for: .dictionary), filter: scope(for: .dictionary),
-                corrections: corrections, now: now,
+                sort: sorts[.dictionary] ?? "", corrections: corrections, now: now,
                 packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt))
     }
 
@@ -2801,7 +2803,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         SnippetsPresenter.page(
             for: SnippetsSnapshot(
                 snippets: knownSnippets, draft: snippetDraft, refusal: snippetRefusal,
-                query: query(for: .snippets), now: now, arrival: snippetArrival))
+                query: query(for: .snippets), sort: sorts[.snippets] ?? "", now: now,
+                arrival: snippetArrival))
     }
 
     /// Reads the account the pages draw from.
@@ -3017,6 +3020,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 await write.value
             }
 
+        case .sort(let order):
+            guard let page = mainWindow?.page else { return }
+            sorts[page] = order
+            redrawPages([page])
         case .addWord:
             editWord(DictionaryDraft())
         case .cancelWordEdit:

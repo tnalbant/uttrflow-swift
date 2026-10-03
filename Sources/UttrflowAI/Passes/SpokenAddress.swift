@@ -99,7 +99,9 @@ struct SpokenAddress: Equatable {
             position > 1, draft.shape(at: live[position - 2]).key == "path",
             let path = readPath(at: position, within: run, in: live, of: draft)
         else { return nil }
-        return path
+        let first = draft.shape(at: live[position])
+        let last = draft.shape(at: live[position + path.length - 1])
+        return SpokenAddress(length: path.length, text: first.prefix + path.text + last.suffix)
     }
 
     /// Reads an explicitly spoken web scheme and its host.
@@ -151,7 +153,7 @@ struct SpokenAddress: Equatable {
         return SpokenAddress(length: end - position, text: first.prefix + text + last.suffix)
     }
 
-    /// Reads a slash-led path whose segments are words.
+    /// Reads a slash-led path whose segments are words, bare of the marks its ends stood with, which the caller writes once.
     private static func readPath(
         at position: Int, within run: Range<Int>, in live: [Int], of draft: Draft
     ) -> SpokenAddress? {
@@ -172,8 +174,7 @@ struct SpokenAddress: Equatable {
             end += step
         }
         guard end > position else { return nil }
-        let last = draft.shape(at: live[end - 1])
-        return SpokenAddress(length: end - position, text: text + last.suffix)
+        return SpokenAddress(length: end - position, text: text)
     }
 
     /// Small number names that commonly follow a version prefix in a dictated path.

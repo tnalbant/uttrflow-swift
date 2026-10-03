@@ -127,6 +127,13 @@ struct SpokenAddressTests {
             ("my handle is sam at discord", "my handle is sam@discord"),
             ("my handle is sam at example dot com", "my handle is sam@example.com"),
             ("the variable is user underscore id", "the variable is user_id"),
+            ("Visit example dot com slash pricing.", "Visit example.com/pricing."),
+            ("The site is example dot org slash docs slash intro.", "The site is example.org/docs/intro."),
+            (
+                "The url is https colon slash slash example dot com slash docs.",
+                "The url is https://example.com/docs."
+            ),
+            ("The path is slash users slash sam slash notes.", "The path is /users/sam/notes."),
         ]
     )
     func writesSpokenAddresses(input: String, expected: String) {
