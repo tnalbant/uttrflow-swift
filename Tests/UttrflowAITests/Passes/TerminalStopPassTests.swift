@@ -345,4 +345,15 @@ struct TerminalStopPassTests {
             never.apply(Draft(text: "on my way.")).words[2].state
                 == .replaced(by: TerminalStopPass.id, from: "way."))
     }
+    @Test("a one-line field drops the stop from one sentence and keeps all three of three")
+    func oneLineFieldEntry() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        let pass = TerminalStopPass(policy: formatter.terminalStop, layout: formatter.layout)
+        #expect(cleaned("Project plan", by: pass) == "Project plan")
+        #expect(cleaned("Is it ready?", by: pass) == "Is it ready?")
+        #expect(
+            cleaned("Call Sam. Book the room. Send notes", by: pass) == "Call Sam. Book the room. Send notes."
+        )
+    }
 }
