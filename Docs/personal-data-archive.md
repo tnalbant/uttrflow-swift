@@ -19,5 +19,10 @@ merges by case-insensitive dictionary spelling and normalized snippet trigger,
 keeps existing entries when they collide, and reports how many duplicates it
 skipped. A malformed or unsupported archive is refused without changing either
 list. An import that would exceed the dictionary's inferred-word limit is also
-refused before writing either list. The archive schema is version 1; incompatible
-future formats must use a new version rather than silently guessing at fields.
+refused before writing either list. Selected files are read in bounded chunks and
+refused above 5 MiB before JSON decoding. An archive may contain at most 1,000
+snippets; each trigger is limited to 256 UTF-8 bytes and each expansion to 16 KiB.
+Dictionary spellings and pronunciations are each limited to 256 UTF-8 bytes. These
+limits are checked before either store changes, and their refusal is reported in the
+import alert. The archive schema is version 1; incompatible future formats must use
+a new version rather than silently guessing at fields.
