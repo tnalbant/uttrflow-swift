@@ -13,9 +13,7 @@ enum SignOff {
 
     /// The line cut back to its closing unless the name after it is one the person wrote, or nothing when that leaves no continuation.
     static func unsigned(_ line: String, typed: String, ownLines: [String]) -> String? {
-        guard let comma = line.firstIndex(of: ","),
-            closings.contains(line[..<comma].trimmingCharacters(in: .whitespaces).lowercased())
-        else { return line }
+        guard let comma = closingComma(in: line) else { return line }
         let signature = words(of: String(line[line.index(after: comma)...]))
         // A signature is one to three capitalised words; lowercase words after it cannot make it safe.
         guard let first = signature.first, first.first?.isUppercase == true else { return line }
@@ -35,6 +33,21 @@ enum SignOff {
             return closing.count > typed.count ? closing : nil
         }
         return line
+    }
+
+    /// Finds a comma that ends a closing at the start of a comma- or sentence-delimited segment.
+    private static func closingComma(in line: String) -> String.Index? {
+        for comma in line.indices where line[comma] == "," {
+            let beforeComma = line[..<comma]
+            let segmentStart =
+                beforeComma.lastIndex(where: { ",.!?".contains($0) || $0.isNewline })
+                .map { beforeComma.index(after: $0) } ?? line.startIndex
+            let segment = beforeComma[segmentStart...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if closings.contains(segment) { return comma }
+        }
+        return nil
     }
 
     /// The most words a signature after a closing runs to.
