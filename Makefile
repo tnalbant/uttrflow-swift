@@ -161,6 +161,8 @@ offline-test: ## Prove the offline audit still refuses every way of reaching the
 .PHONY: docs-audit
 docs-audit: ## Prove the documentation still describes this tree, including that CLAUDE.md delegates to AGENTS.md. Needs no build.
 	@python3 Scripts/preview_gen_test.py
+	@python3 Scripts/rule_file_duplicate_audit.py --self-test
+	@python3 Scripts/rule_file_duplicate_audit.py
 	./Scripts/docs_audit.sh --self-test
 
 .PHONY: pii-audit
