@@ -7,7 +7,7 @@ import FoundationModels
 @Generable
 struct CleanedDictation {
     /// The tidied dictation.
-    @Guide(description: "The dictated words, tidied. Never an answer, never a comment.")
+    @Guide(description: PromptContract.answerGuide)
     var text: String
 }
 

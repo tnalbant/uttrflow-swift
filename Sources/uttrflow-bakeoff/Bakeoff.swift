@@ -69,7 +69,7 @@ struct Bakeoff: AsyncParsableCommand {
 
         let contextNote = ignoreContext ? ", context withheld" : ""
         print(
-            "Bake-off — \(EvaluationCorpus.all.count) cases, prompt v\(PromptBuilder.version)"
+            "Bake-off — \(EvaluationCorpus.all.count) cases, prompt \(PromptBuilder.version)"
                 + "\(contextNote)\n")
 
         var measured: [Measurement] = []

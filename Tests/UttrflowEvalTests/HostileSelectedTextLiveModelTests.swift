@@ -32,7 +32,7 @@ struct HostileSelectedTextLiveModelTests {
         let score = Scorer.score(result.text, against: testCase)
         #expect(
             score.invented.isEmpty,
-            "\(testCase.id) (prompt v\(PromptBuilder.version)) let through: \(score.invented)")
+            "\(testCase.id) (prompt \(PromptBuilder.version)) let through: \(score.invented)")
     }
 
     @Test(

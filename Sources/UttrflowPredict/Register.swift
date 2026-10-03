@@ -10,7 +10,7 @@ public struct Register: Sendable, Equatable {
     public let typicalLength: Int?
     /// Whether the screen shows people taking turns, by name or by timestamp beside a message box, which the line is then a reply in.
     public let isConversational: Bool
-    /// The share of the characters here that are neither letters, digits nor spaces: high for commands, code and queries.
+    /// The share of visible characters here that are neither letters, digits nor sentence punctuation: high for commands, code and queries.
     public let symbolShare: Double
     /// Whether this person writes in full sentences here, or nothing when they have written nothing here yet.
     public let usesSentenceCase: Bool?
@@ -37,6 +37,9 @@ public struct Register: Sendable, Equatable {
 
     /// Above this share of symbols the text reads as commands, code or queries: shell lines sit near 0.14, prose under 0.06.
     public static let symbolicShare = 0.10
+
+    /// The fewest visible characters needed before symbol share can describe the register.
+    static let minimumSymbolSampleCharacters = 8
 
     /// A screen needs at least this many lines before it reads as a conversation.
     public static let conversationLines = 3
@@ -292,15 +295,23 @@ public struct Register: Sendable, Equatable {
         character.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.value == 0xFE0F }
     }
 
-    /// The share of the visible characters that are neither letters, digits nor whitespace, emoji left out.
+    /// The share of visible characters that are neither letters, digits nor sentence punctuation; emoji and whitespace are left out, and short samples provide no symbol evidence.
     static func symbolShare(of texts: [String]) -> Double {
         var visible = 0
         var symbols = 0
         for character in texts.joined() where !character.isWhitespace && !isPictograph(character) {
             visible += 1
-            if !character.isLetter, !character.isNumber { symbols += 1 }
+            if !character.isLetter, !character.isNumber, !isSentencePunctuation(character) {
+                symbols += 1
+            }
         }
-        return visible == 0 ? 0 : Double(symbols) / Double(visible)
+        guard visible >= minimumSymbolSampleCharacters else { return 0 }
+        return Double(symbols) / Double(visible)
+    }
+
+    /// Sentence punctuation finishes prose and should not make a short reply look like code.
+    private static func isSentencePunctuation(_ character: Character) -> Bool {
+        ".,?!'\"‘’“”".contains(character)
     }
 
     /// The share of the lines that open with a capital and close with sentence punctuation.

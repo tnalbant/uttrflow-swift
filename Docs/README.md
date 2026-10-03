@@ -45,6 +45,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
+| [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
 | [adapters.md](adapters.md) | Format adapters: one registry for structured writing |
 | [latin-output.md](latin-output.md) | Latin letters only: the romaniser, the script guard and the last check |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
@@ -136,6 +137,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 
 | Page | What it covers |
 |---|---|
+| [accuracy-targets.md](accuracy-targets.md) | Accuracy targets, the error taxonomy and the release gate |
 | [measure-a-change.md](measure-a-change.md) | Which command measures which kind of change, its run time and what it needs |
 | [measuring-accuracy.md](measuring-accuracy.md) | Making speech accuracy measurable |
 | [core-word-error-rate.md](core-word-error-rate.md) | How word error rate is measured, and why it lives in Core |
@@ -143,6 +145,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [eval-context-cases.md](eval-context-cases.md) | The context pairs in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
+| [probe-log.md](probe-log.md) | Where, when and on which build every probe number was measured |
 | [bakeoff.md](bakeoff.md) | Local model bake-off |
 | [bakeoff-method.md](bakeoff-method.md) | How the bake-off measures, and why each row is there |
 

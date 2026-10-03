@@ -280,6 +280,11 @@ one model call per piece — is `Docs/cleanup-design.md`. Below is where things 
   number; the tenth paid for the shared examples), and the contract sentence teaching
   the model what to do with a doubtful-words line was paid for by trimming contract
   prose rather than by raising it.
+  `PromptBuilder.version` is computed, not kept: twelve hex digits of a SHA-256 over
+  every destination's instructions, the situation labels and the structured answer's
+  schema with its guide text (`PromptContract.answerGuide`), so any wording change gives
+  a new version and two different prompts never share one. The contract names each
+  situation label by interpolating its constant, so a renamed label reaches the teaching.
   Additions go in as one rule and one worked example each, measured against the corpus
   before and after (`make bakeoff ARGS="--baselines-only"`, which now reports pass rates
   by destination), and no block's examples may overlap a corpus case (two tests enforce

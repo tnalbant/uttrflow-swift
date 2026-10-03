@@ -81,6 +81,13 @@ final class TapObserver: @unchecked Sendable {
             Re-enabled             \(seen.reEnables)
             """
     }
+
+    /// The same counts on one line, for the probe-log row.
+    func oneLineSummary() -> String {
+        let seen = counts.withLock { $0 }
+        return "Tab swallowed \(seen.tabsSwallowed), other keys \(seen.otherKeys), "
+            + "disabled \(seen.disables), re-enabled \(seen.reEnables)"
+    }
 }
 
 /// Bridges the C callback back to the observer that owns the tap.

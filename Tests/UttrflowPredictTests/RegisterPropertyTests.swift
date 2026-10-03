@@ -151,8 +151,13 @@ struct RegisterPropertyTests {
         let visible = ([sample.situation.preceding ?? "", sample.typed] + sample.situation.recentLines)
             .joined()
             .filter { !$0.isWhitespace && !Register.isPictograph($0) }
-        let symbols = visible.filter { !$0.isLetter && !$0.isNumber }.count
-        let expected = visible.isEmpty ? 0 : Double(symbols) / Double(visible.count)
+        let symbols = visible.filter {
+            !$0.isLetter && !$0.isNumber && !".!?,'\"‘’“”".contains($0)
+        }.count
+        let expected =
+            visible.count < Register.minimumSymbolSampleCharacters
+            ? 0
+            : Double(symbols) / Double(visible.count)
         #expect(register.symbolShare == expected)
     }
 
