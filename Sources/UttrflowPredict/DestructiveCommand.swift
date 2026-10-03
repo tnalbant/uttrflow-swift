@@ -130,12 +130,13 @@ public enum DestructiveCommand {
         "do", "then", "else", "elif", "if", "while", "until", "!",
     ]
 
-    /// Commands that destroys() judges in their own right, so the unknown-carrier failsafe leaves them alone.
+    /// Commands with their own argument semantics, which the carrier failsafe must not reinterpret.
     private static let judgedCommands: Set<String> = [
         "chmod", "chown", "chgrp", "git", "hg", "svn", "find", "diskutil",
         "terraform", "tofu", "redis-cli", "valkey-cli", "keydb-cli", "mongo", "mongosh",
         "crontab", "sh", "bash", "zsh", "dash", "ksh", "fish", "su", "runuser",
         "eval", "mv", "cp", "killall", "pkill", "kill", "rsync", "tee",
+        "echo", "man", "which", "tldr", "type",
     ]
 
     /// Programs that destroy whatever they are pointed at.
