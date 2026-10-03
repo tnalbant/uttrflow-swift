@@ -5,9 +5,12 @@ import UttrflowCore
 enum MentionGuard {
     private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
     private static let finalPeriodCompoundModifiers: Set<String> = [
-        "cooling", "day", "following", "grace", "holding", "month", "notice", "off", "time", "trial",
-        "victorian", "waiting", "week", "year",
+        "cooling", "following", "grace", "holding", "notice", "time", "trial", "victorian", "waiting",
     ]
+    /// Units that name a period only when a number counts them: "a six month period", not "a nice day period".
+    private static let countedPeriodUnits: Set<String> = ["day", "week", "month", "year"]
+    /// Particles that name a period only after the -ing word they complete: "cooling off", not "the light off".
+    private static let gerundPeriodParticles: Set<String> = ["off"]
 
     /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
     static func namesToken(at position: Int, in live: [Int], of draft: Draft) -> Bool {
@@ -82,7 +85,8 @@ enum MentionGuard {
             if let bridging {
                 if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
             } else if !isModifier(
-                shape.key, before: draft.shape(at: live[position]).key, finalMark: finalMark
+                shape.key, before: draft.shape(at: live[position]).key, finalMark: finalMark,
+                after: back < position ? draft.shape(at: live[position - back - 1]).key : nil
             ) {
                 return false
             }
@@ -91,9 +95,10 @@ enum MentionGuard {
     }
 
     /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
-    private static func isModifier(_ word: String, before head: String, finalMark: Bool) -> Bool {
-        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.digits(word) != nil)
-        {
+    private static func isModifier(
+        _ word: String, before head: String, finalMark: Bool, after preceding: String?
+    ) -> Bool {
+        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.isNumber(word)) {
             return true
         }
         let phrase = "the \(word) \(head)"
@@ -105,7 +110,11 @@ enum MentionGuard {
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
-        if head == "period" && finalMark && finalPeriodCompoundModifiers.contains(word) { return true }
+        if head == "period" && finalMark {
+            if finalPeriodCompoundModifiers.contains(word) { return true }
+            if countedPeriodUnits.contains(word) { return preceding.map(NumberWords.isNumber) ?? false }
+            if gerundPeriodParticles.contains(word) { return preceding?.hasSuffix("ing") ?? false }
+        }
         if lexicalClass == .noun && head == "period" && !finalMark {
             return true
         }
