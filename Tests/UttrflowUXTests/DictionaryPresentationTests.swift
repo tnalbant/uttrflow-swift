@@ -515,3 +515,71 @@ struct DictionaryFixesTests {
         #expect(page.fixesLabel == "Fixed today · 1 correction")
     }
 }
+
+@Suite("What the pronunciation will do")
+struct PronunciationNoteTests {
+    private func editor(_ word: String, _ said: String) throws -> DictionaryEditor {
+        try #require(
+            HistoryFixture.dictionary(draft: DictionaryDraft(word: word, pronunciation: said)).editor)
+    }
+
+    @Test(
+        "the spelling again adds nothing, and says so",
+        arguments: [
+            ("PayPal", "pay pal"), ("Uttrflow", "uttrflow"), ("iOS", "i o s"),
+            ("Kubectl", "kubectl"), ("GitHub", "git-hub"), ("Zorvex", "ZORVEX"),
+        ])
+    func addsNothing(word: String, said: String) throws {
+        let editor = try editor(word, said)
+        #expect(editor.pronunciationNote == "This is the spelling again, so it adds nothing. Leave it blank.")
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "one ordinary word is noted as a word every doubt about it will offer",
+        arguments: ["time", "people", "year", "look", "good", "work"])
+    func ordinaryWord(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.pronunciationNote
+                == "Uttrflow will offer \u{201C}Zorvex\u{201D} whenever it doubts \u{201C}\(said)\u{201D}; the screen or your own earlier words must back it."
+        )
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "one function word is refused, since swapping it changes the meaning",
+        arguments: ["the", "and", "of", "is", "would", "because"])
+    func functionWord(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.problem
+                == "\u{201C}\(said)\u{201D} is too common a small word to stand for \u{201C}Zorvex\u{201D}; swapping it would change what was said."
+        )
+        #expect(editor.pronunciationNote == nil)
+        #expect(!editor.canSave)
+    }
+
+    @Test(
+        "digits or symbols are noted as matched as written",
+        arguments: ["r2d2", "c#", "k8s", "dot.net", "x+y", "zor_vex"])
+    func literal(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.pronunciationNote
+                == "Digits and symbols have no sound to match, so this is matched as written.")
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "a blank or a sounded-out phrase gets no note",
+        arguments: [
+            ("Kubectl", "cube control"), ("Uttrflow", "utter-flow"), ("Zorvex", ""),
+            ("Nikhil", "nikkel"), ("Zorvex", "zore vecks"), ("Zorvex", "   "),
+        ])
+    func silent(word: String, said: String) throws {
+        let editor = try editor(word, said)
+        #expect(editor.pronunciationNote == nil)
+        #expect(editor.problem == nil)
+    }
+}
