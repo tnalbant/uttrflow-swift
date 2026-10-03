@@ -25,7 +25,7 @@ the keyboard, settings, and dictation pipeline components below.
 | `vcs.release_branch` | Uses `main`; this repository has no separate release branch. |
 | `release` | Releases are tags on `main`, and the release owner handles tagging and releasing. |
 | `issues.provider` | Uses GitHub for issue tracking. |
-| `tracker.path` | Uses `PLAN.md` as the live phase tracker. |
+| `tracker.path` | Uses `PLAN.md` at the root of the checkout as the run's working tracker. The file is gitignored and local to each checkout; future work is a GitHub issue. |
 | `rules_files` | Loads `AGENTS.md` and `Docs/shortcuts.md` as repository rules. |
 | `build.components` | Defines focused checks for keyboard, settings, and dictation pipeline work. |
 | `autonomy.hard_stops` | Stops for `schema` or `infra` changes. |
@@ -42,7 +42,7 @@ The focused component checks are:
 ## Ownership and changes
 
 Repository maintainers own the Uttrflow-specific values in `graphflow.yaml`. Keep those
-values consistent with `AGENTS.md`, `PLAN.md`, and the source tree. In particular, branches
+values consistent with `AGENTS.md` and the source tree. In particular, branches
 and review rules come from `AGENTS.md`; Graphflow settings do not override that policy.
 Changes to the config or this guide go through a pull request to `main` under the repository
 rules. The release owner alone makes releases, as specified in the config and `AGENTS.md`.

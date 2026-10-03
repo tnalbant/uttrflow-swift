@@ -2,7 +2,7 @@
 
 How dictated words become the text the speaker would have typed, in the place they are
 typing it. This is the design the second tier of cleaning is built against
-(`PLAN.md`, Phase 11). It replaces case-by-case fixes with four small, separately
+(its phases are in section 10). It replaces case-by-case fixes with four small, separately
 testable ideas, so that a new cleaning is a new value in a table or a new pass in a
 list, never a new branch in the pipeline.
 
@@ -199,6 +199,13 @@ public struct Draft: Sendable, Equatable {
 A pass is a pure function over a value; each is tested on its own with the corpus
 cases that belong to it, with the model switched off, so a pass that works keeps
 working when the model changes.
+
+A sentence-local pass reads no further back than the sentence it is cleaning. A rule
+that gathers context by walking outwards from a word is bounded at the sentence end as
+well as by a word count: `WordShape.key` drops a trailing stop, so without that bound a
+two-word phrase, a number anchor or a determiner can be matched across a boundary the
+speaker set. `Draft.sentenceRun` is the bound, and `SentenceLocalityTests` holds every
+such pass to it.
 
 ## 4. The language model, as the last formatter
 

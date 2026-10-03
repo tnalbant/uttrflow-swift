@@ -191,7 +191,7 @@ def main():
             print(f"  {failure}")
         print("\nAsk MeaningPreservationGuard.sameForm whether two spellings are one word,")
         print("spelledInto or isWritten whether it is written out, and WordErrorRate.measure")
-        print("whether it is still there in order. See issue #189 in PLAN.md.")
+        print("whether it is still there in order. See Docs/agents/code-quality.md.")
         return 1
 
     print(f"Word matches: {total} loose, none higher than the baseline.")

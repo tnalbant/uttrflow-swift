@@ -13,6 +13,20 @@ holds the contribution contract around them.
    baselines and `Docs/` (`git diff --shortstat origin/main`). A larger change is split into a
    series that each pass `make verify`.
 
+## Plans and future work
+
+A plan, a task list, a hand-off note or any other working artefact of a session is local to
+the checkout that made it. Work that is found and not done in the current change is an issue.
+
+| Rule | Check | Pass |
+|---|---|---|
+| A plan lives only at `/PLAN.md` or under `/.plans/`, both gitignored | `git ls-files PLAN.md .plans` | prints nothing |
+| No other working artefact reaches the root | `python3 Scripts/root_layout_audit.py` | exits 0 |
+| Future work, a deferred fix or a measurement still owed is an issue, not a line in a tracked file | `gh issue create`, linked from the pull request; the reviewer counts 0 "still owed", "not yet" or "later" lines added to `Docs/` without an issue link in the pull request | 0 |
+
+A `Docs/` page records what is true and why; an issue records what is not done yet. When an
+issue closes, the page changes in the same pull request.
+
 ## How a pull request lands
 
 1. It targets `main`: `gh pr create --base main`.

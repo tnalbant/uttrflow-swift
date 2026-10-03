@@ -91,7 +91,8 @@ directory — a terminal's working directory — is scoped to itself, which is t
 
 **Status.** Every piece exists and the app runs them: `SuggestionCoordinator` owns the
 loop, verification sits between ranking and drawing, one `MLXCandidateScorer` is wired in as
-both scorer and generator, and `AppDelegate` builds it. `PLAN.md` tracks the phases.
+both scorer and generator, and `AppDelegate` builds it. Remaining work is tracked as GitHub
+issues, not on this page.
 
 ## A suggestion is written in English, in the Latin alphabet
 

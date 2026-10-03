@@ -82,6 +82,14 @@ English draft does not switch the check off for the whole rewrite.
 It runs after the function-word churn check so a rewrite that did both still reports the
 churn, which is the more useful reason.
 
+The churn allowance is set by the produced side: it scales with the rewrite's sentence
+count, so a rewrite that writes more full stops is allowed more function-word churn. It is
+not scaled off the kept draft instead, because that draft is an unpunctuated transcript
+with a sentence count of one, and the allowance would then refuse the run-on splitting
+the tidier exists for. Whether the produced side can buy enough allowance to change a
+meaning is a corpus measurement rather than a guard edit; both negation arms and the
+invention arm refuse a reversed meaning on their own.
+
 Neither arm moved the corpus: `--baselines-only` scored 92% shipping / 88% Apple / 79% rules
 with nothing declined, before and after, identical in every category and destination.
 
