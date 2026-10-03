@@ -90,7 +90,8 @@ A refusal is like `largestClip`'s: the picture is still on the system clipboard,
 A picture over the edge is downsampled while it is decoded, with
 `CGImageSourceCreateThumbnailAtIndex`, so its full-size bitmap never exists. PNG bytes within
 `largestPicture` are still kept as they are, whatever their size, because keeping them decodes
-nothing; the panel's thumbnail is drawn from them at 68 pixels by the same ImageIO call.
+nothing; the panel checks the header against `largestPicture` before drawing a thumbnail at 68
+pixels, and shows its placeholder when the header is too large or unreadable.
 
 The ceiling sits just above a 12000 × 12000 picture (144 megapixels, 576 MB as an uncompressed
 bitmap), so the largest picture decoded at all is about that size. The edge keeps a 4032 × 3024

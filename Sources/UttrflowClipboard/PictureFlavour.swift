@@ -68,9 +68,7 @@ enum PictureFlavour {
 
     /// Whether a header's size is within `largestPicture`, where zero means no bound.
     static func fits(_ size: (width: Int, height: Int), within budget: ClipboardBudget) -> Bool {
-        guard budget.largestPicture > 0 else { return true }
-        let (pixels, overflow) = size.width.multipliedReportingOverflow(by: size.height)
-        return !overflow && pixels <= budget.largestPicture
+        budget.fitsPicture(width: size.width, height: size.height)
     }
 
     /// The first image turned the way its orientation tag says it is shown, at most `edge` pixels long.
