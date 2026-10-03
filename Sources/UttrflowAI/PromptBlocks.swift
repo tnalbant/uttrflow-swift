@@ -170,7 +170,7 @@ public enum PromptBlocks {
         id: "plain",
         rules: """
             In plain text:
-            - full sentences; end with a full stop, question or exclamation mark
+            - full sentences; end with a full stop or a question mark; an exclamation mark only where one was said or already written
             - keep every line break given, and add none
             - fix a grammar slip: "the parcel arrive yesterday" → "the parcel arrived yesterday", \
             "those report is ready" → "those reports are ready", a drifting tense, a lowercase name or acronym
