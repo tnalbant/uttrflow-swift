@@ -887,6 +887,21 @@ struct GrammarGuardTests {
         #expect(sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
     }
 
+    @Test("an offered reading excuses only the opening, and every other text check still runs")
+    func excusedOpeningStillChecksTheRest() {
+        let draft = Draft(
+            words: "hear is the plan".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3)
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["Here"])]
+
+        #expect(sut.verdict(draft: draft, rewritten: "Here is the plan.", offering: offered).isAccepted)
+        #expect(
+            !sut.verdict(draft: draft, rewritten: "Here is the plan for 30 people.", offering: offered)
+                .isAccepted)
+        #expect(!sut.verdict(draft: draft, rewritten: "Here is the plan.").isAccepted)
+    }
+
     @Test("accepts a doubtful word written as one of the readings it was offered")
     func acceptsAnOfferedReading() {
         let offered = [DoubtfulSpan(heard: "apple", confidence: 0.31, candidates: ["Apple", "apples"])]
@@ -1734,5 +1749,12 @@ struct MeaningGuardIndexEquivalenceTests {
             }
         }
         return .accepted
+    }
+}
+
+extension MeaningPreservationGuard {
+    /// The text-only checks with no opening excused, as the draft verdict runs them.
+    func verdict(original: String, rewritten: String) -> GuardVerdict {
+        Self.textVerdict(original: original, rewritten: rewritten, excusingPreamble: false)
     }
 }

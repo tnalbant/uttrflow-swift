@@ -37,13 +37,10 @@ public struct MeaningPreservationGuard: Sendable {
         grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
-        if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
-            guard kind == .preamble,
-                Self.rewriteStartsWithOfferedReading(draft: draft, rewritten: rewritten, offering: doubtful)
-            else { return .rejected(reason: reason, kind: kind) }
-        }
-        if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
-            original: draft.text, rewritten: rewritten)
+        let excusingPreamble = Self.rewriteStartsWithOfferedReading(
+            draft: draft, rewritten: rewritten, offering: doubtful)
+        if case .rejected(let reason, let kind) = Self.textVerdict(
+            original: draft.text, rewritten: rewritten, excusingPreamble: excusingPreamble)
         {
             return .rejected(reason: reason, kind: kind)
         }
@@ -51,9 +48,6 @@ public struct MeaningPreservationGuard: Sendable {
             draft: draft, rewritten: rewritten)
         {
             return .rejected(reason: reason, kind: kind)
-        }
-        if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
-            return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
         let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
         if case .rejected(let reason, let kind) = Self.removalVerdict(
@@ -316,8 +310,8 @@ public struct MeaningPreservationGuard: Sendable {
         return (paragraphs, lines)
     }
 
-    /// Accepts a rewrite unless it is empty, chatty, far longer, mostly dropped, or invents a number.
-    public func verdict(original: String, rewritten: String) -> GuardVerdict {
+    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, or invents a number.
+    static func textVerdict(original: String, rewritten: String, excusingPreamble: Bool) -> GuardVerdict {
         let originalWords = TextTidy.words(original)
         let rewrittenWords = TextTidy.words(rewritten)
 
@@ -330,10 +324,12 @@ public struct MeaningPreservationGuard: Sendable {
             return .rejected(reason: reason, kind: kind)
         }
         // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
-        if let preamble = Self.preambles.first(where: {
-            rewritten.lowercased().hasPrefix($0)
-                && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
-        }) {
+        if !excusingPreamble,
+            let preamble = Self.preambles.first(where: {
+                rewritten.lowercased().hasPrefix($0)
+                    && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
+            })
+        {
             return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
         }
         if Double(rewrittenWords.count) > Double(originalWords.count) * Self.maximumGrowthFactor + 4 {
