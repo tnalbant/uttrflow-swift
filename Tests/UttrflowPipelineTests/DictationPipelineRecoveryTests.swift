@@ -1,6 +1,5 @@
 // Tests that a failing stage never loses the user's words, and that stages are timed.
 import Foundation
-import Synchronization
 import Testing
 
 @testable import UttrflowCore
@@ -9,77 +8,9 @@ import Testing
 
 // MARK: - Doubles
 
-/// A ``TranscriptCleaning`` scripted to tidy or fail, recording every request.
-private final class RecoveryFakeCleaner: TranscriptCleaning, Sendable {
-    private struct State: Sendable {
-        var outcome: ScriptedOutcome<TransformationResult, TransformationError>
-        var requests: [TransformationRequest] = []
-    }
-
-    private let state: Mutex<State>
-    private let clock: ManualClock?
-    private let takes: Duration
-
-    init(
-        outcome: ScriptedOutcome<TransformationResult, TransformationError> = .success(
-            TransformationResult(text: "Tidied text.", producedBy: .foundationModels)),
-        clock: ManualClock? = nil,
-        takes: Duration = .zero
-    ) {
-        self.state = Mutex(State(outcome: outcome))
-        self.clock = clock
-        self.takes = takes
-    }
-
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        let outcome = state.withLock { state -> ScriptedOutcome<TransformationResult, TransformationError> in
-            state.requests.append(request)
-            return state.outcome
-        }
-        clock?.advance(by: takes)
-        return try outcome.resolve()
-    }
-
-    /// Every request the pipeline sent, in order.
-    var requests: [TransformationRequest] { state.withLock { $0.requests } }
-}
-
-/// A ``TextInserting`` scripted to place text or fail, recording what it is asked to insert.
-private final class RecoveryFakeInserter: TextInserting, Sendable {
-    private struct State: Sendable {
-        var outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError>
-        var received: [String] = []
-    }
-
-    private let state: Mutex<State>
-    private let clock: ManualClock?
-    private let takes: Duration
-
-    init(
-        outcome: ScriptedOutcome<InsertionAttempt, TextInsertionError> = .success(
-            InsertionAttempt(.accessibility)),
-        clock: ManualClock? = nil,
-        takes: Duration = .zero
-    ) {
-        self.state = Mutex(State(outcome: outcome))
-        self.clock = clock
-        self.takes = takes
-    }
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        let outcome = state.withLock { state -> ScriptedOutcome<InsertionAttempt, TextInsertionError> in
-            state.received.append(text)
-            return state.outcome
-        }
-        clock?.advance(by: takes)
-        return try outcome.resolve()
-    }
-
-    /// Every string the pipeline asked to have inserted, in order.
-    var received: [String] { state.withLock { $0.received } }
-}
+/// What the tidier answers unless a test scripts otherwise.
+private let tidiedText = ScriptedSequence<TransformationResult, TransformationError>(
+    .success(TransformationResult(text: "Tidied text.", producedBy: .foundationModels)))
 
 /// A ``WordCorrecting`` that costs time and, by default, proposes nothing, as a dictionary mostly does.
 private struct RecoveryFakeCorrector: WordCorrecting {
@@ -143,11 +74,10 @@ struct DictationPipelineRecoveryTests {
     private func makePipeline(
         speech: FakeSpeechEngine = FakeSpeechEngine(
             transcribeOutcome: .success(.fixture(text: spokenWords))),
-        cleaner: RecoveryFakeCleaner = RecoveryFakeCleaner(
-            outcome: .success(
-                TransformationResult(text: tidiedWords, producedBy: .foundationModels))),
+        cleaner: FakeTranscriptCleaner = FakeTranscriptCleaner(answering: ScriptedSequence(.success(
+                TransformationResult(text: tidiedWords, producedBy: .foundationModels)))),
         context: FakeContextEngine = FakeContextEngine(context: .fixture()),
-        inserter: RecoveryFakeInserter = RecoveryFakeInserter(),
+        inserter: FakeTextInserter = FakeTextInserter(),
         corrector: any WordCorrecting = NoTextChanges(),
         snippets: any SnippetExpanding = NoTextChanges(),
         metrics: any MetricsRecording = NoOpMetricsRecorder(),
@@ -178,9 +108,9 @@ struct DictationPipelineRecoveryTests {
     /// Tidying is a nicety; the words are the product.
     @Test("when tidying fails the pipeline inserts exactly what the user actually said")
     func tidyingFailureInsertsTheRawTranscript() async throws {
-        let inserter = RecoveryFakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
-            cleaner: RecoveryFakeCleaner(outcome: .failure(.noCapableTransformer)),
+            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.noCapableTransformer))),
             inserter: inserter
         )
 
@@ -197,8 +127,7 @@ struct DictationPipelineRecoveryTests {
     @Test("a transcript that could not be tidied is attributed to no engine at all")
     func tidyingFailureIsAttributedToNoEngine() async throws {
         let pipeline = makePipeline(
-            cleaner: RecoveryFakeCleaner(
-                outcome: .failure(.transformFailed(kind: .foundationModels, description: "model died")))
+            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.transformFailed(kind: .foundationModels, description: "model died"))))
         )
 
         let state = await dictate(pipeline)
@@ -212,7 +141,7 @@ struct DictationPipelineRecoveryTests {
     @Test("when insertion fails the failure still carries the words so they can be offered")
     func insertionFailureCarriesTheTranscript() async throws {
         let pipeline = makePipeline(
-            inserter: RecoveryFakeInserter(outcome: .failure(.noFocusedTextField)))
+            inserter: FakeTextInserter(.failure(.noFocusedTextField)))
 
         let state = await dictate(pipeline)
 
@@ -226,7 +155,7 @@ struct DictationPipelineRecoveryTests {
 
     @Test("when tidying succeeds it is the cleaned text that is inserted, not the raw one")
     func tidiedTextIsPreferredWhenAvailable() async throws {
-        let inserter = RecoveryFakeInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(inserter: inserter)
 
         let state = await dictate(pipeline)
@@ -240,8 +169,8 @@ struct DictationPipelineRecoveryTests {
     /// Transcription failing means there were never any words to keep.
     @Test("when transcription fails the dictation ends with no transcript and nothing inserted")
     func transcriptionFailureHasNothingToSalvage() async throws {
-        let inserter = RecoveryFakeInserter()
-        let cleaner = RecoveryFakeCleaner()
+        let inserter = FakeTextInserter()
+        let cleaner = FakeTranscriptCleaner(answering: tidiedText)
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(transcribeOutcome: .failure(.transcriptionFailed(description: "x"))),
             cleaner: cleaner,
@@ -267,7 +196,7 @@ struct DictationPipelineRecoveryTests {
 
         let insertionError = TextInsertionError.accessibilityDenied
         let insertionState = await dictate(
-            makePipeline(inserter: RecoveryFakeInserter(outcome: .failure(insertionError))))
+            makePipeline(inserter: FakeTextInserter(.failure(insertionError))))
         let insertionFailure = try #require(insertionState.failure)
         #expect(insertionFailure.message == insertionError.userMessage)
         #expect(insertionFailure.recovery == insertionError.recovery)
@@ -291,11 +220,8 @@ struct DictationPipelineRecoveryTests {
         let recorder = RecordingMetricsRecorder()
         let clock = ManualClock()
         let pipeline = makePipeline(
-            cleaner: RecoveryFakeCleaner(
-                outcome: .success(TransformationResult(text: tidiedWords, producedBy: .foundationModels)),
-                clock: clock,
-                takes: .milliseconds(120)),
-            inserter: RecoveryFakeInserter(clock: clock, takes: .milliseconds(30)),
+            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.success(TransformationResult(text: tidiedWords, producedBy: .foundationModels))), takes: .charged(.milliseconds(120), to: clock)),
+            inserter: FakeTextInserter(takes: .charged(.milliseconds(30), to: clock)),
             corrector: RecoveryFakeCorrector(clock: clock, takes: .milliseconds(4)),
             snippets: RecoveryFakeExpander(clock: clock, takes: .milliseconds(2)),
             metrics: recorder,
@@ -368,10 +294,9 @@ struct DictationPipelineRecoveryTests {
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(
                 transcribeOutcome: .success(.fixture(text: "email me the payment sheet kr"))),
-            cleaner: RecoveryFakeCleaner(
-                outcome: .success(
+            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.success(
                     TransformationResult(
-                        text: "Email me the PaymentSheet kr.", producedBy: .foundationModels))),
+                        text: "Email me the PaymentSheet kr.", producedBy: .foundationModels)))),
             corrector: RecoveryFakeCorrector(proposals: [
                 DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 3..<5,
@@ -435,11 +360,8 @@ struct DictationPipelineRecoveryTests {
         let recorder = RecordingMetricsRecorder()
         let clock = ManualClock()
         let pipeline = makePipeline(
-            cleaner: RecoveryFakeCleaner(
-                outcome: .failure(.outputRejected(reason: "meaning changed", kind: .lostWord)),
-                clock: clock,
-                takes: .milliseconds(75)),
-            inserter: RecoveryFakeInserter(clock: clock, takes: .milliseconds(10)),
+            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.outputRejected(reason: "meaning changed", kind: .lostWord))), takes: .charged(.milliseconds(75), to: clock)),
+            inserter: FakeTextInserter(takes: .charged(.milliseconds(10), to: clock)),
             metrics: recorder,
             clock: clock
         )
@@ -466,7 +388,7 @@ struct DictationPipelineRecoveryTests {
             selectedText: "let cleaned"
         )
         let contextEngine = FakeContextEngine(context: appContext)
-        let cleaner = RecoveryFakeCleaner()
+        let cleaner = FakeTranscriptCleaner(answering: tidiedText)
         let pipeline = makePipeline(cleaner: cleaner, context: contextEngine)
 
         _ = await dictate(pipeline)
@@ -487,7 +409,7 @@ struct DictationPipelineRecoveryTests {
             preferredWritingStyle: "concise",
             vocabulary: ["echocardiogram"]
         )
-        let cleaner = RecoveryFakeCleaner()
+        let cleaner = FakeTranscriptCleaner(answering: tidiedText)
         let pipeline = makePipeline(cleaner: cleaner, profile: profile)
 
         _ = await dictate(pipeline)

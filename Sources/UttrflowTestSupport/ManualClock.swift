@@ -56,8 +56,13 @@ public final class ManualClock: Clock, Sendable {
     }
 
     private let state = Mutex(State())
+    /// Whether a sleep moves the clock to its own deadline and returns, so waiting costs the test nothing.
+    private let advancesWhenSlept: Bool
 
-    public init() {}
+    /// A clock that moves only when advanced, or, with `advancesWhenSlept`, also whenever something sleeps on it.
+    public init(advancesWhenSlept: Bool = false) {
+        self.advancesWhenSlept = advancesWhenSlept
+    }
 
     public var now: Instant { state.withLock(\.now) }
 
@@ -123,6 +128,12 @@ public final class ManualClock: Clock, Sendable {
     }
 
     public func sleep(until deadline: Instant, tolerance: Duration?) async throws {
+        if advancesWhenSlept {
+            let due = state.withLock { Self.advance(&$0, by: max(.zero, $0.now.duration(to: deadline))) }
+            for sleeper in due { sleeper.continuation.resume() }
+            await Task.yield()
+            return
+        }
         let id = state.withLock { state -> Int in
             state.nextID += 1
             return state.nextID

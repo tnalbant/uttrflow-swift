@@ -276,7 +276,7 @@ struct PasteboardTextInsertionEngineTests {
             focus: firstFocus,
             pasteboard: pasteboard,
             keystrokes: FakeKeystrokeSender(),
-            confirmation: PasteConfirmation(focus: firstFocus, clock: ScriptedClock()))
+            confirmation: PasteConfirmation(focus: firstFocus, clock: ManualClock(advancesWhenSlept: true)))
         let first = TextInsertionCoordinator(strategies: [firstEngine], focus: firstFocus)
         let firstTask = Task { try await first.insert("first insertion") }
 
@@ -289,7 +289,7 @@ struct PasteboardTextInsertionEngineTests {
             pasteboard: pasteboard,
             keystrokes: FakeKeystrokeSender(),
             confirmation: PasteConfirmation(
-                focus: secondFocus, clock: ScriptedClock()),
+                focus: secondFocus, clock: ManualClock(advancesWhenSlept: true)),
             onWaitingForGate: { waitingForGate.fire() })
         let second = TextInsertionCoordinator(strategies: [secondEngine], focus: secondFocus)
         let secondTask = Task { try await second.insert("second insertion") }
@@ -511,7 +511,7 @@ struct PasteboardTextInsertionEngineTests {
     ) -> PasteboardTextInsertionEngine {
         PasteboardTextInsertionEngine(
             focus: focus, pasteboard: FakePasteboard(), keystrokes: FakeKeystrokeSender(),
-            confirmation: PasteConfirmation(focus: focus, clock: ScriptedClock()),
+            confirmation: PasteConfirmation(focus: focus, clock: ManualClock(advancesWhenSlept: true)),
             reporting: reporting)
     }
 
