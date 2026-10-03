@@ -35,8 +35,6 @@ public actor PasteboardWatcher {
         interval / 5
     }
 
-    /// How long an announcement stays armed, so a write that never happened cannot sit waiting.
-    static let announcementLifetime: Double = 2
     /// Bounds announcements from a burst of app-owned writes between clipboard polls.
     static let maxPendingAnnouncements = 32
 
@@ -96,27 +94,31 @@ public actor PasteboardWatcher {
 
     /// Announces a write — call immediately before it — naming its text. See `Docs/insertion.md`.
     @discardableResult
-    public nonisolated func ignoreNextWrite(of text: String) -> @Sendable () -> Void {
+    public nonisolated func ignoreNextWrite(of text: String) -> @Sendable (Int?) -> Void {
         announce(.text(text))
     }
 
     /// K4 — announces a picture write, named by the bytes it puts there. See `Docs/insertion.md`.
     @discardableResult
-    public nonisolated func ignoreNextPicture(_ data: Data) -> @Sendable () -> Void {
+    public nonisolated func ignoreNextPicture(_ data: Data) -> @Sendable (Int?) -> Void {
         announce(.picture(data))
     }
 
-    /// Records what is about to be written, reading the count before the write moves it.
-    private nonisolated func announce(_ written: Written) -> @Sendable () -> Void {
+    /// Reserves an announcement before the write, then records its exact resulting generation.
+    private nonisolated func announce(_ written: Written) -> @Sendable (Int?) -> Void {
         let before = source.changeCount()
-        let at = now()
         let id = UUID()
         announced.withLock { pending in
-            pending.removeAll { at.timeIntervalSince($0.at) > Self.announcementLifetime }
             if pending.count == Self.maxPendingAnnouncements { pending.removeFirst() }
-            pending.append(Announcement(id: id, after: before, at: at, wrote: written))
+            pending.append(Announcement(id: id, after: before, changeCount: nil, wrote: written))
         }
-        return { [self] in withdrawAnnouncement(id) }
+        return { [self] changeCount in
+            guard let changeCount else { return withdrawAnnouncement(id) }
+            announced.withLock { pending in
+                guard let index = pending.firstIndex(where: { $0.id == id }) else { return }
+                pending[index].changeCount = changeCount
+            }
+        }
     }
 
     /// Withdraws a write that the pasteboard refused or that could not be read back.
@@ -126,19 +128,24 @@ public actor PasteboardWatcher {
 
     /// Drops announcements that could have described a change whose contents stayed unreadable.
     private nonisolated func withdrawAnnouncements(forChange count: Int) {
-        announced.withLock { pending in pending.removeAll { count > $0.after } }
+        announced.withLock { pending in
+            pending.removeAll { $0.changeCount.map { count >= $0 } ?? (count > $0.after) }
+        }
     }
 
     /// Whether this change is the announced write, matched on what it put there. See `Docs/insertion.md`.
-    private nonisolated func claims(
-        _ count: Int, at date: Date, holding text: String?, picture: Data?
-    ) -> Bool {
+    private nonisolated func claims(_ count: Int, holding text: String?, picture: Data?) -> Bool {
         announced.withLock { pending in
-            // A write that never happened must not sit armed over somebody's copy.
-            pending.removeAll { date.timeIntervalSince($0.at) > Self.announcementLifetime }
+            // Once a later generation is observed, an earlier write cannot describe it.
+            pending.removeAll { $0.changeCount.map { count > $0 } ?? false }
             guard
                 let match = pending.firstIndex(where: { announcement in
-                    guard count > announcement.after else { return false }
+                    if let writtenCount = announcement.changeCount {
+                        guard count == writtenCount else { return false }
+                    } else {
+                        // The write may be visible a moment before its synchronous result is reported.
+                        guard count > announcement.after else { return false }
+                    }
                     switch announcement.wrote {
                     case .text(let wrote): return text == wrote
                     case .picture(let wrote): return text == nil && picture == wrote
@@ -200,14 +207,14 @@ public actor PasteboardWatcher {
         // Read once, bounded and outside the lock, and only when a picture announcement could claim it.
         var read: ClipboardPicture?? = .none
         let hasPicture = source.hasPicture()
-        if copied == nil, hasPicture, awaitsPicture() {
+        if copied == nil, hasPicture, awaitsPicture(at: count) {
             guard let picture = await bounded({ [source] in source.image() }) else {
                 withdrawAnnouncements(forChange: count)
                 return nil
             }
             read = .some(picture)
         }
-        guard !claims(count, at: date, holding: copied, picture: read??.data) else { return nil }
+        guard !claims(count, holding: copied, picture: read??.data) else { return nil }
 
         // A copy its writer marked as not for history is never recorded, text or picture.
         guard let markers = await bounded({ [source] in source.markers() }) else { return nil }
@@ -265,9 +272,10 @@ public actor PasteboardWatcher {
     }
 
     /// Whether a picture announcement is armed, asked without reading the clipboard.
-    private nonisolated func awaitsPicture() -> Bool {
+    private nonisolated func awaitsPicture(at count: Int) -> Bool {
         announced.withLock { pending in
             pending.contains { announcement in
+                if let writtenCount = announcement.changeCount, writtenCount != count { return false }
                 if case .picture = announcement.wrote { return true }
                 return false
             }
@@ -362,7 +370,7 @@ private enum Written: Sendable, Equatable {
 private struct Announcement: Sendable {
     let id: UUID
     let after: Int
-    let at: Date
+    var changeCount: Int?
     /// What is about to be written, which the change is matched against.
     let wrote: Written
 }
