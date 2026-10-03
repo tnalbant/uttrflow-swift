@@ -36,10 +36,21 @@ public struct WordCorrectionEngine: Sendable {
     }
 
     /// Every reading the dictionary offers for a heard run, and none when it already spells it exactly so.
-    public static func spellings(of heard: String, in dictionary: PhoneticIndex) -> [DictionaryEntry] {
-        let candidates = dictionary.candidates(soundingLike: heard)
-        guard !candidates.contains(where: { $0.word == heard }) else { return [] }
-        return candidates
+    public static func spellings(of heard: String, in dictionary: PhoneticIndex) -> [DictionarySpelling] {
+        let whole = dictionary.candidates(soundingLike: heard)
+        guard !whole.contains(where: { $0.word == heard }) else { return [] }
+        var found = whole.map { DictionarySpelling(entry: $0, ending: "", heard: heard) }
+        var words = heard.split(separator: " ").map(String.init)
+        guard let last = words.popLast(), let split = WordForms.nameEnding(of: last) else { return found }
+        // A name said with a plural or possessive ending is looked up without it, and the ending is reattached verbatim.
+        let name = (words + [split.name]).joined(separator: " ")
+        let named = dictionary.candidates(soundingLike: name)
+        guard !named.contains(where: { $0.word == name }) else { return [] }
+        let taken = Set(whole.map(\.id))
+        found += named.filter { !taken.contains($0.id) }.map {
+            DictionarySpelling(entry: $0, ending: split.ending, heard: name)
+        }
+        return found
     }
 
     /// The best change for one uncertain run, if there is one.
@@ -50,14 +61,14 @@ public struct WordCorrectionEngine: Sendable {
         let candidates = Self.spellings(of: span.text, in: dictionary)
 
         // Candidates arrive in the index's usefulness order, so the first that earns its place is offered.
-        for entry in candidates {
+        for candidate in candidates {
             // Condition 3.
-            guard Self.spells(entry, asHeard: span.text),
-                let reason = evidence.decisiveReason(preferring: entry.word, over: span.text)
+            guard Self.spells(candidate.entry, asHeard: candidate.heard),
+                let reason = evidence.decisiveReason(preferring: candidate.entry.word, over: candidate.heard)
             else { continue }
             return WordCorrection(
-                heard: span.text, replacement: entry.word, wordRange: span.range,
-                entryID: entry.id, reason: reason, heardConfidence: span.confidence)
+                heard: span.text, replacement: candidate.word, wordRange: span.range,
+                entryID: candidate.entry.id, reason: reason, heardConfidence: span.confidence)
         }
         return nil
     }
@@ -96,6 +107,19 @@ public struct WordCorrectionEngine: Sendable {
         }
         return taken
     }
+}
+
+/// A dictionary entry as it would be written for one heard run, with any ending speech added to the name.
+public struct DictionarySpelling: Sendable, Equatable {
+    /// The entry the reading comes from.
+    public let entry: DictionaryEntry
+    /// The plural or possessive ending heard after the name, empty when the run is the name alone.
+    public let ending: String
+    /// The part of the heard run the entry stands for, without the ending.
+    public let heard: String
+
+    /// The entry's own spelling with the heard ending reattached, never respelt.
+    public var word: String { entry.word + ending }
 }
 
 /// A run of consecutive doubted words; restated here rather than widening `UttrflowDictionary`'s own span.

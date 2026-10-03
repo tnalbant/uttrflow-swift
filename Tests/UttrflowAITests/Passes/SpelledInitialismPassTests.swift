@@ -31,6 +31,18 @@ struct SpelledInitialismPassTests {
     }
 
     @Test(
+        "never reads a cut-off word as a letter name",
+        arguments: [
+            ("I w- I went", "I w- I went"),
+            ("so I t- to go", "so I t- to go"),
+            ("I s- so", "I s- so"),
+            ("I B M", "IBM"),
+        ])
+    func cutOff(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
         "does not treat i adjacent to a letter name as the pronoun",
         arguments: [
             ("we said i e is the main one", "we said i.e. is the main one"),
