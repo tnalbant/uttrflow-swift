@@ -11,32 +11,35 @@ extension HistoryFixture {
         _ trigger: String = "my address",
         text: String = "Flat 402, Example Residences, Bengaluru",
         used: Int = 12,
-        lastUsedDaysAgo: Int? = 0
+        lastUsedDaysAgo: Int? = 0,
+        createdDaysAgo: Int = 10
     ) -> Snippet {
         Snippet(
-            trigger: trigger, expansion: text, created: now.addingTimeInterval(-864_000),
+            trigger: trigger, expansion: text,
+            created: now.addingTimeInterval(Double(-createdDaysAgo) * 86_400),
             timesUsed: used,
             lastUsed: lastUsedDaysAgo.map { now.addingTimeInterval(Double(-$0) * 86_400) })
     }
 
     /// The Snippets page over these inputs.
     static func snippets(
-        _ snippets: [Snippet] = [], draft: SnippetDraft? = nil, query: String = "",
+        _ snippets: [Snippet] = [], draft: SnippetDraft? = nil, query: String = "", sort: String = "",
         arrival: SnippetArrival? = nil
     ) -> SnippetsPresentation {
         SnippetsPresenter.page(
             for: SnippetsSnapshot(
-                snippets: snippets, draft: draft, query: query, now: now, arrival: arrival),
+                snippets: snippets, draft: draft, query: query, sort: sort, now: now, arrival: arrival),
             calendar: calendar, locale: locale)
     }
 }
 
 @Suite("Snippets: a phrase you say for a block of text")
 struct SnippetsPageTests {
-    @Test("every snippet is listed")
+    @Test("every snippet is listed, the newest first")
     func lists() {
         let page = HistoryFixture.snippets([
-            HistoryFixture.snippet("my address"), HistoryFixture.snippet("sign off", used: 64),
+            HistoryFixture.snippet("sign off", used: 64, createdDaysAgo: 20),
+            HistoryFixture.snippet("my address"),
         ])
         #expect(page.rows.map(\.trigger.text) == ["my address", "sign off"])
         #expect(page.chrome.caption == "Say a short phrase; Uttrflow types the whole thing. · 2 snippets")

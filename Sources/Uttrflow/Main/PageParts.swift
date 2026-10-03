@@ -40,6 +40,9 @@ struct PageTitleBar: View {
                 } else {
                     Spacer(minLength: 0)
                 }
+                if let sort = chrome.sort {
+                    PageSortMenu(sort: sort, onIntent: onIntent)
+                }
                 if let add = chrome.addAction {
                     PageButton(action: add, isProminent: true, onIntent: onIntent)
                 }
@@ -324,4 +327,30 @@ extension PagePalette {
     static let badgeInk = Color(nsColor: .orbit(BrandPalette.Redesign.badgeInk))
     /// An editor field's well.
     static let fieldWell = Color(nsColor: .orbit(BrandPalette.Redesign.fieldWell))
+}
+
+/// The menu choosing the order a page's list is read in; VoiceOver hears the order in force.
+struct PageSortMenu: View {
+    let sort: MainScope
+    var onIntent: (MainIntent) -> Void
+
+    var body: some View {
+        Picker(sort.title, selection: selection) {
+            ForEach(sort.options) { option in
+                Text(option.title).tag(option.id)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .accessibilityLabel(sort.title)
+    }
+
+    /// Reads the order from the presentation and reports a change back as an intent.
+    private var selection: Binding<String> {
+        Binding(
+            get: { sort.options.first(where: \.isSelected)?.id ?? "" },
+            set: { onIntent(.sort($0)) })
+    }
 }

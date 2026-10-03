@@ -149,6 +149,8 @@ public struct MainPageChrome: Sendable, Equatable {
     public let scope: MainScope?
     /// The search field, when there is something to search.
     public let search: MainSearchField?
+    /// The menu choosing the order the page's list is read in, when it has a list to order.
+    public let sort: MainScope?
     /// The one thing this page can add, when it can.
     public let addAction: MainAction?
 
@@ -158,12 +160,14 @@ public struct MainPageChrome: Sendable, Equatable {
         caption: String? = nil,
         scope: MainScope? = nil,
         search: MainSearchField? = nil,
+        sort: MainScope? = nil,
         addAction: MainAction? = nil
     ) {
         self.title = title
         self.caption = caption
         self.scope = scope
         self.search = search
+        self.sort = sort
         self.addAction = addAction
     }
 }

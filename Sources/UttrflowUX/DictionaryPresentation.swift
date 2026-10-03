@@ -48,7 +48,7 @@ public struct DictionaryRow: Sendable, Equatable, Identifiable {
     public let origin: String
     /// The chip the row wears, "Retired" in place of the origin once the word has retired.
     public let source: DictionarySource
-    /// "12 Aug".
+    /// "12 Aug", or "12 Aug 2024" outside the current year.
     public let added: String
     /// How often it has been applied, as text.
     public let timesUsed: String
@@ -248,6 +248,8 @@ public struct DictionarySnapshot: Sendable, Equatable {
     public let query: String
     /// The chosen filter chip's identifier; empty or unknown lists every word.
     public let filter: String
+    /// The chosen order's identifier; empty or unknown is ``DictionarySort/standard``.
+    public let sort: String
     /// Dictionary corrections, newest first, from which today's are drawn as cards.
     public let corrections: [Correction]
     /// The clock the page is drawn against.
@@ -258,8 +260,8 @@ public struct DictionarySnapshot: Sendable, Equatable {
     /// Builds a snapshot; everything but the clock defaults to empty.
     public init(
         entries: [DictionaryEntry] = [], draft: DictionaryDraft? = nil, refusal: String? = nil,
-        query: String = "", filter: String = "", corrections: [Correction] = [], now: Date,
-        packed: [String]? = nil
+        query: String = "", filter: String = "", sort: String = "", corrections: [Correction] = [],
+        now: Date, packed: [String]? = nil
     ) {
         self.packed = packed
         self.entries = entries
@@ -267,6 +269,7 @@ public struct DictionarySnapshot: Sendable, Equatable {
         self.refusal = refusal
         self.query = query
         self.filter = filter
+        self.sort = sort
         self.corrections = corrections
         self.now = now
     }
@@ -282,7 +285,7 @@ public struct DictionaryPresentation: Sendable, Equatable {
     public let fixes: [CorrectionRow]
     /// The filter chips over the table, empty while there are no words to filter.
     public let filters: [MainScopeOption]
-    /// The words that match the query and the filter.
+    /// The words that match the query and the filter, in the chosen order.
     public let rows: [DictionaryRow]
     /// The open editor, above the rows. Present only while a word is being written.
     public let editor: DictionaryEditor?
@@ -328,13 +331,17 @@ public enum DictionaryPresenter {
         locale: Locale = .autoupdatingCurrent
     ) -> DictionaryPresentation {
         let filter = self.filter(named: snapshot.filter)
-        let listed = matches(snapshot.entries, query: snapshot.query, locale: locale)
+        let sort = DictionarySort(named: snapshot.sort)
+        let found = matches(snapshot.entries, query: snapshot.query, locale: locale)
             .filter { filter == nil || DictionarySource($0) == filter }
+        let listed = sort.ordered(found, id: \.id, locale: locale)
         let standings = WorkingSet.explain(
             entries: snapshot.entries, now: snapshot.now, packed: snapshot.packed)
         let rivals = rivals(among: snapshot.entries)
         let rows = listed.map {
-            row(for: $0, standing: standings[$0.id], rival: rivals[$0.id], locale: locale)
+            row(
+                for: $0, standing: standings[$0.id], rival: rivals[$0.id], now: snapshot.now,
+                calendar: calendar, locale: locale)
         }
         let editor = snapshot.draft.map { self.editor(for: $0, in: snapshot) }
         let today = fixedToday(in: snapshot, calendar: calendar)
@@ -354,6 +361,7 @@ public enum DictionaryPresenter {
                 search: snapshot.entries.isEmpty
                     ? nil
                     : MainSearchField(placeholder: searchPlaceholder, query: snapshot.query),
+                sort: snapshot.entries.isEmpty ? nil : sort.menu,
                 addAction: isBare ? nil : MainAction(title: "Add Word", symbolName: "plus", intent: .addWord)),
             fixesLabel: today.isEmpty
                 ? nil
@@ -458,7 +466,7 @@ public enum DictionaryPresenter {
     /// One entry as a row, with Merge on a respelt duplicate, Restore on a retired word and Delete on every one.
     static func row(
         for entry: DictionaryEntry, standing: WorkingSet.Standing?, rival: DictionaryEntry? = nil,
-        locale: Locale
+        now: Date, calendar: Calendar, locale: Locale
     ) -> DictionaryRow {
         let isRetired = !entry.isTrustworthy
         // Only a respelling is merged; two words that merely sound alike are the person's to keep.
@@ -474,7 +482,7 @@ public enum DictionaryPresenter {
             pronunciation: entry.pronunciation ?? "—",
             origin: title(for: entry.origin),
             source: DictionarySource(entry),
-            added: entry.firstSeen.formatted(.dateTime.day().month(.abbreviated).locale(locale)),
+            added: MainFormatting.date(entry.firstSeen, now: now, calendar: calendar, locale: locale),
             timesUsed: "\(entry.timesUsed)",
             timesUndone: "\(entry.timesReverted)",
             timesUsedSpoken: "Used \(MainFormatting.count(entry.timesUsed, "time", "times"))",
