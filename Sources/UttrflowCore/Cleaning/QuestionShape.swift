@@ -375,7 +375,11 @@ public enum QuestionShape {
     ])
 
     /// Romanised Hindi words that introduce embedded question content.
-    private static let hindiEmbeddingWords: Set<String> = ["ki", "pata", "kaha", "bola", "pucha", "poocha"]
+    private static let hindiEmbeddingWords: Set<String> = [
+        "ki", "pata", "kaha", "bola", "pucha", "poocha", "bataya", "batayi", "bataye", "batao", "yaad",
+        "dekh",
+        "dekha", "dekho", "maloom", "malum", "samajh", "samjha", "samjho", "suna", "socha",
+    ]
 
     /// Copulas that can follow a subject or noun before an interrogative "kya".
     private static let hindiCopulas: Set<String> = ["hai", "hain", "ho", "hoga"]

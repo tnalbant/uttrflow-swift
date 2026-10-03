@@ -168,6 +168,9 @@ struct QuestionShapeTests {
             "mujhe nahi pata ye kya hai", "mujhe pata nahi tum kab aaoge",
             "mujhe nahi pata ki tum kab aaoge", "maine kaha tum kab aaoge", "I don't know ye kya hai",
             "kya baat hai", "woh kya hai na yaani mujhe time chahiye",
+            "mujhe nahi pata woh kahan hai", "usne bataya meeting kab hai",
+            "mujhe yaad nahi kitna paisa diya",
+            "main dekh raha hoon kaise hota hai", "mujhe pata hai tum kyun nahi aaye",
         ] {
             #expect(!QuestionShape.asks(shapes(text)), "Expected a statement: \(text)")
         }
