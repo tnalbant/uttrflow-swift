@@ -291,7 +291,7 @@ struct DictationPipelineSettingsTests {
             corrector: FixedCorrector(
                 correction: DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 4..<6,
-                    entryID: UUID(), reason: "heardAsSeveralWords", heardConfidence: 0.2)),
+                    entryID: UUID(), reason: .heardAsSeveralWords, heardConfidence: 0.2)),
             windowing: quick)
 
         await pipeline.startRecording()

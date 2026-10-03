@@ -77,7 +77,7 @@ struct TranscriptionCorrectionTests {
         _ heard: String, wrote: String, over range: Range<Int>
     ) -> DictationCorrection {
         DictationCorrection(
-            heard: heard, wrote: wrote, wordRange: range, entryID: UUID(), reason: "test",
+            heard: heard, wrote: wrote, wordRange: range, entryID: UUID(), reason: .unknown("test"),
             heardConfidence: 0.2)
     }
 }

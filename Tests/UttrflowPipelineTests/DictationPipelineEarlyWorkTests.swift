@@ -297,7 +297,7 @@ private struct FirstWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: first, wrote: first.uppercased(), wordRange: 0..<1, entryID: entry,
-                reason: "test", heardConfidence: 0.1)
+                reason: .unknown("test"), heardConfidence: 0.1)
         ]
     }
 }
@@ -314,7 +314,7 @@ private actor ScreenWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: "Maddox", wrote: "Madison", wordRange: 0..<1, entryID: UUID(),
-                reason: "seenOnScreen", heardConfidence: 0.2)
+                reason: .seenOnScreen, heardConfidence: 0.2)
         ]
     }
 }

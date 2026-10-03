@@ -300,7 +300,7 @@ struct DictationPipelineRecoveryTests {
             corrector: RecoveryFakeCorrector(proposals: [
                 DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 3..<5,
-                    entryID: UUID(), reason: "heardAsSeveralWords", heardConfidence: 0.3)
+                    entryID: UUID(), reason: .heardAsSeveralWords, heardConfidence: 0.3)
             ]),
             snippets: RecoveryFakeExpander(replacing: ("kr", "Kind regards, Naveen")),
             metrics: recorder
