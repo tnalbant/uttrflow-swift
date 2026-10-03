@@ -51,10 +51,13 @@ struct ScopeBoundTests {
             counts == [
                 [PredictStore.surfacesPerField, PredictStore.surfacesPerField, PredictStore.surfacesPerField]
             ])
-        #expect(try await store.candidates(for: shell("/f0"), matching: "command").isEmpty)
-        #expect(
-            try await store.candidates(for: shell("/f\(PredictStore.surfacesPerField)"), matching: "command")
-                .count == 1)
+        // A lookup also reads sibling folders, so which scopes survive is read from the table itself.
+        let scopes = Set(
+            try Database(path: corpus.path).rows("SELECT scope FROM surface", { _ in }) { $0.text(0) })
+        #expect(!scopes.contains("/f0"))
+        #expect(scopes.contains("/f\(PredictStore.surfacesPerField)"))
+        let offered = try await store.candidates(for: shell("/f0"), matching: "command").map(\.text)
+        #expect(!offered.contains("command 0"))
     }
 
     @Test("a large scope eviction reclaims the freed pages")

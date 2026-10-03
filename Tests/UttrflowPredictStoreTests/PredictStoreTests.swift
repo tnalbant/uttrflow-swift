@@ -831,8 +831,9 @@ struct RecoveryTests {
             $0.bind(2, "make verify")
             $0.bind(3, moment.timeIntervalSince1970)
         }
-        try database.execute("ALTER TABLE surface DROP COLUMN last_used")
+        // SQLite refuses to drop an indexed column, so a version-five file is rebuilt index first.
         try database.execute("DROP INDEX IF EXISTS surface_recent")
+        try database.execute("ALTER TABLE surface DROP COLUMN last_used")
         try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(5)) }
         let legacyColumns = try database.rows("PRAGMA table_info(surface)", { _ in }) { $0.text(1) }
         #expect(!legacyColumns.contains("last_used"))

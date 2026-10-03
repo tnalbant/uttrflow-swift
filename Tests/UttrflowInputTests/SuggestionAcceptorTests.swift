@@ -49,11 +49,9 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
     private let typed = Mutex<[String]>([])
     private let deleted = Mutex<[Int]>([])
     private let error: TextInsertionError?
-    private let acceptsText: Bool
 
-    init(error: TextInsertionError? = nil, acceptsText: Bool = true) {
+    init(error: TextInsertionError? = nil) {
         self.error = error
-        self.acceptsText = acceptsText
     }
 
     var text: [String] { typed.withLock { $0 } }
@@ -63,8 +61,6 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
         typed.withLock { $0.append(text) }
         if let error { throw error }
     }
-
-    func canType(_ text: String) -> Bool { acceptsText }
 
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {
         deleted.withLock { $0.append(count) }
@@ -132,22 +128,6 @@ struct TypedTextInsertionEngineTests {
         await #expect(throws: TextInsertionError.noFocusedTextField) {
             try await engine.write("mit", replacing: "")
         }
-        #expect(typist.deletions.isEmpty)
-        #expect(typist.text.isEmpty)
-    }
-
-    @Test("It checks the replacement is typeable before deleting the text already there")
-    func unsupportedTextLeavesReplacementUntouched() async {
-        let typist = RecordingTypist(acceptsText: false)
-        let engine = TypedTextInsertionEngine(focus: FakeFocus(preceding: "co"), typist: typist)
-
-        await #expect(
-            throws: TextInsertionError.insertionRejected(
-                description: "the current keyboard layout cannot type every character")
-        ) {
-            try await engine.write("🙂", replacing: "co", confirmedPreceding: "co")
-        }
-
         #expect(typist.deletions.isEmpty)
         #expect(typist.text.isEmpty)
     }

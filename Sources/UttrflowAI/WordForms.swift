@@ -115,6 +115,18 @@ enum WordForms {
         return forms
     }
 
+    /// The endings speech adds to a name without changing its spelling, possessives first so "'s" is never read as "s".
+    static let nameEndings = ["'s", "\u{2019}s", "s"]
+
+    /// A heard word split into the name it is written on and the ending speech added: "kubelets" is "kubelet" and "s".
+    static func nameEnding(of word: String) -> (name: String, ending: String)? {
+        for ending in nameEndings where word.hasSuffix(ending) {
+            let name = String(word.dropLast(ending.count))
+            return name.count >= 3 ? (name, ending) : nil
+        }
+        return nil
+    }
+
     /// Whether `word` is spelled into an identifier as one of its words — "invoices" in "fetchInvoices", never "ravi" in "gravity".
     static func spelledInto(_ word: String, _ identifier: String) -> Bool {
         guard word.count >= 3 else { return false }
