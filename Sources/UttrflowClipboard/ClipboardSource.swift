@@ -1,6 +1,7 @@
 // The read-only clipboard the watcher polls.
 
 public import struct Foundation.Data
+public import struct UttrflowCore.PasteboardMarkers
 
 /// The machine's clipboard, read-only; not `UttrflowInput`'s `Pasteboard`, which this module must not link.
 public protocol ClipboardSource: Sendable {

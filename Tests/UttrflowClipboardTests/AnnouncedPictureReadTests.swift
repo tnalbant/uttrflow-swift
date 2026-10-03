@@ -4,6 +4,7 @@ import Foundation
 import Dispatch
 import Synchronization
 import Testing
+import UttrflowCore
 
 @testable import UttrflowClipboard
 
