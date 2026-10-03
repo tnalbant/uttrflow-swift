@@ -4,7 +4,8 @@
 and its regression gate all exist and work offline. **What is open:** nobody has recorded the
 corpus yet, and whether a recording is ever committed is an owner decision (see
 [committing the audio](#committing-the-audio-a-real-decision-not-a-detail)). To pick the
-command a given change needs, start at [measure-a-change.md](measure-a-change.md).
+command a given change needs, start at [measure-a-change.md](measure-a-change.md). The
+targets a measurement is held to are in [accuracy-targets.md](accuracy-targets.md).
 
 This page was first written after WhisperKit 1.1.0 was declined because nobody could say whether
 it was better or worse, and it keeps the reasoning for the smallest thing that answers that.

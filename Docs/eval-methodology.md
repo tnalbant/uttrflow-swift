@@ -2,7 +2,8 @@
 
 `uttrflow-eval` (`Sources/uttrflow-eval`) runs the recorded corpus through a speech engine and
 reports word error rate, latency and failures. This page holds the measurement decisions the
-code relies on, so the one-line comments in the source can stay short.
+code relies on, so the one-line comments in the source can stay short. The targets these
+measurements are judged against are in [accuracy-targets.md](accuracy-targets.md).
 
 ## The baseline gate
 
