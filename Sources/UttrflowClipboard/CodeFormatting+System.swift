@@ -2,6 +2,7 @@
 
 import Foundation
 private import Darwin
+public import UttrflowCore
 
 /// Runs a real formatter from a fixed list of directories, on stdin, with no shell and a timeout.
 public struct SystemCodeFormatter: CodeFormatting {

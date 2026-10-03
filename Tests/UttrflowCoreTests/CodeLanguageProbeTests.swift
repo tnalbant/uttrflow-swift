@@ -3,7 +3,7 @@
 import Foundation
 import Testing
 
-@testable import UttrflowClipboard
+@testable import UttrflowCore
 
 /// Written from outside the detector with cases chosen to break it; a wrong chip is worse than none.
 @Suite("What the language detector refuses to guess")

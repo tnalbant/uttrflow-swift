@@ -1,6 +1,7 @@
 // What a copied string is: link, colour, path, code or text.
 
 import Foundation
+public import UttrflowCore
 
 /// Works out what a copied string is; secret is asked first because it is the only costly miss.
 public enum ClipKindDetector {
