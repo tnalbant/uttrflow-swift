@@ -43,7 +43,8 @@ What that cost, before the guard: the engine opened, the tap delivered, and the 
 no speech — so `VoiceActivity` refused the recording and the user was told "Didn't catch that."
 with no recovery action, for a permission only System Settings can give back. Measured here on
 macOS 26.5.1: three seconds of digital silence through `uttrflow-dev transcribe` comes back
-`SpeechEngineError.nothingHeard`, which is `informational` and offers nothing.
+`SpeechEngineError.nothingHeard`, which is `informational` and offers nothing
+([probe-log.md](probe-log.md#rows)).
 
 The guard covers the reopen after a hardware change as well as the first open, because
 `InputDeviceSession` reaches the device through the same `open()`.

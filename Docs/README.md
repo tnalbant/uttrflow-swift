@@ -143,6 +143,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [eval-context-cases.md](eval-context-cases.md) | The context pairs in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
+| [probe-log.md](probe-log.md) | Where, when and on which build every probe number was measured |
 | [bakeoff.md](bakeoff.md) | Local model bake-off |
 | [bakeoff-method.md](bakeoff-method.md) | How the bake-off measures, and why each row is there |
 
