@@ -13,7 +13,7 @@ final class SettingsPageController {
     private var suggestionModel: SuggestionModelReadiness = .notAsked
     private var suggestionRuntime: SuggestionRuntimeStatus = .idle
     /// Which shortcuts the window server refused, kept for the same reason.
-    private var unarmedShortcuts: Set<ShortcutAction> = []
+    private var unarmedShortcuts: [ShortcutAction: HotkeyError] = [:]
     /// Asks this Mac which clean-up engines are ready for a profile; injected so a test can order the answers.
     private let probe: @Sendable (UserProfile) async -> SettingsCapabilities
     /// Counts capability probes, so only the most recently started one may apply its answer.
@@ -94,7 +94,7 @@ final class SettingsPageController {
     }
 
     /// Told by the app when a shortcut could not be claimed, so its row stops advertising a dead key.
-    func setUnarmedShortcuts(_ unarmed: Set<ShortcutAction>) {
+    func setUnarmedShortcuts(_ unarmed: [ShortcutAction: HotkeyError]) {
         unarmedShortcuts = unarmed
         model.session.capabilities.unarmedShortcuts = unarmed
     }

@@ -1350,12 +1350,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private lazy var shortcutArming = ShortcutArming(
         onChange: { [weak self] in self?.showShortcutUnheard() },
         accessibilityIsGranted: { AXIsProcessTrusted() })
-    /// Claimed shortcuts the window server refused, so a row never shows a key that does nothing.
-    private var unarmedShortcuts: Set<ShortcutAction> = [] {
+    /// Claimed shortcuts the window server refused, each with its refusal, so a row says why.
+    private var unarmedShortcuts: [ShortcutAction: HotkeyError] = [:] {
         didSet {
             guard unarmedShortcuts != oldValue else { return }
-            settingsPage.setUnarmedShortcuts(unarmedShortcuts)
+            showRefusedShortcuts()
         }
+    }
+
+    /// Every shortcut not armed, Dictate included, on the one settings seam that says why.
+    private func showRefusedShortcuts() {
+        var refused = unarmedShortcuts
+        refused[.dictate] = shortcutArming.failure
+        settingsPage.setUnarmedShortcuts(refused)
     }
 
     /// Arms the dictation shortcut while dictation is on, and releases it while it is off.
@@ -1548,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for monitor in claimedHotkeys.values { monitor.stop() }
         claimedHotkeys.removeAll()
 
-        var refused: Set<ShortcutAction> = []
+        var refused: [ShortcutAction: HotkeyError] = [:]
         // Signed out, no key is claimed, so each one still reaches the app in front.
         for action in surfaces.claimedShortcuts {
             guard let binding = settings.shortcuts.first(for: action) else { continue }
@@ -1559,7 +1566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Self.log.error(
                     "\(action.rawValue, privacy: .public) shortcut refused: \(error.userMessage, privacy: .public)"
                 )
-                refused.insert(action)
+                refused[action] = error
                 continue
             }
             claimedHotkeys[action] = monitor
@@ -2369,6 +2376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Redraws both surfaces that say why the shortcut cannot be heard.
     private func showShortcutUnheard() {
         dock.setShortcutUnheard(shortcutUnheard)
+        showRefusedShortcuts()
         refreshMenuBar()
     }
 
@@ -2412,7 +2420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
             shortcuts: settings.shortcuts,
-            unarmedShortcuts: unarmedShortcuts,
+            unarmedShortcuts: Set(unarmedShortcuts.keys),
             shortcutUnheard: shortcutUnheard,
             suggestionUnheard: suggestionSecureInputNotice,
             suggestionModel: suggestionModel,

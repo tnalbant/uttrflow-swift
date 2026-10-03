@@ -133,8 +133,10 @@ public enum SettingsPresenter {
 
     // MARK: - General
 
-    /// Said before anything else: a key that is not claimed does nothing, whatever the row shows.
-    static let unarmed = "Uttrflow could not claim this shortcut, so it does nothing. Try another."
+    /// Said before anything else: a key that is not claimed does nothing, and the refusal says why.
+    static func unarmed(_ cause: HotkeyError) -> String {
+        "Unavailable, so this shortcut does nothing. \(cause.userMessage)"
+    }
 
     /// Said once a modifier held alone has been put back, so the change is not a mystery.
     static let returnedToDefault = """
@@ -169,8 +171,8 @@ public enum SettingsPresenter {
         let control = SettingsControl.shortcut(
             action: descriptor.action, keys: binding.map(SettingsShortcut.keycaps(for:)) ?? [])
         let explanation: String? =
-            if capabilities.unarmedShortcuts.contains(descriptor.action) {
-                unarmed
+            if let cause = capabilities.unarmedShortcuts[descriptor.action] {
+                unarmed(cause)
             } else if settings.shortcutsReturnedToDefault.contains(descriptor.action) {
                 returnedToDefault
             } else if binding?.isFunctionHold == true {
