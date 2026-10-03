@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let menuBar = MenuBarController()
     private let dock = DockPanelController()
     private var recents = RecentDictations()
-    /// The newest clips as the popover last read them, so a row's position finds the clip it shows.
+    /// The newest clips as the popover last read them, resolved by identity when a row is chosen.
     private var menuClips: [Clip] = []
     /// Where dictations are kept between launches, and the only thing that decides what is deleted.
     private let history: DictationHistoryStore
@@ -2341,6 +2341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordingAdvice: recordingAdvice,
             recents: recents.previews.map {
                 MenuBarRecent(
+                    id: $0.id,
                     title: $0.title,
                     fullText: $0.isSecret ? $0.title : $0.dictation.text,
                     isSecret: $0.isSecret)
@@ -2368,25 +2369,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             toggleDictation()
         case .recover(let action):
             perform(action)
-        case .insertRecent(let index):
-            guard let recent = recents.entries[safe: index] else { return }
+        case .insertRecent(let id):
+            guard let recent = recents.entries.first(where: { $0.id == id }) else { return }
             // The app's own inserter: a fresh one would get the unannouncing pasteboard.
             insert(
                 recent.text, concealed: DictationTextPresentation(recent.text).isSecret, used: nil)
-        case .copyRecent(let index):
-            guard let recent = recents.entries[safe: index] else { return }
+        case .copyRecent(let id):
+            guard let recent = recents.entries.first(where: { $0.id == id }) else { return }
             // And through the helper that announces the write, for the same reason.
             putOnClipboard(
                 recent.text, concealed: DictationTextPresentation(recent.text).isSecret, used: nil)
-        case .insertClip(let index):
-            guard let clip = menuClips[safe: index] else { return }
+        case .insertClip(let id):
+            guard let clip = menuClips.first(where: { $0.id == id }) else { return }
             if clip.image != nil {
                 insertImage(clip)
             } else {
                 insert(clip.text, concealed: clip.kind == .secret, used: clip.id)
             }
-        case .copyClip(let index):
-            guard let clip = menuClips[safe: index] else { return }
+        case .copyClip(let id):
+            guard let clip = menuClips.first(where: { $0.id == id }) else { return }
             if clip.image != nil {
                 Task { [weak self] in _ = await self?.putImageOnClipboard(clip) }
             } else {

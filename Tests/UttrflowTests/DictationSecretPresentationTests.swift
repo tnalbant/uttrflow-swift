@@ -26,6 +26,7 @@ struct DictationSecretPresentationTests {
         let menu = MenuBarPresenter.present(
             MenuBarState(recents: [
                 MenuBarRecent(
+                    id: entry.id,
                     title: preview.title, fullText: preview.isSecret ? preview.title : secret,
                     isSecret: preview.isSecret)
             ]))
@@ -38,7 +39,7 @@ struct DictationSecretPresentationTests {
         #expect(preview.title == presentation.displayText)
         #expect(preview.isSecret)
         #expect(menu.lastDictation?.tooltip == nil)
-        #expect(menu.lastDictation?.insert.intent == .insertRecent(index: 0))
-        #expect(menu.lastDictation?.copy.intent == .copyRecent(index: 0))
+        #expect(menu.lastDictation?.insert.intent == .insertRecent(id: entry.id))
+        #expect(menu.lastDictation?.copy.intent == .copyRecent(id: entry.id))
     }
 }

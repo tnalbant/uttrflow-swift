@@ -1,3 +1,4 @@
+public import struct Foundation.UUID
 public import UttrflowClipboard
 public import UttrflowCore
 
@@ -81,6 +82,8 @@ public enum SpeechModelReadiness: Sendable, Equatable {
 
 /// A recent dictation, as much of it as a menu can show.
 public struct MenuBarRecent: Sendable, Equatable {
+    /// Identifies the dictation across menu redraws.
+    public let id: UUID
     /// Already shortened by whoever keeps the list, so only one place decides a menu's width.
     public let title: String
     /// The whole of it, for the tooltip, since the row says less than it will insert.
@@ -88,7 +91,8 @@ public struct MenuBarRecent: Sendable, Equatable {
     /// Whether the text is a secret and its tooltip must be omitted.
     public let isSecret: Bool
 
-    public init(title: String, fullText: String, isSecret: Bool = false) {
+    public init(id: UUID = UUID(), title: String, fullText: String, isSecret: Bool = false) {
+        self.id = id
         self.title = title
         self.fullText = fullText
         self.isSecret = isSecret
@@ -248,12 +252,12 @@ public enum MenuBarIntent: Sendable, Equatable {
     case stopDictation
     /// Carry out the one fix the current failure offered.
     case recover(RecoveryAction)
-    /// A position into ``MenuBarState/recents``, so no text travels back to the app that has it.
-    case insertRecent(index: Int)
-    case copyRecent(index: Int)
-    /// A position into ``MenuBarState/clips``, for the same reason.
-    case insertClip(index: Int)
-    case copyClip(index: Int)
+    /// Identifies the dictation to insert, so a redraw cannot change the chosen words.
+    case insertRecent(id: UUID)
+    case copyRecent(id: UUID)
+    /// Identifies the clip to insert, so a redraw cannot change the chosen copy.
+    case insertClip(id: UUID)
+    case copyClip(id: UUID)
     case open(Destination)
     /// Opens the clipboard panel, which is otherwise reachable only by a shortcut nothing mentions.
     case openClipboard
