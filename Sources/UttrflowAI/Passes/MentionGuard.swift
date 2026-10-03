@@ -59,7 +59,8 @@ enum MentionGuard {
             return true
         }
         let next = position + length
-        return next < live.count && draft.shape(at: live[next]).key == "of"
+        let sentenceEnd = draft.sentenceRun(from: position, in: live).upperBound
+        return next < sentenceEnd && draft.shape(at: live[next]).key == "of"
     }
 
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.

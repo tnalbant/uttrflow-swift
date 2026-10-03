@@ -82,4 +82,15 @@ struct SentenceLocalityTests {
             cleaned("the build failed. number one is broken", by: pass)
                 == "the build failed. number one is broken")
     }
+
+    @Test("a spoken mark does not look ahead across its sentence end")
+    func aMentionDoesNotReadTheNextSentence() throws {
+        let draft = Draft(text: "we shipped comma. Of course it broke")
+        let live = draft.presentIndices
+        let position = try #require(live.firstIndex { draft.shape(at: $0).key == "comma" })
+
+        #expect(
+            !MentionGuard.isMentioned(
+                at: position, spanning: 1, in: live, of: draft, reach: MentionGuard.phraseReach))
+    }
 }
