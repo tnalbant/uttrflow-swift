@@ -18,6 +18,13 @@ public actor RecordingMetricsRecorder: MetricsRecording {
         decoding.append(effort)
     }
 
+    /// What each recording sounded like, in the order they were measured.
+    public private(set) var captureQualities: [CaptureQuality] = []
+
+    public func recordCaptureQuality(_ quality: CaptureQuality) async {
+        captureQualities.append(quality)
+    }
+
     public func measurements(for stage: PipelineStage) -> [StageMeasurement] {
         measurements.filter { $0.stage == stage }
     }

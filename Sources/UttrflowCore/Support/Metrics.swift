@@ -49,6 +49,9 @@ public protocol MetricsRecording: Sendable {
 
     /// Keeps the exact personal dictionary spellings in the last recogniser prompt, in memory only.
     func recordVocabularyPrompt(_ words: [String]) async
+
+    /// Keeps what one recording sounded like, as aggregates only.
+    func recordCaptureQuality(_ quality: CaptureQuality) async
 }
 
 extension MetricsRecording {
@@ -57,6 +60,9 @@ extension MetricsRecording {
 
     /// Most recorders do not expose personal prompt contents.
     public func recordVocabularyPrompt(_ words: [String]) async {}
+
+    /// Most recorders do not describe the audio.
+    public func recordCaptureQuality(_ quality: CaptureQuality) async {}
 }
 
 /// A recorder that discards everything, for callers that do not care about timings.
@@ -90,6 +96,11 @@ public struct MetricsFanOut: MetricsRecording {
     /// Passes the in-memory prompt words to the recorders that expose local diagnostics.
     public func recordVocabularyPrompt(_ words: [String]) async {
         for recorder in recorders { await recorder.recordVocabularyPrompt(words) }
+    }
+
+    /// Passes the recording's quality to every recorder.
+    public func recordCaptureQuality(_ quality: CaptureQuality) async {
+        for recorder in recorders { await recorder.recordCaptureQuality(quality) }
     }
 }
 

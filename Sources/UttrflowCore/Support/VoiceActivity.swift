@@ -15,6 +15,12 @@ public enum VoiceActivity: Sendable {
     /// Above this, audio is speech whatever its shape, at about -26 dBFS.
     static let assumedSpeechLevel: Float = 0.05
 
+    /// The frame percentile that stands for the room, below the speech.
+    static let floorPercentile = 0.1
+
+    /// The frame percentile that stands for the speech, above the odd click.
+    static let ceilingPercentile = 0.95
+
     /// Audio kept either side of the speech, in seconds, so no onset is clipped.
     static let margin = 0.2
 
@@ -30,8 +36,8 @@ public enum VoiceActivity: Sendable {
         guard loudness.count >= 2 else { return nil }
 
         let sorted = loudness.sorted()
-        let floor = percentile(sorted, 0.1)
-        let ceiling = percentile(sorted, 0.95)
+        let floor = percentile(sorted, floorPercentile)
+        let ceiling = percentile(sorted, ceilingPercentile)
 
         // A quiet room fails the first test; a fan passes it and fails the second.
         guard ceiling >= absoluteFloor else { return nil }
