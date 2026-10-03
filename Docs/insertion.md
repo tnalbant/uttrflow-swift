@@ -255,17 +255,16 @@ because when to switch belongs to the user, not the page.
 
 A pasted clip stays on the clipboard, so the clipboard watcher would otherwise see a change it
 cannot attribute and file the clip again, moving it to the top of the panel every time it is used.
-`SystemPasteboard` calls `PasteboardWatcher.ignoreNextWrite(of:)` with the text, or
-`ignoreNextPicture(_:)` with the PNG bytes, **immediately before** clearing the pasteboard, because
-clearing is itself what moves the change count.
+`SystemPasteboard` reserves an announcement through `PasteboardWatcher.ignoreNextWrite(of:)` with
+the text, or `ignoreNextPicture(_:)` with the PNG bytes, **immediately before** clearing the
+pasteboard, because clearing is itself what moves the change count. After a successful write it
+reports the exact resulting change count from `writeText` or `setImage`.
 
-The announcement names what is about to be written rather than the change count, so a user copy
-made within the same poll as an Uttrflow paste is still recorded. An announcement whose write has
-not arrived is kept, and lapses after `PasteboardWatcher.announcementLifetime` (2 s) so a paste that
-threw cannot leave one armed.
-If a write is refused or its text cannot be read back, its announcement is withdrawn. If the
-watcher gives up on a bounded clipboard read, it withdraws announcements that could have named
-that unread change, so the next same-text copy is recorded normally.
+The watcher matches the announced contents at that exact generation. A newer observed generation
+retires an older announcement, so a same-text copy made by the user remains visible and a delayed
+poll cannot turn Uttrflow's own write into a history row. If a write is refused or its text cannot
+be read back, its reservation is withdrawn. If the watcher gives up on a bounded clipboard read,
+it withdraws announcements that could have named that unread change.
 
 ## Dictating into a field that hides what is typed
 

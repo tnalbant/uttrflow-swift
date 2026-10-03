@@ -16,14 +16,14 @@ private func axUIElementGetWindow(
 /// The real clipboard, untestable by construction and so excluded from the coverage gate.
 public struct SystemPasteboard: Pasteboard {
     /// Told what this app is about to write, so the watcher can tell it from a copy. See `Docs/insertion.md`.
-    private let willWrite: @Sendable (String) -> @Sendable () -> Void
+    private let willWrite: @Sendable (String) -> @Sendable (Int?) -> Void
     /// Told the bytes a picture write puts there, which is what names it to the watcher.
-    private let willWritePicture: @Sendable (Data) -> @Sendable () -> Void
+    private let willWritePicture: @Sendable (Data) -> @Sendable (Int?) -> Void
 
     /// Takes the announcements the clipboard watcher needs, and by default makes none.
     public init(
-        willWrite: @escaping @Sendable (String) -> @Sendable () -> Void = { _ in {} },
-        willWritePicture: @escaping @Sendable (Data) -> @Sendable () -> Void = { _ in {} }
+        willWrite: @escaping @Sendable (String) -> @Sendable (Int?) -> Void = { _ in { _ in } },
+        willWritePicture: @escaping @Sendable (Data) -> @Sendable (Int?) -> Void = { _ in { _ in } }
     ) {
         self.willWrite = willWrite
         self.willWritePicture = willWritePicture
@@ -43,18 +43,20 @@ public struct SystemPasteboard: Pasteboard {
     }
 
     public func writeText(_ text: String, richText: String?) -> PasteboardWriteResult {
-        let withdrawAnnouncement = willWrite(text)
+        let finishAnnouncement = willWrite(text)
         let item = Self.textItem(text, richText: richText)
         clearForThisMacOnly()
         guard NSPasteboard.general.writeObjects([item]) else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
         guard NSPasteboard.general.string(forType: .string) == text else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
-        return .written(changeCount: NSPasteboard.general.changeCount)
+        let changeCount = NSPasteboard.general.changeCount
+        finishAnnouncement(changeCount)
+        return .written(changeCount: changeCount)
     }
 
     public func writeTransientText(_ text: String, richText: String?) -> PasteboardWriteResult {
@@ -75,36 +77,40 @@ public struct SystemPasteboard: Pasteboard {
     }
 
     public func writeConcealedText(_ text: String) -> PasteboardWriteResult {
-        let withdrawAnnouncement = willWrite(text)
+        let finishAnnouncement = willWrite(text)
         // Built whole and written once, so no reader sees the words before the marker.
         let item = Self.textItem(text, richText: nil, marker: .concealed)
         clearForThisMacOnly()
         guard NSPasteboard.general.writeObjects([item]) else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
         guard NSPasteboard.general.string(forType: .string) == text else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
-        return .written(changeCount: NSPasteboard.general.changeCount)
+        let changeCount = NSPasteboard.general.changeCount
+        finishAnnouncement(changeCount)
+        return .written(changeCount: changeCount)
     }
 
     private func writeMarkedText(
         _ text: String, richText: String?, marker: PasteboardMarkers
     ) -> PasteboardWriteResult {
-        let withdrawAnnouncement = willWrite(text)
+        let finishAnnouncement = willWrite(text)
         let item = Self.textItem(text, richText: richText, marker: marker)
         clearForThisMacOnly()
         guard NSPasteboard.general.writeObjects([item]) else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
         guard NSPasteboard.general.string(forType: .string) == text else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
-        return .written(changeCount: NSPasteboard.general.changeCount)
+        let changeCount = NSPasteboard.general.changeCount
+        finishAnnouncement(changeCount)
+        return .written(changeCount: changeCount)
     }
 
     static func textItem(
@@ -121,13 +127,15 @@ public struct SystemPasteboard: Pasteboard {
 
     /// K4 — the picture flavour, announced by its bytes and kept off Universal Clipboard like every other write.
     public func setImage(_ data: Data) -> PasteboardWriteResult {
-        let withdrawAnnouncement = willWritePicture(data)
+        let finishAnnouncement = willWritePicture(data)
         clearForThisMacOnly()
         guard NSPasteboard.general.setData(data, forType: .png) else {
-            withdrawAnnouncement()
+            finishAnnouncement(nil)
             return .refused
         }
-        return .written(changeCount: NSPasteboard.general.changeCount)
+        let changeCount = NSPasteboard.general.changeCount
+        finishAnnouncement(changeCount)
+        return .written(changeCount: changeCount)
     }
 
     /// Clears the pasteboard and keeps what goes on it next off Universal Clipboard. See `Docs/insertion.md`.

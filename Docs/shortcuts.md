@@ -139,6 +139,36 @@ dictation itself waits:
 
 Bindings with a key, and Fn, are not held back.
 
+## Sticky Keys: not yet measured
+
+Sticky Keys latches a modifier after one press and releases it after the next key. The recogniser
+reads a hold as over when the modifier's own flag clears, so if a latched flag stays set after the
+finger lifts, hold-to-talk would record until the next key, and that key would read as another
+shortcut and cancel the dictation. Whether the tap sees that is not known yet, and no change is
+made to the recogniser until it is.
+
+`uttrflow-dev probe modifiers` measures it. It opens the same `SystemKeyboard` tap the app uses,
+feeds every stroke to a `HotkeyRecogniser` on the default dictation binding, and prints one row
+per stroke (time, phase, key code, `isKeyDown`, modifiers, Fn, event) plus whether the system
+reports Sticky Keys on. It only reads the setting. Quit the app first so its tap is not also
+running.
+
+```bash
+swift build --product uttrflow-dev
+.build/debug/uttrflow-dev probe modifiers --seconds 30
+```
+
+Run it once with Sticky Keys off and once with it on (System Settings › Accessibility ›
+Keyboard), and in each run do three gestures, a few seconds apart:
+
+1. Press ⌃⌥ once, hold about a second, release.
+2. Press ⌃⌥ twice quickly.
+3. Press ⌃⌥, release, then type `a`.
+
+Paste both logs here. If the rows match, the recogniser needs nothing and the issue closes with
+them. If they differ, the rows become replay fixtures in `HotkeyRecogniserTests`, and the change
+is the smallest one those rows require.
+
 ## The release nobody else will send
 
 `ActivationMonitor.stop()` yields a release when it is stopped mid-hold, because a hold

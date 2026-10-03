@@ -11,8 +11,9 @@ anything, a line the local model writes for the situation. The pure decision cod
 `Sources/UttrflowContext`, the key tap and insertion `Sources/UttrflowInput`, and the loop that
 joins them `Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift`.
 
-Everything runs on this Mac. The corpus is a file under Application Support and is never
-uploaded; the model's weights are downloaded once ([predict-llm.md](predict-llm.md)).
+The corpus and typed text stay on this Mac and are never sent. The model runs here too; its weights
+are downloaded when needed ([predict-llm.md](predict-llm.md)). Other network access, including
+sign-in, model downloads, updates and opt-in crash reports, is described in [offline.md](offline.md).
 
 Related pages: [predict-accept.md](predict-accept.md) (keys and insertion),
 [predict-context.md](predict-context.md) (what the model is shown),

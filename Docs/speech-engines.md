@@ -17,7 +17,7 @@ prompt; [`speech-model-install.md`](speech-model-install.md) covers installing t
 | `BackedSpeechEngine.minimumDuration` | 250 ms | shorter audio is refused as too short |
 | `AppleSpeechBackend.chunkFrames` | 4096 frames | the chunk the system analyser is fed |
 | `AnalyserInput.maxFramesPerConversion` | 2048 frames | the slice fed to its converter |
-| `LanguageHeldDecoder.compressionRatioThresholds` | `hi`: 3.0 | Hindi's repetition threshold; others keep 2.4 |
+| `LanguageHeldDecoder.compressionRatioThresholds` | `en`: default, `hi`: 3.0 | one decision per transcribed language; default keeps Whisper's 2.4 |
 | `RecognitionLoop.fastestSpeech` | 4.5 words a second | faster than this, a repeated run is a loop |
 | `RecognitionLoop.mostCopyDifference` | 0.2 WER | how far copies may differ and still be one loop |
 | `RecognitionLoop.fewestCopyWords` | 3 | the shortest copy that counts |
