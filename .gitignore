@@ -41,3 +41,7 @@ UITests/*.xcodeproj
 
 # graphflow run journals and transcripts — machine-local, never committed.
 .graphflow/
+
+# Per-person agent rules: private, never committed. Read via AGENTS.md "Local rules".
+/AGENTS.local.md
+/CLAUDE.local.md

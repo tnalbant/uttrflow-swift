@@ -4,15 +4,14 @@ alwaysApply: true
 ---
 
 This repository is public. The working session that produces the work is not, and the
-boundary is one way. Never write a named competitor or their products, docs, pricing or
-behaviour; growth, marketing or business strategy; or anything said in a session that is
-not a technical requirement — into a tracked file, a commit message, a pull request, an
-issue or a code comment.
+boundary is one way. Tracked files, commit messages, pull requests, issues and code comments
+state technical requirements, in the product's own words, and nothing else.
 
 Reference material shared during development is for reading, not for keeping. Take the
 requirement out of it, state the requirement in the product's own words, and let the
 reference go.
 
-The full rule, and everything else that governs work here, is in `AGENTS.md`. Read it.
-`python3 Scripts/disclosure_audit.py` enforces this and runs in `make verify`, in the
-pre-push and commit-msg hooks, and on every pull request.
+The full rule, and everything else that governs work here, is in `AGENTS.md`. Read it, and
+read `AGENTS.local.md` if it exists (it is private and untracked). `python3
+Scripts/disclosure_audit.py` enforces the rule and runs in `make verify`, in the pre-push and
+commit-msg hooks, and on every pull request.

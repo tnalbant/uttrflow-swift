@@ -103,13 +103,11 @@ This codebase has a particular style, and matching it will save a round trip:
   counts and fails over 400 lines, unless `OVERSIZED_EXCLUSIONS` records what reviews the
   file instead.
 - **No personal data in fixtures.** `Scripts/pii_audit.sh` fails the build on a real email
-  address or postal address. Use `example.com` and an invented street; this exists because
-  a stranger's real address was once sample data here and reached eleven files.
-- **No other product is named, anywhere.** `Scripts/disclosure_audit.py` fails the build,
-  the push and the pull request on a competitor's name, on growth or business strategy,
-  and on the vocabulary of a private working session. If another tool's behaviour is
-  relevant, describe the behaviour — "some dictation tools rewrite for brevity" — and not
-  whose it is. This applies to commit messages and pull request bodies as much as to code.
+  address or postal address. Use `example.com` and an invented street.
+- **Write technical requirements, in the product's own words.** `Scripts/disclosure_audit.py`
+  fails the build, the push and the pull request on anything else. If another tool's
+  behaviour is relevant, describe the behaviour and not whose it is. This applies to commit
+  messages and pull request bodies as much as to code.
 - **The offline promise is structural, not a claim.** `Scripts/offline_audit.sh` asserts
   that no module on the dictation path can open a connection. If your change needs the
   network, it almost certainly belongs somewhere else.
