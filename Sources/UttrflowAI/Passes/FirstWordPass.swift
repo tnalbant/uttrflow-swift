@@ -248,7 +248,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return lines.contains { line in
                 zip(line, line.dropFirst()).contains { previous, token in
                     let candidate = bareWord(token)
-                    let startsSentence = previous.last.map(sentenceEnds.contains) ?? false
+                    let startsSentence = previous.last.map(SentenceMarks.ends.contains) ?? false
                     return (candidate.first?.isUppercase ?? false) && candidate.lowercased() == wanted
                         && !startsSentence
                 }
@@ -271,6 +271,4 @@ public struct FirstWordPass: WholeTextCleaningPass {
         else { return "" }
         return token[start...end]
     }
-
-    private static let sentenceEnds: Set<Character> = [".", "!", "?"]
 }

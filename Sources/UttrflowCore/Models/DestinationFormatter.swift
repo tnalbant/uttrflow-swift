@@ -32,7 +32,7 @@ public enum SentenceCount {
         var openSentence = false
         let characters = Array(text)
         for (index, character) in characters.enumerated() {
-            if ends.contains(character) {
+            if SentenceMarks.ends.contains(character) {
                 let next = index + 1 < characters.count ? characters[index + 1] : nil
                 // A stop between two digits is a decimal point, not the end of a sentence.
                 let insideNumber = character == "." && (next?.isNumber ?? false)
@@ -47,8 +47,6 @@ public enum SentenceCount {
         }
         return count + (openSentence ? 1 : 0)
     }
-
-    private static let ends: Set<Character> = [".", "!", "?", "।", "॥"]
 }
 
 /// Which spoken numbers a place wants written as numerals.
