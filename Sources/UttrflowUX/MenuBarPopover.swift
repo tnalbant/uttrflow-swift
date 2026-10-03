@@ -122,7 +122,7 @@ extension MenuBarPresenter {
             return .status(MenuBarStatus(title: statusLine, emphasis: .live))
         case .working:
             return .status(MenuBarStatus(title: statusLine))
-        case .idle, .inserted, .unconfirmed, .copied:
+        case .idle, .inserted, .partial, .unconfirmed, .copied:
             break
         }
         if let notice = state.suggestionUnheard, state.features.suggestions {

@@ -133,7 +133,8 @@ public enum DictationPresenter {
                 symbolName: "doc.on.clipboard", primaryLine: "Copied — press ⌘V",
                 secondaryLine: outcome.wordsToKeep.map { preview(of: $0) },
                 showsWaveform: false, showsProgress: false, isRecording: false, action: nil,
-                accessibilityLabel: "Copied to the clipboard. Press Command V to paste it. \(said(outcome))")
+                accessibilityLabel:
+                    "Copied to the clipboard. Press Command V to paste it.\(missing(outcome)) \(said(outcome))")
 
         case .inserted(let outcome) where outcome.method == .clipboard:
             // Nothing was typed, and saying "Inserted" here is what tells the user to press ⌘V.
@@ -144,7 +145,7 @@ public enum DictationPresenter {
                 action: .openSystemSettings(.accessibility),
                 accessibilityLabel:
                     "Copied to the clipboard, not typed. Press Command V to paste it. "
-                    + "Uttrflow needs Accessibility access to type for you. \(said(outcome))")
+                    + "Uttrflow needs Accessibility access to type for you.\(missing(outcome)) \(said(outcome))")
 
         case .inserted(let outcome) where outcome.arrival == .unconfirmed:
             // The instruction is worth more than the glance here, since the words are still recoverable.
@@ -154,7 +155,14 @@ public enum DictationPresenter {
                 showsWaveform: false, showsProgress: false, isRecording: false, action: nil,
                 accessibilityLabel:
                     "Inserted, but not confirmed. The words are still on the clipboard, so press "
-                    + "Command V if they are missing. \(said(outcome))")
+                    + "Command V if they are missing.\(missing(outcome)) \(said(outcome))")
+
+        case .inserted(let outcome) where MissedSpeech.isMissing(outcome.missedPieces):
+            DockPresentation(
+                symbolName: "exclamationmark.circle", primaryLine: MissedSpeech.line,
+                secondaryLine: MissedSpeech.detail,
+                showsWaveform: false, showsProgress: false, isRecording: false, action: nil,
+                accessibilityLabel: "Inserted. \(MissedSpeech.sentence) \(said(outcome))")
 
         case .inserted(let outcome):
             DockPresentation(
@@ -257,6 +265,11 @@ public enum DictationPresenter {
     /// The words read aloud with the notice, withheld when the field they went into is secure.
     static func said(_ outcome: DictationOutcome) -> String {
         outcome.wordsToKeep ?? "The words are hidden because the field is secure."
+    }
+
+    /// The missing-speech sentence with its leading space, or nothing when every piece decoded.
+    static func missing(_ outcome: DictationOutcome) -> String {
+        MissedSpeech.isMissing(outcome.missedPieces) ? " \(MissedSpeech.sentence)" : ""
     }
 
     /// A glance at the text, since the floating button sits over the user's work.
