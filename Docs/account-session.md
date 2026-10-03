@@ -15,6 +15,11 @@ A `5xx` is deliberately not treated as unreachable. The server was reached and i
 failed; calling that "no connection" would send the user to check their Wi-Fi over an
 outage they cannot do anything about, and would hide the outage.
 
+A refusal's decoded explanation is returned to the caller so a person can act on it.
+The account log records only a fixed failure reason and HTTP status; it never records that
+server-provided text. A response that cannot be decoded gets a local explanation naming the
+response that could not be read.
+
 ## The access token is never written down
 
 The access token lives about an hour and stays in memory. Only the ninety-day refresh
