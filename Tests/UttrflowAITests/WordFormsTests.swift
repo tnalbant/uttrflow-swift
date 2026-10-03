@@ -5,6 +5,14 @@ import Testing
 /// Whether two spellings are one word, asked of the single home for that question.
 @Suite("WordForms")
 struct WordFormsTests {
+    @Test("Same-form comparison uses Unicode case folding and canonical composition")
+    func unicodeEquivalentSpellings() {
+        #expect(WordForms.sameForm("Straße", "STRASSE"))
+        #expect(WordForms.sameForm("İstanbul", "i\u{307}STANBUL"))
+        #expect(WordForms.sameForm("café", "cafe\u{301}"))
+        #expect(!WordForms.sameForm("İstanbul", "istanbul"))
+    }
+
     @Test("refuses unrelated irregular verbs and a longer word that only starts the same")
     func refusesUnrelatedForms() {
         #expect(!WordForms.sameForm("wrote", "spoken"))

@@ -1,6 +1,8 @@
 import Foundation
 import OSLog
 import UttrflowContext
+import UttrflowCore
+import UttrflowPredict
 import UttrflowPredictStore
 
 protocol RejectedSuggestionStore: Sendable {
@@ -34,7 +36,7 @@ final class RejectedSuggestionRecorder {
             if unwritten.count > Self.limit { unwritten.removeFirst() }
             suppressed.insert(rejection)
             Self.log.error(
-                "A rejected suggestion's corpus write failed and is held for retry: \(failure(error), privacy: .public)"
+                "A rejected suggestion's corpus write failed and is held for retry: \(self.failure(error), privacy: .public)"
             )
         }
     }
@@ -53,7 +55,7 @@ final class RejectedSuggestionRecorder {
                 }
             } catch {
                 Self.log.error(
-                    "A rejected suggestion's corpus retry failed: \(failure(error), privacy: .public)")
+                    "A rejected suggestion's corpus retry failed: \(self.failure(error), privacy: .public)")
                 return
             }
         }
@@ -85,6 +87,16 @@ final class RejectedSuggestionRecorder {
 private struct RejectedSuggestion: Hashable {
     let text: String
     let surface: Surface
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(TextMatching.caseFoldedKey(text))
+        hasher.combine(surface)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.surface == rhs.surface
+            && TextMatching.caseFoldedKey(lhs.text) == TextMatching.caseFoldedKey(rhs.text)
+    }
 }
 
 private struct PendingRejection {

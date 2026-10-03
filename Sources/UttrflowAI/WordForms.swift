@@ -8,7 +8,8 @@ enum WordForms {
         _ word: String, _ other: String, allowingRegularInflections: Bool = true,
         allowingRomanisedHindiSpellings: Bool = false
     ) -> Bool {
-        if word == other || sameIrregularVerbForm(word, other)
+        if TextMatching.caseFoldedKey(word) == TextMatching.caseFoldedKey(other)
+            || sameIrregularVerbForm(word, other)
             || (allowingRomanisedHindiSpellings && sameRomanisedHindiSpelling(word, other))
         {
             return true
