@@ -8,6 +8,18 @@ import UttrflowPredict
 import UttrflowPredictCapture
 import UttrflowPredictStore
 
+private struct SuggestionSessionEndObservers {
+    let workspaceCenter: NotificationCenter
+    let workspaceObservers: [any NSObjectProtocol]
+    let screenLockCenter: NotificationCenter
+    let screenLockObserver: any NSObjectProtocol
+
+    func remove() {
+        for observer in workspaceObservers { workspaceCenter.removeObserver(observer) }
+        screenLockCenter.removeObserver(screenLockObserver)
+    }
+}
+
 @MainActor
 protocol SuggestionProcessActivityManaging {
     func begin()
@@ -126,6 +138,7 @@ final class SuggestionCoordinator {
     private var selectionPollInFlight = false
     private var selectionPollGeneration = 0
     private var activations: (any NSObjectProtocol)?
+    private var sessionEndObservers: SuggestionSessionEndObservers?
     /// The Space and sleep observers, each of which leaves a ghost with no field under it.
     private var spaceObservers: [any NSObjectProtocol] = []
     /// Whether a held mouse button can still move the focused window under a ghost.
@@ -139,6 +152,8 @@ final class SuggestionCoordinator {
     private var handed: (line: String, reading: FieldReading)?
     /// The line the accept key takes as last armed by a draw, so a later answer never inherits that claim.
     private(set) var armedOffer: String?
+    var isSelectionPolling: Bool { selectionTimer != nil }
+    var isTickerScheduled: Bool { ticker != nil }
     private var lastKeystroke = Date.distantPast
     /// The last observed key-down, used to distinguish typing from edits made without a key.
     private var lastObservedKeyDown = Date.distantPast
@@ -384,6 +399,8 @@ final class SuggestionCoordinator {
         stopWatchingSelection()
         if let activations { NSWorkspace.shared.notificationCenter.removeObserver(activations) }
         activations = nil
+        sessionEndObservers?.remove()
+        sessionEndObservers = nil
         for observer in spaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         spaceObservers = []
         focusedFieldValueObserver.stop()
@@ -402,6 +419,9 @@ final class SuggestionCoordinator {
     /// Keystrokes elsewhere, the application in front changing, and a clock for the pauses.
     private func watchForActivity() {
         watchFocusedFieldValues()
+        observeSessionEnd(
+            in: NSWorkspace.shared.notificationCenter,
+            screenLockCenter: DistributedNotificationCenter.default())
         let keys = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             let pastes = Self.isPaste(event)
             let observedAt = Date()
@@ -459,14 +479,32 @@ final class SuggestionCoordinator {
                 self?.applicationChanged()
             }
         }
-        for name in [
-            NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.screensDidSleepNotification,
-        ] {
+        for name in [NSWorkspace.activeSpaceDidChangeNotification] {
             spaceObservers.append(
                 NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) {
                     [weak self] _ in MainActor.assumeIsolated { self?.withdraw() }
                 })
         }
+    }
+
+    func observeSessionEnd(in workspaceCenter: NotificationCenter, screenLockCenter: NotificationCenter) {
+        guard sessionEndObservers == nil else { return }
+        let onEnd: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in self?.endSessionObservation() }
+        }
+        sessionEndObservers = SuggestionSessionEndObservers(
+            workspaceCenter: workspaceCenter,
+            workspaceObservers: DictationSessionEndObserver.observe(in: workspaceCenter, onEnd: onEnd),
+            screenLockCenter: screenLockCenter,
+            screenLockObserver: DictationSessionEndObserver.observeScreenLock(
+                in: screenLockCenter, onEnd: onEnd))
+    }
+
+    private func endSessionObservation() {
+        ticker?.invalidate()
+        ticker = nil
+        ticking = SuggestionTicking()
+        withdraw()
     }
 
     func watchFocusedFieldValues() {
@@ -620,7 +658,7 @@ final class SuggestionCoordinator {
     }
 
     /// Starts the pause clock if it is not running; every activity calls this.
-    private func noteActivity() {
+    func noteActivity() {
         guard ticking.noteActivity(at: Date()) else { return }
         scheduleTicker(every: SuggestionTicking.interval)
     }
