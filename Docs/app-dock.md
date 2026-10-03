@@ -110,3 +110,29 @@ success colour.
 - The panel's own `hasShadow` is off: AppKit draws a shadow around a transparent panel's opaque
   content, and every form already carries the one the design asks for. Two shadows around a
   nine-point grip make the resting button look boxed.
+
+## What the menu bar shows for each dictation state
+
+The floating button can be switched off, and is hidden while nobody is signed in, so the menu
+bar has to carry every dictation state on its own. `FailurePresenter.placement` decides a
+failure's surface from its severity and from whether the button is shown: a blocking failure,
+or any failure while the button is not shown, takes the menu bar's attention form for the same
+`AppDelegate.linger` the button would have used, then clears with the state. The VoiceOver
+label is `MenuBarPresenter.spokenForm` of the status line, so it follows that column.
+`MenuBarSurfaceTableTests` fails when a `DictationState` has no row here or when a row's state
+shows the resting icon or status line.
+
+| State | Icon, button shown | Icon, button off | Status line |
+| --- | --- | --- | --- |
+| `idle` | the mark | the mark | Ready |
+| `recording` | `mic.fill` | `mic.fill` | Listening… |
+| `transcribing` | `sparkles` | `sparkles` | Tidying up… |
+| `tidying` | `sparkles` | `sparkles` | Tidying up… |
+| `inserting` | `sparkles` | `sparkles` | Tidying up… |
+| `inserted`, confirmed | `checkmark` | `checkmark` | Inserted |
+| `inserted`, unconfirmed | `questionmark.circle` | `questionmark.circle` | Inserted — not confirmed |
+| `inserted`, partial | `exclamationmark.circle` | `exclamationmark.circle` | the missed-speech line |
+| `inserted`, copied | `doc.on.clipboard` | `doc.on.clipboard` | Copied — press ⌘V |
+| `failed`, informational | `info.circle` | `exclamationmark.triangle.fill`, tinted | the notice's headline |
+| `failed`, recoverable or degraded | `xmark.circle` | `exclamationmark.triangle.fill`, tinted | the notice's headline |
+| `failed`, blocking | `exclamationmark.triangle.fill`, tinted | `exclamationmark.triangle.fill`, tinted | the notice's headline |

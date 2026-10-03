@@ -2380,23 +2380,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Translates the pipeline's state into the menu's vocabulary, deciding nothing.
     private func menuBarState(for state: DictationState) -> MenuBarState {
-        let activity: DictationActivity =
-            switch state {
-            case .idle, .failed: .idle
-            case .recording: .listening
-            case .transcribing, .tidying, .inserting: .working
-            case .inserted(let outcome):
-                DictationActivity.completion(
-                    method: outcome.method, arrival: outcome.arrival, missedPieces: outcome.missedPieces)
-            }
-        var failure: FailurePresentation?
-        if case .failed(let notice) = state {
-            failure = FailurePresenter.present(
-                message: notice.message, recovery: notice.recovery, severity: notice.severity)
-        }
+        let menu = Self.menuBarDictation(for: state, floatingButtonShown: showsTheFloatingButton)
         return MenuBarState(
-            activity: activity,
-            failure: failure,
+            activity: menu.activity,
+            failure: menu.failure,
             speechModel: speechReadiness,
             speechLoadElapsed: speechLoadStarted.map { $0.duration(to: .now) } ?? .zero,
             recordingAdvice: recordingAdvice,
@@ -3345,11 +3332,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         refreshMainWindow()
     }
 
+    /// Whether the floating button is on screen: the setting asks for it, somebody is signed in, and windows draw.
+    private var showsTheFloatingButton: Bool { surfaces.showsTheFloatingButton && drawsWindows }
+
     /// Shows the floating button when the setting asks for it and somebody is signed in, and hides it otherwise.
     private func showTheFloatingButtonIfWanted() {
-        guard surfaces.showsTheFloatingButton, drawsWindows else { return dock.hide() }
+        // Where a failure is placed depends on whether the button is there to carry it.
+        defer { refreshMenuBar() }
+        guard showsTheFloatingButton else { return dock.hide() }
         dock.setAnchor(settings.floatingButtonAnchor)
         dock.show()
+    }
+
+    /// A dictation's activity and failure in the menu's vocabulary, placed by which surfaces are shown.
+    nonisolated static func menuBarDictation(for state: DictationState, floatingButtonShown: Bool) -> MenuBarState {
+        let activity: DictationActivity =
+            switch state {
+            case .idle, .failed: .idle
+            case .recording: .listening
+            case .transcribing, .tidying, .inserting: .working
+            case .inserted(let outcome):
+                DictationActivity.completion(
+                    method: outcome.method, arrival: outcome.arrival, missedPieces: outcome.missedPieces)
+            }
+        var failure: FailurePresentation?
+        if case .failed(let notice) = state {
+            failure = FailurePresenter.present(
+                message: notice.message, recovery: notice.recovery, severity: notice.severity,
+                floatingButtonShown: floatingButtonShown)
+        }
+        return MenuBarState(activity: activity, failure: failure)
     }
 
     /// Whether the floating button collapses to a grip when idle, as the running button has it now.
