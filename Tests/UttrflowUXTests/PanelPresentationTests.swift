@@ -213,6 +213,23 @@ struct PanelMaskTests {
         #expect(row.tooltip == nil)
     }
 
+    @Test("shows additional lines and a bounded full-text tooltip")
+    func multilineSummaryAndPreview() {
+        let clip = PanelFixture.clip("first\nsecond")
+        let row = PanelFixture.page([clip]).rows.first
+        #expect(row?.summary == "first")
+        #expect(row?.additionalLineCount == 1)
+        #expect(row?.tooltip == "first\nsecond")
+    }
+
+    @Test("does not expose a masked secret through its preview")
+    func maskedPreviewIsHidden() {
+        let secret = PanelFixture.clip("first\nsecret", kind: .secret)
+        let row = PanelFixture.page([secret]).rows.first
+        #expect(row?.tooltip == nil)
+        #expect(row?.additionalLineCount == 0)
+    }
+
     /// Revealing the same clip gives a tooltip, and it is the real line rather than bullets.
     @Test("revealing it gives one, and it is the real line")
     func revealedRowsDo() {

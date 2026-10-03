@@ -60,6 +60,15 @@ Search does not read a masked secret's text either. A row that appeared under "C
 for a typed fragment would confirm the fragment is inside the hidden value, so until it is
 revealed a secret is found only by its alias or its collection.
 
+## Multiline clips
+
+A row stays one line, and a multiline clip labels how many additional lines will be pasted.
+Hovering its summary or line count shows the full text, capped at 10,000 characters with an
+explicit truncation marker. The preview is bounded because stored clips may be much larger;
+the clipboard itself is unchanged and a user can still inspect the source before pasting.
+Unrevealed secrets expose neither the line count nor their preview. A first line made only of
+whitespace says so and includes the clip's character count, instead of becoming an empty row.
+
 ## Empty states, and being specific and wrong
 
 There are four different nothings, and the sentence is **assembled from the narrowings
