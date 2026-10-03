@@ -296,6 +296,64 @@ struct FileSystemSpeechModelStoreTests {
         #expect(store.isInstalled(model))
     }
 
+    @Test("a failed load over intact files keeps its retry")
+    func intactFilesKeepTheRetry() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, _, _, _ in }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "new")
+        try writeTokenizer(into: folder)
+        try await store.install(model) { _ in }
+
+        let failure = WeightsAssets.loadFailure(of: model, in: folder, description: "boom")
+
+        #expect(failure == .modelLoadFailed(description: "boom"))
+        #expect(store.isInstalled(model))
+    }
+
+    @Test("a failed load over a truncated weight file or a missing tokenizer reads as not installed")
+    func absentFilesReadAsNotInstalled() throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let folder = FileSystemSpeechModelStore(root: sandbox.root) { _, _, _, _ in }.location(of: model)
+        try writeVerifiable(into: folder, changed: "ne")
+        try writeTokenizer(into: folder)
+        #expect(WeightsAssets.loadFailure(of: model, in: folder, description: "") == .modelNotInstalled)
+
+        try writeVerifiable(into: folder, changed: "new")
+        TokenizerAssets.remove(from: folder)
+        #expect(WeightsAssets.loadFailure(of: model, in: folder, description: "") == .modelNotInstalled)
+    }
+
+    @Test("a failed load over a same-size corrupted file names the damage and the install repairs only it")
+    func repairsDamagedWeights() async throws {
+        let sandbox = Sandbox()
+        let model = verifiableModel()
+        let fetched = Mutex<[ModelComponent]>([])
+        let store = FileSystemSpeechModelStore(root: sandbox.root) { _, component, destination, _ in
+            fetched.withLock { $0.append(component) }
+            try writeVerifiable(into: destination, changed: "new")
+        }
+        let folder = store.location(of: model)
+        try writeVerifiable(into: folder, changed: "new")
+        try writeTokenizer(into: folder)
+        try await store.install(model) { _ in }
+        fetched.withLock { $0 = [] }
+        try Data("bad".utf8).write(to: folder.appending(path: "changed.bin"))
+        #expect(store.isInstalled(model), "a size check alone cannot see the damage")
+
+        let failure = WeightsAssets.loadFailure(of: model, in: folder, description: "")
+
+        #expect(failure == .modelDamaged(fileCount: 1))
+        #expect(failure.recovery == .downloadSpeechModel)
+        #expect(!store.isInstalled(model))
+        try await store.install(model) { _ in }
+        #expect(fetched.withLock { $0 } == [.weights])
+        #expect(WeightsAssets.areVerified(for: model, in: folder))
+        #expect(store.isInstalled(model))
+    }
+
     @Test("names why a model is not installed")
     func namesWhyNotInstalled() throws {
         let sandbox = Sandbox()

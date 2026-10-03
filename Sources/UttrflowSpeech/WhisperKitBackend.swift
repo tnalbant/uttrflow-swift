@@ -75,7 +75,8 @@ public actor WhisperKitBackend: TranscriptionBackend {
             kit = LoadedKit(whisper)
         } catch {
             modelUseLease = nil
-            throw .modelLoadFailed(description: error.localizedDescription)
+            throw WeightsAssets.loadFailure(
+                of: model, in: modelFolder, description: error.localizedDescription)
         }
         report(started.duration(to: ContinuousClock.now))
     }

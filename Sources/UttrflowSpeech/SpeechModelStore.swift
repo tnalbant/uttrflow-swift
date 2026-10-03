@@ -79,6 +79,31 @@ public enum WeightsAssets {
             }
     }
 
+    /// The files `model` pins that sit in `folder` at their pinned size but no longer hash to their pin.
+    static func damaged(for model: SpeechModel, in folder: URL) -> [String] {
+        fileNames(of: model).filter { name in
+            guard let expected = model.weightFiles[name] else { return false }
+            let file = folder.appending(path: name)
+            let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            guard Int64(size ?? -1) == expected.bytes else { return false }
+            return (try? verified(file: file, expected: expected)) != true
+        }
+    }
+
+    /// Why a load of `model` from `folder` failed, read from the files; withdraws the revision of damaged weights so installing repairs them.
+    public static func loadFailure(
+        of model: SpeechModel, in folder: URL, description: String
+    ) -> SpeechEngineError {
+        guard missing(for: model, in: folder).isEmpty, TokenizerAssets.arePresent(in: folder) else {
+            return .modelNotInstalled
+        }
+        let damagedFiles = damaged(for: model, in: folder)
+        guard !damagedFiles.isEmpty else { return .modelLoadFailed(description: description) }
+        // Without the record, install re-verifies every file through staging and fetches only the bad ones.
+        try? FileManager.default.removeItem(at: folder.appending(path: revisionFileName))
+        return .modelDamaged(fileCount: damagedFiles.count)
+    }
+
     /// Records in `folder` that it holds the weights revision `model` pins.
     static func recordRevision(of model: SpeechModel, in folder: URL) throws {
         try Data(model.weightsRevision.utf8).write(

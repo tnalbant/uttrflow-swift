@@ -48,7 +48,8 @@ extension SpeechEngineError: CataloguedFailure {
         case .modelNotInstalled: .modelDownloadFailed(description: "")
         case .modelDownloadFailed: .notEnoughSpace(neededBytes: 0)
         case .notEnoughSpace: .modelLoadFailed(description: "")
-        case .modelLoadFailed: .audioTooShort
+        case .modelLoadFailed: .modelDamaged(fileCount: 0)
+        case .modelDamaged: .audioTooShort
         case .audioTooShort: .nothingHeard
         case .nothingHeard: .transcriptionFailed(description: "")
         case .transcriptionFailed: nil
