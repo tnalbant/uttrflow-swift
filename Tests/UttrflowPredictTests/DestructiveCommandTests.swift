@@ -500,6 +500,27 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "A push whose force or delete flag sits inside a short-flag cluster is destructive.",
+        arguments: [
+            "git push -fu origin feature", "git push -uf origin feature",
+            "git push -fd origin feature", "git push -vf origin feature",
+            "git push -df origin feature", "git push -fv origin feature",
+            "git -C repo push -fu origin feature",
+        ])
+    func clusteredPushFlagIsDestructive(_ line: String) {
+        #expect(DestructiveCommand.matches(line), "\(line) should be destructive")
+    }
+
+    @Test(
+        "A push whose only short flag is a harmless one is ordinary.",
+        arguments: [
+            "git push -u origin feature", "git push -v origin feature", "git push -q origin feature",
+        ])
+    func harmlessPushClusterIsOrdinary(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A cloud or hosting tool deleting a repository, a release, a bucket or a resource is destructive.",
         arguments: [
             "gh repo delete example/demo --yes", "gh release delete v1.0",

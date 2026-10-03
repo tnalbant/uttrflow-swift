@@ -569,8 +569,10 @@ public enum DestructiveCommand {
         }
         if let flags = flags(after: "push"),
             flags.contains(where: {
-                $0.hasPrefix("--force") || $0 == "-f" || $0 == "--delete" || $0 == "-d" || $0.hasPrefix("+")
-                    || ($0.hasPrefix(":") && $0.count > 1) || $0 == "--mirror" || $0 == "--prune"
+                $0.hasPrefix("--force") || shortFlags($0, include: "f", valuesAfter: pushValueTaking)
+                    || $0 == "--delete" || shortFlags($0, include: "d", valuesAfter: pushValueTaking)
+                    || $0.hasPrefix("+") || ($0.hasPrefix(":") && $0.count > 1)
+                    || $0 == "--mirror" || $0 == "--prune"
             })
         {
             return true
@@ -639,6 +641,9 @@ public enum DestructiveCommand {
 
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
     private static let historyDestroyers: Set<String> = ["filter-branch", "filter-repo", "prune"]
+
+    /// Short flags in `git push` that take a value when they appear in a cluster, so anything after them is not another flag.
+    private static let pushValueTaking: Set<Character> = ["o", "F"]
 
     /// Whether a Mercurial command removes history or discards working-copy changes.
     private static func matchesDestructiveMercurial(_ arguments: [String]) -> Bool {
