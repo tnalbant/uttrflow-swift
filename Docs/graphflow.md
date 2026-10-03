@@ -24,7 +24,7 @@ the keyboard, settings, and dictation pipeline components below.
 | `vcs.release_branch` | Uses `main`; this repository has no separate release branch. |
 | `release` | A release is a tag on `main`; a tag with anything after the version is a prerelease. A maintainer tags; agents never do. |
 | `issues.provider` | Uses GitHub for issue tracking. |
-| `tracker.path` | Names PLAN.md. That file is not tracked: the phase tracker is the untracked `PLAN.local.md` in a maintainer's checkout, so in a fresh clone this setting points at nothing. |
+| `tracker.path` | Names `PLAN.local.md`, an untracked phase tracker in a maintainer's checkout; in a fresh clone the file does not exist. |
 | `rules_files` | Loads `AGENTS.md` and `Docs/shortcuts.md` as repository rules. |
 | `build.components` | Defines focused checks for keyboard, settings, and dictation pipeline work. |
 | `autonomy.hard_stops` | Stops for `schema` changes (stored settings reach every install) and `infra` changes (publishing moves `latest.json`). |

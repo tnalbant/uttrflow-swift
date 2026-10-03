@@ -1,4 +1,4 @@
-/// What a word in a command line may be, decided by the command it belongs to and where it stands. See `Docs/predict-agent.md`, A1.
+/// What a word in a command line may be, decided by the command it belongs to and where it stands. See `Docs/predict-agent.md`.
 enum ArgumentKind: Equatable, Sendable {
     /// The command itself: a program on the path or an alias.
     case program

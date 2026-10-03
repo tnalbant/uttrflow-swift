@@ -4,7 +4,7 @@ import AppKit
 import SwiftUI
 import UttrflowCore
 
-/// What the system asks of the app's animations at one moment, and the frame rates that follow. See `Docs/performance.md`.
+/// What the system asks of the app's animations at one moment, and the frame rates that follow. See `Docs/performance-idle.md`.
 struct MotionBudget: Equatable {
     /// Whether Reduce Motion is on in the Accessibility settings.
     var reducesMotion: Bool

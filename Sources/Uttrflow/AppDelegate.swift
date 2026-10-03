@@ -1015,7 +1015,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         suggestionModel = .fetchFailed
     }
 
-    /// Lets the weights go once the feature is off, stopping any load still in flight. See `Docs/performance.md`.
+    /// Lets the weights go once the feature is off, stopping any load still in flight. See `Docs/performance-suggestions.md`.
     private func releaseTheModel() {
         guard isModelPreparing || suggestionModel == .fetchFailed || suggestionModel == .loadFailed
         else { return }
@@ -1038,7 +1038,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Task { await speechEngine.release() }
     }
 
-    /// Releases the suggestion model under pressure, then permits a query-driven reload after calm. See `Docs/performance.md`.
+    /// Releases the suggestion model under pressure, then permits a query-driven reload after calm. See `Docs/performance-suggestions.md`.
     func memoryPressureChanged(to level: MemoryPressureLevel) {
         switch level {
         case .warning, .critical:

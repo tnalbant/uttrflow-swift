@@ -20,7 +20,7 @@ enum MemoryPressureLevel: Sendable, Equatable {
     }
 }
 
-/// Decides how long a suggestion model released for memory waits before it loads again. See `Docs/performance.md`.
+/// Decides how long a suggestion model released for memory waits before it loads again. See `Docs/performance-suggestions.md`.
 struct SuggestionModelPressure: Sendable, Equatable {
     /// The calm the first reload waits for.
     let firstWait: Duration

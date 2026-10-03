@@ -1,7 +1,7 @@
 import Foundation
 import UttrflowPredict
 
-/// The substitute machine a fixture stands on: it says what the model may write, and whether what it wrote is there. See `Docs/predict-agent.md`, A5.
+/// The substitute machine a fixture stands on: it says what the model may write, and whether what it wrote is there. See `Docs/predict-agent.md`.
 struct Grounding {
     /// A machine that answers what the fixture says and nothing else, as the real reader answers for a directory.
     private struct FixtureMachine: EnvironmentReading {

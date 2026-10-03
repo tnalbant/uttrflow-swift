@@ -10,7 +10,7 @@ struct WeightLoading<Modules: Sendable>: Sendable {
     let empty: @Sendable (Modules) async -> Void
 }
 
-/// Builds a model's modules on the first load only, so a reload after a release never quantises again. See `Docs/performance.md`.
+/// Builds a model's modules on the first load only, so a reload after a release never quantises again. See `Docs/performance-leaks.md`.
 actor ReloadableWeights<Modules: Sendable> {
     private let loading: WeightLoading<Modules>
     private var modules: Modules?

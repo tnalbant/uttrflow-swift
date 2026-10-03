@@ -176,7 +176,7 @@ private enum EditStep {
     case added(Int)
 }
 
-/// A shortest edit script whose kept layers grow with the square of the changes, choosing at each change what a full table walked from the top would. See `Docs/performance.md`.
+/// A shortest edit script whose kept layers grow with the square of the changes, choosing at each change what a full table walked from the top would. See `Docs/performance-idle.md`.
 private struct ShortestEdit {
     /// The old lines, numbered so equal lines share a number.
     let old: [Int]

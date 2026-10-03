@@ -3,7 +3,7 @@
 import Foundation
 import UttrflowPredictCapture
 
-/// Runs the pause clock from an activity until a quiet window passes with nothing drawn. See `Docs/performance.md`.
+/// Runs the pause clock from an activity until a quiet window passes with nothing drawn. See `Docs/performance-suggestions.md`.
 struct SuggestionTicking: Sendable, Equatable {
     /// How often the field is re-read while the clock runs.
     static let interval: TimeInterval = 1
