@@ -130,6 +130,26 @@ struct FirstWordPassTests {
         #expect(cleaned("this is a new idea about york", by: sut) == "This is a new idea about york")
     }
 
+    @Test(
+        "leaves locale names that are everyday words in lower case",
+        arguments: [
+            ("i need to polish the table", "I need to polish the table"),
+            ("the best in the world", "The best in the world"),
+            ("the world cup final is tonight", "The world cup final is tonight"),
+            ("print hello world", "Print hello world"),
+            ("she wore a wool jersey", "She wore a wool jersey"),
+            ("she wore a guernsey", "She wore a guernsey"),
+            ("the guinea pig escaped", "The guinea pig escaped"),
+            ("the lamb is a ewe", "The lamb is a ewe"),
+            ("we saw it from afar", "We saw it from afar"),
+            ("the slave trade was abolished", "The slave trade was abolished"),
+            ("the snake bared a fang", "The snake bared a fang"),
+            ("a hanging chad", "A hanging chad"),
+        ])
+    func leavesOrdinaryWordNamesAlone(spoken: String, written: String) {
+        #expect(cleaned(spoken, by: sut) == written)
+    }
+
     @Test("keeps a known proper name capital at a mid-sentence caret")
     func properNameAtCaret() {
         #expect(fromCaret("london is lovely", state: .midSentence) == "London is lovely")

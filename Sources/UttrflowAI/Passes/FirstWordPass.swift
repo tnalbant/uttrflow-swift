@@ -204,8 +204,14 @@ public struct FirstWordPass: WholeTextCleaningPass {
             systemNames + [
                 "london", "tokyo", "paris", "texas", "german", "germans", "indian", "indians",
             ]
-        ).subtracting(["china", "turkey"])
+        ).subtracting(namesThatAreOrdinaryWords)
     }()
+
+    /// Locale names that are also everyday English words, so they carry no capital without a cue.
+    private static let namesThatAreOrdinaryWords: Set<String> = [
+        "afar", "chad", "china", "ewe", "fang", "guernsey", "guinea", "jersey", "polish", "slave",
+        "turkey", "world",
+    ]
 
     /// Whether a word names a weekday or an unambiguous month.
     static func isCalendarWord(_ text: String) -> Bool {
