@@ -444,7 +444,7 @@ struct OnboardingPresenterTests {
                     title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil,
                     caption: nil))
         #expect(trying.link == nil)
-        #expect(trying.hint == nil)
+        #expect(trying.hint == "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies.")
 
         let pressed = page(
             OnboardingState(step: .ready, detail: .finishing(.ready)), activation: .pressToToggle)

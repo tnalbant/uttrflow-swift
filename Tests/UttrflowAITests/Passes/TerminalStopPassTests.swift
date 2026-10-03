@@ -264,13 +264,14 @@ struct TerminalStopPassTests {
         #expect(sut.apply(items).text == "- the tent and the stove\n- the first aid kit here")
     }
 
-    @Test("collapses every line break to a space under a single-line layout")
+    @Test("joins every line under a single-line layout with the list separator, per #4102")
     func singleLine() {
         let cell = TerminalStopPass(policy: .never, layout: .singleLine)
-        #expect(cell.apply(Draft(keepingLineBreaks: "line one\nline two.")).text == "line one line two")
-        #expect(cell.apply(Draft(keepingLineBreaks: "a\n\n- b\n- c")).text == "a b c")
+        #expect(cell.apply(Draft(keepingLineBreaks: "line one\nline two.")).text == "line one, line two")
+        #expect(cell.apply(Draft(keepingLineBreaks: "a\n\n- b\n- c")).text == "a, b, c")
+        #expect(cell.apply(Draft(keepingLineBreaks: "one.\n\ntwo")).text == "one. two")
         let stopped = TerminalStopPass(policy: .always, layout: .singleLine)
-        #expect(stopped.apply(Draft(keepingLineBreaks: "line one\nline two")).text == "line one line two.")
+        #expect(stopped.apply(Draft(keepingLineBreaks: "line one\nline two")).text == "line one, line two.")
     }
 
     @Test("adds no paragraph stop when the policy is never, and lays out paragraphs by default")
@@ -344,5 +345,16 @@ struct TerminalStopPassTests {
         #expect(
             never.apply(Draft(text: "on my way.")).words[2].state
                 == .replaced(by: TerminalStopPass.id, from: "way."))
+    }
+    @Test("a one-line field drops the stop from one sentence and keeps all three of three")
+    func oneLineFieldEntry() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        let pass = TerminalStopPass(policy: formatter.terminalStop, layout: formatter.layout)
+        #expect(cleaned("Project plan", by: pass) == "Project plan")
+        #expect(cleaned("Is it ready?", by: pass) == "Is it ready?")
+        #expect(
+            cleaned("Call Sam. Book the room. Send notes", by: pass) == "Call Sam. Book the room. Send notes."
+        )
     }
 }

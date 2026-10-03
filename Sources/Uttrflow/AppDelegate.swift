@@ -2386,7 +2386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .recording: .listening
             case .transcribing, .tidying, .inserting: .working
             case .inserted(let outcome):
-                DictationActivity.completion(method: outcome.method, arrival: outcome.arrival)
+                DictationActivity.completion(
+                    method: outcome.method, arrival: outcome.arrival, missedPieces: outcome.missedPieces)
             }
         var failure: FailurePresentation?
         if case .failed(let notice) = state {

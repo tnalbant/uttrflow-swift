@@ -116,7 +116,7 @@ struct PanelMoveSheetPresentationTests {
     func collectionsCarryTheirCounts() {
         let collections = Self.sheet()?.collections ?? []
 
-        #expect(collections.map(\.name) == ["Work", "Servers"])
+        #expect(collections.map(\.name) == ["Servers", "Work"])
         #expect(collections.first { $0.name == "Work" }?.count == 2)
         #expect(collections.first { $0.name == "Servers" }?.count == 1)
     }

@@ -550,7 +550,8 @@ alone misleads in the same direction:
 
 1. **Fuzzy is a fallback, never a parallel path.** It runs only when the exact prefix scan comes
    back empty. On 50,000 entries `git p` matches 925 exactly and 2,776 within one edit, `git commit`
-   among them; a blended matcher would offer `git commit` to somebody typing `git push` correctly.
+   among them; a blended matcher would offer `git commit` to somebody typing `git push` correctly. Queries
+   under three characters are never corrected.
 2. **Return is taken only after ⌥↓.** The accept key is Tab, → or ⌥⇥ by kind of application
    ([predict-accept.md](predict-accept.md)). Return sends the message, runs the command or submits
    the form, so it is taken only once the user has opened the list of a `.choice`.
@@ -561,7 +562,10 @@ alone misleads in the same direction:
    is scored, and capture never records from it. `SecureField` treats a field as secure when its
    role, subrole, name, placeholder or description says password, passcode, one-time code, PIN,
    card number, card security code, social security number, account or routing number, date of
-   birth or security answer, or when its value is mask characters alone.
+   birth or security answer, or when its value is mask characters alone. A terminal prompt label
+   naming a password, passphrase, PIN, code or token is secure too. A short value of 2 to 8 digits,
+   grouped only by whitespace, hyphens or periods, is never learned outside a terminal, since a
+   one-time code, PIN or compact date has no safe context in the corpus.
 5. **Self-sourced evidence is discounted.** A use that came from accepting a suggestion counts a
    quarter of one typed. Without it, offering a candidate makes it likelier to be offered, and the
    set of things the feature knows narrows to what it already said while the acceptance rate

@@ -21,7 +21,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
-        if layout.contains(.singleLine) { Self.flatten(&draft) }
+        if layout.contains(.singleLine) { LayoutWordsPass.joinOnOneLine(&draft, by: Self.id) }
         if layout.contains(.paragraphs), policy != .never {
             Self.stopParagraphs(&draft, destination: destination)
         }
@@ -147,13 +147,6 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         }
         let sentence = live[(start.map { $0 + 1 } ?? 0)...]
         return QuestionShape.asks(sentence.map { draft.shape(at: $0) })
-    }
-
-    /// Every layout mark taken out, so the words join on one line.
-    private static func flatten(_ draft: inout Draft) {
-        for index in draft.presentIndices where draft.words[index].isLayoutMark {
-            draft.remove(at: index, by: id)
-        }
     }
 
     /// Ends each paragraph of three or more words before a blank line with a full stop; a list item gets none.

@@ -8,6 +8,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case inventedWord
     /// The rewrite adds quotation marks the speaker did not say.
     case inventedQuotation
+    /// The rewrite ends a sentence with an exclamation mark the speaker did not say and the recogniser did not write.
+    case inventedExclamation
     /// A word the speaker said appears somewhere else in the rewrite.
     case movedWord
     /// A word a pass took out is not put back, so the rewrite is missing it too.
@@ -51,6 +53,7 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .lostWord: "a word was lost or replaced"
         case .inventedWord: "a word was invented"
         case .inventedQuotation: "quotation marks were added"
+        case .inventedExclamation: "an exclamation mark was added"
         case .movedWord: "a word was moved"
         case .removedWordNotRestored: "a word a step removed was not put back"
         case .unofferedReading: "a reading was used that was not offered"
