@@ -45,9 +45,14 @@ struct SingleInstanceLockTests {
             let error = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             let description =
                 "the lock holder exited before confirming it held the lock (status \(process.terminationStatus)): \(error)"
-            try #require(false, description)
+            Issue.record(description)
+            throw HolderFailure.didNotStart
         }
         return process
+    }
+
+    private enum HolderFailure: Error {
+        case didNotStart
     }
 
     @Test("The first copy takes the lock, creating its folder.")
