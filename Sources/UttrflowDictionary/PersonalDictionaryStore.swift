@@ -179,12 +179,19 @@ public actor PersonalDictionaryStore {
     /// Forgets one word; an identifier that is not there is not an error.
     @discardableResult
     public func remove(_ id: UUID) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        try remove(Set([id]))
+    }
+
+    /// Forgets every named word and refuses each one, with one write of each record.
+    @discardableResult
+    public func remove(_ ids: Set<UUID>) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let existing = load()
-        let kept = existing.filter { $0.id != id }
+        let gone = existing.filter { ids.contains($0.id) }
+        let kept = existing.filter { !ids.contains($0.id) }
         // A deleted word must not simply be counted up again, whoever first put it there.
-        if let gone = existing.first(where: { $0.id == id }) {
+        if !gone.isEmpty {
             var sightings = sightingLedger()
-            sightings.refuse(gone.word)
+            for entry in gone { sightings.refuse(entry.word) }
             ledger = sightings
             try recordRefusals(sightings.refusals)
         }
@@ -206,15 +213,13 @@ public actor PersonalDictionaryStore {
         }
     }
 
-    /// Clears pending sightings, keeps refusals, and retains user-added and shipped words.
+    /// Removes every inferred word through the batch `remove`, so each is refused, and clears pending sightings.
     @discardableResult
     public func removeLearned() throws(DictionaryStoreError) -> [DictionaryEntry] {
-        // Pending evidence goes with inferred entries, while refusals remain in force.
         clearPendingSightings()
         // A shipped word was inferred from nothing, so there is nothing about it to forget.
-        let kept = load().filter { $0.origin == .added || $0.origin == .shipped }
-        try persist(kept)
-        return kept
+        let inferred = load().filter { $0.origin != .added && $0.origin != .shipped }
+        return try remove(Set(inferred.map(\.id)))
     }
 
     /// Learns from a landed dictation; `heard` is the raw transcript. See `Docs/app-dictionary-store.md`.
