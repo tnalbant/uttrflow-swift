@@ -1153,12 +1153,29 @@ public struct MeaningPreservationGuard: Sendable {
                 if !matched.isEmpty { return matched }
             }
 
+            if let letters = spokenLetters(spelling: token.matching, excluding: used) { return letters }
+
             return tokens.indices.first { index in
                 !used.contains(index)
                     && WordForms.sameForm(
                         tokens[index].matching, token.matching, allowingRegularInflections: false,
                         allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
             }.map { [$0] }
+        }
+
+        /// Finds the adjacent unused letter names spoken one per word that spell the written initialism letter for letter.
+        private func spokenLetters(spelling initialism: String, excluding used: Set<Int>) -> [Int]? {
+            let letters = initialism.map(String.init)
+            guard letters.count > 1, initialism.allSatisfy(\.isLetter), tokens.count >= letters.count else {
+                return nil
+            }
+            for start in 0...(tokens.count - letters.count) {
+                let run = Array(start..<(start + letters.count))
+                if zip(run, letters).allSatisfy({ !used.contains($0) && tokens[$0].matching == $1 }) {
+                    return run
+                }
+            }
+            return nil
         }
 
         func contains(_ word: String) -> Bool { places[word] != nil }

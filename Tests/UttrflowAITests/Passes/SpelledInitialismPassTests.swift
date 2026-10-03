@@ -25,6 +25,11 @@ struct SpelledInitialismPassTests {
                 .run(Draft(text: input)).text == expected)
     }
 
+    @Test("leaves a stammered pronoun as two words rather than an initialism")
+    func stammeredPronoun() {
+        #expect(sut.apply(Draft(text: "I I think we should ship it")).text == "I I think we should ship it")
+    }
+
     @Test(
         "does not treat i adjacent to a letter name as the pronoun",
         arguments: [
