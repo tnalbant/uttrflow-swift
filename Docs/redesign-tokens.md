@@ -107,3 +107,7 @@ Headings use Outfit, a variable font under the SIL Open Font License 1.1. The fo
 licence ship together in `Sources/Uttrflow/Resources/Fonts/` (`Outfit-Variable.ttf`,
 `Outfit-OFL.txt`), as the licence requires. `BrandFont` registers it for the process at launch and
 falls back to the system font when the file is missing or registration fails.
+
+The wordmark, the Home greeting and the Home hero headline use EB Garamond, also under the SIL Open
+Font License 1.1 (`EBGaramond-Variable.ttf`, `EBGaramond-OFL.txt`), through `BrandFont.wordmark`.
+No other text uses it; it falls back to the system serif.

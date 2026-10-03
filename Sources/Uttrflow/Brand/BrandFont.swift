@@ -35,4 +35,27 @@ enum BrandFont {
     static func display(size: CGFloat, weight: Font.Weight, available: Bool) -> Font {
         available ? .custom(family, size: size).weight(weight) : .system(size: size, weight: weight)
     }
+
+    /// The family the wordmark, the Home greeting and the hero headline are set in.
+    static let wordmarkFamily = "EB Garamond"
+
+    /// The bundled variable font file for the wordmark family.
+    static var wordmarkFileURL: URL? {
+        Bundle.module.url(forResource: "EBGaramond-Variable", withExtension: "ttf")
+    }
+
+    /// Whether the wordmark typeface is usable, registering it on first read.
+    static let isWordmarkAvailable: Bool = register(wordmarkFileURL)
+
+    /// A wordmark font, or the system serif when the typeface is missing.
+    static func wordmark(size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        wordmark(size: size, weight: weight, available: isWordmarkAvailable)
+    }
+
+    /// A wordmark font chosen by whether the typeface is available.
+    static func wordmark(size: CGFloat, weight: Font.Weight, available: Bool) -> Font {
+        available
+            ? .custom(wordmarkFamily, size: size).weight(weight)
+            : .system(size: size, weight: weight, design: .serif)
+    }
 }
