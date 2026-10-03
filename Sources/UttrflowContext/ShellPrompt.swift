@@ -317,11 +317,18 @@ public enum ShellPrompt {
         switch terminator {
         // zsh puts a space before its `%`, and a percentage never does.
         case "%": prefix.last?.isWhitespace ?? true
-        // A shell expands a bare `$` before a name, so one before a space is a prompt rather than a sigil.
-        case "$": !(prefix.last?.isWhitespace ?? false)
-        // A root prompt names a host or a database and touches its hash, which is what tells it from a trailing comment.
+        // A spaced dollar is a prompt after a directory, host, or shell name, not after command text.
+        case "$":
+            !(prefix.last?.isWhitespace ?? false)
+                || isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
+                || isNamedPromptWithDirectory(linePrefix)
+                || isBarePromptName(linePrefix)
+        // A root prompt ends a directory, host, or shell name with a hash; a spaced comment does not.
         case "#":
-            prefix.isBlank || prefix.last == "=" || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
+            prefix.isBlank || prefix.last == "="
+                || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
+                || isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
+                || isNamedPromptWithDirectory(linePrefix) || isBarePromptName(linePrefix)
         // A `>` is a redirection unless it is a run of them, the tail of a `=>` prompt, or fish glues it to a path token in a `user@host` prompt.
         case ">":
             prefix.isChevrons || prefix.last == "="
@@ -340,6 +347,23 @@ public enum ShellPrompt {
         guard prefix.hasPrefix("PS ") else { return false }
         let path = prefix.dropFirst(3)
         return !path.isEmpty && !(path.last?.isWhitespace ?? true)
+    }
+
+    /// A username/host followed by a path, as shown by prompts such as `user@host ~/project $`.
+    private static func isNamedPromptWithDirectory(_ prefix: Substring) -> Bool {
+        let words = prefix.split(whereSeparator: \.isWhitespace)
+        guard words.count == 2, isBarePromptName(words[0]), let directory = words.last else { return false }
+        return directory.hasPrefix("~") || directory.hasPrefix("/") || directory.hasPrefix("./")
+            || directory.hasPrefix("../")
+    }
+
+    /// A single host or versioned shell name immediately before its prompt marker.
+    private static func isBarePromptName(_ prefix: Substring) -> Bool {
+        let words = prefix.split(whereSeparator: \.isWhitespace)
+        guard words.count == 1, let name = words.first,
+            name.contains(where: \.isLetter), !name.contains(where: { $0 == "/" || $0 == "\\" })
+        else { return false }
+        return name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_@".contains($0)) }
     }
 
     /// A directory-bearing prompt ends at its path marker rather than treating `>` as a redirection.
