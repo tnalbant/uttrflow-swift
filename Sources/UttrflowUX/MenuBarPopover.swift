@@ -93,6 +93,20 @@ public struct MenuBarRow: Sendable, Equatable {
     }
 }
 
+/// A word the dictionary just learned, where it came from, and the Undo that removes and refuses it.
+public struct MenuBarLearnedRow: Sendable, Equatable {
+    public let word: String
+    /// "from a correction" or "from the screen".
+    public let source: String
+    public let undo: MenuBarCommand
+
+    public init(word: String, source: String, undo: MenuBarCommand) {
+        self.word = word
+        self.source = source
+        self.undo = undo
+    }
+}
+
 // MARK: - Deciding it
 
 extension MenuBarPresenter {
@@ -270,6 +284,21 @@ extension MenuBarPresenter {
         if clip.kind == .secret { return PanelPresenter.mask }
         if let image = clip.image, clip.summary.isEmpty { return "Picture · \(image.dimensions)" }
         return clip.summary
+    }
+
+    /// How many learned words the popover lists.
+    public static let learnedCount = 5
+
+    /// The newest learned words, each with an Undo that a running dictation does not race.
+    static func learnedRows(for state: MenuBarState) -> [MenuBarLearnedRow] {
+        state.learned.prefix(learnedCount).map { word in
+            MenuBarLearnedRow(
+                word: word.word, source: word.source,
+                undo: MenuBarCommand(
+                    title: "Undo", intent: .undoLearnedWord(id: word.id),
+                    isEnabled: !isBusy(state.activity),
+                    tooltip: "Remove “\(word.word)” and stop learning it"))
+        }
     }
 
     /// A row whose two commands are greyed while a dictation runs, which a paste would race.

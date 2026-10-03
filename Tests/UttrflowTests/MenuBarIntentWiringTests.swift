@@ -28,7 +28,7 @@ private func reach(of intent: MenuBarIntent) -> Reach {
         .recover(.copyTranscript),
         .recover(.showRecentDictations):
         .system
-    case .insertRecent, .copyRecent, .insertClip, .copyClip: .nothing
+    case .insertRecent, .copyRecent, .insertClip, .copyClip, .undoLearnedWord: .nothing
     case .startDictation, .stopDictation, .openClipboard, .setFeature, .checkForUpdates, .quit: .system
     }
 }
@@ -43,6 +43,7 @@ private func name(of intent: MenuBarIntent) -> String {
     case .copyRecent: "copyRecent"
     case .insertClip: "insertClip"
     case .copyClip: "copyClip"
+    case .undoLearnedWord: "undoLearnedWord"
     case .open: "open"
     case .openClipboard: "openClipboard"
     case .setFeature: "setFeature"
@@ -52,7 +53,7 @@ private func name(of intent: MenuBarIntent) -> String {
 }
 
 /// How many cases ``MenuBarIntent`` has, bumped deliberately when one is added.
-private let menuBarIntentCaseCount = 12
+private let menuBarIntentCaseCount = 13
 
 /// Every surface a menu item can name.
 private let everyDestination: [UttrflowUX.Destination] =
@@ -73,7 +74,7 @@ private let samples: [MenuBarIntent] =
     + [UUID(), UUID()].flatMap { id -> [MenuBarIntent] in
         [
             .insertRecent(id: id), .copyRecent(id: id), .insertClip(id: id),
-            .copyClip(id: id),
+            .copyClip(id: id), .undoLearnedWord(id: id),
         ]
     }
 

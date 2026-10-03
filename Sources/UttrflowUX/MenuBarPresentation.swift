@@ -183,6 +183,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var recents: [MenuBarRecent]
     /// The clipboard's kept copies, newest first; the popover shows the first few.
     public var clips: [Clip]
+    /// Words the dictionary learned within ``RecentlyLearned/holdingPeriod``, newest first.
+    public var learned: [LearnedWord]
     /// How far along an update is, if one is under way.
     public var updateProgress: UpdateProgress
     /// Whether this build has a configured, verifiable update feed.
@@ -216,6 +218,7 @@ public struct MenuBarState: Sendable, Equatable {
         recordingAdvice: DictationAdvice = .keepGoing,
         recents: [MenuBarRecent] = [],
         clips: [Clip] = [],
+        learned: [LearnedWord] = [],
         updateProgress: UpdateProgress = .idle,
         canCheckForUpdates: Bool = false,
         features: MenuBarFeatures = MenuBarFeatures(),
@@ -234,6 +237,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.recordingAdvice = recordingAdvice
         self.recents = recents
         self.clips = clips
+        self.learned = learned
         self.updateProgress = updateProgress
         self.canCheckForUpdates = canCheckForUpdates
         self.features = features
@@ -262,6 +266,8 @@ public enum MenuBarIntent: Sendable, Equatable {
     /// Identifies the clip to insert, so a redraw cannot change the chosen copy.
     case insertClip(id: UUID)
     case copyClip(id: UUID)
+    /// Removes and refuses a learned word, named by its entry so a redraw cannot change which.
+    case undoLearnedWord(id: UUID)
     case open(Destination)
     /// Opens the clipboard panel, which is otherwise reachable only by a shortcut nothing mentions.
     case openClipboard
@@ -410,6 +416,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
     public let lastDictation: MenuBarRow?
     /// The newest clips, empty when there are none or the clipboard is switched off.
     public let clips: [MenuBarRow]
+    /// Words learned lately, each with its Undo; empty when there are none.
+    public let learned: [MenuBarLearnedRow]
     /// The right-click menu, in the order it shows them.
     public let items: [MenuBarItem]
 
@@ -417,7 +425,8 @@ public struct MenuBarPresentation: Sendable, Equatable {
         icon: MenuBarIcon, statusLine: String, emphasis: MenuBarEmphasis,
         accessibilityLabel: String, clipboardCaptureEnabled: Bool = true,
         header: MenuBarHeader, buttons: [MenuBarButton],
-        lastDictation: MenuBarRow?, clips: [MenuBarRow], items: [MenuBarItem]
+        lastDictation: MenuBarRow?, clips: [MenuBarRow], learned: [MenuBarLearnedRow] = [],
+        items: [MenuBarItem]
     ) {
         self.icon = icon
         self.statusLine = statusLine
@@ -428,6 +437,7 @@ public struct MenuBarPresentation: Sendable, Equatable {
         self.buttons = buttons
         self.lastDictation = lastDictation
         self.clips = clips
+        self.learned = learned
         self.items = items
     }
 
@@ -439,6 +449,7 @@ public struct MenuBarPresentation: Sendable, Equatable {
         let action: [MenuBarCommand] =
             if case .status(let status) = header, let command = status.action { [command] } else { [] }
         let rows = ([lastDictation].compactMap(\.self) + clips).flatMap { [$0.insert, $0.copy] }
+            + learned.map(\.undo)
         let menu = items.compactMap { if case .command(let command) = $0 { command } else { nil } }
         return action + buttons.map(\.command) + rows + menu
     }
@@ -471,6 +482,7 @@ public enum MenuBarPresenter {
             buttons: buttons(for: state),
             lastDictation: lastDictation(for: state),
             clips: clipRows(for: state),
+            learned: learnedRows(for: state),
             items: items(for: state, statusLine: statusLine, emphasis: emphasis)
         )
     }

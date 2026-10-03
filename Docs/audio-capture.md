@@ -173,6 +173,40 @@ at 4096 frames and 48 kHz, resampled to 16 kHz. What the converter keeps back is
 smaller loss: `AudioResampler` reuses one stateful `AVAudioConverter` across calls, so its delay line
 is emitted on the next call and only the final residual is lost.
 
+## A key released before the last word ends
+
+The drain keeps the block that was filling at key-up and nothing after it, so a hold released while
+the last word is still being said loses whatever of that word falls past the block boundary.
+`uttrflow-eval tail` measures how often that costs the word. It synthesises invented sentences with
+`say` in four voices (32 clips at 48 kHz), finds where each clip's speech ends (the last 10 ms frame
+within `TailCut.speechFloorDecibels` of the loudest), and cuts it so that the speech runs on 0 to
+400 ms after the key-up. `TailCut.kept` then keeps what the drained stop would keep for each tap size,
+at four evenly spaced block phases, and the result goes through the installed recogniser exactly as
+a captured buffer does. A last word counts as kept only when the word alignment ends on a match.
+
+```bash
+swift build --disable-sandbox --product uttrflow-eval
+.build/debug/uttrflow-eval tail --model-folder <installed model folder>
+```
+
+Measured on an Apple M5 Pro with `openai_whisper-large-v3-v20240930_turbo_632MB`. The whole clips lose
+no last word (0 of 32), so every loss below comes from the cut. Percentages are of 128 trials per cell
+(32 for the undrained row, which has no phase).
+
+| tap frames | drain at 48 kHz | drain at 44.1 kHz | +0 ms | +100 ms | +200 ms | +300 ms | +400 ms |
+|---|---|---|---|---|---|---|---|
+| undrained | none | none | 0.0% | 6.2% | 18.8% | 43.8% | 68.8% |
+| 1024 | 21.3 ms | 23.2 ms | 0.0% | 3.1% | 12.5% | 36.7% | 64.1% |
+| 2048 | 42.7 ms | 46.4 ms | 0.0% | 3.1% | 10.9% | 41.4% | 60.2% |
+| 4096 | 85.3 ms | 92.9 ms | 0.0% | 3.1% | 7.0% | 38.3% | 50.8% |
+
+The tap size moves the loss by a few points and cannot remove it: even the longest block keeps under
+100 ms of the overrun, and from 300 ms on more than a third of last words are gone at every size. So
+the tap stays at 4096 frames, and a slow release is answered, if at all, by capture continuing for a
+bounded time after key-up rather than by a larger block. A grace of G ms brings every overrun up to G
+down to the whole-clip rate, so meeting "loss at 300 ms no worse than at 0 ms" needs G of at least
+300 ms on a hold, and it adds G to every hold's key-up wait.
+
 ## Cue bleed
 
 Playing a cue around capture puts the cue into the recording. Measured on macOS 26.5, built-in

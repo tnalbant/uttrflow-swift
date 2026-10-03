@@ -91,6 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recents = RecentDictations()
     /// The newest clips as the popover last read them, resolved by identity when a row is chosen.
     private var menuClips: [Clip] = []
+    /// Words the dictionary taught itself lately, offered in the popover because no window is open to say so.
+    private(set) var recentlyLearned = RecentlyLearned()
     /// Where dictations are kept between launches, and the only thing that decides what is deleted.
     private let history: DictationHistoryStore
     /// Each dictation's audio, kept beside it only until its words land. See `Docs/recordings.md`.
@@ -1267,11 +1269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             snippets: StoredSnippets(store: snippets),
             learner: StoreCounters(dictionary: dictionary, snippets: snippets),
             vocabulary: LearnedVocabulary(dictionary: dictionary) { [weak self] entries in
-                guard let entry = entries.first(where: { $0.origin == .learned }) else { return }
-                await MainActor.run {
-                    self?.actionNotice = MainNotice.learnedCorrection(entry.word, id: entry.id)
-                    self?.redrawMainWindow()
-                }
+                await MainActor.run { self?.noteLearned(entries) }
             },
             metrics: telemetry.map { MetricsFanOut([diagnostics, $0.recorder]) } ?? diagnostics,
             cleaningRecorder: diagnostics,
@@ -2358,6 +2356,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         scheduleDismissal(after: state)
     }
 
+    /// Offers every word one dictation taught in the popover and names the first through VoiceOver.
+    func noteLearned(_ entries: [DictionaryEntry]) {
+        let learnt = recentlyLearned.record(entries, at: Date())
+        guard let line = RecentlyLearned.announcement(for: learnt) else { return }
+        announce(line, urgently: false)
+        refreshMenuBar()
+    }
+
     /// Speaks a state change through VoiceOver, since focus stays in the app being typed into.
     private func announce(_ announcement: DictationAnnouncement?) {
         guard let announcement else { return }
@@ -2427,6 +2433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     isSecret: $0.isSecret)
             },
             clips: menuClips,
+            learned: recentlyLearned.current(at: Date()),
             updateProgress: updates.progress,
             canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
@@ -2483,6 +2490,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     showClipboardCopyFailure()
                 }
             }
+        case .undoLearnedWord(let id):
+            recentlyLearned.forget(id)
+            refreshMenuBar()
+            // The Dictionary page's delete, so an undone word is refused rather than relearned.
+            act { try await self.dictionary.remove(id) }
         case .open(let destination):
             show(destination)
         case .openClipboard:
@@ -2992,8 +3004,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .saveWord(let word, let pronunciation):
             saveWord(word, pronunciation: pronunciation)
         case .forgetWord(let id):
-            act { try await self.dictionary.remove(id) }
-        case .undoLearnedWord(let id):
             act { try await self.dictionary.remove(id) }
         case .restoreWord(let id):
             act { try await self.dictionary.restore(id) }

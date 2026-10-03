@@ -32,6 +32,16 @@ struct MenuBarPopoverView: View {
         return VStack(alignment: .leading, spacing: 0) {
             MenuBarHeaderView(
                 header: presentation.header, onCommand: onCommand, focus: $focus, showsFocus: usesKeyboard)
+            if !presentation.learned.isEmpty {
+                MenuBarRule()
+                MenuBarSectionLabel(text: "LEARNED")
+                ForEach(Array(presentation.learned.enumerated()), id: \.offset) { index, row in
+                    MenuBarLearnedRowView(
+                        row: row, onCommand: onCommand, isFocused: shows(keyboard.learnedStart + index)
+                    )
+                    .menuBarKey($focus, keyboard.learnedStart + index)
+                }
+            }
             buttonRow(keyboard).padding(.top, 14)
             if let last = presentation.lastDictation {
                 MenuBarRule()
@@ -359,5 +369,42 @@ private struct MenuBarRowView: View {
         }
         .accessibilityLabel(row.title)
         .accessibilityHint("Pastes at the cursor. Option-click copies it.")
+    }
+}
+
+/// A learned word, where it came from, and an Undo that removes it and stops it being learned again.
+private struct MenuBarLearnedRowView: View {
+    let row: MenuBarLearnedRow
+    let onCommand: (MenuBarIntent) -> Void
+    let isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "character.book.closed")
+                .font(.system(size: 11))
+                .foregroundStyle(MenuBarColour.quiet)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.word)
+                    .font(.system(size: 13))
+                    .foregroundStyle(MenuBarColour.row)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(row.source)
+                    .font(.system(size: 11))
+                    .foregroundStyle(MenuBarColour.quiet)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            Button(row.undo.title) { onCommand(row.undo.intent) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(MenuBarColour.row)
+                .disabled(!row.undo.isEnabled)
+                .menuBarFocusRing(Capsule(), isShown: isFocused)
+                .help(row.undo.tooltip ?? "")
+                .accessibilityLabel("Undo learning \(row.word)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }
