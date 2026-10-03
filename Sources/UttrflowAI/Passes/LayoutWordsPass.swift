@@ -60,7 +60,38 @@ public struct LayoutWordsPass: CleaningPass {
             live.removeSubrange(position + 1..<position + found.length)
             position += 1
         }
+        if layout.contains(.singleLine) { Self.joinOnOneLine(&draft, by: Self.id) }
         return draft
+    }
+
+    /// Lays every break and item mark on one line, writing the list separator at each boundary between items.
+    static func joinOnOneLine(_ draft: inout Draft, by pass: PassID) {
+        var items: [[Int]] = [[]]
+        for index in draft.presentIndices {
+            let word = draft.words[index]
+            guard word.isLayoutMark else {
+                items[items.count - 1].append(index)
+                continue
+            }
+            let label = word.isListMark ? "" : word.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !items[items.count - 1].isEmpty { items.append([]) }
+            if label.isEmpty {
+                draft.remove(at: index, by: pass)
+            } else {
+                draft.replace(at: index, with: label, by: pass)
+                items[items.count - 1].append(index)
+            }
+        }
+        let filled = items.filter { !$0.isEmpty }
+        // A comma inside an item would blur its edges, so the items are then kept apart with semicolons.
+        let holdsComma = filled.contains { item in
+            item.dropLast().contains { draft.shape(at: $0).suffix.contains(",") }
+        }
+        let separator = holdsComma ? ";" : ","
+        for item in filled.dropLast() {
+            guard let last = item.last, !draft.shape(at: last).endsSentence else { continue }
+            draft.replace(at: last, with: WordShape.marked(draft.words[last].text, with: separator), by: pass)
+        }
     }
 
     /// Removes a comma or semicolon stranded before a list marker.
@@ -229,6 +260,9 @@ public struct LayoutWordsPass: CleaningPass {
         return itemNumber(at: position + 1, in: live, of: draft)?.value
     }
 
+    /// A one-line field takes a spoken list too, written with separators instead of marks.
+    private var allowsLists: Bool { layout.contains(.lists) || layout.contains(.singleLine) }
+
     /// The layout the words at `position` become: one of the fixed phrases, or a numbered item.
     private func mark(
         at position: Int, in live: [Int], of draft: Draft
@@ -237,12 +271,12 @@ public struct LayoutWordsPass: CleaningPass {
     )? {
         if let found = Self.marks.first(where: {
             matches($0.words, at: position, in: live, of: draft)
-                && (layout.contains(.lists) || !$0.requiresLists)
+                && (allowsLists || !$0.requiresLists)
         }) {
             return (found.words.count, found.mark, found.requiresLists)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
-            layout.contains(.lists),
+            allowsLists,
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
         let lineBreak = position == 0 ? "" : "\n"
