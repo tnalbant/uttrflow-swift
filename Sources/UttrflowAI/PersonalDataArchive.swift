@@ -34,48 +34,59 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
         return archive
     }
 
-    /// Adds entries whose spelling or trigger is not already present, keeping the current records on conflicts.
-    public func merging(
-        dictionary existingDictionary: [DictionaryEntry], snippets existingSnippets: [Snippet]
-    )
-        -> PersonalDataMerge
-    {
-        var words = Set(existingDictionary.map { $0.word.lowercased() })
-        var mergedDictionary = existingDictionary
-        var wordIndexes = Dictionary(
-            existingDictionary.enumerated().map { ($0.element.word.lowercased(), $0.offset) },
+    /// Adds words not already spelt the same way, keeping the current record on a conflict.
+    public func mergedDictionary(into existing: [DictionaryEntry]) -> PersonalDataMerge<DictionaryEntry> {
+        var ids = Set(existing.map(\.id))
+        var merged = existing
+        var indexes = Dictionary(
+            existing.enumerated().map { ($0.element.word.lowercased(), $0.offset) },
             uniquingKeysWith: { _, newest in newest })
-        var duplicateWords = 0
+        var added: [DictionaryEntry] = []
+        var duplicates = 0
         for entry in dictionary {
-            if words.insert(entry.word.lowercased()).inserted {
-                wordIndexes[entry.word.lowercased()] = mergedDictionary.count
-                mergedDictionary.append(entry)
-            } else {
-                duplicateWords += 1
-                // When both copies are the shipped entry, the archive's identity and counters win.
-                if entry.origin == .shipped,
-                    let index = wordIndexes[entry.word.lowercased()],
-                    mergedDictionary[index].origin == .shipped
-                {
-                    mergedDictionary[index] = entry
-                }
+            let spelling = entry.word.lowercased()
+            guard let index = indexes[spelling] else {
+                // An identifier already held by another word is a different record, so it gets its own.
+                let kept = ids.insert(entry.id).inserted ? entry : entry.withFreshID()
+                ids.insert(kept.id)
+                indexes[spelling] = merged.count
+                merged.append(kept)
+                added.append(kept)
+                continue
+            }
+            duplicates += 1
+            // When both copies are the shipped entry, the archive's identity and counters win.
+            let current = merged[index]
+            if entry.origin == .shipped, current.origin == .shipped,
+                entry.id == current.id || !ids.contains(entry.id)
+            {
+                ids.remove(current.id)
+                ids.insert(entry.id)
+                merged[index] = entry
             }
         }
+        return PersonalDataMerge(records: merged, added: added, duplicates: duplicates)
+    }
 
-        var triggers = Set(existingSnippets.map(\.triggerWords))
-        var mergedSnippets = existingSnippets
-        var duplicateSnippets = 0
+    /// Adds snippets whose trigger is not already used, keeping the current record on a conflict.
+    public func mergedSnippets(into existing: [Snippet]) -> PersonalDataMerge<Snippet> {
+        var ids = Set(existing.map(\.id))
+        var triggers = Set(existing.map(\.triggerWords))
+        var merged = existing
+        var added: [Snippet] = []
+        var duplicates = 0
         for snippet in snippets {
-            if triggers.insert(snippet.triggerWords).inserted {
-                mergedSnippets.append(snippet)
-            } else {
-                duplicateSnippets += 1
+            guard triggers.insert(snippet.triggerWords).inserted else {
+                duplicates += 1
+                continue
             }
+            // An identifier already held by another trigger is a different record, so it gets its own.
+            let kept = ids.insert(snippet.id).inserted ? snippet : snippet.withFreshID()
+            ids.insert(kept.id)
+            merged.append(kept)
+            added.append(kept)
         }
-
-        return PersonalDataMerge(
-            dictionary: mergedDictionary, snippets: mergedSnippets,
-            duplicateWords: duplicateWords, duplicateSnippets: duplicateSnippets)
+        return PersonalDataMerge(records: merged, added: added, duplicates: duplicates)
     }
 
     private var isValid: Bool {
@@ -87,23 +98,34 @@ public struct PersonalDataArchive: Codable, Sendable, Equatable {
             !$0.word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && $0.timesUsed >= 0 && $0.timesReverted >= 0
         }
-            && snippets.allSatisfy {
-                !$0.triggerWords.isEmpty
-                    && !$0.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    && $0.timesUsed >= 0
-            }
+            && snippets.allSatisfy { (try? SnippetStore.validate($0)) != nil && $0.timesUsed >= 0 }
     }
 }
 
-/// What the validated import would add, and how many conflicting records it skipped.
-public struct PersonalDataMerge: Sendable, Equatable {
-    public let dictionary: [DictionaryEntry]
-    public let snippets: [Snippet]
-    public let duplicateWords: Int
-    public let duplicateSnippets: Int
+/// One list after an import: every record, the ones the archive added, and how many conflicts it skipped.
+public struct PersonalDataMerge<Record: Sendable & Equatable>: Sendable, Equatable {
+    public let records: [Record]
+    public let added: [Record]
+    public let duplicates: Int
 }
 
 public enum PersonalDataArchiveError: Error, Sendable {
     case unsupportedVersion
     case invalidContents
+}
+
+extension DictionaryEntry {
+    fileprivate func withFreshID() -> DictionaryEntry {
+        DictionaryEntry(
+            word: word, pronunciation: pronunciation, origin: origin, firstSeen: firstSeen,
+            timesUsed: timesUsed, timesReverted: timesReverted)
+    }
+}
+
+extension Snippet {
+    fileprivate func withFreshID() -> Snippet {
+        Snippet(
+            trigger: trigger, expansion: expansion, created: created, timesUsed: timesUsed,
+            lastUsed: lastUsed)
+    }
 }

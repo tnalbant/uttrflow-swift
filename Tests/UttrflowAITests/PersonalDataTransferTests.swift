@@ -76,7 +76,7 @@ struct PersonalDataTransferTests {
                     word: "local\($0)", origin: .learned,
                     firstSeen: Date(timeIntervalSince1970: Double($0)), timesUsed: $0 % 7)
             }
-            try await dictionary.replaceAll(local)
+            try await dictionary.replaceAll { _ in (local, ()) }
             try await snippets.save(
                 Snippet(trigger: "my address", expansion: "1 Example Road", created: .distantPast))
             let imported =
@@ -102,5 +102,29 @@ struct PersonalDataTransferTests {
         #expect(Set(kept.map(\.expansion)) == ["1 Example Road", "a@example.com"])
         let (_, again, _) = try await run()
         #expect(again.map(\.word) == words.map(\.word))
+    }
+
+    @Test("a dictionary that cannot be written leaves the snippets as they were")
+    func failedSecondWriteUndoesTheFirst() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "uttrflow-personal-data-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let blocker = root.appending(path: "blocker")
+        try Data().write(to: blocker)
+        let dictionary = PersonalDictionaryStore(file: blocker.appending(path: "dictionary.json"))
+        let snippets = SnippetStore(file: root.appending(path: "snippets.json"))
+        try await snippets.save(
+            Snippet(trigger: "my address", expansion: "1 Example Road", created: .distantPast))
+        let before = await snippets.snippets()
+        let archive = try PersonalDataArchive(
+            dictionary: [DictionaryEntry(word: "Kubernetes", origin: .added, firstSeen: .distantPast)],
+            snippets: [Snippet(trigger: "my email", expansion: "a@example.com", created: .distantPast)]
+        ).encoded()
+
+        await #expect(throws: DictionaryStoreError.self) {
+            try await PersonalDataTransfer.importArchive(archive, into: dictionary, and: snippets)
+        }
+        #expect(await snippets.snippets() == before)
     }
 }
