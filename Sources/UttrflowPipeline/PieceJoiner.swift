@@ -239,7 +239,7 @@ enum PieceJoiner {
     private static func endedAtSeam(
         _ text: String, before next: String, under formatter: DestinationFormatter
     ) -> String {
-        if endsWithSpokenLineCommand(text) { return WordShape.withoutTrailingStop(text) }
+        if endsWithSpokenLineCommand(text, before: next) { return WordShape.withoutTrailingStop(text) }
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
         if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
@@ -250,13 +250,19 @@ enum PieceJoiner {
             ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
     }
 
-    /// Whether a piece ends with the spoken command that opens a new line.
-    private static func endsWithSpokenLineCommand(_ text: String) -> Bool {
-        let draft = Draft(keepingLineBreaks: text)
+    /// Whether a piece ends with the spoken command that opens a new line, read with the piece after it.
+    private static func endsWithSpokenLineCommand(_ text: String, before next: String) -> Bool {
+        let count = Draft(keepingLineBreaks: text).presentIndices.count
+        return count >= 2 && isLineCommand(at: count - 2, in: Draft(keepingLineBreaks: text + " " + next))
+    }
+
+    /// Whether the live words at `position` ask for a new line, rather than naming one as in "a new line of shoes".
+    private static func isLineCommand(at position: Int, in draft: Draft) -> Bool {
         let live = draft.presentIndices
-        guard live.count >= 2 else { return false }
-        return draft.shape(at: live[live.count - 2]).key == "new"
-            && draft.shape(at: live[live.count - 1]).key == "line"
+        guard position >= 0, position + 1 < live.count else { return false }
+        return draft.shape(at: live[position]).key == "new"
+            && draft.shape(at: live[position + 1]).key == "line"
+            && !MentionGuard.namesLayout(at: position, spanning: 2, in: draft)
     }
 
     // MARK: The stop at a seam
@@ -329,8 +335,7 @@ enum PieceJoiner {
         for opening in starts.indices.dropFirst() {
             let live = draft.presentIndices
             guard let position = live.firstIndex(of: starts[opening]), position >= 2,
-                draft.shape(at: live[position - 2]).key == "new",
-                draft.shape(at: live[position - 1]).key == "line"
+                isLineCommand(at: position - 2, in: draft)
             else { continue }
             draft.replace(at: live[position - 2], with: "\n", by: id)
             draft.remove(at: live[position - 1], by: id)

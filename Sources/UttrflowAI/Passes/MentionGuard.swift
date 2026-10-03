@@ -2,7 +2,12 @@ import NaturalLanguage
 import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
-enum MentionGuard {
+public enum MentionGuard {
+    /// Whether the spoken layout phrase at live `position` names the thing rather than asking for it.
+    public static func namesLayout(at position: Int, spanning length: Int, in draft: Draft) -> Bool {
+        isMentioned(at: position, spanning: length, in: draft.presentIndices, of: draft, reach: phraseReach)
+    }
+
     private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
     private static let finalPeriodCompoundModifiers: Set<String> = [
         "cooling", "day", "following", "grace", "holding", "month", "notice", "off", "time", "trial",
