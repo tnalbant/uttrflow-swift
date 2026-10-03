@@ -103,12 +103,14 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         let focus = focus
         let isSecure = await AccessibilityThread.run(orElse: true) { focus.focusedFieldIsSecure() }
         try PasteboardPasteAction.requireTarget(destination, focus: focus)
-        let writeChangeCount: Int?
+        let write: PasteboardWriteResult
         if isSecure {
-            writeChangeCount = pasteboard.writeConcealedText(text)
+            write = pasteboard.writeConcealedText(text)
         } else {
-            writeChangeCount = pasteboard.writeTransientText(text, richText: richText)
+            write = pasteboard.writeTransientText(text, richText: richText)
         }
+        guard write.didWrite else { throw .clipboardUnavailable }
+        let writeChangeCount = write.changeCount
         // A different clipboard generation means another writer owns it now.
         let readback = pasteboard.text()
         let readbackChangeCount = pasteboard.changeCount()
