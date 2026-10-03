@@ -23,6 +23,26 @@ struct PanelCompositionTests {
         #expect(PanelComposition.panelMayTake(key, whileComposing: false))
     }
 
+    /// The long navigation keys are intercepted before the normal chord resolver.
+    @Test("gives Page Up, Page Down, Home and End to the input method")
+    func navigationJumpsBelongToTheInputMethod() {
+        let jumps: [PanelKey] = [
+            .jump(.pageUp), .jump(.pageDown), .jump(.top), .jump(.bottom),
+        ]
+
+        #expect(jumps.allSatisfy { !PanelComposition.panelMayTake($0, whileComposing: true) })
+        #expect(jumps.allSatisfy { PanelComposition.panelMayTake($0, whileComposing: false) })
+    }
+
+    /// The chord resolver returns intents directly, bypassing `send`; they still belong to the IME.
+    @Test("gives command chord intents to the input method")
+    func commandChordBelongsToTheInputMethod() {
+        let chord = PanelKeyDecision.intent(.undoDelete)
+
+        #expect(!PanelComposition.panelMayTake(chord, whileComposing: true))
+        #expect(PanelComposition.panelMayTake(chord, whileComposing: false))
+    }
+
     /// A committed word still has to reach the query, or the list never filters for these scripts.
     @Test("keeps the text a composition commits")
     func committedTextStillReachesThePanel() {
@@ -30,14 +50,13 @@ struct PanelCompositionTests {
         #expect(PanelComposition.panelMayTake(.draft("नमस्ते"), whileComposing: true))
     }
 
-    /// A chip or a collection number is not a key any input method is waiting for.
+    /// A chip is not a key any input method is waiting for; collection numbers are command chords.
     @Test("keeps the keys an input method never claims")
     func keysAnInputMethodNeverClaims() {
-        let mine: [PanelKey] = [
-            .category(number: 3), .filter(.images), .scope(.pinned), .search("a"),
-        ]
+        let mine: [PanelKey] = [.filter(.images), .scope(.pinned), .search("a")]
 
         #expect(mine.allSatisfy { PanelComposition.panelMayTake($0, whileComposing: true) })
+        #expect(!PanelComposition.panelMayTake(.category(number: 3), whileComposing: true))
     }
 
     /// A click is not a keystroke, so a composition open in the field never stops one landing.

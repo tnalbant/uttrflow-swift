@@ -172,14 +172,16 @@ The script check intersects each alphabetic character's Script_Extensions set, f
 ## The keys an input method owns
 
 With an input method that composes — Japanese Kana or Romaji, Chinese Pinyin, Korean 2-Set,
-Hindi Transliteration — the word being typed is *marked text* in the field editor, and four
-keys belong to the input method while it is there: Return commits the candidate, ↑ and ↓ walk
-the candidate list, and Escape cancels the word. SwiftUI runs `onKeyPress` **before** the field
-editor sees the key, so a handler that answers `.handled` takes the key away from the input
-method and it never arrives.
+Hindi Transliteration — the word being typed is *marked text* in the field editor. Return commits
+the candidate, ↑ and ↓ walk the candidate list, Escape cancels the word, Page Up/Down and Home/End
+move within the input method, and command chords remain available to it. SwiftUI runs
+`onKeyPress` **before** the field editor sees the key, so a handler that answers `.handled` takes
+the key away from the input method and it never arrives.
 
-`PanelComposition.panelMayTake(_:whileComposing:)` holds the rule, and `send` is the one place
-that asks it, so the search field and the sheet's field are covered by the same guard. Marked
+`PanelComposition.panelMayTake(_:whileComposing:)` holds the rule for both panel keys and resolved
+key decisions, including command chord intents. `send` applies it to relayed keys, and the chord
+handler applies it before performing an intent, so the search field and sheet's field share one
+ownership policy. Marked
 text is also not reported through the `text:` binding, so the query still holds only what was
 committed — which is why taking Return pasted the top row of the *unfiltered* list.
 
