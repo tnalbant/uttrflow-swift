@@ -97,6 +97,12 @@ final class Delivery: @unchecked Sendable {
     private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
     /// Told when the tap is left off for good, so the caller can notice and recover.
     private let gaveUpHandler = Mutex<(@Sendable () -> Void)?>(nil)
+    /// The time disables are measured on, injected so a test can move it by hand.
+    private let clock: ElapsedClock
+
+    init(clock: some Clock<Duration> = ContinuousClock()) {
+        self.clock = ElapsedClock(clock)
+    }
 
     deinit {
         if let held = tapPointer.load(ordering: .relaxed) {
@@ -137,7 +143,7 @@ final class Delivery: @unchecked Sendable {
 
     /// Whether to turn the tap back on, which it is unless it keeps being disabled in a short window.
     func shouldReEnable() -> Bool {
-        let now = DispatchTime.now().uptimeNanoseconds
+        let now = clock.nanoseconds
         let last = lastDisable.exchange(now, ordering: .relaxed)
         let (count, reEnable) = TapDisableWindow.decide(
             last: last, now: now, count: disables.load(ordering: .relaxed))
