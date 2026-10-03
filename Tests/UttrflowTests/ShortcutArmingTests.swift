@@ -151,4 +151,15 @@ struct ShortcutArmingTests {
         #expect(arming.contains("arming.arm {"))
         #expect(!arming.contains("render("), "an arming failure would be counted as a dictation")
     }
+
+    @Test("tells the launch its first outcome only, so a later re-arming is not timed as the launch")
+    func firstOutcomeEndsTheLaunch() async {
+        let launch = LaunchMilestone { .milliseconds(250) }
+        let arming = ShortcutArming(onChange: {}, launch: launch)
+
+        await arming.arm { () throws(HotkeyError) in throw .shortcutUnavailable }
+        await arming.arm { () throws(HotkeyError) in }
+
+        #expect(launch.report == LaunchReport(age: .milliseconds(250), outcome: .refused))
+    }
 }
