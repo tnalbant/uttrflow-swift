@@ -3033,21 +3033,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Writes both personal lists to a private, user-chosen JSON file.
     @MainActor
     private func exportPersonalData() {
+        let disclosure = NSAlert()
+        disclosure.alertStyle = .warning
+        disclosure.messageText = "The export file is not encrypted"
+        disclosure.informativeText = PersonalDataExport.disclosureMessage
+        disclosure.addButton(withTitle: "Exclude secret snippets")
+        disclosure.addButton(withTitle: "Include all snippets")
+        disclosure.addButton(withTitle: "Cancel")
+        let choice: PersonalDataExport.Choice
+        switch disclosure.runModal() {
+        case .alertFirstButtonReturn: choice = .excludeSecretSnippets
+        case .alertSecondButtonReturn: choice = .includeAllSnippets
+        default: return
+        }
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "Uttrflow-Personal-Data.json"
         panel.canCreateDirectories = true
-        panel.message = "This file contains your personal dictionary and snippet text."
+        panel.message = "This JSON file is not encrypted."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
-        intentWork = Task { [weak self, dictionary, snippets] in
+        intentWork = Task { [weak self, dictionary, snippets, choice] in
             do {
-                let archive = PersonalDataArchive(
-                    dictionary: await dictionary.allEntries(), snippets: await snippets.snippets())
-                try archive.encoded().write(to: destination, options: .atomic)
-                try FileManager.default.setAttributes(
-                    [.posixPermissions: PrivateFile.fileMode],
-                    ofItemAtPath: destination.path(percentEncoded: false))
+                let archive = PersonalDataExport.archive(
+                    dictionary: await dictionary.allEntries(), snippets: await snippets.snippets(),
+                    choice: choice)
+                try PrivateFile.writeOwnerOnlyAtomically(try archive.encoded(), to: destination)
                 self?.showPersonalDataNotice(
                     title: "Personal data exported",
                     message: "Your dictionary and snippets were saved to the file you chose.")
