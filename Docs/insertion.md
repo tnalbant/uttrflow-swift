@@ -28,6 +28,45 @@ leaves its placement uncertain, so the result stops the fallback chain and asks 
 to check the field before retrying; another strategy could duplicate a write that already
 landed.
 
+## A web field's own state
+
+The caret check proves the field's visible text and caret moved. A page whose field is
+driven by script keeps its own copy of the text and updates it from `input` and
+`beforeinput` events, so a write that changes the screen without raising one would leave
+the page holding the old text: Send posts what the page holds, and the next keystroke
+re-renders the old text over the dictation. Whether an Accessibility write can do that is
+measured, not assumed, by `Scripts/web_field_probe/probe.sh`.
+
+The fixture is three fields that start as `start `: a single-line input re-rendered from
+state that `input` events set; a `contenteditable` whose state `input` events set; and a
+`contenteditable` that cancels `beforeinput`, applies it to its model and re-renders from
+the model, the shape of a structured rich-text editor. Each is written with `one two three`
+through one attribute, then sent one key press `x`; the page reports what it shows and what
+it holds after each. Windows open in the background and every write goes to that process
+only. Google Chrome 154.0.8037.97 and WebKit through `WKWebView` (the engine Safari 26.5
+ships), macOS 26.5.1:
+
+| Attribute | Engine | Field | Shown after the write | Page state | Caret check | After `x` |
+|---|---|---|---|---|---|---|
+| `AXSelectedText` | both | all three | unchanged | unchanged | unconfirmed | `start x` |
+| `AXValue` | Chrome | input | written | written, one `input` event | confirmed | appended |
+| `AXValue` | Chrome | contenteditable | written | **old**, no event | unconfirmed (caret at 0) | `xstart one two three` |
+| `AXValue` | Chrome | model editor | written | **old**, no event | unconfirmed (caret at 0) | **`start x`: the write is undone** |
+| `AXValue` | WebKit | input, contenteditable | written | written, `deleteContent` then `insertText` | confirmed | appended |
+| `AXValue` | WebKit | model editor | `start start one two three` | the same | unconfirmed | appended |
+
+**The attribute dictation writes cannot produce a visible but uncommitted field.** Both
+engines answer an `AXSelectedText` write with `.success` and change nothing at all, shown
+or held, and `SelectionWriter`'s caret check reports it. The Chrome input, re-run with its
+window in front, behaved the same. That unconfirmed answer stops the dictation before the
+typed route runs, although nothing landed; #4603 is the fix.
+
+**`AXValue` is not a fix to reach for.** It is the write that produces exactly that defect:
+in a Chrome `contenteditable` the text appears, the page never hears of it, and a model
+editor's next keystroke puts the old text back. WebKit replaces the value as delete-all
+then insert-all, which a model editor applies on top of what it already holds. A whole-value
+write also replaces the field rather than the selection.
+
 ## Which application the record names
 
 The layout decisions are made against the screen as it was when each piece was cut — that is
