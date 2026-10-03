@@ -95,6 +95,8 @@ struct DestructiveCommandTests {
         "Argument consumers and package-manager removals remain ordinary.",
         arguments: [
             "echo rm", "echo please rm this", "man rm", "which dd", "tldr shred", "type rm",
+            "help rm", "info dd", "whatis rm", "apropos shred", "printf rm", "command -v rm",
+            "command -V dd",
             "npm rm lodash", "pnpm remove lodash", "yarn remove lodash",
         ])
     func leavesHarmlessDestroyerNamesAlone(_ line: String) {
@@ -105,6 +107,7 @@ struct DestructiveCommandTests {
         "A destroying command is recognised however it is reached or spelled.",
         arguments: [
             "/bin/rm -rf build", "\\rm -rf build", "sudo -E rm -rf /var", "sudo -u root rm -rf x",
+            "command rm -rf x",
             "FOO=1 rm -rf x", "env -i rm x", "nice -n 10 rm x", "find . -name '*.log' | xargs -n 1 rm",
             "find . -type f -delete", "find . -exec rm {} +", "srm secret.txt", "unlink file",
             "git push --force-with-lease", "git push origin --delete feature", "git push origin :feature",

@@ -1350,12 +1350,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private lazy var shortcutArming = ShortcutArming(
         onChange: { [weak self] in self?.showShortcutUnheard() },
         accessibilityIsGranted: { AXIsProcessTrusted() })
-    /// Claimed shortcuts the window server refused, so a row never shows a key that does nothing.
-    private var unarmedShortcuts: Set<ShortcutAction> = [] {
+    /// Claimed shortcuts the window server refused, each with its refusal, so a row says why.
+    private var unarmedShortcuts: [ShortcutAction: HotkeyError] = [:] {
         didSet {
             guard unarmedShortcuts != oldValue else { return }
-            settingsPage.setUnarmedShortcuts(unarmedShortcuts)
+            showRefusedShortcuts()
         }
+    }
+
+    /// Every shortcut not armed, Dictate included, on the one settings seam that says why.
+    private func showRefusedShortcuts() {
+        var refused = unarmedShortcuts
+        refused[.dictate] = shortcutArming.failure
+        settingsPage.setUnarmedShortcuts(refused)
     }
 
     /// Arms the dictation shortcut while dictation is on, and releases it while it is off.
@@ -1548,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for monitor in claimedHotkeys.values { monitor.stop() }
         claimedHotkeys.removeAll()
 
-        var refused: Set<ShortcutAction> = []
+        var refused: [ShortcutAction: HotkeyError] = [:]
         // Signed out, no key is claimed, so each one still reaches the app in front.
         for action in surfaces.claimedShortcuts {
             guard let binding = settings.shortcuts.first(for: action) else { continue }
@@ -1559,7 +1566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Self.log.error(
                     "\(action.rawValue, privacy: .public) shortcut refused: \(error.userMessage, privacy: .public)"
                 )
-                refused.insert(action)
+                refused[action] = error
                 continue
             }
             claimedHotkeys[action] = monitor
@@ -2273,11 +2280,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 secure=\(outcome.intoSecureField, privacy: .public)
                 """)
             // A secure field's words are kept nowhere: not as the last transcript, in history, or as a clip.
-            guard let kept = outcome.wordsToKeep,
-                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
+            guard let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
             else { break }
-            lastTranscript = kept
-            lastTranscriptID = record.id
             keep(record)
         case .failed(let notice):
             if notice.speechEngineKind == .appleSpeech,
@@ -2291,9 +2295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 salvaged=\(notice.transcript != nil, privacy: .public) \
                 kept=\(notice.recovery == .retryFromRecording, privacy: .public)
                 """)
-            if notice.wordsToKeep != nil,
-                let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
-            {
+            if let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID()) {
                 // Not an empty set: unmeasured is a different fact from nothing changed.
                 keep(record)
             }
@@ -2343,8 +2345,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             userInfo: [.announcement: text, .priority: priority.rawValue])
     }
 
-    /// Keeps one dictation, echoed on screen at once because the menu cannot await the store.
+    /// Keeps one dictation, inserted or salvaged, and makes it what the last-transcript shortcuts act on.
     private func keep(_ record: DictationRecord) {
+        lastTranscript = record.text
+        lastTranscriptID = record.id
         recents.add(record)
         let days = settings.transcriptRetentionDays
         Task { [weak self] in
@@ -2369,6 +2373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Redraws both surfaces that say why the shortcut cannot be heard.
     private func showShortcutUnheard() {
         dock.setShortcutUnheard(shortcutUnheard)
+        showRefusedShortcuts()
         refreshMenuBar()
     }
 
@@ -2380,23 +2385,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Translates the pipeline's state into the menu's vocabulary, deciding nothing.
     private func menuBarState(for state: DictationState) -> MenuBarState {
-        let activity: DictationActivity =
-            switch state {
-            case .idle, .failed: .idle
-            case .recording: .listening
-            case .transcribing, .tidying, .inserting: .working
-            case .inserted(let outcome):
-                DictationActivity.completion(
-                    method: outcome.method, arrival: outcome.arrival, missedPieces: outcome.missedPieces)
-            }
-        var failure: FailurePresentation?
-        if case .failed(let notice) = state {
-            failure = FailurePresenter.present(
-                message: notice.message, recovery: notice.recovery, severity: notice.severity)
-        }
+        let menu = Self.menuBarDictation(for: state, floatingButtonShown: showsTheFloatingButton)
         return MenuBarState(
-            activity: activity,
-            failure: failure,
+            activity: menu.activity,
+            failure: menu.failure,
             speechModel: speechReadiness,
             speechLoadElapsed: speechLoadStarted.map { $0.duration(to: .now) } ?? .zero,
             recordingAdvice: recordingAdvice,
@@ -2412,7 +2404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             canCheckForUpdates: UpdateController.isConfigured,
             features: MenuBarFeatures(settings),
             shortcuts: settings.shortcuts,
-            unarmedShortcuts: unarmedShortcuts,
+            unarmedShortcuts: Set(unarmedShortcuts.keys),
             shortcutUnheard: shortcutUnheard,
             suggestionUnheard: suggestionSecureInputNotice,
             suggestionModel: suggestionModel,
@@ -2532,6 +2524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // A refusal describes one attempt, and describes nothing once the typing changes.
             wordRefusal = nil
             snippetRefusal = nil
+            measureSnippetArrival()
             redrawPages([.dictionary, .snippets])
         }
         return window
@@ -2740,7 +2733,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             for: DictionarySnapshot(
                 entries: knownWords, draft: wordDraft, refusal: wordRefusal,
                 query: query(for: .dictionary), filter: scope(for: .dictionary),
-                corrections: corrections, now: now))
+                corrections: corrections, now: now,
+                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt))
     }
 
     /// The Snippets page as the last reading of the snippets draws it.
@@ -2748,7 +2742,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         SnippetsPresenter.page(
             for: SnippetsSnapshot(
                 snippets: knownSnippets, draft: snippetDraft, refusal: snippetRefusal,
-                query: query(for: .snippets), now: now))
+                query: query(for: .snippets), now: now, arrival: snippetArrival))
     }
 
     /// Reads the account the pages draw from.
@@ -2788,6 +2782,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Why the last Save was refused, per editor, until the next keystroke clears it.
     private var wordRefusal: String?
     private var snippetRefusal: String?
+    /// How the snippet draft's trigger arrives when said, measured off the main actor as the user types.
+    private var snippetArrival: SnippetArrival?
+    private var snippetArrivalWork: Task<Void, Never>?
     /// Why the last delete, flag, restore or undo did not happen, until one of them works or the page changes.
     private(set) var actionNotice: MainNotice?
     /// The complete snippet held for the short main-window undo window.
@@ -3162,18 +3159,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 let merged = try await PersonalDataTransfer.importArchive(
                     from: source, into: dictionary, and: snippets)
                 let duplicateCount = merged.duplicateWords + merged.duplicateSnippets
-                let message =
+                var message =
                     duplicateCount == 0
                     ? "The archive was imported. No duplicate entries were skipped."
                     : "Imported the archive. Skipped \(merged.duplicateWords) duplicate \(merged.duplicateWords == 1 ? "word" : "words") and \(merged.duplicateSnippets) duplicate \(merged.duplicateSnippets == 1 ? "snippet" : "snippets"). Existing entries were kept."
-                self?.showPersonalDataNotice(title: "Import complete", message: message)
-            } catch let error as PersonalDataTransferError {
-                switch error {
-                case .dictionaryCapacityExceeded:
-                    self?.showPersonalDataNotice(
-                        title: "Import exceeds the dictionary limit",
-                        message: "The merged dictionary would exceed its limit. Nothing was imported.")
+                if merged.skippedInferredWords > 0 {
+                    message +=
+                        " Kept the \(PersonalDictionaryStore.maximumInferredEntries) strongest learned words and skipped \(merged.skippedInferredWords)."
                 }
+                self?.showPersonalDataNotice(title: "Import complete", message: message)
             } catch let error as PersonalDataArchiveError {
                 let message: String
                 switch error {
@@ -3261,7 +3255,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         snippetEditorIsOpen = draft != nil
         snippetRefusal = nil
         mainWindow?.editSnippet(draft)
+        measureSnippetArrival()
         refreshMainWindow()
+    }
+
+    /// Runs the open draft's trigger through dictation's own cleaning, so the editor can say what the matcher will see.
+    private func measureSnippetArrival() {
+        snippetArrivalWork?.cancel()
+        guard let trigger = snippetDraft?.trigger, !trigger.isEmpty, let pipeline else { return }
+        guard snippetArrival?.trigger != trigger else { return }
+        snippetArrivalWork = Task { [weak self] in
+            let arrives = await pipeline.arrival(ofSpoken: trigger)
+            guard let self, !Task.isCancelled, snippetDraft?.trigger == trigger else { return }
+            snippetArrival = SnippetArrival(trigger: trigger, arrives: arrives)
+            redrawPages([.snippets])
+        }
     }
 
     /// Saves a snippet, closing the editor only once it is in, as saving a word does.
@@ -3360,11 +3368,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         refreshMainWindow()
     }
 
+    /// Whether the floating button is on screen: the setting asks for it, somebody is signed in, and windows draw.
+    private var showsTheFloatingButton: Bool { surfaces.showsTheFloatingButton && drawsWindows }
+
     /// Shows the floating button when the setting asks for it and somebody is signed in, and hides it otherwise.
     private func showTheFloatingButtonIfWanted() {
-        guard surfaces.showsTheFloatingButton, drawsWindows else { return dock.hide() }
+        // Where a failure is placed depends on whether the button is there to carry it.
+        defer { refreshMenuBar() }
+        guard showsTheFloatingButton else { return dock.hide() }
         dock.setAnchor(settings.floatingButtonAnchor)
         dock.show()
+    }
+
+    /// A dictation's activity and failure in the menu's vocabulary, placed by which surfaces are shown.
+    nonisolated static func menuBarDictation(for state: DictationState, floatingButtonShown: Bool) -> MenuBarState {
+        let activity: DictationActivity =
+            switch state {
+            case .idle, .failed: .idle
+            case .recording: .listening
+            case .transcribing, .tidying, .inserting: .working
+            case .inserted(let outcome):
+                DictationActivity.completion(
+                    method: outcome.method, arrival: outcome.arrival, missedPieces: outcome.missedPieces)
+            }
+        var failure: FailurePresentation?
+        if case .failed(let notice) = state {
+            failure = FailurePresenter.present(
+                message: notice.message, recovery: notice.recovery, severity: notice.severity,
+                floatingButtonShown: floatingButtonShown)
+        }
+        return MenuBarState(activity: activity, failure: failure)
     }
 
     /// Whether the floating button collapses to a grip when idle, as the running button has it now.

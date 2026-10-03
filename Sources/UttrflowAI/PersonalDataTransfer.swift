@@ -11,7 +11,7 @@ public enum PersonalDataTransfer {
         from source: URL,
         into dictionary: PersonalDictionaryStore,
         and snippets: SnippetStore
-    ) async throws -> PersonalDataMerge {
+    ) async throws -> PersonalDataImportReport {
         let data = try readArchive(from: source)
         return try await importArchive(data, into: dictionary, and: snippets)
     }
@@ -21,7 +21,7 @@ public enum PersonalDataTransfer {
         _ data: Data,
         into dictionary: PersonalDictionaryStore,
         and snippets: SnippetStore
-    ) async throws -> PersonalDataMerge {
+    ) async throws -> PersonalDataImportReport {
         let archive = try PersonalDataArchive.decode(data)
         guard
             archive.dictionary.allSatisfy({
@@ -31,15 +31,11 @@ public enum PersonalDataTransfer {
 
         let merged = archive.merging(
             dictionary: await dictionary.allEntries(), snippets: await snippets.snippets())
-        let inferredCount = merged.dictionary.filter {
-            $0.origin == .learned || $0.origin == .observed
-        }.count
-        guard inferredCount <= PersonalDictionaryStore.maximumInferredEntries else {
-            throw PersonalDataTransferError.dictionaryCapacityExceeded
-        }
-        try await dictionary.replaceAll(merged.dictionary)
+        let kept = try await dictionary.replaceAll(merged.dictionary)
         try await snippets.replaceAll(merged.snippets)
-        return merged
+        return PersonalDataImportReport(
+            duplicateWords: merged.duplicateWords, duplicateSnippets: merged.duplicateSnippets,
+            skippedInferredWords: merged.dictionary.count - kept.count)
     }
 
     private static func readArchive(from source: URL) throws -> Data {
@@ -66,6 +62,9 @@ public enum PersonalDataTransfer {
     }
 }
 
-public enum PersonalDataTransferError: Error, Sendable {
-    case dictionaryCapacityExceeded
+/// What an import skipped: duplicates, and the weakest inferred words beyond the store's bound.
+public struct PersonalDataImportReport: Sendable, Equatable {
+    public let duplicateWords: Int
+    public let duplicateSnippets: Int
+    public let skippedInferredWords: Int
 }

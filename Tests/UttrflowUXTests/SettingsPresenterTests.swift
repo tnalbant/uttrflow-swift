@@ -948,9 +948,9 @@ struct UnarmedShortcutTests {
     @Test("says so, instead of showing a key that does nothing")
     func saysSo() throws {
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.clipboard]
+        capabilities.unarmedShortcuts = [.clipboard: .shortcutUnavailable]
         let shown = try #require(row(capabilities))
-        #expect(shown.explanation == SettingsPresenter.unarmed)
+        #expect(shown.explanation == SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 
     @Test("keeps the unarmed explanation ahead of the activation mode")
@@ -958,26 +958,37 @@ struct UnarmedShortcutTests {
         var settings = Settings.default
         settings.hotkeyActivation = .pressToToggle
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.dictate]
+        capabilities.unarmedShortcuts = [.dictate: .shortcutUnavailable]
 
         let shown = try #require(
             SettingsPresenter.pane(for: .general, settings: settings, capabilities: capabilities)
                 .groups.flatMap(\.rows).first { $0.id == "shortcut.dictate" })
-        #expect(shown.explanation == SettingsPresenter.unarmed)
+        #expect(shown.explanation == SettingsPresenter.unarmed(.shortcutUnavailable))
+    }
+
+    @Test(
+        "names the refusal, so each cause reads differently",
+        arguments: [HotkeyError.observationNotPermitted, .accessibilityNeedsRefresh, .shortcutUnavailable])
+    func namesTheCause(_ cause: HotkeyError) throws {
+        var capabilities = SettingsCapabilities.everything
+        capabilities.unarmedShortcuts = [.clipboard: cause]
+        let shown = try #require(row(capabilities))
+        #expect(shown.explanation?.hasPrefix("Unavailable") == true)
+        #expect(shown.explanation?.hasSuffix(cause.userMessage) == true)
     }
 
     @Test("and every other row is left alone")
     func othersAreUntouched() throws {
         var capabilities = SettingsCapabilities.everything
-        capabilities.unarmedShortcuts = [.dictate]
+        capabilities.unarmedShortcuts = [.dictate: .shortcutUnavailable]
         let shown = try #require(row(capabilities))
-        #expect(shown.explanation != SettingsPresenter.unarmed)
+        #expect(shown.explanation != SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 
     @Test("while an armed one keeps the explanation it always had")
     func armedIsUnchanged() throws {
         let shown = try #require(row(.everything))
-        #expect(shown.explanation != SettingsPresenter.unarmed)
+        #expect(shown.explanation != SettingsPresenter.unarmed(.shortcutUnavailable))
     }
 }
 

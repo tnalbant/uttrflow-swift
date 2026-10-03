@@ -160,6 +160,25 @@ extension DictationPipeline {
                 cleaning: joined.cleaned.cleaning, entriesTaken: joined.cleaned.entriesTaken))
     }
 
+    /// What a phrase said on its own reaches the snippet matcher as: the dictionary, then the rules, no model.
+    public func arrival(ofSpoken phrase: String) async -> String {
+        let heard = Transcription(text: phrase)
+        let nowhere = AppContext()
+        let corrected = await correct(heard, seeing: nowhere, recording: NoOpMetricsRecorder())
+        let situation = SituationResolver.resolve(from: nowhere, overrides: runningOverrides)
+        let spoken = heard.saying(corrected)
+        let piece = TransformationRequest(
+            transcription: spoken, context: nowhere, profile: runningProfile, situation: situation,
+            scope: .piece)
+        let rules = RuleBasedTransformer(steps: runningCleaner.cleaningSteps)
+        guard let tidied = try? await rules.transform(piece) else {
+            return LatinScript.enforced(corrected.text)
+        }
+        let message = TransformationRequest(
+            transcription: spoken, context: nowhere, profile: runningProfile, situation: situation)
+        return LatinScript.enforced(await runningCleaner.finishMessage(tidied.text, for: message))
+    }
+
     /// Expands the user's snippets under the destination's layout, treating a blank expansion as nothing to do.
     func expand(
         _ text: String, matching seamInput: SeamSnippetInput, laidOut layout: LayoutPolicy

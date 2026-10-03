@@ -13,7 +13,7 @@ struct ErrorPresentationTests {
     @Test("gives every failure a usable message")
     func everyFailureHasAMessage() {
         for failure in everyFailure {
-            let shown = FailurePresenter.present(failure)
+            let shown = FailurePresenter.present(failure, floatingButtonShown: true)
             #expect(!shown.headline.isEmpty, "\(failure) has no headline")
             // One line of a 396-point banner; 96 is the ceiling the product squeezes under.
             #expect(
@@ -32,7 +32,7 @@ struct ErrorPresentationTests {
     @Test("gives every failure a sensible next step")
     func everyFailureHasSomewhereToGo() {
         for failure in everyFailure {
-            let shown = FailurePresenter.present(failure)
+            let shown = FailurePresenter.present(failure, floatingButtonShown: true)
             #expect(!shown.symbolName.isEmpty, "\(failure) has no badge")
             // An action, when there is one, must be readable and must be the one the error asked for.
             if let action = shown.action {
@@ -53,12 +53,12 @@ struct ErrorPresentationTests {
     func severityComesFromTheFailure() {
         for failure in everyFailure {
             #expect(
-                FailurePresenter.present(failure).severity == failure.severity,
+                FailurePresenter.present(failure, floatingButtonShown: true).severity == failure.severity,
                 "\(failure) was shown at a severity it did not declare")
         }
 
-        let blocked = FailurePresenter.present(HotkeyError.observationNotPermitted)
-        let degraded = FailurePresenter.present(PermissionError.accessibilityNotTrusted)
+        let blocked = FailurePresenter.present(HotkeyError.observationNotPermitted, floatingButtonShown: true)
+        let degraded = FailurePresenter.present(PermissionError.accessibilityNotTrusted, floatingButtonShown: true)
         #expect(blocked.action == degraded.action, "the two offer the same fix")
         #expect(blocked.severity == .blocking)
         #expect(degraded.severity == .degraded)
@@ -70,7 +70,7 @@ struct ErrorPresentationTests {
     @Test("puts a failure where the user will still find it")
     func placementFollowsSeverity() {
         for failure in everyFailure {
-            let shown = FailurePresenter.present(failure)
+            let shown = FailurePresenter.present(failure, floatingButtonShown: true)
             let expected: FailurePlacement = shown.severity == .blocking ? .menuBar : .floatingButton
             #expect(shown.placement == expected, "\(failure) is shown in the wrong place")
         }
@@ -83,7 +83,7 @@ struct ErrorPresentationTests {
             "whisper", "foundation model", "llm", "coreml", "mlx", "transformer", "inference",
         ]
         for failure in everyFailure {
-            let shown = FailurePresenter.present(failure)
+            let shown = FailurePresenter.present(failure, floatingButtonShown: true)
             let words = [shown.headline, shown.detail ?? "", shown.action?.title ?? ""]
                 .joined(separator: " ")
                 .lowercased()
@@ -98,7 +98,7 @@ struct ErrorPresentationTests {
     func longestHeadline() {
         let worst =
             everyFailure
-            .map { FailurePresenter.present($0) }
+            .map { FailurePresenter.present($0, floatingButtonShown: true) }
             .max { $0.headline.count < $1.headline.count }
         #expect(worst?.headline == PermissionError.microphoneRestricted.userMessage)
         #expect(worst?.detail == nil)
@@ -111,9 +111,9 @@ struct ErrorPresentationTests {
     @Test("presents a reduced failure exactly as it presents the error")
     func reducedFailureMatches() {
         let error = TextInsertionError.insertionRejected(description: "read-only field")
-        let direct = FailurePresenter.present(error)
+        let direct = FailurePresenter.present(error, floatingButtonShown: true)
         let reduced = FailurePresenter.present(
-            message: error.userMessage, recovery: error.recovery, severity: error.severity)
+            message: error.userMessage, recovery: error.recovery, severity: error.severity, floatingButtonShown: true)
         #expect(direct == reduced)
     }
 
@@ -121,7 +121,7 @@ struct ErrorPresentationTests {
     func splitsOnTheSentenceBreak() {
         let shown = FailurePresenter.present(
             message: "No microphone was found. Connect one and try again.", recovery: nil,
-            severity: .blocking)
+            severity: .blocking, floatingButtonShown: true)
         #expect(shown.headline == "No microphone was found.")
         #expect(shown.detail == "Connect one and try again.")
     }
@@ -129,7 +129,7 @@ struct ErrorPresentationTests {
     @Test("leaves a one-sentence message with nothing underneath it")
     func keepsASingleSentenceWhole() {
         let shown = FailurePresenter.present(
-            message: "Recording is already in progress.", recovery: .retry, severity: .recoverable)
+            message: "Recording is already in progress.", recovery: .retry, severity: .recoverable, floatingButtonShown: true)
         #expect(shown.headline == "Recording is already in progress.")
         #expect(shown.detail == nil)
     }
@@ -138,7 +138,7 @@ struct ErrorPresentationTests {
     @Test("keeps everything after the first sentence together")
     func keepsTheTailTogether() {
         let shown = FailurePresenter.present(
-            message: "One. Two. Three.", recovery: nil, severity: .blocking)
+            message: "One. Two. Three.", recovery: nil, severity: .blocking, floatingButtonShown: true)
         #expect(shown.headline == "One.")
         #expect(shown.detail == "Two. Three.")
     }
@@ -146,18 +146,23 @@ struct ErrorPresentationTests {
     @Test("does not leave an empty second line behind a trailing space")
     func ignoresATrailingBreak() {
         let shown = FailurePresenter.present(
-            message: "Nothing follows this. ", recovery: nil, severity: .blocking)
+            message: "Nothing follows this. ", recovery: nil, severity: .blocking, floatingButtonShown: true)
         #expect(shown.headline == "Nothing follows this.")
         #expect(shown.detail == nil)
     }
 
-    /// Only a blocking notice waits in the menu bar; the others are news about a dictation already over.
-    @Test("keeps only a blocking notice on an always-visible surface")
-    func placementFollowsSeverityAlone() {
+    /// With the button shown only a blocking notice waits in the menu bar; without it, every notice goes there.
+    @Test("places a notice by its severity and by which surfaces are shown")
+    func placementFollowsSeverityAndSurfaces() {
         for severity in FailureSeverity.allCases {
-            let shown = FailurePresenter.present(
-                message: "Something happened.", recovery: nil, severity: severity)
-            #expect(shown.placement == (severity == .blocking ? .menuBar : .floatingButton))
+            for floatingButtonShown in [true, false] {
+                let shown = FailurePresenter.present(
+                    message: "Something happened.", recovery: nil, severity: severity,
+                    floatingButtonShown: floatingButtonShown)
+                let expected: FailurePlacement =
+                    severity == .blocking || !floatingButtonShown ? .menuBar : .floatingButton
+                #expect(shown.placement == expected, "\(severity), button shown: \(floatingButtonShown)")
+            }
         }
     }
 
@@ -207,10 +212,10 @@ struct ErrorPresentationTests {
     @Test("presents the same failure as the same thing twice")
     func presentationsAreValues() {
         #expect(
-            FailurePresenter.present(PermissionError.microphoneDenied)
-                == FailurePresenter.present(PermissionError.microphoneDenied))
+            FailurePresenter.present(PermissionError.microphoneDenied, floatingButtonShown: true)
+                == FailurePresenter.present(PermissionError.microphoneDenied, floatingButtonShown: true))
         #expect(
-            FailurePresenter.present(PermissionError.microphoneDenied)
-                != FailurePresenter.present(PermissionError.accessibilityNotTrusted))
+            FailurePresenter.present(PermissionError.microphoneDenied, floatingButtonShown: true)
+                != FailurePresenter.present(PermissionError.accessibilityNotTrusted, floatingButtonShown: true))
     }
 }

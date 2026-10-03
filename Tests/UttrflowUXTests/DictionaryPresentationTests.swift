@@ -43,7 +43,10 @@ struct DictionaryPageTests {
             HistoryFixture.word("Uttrflow"), HistoryFixture.word("pgvector"),
         ])
         #expect(page.rows.map(\.word) == ["Uttrflow", "pgvector"])
-        #expect(page.chrome.caption == "Names and terms Uttrflow would otherwise get wrong. · 2 words")
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 2 words · 1 given to the recogniser"
+        )
         #expect(page.chrome.title == "Dictionary")
     }
 
@@ -53,7 +56,43 @@ struct DictionaryPageTests {
             HistoryFixture.word("Uttrflow"),
             HistoryFixture.word("Retired", used: 4, reverted: 3),
         ])
-        #expect(page.chrome.caption == "Names and terms Uttrflow would otherwise get wrong. · 1 word")
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 1 word · 1 given to the recogniser"
+        )
+    }
+
+    @Test("each row says whether the recogniser is given it, and the caption counts those")
+    func promptStanding() {
+        let page = DictionaryPresenter.page(
+            for: DictionarySnapshot(
+                entries: [
+                    HistoryFixture.word("Uttrflow", used: 9),
+                    HistoryFixture.word("pgvector", pronunciation: nil, used: 2),
+                    HistoryFixture.word("Retired", used: 4, reverted: 3),
+                ],
+                now: HistoryFixture.now, packed: ["Uttrflow"]),
+            calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+        #expect(page.rows.map(\.prompt.text) == ["In prompt · 1", "No room · 2", "Retired"])
+        #expect(page.rows.map(\.prompt.isInPrompt) == [true, false, false])
+        #expect(page.rows[1].prompt.spoken.contains("no room"))
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 2 words · 1 given to the recogniser"
+        )
+    }
+
+    @Test("every standing has its own words")
+    func promptChipWording() {
+        let chips: [DictionaryPromptChip] = [
+            .init(.inPrompt(rank: 1)), .init(.belowLimit(rank: 30, limit: 28)),
+            .init(.sharesSound(with: "Nikhil")), .init(.retired), .init(.unusedInferred),
+            .init(.tooLong(rank: 4)), .init(nil),
+        ]
+        #expect(Set(chips.map(\.text)).count == chips.count)
+        #expect(Set(chips.map(\.spoken)).count == chips.count)
+        #expect(chips[1].text == "Ranked 30 · top 28")
+        #expect(chips[2].spoken.contains("Nikhil"))
     }
 
     @Test("a row says how it sounds, where it came from and how it has fared")
