@@ -31,6 +31,39 @@ the one-line comments. `Docs/microphone.md` covers the hardware moving under the
   public contract; a buffer in a different format (never produced by the tap; only a misuse
   test constructs one) still allocates its own scratch rather than corrupt the reused pair.
 
+## Resampler fidelity
+
+`AudioResampler` leaves the converter's sample-rate quality and prime method at their
+defaults. `AudioResamplerFidelityTests` measures what that does to a signal: a 0.5 amplitude
+sine on channel 0 of a one-second buffer, passband tones at 100 Hz, 1, 4 and 7 kHz, and
+stopband tones at 9, 10, 12, 16 and 20 kHz (each only where the input rate can carry it).
+Gain and alias are the RMS of the middle half of the output, relative to the input's RMS.
+Measured on an Apple M5 Pro, macOS 26.5; the converter fed in the same 2048-frame slices.
+
+| Input rate | Length error | Passband gain, default | Worst alias, default | Passband gain, max | Worst alias, max |
+|---|---|---|---|---|---|
+| 8 kHz | 0.20% | 0.0 dB | n/a | 0.0 dB | n/a |
+| 16 kHz | 0.00% | 0.0 dB | n/a | 0.0 dB | n/a |
+| 22.05 kHz | 0.08% | -4.2 to 0.0 dB | -63.7 dB | -2.0 to 0.0 dB | -115.8 dB |
+| 44.1 kHz | 0.04% | -5.0 to 0.0 dB | -21.7 dB | -3.6 to 0.0 dB | -115.3 dB |
+| 48 kHz | 0.04% | -5.2 to 0.0 dB | -18.6 dB | -3.8 to 0.0 dB | -102.5 dB |
+| 88.2 kHz | 0.02% | -5.5 to 0.0 dB | -12.1 dB | -4.7 to 0.0 dB | -30.8 dB |
+| 96 kHz | 0.02% | -5.6 to -0.1 dB | -11.1 dB | -4.9 to 0.0 dB | -26.9 dB |
+| 192 kHz | 0.01% | -5.9 to -2.3 dB | -8.3 dB | -5.4 to 0.0 dB | -13.8 dB |
+
+- Every row is identical for mono, stereo, interleaved stereo and 9 channels: the channel map
+  selects channel 0 cleanly in each layout.
+- The lowest passband gain is always the 7 kHz tone, so both settings roll off before the
+  canonical Nyquist; the worst alias is the 9 kHz tone, inside the transition band.
+- At the default, 44.1 and 48 kHz (the rates microphones actually deliver) leak a 9 kHz tone at
+  roughly -20 dB; the highest quality pushes that below -100 dB.
+- CPU, 60 s of 48 kHz mono in 4096-frame blocks: about 1.5 ms per audio second at the default
+  and 3.5 ms at the highest quality.
+
+**Decision: the default is measured and kept.** Changing it requires the corpus WER
+(`make bakeoff`) at both settings, which needs the quality to be selectable on the production
+path, and an audio-thread budget to compare the CPU cost with; neither is recorded yet.
+
 ## Microphone access is read before the engine, not after it
 
 `EngineDevice.open()` refuses with `AudioCaptureError.microphoneDenied` unless
