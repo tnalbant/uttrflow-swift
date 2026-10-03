@@ -2,6 +2,7 @@ public import UttrflowPredict
 
 // The MLX macros expand to code naming these types, so the imports cannot be private.
 import Foundation
+import UttrflowCore
 import HuggingFace
 import MLX
 import MLXHuggingFace
@@ -390,7 +391,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
         let forgetGeneration = self.forgetGeneration
-        guard let container, !Task.isCancelled, LatinScript.writes(typed),
+        guard let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
         beginPass()

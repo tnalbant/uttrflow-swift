@@ -1,11 +1,40 @@
 // The guarantee that dictation writes only Latin letters.
 import Foundation
 
+/// What one scalar is to the Latin-only rule; the single classifier every Latin-script check is built on.
+public enum ScriptClass: Sendable, Equatable {
+    /// A scalar in a block Latin text uses: ASCII, accented and styled Latin, fullwidth Latin and its digits.
+    case latin
+    /// A letter or combining mark of another script.
+    case foreignLetter
+    /// A digit or other number of another script.
+    case foreignNumber
+    /// Punctuation, symbols, emoji and spaces, which belong to no script.
+    case neutral
+
+    /// The class of `scalar`, read from its Unicode properties and the one Latin table.
+    public static func of(_ scalar: Unicode.Scalar) -> ScriptClass {
+        if LatinScript.isInLatinRange(scalar) { return .latin }
+        let properties = scalar.properties
+        if properties.isAlphabetic { return .foreignLetter }
+        switch properties.generalCategory {
+        case .nonspacingMark, .spacingMark, .enclosingMark: return .foreignLetter
+        case .decimalNumber, .letterNumber, .otherNumber: return .foreignNumber
+        default: return .neutral
+        }
+    }
+}
+
 /// What dictation may write: Latin letters, digits, punctuation and symbols, never another script. See `Docs/latin-output.md`.
 public enum LatinScript {
-    /// Whether every letter in `text` is a Latin one; punctuation, digits, symbols and emoji are not letters.
-    public static func isLatin(_ text: String) -> Bool {
+    /// Whether every letter in `text` is a Latin one; digits of any script, punctuation, symbols and emoji are not letters.
+    public static func isLatin(_ text: some StringProtocol) -> Bool {
         !text.unicodeScalars.contains(where: isForeign)
+    }
+
+    /// Whether no letter, mark or digit in `text` belongs to another script; the check a suggestion must pass before it is written.
+    public static func writesOnlyLatin(_ text: some StringProtocol) -> Bool {
+        text.unicodeScalars.allSatisfy { [.latin, .neutral].contains(ScriptClass.of($0)) }
     }
 
     /// The text in Latin letters only: Devanagari romanised, any other script transliterated, a romanised sentence start capitalised.
@@ -45,10 +74,7 @@ public enum LatinScript {
 
     /// Whether a scalar is a letter or a combining mark of a script other than Latin.
     static func isForeign(_ scalar: Unicode.Scalar) -> Bool {
-        let properties = scalar.properties
-        let isMark = [.nonspacingMark, .spacingMark, .enclosingMark].contains(properties.generalCategory)
-        guard properties.isAlphabetic || isMark else { return false }
-        return !isInLatinRange(scalar)
+        ScriptClass.of(scalar) == .foreignLetter
     }
 
     /// Whether a scalar sits in a block Latin text uses; the one table every Latin-script check consults.
