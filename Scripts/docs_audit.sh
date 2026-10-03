@@ -984,6 +984,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5b. Every command the measurement guide names exists in the Makefile, Scripts or the tools.
+# ---------------------------------------------------------------------------
+printf '\nMeasurement guide commands\n'
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    measure_args=(--self-test)
+else
+    measure_args=()
+fi
+if measure_report="$(python3 "$PACKAGE_ROOT/Scripts/measure_commands_audit.py" "${measure_args[@]+"${measure_args[@]}"}" 2>&1)"; then
+    pass "every command in Docs/measure-a-change.md exists in the tree"
+else
+    fail "Docs/measure-a-change.md names a command the tree does not have" \
+        "A contributor following the guide would run something that is not there." \
+        "" $'\n'"$measure_report"
+fi
+
+# ---------------------------------------------------------------------------
 # 6. A performance headline stating a memory figure must name its suggestion mode.
 # ---------------------------------------------------------------------------
 #

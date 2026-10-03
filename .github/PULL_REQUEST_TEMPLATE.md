@@ -14,7 +14,7 @@ that is the most useful sentence you can write here — it stops the reviewer pr
 
 For changes to `Sources/UttrflowAI/PromptBuilder.swift` or the rules, include the
 `make bakeoff ARGS="--against <saved-result.json>"` comparison output, or explain why a
-corpus comparison could not be run.
+corpus comparison could not be run. `Docs/measure-a-change.md` says which command a change needs.
 
 ---
 

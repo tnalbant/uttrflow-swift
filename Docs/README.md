@@ -136,6 +136,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 
 | Page | What it covers |
 |---|---|
+| [measure-a-change.md](measure-a-change.md) | Which command measures which kind of change, its run time and what it needs |
 | [measuring-accuracy.md](measuring-accuracy.md) | Making speech accuracy measurable |
 | [core-word-error-rate.md](core-word-error-rate.md) | How word error rate is measured, and why it lives in Core |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
