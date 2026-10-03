@@ -69,6 +69,27 @@ private func intents(_ page: OnboardingPage) -> [OnboardingIntent] {
 @Suite("Onboarding pages")
 struct OnboardingPresenterTests {
 
+    @Test("shows the rebound Clipboard shortcut in the onboarding hint")
+    func clipboardHintFollowsBinding() {
+        let binding = HotkeyBinding(keyCode: 0, modifiers: [.option, .command])
+        let shortcuts = ShortcutSet([.clipboard: [binding]])
+        let state = OnboardingState(step: .ready, detail: .finishing(.ready))
+
+        let page = OnboardingPresenter.page(
+            for: state, hotkey: Settings.default.hotkey, shortcuts: shortcuts)
+        var menuState = MenuBarState()
+        menuState.shortcuts = shortcuts
+
+        #expect(
+            page.hint
+                == "Open the Clipboard panel with \(SettingsShortcut.compact(binding)) to browse and paste recent copies."
+        )
+        #expect(page.explanation?.contains(SettingsShortcut.compact(binding)) == true)
+        #expect(
+            MenuBarPresenter.present(menuState).command(.openClipboard)?.shortcut
+                == MenuBarShortcut(key: "a", modifiers: [.option, .command]))
+    }
+
     @Test("offers telemetry opt-in and opt-out side by side during first-run onboarding")
     func usageStatisticsChoice() {
         let state = OnboardingState(step: .signIn, detail: .signIn(.offering))
