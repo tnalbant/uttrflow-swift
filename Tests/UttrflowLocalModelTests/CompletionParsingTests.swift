@@ -551,6 +551,16 @@ struct SignOffTests {
                 == "Thanks, Sam Collins")
     }
 
+    @Test("A closing after a greeting or sentence is not signed with an invented name")
+    func anInventedNameAfterEarlierCommasIsCut() {
+        #expect(
+            SignOff.unsigned("Hi Sam, sure. Best, Raj", typed: "", ownLines: [])
+                == "Hi Sam, sure. Best,")
+        #expect(
+            SignOff.unsigned("Hi Sam, Best, Raj", typed: "", ownLines: [])
+                == "Hi Sam, Best,")
+    }
+
     @Test("Words after a comma that are not a closing's signature are left alone")
     func otherLinesAreLeftAlone() {
         #expect(
