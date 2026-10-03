@@ -44,4 +44,5 @@ UITests/*.xcodeproj
 
 # Per-person agent rules: private, never committed. Read via AGENTS.md "Local rules".
 /AGENTS.local.md
+/PLAN.local.md
 /CLAUDE.local.md

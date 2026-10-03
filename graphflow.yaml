@@ -18,7 +18,7 @@ issues:
   provider: github
 
 tracker:
-  path: PLAN.md
+  path: PLAN.local.md
 
 rules_files:
   - AGENTS.md
