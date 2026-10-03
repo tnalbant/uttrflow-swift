@@ -712,10 +712,40 @@ struct PieceJoinerSeamTests {
     @Test("joins a split currency amount across pieces")
     func joinsSplitCurrencyAmount() {
         let whole = PieceJoiner.join(
-            [piece("The total came to"), piece("400"), piece("and $20")],
+            [piece("The total came to"), piece("400", heard: "four hundred"), piece("and $20")],
             under: .standard(for: .document))
 
         #expect(whole.cleaned.text == "The total came to $420")
+    }
+
+    @Test(
+        "never adds an integer that was not a spoken scale to the next amount",
+        arguments: [
+            ("we owe him 12", "we owe him twelve", "and $5"), ("seats 12", "seats twelve", "and $5"),
+            ("we owe him 3", "we owe him three", "and $5"), ("page 7", "page seven", "and $5"),
+            ("table 20", "table twenty", "and $5"), ("room 400", "room four hundred", "and $400"),
+            ("gate 1,000", "gate one thousand", "and $5,000"), ("bus 100", "bus one hundred", "and $500"),
+        ])
+    func keepsUnrelatedIntegerApartFromAmount(cleaned: String, heard: String, amount: String) {
+        let seamed = PieceJoiner.seamed(
+            [cleaned, amount], heard: [heard, amount], under: .standard(for: .document))
+
+        #expect(seamed.last == amount)
+    }
+
+    @Test("joins a spoken scale with the smaller amount after it at every scale")
+    func joinsEveryScaleWithSmallerAmount() {
+        let cases: [(String, String, String, String)] = [
+            ("400", "four hundred", "and $20", "$420"),
+            ("2,000", "two thousand", "and $50", "$2050"),
+            ("3,000,000", "three million", "and $5", "$3,000,005"),
+        ]
+        for (number, heard, amount, sum) in cases {
+            let seamed = PieceJoiner.seamed(
+                ["It cost " + number, amount], heard: ["it cost " + heard, amount],
+                under: .standard(for: .document))
+            #expect(seamed.first == "It cost " + sum)
+        }
     }
 
     @Test("keeps separate figures apart when the second number has no currency")

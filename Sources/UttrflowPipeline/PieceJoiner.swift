@@ -18,7 +18,7 @@ enum PieceJoiner {
     ) -> SeamSnippetInput {
         guard pieces.count > 1 else { return SeamSnippetInput(text: text, removableStops: [], source: text) }
         let texts = pieces.map(\.cleaned.text)
-        let seamed = seamed(texts, under: formatter)
+        let seamed = seamed(texts, heard: pieces.map(\.heard.text), under: formatter)
         var removableStops: [Int] = []
         var original = ""
         for index in pieces.indices {
@@ -71,13 +71,16 @@ enum PieceJoiner {
                 text: correctedText.joined(separator: " "), corrections: corrections),
             cleaned: TransformationResult(
                 text: laidOut(
-                    seamed(pieces.map(\.cleaned.text), under: formatter), under: formatter, steps: steps),
+                    seamed(pieces.map(\.cleaned.text), heard: heardText, under: formatter),
+                    under: formatter, steps: steps),
                 producedBy: producedBy, entriesTaken: pieces.flatMap(\.cleaned.entriesTaken)))
     }
 
     /// Every piece but the last ended as a sentence the way the place ends one; the message's own stop is the cleaner's.
-    static func seamed(_ pieces: [String], under formatter: DestinationFormatter) -> [String] {
-        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces))
+    static func seamed(
+        _ pieces: [String], heard: [String] = [], under formatter: DestinationFormatter
+    ) -> [String] {
+        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
         return pieces.enumerated().map { index, text in
             guard index > 0, sentenceRunsOn(pieces[index - 1], into: text) else {
                 return index == pieces.count - 1
@@ -183,16 +186,18 @@ enum PieceJoiner {
         "every", "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
     ]
 
-    /// Joins a bare numeral to a currency amount introduced by "and" across a piece boundary.
-    private static func joiningAmountsAcrossSeams(_ pieces: [String]) -> [String] {
-        guard pieces.count > 1 else { return pieces }
+    /// Completes a spoken scale amount with the smaller currency amount the next piece adds with "and".
+    private static func joiningAmountsAcrossSeams(_ pieces: [String], heard: [String]) -> [String] {
+        guard pieces.count > 1, heard.count == pieces.count else { return pieces }
         var joined = pieces
         for index in 0..<(joined.count - 1) {
             let following = joined[index + 1].split(whereSeparator: \.isWhitespace)
             guard let last = joined[index].split(whereSeparator: \.isWhitespace).last,
                 following.count == 2, WordShape(String(following[0])).key == "and",
                 let leadingValue = integer(String(last)),
-                let amount = currencyAmount(String(following[1]))
+                let amount = currencyAmount(String(following[1])),
+                let scale = closingScale(of: heard[index]),
+                leadingValue.isMultiple(of: scale), amount.value < scale
             else { continue }
             let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
             guard !overflow else { continue }
@@ -202,6 +207,12 @@ enum PieceJoiner {
             joined[index + 1] = ""
         }
         return joined
+    }
+
+    /// The scale word, such as hundred or thousand, that a piece was heard to end on.
+    private static func closingScale(of heard: String) -> Int? {
+        guard let last = heard.split(whereSeparator: \.isWhitespace).last else { return nil }
+        return NumberWords.scales[WordShape(String(last)).key]
     }
 
     /// Reads a grouped or ungrouped nonnegative integer.
