@@ -29,7 +29,7 @@ public struct RuleBasedTransformer: TextTransformationEngine {
         let formatter = DestinationFormatter.standard(for: request.situation)
         let chosen = pipeline ?? Self.pipeline(for: request, under: formatter, steps: steps)
         // Romanised before the passes, so they read and write the Latin letters dictation inserts.
-        let (draft, ran) = Self.audited(chosen, over: Draft(transcription: request.transcription.romanised))
+        let (draft, ran) = Self.audited(chosen, over: Draft(romanising: request.transcription))
         return TransformationResult(
             text: draft.text, producedBy: kind,
             cleaning: CleaningRecord(draft: draft, ran: ran.ids))

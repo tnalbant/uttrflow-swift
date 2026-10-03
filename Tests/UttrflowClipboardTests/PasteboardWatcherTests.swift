@@ -3,6 +3,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowCore
 
 @testable import UttrflowClipboard
 

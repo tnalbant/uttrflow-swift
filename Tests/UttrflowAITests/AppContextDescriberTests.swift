@@ -126,14 +126,14 @@ struct AppContextDescriberTests {
     @Test("keeps a hard cut when a single word is longer than the whole budget")
     func truncatesAWordWithNoBoundary() {
         let word = String(repeating: "x", count: 200)
-        #expect(AppContextDescriber.truncate(word, to: 10) == String(repeating: "x", count: 10) + "…")
+        #expect(PromptText.truncated(word, to: 10) == String(repeating: "x", count: 10) + "…")
         // Cutting at the only boundary, the start, would leave a lone ellipsis; uncollapsed text still works.
-        #expect(AppContextDescriber.truncate(" " + word, to: 10) == " xxxxxxxxx…")
+        #expect(PromptText.truncated(" " + word, to: 10) == " xxxxxxxxx…")
     }
 
     @Test("leaves text that already fits alone")
     func doesNotTruncateShortText() {
-        #expect(AppContextDescriber.truncate("short", to: 10) == "short")
+        #expect(PromptText.truncated("short", to: 10) == "short")
         #expect(AppContextDescriber.field("short", limit: 10) == "short")
         #expect(AppContextDescriber.field(nil, limit: 10) == nil)
     }

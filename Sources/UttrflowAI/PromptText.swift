@@ -1,0 +1,64 @@
+// The one sanitiser for every value a prompt quotes, so no value can open a new prompt line.
+
+/// Makes text safe to place inside one prompt line. See Docs/cleanup.md.
+public enum PromptText {
+    /// The value as one line: no control characters or bidirectional marks, whitespace collapsed, quotes single, capped.
+    public static func quoted(_ text: String, limit: Int? = nil) -> String {
+        let flattened = TextTidy.collapseWhitespace(scrubbed(text, lineBreak: " "))
+        guard let limit else { return flattened }
+        return truncated(flattened, to: limit)
+    }
+
+    /// The spoken text with each line break written as one `\n` and every other line made safe as `quoted` makes it.
+    public static func spoken(_ text: String) -> String {
+        TextTidy.collapseSpacing(scrubbed(text, lineBreak: "\n"))
+    }
+
+    /// The text with every double-quote variant made a single quote, so it cannot close the quotation it sits in.
+    public static func withSingleQuotes(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.map { doubleQuotes.contains($0) ? "'" : $0 }))
+    }
+
+    /// Cuts at the last word boundary inside the limit, so a quotation does not end in the middle of a name.
+    static func truncated(_ text: String, to limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let head = text.prefix(limit)
+        let cut = head.lastIndex(of: " ").map { head[..<$0] } ?? head
+        // A single word longer than the budget keeps the hard cut rather than becoming a lone ellipsis.
+        let kept = cut.isEmpty ? head : cut
+        return "\(kept)…"
+    }
+
+    /// The double-quote characters a model could read as the end of a quoted value.
+    static let doubleQuotes: Set<Unicode.Scalar> = [
+        "\u{22}", "\u{201C}", "\u{201D}", "\u{201E}", "\u{201F}", "\u{2033}", "\u{2036}", "\u{FF02}",
+    ]
+
+    /// Line breaks become `lineBreak`, other controls a space, bidirectional marks nothing, double quotes single.
+    private static func scrubbed(_ text: String, lineBreak: Unicode.Scalar) -> String {
+        var scalars = String.UnicodeScalarView()
+        var previous: Unicode.Scalar?
+        for scalar in text.unicodeScalars {
+            defer { previous = scalar }
+            if scalar.properties.isBidiControl { continue }
+            if isLineBreak(scalar) {
+                // A carriage return and line feed are one break, not two.
+                if scalar == "\n", previous == "\r" { continue }
+                scalars.append(lineBreak)
+            } else if scalar.properties.generalCategory == .control {
+                scalars.append(" ")
+            } else {
+                scalars.append(doubleQuotes.contains(scalar) ? "'" : scalar)
+            }
+        }
+        return String(scalars)
+    }
+
+    /// Whether the scalar ends a line: line feed, vertical tab, form feed, carriage return, NEL, U+2028 or U+2029.
+    private static func isLineBreak(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x0A...0x0D, 0x85, 0x2028, 0x2029: true
+        default: false
+        }
+    }
+}

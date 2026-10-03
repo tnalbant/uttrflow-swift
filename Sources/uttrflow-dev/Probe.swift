@@ -140,7 +140,8 @@ struct ProbeRetrieval: AsyncParsableCommand {
         print("\n  'git p' matches \(exactHits) exactly and \(fuzzyHits) within one edit.")
         print("  Fuzzy must therefore stay a fallback, never a parallel path.")
         let medians = String(
-            format: "%d entries: range scan %.1f µs, LIKE %.1f µs, fuzzy %.1f µs, ", corpus.count, ranged, liked,
+            format: "%d entries: range scan %.1f µs, LIKE %.1f µs, fuzzy %.1f µs, ", corpus.count, ranged,
+            liked,
             loose)
         log.printRow(result: medians + masked.joined(separator: ", "), loadBefore: load)
     }
@@ -219,7 +220,8 @@ struct ProbeIME: AsyncParsableCommand {
             if tick < seconds - 1 { try await Task.sleep(for: .seconds(1)) }
         }
         log.printRow(
-            result: "\(seconds) one-second ticks; marked range published in \(publishedTicks), composing in \(composingTicks)",
+            result:
+                "\(seconds) one-second ticks; marked range published in \(publishedTicks), composing in \(composingTicks)",
             loadBefore: load)
     }
 

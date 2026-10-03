@@ -231,7 +231,7 @@ public struct SuggestionSession: Sendable, Equatable {
             return settled(because: .lineTooLong, rejected: rejected)
         }
         // A line in another script is one a suggestion may neither continue in that script nor glue Latin onto.
-        guard LatinScript.writes(context.typed) else {
+        guard LatinScript.writesOnlyLatin(context.typed) else {
             return settled(because: .nonLatinLine, rejected: rejected)
         }
 
@@ -259,8 +259,8 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         // A candidate the user has already finished typing adds nothing, and one in another script is never written.
         let offerable = candidates.filter {
-            $0.text != pending.typed && LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text)
-                && isOfferable($0.text)
+            $0.text != pending.typed && LatinScript.writesOnlyLatin($0.text)
+                && SuggestionTextSafety.allows($0.text) && isOfferable($0.text)
         }
         let decided = PredictionEngine.ranked(from: offerable, in: pending, now: now)
         // A turn with nothing on offer has nothing to be wrong about, so the gates are never troubled.
@@ -287,7 +287,8 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         let decided = PredictionEngine.decision(
             from: verified.filter {
-                LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text) && isOfferable($0.text)
+                LatinScript.writesOnlyLatin($0.text) && SuggestionTextSafety.allows($0.text)
+                    && isOfferable($0.text)
             }, in: pending,
             now: now)
         return settle(decided.suggestion, silence: decided.silence)
@@ -383,7 +384,7 @@ public struct SuggestionSession: Sendable, Equatable {
         return lines.filter {
             let key = TextMatching.caseFoldedKey($0)
             return key != matchingKey && key.hasPrefix(matchingKey)
-                && LatinScript.writes($0)
+                && LatinScript.writesOnlyLatin($0)
                 && SuggestionTextSafety.allows($0)
                 && seen.insert(key).inserted
         }

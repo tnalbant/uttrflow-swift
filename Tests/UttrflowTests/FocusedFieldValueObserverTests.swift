@@ -90,7 +90,8 @@ struct FocusedFieldValueObserverTests {
         #expect(!state.isOpen)
 
         state.menuOpened()
-        #expect(state.reset())
+        let wasOpen = state.reset()
+        #expect(wasOpen)
         #expect(!state.isOpen)
         #expect(state.focusedElement == nil)
     }

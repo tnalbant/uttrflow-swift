@@ -41,7 +41,7 @@ struct QuickPanelChordTests {
             let event = try key(
                 producedCharacter, action.chord.isShifted ? [.command, .shift] : .command,
                 keyCode: code)
-            #expect(QuickPanel.rowChord(event) == action.chord, action.chord.label)
+            #expect(QuickPanel.rowChord(event) == action.chord, Comment(rawValue: action.chord.label))
         }
     }
 

@@ -152,10 +152,11 @@ struct ModelDownloadTests {
     func retryAsksForFailedModelAgain() async {
         let asks = Asks()
         let sandbox = Sandbox()
-        let store = ModelDownloadSettingsStore(settings(suggesting: false))
+        let store = UserDefaultsSettingsStore(store: ModelDownloadSettingsStore())
+        store.save(settings(suggesting: false))
         let app = AppDelegate(
-            container: sandbox.root, account: HeldSession(signedIn: true).layer,
-            settingsStore: store,
+            container: sandbox.root, settingsStore: store,
+            account: HeldSession(signedIn: true).layer,
             prepareModel: { _ in
                 await asks.asked()
                 throw HubRefused()
@@ -167,7 +168,7 @@ struct ModelDownloadTests {
         #expect(app.suggestionModel == .fetchFailed)
         #expect(await asks.count == 1)
 
-        app.apply(.retrySuggestionModel)
+        app.carryOut(MainIntent.change(.retrySuggestionModel))
         await app.modelPreparation?.value
         #expect(await asks.count == 2)
         #expect(app.suggestionModel == .fetchFailed)

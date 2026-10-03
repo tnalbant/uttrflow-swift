@@ -40,17 +40,20 @@ public struct Draft: Sendable, Equatable {
         public let heard: String
         /// The recogniser's confidence in the heard word, 0 to 1.
         public let confidence: Double
+        /// The script the recogniser wrote the word in, kept after romanising so English-only lists can skip Hindi.
+        public let origin: Origin
         public var state: State
         /// Every change a pass has made to this word, oldest first.
         public private(set) var edits: [Edit]
 
         public init(
-            text: String, heard: String, confidence: Double = 1, state: State = .kept,
-            edits: [Edit] = []
+            text: String, heard: String, confidence: Double = 1, origin: Origin = .latin,
+            state: State = .kept, edits: [Edit] = []
         ) {
             self.text = text
             self.heard = heard
             self.confidence = confidence
+            self.origin = origin
             self.state = state
             self.edits = edits
         }
@@ -83,6 +86,15 @@ public struct Draft: Sendable, Equatable {
             return !digits.isEmpty && digits.allSatisfy(\.isNumber)
         }
     }
+
+    /// The script a word was recognised in, before romanising wrote every word in Latin letters.
+    public enum Origin: Sendable, Equatable {
+        case latin
+        case devanagari
+    }
+
+    /// Whether the word at `index` was spoken as Hindi, so a list keyed on English spelling does not apply to it.
+    public func isHindi(at index: Int) -> Bool { words[index].origin == .devanagari }
 
     /// Whether the words after the last paragraph or list mark are a list item, which takes no full stop.
     public var endsInListItem: Bool {
@@ -152,6 +164,17 @@ public struct Draft: Sendable, Equatable {
             return
         }
         self.init(words: Self.confidences(of: timed, onto: spoken), confidencesAreReal: true)
+    }
+
+    /// Romanises each Devanagari word of the transcription, remembering that it was Devanagari.
+    public init(romanising transcription: Transcription) {
+        let heard = Draft(transcription: transcription)
+        let words = heard.words.map { word in
+            guard Romaniser.containsDevanagari(word.text) else { return word }
+            let latin = Romaniser.romanised(word.text)
+            return Word(text: latin, heard: latin, confidence: word.confidence, origin: .devanagari)
+        }
+        self.init(words: words, confidencesAreReal: heard.confidencesAreReal)
     }
 
     private static func split(_ text: String, confidence: Double) -> [Word] {

@@ -22,7 +22,7 @@ struct AccessibilitySelectionTraitTests {
             VStack {
                 SettingsTabStrip(tabs: SettingsPresenter.tabs(), selected: selectedTab, onSelect: { _ in })
                 SidebarRow(
-                    item: item(.home, "Home"), isSelected: selectedPage == .home, isExpanded: true,
+                    item: item(.page(.home), "Home"), isSelected: selectedPage == .home, isExpanded: true,
                     onSelect: {})
                 SidebarRow(
                     item: item(.settings(.general), "Settings", section: .footer),

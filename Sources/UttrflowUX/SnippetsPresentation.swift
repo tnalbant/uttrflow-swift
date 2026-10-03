@@ -12,6 +12,8 @@ public struct SnippetRow: Sendable, Equatable, Identifiable {
     public let text: String
     /// How often it has fired, as text.
     public let timesUsed: String
+    /// "Used 3 times", what VoiceOver reads for the use count.
+    public let timesUsedSpoken: String
     /// "Today", "Tuesday", "12 Aug" — or "Never", because an unused snippet is worth spotting.
     public let lastUsed: String
     /// Edit and Delete.
@@ -21,13 +23,14 @@ public struct SnippetRow: Sendable, Equatable, Identifiable {
 
     /// Builds a row from its parts.
     public init(
-        id: UUID, trigger: MainPill, text: String, timesUsed: String, lastUsed: String,
-        actions: [MainAction], tint: Int = 0
+        id: UUID, trigger: MainPill, text: String, timesUsed: String, timesUsedSpoken: String,
+        lastUsed: String, actions: [MainAction], tint: Int = 0
     ) {
         self.id = id
         self.trigger = trigger
         self.text = text
         self.timesUsed = timesUsed
+        self.timesUsedSpoken = timesUsedSpoken
         self.lastUsed = lastUsed
         self.actions = actions
         self.tint = tint
@@ -232,6 +235,7 @@ public enum SnippetsPresenter {
             trigger: MainPill(text: snippet.trigger, tone: .accent),
             text: snippet.expansion,
             timesUsed: "\(snippet.timesUsed)",
+            timesUsedSpoken: "Used \(MainFormatting.count(snippet.timesUsed, "time", "times"))",
             lastUsed: snippet.lastUsed.map {
                 MainFormatting.day($0, now: now, calendar: calendar, locale: locale)
             } ?? "Never",

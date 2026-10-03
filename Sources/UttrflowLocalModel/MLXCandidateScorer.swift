@@ -2,6 +2,7 @@ public import UttrflowPredict
 
 // The MLX macros expand to code naming these types, so the imports cannot be private.
 import Foundation
+import UttrflowCore
 import HuggingFace
 import MLX
 import MLXHuggingFace
@@ -346,7 +347,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
-    private struct Run {
+    struct Run {
         let forgetGeneration: Int
         let text: String
         let stop: GenerateStopReason?
@@ -365,7 +366,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// What the parser makes of a pass, withholding a budget-cut line that has not ended.
-    private static func completions(
+    static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
         guard !(ask == .one && run.stop == .length) else { return [] }
@@ -390,7 +391,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
         let forgetGeneration = self.forgetGeneration
-        guard let container, !Task.isCancelled, LatinScript.writes(typed),
+        guard let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
         beginPass()
@@ -545,6 +546,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
+        beginPass()
+        defer { endPass() }
         let generation = forgetGeneration
         // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
         if let line = judgementCache.recall(candidate: candidate) {
@@ -567,8 +570,6 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
                 for: candidate)
             return []
         }
-        beginPass()
-        defer { endPass() }
         guard let scoringVocabulary = self.vocabulary else { return [] }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
             let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)

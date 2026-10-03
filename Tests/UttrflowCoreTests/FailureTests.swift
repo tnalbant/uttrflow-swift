@@ -16,7 +16,7 @@ struct FailureCatalogueTests {
         #expect(AccountError.everyCase.count == 4)
         #expect(SnippetStoreError.everyCase.count == 4)
         #expect(AudioCaptureError.everyCase.count == 6)
-        #expect(SpeechEngineError.everyCase.count == 7)
+        #expect(SpeechEngineError.everyCase.count == 8)
         #expect(TransformationError.everyCase.count == 4)
         #expect(TextInsertionError.everyCase.count == 7)
         #expect(HotkeyError.everyCase.count == 2)
@@ -86,6 +86,7 @@ struct FailurePresentationTests {
         #expect(SpeechEngineError.modelDownloadFailed(description: "x").recovery == .downloadSpeechModel)
         #expect(SpeechEngineError.notEnoughSpace(neededBytes: 1).recovery == .downloadSpeechModel)
         #expect(SpeechEngineError.modelLoadFailed(description: "x").recovery == .retry)
+        #expect(SpeechEngineError.modelDamaged(fileCount: 1).recovery == .downloadSpeechModel)
         #expect(SpeechEngineError.audioTooShort.recovery == nil)
         #expect(SpeechEngineError.transcriptionFailed(description: "x").recovery == .retry)
 

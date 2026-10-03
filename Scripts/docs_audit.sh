@@ -1232,31 +1232,29 @@ fi
 # 7e. The Insights artboards match InsightsPresentation, not an invented contract.
 # ---------------------------------------------------------------------------
 #
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
+# The Insights artboards have twice drawn a contract production did not have: first an
+# invented scope, meter and language card, then the bar chart production had replaced with
+# a calendar and range switch. Nothing tied the generator to `InsightsPresentation.swift`.
 printf '\nInsights artboard contract\n'
 
 if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
     fail "Scripts/insights_contract_audit.py is missing or not executable" \
         "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
+        "generator can drift away from the range switch, calendar and figures unnoticed."
 else
     if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
         if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
             pass "the Insights artboards match InsightsPresentation and its tests"
         else
             fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "The audit prints every mismatch: the range switch, the calendar, the figures," \
+                "the empty state, or a retired claim. Fix Design/_gen_app.py," \
                 "then regenerate every Insights artboard."
         fi
     else
         fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
+            "The audit's own self-test either fails the generator as it stands or misses" \
+            "an injected drift. Fix the audit, not the artboard."
     fi
 fi
 

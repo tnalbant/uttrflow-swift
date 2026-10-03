@@ -174,7 +174,8 @@ struct DictationPipelineStateTests {
         let metrics = RecordingMetricsRecorder()
         let pipeline = DictationPipeline(
             capture: FakeAudioCaptureEngine(), speech: FakeSpeechEngine(),
-            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer), context: FakeContextEngine(context: .fixture()),
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer),
+            context: FakeContextEngine(context: .fixture()),
             inserter: FakeTextInserter(), metrics: metrics, clock: ManualClock())
 
         await pipeline.startRecording()
@@ -253,7 +254,9 @@ struct DictationPipelineStateTests {
     func startWhileTidyingIsIgnored() async {
         let capture = FakeAudioCaptureEngine()
         let gate = Gate()
-        let pipeline = makePipeline(capture: capture, cleaner: FakeTranscriptCleaner(answering: tidiedAnswer, holding: { await gate.pass() }))
+        let pipeline = makePipeline(
+            capture: capture,
+            cleaner: FakeTranscriptCleaner(answering: tidiedAnswer, holding: { await gate.pass() }))
         await pipeline.startRecording()
         let dictation = Task { await pipeline.finishRecording() }
         await gate.waitUntilReached()
@@ -588,7 +591,9 @@ struct DictationPipelineStateTests {
         let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(transcribeOutcome: .success(.fixture(text: "um"))),
-            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.success(TransformationResult(text: tidiedAway, producedBy: .rules)))),
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .success(TransformationResult(text: tidiedAway, producedBy: .rules)))),
             inserter: inserter
         )
         let states = await pipeline.states()

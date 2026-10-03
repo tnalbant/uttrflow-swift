@@ -89,6 +89,7 @@ history = ("".join(
 # Scripts/design_diagnostics_contract_audit.py.
 STAGE_TITLES = {
     "microphoneOpen": "Opening the microphone",
+    "keyDownToAudio": "Shortcut to first audio",
     "capture": "Recording",
     "drain": "Finishing the piece already under way",
     "transcription": "Transcribing",
@@ -98,13 +99,15 @@ STAGE_TITLES = {
     "insertion": "Inserting",
 }
 STAGE_COLOURS = {
-    "microphoneOpen": "#9EDCD7", "capture": "#9EDCD7", "drain": "#9EDCD7",
+    "microphoneOpen": "#9EDCD7", "keyDownToAudio": "#9EDCD7", "capture": "#9EDCD7",
+    "drain": "#9EDCD7",
     "transcription": "#39D0C4", "correction": "#128077", "transformation": "#29C0B4",
     "expansion": "#EFF8F7", "insertion": "#34C759",
 }
 # One row per stage something has timed: (stage, typical seconds, typical, slowest, samples).
 MEASURED_STAGES = [
     ("microphoneOpen", 0.06, "0.06s", "0.14s", 42),
+    ("keyDownToAudio", 0.09, "0.09s", "0.21s", 42),
     ("capture", 0.02, "0.02s", "0.05s", 42),
     ("transcription", 1.42, "1.42s", "2.65s", 42),
     ("correction", 0.03, "0.03s", "0.08s", 17),

@@ -96,13 +96,15 @@ struct JudgedLineTests {
     @Test("A typed prefix that ends on a token boundary is read straight from the cache.")
     func typedOnBoundaryReturnsCachedTokens() {
         let tokens = [0, 2, 3, 4, 5, 6, 7]
-        let tokenLogProbabilities = Array(repeating: -10, count: tokens.count)
+        let tokenLogProbabilities = Array(repeating: Float(-10), count: tokens.count)
         let texts = tokens.map { _ in "x" }
         let line = JudgedLine(
             tokens: tokens, tokenLogProbabilities: tokenLogProbabilities,
             prefixLogMasses: Array(repeating: nil, count: tokens.count), texts: texts)
         let typed = [0, 2]
-        let judged = JudgedLine.judged(from: line, typedTokens: typed, bytes: scorerBytes)
+        let judged = JudgedLine.judged(
+            from: line, typedTokens: typed,
+            vocabulary: TokenHealing.Vocabulary(bytes: scorerBytes, ending: []))
         #expect(judged.count == tokens.count - 2)
         #expect(judged.map(\.logProbability) == [-10, -10, -10, -10, -10])
     }
@@ -110,13 +112,15 @@ struct JudgedLineTests {
     @Test("A typed prefix that ends mid-token returns the slice from the cached rows.")
     func typedMidTokenReturnsTheSlice() {
         let tokens = [0, 3, 4, 5, 6, 7]
-        let tokenLogProbabilities = Array(repeating: -10, count: tokens.count)
+        let tokenLogProbabilities = Array(repeating: Float(-10), count: tokens.count)
         let texts = tokens.map { _ in "x" }
         let line = JudgedLine(
             tokens: tokens, tokenLogProbabilities: tokenLogProbabilities,
             prefixLogMasses: Array(repeating: nil, count: tokens.count), texts: texts)
         let typed = [0, 1]
-        let judged = JudgedLine.judged(from: line, typedTokens: typed, bytes: scorerBytes)
+        let judged = JudgedLine.judged(
+            from: line, typedTokens: typed,
+            vocabulary: TokenHealing.Vocabulary(bytes: scorerBytes, ending: []))
         #expect(judged.count == tokens.count - 1)
         #expect(judged.map(\.logProbability) == [-10, -10, -10, -10, -10])
     }
@@ -127,7 +131,7 @@ struct JudgedLineTests {
         let vocabularyBytes =
             ["<bos>", "p", "pl", "please", "lease", "x"]
             .map { Array($0.utf8) } + (0..<2_000).map { Array("unrelated-\($0)".utf8) }
-        var vocabulary = TokenHealing.Vocabulary(bytes: vocabularyBytes, ending: [])
+        let vocabulary = TokenHealing.Vocabulary(bytes: vocabularyBytes, ending: [])
         let line = JudgedLine(
             tokens: tokens,
             tokenLogProbabilities: [-8, -4, -8],
@@ -136,19 +140,20 @@ struct JudgedLineTests {
         var cache = JudgementCache()
         cache.remember(line, for: "please")
 
-        let recalled = try #require(cache.recall(candidate: "please"))
+        let remembered = cache.recall(candidate: "please")
+        let recalled = try #require(remembered)
         #expect(recalled == line)
         #expect(ScoredSpan.continuing(Array("pl".utf8), in: vocabulary) == [2, 3])
         vocabulary.resetExaminedEntries()
-        let judged = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &vocabulary)
+        let judged = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: vocabulary)
         #expect(vocabulary.examinedEntries == 3)
         #expect(judged.count == 2)
         #expect(abs(judged[0].logProbability + log(3)) < 1e-6)
         #expect(judged[1].logProbability == -8)
 
-        var smallVocabulary = TokenHealing.Vocabulary(bytes: Array(vocabularyBytes.prefix(6)), ending: [])
+        let smallVocabulary = TokenHealing.Vocabulary(bytes: Array(vocabularyBytes.prefix(6)), ending: [])
         smallVocabulary.resetExaminedEntries()
-        _ = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: &smallVocabulary)
+        _ = JudgedLine.judged(from: recalled, typedTokens: [0, 1], vocabulary: smallVocabulary)
         #expect(smallVocabulary.examinedEntries == 3)
     }
 

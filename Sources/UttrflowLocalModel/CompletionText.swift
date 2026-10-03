@@ -256,7 +256,7 @@ enum CompletionText {
                 !isDegenerate(continuation)
             else { continue }
             let whole = typed + continuation
-            guard LatinScript.writes(whole), seen.insert(whole).inserted else { continue }
+            guard LatinScript.writesOnlyLatin(whole), seen.insert(whole).inserted else { continue }
             results.append(whole)
         }
         return results

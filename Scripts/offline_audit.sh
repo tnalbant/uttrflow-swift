@@ -84,6 +84,8 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 #                        connection, and it happens before any dictation.
 #   the developer CLIs — `uttrflow-dev sign-in` and the evaluation harness. Neither is in
 #                        a shipped product; `Scripts/bundle.sh` is what proves that.
+#   the corpus         — addresses a speaker dictates, written in expected transcripts.
+#                        The evaluation harness ships in nothing either.
 DOWNLOAD_ISLAND='Sources/UttrflowSpeech/TokenizerDownload.swift'
 ALLOWED_NETWORK_FILES=(
     "$DOWNLOAD_ISLAND"
@@ -93,6 +95,7 @@ ALLOWED_NETWORK_FILES=(
     'Sources/Uttrflow/Onboarding/OnboardingWindowController.swift'
     'Sources/uttrflow-dev/SignIn.swift'
     'Sources/uttrflow-eval/CorpusConnection.swift'
+    'Sources/UttrflowEval/EvaluationCorpus.swift'
 )
 
 # Files that may construct the model hub's client, which is a URLSession underneath. Two
@@ -203,16 +206,24 @@ fi
 # in its source and carries no networking symbol in its object file either. Whether one
 # of these is local is decided by where its URL came from, which grep cannot follow — so
 # the question this check asks is not "is it local" but "has a new one appeared". Each
-# call below was read: five take a path under Application Support or inside an installed
-# model, and the rest belong to the evaluation harness and the bakeoff, which ship in
-# nothing.
+# call below was read: the app's take a path under Application Support, inside the app
+# bundle or an installed model, or a file the user picked in an open panel, and the rest
+# belong to the evaluation harness and the bakeoff, which ship in nothing.
 URL_READ_PATTERN='\b(Data|String|NSData|NSString|NSArray|NSDictionary|NSImage|XMLDocument)\(contentsOf:'
 URL_READERS=(
+    'Sources/Uttrflow/AppDelegate.swift'
+    'Sources/UttrflowAudio/RecordingStore.swift'
+    'Sources/UttrflowClipboard/BIP39RecoveryPhrase.swift'
+    'Sources/UttrflowClipboard/ClipboardStore.swift'
+    'Sources/UttrflowCore/Support/EncryptedStore.swift'
     'Sources/UttrflowCore/Support/StoredList.swift'
     'Sources/UttrflowDictionary/PersonalDictionaryStore.swift'
     'Sources/UttrflowLocalModel/PromptTokens.swift'
     'Sources/UttrflowLocalModel/QuantizedLoad.swift'
     'Sources/UttrflowPredict/EnvironmentReading+System.swift'
+    'Sources/UttrflowPredictStore/SQLite.swift'
+    'Sources/UttrflowSpeech/SpeechModelStore.swift'
+    'Sources/UttrflowUX/AliasUnicodeRules.swift'
     'Sources/UttrflowEval/AccuracyBaseline.swift'
     'Sources/UttrflowEval/CorpusCache.swift'
     'Sources/UttrflowEval/CorpusUploadOutbox.swift'

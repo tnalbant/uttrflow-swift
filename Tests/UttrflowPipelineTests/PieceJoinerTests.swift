@@ -733,4 +733,55 @@ struct PieceJoinerSeamTests {
 
         #expect(whole.cleaned.text == "On my way")
     }
+
+    /// Invented numbers and codes said in groups; the 555 0100 to 0199 range is reserved for fiction.
+    static let groupsAcrossPause = [
+        "555 0100", "555 0142", "Call 555 0187", "415 555 0123", "Dial 0800 555 0150",
+        "Order 7731 4402", "The code is QX 4417", "AB 123", "Card 1234 5678 9012 3456",
+        "Ref ZK 2290 18", "PIN 0000 1111", "Room KT 404",
+    ]
+
+    /// Sentences that end on a number before one that opens on a number, which the group row joins.
+    static let sentencesAcrossNumbers = [
+        ("It costs 12.", "13 people came."), ("We sold 40.", "25 came back."),
+        ("The score was 3.", "2 goals were late."), ("I counted 7.", "8 were missing."),
+        ("Page 10.", "11 is blank."), ("She is 30.", "40 is next year."),
+        ("We need 6.", "5 are here."), ("Gate 9.", "10 minutes to board."),
+    ]
+
+    @Test(
+        "joins the groups of one spoken number or code at every cut, with or without the recogniser's stop",
+        arguments: [Destination.document, .messaging, .plain, .email])
+    func groupsAcrossPauseJoin(destination: Destination) {
+        for text in Self.groupsAcrossPause {
+            let words = text.split(separator: " ").map(String.init)
+            for cut in 1..<words.count where words[cut - 1].allSatisfy({ $0.isNumber || $0.isUppercase }) {
+                for stop in ["", "."] {
+                    let pieces = [words[..<cut].joined(separator: " ") + stop, words[cut...].joined(separator: " ")]
+                    let whole = PieceJoiner.join(pieces.map { piece($0) }, under: .standard(for: destination))
+
+                    #expect(whole.cleaned.text == text, "\(pieces) in \(destination)")
+                }
+            }
+        }
+    }
+
+    @Test("keeps the stop between two groups when the recogniser heard a question or an exclamation")
+    func groupRowAbstainsOnQuestionOrExclamation() {
+        for mark in ["?", "!"] {
+            let seamed = PieceJoiner.seamed(["It costs 12" + mark, "13 people came."], under: .standard(for: .document))
+
+            #expect(seamed.first == "It costs 12" + mark)
+        }
+    }
+
+    /// The group row's measured cost: these were ended before it and are joined by it.
+    @Test("joins a sentence that ends on a number to one that opens on a number")
+    func groupRowCost() {
+        let kept = Self.sentencesAcrossNumbers.filter { first, next in
+            PieceJoiner.seamed([first, next], under: .standard(for: .document)).first == first
+        }
+
+        #expect(kept.isEmpty)
+    }
 }

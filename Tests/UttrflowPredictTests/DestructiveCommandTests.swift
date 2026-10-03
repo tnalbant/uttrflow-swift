@@ -92,6 +92,16 @@ struct DestructiveCommandTests {
     }
 
     @Test(
+        "Argument consumers and package-manager removals remain ordinary.",
+        arguments: [
+            "echo rm", "echo please rm this", "man rm", "which dd", "tldr shred", "type rm",
+            "npm rm lodash", "pnpm remove lodash", "yarn remove lodash",
+        ])
+    func leavesHarmlessDestroyerNamesAlone(_ line: String) {
+        #expect(!DestructiveCommand.matches(line), "\(line) should be ordinary")
+    }
+
+    @Test(
         "A destroying command is recognised however it is reached or spelled.",
         arguments: [
             "/bin/rm -rf build", "\\rm -rf build", "sudo -E rm -rf /var", "sudo -u root rm -rf x",

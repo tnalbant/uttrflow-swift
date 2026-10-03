@@ -24,15 +24,13 @@ private final class RecordingStore: SettingsStore, @unchecked Sendable {
     }
 }
 
-/// Settings seeded for a model download test and readable after an app action.
-final class ModelDownloadSettingsStore: SettingsStore, @unchecked Sendable {
-    private var settings: Settings
+/// An in-memory defaults domain for a model download test, readable after an app action.
+final class ModelDownloadSettingsStore: KeyValueStore, @unchecked Sendable {
+    private var values: [String: Data] = [:]
 
-    init(_ settings: Settings) { self.settings = settings }
+    func data(forKey key: String) -> Data? { values[key] }
 
-    func load() -> Settings { settings }
-
-    func save(_ settings: Settings) { self.settings = settings }
+    func set(_ data: Data?, forKey key: String) { values[key] = data }
 }
 
 /// Personalisation that has nothing to count and nothing to remove.
@@ -253,9 +251,14 @@ private func name(of change: SettingsChange) -> String {
     case .suggestionsHere: "suggestionsHere"
     case .suggestionAcceptKey: "suggestionAcceptKey"
     case .pauseSuggestions: "pauseSuggestions"
+    case .manageClipboardExclusions: "manageClipboardExclusions"
+    case .pauseClipboardCapture: "pauseClipboardCapture"
     case .checkForUpdatesNow: "checkForUpdatesNow"
     case .chooseApplicationToTurnOffSuggestions: "chooseApplicationToTurnOffSuggestions"
     case .retrySuggestionModel: "retrySuggestionModel"
+    case .exportPersonalData: "exportPersonalData"
+    case .importPersonalData: "importPersonalData"
+    case .openSystemSettings: "openSystemSettings"
     case .openPage: "openPage"
     }
 }

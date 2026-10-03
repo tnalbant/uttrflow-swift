@@ -8,6 +8,8 @@ public enum SpeechEngineError: UttrflowFailure {
     case notEnoughSpace(neededBytes: Int64)
     /// The model is on disk but would not load.
     case modelLoadFailed(description: String)
+    /// The model's files are all there but `fileCount` of them no longer hash to their pins.
+    case modelDamaged(fileCount: Int)
     /// The recording is shorter than anything the recogniser can use.
     case audioTooShort
     /// Held the shortcut and said nothing the recogniser could use.
@@ -26,6 +28,8 @@ public enum SpeechEngineError: UttrflowFailure {
             "Speech recognition needs \(Self.readable(neededBytes)) of free space to set up. Free some up and try again."
         case .modelLoadFailed:
             "Speech recognition couldn't start. Try again."
+        case .modelDamaged:
+            "Speech recognition's files are damaged. Download them again to repair them."
         case .audioTooShort:
             "Too short. Hold the shortcut a moment longer."
         case .nothingHeard:
@@ -38,7 +42,7 @@ public enum SpeechEngineError: UttrflowFailure {
     /// The model download where the model is missing, a retry where it is not, and nothing for silence or a brief tap.
     public var recovery: RecoveryAction? {
         switch self {
-        case .modelNotInstalled, .modelDownloadFailed, .notEnoughSpace: .downloadSpeechModel
+        case .modelNotInstalled, .modelDownloadFailed, .notEnoughSpace, .modelDamaged: .downloadSpeechModel
         case .modelLoadFailed, .transcriptionFailed: .retry
         // Nothing to press: the remedy is to speak again, or hold longer, which the shortcut already is.
         case .audioTooShort, .nothingHeard: nil
@@ -52,7 +56,7 @@ public enum SpeechEngineError: UttrflowFailure {
         case .audioTooShort, .nothingHeard: .informational
         // Setup keeps its progress, so asking again resumes rather than restarting the download.
         case .modelNotInstalled, .modelDownloadFailed, .notEnoughSpace, .modelLoadFailed,
-            .transcriptionFailed:
+            .modelDamaged, .transcriptionFailed:
             .recoverable
         }
     }

@@ -101,7 +101,7 @@ the way people type it ("haan theek hai"), and never in Devanagari. Uttrflow is 
 translator, and no suggestion ever puts another script into a field. This is a product
 decision, not a limitation waiting to be lifted, and dictation holds to the same rule.
 
-`LatinScript.writes` in `UttrflowPredict` is the one question asked about a piece of text: does
+`LatinScript.writesOnlyLatin` in `UttrflowCore` is the one question asked about a piece of text: does
 any letter, combining mark or digit in it belong to a script other than Latin? Accents
 (café, naïve, a decomposed é), fullwidth and styled Latin, emoji with their variation
 selectors, skin tones, flags and keycaps, symbols such as ™, ₹ and ½, and punctuation of any

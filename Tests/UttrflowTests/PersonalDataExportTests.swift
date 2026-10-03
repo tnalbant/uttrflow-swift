@@ -1,4 +1,5 @@
 import Testing
+import UttrflowCore
 
 @testable import Uttrflow
 
@@ -25,7 +26,7 @@ struct PersonalDataExportTests {
 
     @Test("keeps every snippet when the user chooses to include them")
     func includesAllSnippetsWhenChosen() {
-        let snippets = [
+        let snippets: [Snippet] = [
             .init(trigger: "database login", expansion: "password=hunter2", created: .distantPast)
         ]
 

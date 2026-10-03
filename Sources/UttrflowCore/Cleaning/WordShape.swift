@@ -63,10 +63,11 @@ public struct WordShape: Equatable, Sendable {
         return text[text.index(after: first)...].contains(where: { $0.isUppercase })
     }
 
-    /// Marks that end a text already: a clause mark, an ellipsis, or a bracket the words closed themselves.
-    static let finishers: Set<Character> = [
-        ",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥", ")", "]", "}",
-    ]
+    /// Marks that end a text already: a clause mark or an ellipsis; a closing bracket may stand before a stop and is not one.
+    static let finishers: Set<Character> = [",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥"]
+
+    /// Each closing bracket mapped to the bracket that opens it.
+    static let bracketOpeners: [Character: Character] = [")": "(", "]": "[", "}": "{"]
 
     /// Quotes that open a quotation, read on the word's own prefix.
     public static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]
@@ -74,14 +75,49 @@ public struct WordShape: Equatable, Sendable {
     /// Quotes a full stop belongs inside, which is where a spoken "close quote" leaves the end of a sentence.
     static let closingQuotes: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}"]
 
-    /// The word with a full stop, or `mark`, where the sentence wants one: after a symbol like `%`, inside a closing quote.
-    public static func finished(_ text: String, with mark: String = ".") -> String {
+    /// The word with a full stop, or `mark`, where the sentence wants one; `preceding` is the text before it, read for an opening bracket.
+    public static func finished(
+        _ text: String, with mark: String = ".", after preceding: String = ""
+    ) -> String {
         let shape = WordShape(text)
         guard !shape.core.isEmpty, !shape.suffix.contains(where: finishers.contains) else { return text }
-        let quoted = trailingQuotes(of: text)
-        // A quotation opening and closing on one word is a quoted term rather than a sentence, so it takes none.
-        guard quoted.isEmpty || !shape.prefix.contains(where: openingQuotes.contains) else { return text }
+        let closers = String(
+            text.reversed().prefix { closingQuotes.contains($0) || bracketOpeners[$0] != nil }.reversed())
+        let body = String(text.dropLast(closers.count))
+        guard let bracket = closers.lastIndex(where: { bracketOpeners[$0] != nil }) else {
+            // A quotation opening and closing on one word is a quoted term rather than a sentence, so it takes none.
+            guard closers.isEmpty || !shape.prefix.contains(where: openingQuotes.contains) else {
+                return text
+            }
+            return body + mark + closers
+        }
+        let enclosed = preceding + " " + body + closers[..<bracket]
+        if bracketOpensSentence(enclosed, closedBy: closers[bracket]) { return body + mark + closers }
+        let quoted = trailingQuotes(of: closers)
         return String(text.dropLast(quoted.count)) + mark + quoted
+    }
+
+    /// Whether the bracket that `closer` matches is the first thing in its sentence, so the whole sentence sits inside it.
+    private static func bracketOpensSentence(_ text: String, closedBy closer: Character) -> Bool {
+        guard let opener = bracketOpeners[closer] else { return false }
+        var depth = 0
+        for index in text.indices.reversed() {
+            let character = text[index]
+            if character == closer {
+                depth += 1
+            } else if character == opener {
+                guard depth == 0 else {
+                    depth -= 1
+                    continue
+                }
+                let before = text[..<index].reversed().drop {
+                    ($0.isWhitespace && !$0.isNewline) || openingQuotes.contains($0)
+                }
+                guard let last = before.first else { return true }
+                return SentenceMarks.ends.contains(last) || last.isNewline
+            }
+        }
+        return false
     }
 
     /// The word with `mark` on its end; a clause mark replaces one already there, a quote follows it.

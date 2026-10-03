@@ -70,7 +70,7 @@ enum UttrflowApp {
             scoring: scoring, generating: generating,
             prepareModel: { onProgress in try await scoring.prepare(onProgress: onProgress) },
             releaseModel: { await scoring.release() },
-            allowModelReload: { await model.allowReloadAfterRelease() }, encryptedStore: EncryptedStore())
+            allowModelReload: { await scoring.allowReloadAfterRelease() }, encryptedStore: EncryptedStore())
         application.delegate = delegate
         // A reload after an idle release is shown where the user is looking, not only in Settings.
         Task { @MainActor in
