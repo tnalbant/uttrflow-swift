@@ -153,6 +153,18 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
     /// The versioned service shared across product upgrades.
     public static let service = "com.uttrflow.local-store.encryption.v1"
 
+    private let fileURL: URL
+
+    /// Uses the stable per-user key file when the data-protection Keychain lacks its entitlement.
+    public init(fileURL: URL? = nil) {
+        self.fileURL = fileURL ?? Self.defaultFileURL
+    }
+
+    private static var defaultFileURL: URL {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return LocalStore.file("local-store-encryption-key.v1", in: support)
+    }
+
     /// Reads the current user's key and creates it only for a new or successfully decoded legacy store.
     public func key(createIfMissing: Bool) throws -> SymmetricKey {
         let query: [String: Any] = [
@@ -167,8 +179,12 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(lookup as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data, data.count == 32 {
+        if status == errSecSuccess {
+            guard let data = item as? Data, data.count == 32 else { throw StoreKeyError.invalidKey }
             return SymmetricKey(data: data)
+        }
+        if status == errSecMissingEntitlement {
+            return try fileKey(createIfMissing: createIfMissing)
         }
         guard status == errSecItemNotFound, createIfMissing else {
             throw StoreKeyError.unavailable(Int32(status))
@@ -193,9 +209,29 @@ public struct KeychainStoreKeyProvider: StoreKeyProviding, StoreKeyRevoking {
             kSecUseDataProtectionKeychain as String: true,
         ]
         let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
+        guard status == errSecSuccess || status == errSecItemNotFound || status == errSecMissingEntitlement
+        else {
             throw StoreKeyError.unavailable(Int32(status))
         }
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return
+        }
+    }
+
+    private func fileKey(createIfMissing: Bool) throws -> SymmetricKey {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard data.count == 32 else { throw StoreKeyError.invalidKey }
+            return SymmetricKey(data: data)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            guard createIfMissing else { throw StoreKeyError.unavailable(Int32(errSecItemNotFound)) }
+        }
+        let key = SymmetricKey(size: .bits256)
+        let data = key.withUnsafeBytes { Data($0) }
+        try PrivateFile.write(data, to: fileURL)
+        return key
     }
 }
 
@@ -207,4 +243,6 @@ public enum StoreKeyError: Error, Sendable {
     case legacyFileNeedsMigration
     /// The injected provider cannot revoke its key, so a full reset must fail closed.
     case revocationUnsupported
+    /// A stored installation key does not have the required 256-bit size.
+    case invalidKey
 }

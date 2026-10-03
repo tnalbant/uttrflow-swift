@@ -63,6 +63,23 @@ struct EncryptedStoreTests {
         #expect(store.read([String].self, from: file).value == ["private"])
     }
 
+    @Test("file fallback keeps one key across provider instances and removes it on reset")
+    func fileKeyFallbackPersistsAndRevokes() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyFile = directory.appending(path: "key.v1")
+        let first = KeychainStoreKeyProvider(fileURL: keyFile)
+        let key = try first.key(createIfMissing: true)
+        #expect(try Data(contentsOf: keyFile).count == 32)
+        #expect(
+            try first.key(createIfMissing: false).withUnsafeBytes { Data($0) }
+                == key.withUnsafeBytes { Data($0) })
+
+        try first.revokeKey()
+        #expect(!FileManager.default.fileExists(atPath: keyFile.path))
+        #expect(throws: (any Error).self) { try first.key(createIfMissing: false) }
+    }
+
     @Test("rejects a different key and leaves the source bytes set aside")
     func wrongKey() throws {
         let directory = try folder()
