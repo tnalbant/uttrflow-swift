@@ -562,23 +562,30 @@ public struct MeaningPreservationGuard: Sendable {
     private static func removableSpeechArtifacts(in alignment: RewriteAlignment) -> Set<Int> {
         let kept = alignment.kept
         var removable = Set(kept.indices.filter { FillersPass.fillerWords.contains(kept[$0].matching) })
+        let keptGaps = grammarTokenGaps(alignment.keptText)
+        let rewrittenGaps = grammarTokenGaps(alignment.rewrittenText)
+        guard keptGaps.count == kept.count + 1, rewrittenGaps.count == alignment.rewritten.count + 1
+        else { return removable }
+        // The draft the passes read, so a name the spoken-punctuation pass judged a mention is judged the same here.
+        let draft = Draft(
+            words: kept.indices.map { Draft.Word(kept[$0].text + keptGaps[$0 + 1]) })
         for mark in Set(SpokenPunctuationPass.marks.map(\.mark)) {
             guard let character = mark.first, String(character) == mark else { continue }
-            let added =
-                alignment.rewrittenText.filter { $0 == character }.count
-                - alignment.keptText.filter { $0 == character }.count
-            guard added > 0 else { continue }
-            var remaining = added
-            let names = Set(SpokenPunctuationPass.marks.filter { $0.mark == mark }.map(\.words))
-                .sorted { $0.count > $1.count }
-            for change in alignment.changes where remaining > 0 {
-                for name in names where remaining > 0 {
+            let names = SpokenPunctuationPass.marks.filter { $0.mark == mark }
+                .sorted { $0.words.count > $1.words.count }
+            for change in alignment.changes {
+                var remaining =
+                    addedMarks(character, in: change, keptGaps: keptGaps, rewrittenGaps: rewrittenGaps)
+                for (name, _, kind) in names where remaining > 0 {
                     guard name.count <= change.kept.count else { continue }
                     for start in change.kept where remaining > 0 {
                         let end = start + name.count
                         guard end <= change.kept.upperBound,
                             zip(name, kept[start..<end]).allSatisfy({ $0 == $1.matching }),
-                            !removable.contains(where: { start..<end ~= $0 })
+                            !removable.contains(where: { start..<end ~= $0 }),
+                            !MentionGuard.isMentioned(
+                                at: start, spanning: name.count, in: Array(kept.indices), of: draft,
+                                reach: MentionGuard.phraseReach, kind: kind)
                         else { continue }
                         removable.formUnion(start..<end)
                         remaining -= 1
@@ -587,6 +594,23 @@ public struct MeaningPreservationGuard: Sendable {
             }
         }
         return removable
+    }
+
+    /// Marks a changed run's rewrite has beyond its draft, counted at its edges and between its words, the text's closing stop only for a name that closed the draft.
+    private static func addedMarks(
+        _ character: Character, in change: RewriteAlignment.Change, keptGaps: [String],
+        rewrittenGaps: [String]
+    ) -> Int {
+        let count: (ArraySlice<String>) -> Int = { $0.joined().filter { $0 == character }.count }
+        var written = count(rewrittenGaps[change.rewritten.lowerBound...change.rewritten.upperBound])
+        // A closing mark at the very end answers a spoken name only when that name ended the draft too.
+        if change.rewritten.upperBound == rewrittenGaps.count - 1,
+            change.kept.upperBound < keptGaps.count - 1, ".!?".contains(character),
+            rewrittenGaps[rewrittenGaps.count - 1].contains(character)
+        {
+            written -= 1
+        }
+        return written - count(keptGaps[change.kept.lowerBound...change.kept.upperBound])
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
@@ -839,6 +863,35 @@ public struct MeaningPreservationGuard: Sendable {
             startsSentence = endsSentence
         }
         return joiningOneWordSpellings(tokens)
+    }
+
+    /// The text between the words `grammarTokens` reads, one more than there are words, so a mark is found at its place.
+    static func grammarTokenGaps(_ text: String) -> [String] {
+        var gaps = [""]
+        var raw: [GrammarToken] = []
+        let pieces = withoutThousandsSeparators(text)
+            .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "/" })
+        for piece in pieces {
+            let leading = piece.prefix(while: { !$0.isLetter && !$0.isNumber })
+            let trailing = String(
+                piece.dropFirst(leading.count).reversed()
+                    .prefix(while: { !$0.isLetter && !$0.isNumber }).reversed())
+            guard leading.count < piece.count else {
+                gaps[gaps.count - 1] += String(piece)
+                continue
+            }
+            gaps[gaps.count - 1] += String(leading)
+            raw.append(contentsOf: grammarTokens(String(piece)).prefix(1))
+            gaps.append(trailing)
+        }
+        // A pair read as one word gives up the gap between its halves.
+        var joined = [gaps[0]]
+        var index = 0
+        for token in grammarTokens(text) where index < raw.count {
+            index += raw[index].matching == token.matching ? 1 : 2
+            joined.append(gaps[min(index, gaps.count - 1)])
+        }
+        return joined
     }
 
     /// Two words written apart for one word, keyed by the one word; a listed pair, never a rule about shape.
