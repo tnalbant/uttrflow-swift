@@ -147,6 +147,14 @@ public struct DestinationFormatter: Sendable, Equatable {
             layout: [.paragraphs, .lists], grammar: .repair, numbers: .fromTen, promptBlock: "plain"),
     ]
 
+    /// Whether this place's first-word or stop policy would still change `text`, so an answer returning it unchanged did no work.
+    public func owesFormatting(_ text: String) -> Bool {
+        let first = text.first.map(String.init) ?? ""
+        let owesCapital = firstWord != .asSpoken && first != first.uppercased()
+        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        return owesCapital && owesStop
+    }
+
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
     public static func standard(for destination: Destination) -> DestinationFormatter {
         registry[destination]
