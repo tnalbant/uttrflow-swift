@@ -208,6 +208,19 @@ struct ScorerTests {
         #expect(!score.passed)
     }
 
+    /// "()" has no words, so a word-only check reported it lost even when the answer was exactly "()".
+    @Test("keeps a symbol-only requirement when the answer holds it literally")
+    func symbolRequirementKeptLiterally() {
+        let kept = Scorer.score("()", against: reference(expected: "()", mustKeep: ["()"]))
+        #expect(kept.lost.isEmpty)
+        #expect(kept.passed)
+
+        let dropped = Scorer.score(
+            "open close parenthesis", against: reference(expected: "()", mustKeep: ["()"]))
+        #expect(dropped.lost == ["()"])
+        #expect(!dropped.passed)
+    }
+
     /// A wordless guard that fired on prose would fail every model on a fault in the scorer.
     @Test("leaves a punctuation-only guard unfired when the answer stayed prose")
     func punctuationGuardStaysQuiet() {

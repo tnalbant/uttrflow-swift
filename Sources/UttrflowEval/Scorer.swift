@@ -9,13 +9,13 @@ public enum Scorer {
         let wantedSurface = surfaceWords(reference.expected)
         // A phrase is one run inside one sentence, so the run it is sought in keeps the sentence ends.
         let sentences = tokens(rewritten, keepingSentenceEnds: true)
-        // Matched on words only; a wordless requirement is reported as lost rather than quietly satisfied.
+        // Matched like a guard, so a symbol requirement such as "()" is sought literally rather than always lost.
         let lost = reference.mustKeep.filter { required in
-            !containsPhrase(tokens(required, keepingSentenceEnds: true), in: sentences)
+            !isPresent(required, in: rewritten, tokenised: sentences)
         }
         // A context case usually fails by adding what the context suggested, so both directions are checked.
         let invented = reference.mustNotAdd.filter { forbidden in
-            containsGuard(forbidden, in: rewritten, tokenised: sentences)
+            isPresent(forbidden, in: rewritten, tokenised: sentences)
         }
 
         return CaseScore(
@@ -168,15 +168,15 @@ public enum Scorer {
         return 2 * precision * recall / (precision + recall)
     }
 
-    /// Whether a `mustNotAdd` guard is present: by word normally, literally when it has no letters or digits.
-    static func containsGuard(
-        _ forbidden: String, in rewritten: String, tokenised produced: [String]
+    /// Whether a requirement or guard is present: by word normally, literally when it has no letters or digits.
+    static func isPresent(
+        _ sought: String, in rewritten: String, tokenised produced: [String]
     ) -> Bool {
-        let phrase = tokens(forbidden, keepingSentenceEnds: true)
+        let phrase = tokens(sought, keepingSentenceEnds: true)
         guard phrase.isEmpty else { return containsPhrase(phrase, in: produced) }
-        // A guard holding nothing has nothing to look for, and nothing is not evidence against anybody.
-        guard forbidden.contains(where: { !$0.isWhitespace }) else { return false }
-        return rewritten.contains(forbidden)
+        // A blank phrase has nothing to look for, so it is never found: a blank guard never fires.
+        guard sought.contains(where: { !$0.isWhitespace }) else { return false }
+        return rewritten.contains(sought)
     }
 
     /// Whether `phrase` appears in `text` as a consecutive run; an empty phrase is present in nothing.
