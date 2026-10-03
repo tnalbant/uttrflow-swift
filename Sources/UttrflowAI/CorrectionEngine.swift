@@ -92,14 +92,14 @@ struct UncertainSpan: Sendable, Equatable {
     let range: Range<Int>
     /// The words with their spaces kept, which the phonetic index keys the same as the joined word.
     let text: String
-    /// The lowest confidence in the run, which is all a run is worth.
+    /// The lowest score the recogniser gave any word of the run, never a stand-in.
     let confidence: Double
+    /// Why the run is doubted, which is kept apart from its score so neither has to stand in for the other.
+    let reason: DoubtReason
 
     /// Every run up to the index's word limit in which every word is doubted, most deserving first.
     static func spans(in utterance: Utterance, below threshold: Double) -> [UncertainSpan] {
-        spans(
-            in: utterance.words.map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
-            below: threshold)
+        spans(in: utterance.words.map { ($0.text, $0.confidence) }, below: threshold)
     }
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
@@ -107,42 +107,54 @@ struct UncertainSpan: Sendable, Equatable {
         spans(
             in: draft.words
                 .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-                .map { effectiveConfidence(text: $0.text, confidence: $0.confidence) },
+                .map { ($0.text, $0.confidence) },
             below: threshold)
     }
 
-    /// A word in a Homophones group is doubted regardless of recogniser confidence, so its partners can be tried.
-    private static func effectiveConfidence(
-        text: String, confidence: Double
-    ) -> (text: String, confidence: Double) {
-        Homophones.group(containing: text) == nil ? (text, confidence) : (text, -1)
+    /// Why one word is doubted, or `nil` when it is not: a low score first, else membership of a homophone group.
+    private static func doubt(text: String, confidence: Double, below threshold: Double) -> DoubtReason? {
+        if confidence < threshold { return .lowScore }
+        return Homophones.group(containing: text) == nil ? nil : .homophoneClass
     }
 
     /// The runs themselves, over anything that can name a word and how sure the recogniser was of it.
     static func spans(
         in words: [(text: String, confidence: Double)], below threshold: Double
     ) -> [UncertainSpan] {
+        let doubts = words.map { doubt(text: $0.text, confidence: $0.confidence, below: threshold) }
         var spans: [UncertainSpan] = []
         for start in words.indices {
             for length in 1...PhoneticIndex.maximumWordsPerEntry where start + length <= words.count {
-                let run = words[start..<(start + length)]
-                guard run.allSatisfy({ $0.confidence < threshold }) else { break }
+                let range = start..<(start + length)
+                guard doubts[range].allSatisfy({ $0 != nil }) else { break }
                 spans.append(
                     UncertainSpan(
-                        range: start..<(start + length),
-                        text: run.map(\.text).joined(separator: " "),
-                        confidence: run.reduce(1) { min($0, $1.confidence) }))
+                        range: range,
+                        text: words[range].map(\.text).joined(separator: " "),
+                        confidence: words[range].reduce(1) { min($0, $1.confidence) },
+                        reason: doubts[range].contains(.lowScore) ? .lowScore : .homophoneClass))
             }
         }
         return spans.sorted(by: isMoreDeserving)
     }
 
-    /// A total order mirroring the index's own: least confident, then earliest, then longest.
+    /// A total order: a measured-low run before a class-only one, then least confident, earliest, longest.
     static func isMoreDeserving(_ first: UncertainSpan, _ second: UncertainSpan) -> Bool {
+        if first.reason != second.reason { return first.reason < second.reason }
         if first.confidence != second.confidence { return first.confidence < second.confidence }
         if first.range.lowerBound != second.range.lowerBound {
             return first.range.lowerBound < second.range.lowerBound
         }
         return first.range.count > second.range.count
     }
+}
+
+/// Why a run of words is doubted, in the order the runs deserve another reading.
+public enum DoubtReason: Int, Sendable, Comparable {
+    /// The recogniser scored a word of the run below the certainty threshold.
+    case lowScore
+    /// Every word was heard surely, but one belongs to a homophone group whose partners sound the same.
+    case homophoneClass
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }

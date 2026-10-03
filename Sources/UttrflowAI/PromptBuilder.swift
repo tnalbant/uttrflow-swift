@@ -92,10 +92,18 @@ public struct PromptBuilder: Sendable, Equatable {
         guard !spans.isEmpty else { return nil }
         return spans.prefix(DoubtfulWords.maximumSpans)
             .map {
-                "\"\(unquoted($0.heard))\" (heard at \(hundredths($0.confidence))) — could be: "
+                "\"\(unquoted($0.heard))\" \(doubtNote($0)) — could be: "
                     + $0.candidates.map { unquoted($0.spelling) }.joined(separator: ", ")
             }
             .joined(separator: "; ")
+    }
+
+    /// The measured score, and for a homophone heard surely the reason it is doubted all the same.
+    static func doubtNote(_ span: DoubtfulSpan) -> String {
+        switch span.reason {
+        case .lowScore: "(heard at \(hundredths(span.confidence)))"
+        case .homophoneClass: "(heard at \(hundredths(span.confidence)), sounds like another word)"
+        }
     }
 
     /// The text with double quotes made single, so quoted words cannot forge a prompt line.
