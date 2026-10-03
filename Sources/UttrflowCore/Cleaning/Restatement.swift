@@ -10,6 +10,7 @@ public enum Restatement {
     /// How many words back number corrections may reach.
     public static let reach = 6
 
+    /// How many words back an anchor may reach when the restart repeats a phrase of two or more words.
     private static let repeatedPhraseReach = 12
 
     private static let hindiNumberWords: Set<String> = [
@@ -93,7 +94,10 @@ public enum Restatement {
         let replacesOneWord = replacesSingleWord(
             before: trigger, after: restart, triggerWords: triggerWords, in: live, of: draft)
         for candidate in stride(from: trigger - 1, through: earliestPhraseAnchor, by: -1) {
-            if anchors(draft.shape(at: live[candidate]).key, the: firstAfter) {
+            if anchors(draft.shape(at: live[candidate]).key, the: firstAfter),
+                candidate >= earliest
+                    || repeatsPhrase(from: candidate, before: trigger, after: restart, in: live, of: draft)
+            {
                 guard holdsContent(candidate..<trigger, in: live, of: draft),
                     !coordinates(candidate, before: trigger, in: live, of: draft)
                 else { return nil }
@@ -168,6 +172,14 @@ public enum Restatement {
             return draft.shape(at: live[trigger - 1]).suffix.contains(",")
         }
         return true
+    }
+
+    /// Whether the word after an anchor matches the word after the restart, so the restart repeats a phrase rather than one word.
+    private static func repeatsPhrase(
+        from candidate: Int, before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
+    ) -> Bool {
+        guard candidate + 1 < trigger, restart + 1 < live.count else { return false }
+        return draft.shape(at: live[candidate + 1]).key == draft.shape(at: live[restart + 1]).key
     }
 
     /// A camel-case dictionary word can retain the first heard word as a component, such as `payment` in `PaymentSheet`.

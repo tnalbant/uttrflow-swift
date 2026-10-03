@@ -263,6 +263,16 @@ therefore not a word error rate.
   (`Core/Models.swift:366`, "order matters here"), so such a window never gets a no-speech
   probability and is retried warmer instead of being discarded as silence. It fired at temperature
   0 on all 50 runs, and at 1.0 on the 34 that ended empty.
+- **The silence test cannot fire at all in the WhisperKit this package pins.** The decoder sets
+  `noSpeechProb` to a constant 0 (`Core/TextDecoder.swift:817`, marked as not yet implemented), so
+  `noSpeechThreshold: 0.6` is never exceeded, neither in the fallback verdict
+  (`Core/Models.swift:369`) nor in the segment skip (`Core/Text/SegmentSeeker.swift:59`). That is
+  why moving the threshold to 0.4 or 0.8 changes nothing on non-speech clips (#2430). A window of
+  breath, cough or key noise therefore ends empty at temperature 0 on the first-token check and is
+  sent up the ladder, where a warmer draw can return a sound caption that differs run to run.
+  Refusing the ladder for such a window needs a real no-speech probability (the `<|nospeech|>`
+  token's probability at the start-of-transcript position) computed outside WhisperKit, or a
+  decision that a first-token rejection at temperature 0 is final.
 - The ladder keeps the first draw that passes the thresholds and otherwise the last one
   (`Core/TranscribeTask.swift:327-405`). Every one of the 16 words came from temperature 0.8;
   0.2 to 0.6 were rejected every time, and the 34 empties are the abandoned decode at 1.0.

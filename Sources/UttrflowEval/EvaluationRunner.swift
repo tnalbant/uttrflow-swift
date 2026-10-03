@@ -12,8 +12,8 @@ public enum EvaluationOutcome: Sendable, Equatable {
 public struct EvaluationRunner: Sendable {
     private let cases: [EvaluationCase]
 
-    public init(cases: [EvaluationCase] = EvaluationCorpus.all) {
-        self.cases = cases
+    public init(cases: [EvaluationCase] = EvaluationCorpus.all, shape: InputShape = .bare) {
+        self.cases = cases.map { $0.shaped(shape) }
     }
 
     /// Scores every case under `label`; a throw from `transform` is a failed case, not an abandoned run.

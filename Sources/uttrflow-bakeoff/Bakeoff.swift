@@ -75,6 +75,7 @@ struct Bakeoff: AsyncParsableCommand {
         var measured: [Measurement] = []
         if models == nil {
             measured.append(await measureBaseline(kind: .rules, description: .rules))
+            await compareShapes()
             measured.append(await measureBaseline(kind: .foundationModels, description: .appleOnDevice))
             measured.append(await measureShipping())
         }
@@ -183,6 +184,23 @@ struct Bakeoff: AsyncParsableCommand {
             return .produced(try await router.transform(request).text)
         }
         return Measurement(description: description, report: report)
+    }
+
+    /// Scores the rules floor on bare and recogniser-shaped input side by side, naming what only the shape breaks.
+    private func compareShapes() async {
+        let rules = RuleBasedTransformer()
+        var reports: [InputShape: EvaluationReport] = [:]
+        for shape in InputShape.allCases {
+            reports[shape] = await EvaluationRunner(shape: shape).run(label: shape.rawValue) { testCase in
+                .produced(try await rules.transform(request(for: testCase)).text)
+            }
+        }
+        guard let bare = reports[.bare], let shaped = reports[.recogniser] else { return }
+        print("  input shape: bare \(percent(bare.passRate)), recogniser \(percent(shaped.passRate))")
+        let passedShaped = Set(shaped.scores.filter(\.passed).map(\.caseID))
+        for score in bare.scores where score.passed && !passedShaped.contains(score.caseID) {
+            print("  fails only shaped: \(score.caseID)")
+        }
     }
 
     /// Measures the whole router as the app configures it, fallback included.

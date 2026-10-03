@@ -397,7 +397,7 @@ struct DraftTests {
 }
 
 /// Upper-cases every present word.
-private struct ShoutPass: CleaningPass {
+private struct ShoutPass: PieceCleaningPass {
     static let id: PassID = "shout"
     func apply(_ draft: Draft) -> Draft {
         var draft = draft
@@ -409,7 +409,7 @@ private struct ShoutPass: CleaningPass {
 }
 
 /// Removes the first present word.
-private struct DropFirstPass: CleaningPass {
+private struct DropFirstPass: PieceCleaningPass {
     static let id: PassID = "dropFirst"
     func apply(_ draft: Draft) -> Draft {
         var draft = draft

@@ -37,7 +37,7 @@ extension CleaningPipeline {
         precedingText: String? = nil, documentName: String? = nil,
         steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        var cleanings: [any CleaningPass] = [
+        var cleanings: [any PieceCleaningPass] = [
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(destination: destination),
@@ -51,7 +51,7 @@ extension CleaningPipeline {
         {
             cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
         }
-        return CleaningPipeline(passes: cleanings.filter { steps.runs($0.id) })
+        return CleaningPipeline(piece: cleanings.filter { steps.runs($0.id) })
     }
 
     /// The passes that finish a model's answer to a whole message: the caret's echo taken back, then the message's.
@@ -68,7 +68,7 @@ extension CleaningPipeline {
     public static func afterModelPiece(
         situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
-        CleaningPipeline(passes: [
+        CleaningPipeline(piece: [
             SpokenPunctuationPass(destination: situation.destination),
             CaretEchoPass(
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
@@ -83,7 +83,7 @@ extension CleaningPipeline {
         steps: CleaningSteps = .default
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: initialisms(steps: steps) + [
+            wholeText: initialisms(steps: steps) + [
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
@@ -97,7 +97,7 @@ extension CleaningPipeline {
     }
 
     /// The one registration of the spelled-letter join, a whole-text pass filtered like every other step.
-    private static func initialisms(steps: CleaningSteps) -> [any CleaningPass] {
+    private static func initialisms(steps: CleaningSteps) -> [any WholeTextCleaningPass] {
         [SpelledInitialismPass()].filter { steps.runs($0.id) }
     }
 

@@ -99,6 +99,14 @@ public enum NumberWords {
         return (total + group, consumed)
     }
 
+    /// A hundreds digit said before a number from ten to ninety-nine, as in "one twenty seven" for 127.
+    public static func colloquialHundred(_ keys: ArraySlice<String>) -> (value: Int, count: Int)? {
+        guard let first = keys.first, let digit = units[first], digit > 0,
+            let rest = cardinal(keys.dropFirst()), (10...99).contains(rest.value)
+        else { return nil }
+        return (digit * 100 + rest.value, rest.count + 1)
+    }
+
     /// Digits grouped in threes with commas, applied only from ten thousand up.
     public static func render(_ value: Int, grouped: Bool) -> String {
         let plain = String(value)

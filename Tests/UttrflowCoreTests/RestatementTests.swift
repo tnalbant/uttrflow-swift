@@ -83,6 +83,17 @@ struct RestatementTests {
         #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == 0)
     }
 
+    @Test(
+        "a lone repeated word does not anchor beyond six words",
+        arguments: [
+            ("at noon we will send the report to them no sorry at one", 9, 11),
+            ("we need to book a table for six at the italian place on friday no sorry for eight", 14, 16),
+        ])
+    func loneWordAnchorKeepsTheShortReach(text: String, trigger: Int, restart: Int) {
+        let (draft, live) = reading(text)
+        #expect(Restatement.discardedStart(before: trigger, after: restart, in: live, of: draft) == nil)
+    }
+
     @Test("a repeated phrase anchor does not cross a sentence")
     func repeatedPhraseAnchorDoesNotCrossSentence() {
         let earlierSentence = reading("send the file. meet me at the cafe no send the file to vendor")

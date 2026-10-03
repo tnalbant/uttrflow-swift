@@ -10,16 +10,27 @@ public enum RemovalGrant: Sendable, Equatable {
     case conversion
 }
 
+/// The scope a piece pass asks about: the words of one piece, never its neighbours or the piece count.
+public enum PieceScope {}
+
+/// The scope a whole-text pass asks about: the joined message, which no piece holds.
+public enum WholeTextScope {}
+
 /// One cleaning that needs no model: a pure function over a draft that records every word it touches.
 public protocol CleaningPass: Sendable {
+    /// Which text the pass's question is about; a pass adopts `PieceCleaningPass` or `WholeTextCleaningPass` to say.
+    associatedtype Scope
     static var id: PassID { get }
     /// What the pass may remove; a pass that does not say only turns words into what it writes.
     static var removes: RemovalGrant { get }
     func apply(_ draft: Draft) -> Draft
 }
 
+/// A pass whose question is answered by one piece alone, so it is right on any piece of a message.
+public protocol PieceCleaningPass: CleaningPass where Scope == PieceScope {}
+
 /// A pass that may run only after every piece of one message has been joined.
-public protocol WholeTextCleaningPass: CleaningPass {}
+public protocol WholeTextCleaningPass: CleaningPass where Scope == WholeTextScope {}
 
 extension CleaningPass {
     public static var removes: RemovalGrant { .conversion }
@@ -36,6 +47,16 @@ public struct CleaningPipeline: Sendable {
     public let passes: [any CleaningPass]
 
     public init(passes: [any CleaningPass]) {
+        self.passes = passes
+    }
+
+    /// A pipeline for one piece, which the compiler keeps free of any whole-text pass.
+    public init(piece passes: [any PieceCleaningPass]) {
+        self.passes = passes
+    }
+
+    /// A pipeline for the joined message, which the compiler keeps free of any piece pass.
+    public init(wholeText passes: [any WholeTextCleaningPass]) {
         self.passes = passes
     }
 

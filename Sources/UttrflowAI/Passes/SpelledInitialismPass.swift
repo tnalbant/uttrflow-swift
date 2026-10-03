@@ -55,6 +55,10 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             return nil
         }
         let token = draft.shape(at: live[position])
+        // The pronoun said twice running is a stammer, never an initialism.
+        if token.key == "i", position + 1 < live.count, draft.shape(at: live[position + 1]).key == "i" {
+            return nil
+        }
         if token.key == "a", position + 1 < live.count,
             draft.shape(at: live[position + 1]).key == "m",
             isClockContext(before: position, in: live, draft: draft)

@@ -85,12 +85,34 @@ struct MeaningPreservationGuardTests {
             ),
             ("the er budget is approved", "The budget is approved."),
             ("send the report full stop then call me", "Send the report. Then call me."),
+            ("send the report period", "Send the report."),
             ("i want to by a new car", "I want to buy a new car."),
             ("the whether is nice today", "The weather is nice today."),
         ]
     )
     func acceptsRepairsForWordsRulesMayMiss(kept: String, rewritten: String) {
         #expect(MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    }
+
+    @Test(
+        "refuses a lost mark name when the added mark stands elsewhere",
+        arguments: [
+            ("the grace period is two weeks", "The grace is two weeks."),
+            ("the test is a period", "The test is a."),
+            ("wait at the bus stop then call me", "Wait at the bus, then call me."),
+            ("compute the dot product, then stop", "Compute the product. Then stop."),
+            ("a comma splice is wrong", "A splice is wrong."),
+        ]
+    )
+    func refusesMarkNameLostAwayFromItsMark(kept: String, rewritten: String) {
+        #expect(!MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    }
+
+    @Test("reads the gaps between grammar words, a joined pair giving up its middle")
+    func readsGrammarTokenGaps() {
+        #expect(MeaningPreservationGuard.grammarTokenGaps("Hi, you. ") == ["", ",", "."])
+        #expect(MeaningPreservationGuard.grammarTokenGaps("I can not go!") == ["", "", "", "!"])
+        #expect(MeaningPreservationGuard.grammarTokenGaps("a — b") == ["", "—", ""])
     }
 
     @Test("as-spoken destinations refuse regular and irregular changes to kept word forms")

@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Writes spoken identifier and symbol commands in executable code.
-public struct CodeEditorCommandsPass: CleaningPass {
+public struct CodeEditorCommandsPass: PieceCleaningPass {
     public static let id: PassID = .codeEditorCommands
 
     public init() {}

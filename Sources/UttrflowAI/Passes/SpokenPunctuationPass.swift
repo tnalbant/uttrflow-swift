@@ -13,7 +13,7 @@ enum SpokenMarkKind: Sendable, Equatable {
 }
 
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
-public struct SpokenPunctuationPass: CleaningPass {
+public struct SpokenPunctuationPass: PieceCleaningPass {
     public static let id: PassID = .spokenPunctuation
     private let destination: Destination
 

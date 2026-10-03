@@ -246,6 +246,19 @@ struct PieceJoinerParagraphTests {
                 == "First item\nsecond item.")
     }
 
+    @Test("keeps a named new line at the end of a piece as words")
+    func mentionedLineCommandAtPieceEnd() {
+        #expect(
+            joined(["Please add a new line.", "Of products to the catalogue."], .document)
+                == "Please add a new line of products to the catalogue.")
+        #expect(
+            joined(["We launched a new line.", "Of shoes last spring."], .document)
+                == "We launched a new line of shoes last spring.")
+        #expect(
+            joined(["The product line.", "Is growing fast."], .document)
+                == "The product line is growing fast.")
+    }
+
     @Test("opens a paragraph where the next piece opens a topic")
     func topicWordStartsAParagraph() {
         #expect(
