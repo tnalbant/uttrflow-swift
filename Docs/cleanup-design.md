@@ -6,7 +6,7 @@ typing it. This is the design the second tier of cleaning is built against
 testable ideas, so that a new cleaning is a new value in a table or a new pass in a
 list, never a new branch in the pipeline.
 
-The goal it serves is fixed (`AGENTS.md`, "What dictation is for"): **an accurate
+The goal it serves is fixed (`Docs/agents/product.md`, "Dictation and clean-up"): **an accurate
 transcript, cleaned of the noise of speaking and laid out as the speaker would have
 typed it. Never a rewrite.**
 

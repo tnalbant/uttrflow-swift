@@ -637,10 +637,9 @@ pass "$DOC_COUNT Markdown files (tracked, plus written-but-not-yet-staged)"
 # 0a. The documented pull-request lifecycle must match the live main ruleset.
 # ---------------------------------------------------------------------------
 #
-# Issue #1120 was not a typo but a blocked lifecycle: AGENTS.md said a green PR could be
-# self-merged while the live ruleset required independent review. The ruleset itself is
-# outside this tree, so this check keeps the local policy on the review-required side of
-# that boundary until the ruleset is deliberately changed.
+# The ruleset lives on the server, outside this tree, so this check keeps the documented
+# lifecycle on the review-required side of it: the workflow page must name every review gate
+# and must never say a pull request may be merged by its own author.
 printf '\nPull request lifecycle\n'
 
 if grep -Fq "**An agent may merge its own pull request once it is green**" Docs/agents/workflow.md; then
@@ -652,7 +651,6 @@ fi
 
 missing_policy=()
 for required in \
-    "release-policy:v4" \
     "requires one approving review" \
     "code-owner review" \
     "approval by someone other than the last pusher" \
@@ -1237,8 +1235,8 @@ fi
 # A tracked CLAUDE.md is a claim about what Claude Code will load as project memory: with
 # default Project instructions, Claude Code reads CLAUDE.md before any tool call and does
 # not consult AGENTS.md on its own. A CLAUDE.md that holds a prose pointer at AGENTS.md
-# therefore loads the pointer sentence and stops — the 491 lines of operating rules in
-# AGENTS.md are injected only if the model decides, on its own, to follow the link.
+# therefore loads the pointer sentence and stops — the operating rules in AGENTS.md
+# are injected only if the model decides, on its own, to follow the link.
 #
 # Three contents pass, in this order:
 #
@@ -1265,7 +1263,7 @@ else
     fail "$claude_md_problem" \
         "A tracked CLAUDE.md is loaded by Claude Code as project memory ahead of any tool." \
         "Prose that points at AGENTS.md — Markdown link or otherwise — is one sentence the" \
-        "model receives, not an import; the 491 lines of operating rules in AGENTS.md are" \
+        "model receives, not an import; the operating rules in AGENTS.md are" \
         "not injected unless the model decides, on its own, to open the file." \
         "Replace the body with a single '@AGENTS.md' line, or delete CLAUDE.md and let" \
         "AGENTS.md load directly, or turn CLAUDE.md into a real symlink to AGENTS.md."

@@ -138,4 +138,4 @@ then hit a refusal pasted that name into a public issue without being told.
 
 The kind is set where the refusal is made, never recovered from the reason afterwards. Reading a
 kind back out of the sentence would be deciding what a string means by its shape, which is the
-thing `AGENTS.md` says not to do and which this guard exists to refuse.
+thing `Docs/agents/code-quality.md`, "Spelling and meaning", says not to do and which this guard exists to refuse.

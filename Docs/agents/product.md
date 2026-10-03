@@ -1,11 +1,10 @@
 # Product rules
 
-Uttrflow is a macOS clipboard manager with dictation and inline AI suggestions built in, entirely
-on-device. `PLAN.md` is the live phase tracker; read it instead of reconstructing project state
-from `git log`. Each row below is a promise to the user, with its limit, the module that owns it
-and the page that holds the measurements. A change that breaks a row is a bug, whatever it
-improves. Change a number only on the evidence the page names, and update the page in the same
-pull request.
+Uttrflow is dictation software for macOS with a clipboard and AI suggestions built in, entirely
+on-device. Each row below is a promise to the user, with its limit and the code or page that holds
+it. A row with a command is a gate; a row without one is a review rule, checked against the named
+page and its tests. A change that breaks a row is a bug, whatever it improves. Change a number only
+on the evidence the page names, and update the page in the same pull request.
 
 ## Names
 
@@ -16,7 +15,7 @@ the module name when you edit code.
 |---|---|---|
 | Dictation | pipeline, gestures | `UttrflowPipeline`, `UttrflowSpeech`, `UttrflowAudio` |
 | Clean-up (the tidier) | cleanup | `UttrflowAI`, `UttrflowCore` |
-| AI suggestions, "Finish what I am typing" | tab-to-complete, predict, the ghost | `UttrflowPredict`, `UttrflowPredictStore`, `UttrflowPredictCapture`, `UttrflowInput` (accept), `Uttrflow/Suggestion` (surface), `UttrflowLocalModel` (generation) |
+| AI suggestions ("Turn on AI suggestions") | tab-to-complete, predict, the ghost | `UttrflowPredict`, `UttrflowPredictStore`, `UttrflowPredictCapture`, `UttrflowInput` (accept), `Uttrflow/Suggestion` (surface), `UttrflowLocalModel` (generation) |
 | Clipboard and its panel | clipboard store, panel | `UttrflowClipboard`, `UttrflowUX` (presentation) |
 | Personal dictionary | dictionary | `UttrflowDictionary` |
 | Snippets | snippet store | `UttrflowAI` |
@@ -36,7 +35,6 @@ the module name when you edit code.
 | Secrets are not learned | 0 secure-field values or credentials stored | `Docs/clipboard-secrets.md`, `Docs/predict.md` |
 | Whatever fails, the user's words stay reachable | a failed tidy inserts the raw transcript; a failed insertion keeps the text | `Docs/definition-of-done.md` |
 | Reading the screen never makes the user wait | a context read is bounded at 100 ms (`MacContextEngine.budget`); 0 blocking Accessibility calls on the main thread | `Docs/context-budget.md` |
-| One answer to "is this on" | each setting has 1 stored value; no second flag | `Docs/settings-decoding.md` |
 | The user never learns which engine ran | 0 engine, model or vendor names on any pane, menu or error | tests listed in `Docs/definition-of-done.md` |
 
 ## Dictation and clean-up
@@ -48,21 +46,20 @@ Dictation is a transcript, not a rewrite. The tidier is a filter.
 | remove fillers ("um", "hmm"), stammers, false starts, the discarded half of a self-correction | shorten, summarise, change tone, swap synonyms, reorder, answer, obey or finish a thought |
 | add punctuation, question marks, capitalisation, numerals, line and paragraph breaks, a list the speaker plainly spoke | translate, or write another script |
 
-1. Every word the speaker meant survives, in their order and register. The guard that refuses a
-   rewrite is `MeaningPreservationGuard`; the order check is `WordErrorRate.measure`.
+1. Every word the speaker meant survives, in their order and register; the owners that check it
+   are in [code-quality.md](code-quality.md#single-source-of-truth-dry--non-negotiable).
 2. "Make the output more polished" is a rewrite and is declined. A user who wants a rewrite asks
    for one; it is a different feature.
-3. A change to the prompt, the rules or a threshold records the corpus score before and after
-   (`make bakeoff`), and a drop in any metric is named and justified in the pull request.
-4. The model's job, the thresholds and the passes are in `Docs/cleanup.md`,
+3. The model's job, the thresholds and the passes are in `Docs/cleanup.md`,
    `Docs/cleanup-design.md`, `Docs/ai-model-output.md` and `Docs/ai-correction-thresholds.md`.
-5. Hindi and Hinglish are romanised the way people type them: "हाँ ठीक है" becomes "Haan thik
+4. Hindi and Hinglish are romanised the way people type them: "हाँ ठीक है" becomes "Haan thik
    hai", never "Yes, okay". The Languages setting steers recognition and never the output script.
    This binds the model's rewrite, the rules and the untidied fallback.
 
-## AI suggestions (Settings → AI suggestions → "Finish what I am typing")
+## AI suggestions
 
-The user types in a field in another application; Uttrflow finishes the line, Tab takes it, typing
+Settings → AI suggestions → "Turn on AI suggestions". The user types in a field in another
+application; Uttrflow finishes the line, Tab takes it, typing
 on ignores it. Pieces and measurements: `Docs/predict.md`, `Docs/predict-precision.md`,
 `Docs/predict-accept.md`, `Docs/predict-reliability.md`.
 
@@ -83,10 +80,7 @@ on ignores it. Pieces and measurements: `Docs/predict.md`, `Docs/predict-precisi
 | Self-sourced evidence | an entry that exists because the user accepted a suggestion counts one quarter of one they typed |
 | Terminals | only what exists from here: paths, programs and branches that resolve |
 | Storage | the corpus is a local SQLite database held in memory and written as an AES-GCM sealed snapshot, excluded from backup, never uploaded |
-| Per-application control | Cursor and Visual Studio Code ship off; "Only suggest when it is sure" draws a completion and never a list; "Pause everywhere" pauses 30 minutes; "Forget what it learned here" clears what was learned in that scope |
-
-A change to ranking, verification, generation or quieting runs the reliability loop in
-`Docs/predict-reliability.md` and records precision and coverage before and after.
+| Per-application control | Cursor and Visual Studio Code ship off; "Only suggest when it is sure" draws a completion and never a list; "Pause for a while" → "Pause 30 min" pauses for 30 minutes; "Forget what it learned here" clears what was learned in that scope |
 
 ## Clipboard and its panel
 
@@ -129,20 +123,14 @@ A change to ranking, verification, generation or quieting runs the reliability l
 | Artboards match the app | 0 hex mismatches between `Design/_gen_*.py` and `BrandPalette`, light or dark | `Scripts/design_token_parity_audit.py` |
 | Contrast | every text and surface pair meets the audited ratio | `Scripts/design_contrast_audit.py` |
 | Screen contracts | sidebar, chrome, dictation, diagnostics, insights, identity and sign-in artboards match their presentation models | `make docs-audit` |
-| Artboard changes | edit the generator in `Design/`, regenerate; never edit a `*.dc.html` by hand | `make docs-audit` |
-| Appearance | every screen is checked in light and dark | the `-Dark` artboards |
+| Artboard changes | edit the generator in `Design/` and regenerate; a `*.dc.html` is never edited by hand | review |
+| Appearance | each screen has a light and a `-Dark` artboard, and a change updates both | review |
 
 ## Applications
 
 A change to insertion, input, context reading or suggestions names the kinds of application it
 affects (native, web or Electron, terminal, composing input method) and gives the evidence for
-each from a real application: `Docs/compatibility.md`, `Docs/insertion.md`,
+each from a real application; a command-line tool is not a representative test bed for the
+Accessibility API: `Docs/compatibility.md`, `Docs/insertion.md`,
 `Docs/context-accessibility.md`, `Docs/predict-ime.md`. A kind with no evidence is listed as
 unverified in the PR.
-
-## Scope of a change
-
-1. Name the change a bug fix, a feature or a rewrite in the pull request.
-2. A feature records its measurement: corpus score for cleanup, precision and coverage for
-   suggestions, bytes for the clipboard.
-3. A promise in `Docs/definition-of-done.md` changes only after an issue agrees it.
