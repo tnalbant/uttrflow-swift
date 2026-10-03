@@ -272,3 +272,7 @@ The Accessibility engine now also refuses when Uttrflow is in front
 focused Uttrflow field is never the destination through any code path — the rename is the
 honest label, the engine change is the structural guarantee that no caller can fall back into
 Uttrflow's own text fields.
+
+The clipboard floor classifies its text with the same rules as the clipboard panel. A secret
+transcript is written with `org.nspasteboard.ConcealedType`; other transcripts use the generated
+marker.
