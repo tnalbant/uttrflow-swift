@@ -117,20 +117,3 @@ public enum LatinScript {
         0xE0000...0xE01EF,  // Tags and variation selectors supplement.
     ]
 }
-
-extension Transcription {
-    /// The same transcription with its Devanagari romanised, its timed words romanised one by one.
-    public var romanised: Transcription {
-        guard Romaniser.containsDevanagari(text) else { return self }
-        return Transcription(
-            text: Romaniser.romanised(text), detectedLanguage: detectedLanguage,
-            segments: segments.map { segment in
-                TranscriptionSegment(
-                    text: Romaniser.romanised(segment.text), start: segment.start, end: segment.end,
-                    words: segment.words.map {
-                        TranscribedWord(text: Romaniser.romanised($0.text), confidence: $0.confidence)
-                    })
-            },
-            audioDuration: audioDuration)
-    }
-}

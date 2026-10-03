@@ -149,7 +149,7 @@ struct RomaniserTests {
         #expect(Romaniser.scriptFolded("Uttrflow") == "Uttrflow")
     }
 
-    @Test("romanises a transcription's text and timed words, keeping its timings and language")
+    @Test("romanises a transcription into a draft, keeping each word's confidence and its Devanagari origin")
     func romanisesTranscription() {
         let heard = Transcription(
             text: "हाँ ठीक है", detectedLanguage: DetectedLanguage(code: .hindi, confidence: 0.9),
@@ -159,19 +159,18 @@ struct RomaniserTests {
                     words: [
                         TranscribedWord(text: "हाँ", confidence: 0.4),
                         TranscribedWord(text: "ठीक", confidence: 1),
+                        TranscribedWord(text: "है", confidence: 0.8),
                     ])
             ], audioDuration: .seconds(1))
 
-        let romanised = heard.romanised
+        let draft = Draft(romanising: heard)
 
-        #expect(romanised.text == "haan thik hai")
-        #expect(romanised.segments.first?.words.map(\.text) == ["haan", "thik"])
-        #expect(romanised.segments.first?.words.first?.confidence == 0.4)
-        #expect(romanised.segments.first?.end == .seconds(1))
-        #expect(romanised.detectedLanguage == heard.detectedLanguage)
-        #expect(romanised.audioDuration == heard.audioDuration)
-        let english = Transcription(text: "hello there")
-        #expect(english.romanised == english)
+        #expect(draft.text == "haan thik hai")
+        #expect(draft.words.map(\.confidence) == [0.4, 1, 0.8])
+        #expect(draft.confidencesAreReal)
+        #expect(draft.words.indices.allSatisfy(draft.isHindi(at:)))
+        let english = Draft(romanising: Transcription(text: "hello there"))
+        #expect(english == Draft(transcription: Transcription(text: "hello there")))
     }
 }
 

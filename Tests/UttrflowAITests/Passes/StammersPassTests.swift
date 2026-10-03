@@ -166,4 +166,17 @@ struct StammersPassTests {
     func keepsDoubledNumberAfterPoint(input: String) {
         #expect(cleaned(input, by: sut) == input)
     }
+
+    /// A word spoken in Devanagari is Hindi, so the English function-word list never reads its romanised spelling.
+    @Test(
+        "keeps a doubled word that was spoken in Devanagari",
+        arguments: [
+            ("वो दो दो", "wo do do"), ("मैं मैं", "main main"), ("तो तो चलो", "to to chalo"),
+            ("वो थे थे", "wo the the"),
+        ]
+    )
+    func keepsDevanagariDoubles(spoken: String, romanised: String) {
+        let draft = sut.apply(Draft(romanising: Transcription(text: spoken)))
+        #expect(draft.text == romanised)
+    }
 }
