@@ -131,9 +131,9 @@ enum WordForms {
         }
     }
 
-    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
+    /// Whether a fragment the speaker cut off on a bare hyphen is the start of the next word.
     private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
-        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
+        guard atCutOff, !fragment.isEmpty, fragment.count < word.count else { return false }
         return word.lowercased().hasPrefix(fragment.lowercased())
     }
 }
