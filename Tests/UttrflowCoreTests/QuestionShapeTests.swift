@@ -123,6 +123,26 @@ struct QuestionShapeTests {
     }
 
     @Test(
+        "reads a name before a verb that can take a noun phrase as a statement",
+        arguments: [
+            "ravi is the owner of the account", "maria is the one who called",
+            "siobhan is the lead on the ferrovia launch", "priya has the keys to the office",
+            "dhruv was the one who fixed it", "papa does the dishes every night",
+            "maria is the manager", "maria is my sister", "maria is happy with the results",
+            "maria is the lead",
+        ])
+    func namedStatementBeforeNounPhrase(text: String) {
+        #expect(!QuestionShape.asks(shapes(text)))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes(text)) == nil)
+    }
+
+    @Test("still reads a name before a modal and a noun phrase as an address")
+    func namedAddressBeforeModal() {
+        #expect(QuestionShape.asks(shapes("priya can the build go out today")))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes("priya can the build go out today")) == 0)
+    }
+
+    @Test(
         "keeps dependent clauses inside an inverted question",
         arguments: [
             "is it okay if i leave at five", "is it fine if we start late", "is it okay when i call later",
