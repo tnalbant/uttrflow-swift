@@ -1,4 +1,4 @@
-public import struct Foundation.Date
+public import Foundation
 import UttrflowCore
 
 /// What the store must answer before a turn can be finished.
@@ -393,7 +393,9 @@ public struct SuggestionSession: Sendable, Equatable {
     /// The line with its opening characters spelled as the user typed them, so a ghost only adds and never re-cases what is on the line.
     private static func keepingTypedCase(_ line: String, typed: String) -> String {
         guard line.count > typed.count,
-            zip(line, typed).allSatisfy({ String($0).lowercased() == String($1).lowercased() })
+            zip(line, typed).allSatisfy({
+                TextMatching.caseFoldedKey(String($0)) == TextMatching.caseFoldedKey(String($1))
+            })
         else { return line }
         return typed + line.dropFirst(typed.count)
     }
@@ -458,19 +460,21 @@ public struct SuggestionSession: Sendable, Equatable {
             rejectionsHere = 0
             isMinimised = false
         }
-        let lowered = typing.lowercased()
-        // Case and a scalar typed ahead of its own combining mark are not typing past, since the store matched regardless.
-        guard let offered = suggestion.accepting, !offered.lowercased().hasScalarPrefix(lowered)
+        let folded = typing.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let offeredKey = suggestion.accepting.map(TextMatching.caseFoldedKey)
+        let earlier = TextMatching.caseFoldedKey(typed)
+        guard let offered = suggestion.accepting, let offeredKey,
+            !offeredKey.hasScalarPrefix(folded)
         else { return nil }
         // Finishing the suggestion by hand and typing on is taking it, not typing past it.
-        guard !lowered.hasScalarPrefix(offered.lowercased()) else { return nil }
+        guard !folded.hasScalarPrefix(offeredKey) else { return nil }
         // Whitespace alone typed past a suggestion is a pause or a slip of the space bar, not a refusal.
-        let earlier = typed.lowercased()
         guard
-            !(lowered.hasScalarPrefix(earlier) && lowered.dropFirst(earlier.count).allSatisfy(\.isWhitespace))
+            !(folded.hasScalarPrefix(earlier)
+                && folded.dropFirst(earlier.count).allSatisfy(\.isWhitespace))
         else { return nil }
         // Only an offer that completed the line can be typed past; leaving a fuzzy or corrected one, or shortening the line, says nothing.
-        guard offered.lowercased().hasScalarPrefix(typed.lowercased()) else { return nil }
+        guard offeredKey.hasScalarPrefix(earlier) else { return nil }
         rejectionsHere += 1
         // A guess the model invented counts toward quieting the field, but the store is never told to blame it.
         return shownIsGenerated ? nil : offered

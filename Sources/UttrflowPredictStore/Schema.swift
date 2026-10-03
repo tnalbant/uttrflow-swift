@@ -43,8 +43,6 @@ enum Schema {
           UNIQUE (surface_id, text)
         )
         """,
-        // The scan every keystroke runs is over the lowercased text: case ignored, index kept.
-        "CREATE INDEX IF NOT EXISTS entry_prefix ON entry (surface_id, text_lower)",
         // The lines most recently entered in a field are read newest first, which this index orders.
         "CREATE INDEX IF NOT EXISTS entry_recent ON entry (surface_id, last_used)",
         """
@@ -70,13 +68,20 @@ enum Schema {
         let schemaVersionBefore = try database.rows("PRAGMA schema_version", { _ in }) {
             $0.integer(0)
         }.first
-        for statement in statements { try database.execute(statement) }
-        let found = try database.rows("SELECT version FROM schema_version LIMIT 1", { _ in }) {
-            $0.integer(0)
-        }
+        let hasVersionTable =
+            try database.rows(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version' LIMIT 1",
+                { _ in }
+            ) { _ in true }.first == true
+        let found =
+            hasVersionTable
+            ? try database.rows("SELECT version FROM schema_version LIMIT 1", { _ in }) { $0.integer(0) }
+            : []
         if let current = found.first {
-            // A file from a newer build is not something this one can safely write to.
             guard current <= version else { throw .newerThanThisBuild(version: current) }
+        }
+        for statement in statements { try database.execute(statement) }
+        if let current = found.first {
             if current < 2 { try migrateToLowercasedPrefix(database) }
             // Version 3 adds only `entry_recent`, which `statements` has already created above.
             if current < 4 {
@@ -103,6 +108,8 @@ enum Schema {
                 $0.bind(1, Int64(version))
             }
         }
+        // The prefix scan depends on a column older files gain during migration.
+        try database.execute("CREATE INDEX IF NOT EXISTS entry_prefix ON entry (surface_id, text_lower)")
         // The recency index is created after migrations add its indexed column.
         try database.execute(
             "CREATE INDEX IF NOT EXISTS surface_recent ON surface (bundle_id, role, locator, last_used)")

@@ -1301,8 +1301,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
         )
-        DictationIntentBridge.toggle = { [weak self] in
-            await self?.controller?.toggleFromControl()
+        DictationIntentBridge.run = { [weak self] command in
+            await self?.controller?.command(command) ?? .nothingRecording
         }
     }
 

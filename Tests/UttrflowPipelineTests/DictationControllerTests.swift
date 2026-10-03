@@ -886,6 +886,49 @@ struct DictationControllerControlTests {
         #expect(await harness.capture.calls.events == [.start, .stop], "stopped, not cancelled")
     }
 
+    @Test("Start twice records once, and the second says it was already listening")
+    func startTwiceRecordsOnce() async {
+        let harness = makeHarness(activation: .holdToTalk)
+
+        #expect(await harness.controller.command(.start) == .started)
+        #expect(await harness.controller.command(.start) == .alreadyRecording)
+
+        #expect(await harness.pipeline.currentState == .recording)
+        #expect(await harness.capture.calls.events == [.start])
+    }
+
+    @Test("Stop with nothing recording changes nothing and says so")
+    func stopWithNothingRecording() async {
+        let harness = makeHarness(activation: .holdToTalk)
+
+        #expect(await harness.controller.command(.stop) == .nothingRecording)
+        #expect(await harness.controller.command(.cancel) == .nothingRecording)
+
+        #expect(await harness.capture.calls.events.isEmpty)
+        #expect(harness.inserter.received.isEmpty)
+    }
+
+    @Test("Stop finishes and inserts the words")
+    func stopFinishesAndInserts() async {
+        let harness = makeHarness(activation: .holdToTalk)
+        _ = await harness.controller.command(.start)
+
+        #expect(await harness.controller.command(.stop) == .finished)
+        #expect(harness.inserter.received == [controllerTidied])
+        #expect(await harness.capture.calls.events == [.start, .stop])
+    }
+
+    @Test("Cancel mid-recording inserts nothing, as Escape does")
+    func cancelInsertsNothing() async {
+        let harness = makeHarness(activation: .holdToTalk)
+        _ = await harness.controller.command(.start)
+
+        #expect(await harness.controller.command(.cancel) == .cancelled)
+        #expect(harness.inserter.received.isEmpty)
+        #expect(!(await harness.pipeline.currentState.isListening))
+        #expect(await harness.controller.currentStopGesture == .letGo)
+    }
+
     @Test("a shortcut hold still finishes a recording started by a click")
     func shortcutFinishesClickStartedRecording() async {
         let harness = makeHarness(activation: .holdToTalk)
