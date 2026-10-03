@@ -2,6 +2,7 @@
 import Testing
 
 @testable import UttrflowEval
+import UttrflowCore
 
 /// Normalisation decides the number, so each rule is tested for what it folds away and what it must not.
 @Suite("Normalisation")
@@ -70,6 +71,16 @@ struct TextNormaliserTests {
     func ambiguousNumberWords() {
         #expect(normaliser.words("बता दो") == ["बता", "दो"])
         #expect(normaliser.words("एक बार") == ["एक", "बार"])
+    }
+
+    /// Every word the normaliser folds comes from `NumberWords`, so a key added only here fails.
+    @Test("the normaliser's number words all come from NumberWords")
+    func numberWordsHaveOneHome() {
+        for (word, value) in TextNormaliser.numberWordDigits {
+            #expect((NumberWords.english[word] ?? NumberWords.hindi[word]) == value, "\(word)")
+        }
+        #expect(TextNormaliser.numberWordDigits["nineteen"] == 19)
+        #expect(TextNormaliser.numberWordDigits["hundred"] == nil)
     }
 
     @Test("joins a spoken decimal back together")
