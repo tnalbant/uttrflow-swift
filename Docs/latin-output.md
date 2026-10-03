@@ -119,6 +119,34 @@ nothing; precomposed and decomposed nukta, chandrabindu and anusvara, and insert
 one output and one `soundKey`; and a run of words is written word for word with its spacing
 kept. `UTTRFLOW_SEED` replays one seed. None is broken on the tree this landed on.
 
+### English loanwords outside the table
+
+Only the loanwords in `commonSpellings` come out in English spelling; every other English word
+the recogniser writes in Devanagari is spelt by the syllable rules ("मैनेजर" mainejar).
+`LoanwordRestorationProbeTests` measures whether the guard's own acceptance test
+(`isRespelling`: a shared Double Metaphone key of at least two sounds, not an ordinary
+collision) could restore the English spelling, taking candidates from
+`GeneralVocabulary.wordsSounding(like:)` and restoring only when exactly one qualifies. Measured
+on 100 invented loanwords and 122 ordinary Hindi words, on an Apple M5 Pro:
+
+| Loanwords | Count | Examples |
+|---|---|---|
+| already spelt in English | 9 | report, link, student |
+| restorable by the match | 13 | draapht draft, teem team, histri history |
+| same sound, but not in the vocabulary | 63 | mainejar manager, tikat ticket, kainsal cancel |
+| sounds differ by the guard's test | 15 | kanpani company, nanbar number, sarwar server |
+
+| Hindi words | Count | Wrongly restored |
+|---|---|---|
+| ordinary Hindi | 122 | 8: naam name, baccha back, daal daily, sona soon, paani pani, khaana khana, jaan jaana, kaan kaun |
+
+So the match cannot be the restoration step as it stands: it reaches 13 of the 91 misspelt
+loanwords, because the vocabulary holds almost none of them, and it rewrites 8 of 122 Hindi
+words (6.6%), four of them into English, against a bar of none. Excluding listed Hindi words
+removes neither "baccha" nor "sona", which the vocabulary does not list. Restoring loanwords
+needs a list of English words that is a deliberate product choice, and a Hindi lexicon broad
+enough to veto every collision; neither exists today.
+
 ## The script guard
 
 A model can answer Devanagari with a translation, with the prompt's own worked example, or in
