@@ -26,9 +26,11 @@ public enum Romaniser {
                 while end < scalars.count, isWordScalar(scalars[end]) { end += 1 }
                 let spelled = word(Array(scalars[index..<end]))
                 let opens = capitalisingSentences && outputEndsSentence
+                if index > 0, isOtherScriptLetter(scalars[index - 1]) { output.append(" ") }
                 output.append(
                     contentsOf: (opens ? spelled.prefix(1).uppercased() + spelled.dropFirst() : spelled)
                         .unicodeScalars)
+                if end < scalars.count, isOtherScriptLetter(scalars[end]) { output.append(" ") }
                 outputEndsSentence = false
                 index = end
             } else {
@@ -278,6 +280,11 @@ public enum Romaniser {
     /// Whether a scalar is in the Devanagari block.
     static func isDevanagari(_ scalar: Unicode.Scalar) -> Bool {
         (0x0900...0x097F).contains(scalar.value)
+    }
+
+    /// Whether a scalar is a letter or digit of another script, so a change to or from Devanagari beside it is a word boundary.
+    private static func isOtherScriptLetter(_ scalar: Unicode.Scalar) -> Bool {
+        !isDevanagari(scalar) && CharacterSet.alphanumerics.contains(scalar)
     }
 
     /// Whether a scalar belongs inside a Devanagari word: a letter or sign, or a joiner between them.
