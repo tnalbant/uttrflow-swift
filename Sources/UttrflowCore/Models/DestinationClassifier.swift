@@ -1,3 +1,5 @@
+import Foundation
+
 /// One row of the table that turns an app into a destination.
 public struct DestinationRule: Sendable, Equatable, Codable {
     /// Bundle identifiers this row covers, matched as case-insensitive prefixes.
@@ -48,30 +50,39 @@ public struct DestinationRule: Sendable, Equatable, Codable {
         return bundlePrefixes.contains { bundle.hasPrefix($0.lowercased()) }
     }
 
-    /// Whether the app's window title falls under this row, which decides only an app no row names.
+    /// Whether the app's window title names this row's app at its edge, which decides only an app no row names.
     public func matchesTitle(_ app: AppContext) -> Bool {
         guard let title = app.documentName?.lowercased(), !title.isEmpty else { return false }
         return titleContains.contains { DestinationRule.title(title, names: $0.lowercased()) }
     }
 
-    /// Whether the fragment stands as whole words in the title, so "Gmail" is not read out of "gmailer".
+    /// Whether the fragment is the title's first or last segment, the place a hosted web app writes its own name.
     static func title(_ title: String, names fragment: String) -> Bool {
-        guard !fragment.isEmpty, title.count >= fragment.count else { return false }
-        let title = Array(title)
-        let fragment = Array(fragment)
-        for start in 0...(title.count - fragment.count)
-        where Array(title[start..<(start + fragment.count)]) == fragment {
-            let end = start + fragment.count
-            let opens = start == 0 || !isWordCharacter(title[start - 1])
-            let closes = end == title.count || !isWordCharacter(title[end])
-            if opens && closes { return true }
-        }
-        return false
+        guard !fragment.isEmpty else { return false }
+        let segments = titleSegments(title)
+        guard let first = segments.first, let last = segments.last else { return false }
+        return first == fragment || last == fragment
     }
 
-    /// A letter or a digit, which is what the rule above counts as part of a word.
-    private static func isWordCharacter(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber
+    /// The separators a browser tab puts between a page's subject and the app that hosts it.
+    private static let titleSeparators = [" - ", " | ", " – ", " — ", " · ", " • "]
+
+    /// The title split at its separators, trimmed, with a leading unread count such as "(3) " removed.
+    static func titleSegments(_ title: String) -> [String] {
+        var segments = [title]
+        for separator in titleSeparators {
+            segments = segments.flatMap { $0.components(separatedBy: separator) }
+        }
+        return segments.map { withoutUnreadCount($0.trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// The segment without a leading parenthesised number, which a web app adds for unread items.
+    private static func withoutUnreadCount(_ segment: String) -> String {
+        guard segment.hasPrefix("("), let close = segment.firstIndex(of: ")") else { return segment }
+        let inside = segment[segment.index(after: segment.startIndex)..<close]
+        guard !inside.isEmpty, inside.allSatisfy({ $0.isNumber || $0 == "+" }) else { return segment }
+        return segment[segment.index(after: close)...].trimmingCharacters(in: .whitespaces)
     }
 
     /// Whether a whole word of the app's name falls under this row, so "Barcode Buddy" is not an editor.

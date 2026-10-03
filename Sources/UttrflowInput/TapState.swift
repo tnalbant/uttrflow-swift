@@ -13,7 +13,9 @@ final class TapState: @unchecked Sendable {
     /// Whether an application menu is open, which returns claimed keys to the application.
     private let nativeMenuIsOpen = Atomic<Bool>(false)
     /// The accept key whose repeat key-downs stay swallowed after the first press.
-    private let repeatingAcceptKey = Atomic<UInt32?>(nil)
+    private let repeatingAcceptKey = Atomic<UInt32>(TapState.noAcceptKey)
+    /// Marks no accept key as repeating; key codes are 16-bit, so it never names a real key.
+    private static let noAcceptKey = UInt32.max
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
     let hold: KeyHold
 
@@ -137,7 +139,7 @@ final class TapState: @unchecked Sendable {
                 let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
                 return !suppressUnarmedTab || stroke != KeyStroke(.tab) || bareTabIsArmed
             })
-        repeatingAcceptKey.store(nil, ordering: .releasing)
+        repeatingAcceptKey.store(Self.noAcceptKey, ordering: .releasing)
         return isListening
     }
 
