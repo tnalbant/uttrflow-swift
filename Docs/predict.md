@@ -673,7 +673,8 @@ Read them together, because each one alone is misleading in the same direction:
    account and routing numbers, dates of birth and security answers are treated as
    secure when the field name, placeholder or description says so. A short value of 2 to 8
    digits, grouped only by whitespace, hyphens or periods, outside a terminal is also never
-   learned, because an OTP, PIN, CVV or compact date has no safe context in the corpus. A
+   learned, because an OTP, PIN, CVV or compact date has no safe context in the corpus. A terminal
+   prompt label with a recognised password, passphrase, PIN, code or token term is also secure. A
    password field that a
    completion has ever seen is a password in a database.
 5. **Self-sourced evidence is discounted.** An entry that reached the corpus because the
