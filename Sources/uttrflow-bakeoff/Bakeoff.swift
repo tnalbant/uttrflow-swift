@@ -478,8 +478,9 @@ struct StoredReport: Codable, Sendable {
             CaseResult(
                 caseID: $0.caseID, category: corpus[$0.caseID]?.category.rawValue ?? "unknown",
                 destination: corpus[$0.caseID]?.destination.rawValue,
-                similarity: $0.similarity, lost: $0.lost, invented: $0.invented,
+                similarity: $0.similarity,
                 markAccuracy: $0.markAccuracy, caseAccuracy: $0.caseAccuracy,
+                lost: $0.lost, invented: $0.invented,
                 brokeShape: $0.brokeShape, passed: $0.passed, declined: $0.declined)
         }
     }
