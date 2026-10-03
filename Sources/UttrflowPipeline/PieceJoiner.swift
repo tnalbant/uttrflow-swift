@@ -228,10 +228,9 @@ enum PieceJoiner {
         if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
-            !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline)),
-            !sentenceRunsOn(text, into: next)
+            !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline))
         else { return text }
-        return WordShape.finished(text)
+        return sentenceRunsOn(text, into: next) ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
     }
 
     /// Whether a piece ends with the spoken command that opens a new line.
@@ -249,6 +248,26 @@ enum PieceJoiner {
     static func sentenceRunsOn(_ text: String, into next: String) -> Bool {
         SentenceBoundaryEvidence.sentenceRunsOn(text, into: next)
             || trailingTriggerDiscardsWords(in: text, before: next)
+            || groupRunsAcross(text, into: next)
+    }
+
+    /// The longest digit group or letter run a speaker says in one breath, as in a phone number's "555" or a code's "AB".
+    static let longestSpokenGroup = 6
+
+    /// Whether the seam falls between two groups of one spoken number or code, with no mark at the cut but a full stop.
+    private static func groupRunsAcross(_ text: String, into next: String) -> Bool {
+        guard let last = text.split(whereSeparator: \.isWhitespace).last.map({ WordShape(String($0)) }),
+            let first = next.split(whereSeparator: \.isWhitespace).first.map({ WordShape(String($0)) })
+        else { return false }
+        return (last.suffix.isEmpty || last.suffix == ".") && first.prefix.isEmpty && isSpokenGroup(last.core)
+            && isSpokenGroup(first.core)
+    }
+
+    /// A rendered digit group, or a run of capital letters said one at a time, no longer than `longestSpokenGroup`.
+    private static func isSpokenGroup(_ core: String) -> Bool {
+        guard core.count <= longestSpokenGroup else { return false }
+        if core.allSatisfy(\.isASCII) && core.allSatisfy(\.isNumber) { return !core.isEmpty }
+        return core.count > 1 && core.allSatisfy { $0.isASCII && $0.isUppercase }
     }
 
     /// The cleaned pieces as one text: a spoken list, a paragraph at a topic, a restatement across the seam, else a space.

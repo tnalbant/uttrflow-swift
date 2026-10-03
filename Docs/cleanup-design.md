@@ -322,8 +322,14 @@ alone. Some cleanings only make sense over the whole:
   side of the cut show the sentence ran through it: the piece ends on a word no sentence ends
   on ("we moved the review to"), or the next piece opens on a preposition a speaker never
   fronts followed by a name or a determiner ("to Thursday"), which is a phrase continuing the
-  clause before it. A seam with no evidence either way keeps its stop, which is what #183
-  asked for.
+  clause before it. A digit group or a run of capital letters on both sides of the cut, at
+  most `PieceJoiner.longestSpokenGroup` long, is one number or code said in groups ("555" |
+  "0142", "AB" | "123"), and the groups are joined with a space. Where the evidence says the
+  sentence ran through, a full stop the recogniser wrote at the cut comes off too; a question
+  or exclamation mark stays, and the group row abstains on it. A seam with no evidence either
+  way keeps its stop, which is what #183 asked for. The group row's cost is a sentence that
+  ends on a number before one that opens on a number ("It costs 12." | "13 people came."),
+  which it joins; its measurement is in `PieceJoinerTests`.
 
 Some passes are only correct over the whole message, and their scope is in the type.
 `CleaningPipeline.piece(numbers:digits:steps:)` is what a piece gets — it takes no
