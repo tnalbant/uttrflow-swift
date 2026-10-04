@@ -2300,6 +2300,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
         if case .inserted(let outcome) = state {
             lastCleanedBy = outcome.cleanedBy
+            if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
+                actionNotice = notice
+                announce(notice.message, urgently: false)
+            }
             if !appleIntelligenceFallbackNoticeShown,
                 outcome.cleanedBy == .rules,
                 let unavailable = outcome.unavailableEngines.first(where: {
