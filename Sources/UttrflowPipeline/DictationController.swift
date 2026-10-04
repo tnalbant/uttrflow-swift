@@ -259,7 +259,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         answer(handled, with: ())
     }
 
-    private func answer<Outcome: Sendable>(_ handled: CheckedContinuation<Outcome, Never>, with outcome: Outcome) {
+    private func answer<Outcome: Sendable>(
+        _ handled: CheckedContinuation<Outcome, Never>, with outcome: Outcome
+    ) {
         guard let processing else { return handled.resume(returning: outcome) }
         Task {
             await processing.value

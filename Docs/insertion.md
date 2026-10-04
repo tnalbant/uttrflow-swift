@@ -36,6 +36,12 @@ Every strategy that sends words makes the same two checks immediately before it 
 destination is no longer the frontmost application. The typed strategy makes both, so a switch to
 an app with no readable field is refused rather than typed into.
 
+The typed strategy also refuses, with `noFocusedTextField`, when a focused element is published
+and its role is not a text-entry role (`FocusedElementKind.control`): in a page body, a list or a
+file browser, letters are commands. It still types when the application publishes no focused
+element at all (`FocusedElementKind.unpublished`), which is how a bundled-browser composer takes
+dictation. The check is made in `canInsert()`, before the first chunk and before every later one.
+
 The typed strategy posts its text `TypedTextInsertionEngine.chunkLength` characters at a time,
 yields between chunks and makes the same checks again before each chunk after the first, against
 the captured destination or, without one, the application in front at the first chunk. A check

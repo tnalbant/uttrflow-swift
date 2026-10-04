@@ -102,7 +102,8 @@ public enum DictationPresenter {
                 secondaryLine: outcome.wordsToKeep.map { preview(of: $0) },
                 showsWaveform: false, showsProgress: false, isRecording: false, action: nil,
                 accessibilityLabel:
-                    "Copied to the clipboard. Press Command V to paste it.\(missing(outcome)) \(said(outcome))")
+                    "Copied to the clipboard. Press Command V to paste it.\(missing(outcome)) \(said(outcome))"
+            )
 
         case .inserted(let outcome) where outcome.method == .clipboard:
             // Nothing was typed, and saying "Inserted" here is what tells the user to press ⌘V.
@@ -113,7 +114,8 @@ public enum DictationPresenter {
                 action: .openSystemSettings(.accessibility),
                 accessibilityLabel:
                     "Copied to the clipboard, not typed. Press Command V to paste it. "
-                    + "Uttrflow needs Accessibility access to type for you.\(missing(outcome)) \(said(outcome))")
+                    + "Uttrflow needs Accessibility access to type for you.\(missing(outcome)) \(said(outcome))"
+            )
 
         case .inserted(let outcome) where outcome.arrival == .unconfirmed:
             // The instruction is worth more than the glance here, since the words are still recoverable.

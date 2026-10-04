@@ -313,6 +313,14 @@ prose-keeps-spoken-parentheses	Open paren close paren.
 prose-keeps-spoken-snake-case	Snake case max retries.
 question-mark-new-line	Is it ready?\nYes.
 question-mark-new-line-thanks	What do you think?\nThanks.
+quick-entry-fantastical	Lunch with Sam tomorrow
+quick-entry-fantastical-every-week	Team review every Monday
+quick-entry-omnifocus	Renew the passport next week
+quick-entry-omnifocus-weekday	Dentist on Friday
+quick-entry-things	Remind me to call the plumber tomorrow
+quick-entry-things-every-month	Pay rent every month
+quick-entry-todoist	Water the plants every other day
+quick-entry-todoist-today	Send the invoice today
 quotation-opening-the-text	"The build is green" that is what he said.
 quoted-whole-utterance	"We ship on Friday."
 reminders-title-no-stop	Water the plants

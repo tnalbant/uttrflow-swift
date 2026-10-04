@@ -322,6 +322,12 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     /// Anything focused at all, without asking it to report a selection.
     public func hasFocusedElement() -> Bool { focusedElement() != nil }
 
+    public func focusedElementKind() -> FocusedElementKind {
+        let element = focusedElement()
+        return .of(
+            role: element.flatMap { stringAttribute(kAXRoleAttribute, of: $0) }, isPublished: element != nil)
+    }
+
     public func isTrusted() -> Bool { AXIsProcessTrusted() }
 
     public func isSelfFrontmost() -> Bool {

@@ -1581,6 +1581,128 @@ public enum EvaluationCorpus {
             mustEndWith: "?"
         ),
 
+        // A line a calendar or task app parses keeps every date word and takes no stop.
+        .init(
+            id: "quick-entry-things", category: .contextual,
+            spoken: "remind me to call the plumber tomorrow",
+            expected: "Remind me to call the plumber tomorrow",
+            mustKeep: ["plumber", "tomorrow"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Remind",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-things-every-month", category: .contextual,
+            spoken: "pay rent every month",
+            expected: "Pay rent every month",
+            mustKeep: ["rent", "every", "month"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Upcoming"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Pay",
+            mustEndWith: "month"
+        ),
+        .init(
+            id: "quick-entry-omnifocus", category: .contextual,
+            spoken: "renew the passport next week",
+            expected: "Renew the passport next week",
+            mustKeep: ["passport", "next", "week"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Renew",
+            mustEndWith: "week"
+        ),
+        .init(
+            id: "quick-entry-omnifocus-weekday", category: .contextual,
+            spoken: "dentist on friday",
+            expected: "Dentist on Friday",
+            mustKeep: ["Dentist", "Friday"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Forecast"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Dentist",
+            mustEndWith: "Friday"
+        ),
+        .init(
+            id: "quick-entry-fantastical", category: .contextual,
+            spoken: "lunch with Sam tomorrow",
+            expected: "Lunch with Sam tomorrow",
+            mustKeep: ["Sam", "tomorrow"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Lunch",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-fantastical-every-week", category: .contextual,
+            spoken: "team review every monday",
+            expected: "Team review every Monday",
+            mustKeep: ["every", "Monday"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Team",
+            mustEndWith: "Monday"
+        ),
+        .init(
+            id: "quick-entry-todoist", category: .contextual,
+            spoken: "water the plants every other day",
+            expected: "Water the plants every other day",
+            mustKeep: ["every", "other", "day"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Water",
+            mustEndWith: "day"
+        ),
+        .init(
+            id: "quick-entry-todoist-today", category: .contextual,
+            spoken: "send the invoice today",
+            expected: "Send the invoice today",
+            mustKeep: ["invoice", "today"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Send",
+            mustEndWith: "today"
+        ),
+
         // Each names its destination outright, so the formatter is measured and not the classifier.
         .init(
             id: "message-two-sentences-no-stop", category: .contextual,

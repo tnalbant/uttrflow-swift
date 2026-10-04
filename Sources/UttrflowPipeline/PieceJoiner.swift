@@ -80,8 +80,24 @@ enum PieceJoiner {
     static func seamed(
         _ pieces: [String], heard: [String] = [], under formatter: DestinationFormatter
     ) -> [String] {
-        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
-        return pieces.enumerated().map { index, text in
+        let joined = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
+        // A piece tidied to nothing has no seam, so each seam is judged against the next piece with words.
+        let worded = joined.indices.filter { !joined[$0].allSatisfy(\.isWhitespace) }
+        let heard = heard.count == joined.count ? worded.map { heard[$0] } : []
+        var seamed = joined
+        for (position, text) in seamedWorded(worded.map { joined[$0] }, heard: heard, under: formatter)
+            .enumerated()
+        {
+            seamed[worded[position]] = text
+        }
+        return seamed
+    }
+
+    /// Seams pieces that all have words, each judged against its neighbours.
+    private static func seamedWorded(
+        _ pieces: [String], heard: [String], under formatter: DestinationFormatter
+    ) -> [String] {
+        pieces.enumerated().map { index, text in
             guard index > 0,
                 sentenceRunsOn(pieces[index - 1], into: text)
                     || groupRunsAcross(
@@ -565,7 +581,8 @@ enum PieceJoiner {
         draft.replace(at: head, with: WordShape.capitalised(draft.words[head].text), by: id)
         draft.replace(at: tail, with: WordShape.withoutTrailingStop(draft.words[tail].text), by: id)
         // A stop at a seam the item's next words continue in lower case is the pause's, not the speaker's.
-        for (word, next) in zip(body, body.dropFirst()) where word != tail && starts.contains(next)
+        for (word, next) in zip(body, body.dropFirst())
+        where word != tail && starts.contains(next)
             && draft.shape(at: word).endsSentence && draft.shape(at: next).core.first?.isLowercase == true
         {
             draft.replace(at: word, with: WordShape.withoutTrailingStop(draft.words[word].text), by: id)
@@ -622,12 +639,13 @@ enum PieceJoiner {
         {
             return true
         }
-        return afterPause && Self.topics.contains { phrase in
-            position + phrase.count <= live.count
-                && zip(phrase, live[position..<position + phrase.count]).allSatisfy {
-                    $0 == draft.shape(at: $1).key
-                }
-        }
+        return afterPause
+            && Self.topics.contains { phrase in
+                position + phrase.count <= live.count
+                    && zip(phrase, live[position..<position + phrase.count]).allSatisfy {
+                        $0 == draft.shape(at: $1).key
+                    }
+            }
     }
 
     // MARK: The words this reads

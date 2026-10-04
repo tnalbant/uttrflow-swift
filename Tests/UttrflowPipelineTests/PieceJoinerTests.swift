@@ -236,6 +236,18 @@ struct PieceJoinerParagraphTests {
                 == "Guide.\nCheck the build.")
     }
 
+    @Test("breaks a line in a place that runs the text only where the speaker asked for one")
+    func executingPlaceGetsOnlySpokenLines() {
+        let topics = ["List the files.", "Then we can talk about lunch plans tomorrow."]
+        for destination in Destination.allCases {
+            let consequence = DestinationFormatter.standard(for: destination).consequence
+            guard consequence == .executes else { continue }
+            let unasked = joined(topics, destination)
+            #expect(!unasked.contains("\n"), "\(destination)")
+            #expect(joined(["ls new line", "pwd"], destination) == "ls\npwd", "\(destination)")
+        }
+    }
+
     @Test("does not capitalize the next piece when a layout command ends its piece")
     func layoutCommandWithoutBodyInItsPiece() {
         #expect(
@@ -632,6 +644,15 @@ struct PieceJoinerSeamTests {
             [piece(first), piece(next)], under: .standard(for: .document))
 
         #expect(whole.cleaned.text == expected)
+    }
+
+    @Test("judges a seam against the next piece with words when a piece between was tidied to nothing")
+    func judgesSeamPastAnEmptyPiece() {
+        let whole = PieceJoiner.join(
+            [piece("We moved the review."), piece("", heard: "um"), piece("To the Thursday slot.")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "We moved the review to the Thursday slot.")
     }
 
     @Test("preserves a name whether or not the recognizer inserted a seam stop")

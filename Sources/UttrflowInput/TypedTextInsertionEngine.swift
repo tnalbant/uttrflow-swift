@@ -34,8 +34,12 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
         self.finishWaitStarted = finishWaitStarted
     }
 
-    /// Anything but ourselves; Electron apps expose no focused element and still take typing.
-    public func canInsert() async -> Bool { !focus.isSelfFrontmost() }
+    /// Anything but ourselves or a focused control; Electron apps expose no focused element and still take typing.
+    public func canInsert() async -> Bool {
+        guard !focus.isSelfFrontmost() else { return false }
+        let focus = focus
+        return await AccessibilityThread.run(orElse: .unpublished) { focus.focusedElementKind() } != .control
+    }
 
     /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival {
@@ -60,7 +64,7 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
     /// The one check made immediately before key events are posted: self in front, destination moved, or cancelled.
     func refuseIfStale(_ destination: InsertionDestination?) throws(TextInsertionError) {
         try TextInsertion.requireLive()
-        try refuseIfSelfFrontmost()
+        try refuseIfNotTypable()
         try TextInsertion.requireTarget(destination, focus: focus)
     }
 }
@@ -97,10 +101,10 @@ extension TypedTextInsertionEngine: CompletionWriting {
                 throw .insertionRejected(
                     description: "the text before the caret is not what would be replaced")
             }
-            try refuseIfSelfFrontmost()
+            try refuseIfNotTypable()
             try typist.deleteBackwards(count)
         } else {
-            try refuseIfSelfFrontmost()
+            try refuseIfNotTypable()
         }
         try await typeInChunks(text, targeting: nil)
     }
@@ -151,8 +155,10 @@ private final class TypedWriteState: Sendable {
 
 extension TypedTextInsertionEngine {
     /// Re-checked at the write rather than trusted from `canInsert()`, whose answer can go stale by now.
-    private func refuseIfSelfFrontmost() throws(TextInsertionError) {
-        guard !focus.isSelfFrontmost() else { throw .noFocusedTextField }
+    private func refuseIfNotTypable() throws(TextInsertionError) {
+        guard !focus.isSelfFrontmost(), focus.focusedElementKind() != .control else {
+            throw .noFocusedTextField
+        }
     }
 
     /// Characters posted between checks, small enough that a stop lands within a few milliseconds of typing.
