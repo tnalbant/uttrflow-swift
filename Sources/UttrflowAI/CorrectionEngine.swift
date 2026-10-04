@@ -140,11 +140,12 @@ struct UncertainSpan: Sendable, Equatable {
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
     static func spans(in draft: Draft, below threshold: Double) -> [UncertainSpan] {
-        spans(
-            in: draft.words
-                .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-                .map { ($0.text, $0.confidence) },
-            below: threshold)
+        spans(in: saidWords(in: draft).map { ($0.text, $0.confidence) }, below: threshold)
+    }
+
+    /// The draft's words a run's range counts over: those still standing that the recogniser heard.
+    static func saidWords(in draft: Draft) -> [Draft.Word] {
+        draft.words.filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
     }
 
     /// Why one word is doubted, or `nil` when it is not: a low score first, else membership of a homophone group.

@@ -181,7 +181,7 @@ public struct MeaningPreservationGuard: Sendable {
         var taken: [Reading] = []
         guard !doubtful.isEmpty else { return (.accepted, excused, taken) }
         for span in doubtful {
-            for place in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)) {
+            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated() {
                 let touched = alignment.changes.filter { $0.kept.overlaps(place) }
                 // A run the rewrite left where it stood is the run as it was heard, and needs no reading.
                 guard let first = touched.first, let last = touched.last else { continue }
@@ -197,6 +197,22 @@ public struct MeaningPreservationGuard: Sendable {
                         .contains(alignment.standing(in: start..<end))
                 }
                 let offered = span.candidates.filter { writes($0.spelling) }
+                // A later mention of the same words was offered nothing, so it stands as it was heard.
+                guard span.isDoubted(at: ordinal) else {
+                    guard
+                        Self.reading(
+                            among: offered, heard: span.heard,
+                            standing: alignment.standingAsWritten(in: start..<end)) == nil
+                    else {
+                        return (
+                            .rejected(
+                                reason: "the rewrite read '\(span.heard)' as a reading offered for another mention",
+                                kind: .unofferedReading),
+                            excused, taken
+                        )
+                    }
+                    continue
+                }
                 guard writes(span.heard) || !offered.isEmpty else {
                     return (
                         .rejected(
@@ -679,7 +695,8 @@ public struct MeaningPreservationGuard: Sendable {
             let offeredReading = doubtful.enumerated().first { entry in
                 let (spanIndex, span) = entry
                 guard !usedReadings.contains(spanIndex) else { return false }
-                return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
+                return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated()
+                    .filter { span.isDoubted(at: $0.offset) }.map(\.element).contains { source in
                     alignment.changes.contains { change in
                         change.kept.overlaps(source) && change.rewritten.contains(index)
                             && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
