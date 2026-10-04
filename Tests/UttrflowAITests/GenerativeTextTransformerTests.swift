@@ -504,7 +504,7 @@ struct GenerativeTextTransformerTests {
     @Test("surfaces a model failure rather than returning the raw transcript silently")
     func surfacesModelFailure() async {
         let model = FakeCleanupModel()
-        model.fail(with: .transformFailed(kind: .foundationModels, description: "busy"))
+        model.fail(with: .transformFailed(kind: .foundationModels, failure: .other))
         let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
 
         await #expect(throws: TransformationError.self) { try await sut.transform(request("hello")) }

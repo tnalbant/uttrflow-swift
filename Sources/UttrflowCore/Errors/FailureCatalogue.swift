@@ -64,7 +64,7 @@ extension TransformationError: CataloguedFailure {
 
     public var caseAfter: Self? {
         switch self {
-        case .noCapableTransformer: .transformFailed(kind: .rules, description: "")
+        case .noCapableTransformer: .transformFailed(kind: .rules, failure: .other)
         case .transformFailed: .outputRejected(reason: "", kind: .lostWord)
         case .outputRejected: .cancelled
         case .cancelled: nil

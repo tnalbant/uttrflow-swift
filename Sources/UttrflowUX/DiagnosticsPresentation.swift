@@ -796,7 +796,7 @@ public enum DiagnosticsPresenter {
         }
         let failures = record.engineFailures.map {
             DiagnosticsRow(
-                title: "Engine failed", detail: "\($0.engine): \($0.reason)", state: .attention)
+                title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention)
         }
         guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty else {
             return unavailable + failures + refused + changed + off
@@ -828,7 +828,7 @@ public enum DiagnosticsPresenter {
             + record.unavailableEngines.map {
                 "  engine skipped (\($0.engine)): \($0.reason.diagnosticDescription)"
             }
-            + record.engineFailures.map { "  engine failed (\($0.engine)): \($0.reason)" }
+            + record.engineFailures.map { "  engine failed (\($0.engine)): \($0.failureClass.summary)" }
     }
 
     // MARK: - Permissions
