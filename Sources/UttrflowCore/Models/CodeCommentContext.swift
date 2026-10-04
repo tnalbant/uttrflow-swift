@@ -8,6 +8,12 @@ public enum CodeCommentContext {
         return endsInsideComment(precedingText, markers: markers)
     }
 
+    /// Whether the caret sits in executable source: a recognised language, outside any comment.
+    public static func isCode(precedingText: String?, documentName: String?) -> Bool {
+        guard let markers = markers(for: documentName) else { return false }
+        return !(precedingText.map { endsInsideComment($0, markers: markers) } ?? false)
+    }
+
     private struct Markers {
         let line: [String]
         let block: (open: String, close: String)?
