@@ -34,11 +34,14 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
     private final class Live: @unchecked Sendable {
         let engine: AVAudioEngine
         let inputBus: AVAudioNodeBus
+        /// Carries this engine's samples off the tap thread, finished once the tap is removed.
+        let handoff: TapHandoff
         var observer: (any NSObjectProtocol)?
 
-        init(engine: AVAudioEngine, inputBus: AVAudioNodeBus) {
+        init(engine: AVAudioEngine, inputBus: AVAudioNodeBus, handoff: TapHandoff) {
             self.engine = engine
             self.inputBus = inputBus
+            self.handoff = handoff
         }
     }
 
@@ -83,7 +86,7 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         state.withLock { $0.sink = onSamples.map(Sink.init) }
     }
 
-    /// Delivers only to the sink the tap was opened for, so an engine that outlived its recording delivers to nobody.
+    /// Delivers only to the sink the tap was opened for, on the handoff's thread so the tap never waits on this lock.
     private func emit(_ samples: [Float], for owner: Sink) {
         state.withLock { $0.sink === owner ? owner : nil }?.call(samples)
         drainer.blockDelivered()
@@ -120,11 +123,14 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
             throw .unsupportedInputFormat
         }
 
+        let handoff = TapHandoff { [weak self] samples in self?.emit(samples, for: owner) }
         engine.inputNode.installTap(onBus: inputBus, bufferSize: Self.tapBufferSize, format: format) {
-            [weak self] buffer, _ in
-            // On the audio thread: a dropped buffer costs milliseconds, a throw the recording.
-            guard let samples = try? resampler.resample(buffer) else { return }
-            self?.emit(samples, for: owner)
+            buffer, _ in
+            // On the audio thread: converted into reused storage and copied into the handoff, nothing more.
+            handoff.push { part in
+                // A dropped buffer costs milliseconds, a throw the recording.
+                try? resampler.resample(buffer, into: part)
+            }
         }
 
         engine.prepare()
@@ -132,10 +138,11 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
             try engine.start()
         } catch {
             engine.inputNode.removeTap(onBus: inputBus)
+            handoff.finish()
             throw .engineFailed(description: error.localizedDescription)
         }
 
-        let live = Live(engine: engine, inputBus: inputBus)
+        let live = Live(engine: engine, inputBus: inputBus, handoff: handoff)
         let changed = changed.current { [weak self, weak live] in
             guard let self, let live else { return false }
             return self.state.withLock { $0.live === live }
@@ -186,6 +193,7 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         if let observer = live.observer { NotificationCenter.default.removeObserver(observer) }
         live.engine.inputNode.removeTap(onBus: live.inputBus)
         live.engine.stop()
+        live.handoff.finish()
     }
 }
 
