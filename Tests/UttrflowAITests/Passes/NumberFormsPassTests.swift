@@ -555,7 +555,9 @@ struct NumberFormsPassTests {
         #expect(cleaned("March third", by: sut) == "March third")
         #expect(cleaned("third of March", by: sut) == "third of March")
         #expect(cleaned("March twenty fifth", by: sut) == "March 25")
-        #expect(cleaned("march third", by: NumberFormsPass(policy: .always)) == "march third")
+        #expect(cleaned("march third", by: NumberFormsPass(policy: .always)) == "March 3")
+        #expect(cleaned("it is may twelfth", by: sut) == "it is May 12")
+        #expect(cleaned("you may go", by: NumberFormsPass(policy: .always)) == "you may go")
         #expect(cleaned("we may first", by: NumberFormsPass(policy: .always)) == "we may first")
         #expect(cleaned("March thirty second", by: NumberFormsPass(policy: .always)) == "March thirty second")
     }
