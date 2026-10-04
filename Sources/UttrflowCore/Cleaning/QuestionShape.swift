@@ -2,7 +2,9 @@
 public enum QuestionShape {
     /// Whether the words of one sentence ask a direct question.
     public static func asks(_ sentence: [WordShape]) -> Bool {
-        let shapes = sentence.filter { !$0.key.isEmpty }
+        let spoken = sentence.filter { !$0.key.isEmpty }
+        // A label set off by a colon heads the clause after it, which asks or not on its own.
+        let shapes = spoken.lastIndex { $0.suffix.contains(":") }.map { Array(spoken[($0 + 1)...]) } ?? spoken
         let words = shapes.map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
         guard !words.isEmpty else { return false }
         if endsOnATag(words) || trailingRightTagStart(in: shapes) != nil { return true }
