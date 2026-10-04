@@ -37,6 +37,8 @@ struct SpacingPassTests {
             ("really?yes", "really? yes"),
             ("stop!Now", "stop! Now"),
             ("milk,,eggs", "milk,,eggs"),
+            ("add the.env file to.gitignore", "add the .env file to .gitignore"),
+            ("The.env file", "The .env file"),
         ]
     )
     func gluedMark(input: String, expected: String) {
@@ -52,6 +54,7 @@ struct SpacingPassTests {
             "a.m.", "p.m.", "e.g.", "i.e.", "U.S.", "U.S.A.", "etc.", "Mr.Smith", "Dr.Jones", "St.Louis",
             "api:latest", "note:buy", "first;second", "so…", "Self.id", "draft.words", "com.apple.iCal",
             "net.example.App",
+            "agents.md", "home.ssh", "package.json",
             "https://example.com/a", "src/app/main.swift", "user_id", "k8s", "x,y", "a.b", "etc.Next",
         ]
     )
