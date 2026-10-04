@@ -720,11 +720,17 @@ struct SeamSnippetInput: Sendable {
         // The expander saw the text without the seam stops, so an unchanged answer equals that, not the source.
         guard expanded.text != removingSeamStops() else { return .unchanged(text) }
         let expandedChars = Array(expanded.text)
+        // The caret is a character count here, since stops are restored character by character.
+        let caretCharacters = expanded.caret.map {
+            ExpandedTranscript.prefix(of: expanded.text, units: $0).count
+        }
+        var caret: Int?
         var result = ""
         var expandedOffset = 0
         let stopOffsets = Set(removableStops)
         // A removed stop has no character in the expansion, so it never advances the expansion's offset.
         for inputOffset in 0..<source.count {
+            if caret == nil, expandedOffset == caretCharacters { caret = result.utf16.count }
             if stopOffsets.contains(inputOffset) {
                 if expandedOffset < expandedChars.count, expandedChars[expandedOffset].isWhitespace {
                     result.append(".")
@@ -734,8 +740,11 @@ struct SeamSnippetInput: Sendable {
                 expandedOffset += 1
             }
         }
+        if caret == nil, let caretCharacters {
+            caret = result.utf16.count + String(expandedChars[expandedOffset..<caretCharacters]).utf16.count
+        }
         result += expandedChars.dropFirst(expandedOffset)
-        return ExpandedTranscript(text: result, snippets: expanded.snippets)
+        return ExpandedTranscript(text: result, snippets: expanded.snippets, caret: caret)
     }
 }
 

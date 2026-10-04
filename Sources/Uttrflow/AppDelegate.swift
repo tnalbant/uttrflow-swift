@@ -3780,7 +3780,7 @@ private struct StoredSnippets: SnippetExpanding {
             snippets: expansion.applied.map {
                 SnippetUse(
                     snippetID: $0.snippetID, matched: $0.matched, expansion: $0.expansion)
-            })
+            }, caret: expansion.caret)
     }
 }
 
