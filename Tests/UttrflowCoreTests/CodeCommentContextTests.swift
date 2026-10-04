@@ -58,6 +58,40 @@ struct CodeCommentContextTests {
                 precedingText: "let s = \"*/\"\n/* still writing this ", documentName: "Cache.swift"))
     }
 
+    @Test(
+        "calls a line comment after code on the caret's line a comment",
+        arguments: [("main.swift", "let x = f() // "), ("main.py", "x = 1  # "), ("app.js", "a()\nb() // ")])
+    func trailingCommentIsAComment(document: String, preceding: String) {
+        #expect(CodeCommentContext.isComment(precedingText: preceding, documentName: document))
+    }
+
+    @Test(
+        "does not call a line marker inside a string a comment",
+        arguments: [
+            ("main.swift", "let url = \"https://"),
+            ("main.swift", "let url = \"https://x.test\"\nlet y = "),
+        ])
+    func markerInsideStringIsNotAComment(document: String, preceding: String) {
+        #expect(!CodeCommentContext.isComment(precedingText: preceding, documentName: document))
+    }
+
+    @Test(
+        "calls an open Python docstring a comment",
+        arguments: [
+            "def f():\n    \"\"\"", "def f():\n    '''Load ",
+            "\"\"\"Module.\"\"\"\ndef f():\n    \"\"\"",
+        ])
+    func openDocstringIsAComment(preceding: String) {
+        #expect(CodeCommentContext.isComment(precedingText: preceding, documentName: "main.py"))
+    }
+
+    @Test("does not call code after a closed docstring a comment")
+    func closedDocstringIsNotAComment() {
+        #expect(
+            !CodeCommentContext.isComment(
+                precedingText: "def f():\n    \"\"\"Load.\"\"\"\n    return ", documentName: "main.py"))
+    }
+
     @Test("reads the extension off a window title that carries more than the filename")
     func readsExtensionFromAWindowTitle() {
         #expect(
