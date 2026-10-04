@@ -206,6 +206,12 @@ Each registry row declares a `Consequence`, as data, not as a second table:
 | `executes` | a typed Return can run it | terminal |
 | `navigates` | a typed Return can open it | address and search fields (AD.30) |
 
+The value lives on `DestinationFormatter` (`consequence`, typed by `Consequence` in
+`Sources/UttrflowCore/Adapters/Consequence.swift`); a search field's row is `navigates`.
+Capture's `CommitPolicy` reads it to decide where Return finishes a field, in place of its
+own terminal and messaging test. An `executes` row never lays out paragraphs or lists, so
+the only line break that reaches it is one the speaker asked for.
+
 It is the single input to three later decisions, so none of them keeps its own list of apps:
 
 - **the newline rule**: no unspoken line feed, control character or execution trigger reaches

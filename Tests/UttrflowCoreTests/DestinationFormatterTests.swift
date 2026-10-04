@@ -84,6 +84,28 @@ struct DestinationFormatterTests {
         #expect(formatter.layout == .singleLine)
     }
 
+    @Test("declares what each place does with the text, so a field that runs it is not treated like one that keeps it")
+    func consequences() {
+        let expected: [Destination: Consequence] = [
+            .document: .stores, .spreadsheet: .stores, .sqlEditor: .stores, .codeEditor: .stores,
+            .terminal: .executes, .messaging: .sends, .email: .stores, .plain: .stores,
+        ]
+        #expect(expected.count == Destination.allCases.count)
+        for (destination, consequence) in expected {
+            #expect(DestinationFormatter.standard(for: destination).consequence == consequence, "\(destination)")
+        }
+        let search = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        #expect(DestinationFormatter.standard(for: SituationResolver.resolve(from: search)).consequence == .navigates)
+    }
+
+    @Test("never lays out paragraphs or lists where Return runs the text")
+    func executingPlacesAddNoLayout() {
+        for formatter in DestinationFormatter.registry.values where formatter.consequence == .executes {
+            #expect(!formatter.layout.contains(.paragraphs), "\(formatter.destination)")
+            #expect(!formatter.layout.contains(.lists), "\(formatter.destination)")
+        }
+    }
+
     @Test("AX text fields stay on one line")
     func textField() {
         let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
