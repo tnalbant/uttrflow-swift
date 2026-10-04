@@ -23,15 +23,15 @@ public enum TextInsertionError: UttrflowFailure {
     public var userMessage: String {
         switch self {
         case .noFocusedTextField:
-            "There's no text field to type into. Your dictation is saved under Recent in the menu bar."
+            "There's no text field to type into. Your dictation is saved in History."
         case .accessibilityDenied:
             "Accessibility access is required to insert text into other applications."
         case .clipboardUnavailable:
-            "The text couldn't be inserted or copied. It's kept under Recent in the menu bar."
+            "The text couldn't be inserted or copied. It's kept in History."
         case .clipboardChanged:
-            "Your clipboard changed during insertion. Your dictation is saved under Recent in the menu bar."
+            "Your clipboard changed during insertion. Your dictation is saved in History."
         case .insertionTimedOut:
-            "Your dictation didn't arrive in time. It's saved under Recent in the menu bar."
+            "Your dictation didn't arrive in time. It's saved in History."
         case .insertionRejected:
             "The text couldn't be inserted here. It's been copied, so press ⌘V to paste it."
         case .insertionUnconfirmed:
@@ -43,18 +43,18 @@ public enum TextInsertionError: UttrflowFailure {
         }
     }
 
-    /// Wherever the words are: the clipboard, or Recent when the clipboard is what failed.
+    /// Wherever the words are: the clipboard, or History when the clipboard is what failed.
     public var recovery: RecoveryAction? {
         switch self {
-        case .noFocusedTextField: .showRecentDictations
+        case .noFocusedTextField: .showHistory
         case .accessibilityDenied: .openSystemSettings(.accessibility)
         // The clipboard failed, so "paste" would point at the one place the words are not.
-        case .clipboardUnavailable: .showRecentDictations
-        case .clipboardChanged: .showRecentDictations
-        case .insertionTimedOut: .showRecentDictations
-        case .insertionTargetChanged: .showRecentDictations
+        case .clipboardUnavailable: .showHistory
+        case .clipboardChanged: .showHistory
+        case .insertionTimedOut: .showHistory
+        case .insertionTargetChanged: .showHistory
         case .insertionRejected: .pasteManually
-        case .insertionUnconfirmed: .showRecentDictations
+        case .insertionUnconfirmed: .showHistory
         case .insertionNeedsCopy: .copyTranscript
         }
     }

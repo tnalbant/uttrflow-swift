@@ -319,7 +319,7 @@ struct DictationStageTimeoutTests {
             return
         }
         #expect(failure.transcript == "Tidied.")
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
         #expect(failure.message.contains("Recent"))
         #expect(!failure.message.contains("copied"))
         #expect(!failure.message.contains("⌘V"))
@@ -358,7 +358,7 @@ struct DictationStageTimeoutTests {
             return
         }
         #expect(failure.message == TextInsertionError.clipboardUnavailable.userMessage)
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
     }
 
     /// The words are the only thing left when the application will not take them, so the failure carries them.

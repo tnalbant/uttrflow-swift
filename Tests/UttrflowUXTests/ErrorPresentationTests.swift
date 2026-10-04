@@ -176,8 +176,8 @@ struct ErrorPresentationTests {
         #expect(FailurePresenter.symbolName(for: .retry) == "arrow.clockwise")
         #expect(FailurePresenter.symbolName(for: .pasteManually) == "doc.on.clipboard")
         #expect(
-            FailurePresenter.symbolName(for: .showRecentDictations)
-                == "menubar.arrow.up.rectangle")
+            FailurePresenter.symbolName(for: .showHistory)
+                == "clock")
         #expect(FailurePresenter.symbolName(for: nil) == "exclamationmark.triangle")
     }
 
@@ -189,7 +189,7 @@ struct ErrorPresentationTests {
         #expect(FailurePresenter.title(for: .downloadSpeechModel) == "Finish Setup")
         #expect(FailurePresenter.title(for: .pasteManually) == "Dismiss")
         #expect(FailurePresenter.title(for: .copyTranscript) == "Copy")
-        #expect(FailurePresenter.title(for: .showRecentDictations) == "Show Recent")
+        #expect(FailurePresenter.title(for: .showHistory) == "Show History")
     }
 
     @Test("every presenter uses the shared recovery title")
@@ -198,7 +198,7 @@ struct ErrorPresentationTests {
             .openSystemSettings(.microphone), .openSystemSettings(.accessibility),
             .openSystemSettings(.appleIntelligence), .retry, .downloadSpeechModel, .pasteManually,
             .copyTranscript,
-            .showRecentDictations, .retryFromRecording,
+            .showHistory, .retryFromRecording,
         ]
 
         for action in actions {

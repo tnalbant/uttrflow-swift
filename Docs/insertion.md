@@ -7,7 +7,7 @@ in `Sources/UttrflowInput/`: `TextInsertion.swift` is the one place that names e
 `ClipboardTextInsertionEngine` and `PasteboardImageInsertionEngine`. The platform adapters —
 `SystemPasteboard`, `CGEventKeystrokeSender`, `CGEventTypist` and `AXAccessibilityFocus` — are in
 `SystemInput.swift`. **Dictation never writes the clipboard**: it tries an Accessibility write,
-then typed keystrokes, and if both refuse the transcript stays under Recent in the menu bar with
+then typed keystrokes, and if both refuse the transcript stays in History with
 an explicit Copy.
 
 Per-application results are collected in [compatibility.md](compatibility.md); this page feeds
@@ -159,7 +159,7 @@ field, and typing reads nothing back.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
 arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
-is `insertionTimedOut` and points to the transcript under Recent, never to a manual paste that
+is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
 ## Every clipboard write stays on this Mac

@@ -3600,9 +3600,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 putOnClipboard(text, concealed: DictationTextPresentation(text).isSecret, used: nil)
             }
             Task { await pipeline?.acknowledge() }
-        case .showRecentDictations:
-            // Delivery was unconfirmed or the clipboard failed; Recent has the saved words.
-            menuBar.openMenu()
+        case .showHistory:
+            // Delivery was unconfirmed or the clipboard failed; History lists every kept dictation.
+            show(.main(.history))
+            Task { await pipeline?.acknowledge() }
         case .retryFromRecording:
             // The audio sits in today's list on History with its own Retry.
             show(.main(.history))
