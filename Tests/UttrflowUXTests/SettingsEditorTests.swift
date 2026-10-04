@@ -99,6 +99,25 @@ struct SettingsShortcutValidationTests {
         #expect(reason?.contains("⌘") == true)
     }
 
+    @Test("accepts F13 alone as the Dictate shortcut, which a foot switch sends")
+    func acceptsTextlessKeyAlone() {
+        #expect(refusal(.shortcut(.dictate, HotkeyBinding(keyCode: 105, modifiers: []))) == nil)
+    }
+
+    @Test("still refuses a letter or F5 alone with the typing reason", arguments: [UInt16(0), 96])
+    func refusesTypingKeyAlone(keyCode: UInt16) {
+        let reason = refusal(.shortcut(.dictate, HotkeyBinding(keyCode: keyCode, modifiers: [])))
+        #expect(reason == "Hold ⌘, ⌥, ⌃ or ⇧ as well, or the shortcut would fire while you type.")
+    }
+
+    @Test("refuses F13 alone for every claimed action, and says why")
+    func refusesTextlessKeyForClaimedAction() {
+        let bare = HotkeyBinding(keyCode: 105, modifiers: [])
+        for action: ShortcutAction in [.clipboard, .pasteLastTranscript, .copyLastTranscript] {
+            #expect(refusal(.shortcut(action, bare)) == SettingsEditor.bareKeyNotClaimable, "\(action)")
+        }
+    }
+
     @Test("refuses a key code no keyboard sends")
     func refusesUndeliverableKeys() {
         // 0x80 is past the 7-bit virtual key range, so nothing can press it.
