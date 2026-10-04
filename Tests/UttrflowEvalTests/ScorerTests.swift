@@ -426,6 +426,9 @@ struct EvaluationCorpusTests {
     /// A reference that already lost a required word would score every model wrongly.
     @Test("keeps every required word in its own reference answer")
     func referencesAreSelfConsistent() {
+        let urlCase = EvaluationCorpus.all.first { $0.id == "fmt-token-url-path-stopped" }
+        #expect(urlCase?.expected == "The url is https://example.com/docs.")
+        #expect(urlCase?.mustKeep == ["https://example.com/docs"])
         for testCase in EvaluationCorpus.all {
             let score = Scorer.score(testCase.expected, against: testCase)
             #expect(score.keptEverythingRequired, "\(testCase.id) lost \(score.lost)")
