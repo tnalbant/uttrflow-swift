@@ -62,6 +62,7 @@ tag the release:
 | Open `P0` issues reported against the candidate | 0 | `gh issue list --label P0 --state open` |
 | Crash-free sessions in the opt-in report | at or above the previous release | the release-health view described in [`Docs/crash-reporting.md`](Docs/crash-reporting.md) |
 | `make verify` on the tagged commit | exit 0 | the release workflow's verify step for the `-rc` tag |
+| Transcription accuracy against `Scripts/accuracy_baseline.json` | no slice worse | `make accuracy-gate` on the tagged commit, with the shipping model installed |
 
 A new candidate restarts the soak time. A criterion with no data, such as a candidate
 nobody has run yet, is not met.
