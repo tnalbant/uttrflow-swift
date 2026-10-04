@@ -17,7 +17,7 @@ public struct CaseScore: Sendable, Equatable {
     public let deleted: [String]
     /// Words the rewrite invented that the case forbids; worse than losing one.
     public let invented: [String]
-    /// The exact beginning or ending the case required and the rewrite did not have.
+    /// Each required beginning or ending the rewrite did not have, named by its side.
     public let brokeShape: [String]
     /// Whether the rewrite matched the reference exactly after whitespace is collapsed.
     public let isExact: Bool

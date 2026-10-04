@@ -33,7 +33,8 @@ extension MeaningPreservationGuard {
     static func changedIndianGrouping(original: String, rewritten: String) -> String? {
         let spoken = numericSpellings(in: original)
         let written = numericSpellings(in: rewritten)
-        for (index, spelling) in spoken.enumerated() where isIndianGrouped(spelling) {
+        for (index, spelling) in spoken.enumerated()
+        where DigitGrouping.indian.matches(spelling) && !DigitGrouping.thousands.matches(spelling) {
             guard written.indices.contains(index), written[index] == spelling else { return spelling }
         }
         return nil
@@ -65,15 +66,6 @@ extension MeaningPreservationGuard {
             spellings.append(String(characters[start..<index]))
         }
         return spellings
-    }
-
-    /// Indian grouping has a one or two digit leading group, two digit middle groups, and a three digit final group.
-    private static func isIndianGrouped(_ spelling: String) -> Bool {
-        let groups = spelling.split(separator: ",")
-        guard groups.count >= 3, (1...2).contains(groups[0].count), groups.last?.count == 3 else {
-            return false
-        }
-        return groups.dropFirst().dropLast().allSatisfy { $0.count == 2 }
     }
 
     /// The numbers a text states, in order and with repeats kept, each number word read through `table` and every run of them composed after it.

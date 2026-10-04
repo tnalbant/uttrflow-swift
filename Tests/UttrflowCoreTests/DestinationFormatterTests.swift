@@ -139,4 +139,27 @@ struct DestinationFormatterTests {
         let situation = Situation(app: app, insertion: .unknown, destination: .spreadsheet)
         #expect(DestinationFormatter.standard(for: situation).terminalStop == .never)
     }
+
+    private static func codeEditor(document: String, before: String) -> DestinationFormatter {
+        let app = AppContext(documentName: document)
+        let insertion = InsertionPoint(precedingText: before)
+        return DestinationFormatter.standard(
+            for: Situation(app: app, insertion: insertion, destination: .codeEditor))
+    }
+
+    @Test("a README paragraph in a code editor takes a document's stop and lists")
+    func markdownParagraph() {
+        let formatter = Self.codeEditor(document: "README.md", before: "# Setup\n\n")
+        #expect(formatter.terminalStop == .always)
+        #expect(formatter.layout == [.paragraphs, .lists])
+        #expect(Self.codeEditor(document: "notes.txt", before: "").terminalStop == .always)
+    }
+
+    @Test("a Markdown heading and a commit subject stay stopless")
+    func headingAndCommitSubject() {
+        #expect(Self.codeEditor(document: "README.md", before: "Intro\n\n## ").terminalStop == .never)
+        let subject = Self.codeEditor(document: "COMMIT_EDITMSG", before: "")
+        #expect(subject.terminalStop == .never)
+        #expect(subject.layout == .preserveNewlines)
+    }
 }

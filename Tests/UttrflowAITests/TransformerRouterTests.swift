@@ -138,11 +138,11 @@ struct TransformerRouterTests {
         #expect(result.cleaning?.refusals.first?.reason == "changed the meaning")
     }
 
-    @Test("records a failed engine without copying its error text")
+    @Test("records a failed engine by its failure class")
     func recordsEngineFailure() async throws {
         let failed = StubTransformer(
             kind: .foundationModels,
-            error: .transformFailed(kind: .foundationModels, description: "private transcript text"))
+            error: .transformFailed(kind: .foundationModels, failure: .guardrail))
         let router = TransformerRouter(
             engines: [failed, StubTransformer(kind: .rules)], preference: [.foundationModels, .rules])
 
@@ -151,9 +151,8 @@ struct TransformerRouterTests {
         #expect(result.producedBy == .rules)
         #expect(
             result.cleaning?.engineFailures == [
-                .init(engine: TransformerKind.foundationModels.rawValue, reason: "Failed")
+                .init(engine: TransformerKind.foundationModels.rawValue, failureClass: .guardrail)
             ])
-        #expect(!String(describing: result.cleaning).contains("private transcript text"))
     }
 
     @Test("records an unavailable engine and its reason when rules handle the dictation")
@@ -431,7 +430,7 @@ struct TransformerBudgetTests {
         #expect(floor.transformCount == 1)
         #expect(
             result.cleaning?.engineFailures == [
-                .init(engine: TransformerKind.foundationModels.rawValue, reason: "Timed out")
+                .init(engine: TransformerKind.foundationModels.rawValue, failureClass: .timedOut)
             ])
     }
 

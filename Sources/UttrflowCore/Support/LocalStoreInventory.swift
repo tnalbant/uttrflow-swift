@@ -13,6 +13,7 @@ public enum LocalStoreEntry: String, CaseIterable, Sendable {
     case speechModels
     case encryptionKey
     case instanceLock
+    case speechModelLoads
 
     /// The name on disk, relative to this build's folder.
     public var name: String {
@@ -28,6 +29,7 @@ public enum LocalStoreEntry: String, CaseIterable, Sendable {
         case .speechModels: "Models"
         case .encryptionKey: "local-store-encryption-key.v1"
         case .instanceLock: "instance.lock"
+        case .speechModelLoads: "speech-model-loads.v1.json"
         }
     }
 

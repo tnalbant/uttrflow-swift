@@ -108,7 +108,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
         if followingTextContinuesSentence { return word }
-        if hasUnclosedBracket { return word }
+        if insertionPoint.structure?.hasOpenBracketOnCaretLine == true { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
@@ -117,23 +117,6 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         return asks
             ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?", after: preceding)
             : WordShape.finished(word, after: preceding)
-    }
-
-    /// Whether the caret line has an opening bracket without its matching close.
-    private var hasUnclosedBracket: Bool {
-        guard let precedingText = insertionPoint.precedingText else { return false }
-        let line =
-            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        var open: [Character] = []
-        let closingFor: [Character: Character] = [")": "(", "]": "[", "}": "{"]
-        for character in line {
-            if "([{".contains(character) {
-                open.append(character)
-            } else if let expected = closingFor[character], open.last == expected {
-                open.removeLast()
-            }
-        }
-        return !open.isEmpty
     }
 
     /// Whether text after the replacement already ends or continues the sentence.

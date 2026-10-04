@@ -17,6 +17,15 @@ final class ChangeHandler: Sendable {
     func set(_ call: @escaping @Sendable () -> Void) { handler.withLock { $0 = Handler(call: call) } }
 
     func current() -> (@Sendable () -> Void)? { handler.withLock { $0 }?.call }
+
+    /// The current handler, called only while `isCurrent` holds, since removing an observer leaves a queued block to run.
+    func current(while isCurrent: @escaping @Sendable () -> Bool) -> @Sendable () -> Void {
+        let call = current()
+        return {
+            guard isCurrent() else { return }
+            call?()
+        }
+    }
 }
 
 /// The engine behind the microphone, opened and closed on demand so a session can reopen it.
@@ -25,11 +34,14 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
     private final class Live: @unchecked Sendable {
         let engine: AVAudioEngine
         let inputBus: AVAudioNodeBus
+        /// Carries this engine's samples off the tap thread, finished once the tap is removed.
+        let handoff: TapHandoff
         var observer: (any NSObjectProtocol)?
 
-        init(engine: AVAudioEngine, inputBus: AVAudioNodeBus) {
+        init(engine: AVAudioEngine, inputBus: AVAudioNodeBus, handoff: TapHandoff) {
             self.engine = engine
             self.inputBus = inputBus
+            self.handoff = handoff
         }
     }
 
@@ -74,7 +86,7 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         state.withLock { $0.sink = onSamples.map(Sink.init) }
     }
 
-    /// Delivers only to the sink the tap was opened for, so an engine that outlived its recording delivers to nobody.
+    /// Delivers only to the sink the tap was opened for, on the handoff's thread so the tap never waits on this lock.
     private func emit(_ samples: [Float], for owner: Sink) {
         state.withLock { $0.sink === owner ? owner : nil }?.call(samples)
         drainer.blockDelivered()
@@ -111,11 +123,14 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
             throw .unsupportedInputFormat
         }
 
+        let handoff = TapHandoff { [weak self] samples in self?.emit(samples, for: owner) }
         engine.inputNode.installTap(onBus: inputBus, bufferSize: Self.tapBufferSize, format: format) {
-            [weak self] buffer, _ in
-            // On the audio thread: a dropped buffer costs milliseconds, a throw the recording.
-            guard let samples = try? resampler.resample(buffer) else { return }
-            self?.emit(samples, for: owner)
+            buffer, _ in
+            // On the audio thread: converted into reused storage and copied into the handoff, nothing more.
+            handoff.push { part in
+                // A dropped buffer costs milliseconds, a throw the recording.
+                try? resampler.resample(buffer, into: part)
+            }
         }
 
         engine.prepare()
@@ -123,16 +138,20 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
             try engine.start()
         } catch {
             engine.inputNode.removeTap(onBus: inputBus)
+            handoff.finish()
             throw .engineFailed(description: error.localizedDescription)
         }
 
-        let live = Live(engine: engine, inputBus: inputBus)
-        let changed = changed.current()
+        let live = Live(engine: engine, inputBus: inputBus, handoff: handoff)
+        let changed = changed.current { [weak self, weak live] in
+            guard let self, let live else { return false }
+            return self.state.withLock { $0.live === live }
+        }
         // On the main queue, not whichever thread CoreAudio noticed the change on.
         live.observer = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { _ in
-            changed?()
+            changed()
         }
 
         // Published only if the recording is still wanted, so a stop that raced this cannot strand it.
@@ -174,6 +193,7 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         if let observer = live.observer { NotificationCenter.default.removeObserver(observer) }
         live.engine.inputNode.removeTap(onBus: live.inputBus)
         live.engine.stop()
+        live.handoff.finish()
     }
 }
 

@@ -70,8 +70,8 @@ extension SettingsReset {
     /// Whether the user is asked first, which only what nothing brings back requires.
     public var isConfirmed: Bool {
         switch self {
-        case .learnedWords, .suggestions: false
-        case .everything: true
+        case .learnedWords: false
+        case .everything, .suggestions: true
         }
     }
 }

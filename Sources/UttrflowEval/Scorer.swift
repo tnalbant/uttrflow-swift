@@ -2,7 +2,9 @@ import UttrflowCore
 
 /// Scores one rewrite against a reference by word overlap, since several phrasings are correct.
 public enum Scorer {
-    public static func score(_ rewritten: String, against reference: EvaluationCase) -> CaseScore {
+    /// Scores the text as the field shows it, padded at the caret exactly as the pipeline pads it.
+    public static func score(_ output: String, against reference: EvaluationCase) -> CaseScore {
+        let rewritten = reference.context.insertionPoint.paddedBoundary(for: output)
         let produced = tokens(rewritten)
         let wanted = tokens(reference.expected)
         let producedSurface = surfaceWords(rewritten)
@@ -113,11 +115,14 @@ public enum Scorer {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The beginning and ending checked literally, because case and a final mark are what these cases are about.
+    /// The beginning, ending and exact form checked literally, each named with its side so a missing anchor never reads as output.
     static func brokenShape(of rewritten: String, against reference: EvaluationCase) -> [String] {
         var broken: [String] = []
-        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append(head) }
-        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append(tail) }
+        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append("begins with \"\(head)\"") }
+        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append("ends with \"\(tail)\"") }
+        if let exact = reference.expectedExact, rewritten != exact {
+            broken.append("is exactly \"\(exact)\"")
+        }
         return broken
     }
 

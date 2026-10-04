@@ -51,7 +51,8 @@ changes nothing: there is no value that works, so silence is not fixed by tuning
 `VoiceActivity.speechRange(in:sampleRate:)` measures loudness as the root mean square of each
 20 ms frame. A recording holds speech only if both tests pass:
 
-- its 95th-percentile frame reaches the absolute floor, which a quiet room does not;
+- its 95th-percentile frame reaches the absolute floor (about −90 dBFS), excluding digital
+  silence and values below the recording's usable range;
 - and that frame either reaches the speaking level, or stands at least `signalToNoise` times above
   the recording's own 10th-percentile frame: noise sits at one level where speech rises and
   falls.
@@ -59,7 +60,7 @@ changes nothing: there is no value that works, so silence is not fixed by tuning
 | Constant | Value | Meaning |
 |---|---|---|
 | `VoiceActivity.frameDuration` | 20 ms | one loudness frame |
-| `VoiceActivity.absoluteFloor` | 0.005 RMS, about −46 dBFS | quieter than this is silence however quiet the room |
+| `VoiceActivity.absoluteFloor` | 0.0000316 RMS, about −90 dBFS | rejects digital silence and values below the recording's usable range |
 | `VoiceActivity.assumedSpeechLevel` | 0.05 RMS, about −26 dBFS | louder than this is speech whatever its shape |
 | `VoiceActivity.signalToNoise` | 3 | how far speech stands above the room |
 | `VoiceActivity.minimumSpeech` | 120 ms | a shorter burst is a click or a bump |
@@ -82,6 +83,10 @@ floor and **capped at the speaking level**. The cap matters for a piece of a lon
 is mostly speech, so its 10th percentile is not the room: uncapped, the bar would sit above
 ordinary speech and trim real words off the piece's head, and nothing downstream could tell,
 because the boundary falls at a pause and what is left still reads as a whole sentence.
+
+The focused fixtures accept clean speech at −55 dBFS active-speech RMS over −65 dBFS room noise;
+the absolute floor leaves headroom for low input gain while the three-to-one comparison continues
+to reject steady room tone and hiss.
 
 A recording that holds no speech is refused with `SpeechEngineError.nothingHeard` ("Didn't catch
 that."), whose severity is informational.

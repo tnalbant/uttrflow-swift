@@ -29,6 +29,7 @@ EXCLUDED_MODULES = {
     "uttrflow-dev": "developer harness; argument wiring and printing only",
     "uttrflow-eval": "measurement harness; argument wiring and printing only",
     "uttrflow-bakeoff": "measurement harness; argument wiring and printing only",
+    "uttrflow-insertion-fixture": "test-only window driven by Scripts/e2e_insertion.sh, never shipped",
 }
 
 # Files whose behaviour can only be exercised by real hardware or a real user. Each one

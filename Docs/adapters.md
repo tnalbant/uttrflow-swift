@@ -243,7 +243,7 @@ deleted in the same pull request.
 |---|---|---|
 | `CodeEditorCommandsPass`, its symbol table and its casing commands | the source adapter's notation pass reading `NotationTable` rows (AD.20.a, AD.21) | the pass's literal tables, and its copies of "comma", "colon" and "semicolon" that prose punctuation already owns |
 | `SpokenPunctuationPass`'s technical branch: `isTechnicalDestination`, the private cue list, long and short flags, literal hyphens | shell rows in `NotationTable`, and shell cues returned by the shell adapter's `applies(to:)` (AD.16, AD.3) | the `destination` parameter of `SpokenPunctuationPass` |
-| `CodeCommentContext` | the region on `CaretStructure` (CX.15.b), which selects a prose row (section 2) | `CodeCommentContext` and `terminalStop(_:in:)` in `CleaningPipeline+Standard.swift` |
+| `CaretStructure.region` read in `terminalStop(_:in:)` | the region selecting a prose row (section 2) | `terminalStop(_:in:)` in `CleaningPipeline+Standard.swift` |
 | `capitaliseCalendarWords` withheld for code, in two files | a decision on the policy | both `!= .codeEditor` tests |
 | the email greeting rule in `TerminalStopPass` | a `TerminalStopPolicy` value on the email prose row | the `destination == .email` tests |
 

@@ -14,14 +14,18 @@ public actor WhisperKitBackend: TranscriptionBackend {
     private let compute: SpeechComputePlan
     private var kit: LoadedKit?
     private var modelUseLease: ModelDirectoryUseLease?
+    /// Where each finished load is kept for the Diagnostics page; `nil` in a measurement harness.
+    private let loadLog: SpeechModelLoadLog?
 
     public init(
-        model: SpeechModel, modelFolder: URL, prewarm: Bool = true, compute: SpeechComputePlan = .shipping
+        model: SpeechModel, modelFolder: URL, prewarm: Bool = true, compute: SpeechComputePlan = .shipping,
+        loadLog: SpeechModelLoadLog? = nil
     ) {
         self.model = model
         self.modelFolder = modelFolder
         self.prewarm = prewarm
         self.compute = compute
+        self.loadLog = loadLog
     }
 
     /// One frame past the end-of-clip window it is driven with, since a clip no longer than that decodes to nothing.
@@ -107,9 +111,21 @@ public actor WhisperKitBackend: TranscriptionBackend {
         Self.log.info("speech model released from memory")
     }
 
-    /// Says where the load's seconds went, since WhisperKit measures the parts and nothing reads them.
+    /// Says where the load's seconds went, and keeps the load so a slow one can be explained later.
     private func report(_ elapsed: Duration) {
-        guard let timings = kit?.timings else {
+        let timings = kit?.timings
+        let parts = timings.map {
+            SpeechModelLoadParts(
+                prewarm: $0.prewarmLoadTime, specialiseEncoder: $0.encoderSpecializationTime,
+                specialiseDecoder: $0.decoderSpecializationTime, loadEncoder: $0.encoderLoadTime,
+                loadDecoder: $0.decoderLoadTime, tokenizer: $0.tokenizerLoadTime)
+        }
+        do {
+            try loadLog?.record(seconds: elapsed.inSeconds, parts: parts, modelRevision: model.weightsRevision)
+        } catch {
+            Self.log.error("speech model load not kept: \(error.localizedDescription, privacy: .public)")
+        }
+        guard let timings else {
             Self.log.info("speech model loaded in \(elapsed.inSeconds, format: .fixed(precision: 2))s")
             return
         }

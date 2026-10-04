@@ -157,8 +157,8 @@ public enum PromptBlocks {
             - full stops for body paragraphs; leave a greeting paragraph and a closing followed by a name open, keeping a spoken comma
             - at the end only, put a spoken closing followed only by a name on its own lines: blank line, closing, name; use only thanks, best regards, regards, cheers or best, and keep every word in order
             - fix a grammar slip: "the parcel arrive yesterday" → "the parcel arrived yesterday", \
-            "those report is ready" → "those reports are ready", "we have wrote" → "we have written", \
-            "have went" → "have gone", "a orange" → "an orange", "a banana" → "a banana", a drifting tense
+            "those report is ready" → "those reports are ready", "we have sang" → "we have sung", \
+            "have shook" → "have shaken", "a orange" → "an orange", "a banana" → "a banana", a drifting tense
             \(dialectRule)
             """,
         examples: [

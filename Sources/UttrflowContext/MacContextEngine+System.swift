@@ -123,27 +123,28 @@ extension MacContextEngine {
         let title = SurfaceProbe.element(app, kAXFocusedWindowAttribute, timeoutInSeconds: budgetInSeconds)
             .flatMap { SurfaceProbe.string($0, kAXTitleAttribute) }
         guard isWanted() else { return FocusedWindow(title: title) }
-        let field = SurfaceProbe.element(app, kAXFocusedUIElementAttribute, timeoutInSeconds: budgetInSeconds)
-        // Asked before any text is, so a field that hides what is typed is never read.
-        if let field, isSecure(field) { return FocusedWindow(title: title, isSecure: true) }
+        guard
+            let field = SurfaceProbe.element(
+                app, kAXFocusedUIElementAttribute, timeoutInSeconds: budgetInSeconds)
+        else { return FocusedWindow(title: title) }
+        // The same names, selection and bounded value the suggestion read asks, so the secure order is decided once.
+        let names = SurfaceProbe.names(of: field)
+        if names.isDeclaredSecure { return FocusedWindow(title: title, isSecure: true) }
         guard isWanted() else { return FocusedWindow(title: title) }
-        let resolvedSelection = field.map(SurfaceProbe.selection)
-        if let resolvedSelection, case .discontinuous = resolvedSelection {
-            return FocusedWindow(title: title)
-        }
-        let selected = field.flatMap { SurfaceProbe.string($0, kAXSelectedTextAttribute) }
+        let resolvedSelection = SurfaceProbe.selection(field)
+        if case .discontinuous = resolvedSelection { return FocusedWindow(title: title) }
+        let range: CFRange? = if case .range(let range) = resolvedSelection { range } else { nil }
+        let text = SurfaceProbe.text(of: field, names: names, at: range)
+        if text.isSecure { return FocusedWindow(title: title, isSecure: true) }
+        let selected = SurfaceProbe.string(field, kAXSelectedTextAttribute)
         guard isWanted() else { return FocusedWindow(title: title, selectedText: selected) }
-        let caret = field.flatMap { field in
-            let selection = resolvedSelection.flatMap { answer -> Range<Int>? in
-                guard case .range(let range) = answer else { return nil }
-                return AccessibilityRange.selection(location: range.location, length: range.length)
-            }
-            return bounded(field, selection: selection)
-                ?? CaretText.around(SurfaceProbe.string(field, kAXValueAttribute), selection: selection)
+        let selection = text.selection.flatMap {
+            AccessibilityRange.selection(location: $0.location, length: $0.length)
         }
-        let role = field.flatMap { SurfaceProbe.string($0, kAXRoleAttribute) }
+        let caret = CaretText.around(text.value, selection: selection)
+        let role = names.role
         let multiline =
-            field.flatMap { SurfaceProbe.boolean($0, "AXMultiline") }
+            SurfaceProbe.boolean(field, "AXMultiline")
             ?? role.flatMap { role in
                 switch role {
                 case "AXTextArea": true
@@ -154,50 +155,6 @@ extension MacContextEngine {
         return FocusedWindow(
             title: title, selectedText: selected,
             precedingText: caret?.preceding, followingText: caret?.following,
-            accessibilityRole: role, isMultiline: multiline)
-    }
-
-    /// Whether the field declares itself secure, or reads back as nothing but mask characters.
-    static func isSecure(_ field: AXUIElement) -> Bool {
-        SecureField.isSecure(
-            role: SurfaceProbe.string(field, kAXRoleAttribute),
-            subrole: SurfaceProbe.string(field, kAXSubroleAttribute),
-            identifier: SurfaceProbe.string(field, kAXIdentifierAttribute),
-            placeholder: SurfaceProbe.string(field, kAXPlaceholderValueAttribute),
-            description: SurfaceProbe.string(field, kAXDescriptionAttribute),
-            value: {
-                CaretWindow.prefix(length: length(of: field), ranged: { text(field, in: $0) })
-                    ?? SurfaceProbe.string(field, kAXValueAttribute)
-            })
-    }
-
-    /// The text either side of the selection read by range, or `nil` where the field needs its whole value read.
-    private static func bounded(_ field: AXUIElement, selection: Range<Int>?) -> CaretText.Sides? {
-        guard let selection, let length = length(of: field), selection.upperBound <= length,
-            let before = CaretWindow.before(
-                selection.lowerBound, characters: InsertionPoint.precedingLimit,
-                ranged: { text(field, in: $0) }),
-            let after = CaretWindow.after(
-                selection.upperBound, characters: InsertionPoint.followingLimit, length: length,
-                ranged: { text(field, in: $0) })
-        else { return nil }
-        return CaretText.around(before + after, selection: before.utf16.count..<before.utf16.count)
-    }
-
-    /// The field's length in UTF-16 units, or `nil` when it will not say.
-    private static func length(of field: AXUIElement) -> Int? {
-        var value: AnyObject?
-        guard
-            AXUIElementCopyAttributeValue(field, kAXNumberOfCharactersAttribute as CFString, &value)
-                == .success
-        else { return nil }
-        return (value as? NSNumber)?.intValue
-    }
-
-    /// The text a UTF-16 range of the field covers, or `nil` when it will not read by range.
-    private static func text(_ field: AXUIElement, in range: Range<Int>) -> String? {
-        SurfaceProbe.parameterized(
-            field, kAXStringForRangeParameterizedAttribute,
-            CFRange(location: range.lowerBound, length: range.count)) as? String
+            accessibilityRole: role, isMultiline: multiline, fieldLabel: names.label)
     }
 }

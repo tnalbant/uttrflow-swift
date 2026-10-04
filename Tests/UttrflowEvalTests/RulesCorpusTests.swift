@@ -26,6 +26,22 @@ struct RulesCorpusTests {
         "message-question-keeps-its-mark", "doubtful-word-from-window",
     ]
 
+    /// Probe cases the rules still fail, a baseline that only shrinks: a case that starts passing must leave it.
+    static let knownFailures: Set<String> = [
+        "probe-ticket-and-units", "probe-retry-bullets", "probe-backtick-identifiers", "probe-short-hash",
+        "probe-repro-steps", "probe-docker-run-flags", "probe-sql-join", "probe-regex-pattern",
+        "probe-yaml-keys", "probe-todo-comment", "probe-log-call", "probe-http-status", "probe-version-bump",
+        "probe-shell-pipeline", "probe-dockerfile-from", "probe-git-commands", "probe-stack-frame",
+        "probe-protocol-names", "probe-file-name-opening", "probe-bug-title", "probe-changelog-bullets",
+        "probe-decision-record", "probe-git-commit-flags", "probe-docker-build-no-cache",
+        "probe-spoken-correction", "probe-support-email", "probe-laugh-then-question", "probe-meeting-notes",
+        "probe-revenue-figures", "probe-option-pricing", "probe-apology-message", "probe-cover-letter",
+        "probe-meeting-time-zones", "probe-recipe-quantities", "probe-flight-details", "probe-clinical-note",
+        "probe-contract-clauses", "probe-quoted-citation", "probe-short-verse", "probe-hashtag-and-handle",
+        "probe-phone-and-address", "probe-chained-corrections", "probe-topic-shifts", "probe-hinglish-status",
+        "probe-quote-unquote",
+    ]
+
     /// The request the bake-off hands an engine, with the case's own destination and caret.
     private func score(_ testCase: EvaluationCase) async throws -> CaseScore {
         let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
@@ -57,8 +73,12 @@ struct RulesCorpusTests {
         // Grammar cases name a destination too, but repairs are the model's alone; the floor is below.
         let named = Set(
             EvaluationCorpus.all.filter { $0.destination != .plain && $0.category != .grammar }.map(\.id))
-        #expect(named.count == 64)
-        #expect(named.subtracting(Self.modelOnly).isSubset(of: Self.rulesMustPass))
+        #expect(named.count == 64 + Self.knownFailures.count)
+        #expect(
+            named.subtracting(Self.modelOnly).subtracting(Self.knownFailures).isSubset(of: Self.rulesMustPass)
+        )
+        #expect(Self.knownFailures.isSubset(of: named))
+        #expect(Self.knownFailures.isDisjoint(with: Self.rulesMustPass))
         #expect(Self.modelOnly.isSubset(of: named))
         #expect(Self.modelOnly.isDisjoint(with: Self.rulesMustPass))
         #expect(Set(EvaluationCorpus.cases(in: .grammar).map(\.id)).isDisjoint(with: Self.rulesMustPass))
@@ -99,6 +119,15 @@ struct RulesCorpusTests {
     @Test("covers every grammar case in the leave-alone list, so a new slip cannot skip the floor")
     func grammarCasesAreAllHeld() {
         #expect(EvaluationCorpus.cases(in: .grammar).count == 22)
+    }
+
+    @Test("writes every second-language case as spoken, with no article, preposition or tense repaired")
+    func rulesKeepSecondLanguageGrammar() async throws {
+        #expect(EvaluationCorpus.secondLanguage.count == 40)
+        for testCase in EvaluationCorpus.secondLanguage {
+            let written = try await RuleBasedTransformer().transform(testCase.transformationRequest()).text
+            #expect(written == testCase.expected, "\(testCase.id) wrote \(written)")
+        }
     }
 
     @Test("gives every destination at least three cases, so the bake-off can score its block")

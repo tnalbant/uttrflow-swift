@@ -873,7 +873,8 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            let silence: SpeechEngineError = missedPieces > 0 ? .speechWithoutWords : .nothingHeard
+            let silence: SpeechEngineError =
+                missedPieces > 0 ? .speechWithoutWords : audio.carriesNoSignal ? .noSignal : .nothingHeard
             await fail(DictationFailure(silence))
             return
         }
@@ -929,7 +930,7 @@ public actor DictationPipeline {
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: output)
+        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: OutputSafety.checked(output).text)
 
         let changes = AppliedChanges(
             corrections: DictationCorrection.locating(
