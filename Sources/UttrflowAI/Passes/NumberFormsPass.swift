@@ -483,7 +483,13 @@ public struct NumberFormsPass: PieceCleaningPass {
         }
         guard text.count >= 3, text.contains(where: { $0 != "0" }) else { return nil }
         guard !(joined(end, shapes) && NumberWords.scales[keys[end]] != nil) else { return nil }
-        guard !isCount(text) || hasDigitCue(before: start, keys: keys, shapes: shapes) else { return nil }
+        var runStart = start
+        var run = text
+        while runStart > 0, joined(runStart, shapes), let digit = singleDigit(keys[runStart - 1]) {
+            run = digit + run
+            runStart -= 1
+        }
+        guard !isCount(run) || hasDigitCue(before: runStart, keys: keys, shapes: shapes) else { return nil }
         return Phrase(text: text, count: end - start)
     }
 
@@ -499,9 +505,10 @@ public struct NumberFormsPass: PieceCleaningPass {
         return steps.allSatisfy { $0 == 1 } || steps.allSatisfy { $0 == -1 }
     }
 
-    /// Whether the word before `start` introduces a number within the same sentence.
+    /// Whether the word before a run's first digit introduces a number or is itself one, within the same sentence.
     private static func hasDigitCue(before start: Int, keys: [String], shapes: [WordShape]) -> Bool {
-        start > 0 && !startsASentence(start, shapes) && digitCues.contains(keys[start - 1])
+        start > 0 && !startsASentence(start, shapes)
+            && (digitCues.contains(keys[start - 1]) || NumberWords.isNumber(keys[start - 1]))
     }
 
     private static func ordinalSuffix(_ value: Int) -> String {
