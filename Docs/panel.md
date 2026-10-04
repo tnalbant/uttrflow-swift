@@ -62,6 +62,10 @@ typed fragment would confirm the fragment is inside the hidden value, so until i
 secret is found only by its alias or its collection. What counts as a secret:
 [`clipboard-secrets.md`](clipboard-secrets.md).
 
+A reveal lasts only for the open panel. Screen lock, display sleep, system sleep and switching
+user sessions close the panel; its resume point does not retain revealed clip identifiers, so
+the next opening masks those clips again.
+
 ## Checklists in notes
 
 The panel neither counts a note's checkboxes nor ticks them. A row is built on every keystroke,
