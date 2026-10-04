@@ -44,7 +44,8 @@ public struct SplitLeakAudit: Sendable {
             switch self {
             case .unassigned(let id): "\(id) has no side in TranscriptionSplit.assignment"
             case .staleAssignment(let id): "\(id) is assigned a side but is not in the corpus"
-            case .sharedRun(let id, let side, let other, let words): "\(id) (\(side.rawValue)) shares with \(other): \(words)"
+            case .sharedRun(let id, let side, let other, let words):
+                "\(id) (\(side.rawValue)) shares with \(other): \(words)"
             case .tooFewTestPassages(let language, let count):
                 "\(language.rawValue) has \(count) test passages; at least \(TranscriptionSplit.minimumTestPassages) are needed"
             }
@@ -54,8 +55,10 @@ public struct SplitLeakAudit: Sendable {
     public let passages: [TranscriptionCase]
     public let assignment: [String: TranscriptionSplit]
 
-    public init(passages: [TranscriptionCase] = TranscriptionCorpus.all,
-                assignment: [String: TranscriptionSplit] = TranscriptionSplit.assignment) {
+    public init(
+        passages: [TranscriptionCase] = TranscriptionCorpus.all,
+        assignment: [String: TranscriptionSplit] = TranscriptionSplit.assignment
+    ) {
         self.passages = passages
         self.assignment = assignment
     }
@@ -71,7 +74,9 @@ public struct SplitLeakAudit: Sendable {
     public var findings: [Finding] {
         let ids = Set(passages.map(\.id))
         var found = passages.filter { assignment[$0.id] == nil }.map { Finding.unassigned(passageID: $0.id) }
-        found += assignment.keys.filter { !ids.contains($0) }.sorted().map { Finding.staleAssignment(passageID: $0) }
+        found += assignment.keys.filter { !ids.contains($0) }.sorted().map {
+            Finding.staleAssignment(passageID: $0)
+        }
         let test = passages.filter { assignment[$0.id] == .test }
         let audit = ContaminationAudit(
             passages: test.flatMap { passage in passage.forms.map { (passage.id, $0) } },
@@ -79,7 +84,9 @@ public struct SplitLeakAudit: Sendable {
         for passage in passages {
             guard let side = assignment[passage.id], side != .test else { continue }
             let shared = passage.forms.flatMap { audit.findings(in: $0, asset: passage.id) }
-            found += shared.map { .sharedRun(passageID: passage.id, side: side, testPassageID: $0.caseID, words: $0.words) }
+            found += shared.map {
+                .sharedRun(passageID: passage.id, side: side, testPassageID: $0.caseID, words: $0.words)
+            }
         }
         for language in TranscriptionCase.Language.allCases {
             let count = counts(in: language)[.test] ?? 0

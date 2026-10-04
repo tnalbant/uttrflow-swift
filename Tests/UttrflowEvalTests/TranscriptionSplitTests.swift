@@ -31,11 +31,13 @@ struct TranscriptionSplitTests {
             id: "en-copy", language: .english, stressor: .everyday, romanised: test.romanised)
         var assignment = TranscriptionSplit.assignment
         assignment["en-copy"] = .calibration
-        let findings = SplitLeakAudit(passages: TranscriptionCorpus.all + [copy], assignment: assignment).findings
+        let findings = SplitLeakAudit(passages: TranscriptionCorpus.all + [copy], assignment: assignment)
+            .findings
         #expect(!findings.isEmpty)
-        #expect(findings.allSatisfy {
-            if case .sharedRun("en-copy", .calibration, "en-people", _) = $0 { true } else { false }
-        })
+        #expect(
+            findings.allSatisfy {
+                if case .sharedRun("en-copy", .calibration, "en-people", _) = $0 { true } else { false }
+            })
     }
 
     @Test("an unassigned passage and a stale assignment are both named")
