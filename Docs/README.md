@@ -109,6 +109,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [app-settings-controls.md](app-settings-controls.md) | Settings controls |
 | [app-updates.md](app-updates.md) | Updates: why the app holds Sparkle's install handle |
 | [quitting.md](quitting.md) | Quitting |
+| [localisation.md](localisation.md) | Words the app shows: localisable, and never the dictation |
 
 ## What is kept, and what leaves the Mac
 
