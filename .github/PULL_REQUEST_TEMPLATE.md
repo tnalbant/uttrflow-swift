@@ -35,6 +35,16 @@ If this change stores anything learned about the person, answer each of these an
 - [ ] What a log line or crash report could reveal about it
 - [ ] What the settings screen shows of it
 
+If this change adds or changes a screen, a settings page or a report view, answer each of these
+(see [`Docs/accessibility-controls.md`](../Docs/accessibility-controls.md) and
+[`Docs/ui-tests.md`](../Docs/ui-tests.md)):
+
+- [ ] Every control has an accessible label and role; each list item is one accessibility element with edit and remove as named actions
+- [ ] Every action works from the keyboard alone, including a destructive one and its confirmation
+- [ ] No information is carried by colour alone, and `make design-audit` passes with the new view covered
+- [ ] The layout holds at the largest text size and under Reduce Motion
+- [ ] `make accessibility-controls` lists every new control
+
 Add a reason only when it changes what a reader should do. Put durable measurements or
 architectural rationale in `Docs/`; put development history in this description or the commit.
 
