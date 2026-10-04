@@ -49,6 +49,9 @@ enum Specifics {
     /// The last words of a name that says its value picks out one record, so even a conventional number there is an invented id.
     static let keyWords: Set<String> = ["id", "ids", "pid", "uid", "uuid", "guid"]
 
+    /// Entity names whose first call argument identifies a record, whatever the call does to it.
+    static let recordEntityNames: Set<String> = ["user", "order", "account", "record", "item"]
+
     /// Whether a specific token of code is so only by numbers that are each conventional and none a chosen value.
     static func isConventionalCode(_ token: String, word: Substring, after before: Substring) -> Bool {
         guard !namesAddressOrAmount(token) else { return false }
@@ -121,7 +124,7 @@ enum Specifics {
         if !operates, let open = openingParenthesis(before: index, in: characters) {
             let firstArgument = characters[(open + 1)..<index].allSatisfy { $0.isWhitespace }
             return namesKey(endingAt: open, in: characters, throughIn: true)
-                || (firstArgument && namesRecordLookup(endingAt: open, in: characters))
+                || (firstArgument && namesEntityCall(endingAt: open, in: characters))
         }
         guard operates else { return false }
         return namesKey(endingAt: index, in: characters, throughIn: false)
@@ -164,8 +167,8 @@ enum Specifics {
         return keyWords.contains(last)
     }
 
-    /// Whether the call name starts with a lookup verb and names an entity after it.
-    static func namesRecordLookup(endingAt end: Int, in characters: [Character]) -> Bool {
+    /// Whether the call name ends with a record entity, regardless of its verb.
+    static func namesEntityCall(endingAt end: Int, in characters: [Character]) -> Bool {
         var index = end
         while index > 0, " \t".contains(characters[index - 1]) { index -= 1 }
         var nameStart = index
@@ -173,9 +176,8 @@ enum Specifics {
             nameStart -= 1
         }
         let name = String(characters[nameStart..<index])
-        let parts = words(of: name)
-        guard let verb = parts.first, ["get", "fetch", "find", "load"].contains(verb) else { return false }
-        return parts.count > 1 && parts.dropFirst().contains { !$0.isEmpty }
+        guard let entity = words(of: name).last else { return false }
+        return recordEntityNames.contains(entity)
     }
 
     /// Whether a character is a letter or a digit, which is what a name or a number is made of.

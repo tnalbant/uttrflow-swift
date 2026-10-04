@@ -98,6 +98,10 @@ struct SpecificsTests {
                 "let result = getUser(options, 1)"
             ),
             (
+                "1 in a later entity-call argument", "let result = processUser(options, ",
+                "let result = processUser(options, 1)"
+            ),
+            (
                 "1 in a name that only starts with a lookup verb", "let result = forget(",
                 "let result = forget(1)"
             ),
@@ -152,6 +156,14 @@ struct SpecificsTests {
                 "let user = try await repo.getUser(1)"
             ),
             ("an order passed to a fetcher", "let order = repo.fetch", "let order = repo.fetchOrder(0)"),
+            (
+                "an account passed to a lookup", "let account = repo.lookupAccount(",
+                "let account = repo.lookupAccount(0)"
+            ),
+            (
+                "a record passed to an update", "let record = repo.updateRecord(",
+                "let record = repo.updateRecord(0)"
+            ),
             ("an id passed by name", "let order = orders.by", "let order = orders.byId(0)"),
             ("an id passed to a getter", "let name = get", "let name = getUserId(1)"),
             ("a quoted id passed to a finder", "find", "findById(\"1\")"),
@@ -167,6 +179,24 @@ struct SpecificsTests {
     func inventedLiteralsAreRefusedInCode(entry: String, typed: String, line: String) {
         #expect(!Specifics.areGrounded(line, typed: typed, in: code(), writesCode: true), "\(entry)")
         #expect(CompletionText.finished([line], typed: typed, in: code()).isEmpty, "\(entry)")
+    }
+
+    @Test(
+        "A conventional number is refused as the first argument of a call naming a record entity",
+        arguments: [
+            "deleteUser", "deleteOrder", "deleteAccount", "deleteRecord", "deleteItem",
+            "cancelUser", "cancelOrder", "cancelAccount", "cancelRecord", "cancelItem",
+            "removeUser", "removeOrder", "removeAccount", "removeRecord", "removeItem",
+            "lookupUser", "lookupOrder", "lookupAccount", "lookupRecord", "lookupItem",
+            "updateUser", "updateOrder", "updateAccount", "updateRecord", "updateItem",
+            "archiveUser", "archiveOrder", "archiveAccount", "archiveRecord", "archiveItem",
+            "processUser", "user",
+        ])
+    func entityCallArgumentsAreRefused(_ call: String) {
+        let typed = "let result = repository.\(call)("
+        let line = "\(typed)1)"
+        #expect(!Specifics.areGrounded(line, typed: typed, in: code(), writesCode: true), call)
+        #expect(CompletionText.finished([line], typed: typed, in: code()).isEmpty, call)
     }
 
     @Test(
