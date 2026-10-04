@@ -37,6 +37,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
+| [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
 | [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
 | [context-budget.md](context-budget.md) | The context read's budget |
@@ -57,6 +58,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [adding-a-destination.md](adding-a-destination.md) | Adding a destination, step by step |
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
 | [data-manifest.md](data-manifest.md) | Origin, licence and digest of every bundled resource file, and the check |
+| [data-asset-delivery.md](data-asset-delivery.md) | Bundled or downloaded data assets: sizes, load time and update path |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
 | [ai-correction-thresholds.md](ai-correction-thresholds.md) | Word correction: the numbers and why they are what they are |
@@ -119,6 +121,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 |---|---|
 | [offline.md](offline.md) | Dictating with no network |
 | [logging.md](logging.md) | What the unified log may carry |
+| [diagnostics-export.md](diagnostics-export.md) | What "Copy diagnostics" may carry |
 | [entitlements.md](entitlements.md) | What somebody is allowed to do, and how that is known offline |
 | [account-session.md](account-session.md) | The account session: what `HTTPAuthenticationService` promises |
 | [account-keychain.md](account-keychain.md) | The refresh token in the Keychain: what `KeychainTokenStore` promises |

@@ -959,6 +959,18 @@ EVAL_SYMBOLS="$(
     printf '  may. Remove the dependency; measurement belongs in uttrflow-eval.'
 )"
 
+# The insertion fixture is a test-only window whose fields misbehave on purpose; nothing of it ships.
+FIXTURE_LEAK="$(
+    { find "$APP" -name 'uttrflow-insertion-fixture*'
+      nm -a "$APP/Contents/MacOS/$EXECUTABLE" 2>/dev/null | { grep -F 'uttrflow_insertion_fixture' || true; }
+    } | head -5
+)"
+[[ -z "$FIXTURE_LEAK" ]] || fail "$(
+    printf 'the insertion fixture is in the bundle:\n'
+    printf '%s\n' "$FIXTURE_LEAK" | sed 's/^/    /'
+    printf '  It exists only for Scripts/e2e_insertion.sh. Remove the dependency on it.'
+)"
+
 STRAY_AUDIO="$(find "$APP" \( -name '*.wav' -o -name '*.aiff' -o -name '*.aif' \
     -o -name '*.m4a' -o -name '*.flac' -o -name '*.caf' \) | head -5)"
 [[ -z "$STRAY_AUDIO" ]] || fail "$(

@@ -929,7 +929,7 @@ public actor DictationPipeline {
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: output)
+        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: OutputSafety.checked(output).text)
 
         let changes = AppliedChanges(
             corrections: DictationCorrection.locating(

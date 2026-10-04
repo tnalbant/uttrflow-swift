@@ -55,6 +55,19 @@ struct PersonalDictionaryStoreTests {
         #expect(await store.allEntries().first?.pronunciation == "cube cuttle")
     }
 
+    @Test("keeps entries whose spellings differ by technical symbols")
+    func technicalSpellingsStayDistinct() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let spellings = ["C++", "C#", "C", ".NET", "NET", "R&D", "RD", "Node.js", "Nodejs"]
+
+        for spelling in spellings {
+            try await store.add(word: spelling, pronunciation: "", at: epoch)
+        }
+
+        #expect(await store.allEntries().map(\.word) == spellings)
+    }
+
     // MARK: Removing
 
     @Test("forgets one word and keeps the rest")

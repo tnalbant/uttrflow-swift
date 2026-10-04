@@ -16,6 +16,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case contextual
         /// Grammar slips a formatter may repair, and the dialect that must stay.
         case grammar
+        /// Second-language grammar that is written down as spoken, never repaired.
+        case secondLanguage
         /// An entry into a one-line field of no known purpose, which is a value and takes no stop alone.
         case oneLineField
     }
