@@ -15,6 +15,7 @@ rule, and the measure shown is what the reviewer counts.
 | Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
 | Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
+| Text split by a hand-written separator (`split(whereSeparator:` or `split {`) in `UttrflowAI`, `UttrflowPipeline`, `UttrflowCore/Cleaning`, `UttrflowEval`, per file | count | never above `Scripts/word_split_baseline.json` | `make word-split-audit` |
 | Fixed English literals handed to `Text`, `Button`, `Label`, `.help`, `.accessibilityLabel`, per file | count | never above `Scripts/string_baseline.json`; see [localisation.md](../localisation.md) | `make string-audit` |
 | Line length and indentation | characters, spaces | 110, 4 | `make lint` |
 | Force unwraps, `try!`, implicitly unwrapped optionals, leading underscores, non-`///` doc comments | count | 0 | `make lint` |
@@ -271,6 +272,18 @@ into a data file; the count per file never rises.
 make closed-list-report                                      # every list left, with the line
 python3 Scripts/closed_list_audit.py --update                # record a fall
 python3 Scripts/closed_list_audit.py --update --after-merge  # only when main moved under you
+```
+
+## Word splits
+
+Each hand-written split decides where a word ends, so two call sites count different words for one
+text and an index, a range or a verdict moves by a word. Word boundaries belong to one seam,
+`WordTokens.swift`; the count of splits elsewhere per file never rises.
+`Tests/UttrflowEvalTests/WordTokeniserCharacterisationTests.swift` pins what each tokeniser does today.
+
+```bash
+python3 Scripts/word_split_audit.py --report                 # every split left, with the line
+python3 Scripts/word_split_audit.py --update                 # record a fall
 ```
 
 ## Measurements and thresholds

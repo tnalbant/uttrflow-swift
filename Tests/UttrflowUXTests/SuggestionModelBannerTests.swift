@@ -70,11 +70,18 @@ struct SuggestionModelBannerTests {
         #expect(shown.message.contains("resume automatically"))
     }
 
+    @Test("a long tap rest keeps Settings informed")
+    func tapResting() throws {
+        let shown = try #require(bannerForRuntime(.tapResting))
+        #expect(shown.title == "Suggestions are paused briefly")
+        #expect(shown.message.contains("resume automatically"))
+    }
+
     @Test("every suggestions banner avoids internal terms")
     func suggestionBannersUsePlainWords() throws {
         var banners: [SettingsBanner] = []
         for runtime in [
-            SuggestionRuntimeStatus.starting, .restarting, .secureInputBlocked,
+            SuggestionRuntimeStatus.starting, .tapResting, .restarting, .secureInputBlocked,
             .tapFailed, .corpusFailed,
         ] {
             banners.append(try #require(bannerForRuntime(runtime)))
@@ -93,7 +100,6 @@ struct SuggestionModelBannerTests {
             #expect(!shown.message.localizedCaseInsensitiveContains("corpus"))
             #expect(!shown.title.localizedCaseInsensitiveContains("weights"))
             #expect(!shown.message.localizedCaseInsensitiveContains("weights"))
-        }
     }
 
     @Test("secure input does not report suggestions running with a ready model")

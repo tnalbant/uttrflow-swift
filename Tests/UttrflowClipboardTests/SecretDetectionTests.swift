@@ -2,6 +2,7 @@
 
 import Foundation
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowClipboard
 
@@ -229,6 +230,41 @@ struct SecretDetectionTests {
     func uuids(_ text: String) {
         #expect(!SecretShapes.looksGenerated(text))
         #expect(ClipKindDetector.kind(of: text) == .text)
+    }
+
+    @Test("the byte and character readers leave canonical UUIDs alone")
+    func uuidReadersAgree() {
+        let examples = [
+            "99512f9b-a5c5-4507-a498-a66ccae430d7",
+            "99512F9B-A5C5-4507-A498-A66CCAE430D7",
+        ]
+        for uuid in examples {
+            #expect(!SecretShapes.hasHighEntropyToken(uuid))
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(uuid))
+            #expect(
+                SecretShapes.hasHighEntropyToken(uuid) == SecretShapes.hasHighEntropyTokenByCharacter(uuid))
+        }
+
+        var random = Seeded(seed: 441_900)
+        for _ in 0..<1_000 {
+            let uuid = Self.randomUUID(&random)
+            #expect(!SecretShapes.hasHighEntropyToken(uuid), "byte reader masked \(uuid)")
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(uuid), "character reader masked \(uuid)")
+            #expect(
+                SecretShapes.hasHighEntropyToken(uuid) == SecretShapes.hasHighEntropyTokenByCharacter(uuid))
+        }
+    }
+
+    private static func randomUUID(_ random: inout Seeded) -> String {
+        let alphabet = Array("0123456789abcdef")
+        let groups = [8, 4, 4, 4, 12].map { length in
+            var group = ""
+            for _ in 0..<length {
+                group.append(alphabet[Int(random.next() % UInt64(alphabet.count))])
+            }
+            return group
+        }
+        return groups.joined(separator: "-")
     }
 
     @Test("keeps masking generated tokens and rejects malformed UUID lookalikes")
@@ -721,6 +757,49 @@ struct SecretDetectionTests {
         ])
     func generatedTokens(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test("leaves embedded data and package integrity hashes readable")
+    func encodedContentAndIntegrityHashes() {
+        let payload = Data((0..<64).map(UInt8.init)).base64EncodedString()
+        let dataUris = [
+            "data:image/png;base64,\(payload)",
+            "DATA:image/png;base64,\(payload)",
+            "data:text/plain;charset=utf-8;base64,\(payload)",
+            "data:;base64,\(payload)",
+            "<img src=\"data:image/png;base64,\(payload)\">",
+            "<img alt=\"icon\" src='data:image/png;base64,\(payload)'>",
+            "body { background: url(data:image/svg+xml;base64,\(payload)); }",
+            "background:url(\"data:image/svg+xml;base64,\(payload)\")",
+            "background:url('data:image/svg+xml;base64,\(payload)')",
+        ]
+
+        for text in dataUris {
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(text))
+            #expect(ClipKindDetector.kind(of: text) != .secret)
+        }
+
+        let malformedData = [
+            "data:K9x$Qz7Tr2Bn8LmVa",
+            "data:image/png;base64,not!base64-K9x$Qz7Tr2Bn8LmVa",
+        ]
+        for text in malformedData {
+            #expect(SecretShapes.hasHighEntropyTokenByCharacter(text))
+            #expect(ClipKindDetector.kind(of: text) == .secret)
+        }
+
+        let appendedCredential = "src=\"data:image/png;base64,\(payload)\">K9x$Qz7Tr2Bn8LmVa"
+        #expect(SecretShapes.hasHighEntropyTokenByCharacter(appendedCredential))
+        #expect(ClipKindDetector.kind(of: appendedCredential) == .secret)
+
+        for (bits, byteCount) in [(256, 32), (384, 48), (512, 64)] {
+            let digest = Data((0..<byteCount).map(UInt8.init)).base64EncodedString()
+            let lockEntry = "\"integrity\": \"sha\(bits)-\(digest)\""
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(lockEntry))
+            #expect(ClipKindDetector.kind(of: lockEntry) != .secret)
+        }
+
+        #expect(ClipKindDetector.kind(of: "K9x$Qz7Tr2Bn8LmVa") == .secret)
     }
 
     @Test("masks standalone generated passwords with symbols from twelve characters")

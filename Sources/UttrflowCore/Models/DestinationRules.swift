@@ -62,7 +62,10 @@ public enum DestinationRules {
         ),
         DestinationRule(
             bundlePrefixes: [numbers, excel],
-            titleContains: ["Google Sheets"],
+            titleContains: [
+                "Google Sheets", "Excel", "Excel for the web", "Microsoft Excel",
+                "Microsoft Excel for the web",
+            ],
             nameWords: ["numbers", "excel"],
             kind: .spreadsheet
         ),

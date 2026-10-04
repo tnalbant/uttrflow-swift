@@ -62,6 +62,10 @@ closed-list-audit: ## Prove no source file gained a literal list of four or more
 closed-list-report: ## List the closed word lists still written into code, with the line.
 	@python3 Scripts/closed_list_audit.py --report
 
+.PHONY: word-split-audit
+word-split-audit: ## Prove no file gained text split into words by a hand-written separator. Needs no build.
+	@python3 Scripts/word_split_audit.py
+
 .PHONY: python-imports-audit
 python-imports-audit: ## Refuse a Scripts/ Python import that is not standard library, a repository module, or pinned with a hash. Needs no build.
 	@python3 Scripts/python_imports_audit.py
@@ -89,6 +93,7 @@ ratchet-test: ## Prove the comment, word-match, closed-list, layering and string
 	@python3 Scripts/audit_ratchet_test.py
 	@python3 Scripts/loose_match_audit_test.py
 	@python3 Scripts/closed_list_audit_test.py
+	@python3 Scripts/word_split_audit_test.py
 	@python3 Scripts/layering_audit_test.py
 	@python3 Scripts/string_audit_test.py
 
@@ -164,6 +169,17 @@ uitest-arguments: ## Prove the UI harness refuses a rounds count it cannot run. 
 .PHONY: eval-arguments
 eval-arguments: build ## Prove transcribe refuses negative report limits before measuring.
 	@python3 Scripts/eval_arguments_test.py
+
+ACCURACY_CORPUS := .build/accuracy-corpus
+ACCURACY_BASELINE := Scripts/accuracy_baseline.json
+
+.PHONY: accuracy-gate
+accuracy-gate: ## Fail when the shipping recogniser got worse on the synthesised passages. Needs the installed model.
+	$(SWIFT) build -c release --product uttrflow-eval $(SWIFT_BUILD_FLAGS)
+	rm -rf $(ACCURACY_CORPUS) .build/accuracy-results
+	./.build/release/uttrflow-eval synthesise --corpus-path $(ACCURACY_CORPUS)
+	./.build/release/uttrflow-eval transcribe --corpus-path $(ACCURACY_CORPUS) \
+		--results-path .build/accuracy-results --baseline $(ACCURACY_BASELINE) --fail-on-regression
 
 .PHONY: uitest-result-path
 uitest-result-path: ## Prove a second `make uitest` moves the prior result bundle aside. Needs no screen.
@@ -297,7 +313,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit accessibility-controls layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit word-split-audit accessibility-controls layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.

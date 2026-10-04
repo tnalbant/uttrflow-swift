@@ -15,6 +15,7 @@ public enum FormattingClass: String, Sendable, Equatable, CaseIterable, Codable 
     case perDestination = "per-destination"
     case codeAndMarkdown = "code-and-markdown"
     case hinglish
+    case textAfterCaret = "text-after-caret"
 }
 
 /// How many corpus cases each formatting class has, and whether that is enough.

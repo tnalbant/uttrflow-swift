@@ -8,7 +8,10 @@ public enum MentionGuard {
         isMentioned(at: position, spanning: length, in: draft.presentIndices, of: draft, reach: phraseReach)
     }
 
-    private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
+    /// Words whose object is always a spelling: "the word ah", "spell um".
+    private static let namingWords: Set<String> = ["word", "letter", "sound", "spell"]
+    /// Verbs that name a spelling only through a determiner, since a hesitation often follows them: "he said um".
+    private static let namingVerbs: Set<String> = ["say", "said", "write", "type"]
     private static let finalPeriodCompoundModifiers: Set<String> = [
         "cooling", "following", "grace", "holding", "notice", "time", "trial", "victorian", "waiting",
     ]
@@ -17,12 +20,15 @@ public enum MentionGuard {
     /// Particles that name a period only after the -ing word they complete: "cooling off", not "the light off".
     private static let gerundPeriodParticles: Set<String> = ["off"]
 
-    /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
+    /// Whether a hesitation spelling is named by a naming noun, a naming verb and determiner, or an opening quote.
     static func namesToken(at position: Int, in live: [Int], of draft: Draft) -> Bool {
         let shape = draft.shape(at: live[position])
         if shape.prefix.contains(where: WordShape.openingQuotes.contains) { return true }
         guard position > 0 else { return false }
-        return namingWords.contains(draft.shape(at: live[position - 1]).key)
+        let previous = draft.shape(at: live[position - 1]).key
+        if namingWords.contains(previous) { return true }
+        guard position > 1, phraseOpeners.contains(previous) else { return false }
+        return namingVerbs.contains(draft.shape(at: live[position - 2]).key)
     }
 
     /// Verbs and naming nouns that name the mark or layout phrase which follows them.
@@ -132,10 +138,8 @@ public enum MentionGuard {
             return true
         }
         let phrase = "the \(word) \(head)"
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = phrase
         guard let wordRange = phrase.range(of: word) else { return false }
-        let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
+        let lexicalClass = LexicalClass.tag(at: wordRange.lowerBound, in: phrase)
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
         if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }

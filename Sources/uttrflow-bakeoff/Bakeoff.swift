@@ -110,6 +110,7 @@ struct Bakeoff: AsyncParsableCommand {
                     "No measured candidate matches baseline \(baseline.description.name) \(baseline.description.parameters)."
                 )
             }
+            for line in comparisons.first?.corpusReport ?? [] { print(line) }
             let regressions = comparisons.flatMap(\.regressions)
             if regressions.isEmpty {
                 print(
@@ -433,7 +434,7 @@ struct CandidateDescription: Codable, Sendable {
 /// One candidate's identity and its result.
 struct Measurement: Codable, Sendable {
     let description: CandidateDescription
-    let report: StoredReport
+    var report: StoredReport
 
     init(description: CandidateDescription, report: EvaluationReport) {
         self.description = description
@@ -453,7 +454,9 @@ struct StoredReport: Codable, Sendable {
     let slowestSeconds: Double
     let declinedCount: Int
     let lostWordCount: Int
-    let cases: [CaseResult]
+    var cases: [CaseResult]
+    /// The fingerprint of the corpus scored; absent from results stored before cases were fingerprinted.
+    var corpusIdentity: String?
 
     struct CaseResult: Codable, Sendable {
         let caseID: String
@@ -472,6 +475,8 @@ struct StoredReport: Codable, Sendable {
         let brokeShape: [String]?
         let passed: Bool
         let declined: Bool
+        /// The fingerprint of the case as scored; absent from results stored before cases were fingerprinted.
+        var identity: String?
 
         /// Why the case failed, one clause per reason, or a note when the file is too old to say.
         var reasons: String {
@@ -514,6 +519,7 @@ struct StoredReport: Codable, Sendable {
         declinedCount = report.declinedCount
         lostWordCount = report.casesLosingRequiredWords.count
         let corpus = Dictionary(uniqueKeysWithValues: EvaluationCorpus.all.map { ($0.id, $0) })
+        corpusIdentity = EvaluationCase.corpusIdentity(of: EvaluationCorpus.all)
         cases = report.scores.map {
             CaseResult(
                 caseID: $0.caseID, category: corpus[$0.caseID]?.category.rawValue ?? "unknown",
@@ -521,7 +527,8 @@ struct StoredReport: Codable, Sendable {
                 similarity: $0.similarity,
                 markAccuracy: $0.markAccuracy, caseAccuracy: $0.caseAccuracy,
                 lost: $0.lost, invented: $0.invented,
-                brokeShape: $0.brokeShape, passed: $0.passed, declined: $0.declined)
+                brokeShape: $0.brokeShape, passed: $0.passed, declined: $0.declined,
+                identity: corpus[$0.caseID]?.identity)
         }
     }
 
@@ -577,18 +584,29 @@ struct ResultStore {
     }
 }
 
+/// A saved result against a new one, judged only on cases whose question is unchanged.
 struct RegressionComparison {
     let regressions: [String]
+    /// Cases scored now and absent from the baseline.
+    var added: [String] = []
+    /// Cases in the baseline and no longer scored.
+    var removed: [String] = []
+    /// Cases whose fingerprint differs, so the two scores answer different questions.
+    var changed: [String] = []
+    /// Whether the two runs scored different corpora; `false` when either result predates fingerprints.
+    var corpusChanged = false
 
     static func compare(_ current: Measurement, against baseline: Measurement) -> RegressionComparison? {
         guard current.description.fileName == baseline.description.fileName else { return nil }
         let previous = Dictionary(uniqueKeysWithValues: baseline.report.cases.map { ($0.caseID, $0) })
         let latest = Dictionary(uniqueKeysWithValues: current.report.cases.map { ($0.caseID, $0) })
         var regressions: [String] = []
+        var changed: [String] = []
 
         for (caseID, old) in previous {
-            guard let new = latest[caseID] else {
-                if old.passed { regressions.append("\(caseID): previously passing case is missing") }
+            guard let new = latest[caseID] else { continue }
+            if let before = old.identity, let after = new.identity, before != after {
+                changed.append(caseID)
                 continue
             }
             if old.passed && !new.passed {
@@ -599,7 +617,24 @@ struct RegressionComparison {
                     "\(caseID): lost words increased from \(old.lost.count) to \(new.lost.count)")
             }
         }
-        return RegressionComparison(regressions: regressions.sorted())
+        let before = baseline.report.corpusIdentity
+        let after = current.report.corpusIdentity
+        return RegressionComparison(
+            regressions: regressions.sorted(),
+            added: latest.keys.filter { previous[$0] == nil }.sorted(),
+            removed: previous.keys.filter { latest[$0] == nil }.sorted(),
+            changed: changed.sorted(),
+            corpusChanged: before != nil && after != nil && before != after)
+    }
+
+    /// The corpus change first, then each set of cases left out of the verdict.
+    var corpusReport: [String] {
+        guard corpusChanged || !added.isEmpty || !removed.isEmpty || !changed.isEmpty else { return [] }
+        var lines = corpusChanged ? ["Corpus changed since the baseline; only unchanged cases are judged."] : []
+        for (label, ids) in [("added", added), ("removed", removed), ("changed", changed)] where !ids.isEmpty {
+            lines.append("  \(label) (\(ids.count)): \(ids.joined(separator: ", "))")
+        }
+        return lines
     }
 }
 

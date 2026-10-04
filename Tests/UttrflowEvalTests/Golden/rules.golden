@@ -18,6 +18,36 @@ bec1	I stayed home because it was raining.
 but1	I wanted to come, but my train was cancelled.
 calendar-title-keeps-question-mark	Should we move the dentist appointment to 11 30?
 card-group-repeated-digits	The test card number starts 42424242.
+caret-before-bracket-note	We leave at dawn.
+caret-before-comma	After the rain stopped
+caret-before-line-break	The gate is fixed.
+caret-before-lowercase-after-question-word	when the shop opens
+caret-before-lowercase-both-joined	the blue
+caret-before-lowercase-joined	The bridge reopened
+caret-before-lowercase-mid-sentence	two spare tyres
+caret-before-lowercase-spaced	The kettle boiled
+caret-before-open-quote	The label reads.
+caret-before-paragraph	The hens laid six eggs.
+caret-before-paragraph-asks	Can you bring the trailer?
+caret-before-paragraph-lowercase	The pump needs a new washer.
+caret-before-paragraph-mid-note	We ran out of nails.
+caret-before-parenthetical	The market opens at eight.
+caret-before-parenthetical-joined	The cottage has two rooms.
+caret-before-parenthetical-mid-sentence	the long trail.
+caret-before-question-mark	Did the parcel arrive
+caret-before-stop-joined-word	the lantern is cracked
+caret-before-stop-mid-sentence	the ferry was delayed
+caret-before-stop-new-sentence	The orchard needs pruning
+caret-inside-curly-quotes	back by noon.
+caret-inside-parentheses	about 40 minutes
+caret-inside-parentheses-after-space	the old one
+caret-inside-parentheses-end-of-sentence	weather permitting
+caret-inside-square-brackets	see the map
+caret-replace-before-lowercase	The dog is fed
+caret-replace-before-stop	the north field
+caret-replace-joined-word	green
+caret-replace-mid-sentence	on Thursday
+caret-replace-whole-sentence	The van is booked.
 chat-function-stays-prose	We need something that takes a batch of orders and hands back the ones that failed.
 chat-identifier-casing	The crash only happens in payment sheet after the card scanner closes.
 chat-totals	Add up the invoices grouped by currency and sort by the total.
@@ -300,6 +330,51 @@ period-furniture-as-words	The museum shows period furniture from the old manor.
 plural-slip	We need two more developer on this team.
 port-number	The gateway listens on port 8080 in staging.
 preposition-slip	She is good in maths and physics.
+probe-apology-message	I am so sorry about missing your call yesterday I had my phone on silent during the workshop and did not see it until late I will call you tomorrow at 10 am if that works for you
+probe-backtick-identifiers	Can we rename user id to account id in the billing module backtick user id backtick shows up in three places?
+probe-bug-title	Crash when opening settings on mac os 14
+probe-chained-corrections	Can we meet at five actually make it half past six on Wednesday no Thursday if that suits you?
+probe-changelog-bullets	\n- Added dark mode support for the sidebar\n- Fixed a crash when the cache is empty\n- Removed the dash — legacy — sync flag
+probe-clinical-note	Patient is a 52 year old with chest tightness for two days blood pressure 140 over 90 heart rate 72 BPM temperature 98.6 SPO 298 percent on room air start aspirin 81 MG by mouth once daily and recheck in two weeks.
+probe-contract-clauses	Clause 9.1 the supplier shall item a deliver within 30 days of the order item b replace any damaged goods at its own cost and item c keep records for six years.
+probe-cover-letter	Dear ms alvarez,\n\nI am writing to apply for the senior analyst position advertised on your careers page.\n\nIn my current role I lead a team of six analysts and reduced reporting time by 30%.\n\nI would welcome the chance to discuss my application,\nYours sincerely,\nAsha verma.
+probe-decision-record	We decided to store sessions in redis rather than postgres because the read volume is high and the data is disposable the trade off is that a restart logs everyone out so we will enable append only persistence.
+probe-docker-build-no-cache	docker build --cache dot
+probe-docker-run-flags	docker run --rm -p 8000: 8000 -v tilde slash projects slash app: slash app node: 20 alpine
+probe-dockerfile-from	From node: 20 dash alpine as build
+probe-file-name-opening	Config dot yaml is missing the timeout key so the client falls back to 30 seconds.
+probe-flight-details	We fly on flight u a 472 from JFK to heathrow on Friday the third of October departing at 6:45 AM from gate b 12 and landing at 6:10 PM local time at terminal five.
+probe-git-commands	Run git fetch then git rebase origin slash main then git push --force-with dash lease
+probe-git-commit-flags	git commit --verify -m quote wip quote
+probe-hashtag-and-handle	We are live hashtag spring launch and a big thank you to at maya_designs for the photos.
+probe-hinglish-status	Kal ka deployment fail ho gaya tha pipeline mein timeout aa raha hai toh pehle rollback karna padega phir api ka rate limit check karenge kya aap review kar sakte ho.
+probe-http-status	A post to slash api slash v two slash orders returns 201 created and a get to the same path returns 200 ok or 4:04.
+probe-laugh-then-question	Ha ha that is the best excuse I have heard all week I am stealing it\nCan you send me the photo of the whiteboard and put a laughing face emoji at the end?
+probe-log-call	log.info ( quote user percent s logged in from percent s", user id, ip )
+probe-meeting-notes	Meeting notes: product sync\nAction item: priya to send the revised budget by Friday the 10th of October\nAction item: omar to book the review room for the fourteenth\nDecision: we ship the beta on the twentieth and hold the announcement until the docs are ready.
+probe-meeting-time-zones	Team retro on Tuesday the 14th of October at 10:30 AM pacific time which is one 30 PM eastern join at meet.example.com/retro — team — 123 and bring your notes.
+probe-option-pricing	Option a is a fixed fee of 12,500 dollars with delivery in four weeks while option b is 18,000 dollars with delivery in two weeks and includes training for up to 10 staff.
+probe-phone-and-address	Call me on 4155550132 or come to flat 12 b maple road springfield pin code 400001 after six PM
+probe-protocol-names	We should keep the public api as rest with json but use GRPC between internal services o auth two for the browser and a service account for CICD jobs the k eight s cluster stays in one region.
+probe-quote-unquote	She called it quote the final version unquote but it still had three open comments and one missing chart so we are not ready
+probe-quoted-citation	Harlow argues that habits shape outcomes and writes quote small steps compound quietly unquote open parenthesis harlow 1998 close parenthesis\nThis suggests that daily practice matters more than talent.
+probe-recipe-quantities	Preheat the oven to 375 degrees fahrenheit mix one and a half cups of flour with a quarter teaspoon of salt and bake for 25 to 30 minutes.
+probe-regex-pattern	The pattern is caret [ a dash z ] plus at [ a dash z ] plus dollar
+probe-repro-steps	Steps to reproduce: one open the app two press command comma three switch to the privacy tab\nExpected: the tab opens\nActual: the app quits on mac os 14.
+probe-retry-bullets	This change moves retry handling into the http client:\n- Adds a max retries option\n- Respects the retry after header\n- Removes the old backoff helper\n\nTested locally with the unit suite.
+probe-revenue-figures	Q three revenue was 1.2 million dollars up 8% on the previous quarter and churn fell from 4.1% to 3.6% we closed 42 new accounts against a target of 50 and support tickets dropped by 30%.
+probe-shell-pipeline	cat access dot log pipe grep -v health pipe sort pipe uniq -c pipe sort -r n pipe head-twenty
+probe-short-hash	revert a 3 f 9 c 2 because it broke the nightly build
+probe-short-verse	Roses are red\nViolets are blue\nSugar is sweet\nAnd so are you.\n\nThe moon is bright\nThe stars are near\nI wish that you were here.
+probe-spoken-correction	No wait Thursday works better for the board.
+probe-sql-join	Select o dot id, c dot name, p dot title from orders o join customers c on c dot id equals o dot customer id join products p on p dot id equals o dot product id where o dot created at is after 2020 six-ten -oh 1.
+probe-stack-frame	At main dot run open paren main dot go colon 42 close paren.
+probe-support-email	Hi priya, thanks for getting in touch about the delayed order.\n\nI have checked with our warehouse and your parcel left the depot this morning it should reach you by Thursday the ninth of October.\n\nIf it has not arrived by Friday please reply to this email and I will send a replacement at no cost.\n\nThanks again for your patience,\nDana.
+probe-ticket-and-units	Yesterday I finished proj dash 1423 and opened APR. the p95 latency dropped to 200 MS which is about three x better and I am blocked on review from priya
+probe-todo-comment	Todo: at sam replace this polling loop with a webhook once the vendor ships it
+probe-topic-shifts	So about the offsite I think we should book the venue by the end of the month the budget is still open though and finance needs a number by Friday anyway on a different note the onboarding doc is out of date so I will rewrite the first three sections this week and then ask rohit to review it oh and one more thing the printer on the second floor is jammed again.
+probe-version-bump	Bump the client from 1.4.2 to 1.5.0 and pin node to 22
+probe-yaml-keys	Set replicas: 3 and image: registry.example.com/api: 1.4.2
 pronoun-i	I think I'll take the earlier train.
 pronoun-opening-i-am-sure	I am a hundred percent sure.
 pronoun-opening-it-is-good-control	It is good.

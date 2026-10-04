@@ -22,6 +22,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [pipeline.md](pipeline.md) | The dictation pipeline |
 | [dictation-quality.md](dictation-quality.md) | Dictation quality: the layers, and where each one lives |
 | [pipeline-gestures.md](pipeline-gestures.md) | How a gesture becomes a dictation |
+| [commands.md](commands.md) | Telling a spoken command from content |
 | [shortcuts.md](shortcuts.md) | Watching for the shortcut |
 | [microphone.md](microphone.md) | The microphone, and the hardware moving under it |
 | [audio-capture.md](audio-capture.md) | Capturing the microphone |
@@ -49,6 +50,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
 | [adapters.md](adapters.md) | Format adapters: one registry that grows out of the destination formatter |

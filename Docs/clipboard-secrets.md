@@ -138,9 +138,10 @@ It recognises:
   `--db-pass`, `--api-key`), with its value joined by `=` or in the next word. `--no-…`,
   `--password-stdin` and `--token-file` do not pass one.
 - An uppercase variable assignment whose name ends in one (`PGPASSWORD=…`, `MYSQL_PWD=…`).
-- An `Authorization:` or `Proxy-Authorization:` header in any scheme, or a header whose name ends
-  in a secret's name (`X-Api-Key:`), quoted or not, with the value in the same word or the next
-  two. A scheme alone (`Authorization: Bearer`) sends nothing.
+- An `Authorization:` or `Proxy-Authorization:` header in any scheme, including a `curl -H` value
+  attached to its flag, or a header whose name ends in a secret's name (`X-Api-Key:`), quoted or
+  not, with the value in the same word or the next two. A scheme alone (`Authorization: Bearer`)
+  sends nothing.
 - A `Cookie:` or `Set-Cookie:` header scans through its value up to the next cookie header, so
   repeated headers are read once across the line.
 
@@ -175,10 +176,12 @@ word must be at least 12 characters (shorter values are too common in identifier
 ASCII letters, digits or the printable ASCII symbols the scanner allows, and contain both a
 letter and a digit. The byte and character readers use the same alphabet. Hex of 32 or more
 characters is a digest outright, because a sixteen-symbol alphabet can never reach the general
-floor. Anything that opens like a path is left to the general rules.
+floor. Canonical UUIDs and joined words are exempted by the same rule in both the byte and
+character readers. Values that open like a path are left to the general rules; a quoted value is
+left alone as a path only when its unquoted contents match the complete local-path shape in
+`PathShape`.
 The entropy rule also leaves `mailto:`, `spotify:`, `magnet:`, `urn:` and `tel:` URIs alone,
-including forms without `://`. A quoted value is left alone as a path only when its unquoted
-contents match the complete local-path shape in `PathShape`.
+including forms without `://`.
 
 Characters outside the token alphabet at the edge of an ASCII run do not become part of the
 credential: each ASCII run in a whitespace-delimited word is judged on its own. The byte reader
@@ -197,6 +200,11 @@ piece mixes case and digits, so across three thousand random base64 and base64ur
 32 and 40 characters none was exempted and the catch rate did not move. Still masked, paid
 knowingly: a long camelCase identifier with a digit, and a deep source path that does not open
 like one.
+
+Complete base64 data URIs are embedded content, including when they appear in an image tag or CSS
+`url()`. The MIME type, base64 marker and payload must be valid; a malformed URI or credential
+appended outside it still reaches the entropy rule. Valid SHA-256, SHA-384 and SHA-512 integrity
+digests are package checksums. The other credential shapes still scan the surrounding text.
 
 ## Card numbers
 
