@@ -43,6 +43,22 @@ struct SpokenPunctuationPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test(
+        "sets off what a lead-in introduces with a colon and keeps the case after it",
+        arguments: [
+            ("the steps are as follows build the app", "the steps are as follows: build the app"),
+            ("the steps are as follows First build", "the steps are as follows: First build"),
+            ("the steps are as follows colon build", "the steps are as follows: build"),
+            ("the steps are as follows", "the steps are as follows"),
+            ("the steps are as follows. build it", "the steps are as follows. build it"),
+            ("the steps are first second", "the steps are first second"),
+            ("note the build failed", "note the build failed"),
+        ]
+    )
+    func marksLeadIns(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("converts a final spoken period after a noun object")
     func finalSpokenPeriodAfterNounObject() {
         #expect(cleaned("i finished the draft period", by: sut) == "i finished the draft.")

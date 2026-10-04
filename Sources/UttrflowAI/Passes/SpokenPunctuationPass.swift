@@ -25,6 +25,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
+        markLeadIns(in: &draft)
         var live = draft.presentIndices
         let repeated = repeatedNames(in: live, of: draft)
         var names: Set<Int> = []
@@ -92,6 +93,25 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         case .opening: open.last == "\"" && found.text == "\"" ? "'" : found.text
         case .closing: open.last ?? found.text
         case .trailing, .joining: nil
+        }
+    }
+
+    /// Writes a lead-in row's mark onto its last word when more of the same clause follows it.
+    private func markLeadIns(in draft: inout Draft) {
+        let live = draft.presentIndices
+        for row in SpokenCommands.leadIns where row.isEnabled(in: destination) {
+            for position in live.indices where position + row.words.count < live.count {
+                let last = live[position + row.words.count - 1]
+                guard draft.spells(row.words, at: position, in: live),
+                    !draft.shape(at: last).endsClause,
+                    !draft.words[live[position + row.words.count]].isLayoutMark,
+                    !MentionGuard.isMentioned(
+                        at: position, spanning: row.words.count, in: live, of: draft,
+                        reach: MentionGuard.phraseReach)
+                else { continue }
+                let marked = WordShape.marked(draft.words[last].text, with: row.text)
+                draft.replace(at: last, with: marked, by: Self.id)
+            }
         }
     }
 

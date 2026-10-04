@@ -232,6 +232,10 @@ fmt-list-bullet-command	\n- Call the plumber\n- Pay the rent
 fmt-list-count-not-list	I have two cats and three dogs.
 fmt-list-first-second-third	First book the hall second send invites third order food.
 fmt-list-inline-series	Pack socks shirts and a towel.
+fmt-list-lead-in-chat	The plan is as follows: lunch at noon
+fmt-list-lead-in-document	The steps are as follows: back up the files.
+fmt-list-lead-in-email	The agenda is as follows: the budget review.
+fmt-list-no-lead-in-no-colon	The steps are first and second.
 fmt-list-numbered-spoken	One milk two eggs three bread.
 fmt-number-count	We need 12 chairs.
 fmt-number-money	The ticket costs 40 dollars.

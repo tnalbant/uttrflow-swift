@@ -14,6 +14,7 @@
         {"id": "mark.period", "words": ["period"], "action": "mark", "text": ".", "placement": "trailing"},
         {"id": "mark.colon", "words": ["colon"], "action": "mark", "text": ":", "placement": "trailing"},
         {"id": "mark.semicolon", "words": ["semicolon"], "action": "mark", "text": ";", "placement": "trailing"},
+        {"id": "lead-in.as-follows", "words": ["as", "follows"], "action": "leadIn", "text": ":"},
         {"id": "mark.hyphen", "words": ["hyphen"], "action": "mark", "text": "-", "placement": "joining"},
         {"id": "mark.dash", "words": ["dash"], "action": "mark", "text": "—", "placement": "joining"},
         {"id": "flag.long", "words": ["dash", "dash"], "action": "flag", "text": "--", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
