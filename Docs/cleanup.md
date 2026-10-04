@@ -187,6 +187,16 @@ Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
 The recogniser's own errors (a dropped letter in 2, "8 8" heard as letters in 11) are
 recognition, not cleaning, and are out of reach of any rule here. Synthetic voices spell more
 evenly than people do, so a recorded human set may still change these shapes.
+## Dictation that reads like a request
+
+Dictation that sounds addressed to the model is still dictation, and its expected text is the
+tidied words. `RequestCorpus.swift` holds at least eight invented cases for each class in
+`RequestClass`: questions (factual, personal, rhetorical), imperatives to an assistant,
+"ignore" and "system:" forms, text that names an output format, labels, quotes and fences said
+or added, polite requests, Hindi and Hinglish requests in both scripts, one- and two-word
+inputs, and text that invites a refusal. Each case carries the output of a model that commits
+one `RequestFailure` (obeyed, answered, translated, wrapped, refused), and
+`RequestMatrixTests` fails when a guard on the case does not catch that output.
 
 ## Where the words are going
 
