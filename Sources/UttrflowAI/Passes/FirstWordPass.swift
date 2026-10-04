@@ -16,6 +16,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let capitaliseCalendarWords: Bool
     /// Each word of the user's dictionary entries for this dictation, lower-cased; a capital on one of them is kept.
     public let ownWords: Set<String>
+    /// The user's own words that start with a lower-case letter, keyed in lower case; a sentence start keeps that spelling.
+    public let pinnedSpellings: [String: String]
 
     public init(
         policy: FirstWordPolicy = .fromInsertionPoint, state: InsertionPoint.SentenceState = .unknown,
@@ -31,6 +33,24 @@ public struct FirstWordPass: WholeTextCleaningPass {
             vocabulary.flatMap { $0.split(whereSeparator: \.isWhitespace) }.map {
                 WordShape(String($0)).core.lowercased()
             })
+        self.pinnedSpellings = Self.pinned(in: vocabulary)
+    }
+
+    /// Entry words that start with a lower-case letter and are not ordinary English, so their case is the user's choice.
+    static func pinned(in vocabulary: [String]) -> [String: String] {
+        let cores = vocabulary.flatMap { $0.split(whereSeparator: \.isWhitespace) }
+            .map { WordShape(String($0)).core }
+        let lowered = cores.filter { core in
+            core.first(where: \.isLetter)?.isLowercase == true && !GeneralVocabulary.isOrdinary(core)
+        }
+        return Dictionary(lowered.map { ($0.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The word in the user's own spelling when that spelling starts lower case; otherwise unchanged.
+    func keepingPinnedCase(_ word: String) -> String {
+        let shape = WordShape(word)
+        guard let spelling = pinnedSpellings[shape.core.lowercased()] else { return word }
+        return shape.replacingCore(with: spelling)
     }
 
     public func apply(_ draft: Draft) -> Draft {
@@ -70,8 +90,9 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 cased = firstWord(
                     undoingOpeningContraction(cased, heard: word.heard),
                     in: text, heard: Array(heardWords.dropFirst(spokenBefore)))
+                cased = keepingPinnedCase(cased)
             } else if startOfSentence {
-                cased = WordShape.capitalised(cased)
+                cased = keepingPinnedCase(WordShape.capitalised(cased))
             } else if policy == .fromInsertionPoint,
                 Self.followsDemotedSentenceEnd(at: index, in: draft),
                 FunctionWords.holds(WordShape(cased).key),
