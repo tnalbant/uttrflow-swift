@@ -550,7 +550,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.received == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x. w2 x"], "a text editor ends the first piece as a sentence")
     }
 
     @Test("a different frontmost app makes the insertion caret unknown")
@@ -575,7 +575,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.received == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x w2 x"], "joined for the terminal it began in, which adds no stop")
     }
 
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
