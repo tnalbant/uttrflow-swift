@@ -17,6 +17,15 @@ final class ChangeHandler: Sendable {
     func set(_ call: @escaping @Sendable () -> Void) { handler.withLock { $0 = Handler(call: call) } }
 
     func current() -> (@Sendable () -> Void)? { handler.withLock { $0 }?.call }
+
+    /// The current handler, called only while `isCurrent` holds, since removing an observer leaves a queued block to run.
+    func current(while isCurrent: @escaping @Sendable () -> Bool) -> @Sendable () -> Void {
+        let call = current()
+        return {
+            guard isCurrent() else { return }
+            call?()
+        }
+    }
 }
 
 /// The engine behind the microphone, opened and closed on demand so a session can reopen it.
@@ -127,12 +136,15 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         }
 
         let live = Live(engine: engine, inputBus: inputBus)
-        let changed = changed.current()
+        let changed = changed.current { [weak self, weak live] in
+            guard let self, let live else { return false }
+            return self.state.withLock { $0.live === live }
+        }
         // On the main queue, not whichever thread CoreAudio noticed the change on.
         live.observer = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { _ in
-            changed?()
+            changed()
         }
 
         // Published only if the recording is still wanted, so a stop that raced this cannot strand it.
