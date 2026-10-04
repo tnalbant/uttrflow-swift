@@ -252,4 +252,11 @@ struct InsertionPointTests {
             InsertionPoint.sentenceState(before: "\u{0928}\u{092E}\u{0938}\u{094D}\u{0924}\u{0947} Dr. ")
                 == .midSentence)
     }
+
+    @Test(
+        "the caret right after any comment marker is the start of the text",
+        arguments: ["// ", "/// ", "/* ", "/** ", "/*\n * ", " * ", "# ", "-- ", "\"\"\"", "' "])
+    func commentMarkerStartsText(preceding: String) {
+        #expect(InsertionPoint.sentenceState(before: preceding) == .startOfText)
+    }
 }
