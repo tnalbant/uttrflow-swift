@@ -108,6 +108,14 @@ comma-placement-as-words	Please fix comma placement in the second paragraph.
 comma-separated-as-words	Export the report as comma separated values.
 comma-splices-as-words	He keeps writing comma splices in every draft.
 comma-usage-as-words	Try to reduce comma usage in formal writing.
+command-clipboard-history	search clipboard history
+command-dark-mode	toggle dark mode
+command-empty-trash	empty the trash
+command-new-note	new note
+command-open-folder	open the downloads folder
+command-recent-files	show recent files
+command-restart-server	restart the language server
+command-weekday-keeps-capital	find the meeting notes from Monday
 compound-ordinal-above-one-hundred	121st.
 coordinated-apology-kept	Say sorry to john sorry to marcy too.
 coordinated-list-kept	I said no to the offer no to the meeting.

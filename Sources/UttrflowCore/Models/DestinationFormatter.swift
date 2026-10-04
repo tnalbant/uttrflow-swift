@@ -216,14 +216,11 @@ public struct DestinationFormatter: Sendable, Equatable {
         {
             return proseInCodeEditor(base)
         }
-        let ruleStop: TerminalStopPolicy? = {
-            guard let rule = DestinationClassifier.rule(for: situation.app),
-                rule.destination == situation.destination
-            else { return nil }
-            return rule.terminalStop
-        }()
+        let rule = DestinationClassifier.rule(for: situation.app)
+            .flatMap { $0.destination == situation.destination ? $0 : nil }
+        let ruleStop = rule?.terminalStop
         let role = situation.app.accessibilityRole
-        let isSearch = role == "AXSearchField"
+        let isSearch = role == "AXSearchField" || rule?.field == .search
         let isSingleLine = situation.app.isMultiline == false || role == "AXTextField" || isSearch
         guard ruleStop != nil || isSingleLine else { return base }
         return DestinationFormatter(

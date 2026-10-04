@@ -22,6 +22,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case oneLineField
         /// A dictation that is only an address or a path, which is a literal and takes no capital or stop.
         case bareLiteral
+        /// A query or command for a launcher panel, which keeps the heard case and takes no stop.
+        case commandInput
     }
 
     /// Where a case's text came from; every value in every case is invented, whichever it is.

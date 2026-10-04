@@ -48,6 +48,12 @@ public enum DestinationRules {
     public static let mail = "com.apple.mail"
     /// Outlook's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let outlook = "com.microsoft.Outlook"
+    /// Spotlight's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let spotlight = "com.apple.Spotlight"
+    /// Raycast's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let raycast = "com.raycast.macos"
+    /// Alfred's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let alfred = "com.runningwithcrayons.Alfred"
 
     /// DataGrip also matches JetBrains' broad code-editor prefix; the classifier chooses its longer SQL prefix.
     public static let standard: [DestinationRule] = [
@@ -139,6 +145,10 @@ public enum DestinationRules {
             titleContains: ["Gmail", "Mail", "Outlook", "Spark", "Superhuman"],
             nameWords: ["mail", "outlook", "spark", "superhuman"],
             kind: .email
+        ),
+        DestinationRule(
+            bundlePrefixes: [spotlight, raycast, alfred],
+            destination: .plain, field: .search
         ),
     ]
 

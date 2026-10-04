@@ -84,6 +84,28 @@ struct DestinationFormatterTests {
         #expect(formatter.layout == .singleLine)
     }
 
+    @Test(
+        "a launcher panel's one-line field takes the search policy whatever role it reports",
+        arguments: [DestinationRules.spotlight, DestinationRules.raycast, DestinationRules.alfred])
+    func launcherField(bundle: String) {
+        for role in ["AXTextField", "AXSearchField", nil] {
+            let app = AppContext(bundleIdentifier: bundle, accessibilityRole: role, isMultiline: false)
+            let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+            #expect(formatter.firstWord == .asSpoken, "\(role ?? "nil")")
+            #expect(formatter.terminalStop == .never, "\(role ?? "nil")")
+            #expect(formatter.layout == .singleLine, "\(role ?? "nil")")
+            #expect(formatter.consequence == .navigates, "\(role ?? "nil")")
+        }
+    }
+
+    @Test("an editor's main text area keeps its own policy beside the launcher row")
+    func editorUnchangedByLauncherRow() {
+        let app = AppContext(
+            bundleIdentifier: DestinationRules.vsCode, accessibilityRole: "AXTextArea", isMultiline: true)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter == DestinationFormatter.standard(for: .codeEditor))
+    }
+
     @Test("declares what each place does with the text, so a field that runs it is not treated like one that keeps it")
     func consequences() {
         let expected: [Destination: Consequence] = [

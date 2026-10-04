@@ -254,8 +254,8 @@ the caption and the style block cannot name two different places (`Docs/ai-conte
 | plain | `.fromInsertionPoint` | `.always` | paragraphs, lists | `.repair` | `.fromTen` | `.thousands` |
 
 `DestinationFormatter.standard(for: Situation)` adjusts that value for the field: a row of the
-table may carry its own `terminalStop`, an `AXSearchField` keeps the heard casing and takes no
-stop, and an `AXTextField` or any field Accessibility reports as single-line takes
+table may carry its own `terminalStop`, an `AXSearchField` or a field of a row marked
+`field: .search` keeps the heard casing and takes no stop, and an `AXTextField` or any field Accessibility reports as single-line takes
 `singleLine`.
 
 A first word lowered mid-sentence keeps its capital when it is "I", an acronym, or looks like
