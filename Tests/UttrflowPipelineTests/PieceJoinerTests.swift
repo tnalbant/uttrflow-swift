@@ -50,6 +50,13 @@ struct PieceJoinerListTests {
                 == "- Fix the build\n- Review the PR")
     }
 
+    @Test("reads a marker split by a pause once, as the one marker it is")
+    func markerSplitAcrossPieces() {
+        #expect(
+            joined(["Number", "one, fix the build.", "Number two, review the PR."], .document)
+                == "- Fix the build\n- Review the PR")
+    }
+
     @Test("keeps an item body across pieces and ends the list before a closing sentence")
     func sequenceWordOnItsOwnPiece() {
         let text = joined(
