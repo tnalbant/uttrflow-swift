@@ -105,6 +105,18 @@ The bake-off header prints the count per origin and per split, and the report pr
 pass-rate table. A candidate that scores well on development and worse on held-out has been tuned
 to the cases rather than to the behaviour.
 
+### Which score to look at
+
+- **While tuning**, read the development score and the failing development cases. Never open a
+  held-out case's text to fix it; held-out expected text is never copied into `Docs/` or a prompt.
+- **When judging a change**, read the held-out score. `--against` pairs each case both runs judged
+  and prints, per split, the change in pass rate with a 95% paired interval, then the gap
+  (development minus held-out) and a verdict named after the held-out split.
+- The verdict is `better` only when the held-out interval lies above zero. A development gain with
+  an unmoved held-out score is `not shown better`. A development gain with a held-out interval
+  below zero is `over-fitted`, and the command exits non-zero. The held-out lines are the ones
+  quoted in a pull request.
+
 ## What the scorer counts
 
 - **A phrase is read inside one sentence.** `Scorer` keeps sentence ends when it looks for a

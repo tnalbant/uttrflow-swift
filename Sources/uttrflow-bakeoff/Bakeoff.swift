@@ -137,6 +137,9 @@ struct Bakeoff: AsyncParsableCommand {
                 )
             }
             for line in comparisons.first?.corpusReport ?? [] { print(line) }
+            let verdicts = measured.filter { $0.description.fileName == baseline.description.fileName }
+                .map { SplitVerdict.judge($0, against: baseline) }
+            for line in verdicts.flatMap(\.lines) { print(line) }
             let regressions = comparisons.flatMap(\.regressions)
             if regressions.isEmpty {
                 print(
@@ -147,6 +150,11 @@ struct Bakeoff: AsyncParsableCommand {
                     "\nRegressions against \(baseline.description.name) \(baseline.description.parameters):")
                 for regression in regressions { print("  \(regression)") }
                 throw CleanExit.message("Bake-off comparison found \(regressions.count) regression(s).")
+            }
+            if verdicts.contains(where: { $0.outcome == .overfitted }) {
+                FileHandle.standardError.write(
+                    Data("Bake-off comparison is over-fitted: the held-out score fell.\n".utf8))
+                throw ExitCode.failure
             }
         }
     }
