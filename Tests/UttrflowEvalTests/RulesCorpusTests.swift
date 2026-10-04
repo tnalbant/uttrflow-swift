@@ -101,6 +101,15 @@ struct RulesCorpusTests {
         #expect(EvaluationCorpus.cases(in: .grammar).count == 22)
     }
 
+    @Test("writes every second-language case as spoken, with no article, preposition or tense repaired")
+    func rulesKeepSecondLanguageGrammar() async throws {
+        #expect(EvaluationCorpus.secondLanguage.count == 40)
+        for testCase in EvaluationCorpus.secondLanguage {
+            let written = try await RuleBasedTransformer().transform(testCase.transformationRequest()).text
+            #expect(written == testCase.expected, "\(testCase.id) wrote \(written)")
+        }
+    }
+
     @Test("gives every destination at least three cases, so the bake-off can score its block")
     func everyDestinationIsMeasured() {
         for destination in Destination.allCases where destination != .plain {

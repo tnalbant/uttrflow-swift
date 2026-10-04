@@ -5,7 +5,7 @@ public import UttrflowCore
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
-        + grammar + oneLineField + formatting
+        + grammar + secondLanguage + oneLineField + formatting
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -3024,6 +3024,571 @@ public enum EvaluationCorpus {
             destination: .messaging,
             mustBeginWith: "He come",
             mustEndWith: "yesterday"
+        ),
+    ]
+    // MARK: Second-language grammar
+
+    /// Second-language article, preposition, tense and agreement errors, written down as spoken where no repair is the policy.
+    static let secondLanguage: [EvaluationCase] = [
+        .init(
+            id: "second-language-article-dropped-laptop", category: .secondLanguage,
+            spoken: "i need to buy new laptop",
+            expected: "I need to buy new laptop",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I need",
+            mustEndWith: "laptop",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-meeting", category: .secondLanguage,
+            spoken: "we have meeting at noon",
+            expected: "We have meeting at noon",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We have",
+            mustEndWith: "noon",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-office", category: .secondLanguage,
+            spoken: "she is in office today",
+            expected: "She is in office today",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#ops"
+            ),
+            destination: .messaging,
+            mustBeginWith: "She is",
+            mustEndWith: "today",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-doctor", category: .secondLanguage,
+            spoken: "he went to doctor yesterday",
+            expected: "He went to doctor yesterday",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "He went",
+            mustEndWith: "yesterday",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-train", category: .secondLanguage,
+            spoken: "i missed last train home",
+            expected: "I missed last train home",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#general"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I missed",
+            mustEndWith: "home",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-report", category: .secondLanguage,
+            spoken: "please send me report when ready",
+            expected: "Please send me report when ready",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Please send",
+            mustEndWith: "ready",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-problem", category: .secondLanguage,
+            spoken: "there is problem with the printer",
+            expected: "There is problem with the printer",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#support"
+            ),
+            destination: .messaging,
+            mustBeginWith: "There is",
+            mustEndWith: "printer",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-manager", category: .secondLanguage,
+            spoken: "talk to manager about the leave",
+            expected: "Talk to manager about the leave",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Talk to",
+            mustEndWith: "leave",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-good-idea", category: .secondLanguage,
+            spoken: "that is good idea",
+            expected: "That is good idea",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "That is",
+            mustEndWith: "idea",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-dropped-same", category: .secondLanguage,
+            spoken: "we have same question",
+            expected: "We have same question",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We have",
+            mustEndWith: "question",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-added-lunch", category: .secondLanguage,
+            spoken: "let us go for the lunch",
+            expected: "Let us go for the lunch",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#ops"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Let us",
+            mustEndWith: "lunch",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-added-nature", category: .secondLanguage,
+            spoken: "i really love the nature",
+            expected: "I really love the nature",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I really",
+            mustEndWith: "nature",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-added-advice", category: .secondLanguage,
+            spoken: "can you give me a advice",
+            expected: "Can you give me a advice?",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#general"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Can you",
+            mustEndWith: "advice?",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-added-monday", category: .secondLanguage,
+            spoken: "see you on the monday",
+            expected: "See you on the Monday",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "See you",
+            mustEndWith: "Monday",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-article-added-feedback", category: .secondLanguage,
+            spoken: "she gave a good feedback on it",
+            expected: "She gave a good feedback on it",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#support"
+            ),
+            destination: .messaging,
+            mustBeginWith: "She gave",
+            mustEndWith: "it",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-discuss-about", category: .secondLanguage,
+            spoken: "we should discuss about the plan",
+            expected: "We should discuss about the plan",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We should",
+            mustEndWith: "plan",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-married-with", category: .secondLanguage,
+            spoken: "he is married with her sister",
+            expected: "He is married with her sister",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "He is",
+            mustEndWith: "sister",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-reach-at", category: .secondLanguage,
+            spoken: "call me when you reach at home",
+            expected: "Call me when you reach at home",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Call me",
+            mustEndWith: "home",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-angry-on", category: .secondLanguage,
+            spoken: "do not be angry on him",
+            expected: "Do not be angry on him",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#ops"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Do not",
+            mustEndWith: "him",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-since-days", category: .secondLanguage,
+            spoken: "he is sick since many days",
+            expected: "He is sick since many days",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "He is",
+            mustEndWith: "days",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-in-the-weekend", category: .secondLanguage,
+            spoken: "i will do it in the weekend",
+            expected: "I will do it in the weekend",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#general"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I will",
+            mustEndWith: "weekend",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-depend-of", category: .secondLanguage,
+            spoken: "it depend of the budget",
+            expected: "It depend of the budget",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "It depend",
+            mustEndWith: "budget",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-explain-me", category: .secondLanguage,
+            spoken: "can you explain me the steps",
+            expected: "Can you explain me the steps?",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#support"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Can you",
+            mustEndWith: "steps?",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-enter-into", category: .secondLanguage,
+            spoken: "please enter into the room quietly",
+            expected: "Please enter into the room quietly",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Please enter",
+            mustEndWith: "quietly",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-expert-of", category: .secondLanguage,
+            spoken: "she is expert of databases",
+            expected: "She is expert of databases",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "She is",
+            mustEndWith: "databases",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-waiting-the-bus", category: .secondLanguage,
+            spoken: "we are waiting the bus",
+            expected: "We are waiting the bus",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We are",
+            mustEndWith: "bus",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-preposition-listen-me", category: .secondLanguage,
+            spoken: "you should listen me first",
+            expected: "You should listen me first",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#ops"
+            ),
+            destination: .messaging,
+            mustBeginWith: "You should",
+            mustEndWith: "first",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-yesterday-go", category: .secondLanguage,
+            spoken: "yesterday I go to the market",
+            expected: "Yesterday I go to the market",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Yesterday I",
+            mustEndWith: "market",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-last-week-meet", category: .secondLanguage,
+            spoken: "last week we meet the new client",
+            expected: "Last week we meet the new client",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#general"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Last week",
+            mustEndWith: "client",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-did-went", category: .secondLanguage,
+            spoken: "did you went to the bank",
+            expected: "Did you went to the bank?",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Did you",
+            mustEndWith: "bank?",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-since-morning", category: .secondLanguage,
+            spoken: "i am waiting here since morning",
+            expected: "I am waiting here since morning",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#support"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I am",
+            mustEndWith: "morning",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-already-finish", category: .secondLanguage,
+            spoken: "i already finish the work",
+            expected: "I already finish the work",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I already",
+            mustEndWith: "work",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-will-told", category: .secondLanguage,
+            spoken: "i will told him tomorrow",
+            expected: "I will told him tomorrow",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#team"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I will",
+            mustEndWith: "tomorrow",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-tense-then-it-rain", category: .secondLanguage,
+            spoken: "we were going there and then it rain",
+            expected: "We were going there and then it rain",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "We were",
+            mustEndWith: "rain",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-agreement-he-have", category: .secondLanguage,
+            spoken: "he have the keys with him",
+            expected: "He have the keys with him",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#ops"
+            ),
+            destination: .messaging,
+            mustBeginWith: "He have",
+            mustEndWith: "him",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-agreement-she-not-like", category: .secondLanguage,
+            spoken: "she not like cold coffee",
+            expected: "She not like cold coffee",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "She not",
+            mustEndWith: "coffee",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-agreement-informations", category: .secondLanguage,
+            spoken: "please share the informations with team",
+            expected: "Please share the informations with team",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#general"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Please share",
+            mustEndWith: "team",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-agreement-luggages", category: .secondLanguage,
+            spoken: "i have many luggages to carry",
+            expected: "I have many luggages to carry",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I have",
+            mustEndWith: "carry",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-word-order-where-is", category: .secondLanguage,
+            spoken: "can you tell me where is the station",
+            expected: "Can you tell me where is the station?",
+            context: AppContext(
+                applicationName: "Slack",
+                bundleIdentifier: "com.tinyspeck.slackmacgap",
+                documentName: "#support"
+            ),
+            destination: .messaging,
+            mustBeginWith: "Can you",
+            mustEndWith: "station?",
+            addedFor: 3829
+        ),
+        .init(
+            id: "second-language-word-order-what-is-he", category: .secondLanguage,
+            spoken: "i do not know what is he doing",
+            expected: "I do not know what is he doing",
+            context: AppContext(
+                applicationName: "Messages",
+                bundleIdentifier: "com.apple.MobileSMS",
+                documentName: "Team chat"
+            ),
+            destination: .messaging,
+            mustBeginWith: "I do",
+            mustEndWith: "doing",
+            addedFor: 3829
         ),
     ]
     // MARK: One-line fields of no known purpose
