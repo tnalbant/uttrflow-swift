@@ -97,6 +97,33 @@ the store writes them down and a relaunch still refuses them; at most 512 are ke
 (`maximumRefused`), the oldest lapsing first. Removing learnt words clears the pending tally
 and keeps the refusals; removing everything clears both (`Docs/app-dictionary-store.md`).
 
+## Which source yields vocabulary
+
+`VocabularySourceProbeTests` runs three sources through the existing rules on two invented
+personas over fourteen invented days: window titles and typed lines through `seenAndSaid` and
+the three-sighting `SightingLedger`, selections through `corrected(over:wrote:)`. Typed lines
+are the committed lines of one day, read as the screen the speech is matched against; the
+probe prints only counts. No store is touched. Run with
+`swift test --filter VocabularySourceProbeTests` (Apple M5 Pro).
+
+| Persona | Source | Proposed | Correct | Truth | Not in `GeneralVocabulary` | Median day learnt |
+|---|---|---|---|---|---|---|
+| engineer | title | 2 | 2 | 6 | 2 | 3 |
+| engineer | selection | 1 | 1 | 6 | 1 | 5 |
+| engineer | typed | 5 | 5 | 6 | 5 | 3 |
+| administrator | title | 0 | 0 | 5 | 0 | - |
+| administrator | selection | 1 | 1 | 5 | 1 | 4 |
+| administrator | typed | 2 | 2 | 5 | 2 | 3 |
+
+Precision is 1.0 for every source: a term must be spoken as well as seen, so typed decoys and
+typos that are never said are never proposed. Recall is where they differ: typed lines 0.83 and
+0.40, titles 0.33 and 0.00, selections 0.17 and 0.20.
+
+**Threshold.** Aggregating typed lines into the evidence ledger is worth building when, on every
+persona, typed recall beats title recall by at least 0.20 at a precision of at least 0.90. Both
+invented personas pass. The fixtures are written by hand, so this decides the follow-up, not the
+size of the gain on real use.
+
 ## Candidate budget
 
 The candidates offered for a dictation are a function of the `Utterance` alone: at most
