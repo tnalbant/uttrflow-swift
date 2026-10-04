@@ -124,6 +124,35 @@ recording, which was not yet known when the cancel ran.
 The states a dictation passes through are `DictationState`: `.idle`, `.recording`,
 `.transcribing`, `.tidying`, `.inserting`, then `.inserted` or `.failed`.
 
+## A press while the last dictation finishes
+
+`startRecording()` returns without a word while `isBusy` holds, and `isBusy` covers
+`.transcribing`, `.tidying` and `.inserting` as well as `.recording`. The controller plays the
+start cue only when the pipeline is then listening, so a press in that window opens no
+microphone, plays no cue and shows no failure: the user speaks into nothing.
+
+How long the window lasts, from key-up to the pipeline leaving the busy states, measured with
+`uttrflow-dev bench` (debug build, real-time playback, shipping tidier, printing inserter, so no
+target app's insertion time is included) on an Apple M5 Pro under heavy parallel load, with five
+synthetic `say` clips each run twice:
+
+| Clip audio | Busy after key-up, run 1 | Run 2 |
+|---|---|---|
+| 0.99 s | 1.14 s | 3.45 s |
+| 2.08 s | 8.65 s | 4.02 s |
+| 3.40 s | 5.23 s | 10.24 s |
+| 5.46 s | 5.73 s | 16.88 s |
+| 8.78 s | 6.12 s | 15.81 s |
+
+Median 5.9 s, range 1.1 to 16.9 s. A real target app's insertion and paste confirmation add to
+this. The window is long enough that a second sentence started right after the first one lands in
+it. How often a second press lands there in use is not measurable from this harness.
+
+```bash
+swift build --disable-sandbox --product uttrflow-dev
+.build/debug/uttrflow-dev bench jobs.tsv --idle-before 3   # "wait" is the busy window
+```
+
 ## Timeouts
 
 Every stage runs somebody else's code and none of it promises to return. A stage that passes its
