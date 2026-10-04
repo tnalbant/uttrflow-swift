@@ -23,11 +23,52 @@ public struct WordCorrectionEngine: Sendable {
             utterance: utterance, seeing: context, certainAt: Self.certaintyThreshold)
         let wanted = UncertainSpan.spans(in: utterance, below: Self.certaintyThreshold)
             .compactMap { proposal(for: $0, against: dictionary, given: evidence) }
-        let chosen = Self.withoutOverlaps(wanted)
+        let recased = Self.recasings(of: utterance, against: dictionary)
+        let chosen = Self.withoutOverlaps(
+            wanted.filter { proposal in
+                !recased.contains { $0.wordRange.overlaps(proposal.wordRange) }
+            })
 
         // Each dictionary entry is one proposal, even when it replaces a multi-word run.
-        guard chosen.count <= Self.budget(for: utterance.words.count) else { return [] }
-        return chosen.sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound }
+        guard chosen.count <= Self.budget(for: utterance.words.count) else { return recased }
+        return (recased + chosen).sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound }
+    }
+
+    /// Every run whose letters are an entry's in another case, whatever its score; it changes no word, so no budget.
+    static func recasings(of utterance: Utterance, against dictionary: PhoneticIndex) -> [WordCorrection] {
+        let words = utterance.words
+        var found: [WordCorrection] = []
+        var start = 0
+        while start < words.count {
+            let longest = (1...PhoneticIndex.maximumWordsPerEntry).reversed().lazy
+                .filter { start + $0 <= words.count }
+                .compactMap { recasing(of: words[start..<(start + $0)], at: start, against: dictionary) }
+                .first
+            guard let longest else {
+                start += 1
+                continue
+            }
+            found.append(longest)
+            start = longest.wordRange.upperBound
+        }
+        return found
+    }
+
+    /// The entry's spelling for one run when the run's letters match it exactly bar case, with edge punctuation kept.
+    private static func recasing(
+        of run: ArraySlice<SpokenWord>, at start: Int, against dictionary: PhoneticIndex
+    ) -> WordCorrection? {
+        let heard = run.map(\.text).joined(separator: " ")
+        let isEdge: (Character) -> Bool = { !$0.isLetter && !$0.isNumber }
+        let lead = heard.prefix(while: isEdge)
+        let trail = String(heard.reversed().prefix(while: isEdge).reversed())
+        guard lead.count + trail.count < heard.count else { return nil }
+        let core = String(heard.dropFirst(lead.count).dropLast(trail.count))
+        guard let entry = dictionary.entries(speltAs: core).first, entry.word != core else { return nil }
+        return WordCorrection(
+            heard: heard, replacement: lead + entry.word + trail,
+            wordRange: start..<(start + run.count), entryID: entry.id, reason: .spelledAsInDictionary,
+            heardConfidence: run.map(\.confidence).min() ?? 1)
     }
 
     /// How many spoken words may change, never below one, or every dictation under five words is exempt.

@@ -30,6 +30,9 @@ public struct PhoneticIndex: Sendable, Equatable {
 
     private let buckets: Buckets
 
+    /// Every trustworthy entry under its spelling with case folded, so a case-only difference is one probe.
+    private let byFoldedSpelling: [String: [DictionaryEntry]]
+
     /// Entries no coder could address, which nothing can ever look up; empty unless a spelling is all punctuation.
     public let unaddressable: [DictionaryEntry]
 
@@ -37,7 +40,9 @@ public struct PhoneticIndex: Sendable, Equatable {
     public init(entries: [DictionaryEntry]) {
         var buckets: [String: [DictionaryEntry]] = [:]
         var unfiled: [DictionaryEntry] = []
+        var spelt: [String: [DictionaryEntry]] = [:]
         for entry in entries where entry.isTrustworthy {
+            spelt[entry.word.lowercased(), default: []].append(entry)
             let keys = PronunciationCoder.keys(for: entry.soundsLike)
             guard !keys.isEmpty else {
                 unfiled.append(entry)
@@ -48,6 +53,7 @@ public struct PhoneticIndex: Sendable, Equatable {
             }
         }
         self.unaddressable = unfiled
+        self.byFoldedSpelling = spelt.mapValues { $0.sorted(by: PhoneticIndex.isMoreUseful) }
         self.buckets = Buckets(
             buckets.mapValues {
                 Array($0.sorted(by: PhoneticIndex.isMoreUseful).prefix(PhoneticIndex.maximumPerSound))
@@ -64,6 +70,11 @@ public struct PhoneticIndex: Sendable, Equatable {
             }
         }
         return found
+    }
+
+    /// The entries spelt with exactly these letters once case is folded, most useful first; never a near spelling.
+    public func entries(speltAs text: String) -> [DictionaryEntry] {
+        byFoldedSpelling[text.lowercased()] ?? []
     }
 
     /// The guarantee: the candidates for one utterance, a function of the utterance and the limit alone.
