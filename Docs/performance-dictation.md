@@ -39,7 +39,8 @@ over 300 `begin()` calls against a temporary folder on a quiet Mac:
 | file work inline (not used) | 225–340 µs | 314–513 µs | 540–652 µs | 2.8–4.9 ms |
 
 `uttrflow-dev latency --opens N` opens the real microphone N times through the shipping
-`AVAudioCaptureEngine`, times each `start()` through the same `measuring(.microphoneOpen)` the
+`AVAudioCaptureEngine` (`--device UID` picks an input from `--list-devices`; `--idle S` keeps it
+closed S seconds before each opening, for the cold case), times each `start()` through the same `measuring(.microphoneOpen)` the
 pipeline uses, polls every millisecond for the first sample, and summarises with `StageLatency`.
 One run of 20 opens, debug build, built-in microphone, on a heavily loaded Mac (load average
 339–387), so these are loaded-machine figures; re-run on a quiet Mac before a decision rests on
