@@ -928,10 +928,11 @@ public actor DictationPipeline {
             early.pendingInsertion = toWrite
             return
         }
+        // A secret is not a word to learn or count, by the same gate that keeps it out of History.
+        let kept = KeptWords.of(toWrite, intoSecureField: wasSecure)
         // Both run after the words are on screen, and neither can fail the dictation. §19.
-        await count(changes)
-        // A secret is not a word to learn, by the same gate that keeps it out of History.
-        guard KeptWords.of(toWrite, intoSecureField: wasSecure) != nil else { return }
+        await count(changes, writtenIn: kept ?? "")
+        guard kept != nil else { return }
         // A destination reported by the inserter wins over a screen read made before the switch.
         if let landedID = landedIn(attempt)?.bundleIdentifier,
             let readID = appContext?.bundleIdentifier, landedID != readID
@@ -1150,14 +1151,14 @@ public actor DictationPipeline {
     }
 
     /// Tells the stores what this dictation used, once the words are safely on screen.
-    private func count(_ changes: AppliedChanges) async {
-        guard !changes.isEmpty else { return }
-
-        // Once per entry and in one batch: the store counts dictations an entry was applied to, not words, by either path.
+    private func count(_ changes: AppliedChanges, writtenIn text: String) async {
+        // Once per entry and in one batch: the store counts dictations an entry appeared in, not words, by any path.
         var counted: Set<UUID> = []
         let entries = (changes.corrections.map(\.entryID) + changes.entriesTaken)
             .filter { counted.insert($0).inserted }
-        if !entries.isEmpty { try? await learner.recordUse(ofEntries: entries) }
+        if !entries.isEmpty || !text.isEmpty {
+            try? await learner.recordUse(ofEntries: entries, writtenIn: text)
+        }
 
         guard !changes.snippets.isEmpty else { return }
         // One batch, duplicates left in, because the store counts firings not dictations.

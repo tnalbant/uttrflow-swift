@@ -3810,9 +3810,11 @@ private struct StoreCounters: DictationLearning {
     let dictionary: PersonalDictionaryStore
     let snippets: SnippetStore
 
-    func recordUse(ofEntries ids: [UUID]) async throws(DictationChangeError) {
+    func recordUse(ofEntries ids: [UUID], writtenIn text: String) async throws(DictationChangeError) {
+        let used = DictionaryAppearances.used(await dictionary.allEntries(), applied: ids, writtenIn: text)
+        guard !used.isEmpty else { return }
         do {
-            _ = try await dictionary.recordUse(of: ids)
+            _ = try await dictionary.recordUse(of: used)
         } catch {
             throw .storeRefused
         }
