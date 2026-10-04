@@ -1,40 +1,9 @@
 public import UttrflowCore
 
-/// Which side of its name a spoken mark goes, which is what decides where a mention of it could stand.
-enum SpokenMarkKind: Sendable, Equatable {
-    /// Goes on the word before it: a comma, a full stop, a question mark.
-    case trailing
-    /// Joins the words on both sides of it: a hyphen, a dash.
-    case joining
-    /// Opens a quotation, so it goes on the word after it and needs nothing before it.
-    case opening
-    /// Closes one, so it goes on the word before it as a trailing mark does.
-    case closing
-}
-
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
 public struct SpokenPunctuationPass: PieceCleaningPass {
     public static let id: PassID = .spokenPunctuation
     private let destination: Destination
-
-    /// Marks written as the pair they are, so adding one is a row rather than two rows and a guard clause.
-    static let pairs: [(open: [String], close: [String], mark: String)] = [
-        (["open", "quote"], ["close", "quote"], "\"")
-    ]
-
-    /// What each spoken name becomes, longest names first so "question mark" wins over nothing.
-    static let marks: [(words: [String], mark: String, kind: SpokenMarkKind)] =
-        [
-            (["full", "stop"], ".", .trailing), (["question", "mark"], "?", .trailing),
-            (["exclamation", "mark"], "!", .trailing), (["exclamation", "point"], "!", .trailing),
-            (["semi", "colon"], ";", .trailing),
-        ]
-        + pairs.flatMap { [($0.open, $0.mark, SpokenMarkKind.opening), ($0.close, $0.mark, .closing)] }
-        + [
-            (["comma"], ",", .trailing), (["period"], ".", .trailing), (["colon"], ":", .trailing),
-            (["semicolon"], ";", .trailing), (["hyphen"], "-", .joining),
-            (["dash"], "\u{2014}", .joining),
-        ]
 
     /// The particles after which "dash" and "hyphen" are the verbs they also are: "dash off a note".
     static let particles: Set<String> = [
@@ -85,17 +54,19 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 continue
             }
             guard
-                let found = Self.marks.first(where: { matches($0.words, at: position, in: live, of: draft) }),
+                let found = SpokenCommands.marks.first(where: {
+                    draft.spells($0.words, at: position, in: live)
+                }),
                 !MentionGuard.isMentioned(
                     at: position, spanning: found.words.count, in: live, of: draft,
-                    reach: MentionGuard.phraseReach, kind: found.kind),
+                    reach: MentionGuard.phraseReach, kind: found.placement),
                 !isVerb(found.words, at: position, in: live, of: draft),
                 isEvidenced(found.words, at: position, in: live, of: draft, repeated: repeated),
                 isPlaced(
-                    found.mark, before: position + found.words.count, spanning: found.words.count,
+                    found.text, before: position + found.words.count, spanning: found.words.count,
                     in: live, of: draft),
                 attach(
-                    mark(found.mark, literalHyphens: literalHyphens), kind: found.kind,
+                    mark(found.text, literalHyphens: literalHyphens), kind: found.placement,
                     at: position, spanning: found.words.count,
                     in: &live, of: &draft)
             else {
@@ -167,8 +138,8 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// Turns two consecutive spoken dashes into a long option, including one at the start of a command.
     private func replaceLongFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
         guard position + 2 < live.count,
-            matches(["dash"], at: position, in: live, of: draft),
-            matches(["dash"], at: position + 1, in: live, of: draft),
+            draft.spells(["dash"], at: position, in: live),
+            draft.spells(["dash"], at: position + 1, in: live),
             !MentionGuard.isMentioned(
                 at: position, spanning: 1, in: live, of: draft,
                 reach: MentionGuard.phraseReach, kind: .joining),
@@ -193,7 +164,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// Leaves a one-letter option as its own token: `git commit -m`, not `git commit-m`.
     private func replaceShortFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
         guard position + 1 < live.count, position > 0,
-            matches(["dash"], at: position, in: live, of: draft),
+            draft.spells(["dash"], at: position, in: live),
             !MentionGuard.isMentioned(
                 at: position, spanning: 1, in: live, of: draft,
                 reach: MentionGuard.phraseReach, kind: .joining)
@@ -217,14 +188,6 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         draft.replace(at: live[position], with: address.text, by: Self.id)
         for index in live[(position + 1)..<after] { draft.remove(at: index, by: Self.id) }
         live.removeSubrange((position + 1)..<after)
-    }
-
-    private func matches(_ words: [String], at position: Int, in live: [Int], of draft: Draft) -> Bool {
-        position + words.count <= live.count
-            && draft.sentenceContains(words.count, from: position, in: live)
-            && zip(words, live[position..<position + words.count]).allSatisfy {
-                $0 == draft.shape(at: $1).key
-            }
     }
 
     /// Whether an ordinary name stands at a seam: it is sentence-final, follows punctuation, or has a continuation.
@@ -292,8 +255,8 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// Whether the text ends at `next`, or a layout word, a layout mark or a closing quote stands there.
     private func closes(at next: Int, in live: [Int], of draft: Draft) -> Bool {
         next == live.count || draft.words[live[next]].isLayoutMark
-            || Self.pairs.contains { matches($0.close, at: next, in: live, of: draft) }
-            || LayoutWordsPass.marks.contains { matches($0.words, at: next, in: live, of: draft) }
+            || SpokenCommands.closings.contains { draft.spells($0.words, at: next, in: live) }
+            || SpokenCommands.layout.contains { draft.spells($0.words, at: next, in: live) }
     }
 
     /// Fixes the mark to its neighbour and drops the spoken name, or refuses when the neighbour is missing.

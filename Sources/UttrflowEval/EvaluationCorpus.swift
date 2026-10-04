@@ -28,6 +28,7 @@ public enum EvaluationCorpus {
             spoken: "My manager. Wants the slides by noon",
             expected: "My manager wants the slides by noon."
         ),
+        // Contested: the spoken stop is kept as a fragment because dictation is a transcript, not a rewrite.
         .init(
             id: "sub4", category: .everyday,
             spoken: "the server. crashed twice last night",
@@ -844,6 +845,12 @@ public enum EvaluationCorpus {
             mustKeep: ["hear you from here", "knew the new build", "next week"]
         ),
         .init(
+            id: "spoken-comma-before-next-sentence-of-course", category: .everyday,
+            spoken: "we shipped comma. Of course it broke",
+            expected: "We shipped, of course it broke.",
+            mustKeep: ["shipped", "course", "broke"], mustNotAdd: ["comma"]
+        ),
+        .init(
             id: "spoken-period", category: .everyday,
             spoken: "ship it period",
             expected: "Ship it.",
@@ -948,6 +955,7 @@ public enum EvaluationCorpus {
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
         ),
+        // Contested: words are kept above one hundred until the numeral policy decides compound ordinals.
         .init(
             id: "compound-ordinal-above-one-hundred", category: .everyday,
             spoken: "one hundred and twenty first",
@@ -1383,7 +1391,7 @@ public enum EvaluationCorpus {
     // MARK: Context pairs, identical words under two windows. See Docs/eval-context-cases.md.
 
     static let contextual: [EvaluationCase] = [
-        // Pair one: prose against SQL; no direction or LIMIT was spoken, so none is owed.
+        // Pair one: prose against SQL from editor context alone (contested); no direction or LIMIT was spoken.
         .init(
             id: "sql-editor-totals", category: .contextual,
             spoken: "add up the invoices grouped by currency and sort by the total",
@@ -2299,6 +2307,7 @@ public enum EvaluationCorpus {
             mustBeginWith: "npm",
             mustEndWith: "build"
         ),
+        // Contested: "dash" is kept here while other terminal cases write `-`; the terminal adapter decides.
         .init(
             id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
             spoken: "uh ls dash la",
@@ -2593,7 +2602,8 @@ public enum EvaluationCorpus {
             expected: "Print the handout on A4 paper please.", begins: "Print the handout on A4"),
         codeTokenCase(
             "seam-q3", spoken: "We missed the targets for. Q3 by a small margin",
-            expected: "We missed the targets for Q3 by a small margin.", begins: "We missed the targets for Q3"),
+            expected: "We missed the targets for Q3 by a small margin.",
+            begins: "We missed the targets for Q3"),
         codeTokenCase(
             "seam-m2", spoken: "The build runs fastest on the. M2 machine",
             expected: "The build runs fastest on the M2 machine.", begins: "The build runs fastest on the M2"),
@@ -2620,7 +2630,8 @@ public enum EvaluationCorpus {
             expected: "model in the lab.", begins: "model in"),
         codeTokenCase(
             "word-seam-after", spoken: "We finish the review and. After that we can leave",
-            expected: "We finish the review and after that we can leave.", begins: "We finish the review and after"),
+            expected: "We finish the review and after that we can leave.",
+            begins: "We finish the review and after"),
         codeTokenCase(
             "word-seam-again", spoken: "The tests failed on. Again this morning",
             expected: "The tests failed on again this morning.", begins: "The tests failed on again"),

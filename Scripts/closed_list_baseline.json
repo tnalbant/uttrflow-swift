@@ -7,11 +7,11 @@
     "Sources/UttrflowAI/Passes/FillersPass.swift": 2,
     "Sources/UttrflowAI/Passes/FirstWordPass.swift": 5,
     "Sources/UttrflowAI/Passes/MentionGuard.swift": 6,
-    "Sources/UttrflowAI/Passes/NumberFormsPass.swift": 4,
+    "Sources/UttrflowAI/Passes/NumberFormsPass.swift": 5,
     "Sources/UttrflowAI/Passes/RepeatedPhrasePass.swift": 8,
     "Sources/UttrflowAI/Passes/SelfCorrectionPass.swift": 1,
     "Sources/UttrflowAI/Passes/SpelledInitialismPass.swift": 1,
-    "Sources/UttrflowAI/Passes/SpokenAddress.swift": 6,
+    "Sources/UttrflowAI/Passes/SpokenAddress.swift": 4,
     "Sources/UttrflowAI/Passes/SpokenPunctuationPass.swift": 3,
     "Sources/UttrflowAI/Passes/StammersPass.swift": 1,
     "Sources/UttrflowAI/Passes/TerminalStopPass.swift": 2,
@@ -28,6 +28,7 @@
     "Sources/UttrflowCore/Cleaning/Restatement.swift": 6,
     "Sources/UttrflowCore/Cleaning/ReviewTag.swift": 2,
     "Sources/UttrflowCore/Cleaning/SentenceBoundaryEvidence.swift": 5,
+    "Sources/UttrflowCore/Cleaning/TechnicalToken.swift": 2,
     "Sources/UttrflowCore/Models/DestinationRules.swift": 7,
     "Sources/UttrflowCore/Protocols/FocusedElementPreference.swift": 1,
     "Sources/UttrflowEval/EvaluationCorpus.swift": 6,
@@ -57,5 +58,5 @@
     "Sources/uttrflow-dev/RetrievalBenchmark.swift": 3,
     "Sources/uttrflow-eval/SpokenClips.swift": 2
   },
-  "total": 222
+  "total": 223
 }

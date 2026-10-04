@@ -15,6 +15,7 @@ rule, and the measure shown is what the reviewer counts.
 | Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
 | Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
+| Fixed English literals handed to `Text`, `Button`, `Label`, `.help`, `.accessibilityLabel`, per file | count | never above `Scripts/string_baseline.json`; see [localisation.md](../localisation.md) | `make string-audit` |
 | Line length and indentation | characters, spaces | 110, 4 | `make lint` |
 | Force unwraps, `try!`, implicitly unwrapped optionals, leading underscores, non-`///` doc comments | count | 0 | `make lint` |
 | Compiler warnings | count | 0 | `make build` |
