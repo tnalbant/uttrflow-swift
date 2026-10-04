@@ -229,8 +229,8 @@ Accessibility read on a queue of its own, the event tap, the panel and the corpu
 | `Verification.budgetInMilliseconds` | 7,000 ms | The model's share of one keystroke's verification |
 | `TurnGate.stallSeconds` | 10 s | A turn left behind so the next one can run |
 | `FocusedFieldReader.elementTimeoutInSeconds` | 50 ms | One Accessibility message |
-| `FieldReadBudget.allowanceInNanoseconds` | 40 ms | One whole field read |
-| `SlowFields.firstRestInNanoseconds` … `longestRestInNanoseconds` | 10 s doubling to 5 min | How long a field that overran is left alone |
+| `FieldReadBudget.allowance` | 40 ms | One whole field read |
+| `SlowFields.firstRest` … `longestRest` | 10 s doubling to 5 min | How long a field that overran is left alone |
 | `CommitDetector.idleInterval` | 8 s | Idle time that commits a line |
 
 Return, focus changes and other non-typing wakes read the field at once. A delayed wake is checked

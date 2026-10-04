@@ -189,11 +189,9 @@ public enum FocusedFieldReader {
     /// The same read synchronously, for an application front or not, which is what a probe shows the operator.
     public static func surroundings(of app: FrontmostApp) -> Surroundings? {
         // A field with no window, or a window focused as a whole, has nothing around it worth a walk.
-        let now = DispatchTime.now().uptimeNanoseconds
-        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier, at: now),
+        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier),
             let field = SurfaceProbe.focusedField(of: app.processIdentifier),
-            !slowFields.isResting(
-                SlowFields.Key(process: app.processIdentifier, element: CFHash(field)), at: now),
+            !slowFields.isResting(SlowFields.Key(process: app.processIdentifier, element: CFHash(field))),
             let window = element(field, kAXWindowAttribute), !CFEqual(field, window)
         else { return nil }
         let answers = AXNode(window).answers
@@ -216,27 +214,27 @@ public enum FocusedFieldReader {
         app: FrontmostApp, while isWanted: @Sendable () -> Bool = { true }
     ) -> FocusedFieldSnapshot? {
         let started = DispatchTime.now().uptimeNanoseconds
+        let budget = FieldReadBudget.start()
         // An application whose focused field rests is not even asked for its focus, which can itself be the slow part.
-        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier, at: started),
+        guard AXIsProcessTrusted(), !slowFields.isQuiet(app.processIdentifier),
             let field = SurfaceProbe.focusedField(of: app.processIdentifier)
         else { return nil }
         let slow = SlowFields.Key(process: app.processIdentifier, element: CFHash(field))
         // A field whose read ran over lately is asked nothing, so a heavy document does not stall its application every turn.
-        guard !slowFields.isResting(slow, at: started) else { return nil }
+        guard !slowFields.isResting(slow) else { return nil }
         // Every question to the field gives up quickly, so a field that stops answering costs a moment, not the loop.
         _ = AXUIElementSetMessagingTimeout(field, elementTimeoutInSeconds)
-        let budget = FieldReadBudget(started: started)
         var ranOver = false
         // Checked before every question after the first: a superseded read stops, and one past its budget stops and rests the field.
         let goOn: () -> Bool = {
             guard isWanted() else { return false }
-            guard budget.isSpent(at: DispatchTime.now().uptimeNanoseconds) else { return true }
+            guard budget.isSpent else { return true }
             ranOver = true
             return false
         }
         let answer = read(field, of: app, started: started, while: goOn)
         if ranOver {
-            slowFields.ranOver(slow, at: DispatchTime.now().uptimeNanoseconds)
+            slowFields.ranOver(slow)
         } else if answer != nil {
             slowFields.answered(slow)
         }
