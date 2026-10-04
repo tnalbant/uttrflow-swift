@@ -185,6 +185,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [ui-tests.md](ui-tests.md) | Driving the real app |
 | [packaging.md](packaging.md) | Packaging Uttrflow.app |
 | [releasing.md](releasing.md) | Releasing Uttrflow |
+| [rollback.md](rollback.md) | Rolling back a release |
 | [operator-runbook.md](operator-runbook.md) | Operator runbook |
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |
