@@ -67,6 +67,8 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
     private let drainer = TapDrain()
     /// Called when macOS changes the hardware under the engine, which only the session knows what to do about.
     private let changed = ChangeHandler()
+    /// Called when the tap's own clock shows a hole too long to fill, which only the session can report.
+    private let broken = ChangeHandler()
     /// The user's chosen device UID, read at every open so a reopen sees a device that went.
     private let preferredUID: @Sendable () -> String?
     private let catalog: any AudioInputDeviceCatalog
@@ -82,12 +84,18 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
         changed.set(handle)
     }
 
+    func whenBroken(_ handle: @escaping @Sendable () -> Void) {
+        broken.set(handle)
+    }
+
     func deliver(to onSamples: (@Sendable ([Float]) -> Void)?) {
         state.withLock { $0.sink = onSamples.map(Sink.init) }
     }
 
     /// Delivers only to the sink the tap was opened for, on the handoff's thread so the tap never waits on this lock.
-    private func emit(_ samples: [Float], for owner: Sink) {
+    private func emit(_ samples: [Float], for owner: Sink, after clock: TapClock) {
+        // Before the samples, so the hole is reported where it is rather than after the audio that follows it.
+        if clock.takeBreak() { broken.current()?() }
         state.withLock { $0.sink === owner ? owner : nil }?.call(samples)
         drainer.blockDelivered()
     }
@@ -123,14 +131,13 @@ private final class EngineDevice: InputDevice, @unchecked Sendable {
             throw .unsupportedInputFormat
         }
 
-        let handoff = TapHandoff { [weak self] samples in self?.emit(samples, for: owner) }
+        let clock = TapClock(sampleRate: format.sampleRate)
+        let handoff = TapHandoff { [weak self] samples in self?.emit(samples, for: owner, after: clock) }
         engine.inputNode.installTap(onBus: inputBus, bufferSize: Self.tapBufferSize, format: format) {
-            buffer, _ in
-            // On the audio thread: converted into reused storage and copied into the handoff, nothing more.
-            handoff.push { part in
-                // A dropped buffer costs milliseconds, a throw the recording.
-                try? resampler.resample(buffer, into: part)
-            }
+            buffer, time in
+            // On the audio thread: checked against the hardware clock, converted, and copied into the handoff.
+            clock.deliver(
+                buffer, at: time.isSampleTimeValid ? time.sampleTime : nil, through: resampler, into: handoff)
         }
 
         engine.prepare()
@@ -212,6 +219,7 @@ public final class AVAudioEngineMicrophoneSource: MicrophoneSource {
         session = InputDeviceSession(device: device)
         // Weak, as the session owns the device; a failed reopen silences the notice and the retry replaces it.
         device.whenChanged { [weak session] in session?.deviceChanged() }
+        device.whenBroken { [weak session] in session?.timelineBroke() }
     }
 
     /// What the latest open resolved to, nil before the first; never logged, as it can carry a device UID.
