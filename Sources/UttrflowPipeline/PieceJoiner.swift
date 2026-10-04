@@ -501,7 +501,9 @@ enum PieceJoiner {
         var candidates: [BoundaryCandidate] = []
         for opening in sentenceOpenings(in: draft, starts: starts) {
             guard let found = sequence(draft, live, at: opening, starts: starts),
-                let position = live.firstIndex(of: opening)
+                let position = live.firstIndex(of: opening),
+                // A pause inside "number one" makes "one" an opening, but it is the marker already read.
+                candidates.last.map({ position >= $0.position + $0.length }) ?? true
             else { continue }
             candidates.append(
                 BoundaryCandidate(
