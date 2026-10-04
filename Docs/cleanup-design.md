@@ -337,8 +337,9 @@ alone. Some cleanings only make sense over the whole:
   piece's trailing stop before asking `Restatement.discardedStart` and restores it if nothing
   matched, so the callee keeps its sentence-end rule and the stop the cut introduced is
   removed by the code that created it.
-- **The seam's stop.** A piece ends at a pause of 0.8 s, or any pause of 0.4 s once the piece
-  is past fifteen seconds (`SpeechWindowing`), which reads as a sentence ending, so a seam
+- **The seam's stop.** A piece ends at a pause of <!-- value:SpeechWindowing.sentencePause -->0.8 s; past
+  <!-- value:SpeechWindowing.comfortableLength -->15 s the pause needed shrinks evenly to
+  <!-- value:SpeechWindowing.anyPause -->0.4 s at <!-- value:SpeechWindowing.maximumLength -->30 s (`SpeechWindowing`), which reads as a sentence ending, so a seam
   ends as a sentence the way the place ends one: a full stop unless the place's stop policy
   is `.never`, in which case a stop the recogniser wrote comes off. A pause is not always a
   sentence end, so a seam takes no stop where a list item or a code line ends the piece, or

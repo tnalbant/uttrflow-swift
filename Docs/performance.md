@@ -223,7 +223,7 @@ no build, no model and no window, and reads the source for the ways a budget can
 | priority | the suggestion and local-model modules ask for more than utility priority, detach a task without one, or the app uses the suggestion model outside a `Discretionary` wrapper |
 | motion | a `TimelineView`, `repeatForever`, phase or keyframe animator or repeating symbol effect reads neither `MotionBudget` nor `WindowAttention`, is paused by a literal, or never reads `WindowAttention` outside the dock and menu bar panels, which never become key |
 | cache | a model pass (`perform`, `generate`, `TokenIterator`, `ChatSession`) sits in no function that caps MLX's cache and clears it on exit, a `release()` does not clear it, or the cap is over 256 MB |
-| counters | `ResourceBudget`'s limits differ from the table above |
+| counters | `ResourceBudget`'s limits differ from the memory or disk budget table |
 | suggestions | the key-path limits above differ from what `SuggestionCoordinator` and `SuggestionPanelController` do |
 
 `--self-test` injects one violation per check into the tree as read and fails unless the audit
@@ -248,8 +248,8 @@ Memory can only be read with the models loaded, so `make perf-budget-models` run
 `uttrflow-bakeoff gpu-memory --passes 12 --release` and `uttrflow-bakeoff profile --dictations 10`,
 and each exits non-zero when a reading is over its line: every settled moment of a profile against
 the idle line, its peak against a dictation's, each pass's peak and settled footprint against the
-suggestion lines, and the footprint a second after a release against the idle line.
-`ResourceBudget` is the one judge both use.
+suggestion lines, and the footprint a second after a release against the idle line. The profile
+also reads the support folder against the disk budget. `ResourceBudget` is the one judge both use.
 
 ## Processor
 
@@ -318,6 +318,26 @@ regular files summed the way `Profile.bytes(under:)` sums them (`FileManager` re
 symlinks excluded) — mostly the 57.9 MB executable and the 3.8 MB MLX Metal library. All three are
 decimal MB (10^6 bytes). A fresh install is therefore **713.3 MB**: the speech model is downloaded
 on first launch, the application ships in the bundle, and the total is both added together.
+
+### The disk budget
+
+The support folder grows with use, so each part of it has a line. `ResourceBudget` holds the same
+numbers, and `make perf-budget-models` prints every part's size beside its line and fails when one
+is over. Each store entry in `LocalStoreInventory` counts against exactly one part, so a new store
+cannot go unbudgeted. These are binary MB (2^20 bytes), like the memory budget.
+
+| part | line | why that line |
+|---|---|---|
+| speech model, on disk | ≤ 768 MB | the installed model is 618 MB; a superseded revision or a staged download beside it is over |
+| recordings waiting for a retry | ≤ 256 MB | the cap `RecordingStore` prunes to, about 33 recordings of 240 s as 16-bit WAV |
+| dictation history | ≤ 64 MB | 1,000 records at most |
+| clipboard, with its pictures | ≤ 1024 MB | the pictures' own cap is 10^9 bytes, plus the list, saved clips and preferences |
+| diagnostics | ≤ 16 MB | the speech model's load log |
+| other stores | ≤ 64 MB | the dictionary, snippets, predictions, consent, key and lock |
+
+Read from the support folder of an Apple M5 Pro in daily use: speech model 618 MB, clipboard 9 MB
+(8.5 MB of it pictures), other stores 5 MB (the prediction database and its write-ahead log),
+history 0.1 MB, recordings 0 MB, diagnostics 0 MB.
 
 ## Delivery budget
 

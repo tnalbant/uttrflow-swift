@@ -21,7 +21,7 @@ refusal. The page on screen may quote words; the copy never does.
 | `speechModelLoads` | per kept load: date, seconds, macOS build, short model revision and the closed-enum reason |
 | `cleaning` | per offered step: counts removed, rewritten and added; steps switched off; refusal kind summary; engine skipped or failed reason |
 | `engines`, `speechInUse`, `transformerAvailability`, `lastCleanedBy` | engine names and states |
-| `speechModel`, `speechReadiness`, `appleSpeechStatus`, `appleSpeechLoadFailure`, `suggestionModel` | model card status lines |
+| `speechModel`, `speechReadiness`, `suggestionModel` | model card status lines |
 | `permissions` | one granted or not-granted line per permission |
 | `dictationShortcutArmed`, `hasDefaultInputDevice` | availability lines |
 | `vocabularyPrompt` | nothing: dictionary words are absent |

@@ -20,6 +20,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case secondLanguage
         /// An entry into a one-line field of no known purpose, which is a value and takes no stop alone.
         case oneLineField
+        /// A dictation that is only an address or a path, which is a literal and takes no capital or stop.
+        case bareLiteral
     }
 
     /// Where a case's text came from; every value in every case is invented, whichever it is.

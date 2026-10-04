@@ -48,7 +48,7 @@ it links is updated with the new result.
 | Deleting a test preferences suite's file first is not a cleanup | The daemon writes the plist back twenty to thirty seconds later | [preferences-suites.md](preferences-suites.md) | A macOS release stops `cfprefsd` writing back a domain it still holds |
 | A server `5xx` is not reported as "no connection" | The server was reached; that message sends the user to check their Wi-Fi over an outage | [account-session.md](account-session.md) | Never; the distinction is the point |
 | Telemetry failures are not `UttrflowFailure` | That protocol owes the user a sentence and a recovery, and an alert about analytics interrupts their work | [account-telemetry.md](account-telemetry.md) | Telemetry gains a failure the user can act on |
-| Built-in speech recognition's asset download is a known gap, not a sanctioned exception | Apple's asset API has no equivalent of `download: false`; the fix is a product decision about what the user is told | [offline.md](offline.md) | The asset API gains an offline-only mode, or the product decides the wording |
+| WhisperKit is the only recogniser; the system recogniser is deleted, not kept as a fallback | It lacks Hindi, per-word confidence and the conditioning prompt, and fetched an asset on the dictation path | [speech-engines.md](speech-engines.md#one-recogniser) | A measured replacement beats WhisperKit end to end on English and Hindi, with the loser deleted |
 
 ## Release and insertion
 

@@ -661,6 +661,12 @@ BUDGET_ROWS = {
     "peak during a dictation, suggestions off": "dictationPeak",
     "suggestions on, between passes": "suggestionsBetweenPasses",
     "suggestions on, peak of a pass": "suggestionsPassPeak",
+    "speech model, on disk": "speechModel",
+    "recordings waiting for a retry": "recordings",
+    "dictation history": "history",
+    "clipboard, with its pictures": "clipboard",
+    "diagnostics": "diagnostics",
+    "other stores": "otherStores",
 }
 
 

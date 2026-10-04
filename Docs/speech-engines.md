@@ -1,12 +1,11 @@
 # The speech engines, and what WhisperKit does when nobody is looking
 
-`UttrflowSpeech` (`Sources/UttrflowSpeech/`) drives two recognisers behind one
-`TranscriptionBackend`: WhisperKit (`WhisperKitBackend`, the default, with the
-`openai_whisper-large-v3-v20240930_turbo_632MB` model) and the macOS system recogniser
-(`AppleSpeechBackend`). `BackedSpeechEngine` wraps either one with what every recogniser needs:
-the voice-activity trim ([`silence.md`](silence.md)), the shortest-clip floor, one call at a time,
-and loop repair. Switching recognisers is a change to `EngineConfiguration` and nothing else;
-`SpeechEngineFactory` is the one switch that names a concrete recogniser. This page holds the
+`UttrflowSpeech` (`Sources/UttrflowSpeech/`) drives one recogniser, WhisperKit
+(`WhisperKitBackend`, with the `openai_whisper-large-v3-v20240930_turbo_632MB` model), behind
+`TranscriptionBackend`. `BackedSpeechEngine` wraps it with what every recogniser needs: the
+voice-activity trim ([`silence.md`](silence.md)), the shortest-clip floor, one call at a time, and
+loop repair. `SpeechEngineFactory` is the one place that names the concrete recogniser. There is
+no second recogniser and no setting that chooses one; see [One recogniser](#one-recogniser). This page holds the
 measurements and traps the code relies on. [`bakeoff.md`](bakeoff.md) compares the engines;
 [`offline.md`](offline.md) states the no-network rule;
 [`speech-vocabulary-prompt.md`](speech-vocabulary-prompt.md) covers the personal-dictionary
@@ -15,8 +14,6 @@ prompt; [`speech-model-install.md`](speech-model-install.md) covers installing t
 | Constant | Value | Meaning |
 |---|---|---|
 | `BackedSpeechEngine.minimumDuration` | 250 ms | shorter audio is refused as too short |
-| `AppleSpeechBackend.chunkFrames` | 4096 frames | the chunk the system analyser is fed |
-| `AnalyserInput.maxFramesPerConversion` | 2048 frames | the slice fed to its converter |
 | `LanguageHeldDecoder.compressionRatioThresholds` | `en`: default, `hi`: 3.0 | one decision per transcribed language; default keeps Whisper's 2.4 |
 | `RecognitionLoop.fastestSpeech` | 4.5 words a second | faster than this, a repeated run is a loop |
 | `RecognitionLoop.mostCopyDifference` | 0.2 WER | how far copies may differ and still be one loop |
@@ -25,26 +22,23 @@ prompt; [`speech-model-install.md`](speech-model-install.md) covers installing t
 | `CappedDecodeRetry.maxRetries` | 10 | re-decodes of the tail after a cap |
 | `CappedDecodeRetry.collapsedGapSeconds` | 1.0 s | silence after a window's last word that marks a collapsed window |
 
-## The system recogniser
+## One recogniser
 
-- Needs no model download and is faster than Whisper, but Hindi is not among the locales it
-  recognises, so it cannot be the product's default. It loads `en-US`.
-- Its `load()` downloads the locale's speech asset through `AssetInventory` when it is absent.
-  That is a network call on the dictation path, the same shape as the tokenizer fetch below. A
-  failure is `SpeechEngineError.modelDownloadFailed`, which says to check the connection, and that
-  fixes it. The app reads the same inventory (`AppleSpeechBackend.assetStatus()`) to show whether
-  the asset is installed, needs a download, is downloading or is unsupported.
-- The personal dictionary reaches it as the analyser's contextual strings
-  (`AnalysisContext.contextualStrings`), trimmed, de-duplicated and sorted.
-- Audio is fed to the analyser in 4096-frame chunks, matching how a live microphone delivers.
-- The asset check and the analyser's audio format are settled once, in `load()`, and again only
-  after a transcription fails. An analyser is finished after one clip, so each piece takes a fresh
-  transcriber and analyser; the next pair is built and given `prepareToAnalyze(in:)` as soon as a
-  piece answers, off the wait for the words. `Docs/performance.md` has the measurement.
-- The analyser has offered 16 kHz mono 16-bit on every Mac measured. When it asks for anything
-  else, `AnalyserInput` converts through `AVAudioConverter`, fed in 2048-frame slices within one
-  conversion so neither the converter's truncation nor its filter delay drops audio.
-- Excluded from the coverage gate: it can only be exercised by real speech.
+WhisperKit is the recogniser, always. The macOS system recogniser was removed with its setting
+(Settings → Dictation → Speed and accuracy), its Diagnostics card and its tests, because it
+could not serve the product's promises without a second copy of work WhisperKit already does:
+
+- Hindi is not among its locales, so Hindi and Hinglish dictation lost words or came out in
+  English.
+- It reported no per-word confidence on most results, so correction could not doubt a word.
+- It ignored the conditioning prompt, so the personal dictionary reached it only as weaker
+  contextual strings.
+- Its first load fetched a system speech asset over the network on the dictation path, which
+  [`offline.md`](offline.md) listed as a known gap.
+
+A stored setting that names it decodes to WhisperKit (`EngineConfiguration` falls back to its
+default for an unreadable speech kind). A second recogniser returns only as a measured
+replacement, with the comparison written here, and the loser deleted.
 
 ## Where the speech model runs
 
@@ -347,10 +341,7 @@ therefore not a word error rate.
 - Measured on the shipping turbo model: +4.1 ms on a 3.3 s clip and +19.1 ms on a 24.3 s one,
   0.9% and 1.4% of those transcriptions. The spread is real: "up" at 0.41 beside content words
   at 0.99 in the same sentence.
-- Apple can report both attributes on `SpeechTranscriber.Result.text`; `AppleSpeechBackend`
-  requests them and maps a word only when its entire token has both a confidence and audio range.
-  If any token lacks either attribute, that result carries no word timings. Absent still means
-  "not reported", never "all confident".
+- Absent still means "not reported", never "all confident".
 
 ## The conditioning prompt
 

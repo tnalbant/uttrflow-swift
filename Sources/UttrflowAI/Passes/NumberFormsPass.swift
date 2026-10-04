@@ -126,11 +126,11 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Set(clocks.map { shapes[$0].core })
     }
 
-    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue.
+    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue; only a cue reads past 12.
     private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> String? {
         let parts = keys[position].split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 2, shapes[position].prefix.isEmpty,
-            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (0...23).contains(hour),
             parts[1].count == 2, parts[1].allSatisfy(\.isNumber), let minute = Int(parts[1]),
             (0...59).contains(minute)
         else { return nil }
@@ -140,7 +140,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         let hasCue =
             position > 0 && !startsASentence(position, shapes)
             && ["at", "by"].contains(keys[position - 1])
-        guard hasMeridiem || hasCue else { return nil }
+        guard hasCue || (hasMeridiem && (1...12).contains(hour)) else { return nil }
         return "\(hour):\(parts[1])"
     }
 
@@ -155,6 +155,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
+        if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -178,7 +179,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             ordinal.value <= limit, policy == .always || ordinal.value >= 10,
             bareMonthIsValid(at: position, keys: keys, shapes: shapes)
         {
-            return Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+            let day = Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+            return withYear(day, at: position, order: .monthFirst, keys: keys, shapes: shapes)
         }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
             if ordinal.value >= 21,
@@ -200,9 +202,10 @@ public struct NumberFormsPass: PieceCleaningPass {
             guard policy == .always || ordinal.value >= 10 else { return nil }
             let month = WordShape.capitalised(keys[end])
             let preposition = hasOf ? " of" : ""
-            return Phrase(
+            let day = Phrase(
                 text: "\(ordinal.value)\(ordinalSuffix(ordinal.value))\(preposition) \(month)",
                 count: end - position + 1)
+            return withYear(day, at: position, order: .dayFirst, keys: keys, shapes: shapes)
         }
         guard let item = item(at: position, keys: keys, shapes: shapes) else { return nil }
         let contextPosition =
@@ -308,10 +311,65 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Phrase(text: time.text, count: end - position)
     }
 
+    /// "fourteen thirty" after a time cue as `14:30`, and "oh nine hundred" before "hours" as `0900`.
+    private static func twentyFourHourClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase?
+    {
+        let zeroLed = clockZeros.contains(keys[position])
+        let hourStart = zeroLed ? position + 1 : position
+        guard !zeroLed || joined(hourStart, shapes), hourStart < keys.count else { return nil }
+        let hour: (value: Int, count: Int)
+        if zeroLed {
+            guard let unit = NumberWords.units[keys[hourStart]] else { return nil }
+            hour = (unit, 1)
+        } else {
+            let words = unbroken(from: hourStart, keys: keys, shapes: shapes).prefix { $0 != "hundred" }
+            guard let parsed = NumberWords.cardinal(words),
+                parsed.count <= 2, (10...23).contains(parsed.value)
+            else { return nil }
+            hour = parsed
+        }
+        let minuteStart = hourStart + hour.count
+        guard joined(minuteStart, shapes) else { return nil }
+        let minutes: Phrase
+        if keys[minuteStart] == "hundred" {
+            minutes = Phrase(text: "00", count: 1)
+        } else if zeroLed || hour.value >= 13,
+            let spoken = self.minutes(at: minuteStart, keys: keys, shapes: shapes)
+        {
+            minutes = spoken
+        } else {
+            return nil
+        }
+        let end = minuteStart + minutes.count
+        guard !(joined(end, shapes) && NumberWords.isNumber(keys[end])) else { return nil }
+        let hourText = hour.value < 10 ? "0\(hour.value)" : String(hour.value)
+        if joined(end, shapes), keys[end] == "hours" {
+            return Phrase(text: hourText + minutes.text, count: end - position)
+        }
+        let hasBeforeCue =
+            position > 0 && !startsASentence(position, shapes) && timeCues.contains(keys[position - 1])
+        guard hasBeforeCue, keys[minuteStart] != "hundred" else { return nil }
+        return Phrase(text: "\(hourText):\(minutes.text)", count: end - position)
+    }
+
     /// Words before an hour-and-minute phrase that mark it as a time of day.
     static let timeCues: Set<String> = [
         "at", "by", "until", "till", "from", "around", "about", "before", "after", "since",
     ]
+
+    /// Nouns that take a time of day, after which "for" is a time cue as in "an alarm for seven thirty".
+    static let timedNouns: Set<String> = [
+        "alarm", "alarms", "appointment", "appointments", "booking", "meeting", "meetings",
+        "reminder", "reminders", "reservation",
+    ]
+
+    /// Whether the word before `position` cues a time of day within the same sentence.
+    private static func hasTimeCue(before position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard position > 0, !startsASentence(position, shapes) else { return false }
+        if timeCues.contains(keys[position - 1]) { return true }
+        return keys[position - 1] == "for" && position > 1 && !startsASentence(position - 1, shapes)
+            && timedNouns.contains(keys[position - 2])
+    }
 
     /// Whether the number here is the smaller part of an amount, after a number and its currency.
     private static func completesAmount(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
@@ -329,9 +387,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
-        let hasBeforeCue =
-            position > 0 && !startsASentence(position, shapes)
-            && timeCues.contains(keys[position - 1])
+        let hasBeforeCue = hasTimeCue(before: position, keys: keys, shapes: shapes)
         let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
         let hasAfterCue =
             minuteEnd < shapes.count && joined(minuteEnd, shapes)
@@ -435,6 +491,36 @@ public struct NumberFormsPass: PieceCleaningPass {
         case 3: return "rd"
         default: return "th"
         }
+    }
+
+    /// Which part of a date was spoken first; the parts are never reordered.
+    enum DateOrder {
+        case monthFirst, dayFirst
+
+        /// What stands between the day and the year: month-first dates set the year off with a comma.
+        var yearSeparator: String { self == .monthFirst ? ", " : " " }
+    }
+
+    /// A day and month with the year spoken straight after it, written as one date in the spoken order.
+    private static func withYear(
+        _ day: Phrase, at position: Int, order: DateOrder, keys: [String], shapes: [WordShape]
+    ) -> Phrase {
+        guard let year = dateYear(at: position + day.count, keys: keys, shapes: shapes) else { return day }
+        return Phrase(text: day.text + order.yearSeparator + year.text, count: day.count + year.count)
+    }
+
+    /// The year that can close a date: four written digits from 1900 to 2099, or a spoken year.
+    private static func dateYear(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard joined(start, shapes) else { return nil }
+        if let digits = NumberWords.digits(keys[start]), digits.count == 4, let value = Int(digits),
+            (1900...2099).contains(value)
+        {
+            return Phrase(text: digits, count: 1)
+        }
+        guard let century = NumberWords.teens[keys[start]] ?? NumberWords.tens[keys[start]],
+            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes)
+        else { return nil }
+        return Phrase(text: year.text, count: year.count + 1)
     }
 
     /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.

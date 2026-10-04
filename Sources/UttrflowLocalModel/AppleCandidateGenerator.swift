@@ -30,7 +30,8 @@ public actor AppleCandidateGenerator: PassShowing {
             return nil
         }
         let register = Register.infer(from: situation, typed: typed)
-        let message = PromptBuilder.message(typed: typed, in: situation, register: register, asking: .one)
+        let message = CompletionPromptBuilder.message(
+            typed: typed, in: situation, register: register, asking: .one)
         // A fresh session per pass, as the local model's warm prefix gives it: no earlier line bleeds into this one.
         let session = LanguageModelSession(instructions: MLXCandidateScorer.instructions)
         let options = GenerationOptions(temperature: 0, maximumResponseTokens: register.maxTokens * 2)

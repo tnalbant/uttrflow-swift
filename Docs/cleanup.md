@@ -110,6 +110,20 @@ them. When the signal is missing or could be read two ways, the words stay.
 | Trailing full stop dropped in chat apps | the destination is a messaging app and the text is one or two sentences | "on my way" stays "on my way" in a chat app | `TerminalStopPass` under `DestinationFormatter` for `.messaging`, `.offForShortMessages(sentences: 2)`; a question or exclamation mark is always kept. Decided by the app's bundle identifier, so Electron apps count. The length is read off the whole message, not a piece of it: a piece is cleaned at `CleaningScope.piece`, which runs neither `FirstWordPass` nor `TerminalStopPass`; `PieceJoiner` ends every seam as a sentence the way the place ends one, and the cleaner's `finishMessage` runs both passes once over the joined message, so the short-message rule counts the sentences the message has. See `Docs/cleanup-design.md` §7 |
 | Lower-case start when inserting mid-sentence | the caret sits after a word with no sentence end before it — read off the line the caret is on, so a list marker, a heading marker or an opening quote or bracket the user typed is not mistaken for a word | "…because " + dictation → "…because the build failed" | `FirstWordPass` from `InsertionPoint.sentenceState`, read off the field's text before the caret; "I", its contractions and acronyms keep their capital. A model that repeats the text before the caret at the head of its answer has that echo taken back by `CaretEchoPass` — the whole preceding text of two or more words, or the tail the prompt quoted, case and punctuation aside; never a partial match — and a closing bracket or quote the model added to match an opener before the caret is taken back by `CaretCloserPass`. Electron apps do not report their field, so there the state is `unknown` and the first word stays capital |
 
+### Correction triggers as data
+
+The trigger phrases are rows of `Sources/UttrflowCore/Resources/Tables/correction-triggers.json`,
+each with its `language` and the `evidence` it needs before anything is taken back
+(`alignedHalves`, `alignedHalvesPausedSingleWord`, `restatedNumber`,
+`pausedRestatedNumber`). `Restatement` reads one table for English and romanised Hindi; a new
+phrase is a row, never a Swift literal. `CorrectionTriggerTableTests` holds 30 Hinglish
+sentences with a correction and 30 with the same words said plainly, and fails when a row has
+no case of either kind. Measured on the table as shipped: 22 of 30 corrections apply, and 3 of
+30 plain sentences lose words ("usko sorry bolna padega", "usne no sorry bhi nahi bola",
+"tum chalo or rather nahi"), because a one-word replacement does not yet know romanised Hindi
+word classes. The same 11 sentences read the same way before the table, with the triggers in
+Swift, so none is a regression; each is listed in `owedTriggerCases` until a fix makes it pass.
+
 ## Tier 3 — never
 
 Removals and additions that lose or invent meaning, however tempting the polish.
@@ -146,6 +160,11 @@ times, percentages, ports, the paragraph-break cases and the numbered-list matri
 and that list, not this page, is the record of what the floor covers. Spellings the screen has
 to decide are the model's alone. A gap gets a corpus case before it gets a prompt line, because
 a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
+
+Which layer owns each formatting class — `rules`, `model` or `both` — is
+`FormattingClass.ownership`, and `Docs/formatting-matrix.md` prints it beside each class's
+cases. Under `both`, the passes after the model have the last word. `FormattingOwnershipTests`
+fails a class whose named pass no shipped pipeline runs.
 
 ## Words spelled letter by letter
 
