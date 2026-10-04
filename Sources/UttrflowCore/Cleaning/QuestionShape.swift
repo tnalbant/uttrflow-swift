@@ -253,7 +253,8 @@ public enum QuestionShape {
             guard index + 1 < clause.count,
                 verbsBeforeSubject.contains(clause[index]) || pronounVerbs.contains(clause[index])
             else { return false }
-            return narrowInversions[clause[index]]?.contains(clause[index + 1]) ?? subjects.contains(clause[index + 1])
+            return narrowInversions[clause[index]]?.contains(clause[index + 1])
+                ?? subjects.contains(clause[index + 1])
         }
     }
 

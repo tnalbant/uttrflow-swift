@@ -121,7 +121,8 @@ public actor WhisperKitBackend: TranscriptionBackend {
                 loadDecoder: $0.decoderLoadTime, tokenizer: $0.tokenizerLoadTime)
         }
         do {
-            try loadLog?.record(seconds: elapsed.inSeconds, parts: parts, modelRevision: model.weightsRevision)
+            try loadLog?.record(
+                seconds: elapsed.inSeconds, parts: parts, modelRevision: model.weightsRevision)
         } catch {
             Self.log.error("speech model load not kept: \(error.localizedDescription, privacy: .public)")
         }

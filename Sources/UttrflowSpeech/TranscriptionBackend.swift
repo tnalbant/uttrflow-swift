@@ -29,7 +29,8 @@ public struct SegmentReliability: Sendable, Equatable {
     public let compressionRatio: Double
 
     public init(
-        temperature: Double, averageLogProbability: Double, noSpeechProbability: Double, compressionRatio: Double
+        temperature: Double, averageLogProbability: Double, noSpeechProbability: Double,
+        compressionRatio: Double
     ) {
         self.temperature = temperature
         self.averageLogProbability = averageLogProbability
@@ -49,7 +50,8 @@ public struct RawSegment: Sendable, Equatable {
     public let reliability: SegmentReliability?
 
     public init(
-        text: String, start: Double, end: Double, words: [RawWord]? = nil, reliability: SegmentReliability? = nil
+        text: String, start: Double, end: Double, words: [RawWord]? = nil,
+        reliability: SegmentReliability? = nil
     ) {
         self.text = text
         self.start = start

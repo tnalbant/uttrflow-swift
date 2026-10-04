@@ -12,7 +12,8 @@ public enum QualityLayer: String, Sendable, CaseIterable {
     /// Whether the layer runs when nothing overrides it; a new layer starts off until measured.
     public var defaultOn: Bool {
         switch self {
-        case .recogniserBias, .evidenceCapture, .candidateGeneration, .scoring, .overrideGate, .formatting: true
+        case .recogniserBias, .evidenceCapture, .candidateGeneration, .scoring, .overrideGate, .formatting:
+            true
         }
     }
 

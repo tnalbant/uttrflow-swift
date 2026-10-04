@@ -15,7 +15,9 @@ struct EditHistoryTests {
         history.note(try SelectionWriter(field: field).edit(target, to: ""))
     }
 
-    private func undo(_ field: FakeSelectionField, _ history: EditHistory, focused: FieldIdentity? = field) throws {
+    private func undo(
+        _ field: FakeSelectionField, _ history: EditHistory, focused: FieldIdentity? = field
+    ) throws {
         try SelectionWriter(field: field).undo(from: history, focused: focused, isSecure: false)
     }
 
@@ -93,7 +95,10 @@ struct EditHistoryTests {
     func removedTextIsNotDescribed() {
         let record = InsertionRecord(field: Self.field, range: 4..<4, text: "")
         let undo = EditUndo(written: record, removed: "secret words", before: "Hi, ", after: " there")
-        for text in [String(describing: undo), String(reflecting: undo), "\(undo)", "\(Mirror(reflecting: undo).children.count)"] {
+        for text in [
+            String(describing: undo), String(reflecting: undo), "\(undo)",
+            "\(Mirror(reflecting: undo).children.count)",
+        ] {
             #expect(!text.contains("secret"))
             #expect(!text.contains("there"))
         }

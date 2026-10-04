@@ -233,11 +233,13 @@ extension MeaningPreservationGuard {
                 guard !usedReadings.contains(spanIndex) else { return false }
                 return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated()
                     .filter { span.isDoubted(at: $0.offset) }.map(\.element).contains { source in
-                    alignment.changes.contains { change in
-                        change.kept.overlaps(source) && change.rewritten.contains(index)
-                            && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
+                        alignment.changes.contains { change in
+                            change.kept.overlaps(source) && change.rewritten.contains(index)
+                                && span.candidates.contains {
+                                    survivesCandidate(token, candidate: $0.spelling)
+                                }
+                        }
                     }
-                }
             }
             if let offeredReading {
                 usedReadings.insert(offeredReading.offset)

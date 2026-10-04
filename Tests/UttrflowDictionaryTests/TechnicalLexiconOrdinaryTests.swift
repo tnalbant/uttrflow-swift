@@ -8,7 +8,9 @@ import UttrflowDictionary
 struct TechnicalLexiconOrdinaryTests {
     @Test("Every term written or said as an ordinary word is limited to the destinations it belongs in.")
     func ordinaryTermsAreLimited() {
-        #expect(TechnicalLexicon.problems(in: TechnicalLexicon.terms, isOrdinary: GeneralVocabulary.isOrdinary).isEmpty)
+        #expect(
+            TechnicalLexicon.problems(in: TechnicalLexicon.terms, isOrdinary: GeneralVocabulary.isOrdinary)
+                .isEmpty)
     }
 
     @Test("The language Go, said as an ordinary word, applies only in code and the terminal.")

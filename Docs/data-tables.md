@@ -67,14 +67,7 @@ the app with every other resource bundle. Nothing is fetched at run time.
 
 ## The technical lexicon
 
-Every row is written for this repository and copied from no published list; its licence and
-digest are in [data-manifest.md](data-manifest.md). It holds generic technical vocabulary and
-the names of widely used open tools and languages, and no person, address or product of a
-single vendor. A spoken form is lower-case Latin words separated by single spaces. A term
-written or said as an ordinary word (`GeneralVocabulary.isOrdinary`) carries `destinations`,
-so it is never offered in prose. `TechnicalLexicon.problems` states these rules, and
-`TechnicalLexiconTests` and `TechnicalLexiconOrdinaryTests` fail on any shipped row that
-breaks one.
+Its entry format, what is rejected and how to check a change are in [lexicon.md](lexicon.md).
 
 ## Testing
 

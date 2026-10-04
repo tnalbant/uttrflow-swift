@@ -33,15 +33,20 @@ extension MacContextEngine {
         sink.bank(FocusedWindow(title: title, field: identity))
         // The same names, selection and bounded value the suggestion read asks, so the secure order is decided once.
         let names = source.names(of: field)
-        guard !names.isDeclaredSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity)) }
+        guard !names.isDeclaredSecure else {
+            return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity))
+        }
         guard isWanted() else { return }
         let resolvedSelection = source.selection(of: field)
         if case .discontinuous = resolvedSelection { return }
         let range: CFRange? = if case .range(let range) = resolvedSelection { range } else { nil }
         let text = source.text(of: field, names: names, at: range)
-        guard !text.isSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity)) }
+        guard !text.isSecure else {
+            return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity))
+        }
         let role = names.role
-        sink.bank(FocusedWindow(title: title, accessibilityRole: role, fieldLabel: names.label, field: identity))
+        sink.bank(
+            FocusedWindow(title: title, accessibilityRole: role, fieldLabel: names.label, field: identity))
         let selected = source.selectedText(of: field, at: range)
         sink.bank(
             FocusedWindow(

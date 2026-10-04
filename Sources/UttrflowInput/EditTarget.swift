@@ -16,7 +16,8 @@ public struct EditTarget: Sendable, Equatable {
     public let after: String
 
     public init(
-        record: InsertionRecord, focused: FieldIdentity?, isSecure: Bool, before: String = "", after: String = ""
+        record: InsertionRecord, focused: FieldIdentity?, isSecure: Bool, before: String = "",
+        after: String = ""
     ) {
         self.record = record
         self.focused = focused

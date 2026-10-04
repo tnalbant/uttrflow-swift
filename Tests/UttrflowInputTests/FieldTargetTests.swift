@@ -18,7 +18,8 @@ struct FieldTargetTests {
         let focus = FieldSwitchFocus(field: field, focused: Self.otherTab)
 
         await #expect(throws: TextInsertionError.insertionTargetChanged) {
-            try await AccessibilityTextInsertionEngine(focus: focus).insert("hello", targeting: Self.destination)
+            try await AccessibilityTextInsertionEngine(focus: focus).insert(
+                "hello", targeting: Self.destination)
         }
         #expect(field.replacements.isEmpty)
     }
@@ -29,7 +30,8 @@ struct FieldTargetTests {
         let focus = FieldSwitchFocus(field: field, focused: Self.otherWindow)
 
         await #expect(throws: TextInsertionError.insertionTargetChanged) {
-            try await AccessibilityTextInsertionEngine(focus: focus).insert("hello", targeting: Self.destination)
+            try await AccessibilityTextInsertionEngine(focus: focus).insert(
+                "hello", targeting: Self.destination)
         }
         #expect(field.replacements.isEmpty)
     }
@@ -39,7 +41,8 @@ struct FieldTargetTests {
         let field = FakeTextField()
         let focus = FieldSwitchFocus(field: field, focused: Self.read)
 
-        _ = try await AccessibilityTextInsertionEngine(focus: focus).insert("hello", targeting: Self.destination)
+        _ = try await AccessibilityTextInsertionEngine(focus: focus).insert(
+            "hello", targeting: Self.destination)
         #expect(field.replacements == ["hello"])
     }
 
@@ -48,7 +51,8 @@ struct FieldTargetTests {
         let field = FakeTextField()
         let focus = FieldSwitchFocus(field: field, focused: nil)
 
-        _ = try await AccessibilityTextInsertionEngine(focus: focus).insert("hello", targeting: Self.destination)
+        _ = try await AccessibilityTextInsertionEngine(focus: focus).insert(
+            "hello", targeting: Self.destination)
         #expect(field.replacements == ["hello"])
     }
 

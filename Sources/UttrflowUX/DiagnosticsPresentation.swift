@@ -804,7 +804,8 @@ public enum DiagnosticsPresenter {
         }
         let failures = record.engineFailures.map {
             DiagnosticsRow(
-                title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention)
+                title: "Engine failed", detail: "\($0.engine): \($0.failureClass.rawValue)", state: .attention
+            )
         }
         guard changed.isEmpty, off.isEmpty, refused.isEmpty, unavailable.isEmpty, failures.isEmpty else {
             return unavailable + failures + refused + changed + off

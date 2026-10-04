@@ -18,6 +18,9 @@ public enum VoiceActivity: Sendable {
     /// Audio kept either side of the speech, in seconds, so no onset is clipped.
     static let margin = 0.2
 
+    /// Counts samples read while a test has it bound, so the cost of an analysis is bounded by work rather than time.
+    @TaskLocal package static var samplesRead: WorkTally?
+
     /// The loudness a frame must reach to be speech: above the room by a margin, and never above ordinary speech.
     static func threshold(forFloor floor: Float) -> Float {
         Swift.max(absoluteFloor, Swift.min(floor * signalToNoise, assumedSpeechLevel))
@@ -60,6 +63,7 @@ public enum VoiceActivity: Sendable {
                 let sample = samples[index]
                 if sample.isFinite { sum += sample * sample }
             }
+            samplesRead?.record(frameLength)
             if (sum / Float(frameLength)).squareRoot() >= absoluteFloor { return true }
             start += frameLength
         }
@@ -78,6 +82,7 @@ public enum VoiceActivity: Sendable {
                 // A `nan` from a misbehaving driver compares false against every threshold.
                 if sample.isFinite { sum += sample * sample }
             }
+            samplesRead?.record(frameLength)
             loudness.append((sum / Float(frameLength)).squareRoot())
             start += frameLength
         }

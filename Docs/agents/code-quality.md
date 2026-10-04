@@ -171,6 +171,16 @@ dependency from one of those modules to a module of the first row. The count is 
 `Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
 --report` lists what is left.
 
+```bash
+make public-api-audit
+```
+
+fails on a `public` or `open` declaration whose module, kind and name are not in
+`Scripts/public_api_baseline.json`. Make a new one `internal` unless another module needs it;
+otherwise record it with `python3 Scripts/public_api_audit.py --update` so the baseline line shows
+in the diff. `--unused` lists public declarations named nowhere outside their module, counting a
+test that reaches the module through `@testable import` as inside.
+
 A change that adds a module states, in the pull request: the module's one-sentence
 responsibility, the modules it depends on and why none points the wrong way, its public surface in
 at most 10 declarations, its test target, and its page in `Docs/README.md`. The module meets the

@@ -38,8 +38,10 @@ public struct Snippet: Sendable, Equatable, Identifiable, Codable {
             timesUsed: overflowed ? Int.max : nextCount, lastUsed: when)
     }
 
-    /// The trigger as the matcher sees it: lower-cased runs of letters and digits, all that survives speech.
-    public var triggerWords: [String] { trigger.snippetWordRuns().map { $0.text.lowercased() } }
+    /// The trigger as the matcher sees it: in Latin letters as dictation writes it, lower-cased runs of letters and digits.
+    public var triggerWords: [String] {
+        LatinScript.enforced(trigger).snippetWordRuns().map { $0.text.lowercased() }
+    }
 
     /// Whether this snippet can ever fire: a wordless trigger matches everywhere, an empty expansion deletes.
     public var isUsable: Bool {

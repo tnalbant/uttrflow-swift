@@ -514,4 +514,22 @@ struct HistoryWordCountTests {
         #expect(day?.summary == "2 dictations · 5 words")
         #expect(day?.rows.map(\.length) == ["3 words", "2 words"])
     }
+
+    @Test("each distinct written word offers a fix carrying that spelling, and the row text is untouched")
+    func offersAFixPerWrittenWord() {
+        let text = "Ask Nickel, then Nickel's team: Nickel."
+        let row = HistoryFixture.page(entries: [HistoryFixture.entry(text)]).days.first?.rows.first
+
+        #expect(row?.text == text)
+        #expect(
+            row?.fixes.map(\.intent) == [
+                .fixWord("Ask"), .fixWord("Nickel"), .fixWord("then"), .fixWord("Nickel's"), .fixWord("team"),
+            ])
+        #expect(row?.fixes.first?.title == "Fix “Ask”")
+    }
+
+    @Test("a token with no letters offers no fix")
+    func skipsTokensWithoutLetters() {
+        #expect(HistoryPresenter.fixes(for: "42 — 7%").isEmpty)
+    }
 }

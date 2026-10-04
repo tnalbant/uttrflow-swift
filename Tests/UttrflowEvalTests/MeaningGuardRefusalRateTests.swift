@@ -55,7 +55,8 @@ struct MeaningGuardRefusalRateTests {
     @Test("every refused expected text is acknowledged with an issue, so the count never rises")
     func noUnacknowledgedRefusal() {
         let refused = Self.refusals()
-        print("meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
+        print(
+            "meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
         for refusal in refused {
             print("  \(refusal.id)  \(refusal.kind)  \(refusal.reason)")
         }

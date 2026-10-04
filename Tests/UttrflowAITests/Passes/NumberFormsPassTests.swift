@@ -746,7 +746,8 @@ struct NumberWordsTests {
                 app: .unknown, insertion: .unknown, destination: .plain,
                 numberStyle: NumberStyle(grouping: grouping))
             let pass = NumberFormsPass(policy: formatter.numbers, digits: situation.digits(for: formatter))
-            #expect(pass.apply(Draft(text: "we paid one hundred fifty thousand rupees")).text.contains(expected))
+            #expect(
+                pass.apply(Draft(text: "we paid one hundred fifty thousand rupees")).text.contains(expected))
         }
     }
 

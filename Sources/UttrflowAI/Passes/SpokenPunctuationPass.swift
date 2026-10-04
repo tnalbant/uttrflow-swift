@@ -103,7 +103,6 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         }
     }
 
-
     /// Writes a lead-in row's mark onto its last word when more of the same clause follows it.
     private func markLeadIns(in draft: inout Draft) {
         let live = draft.presentIndices

@@ -303,7 +303,8 @@ public actor ClipboardStore {
 
     /// Where the pictures live: a folder beside the clipboard file, never inside that whole-file rewrite.
     public var imagesFolder: URL {
-        file.deletingLastPathComponent().appending(path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
+        file.deletingLastPathComponent().appending(
+            path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
     }
 
     /// Records a noticed copy, writing its picture first so a clip never points at a file that is missing.

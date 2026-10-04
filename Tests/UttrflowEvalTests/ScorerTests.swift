@@ -51,9 +51,10 @@ struct ScorerTests {
         #expect(unfinished.brokeShape == [#"ends with ".""#])
         #expect(!unfinished.passed)
 
-        #expect(Scorer.score("The Report Is Attached", against: reference).brokeShape == [
-            #"begins with "the report""#, #"ends with ".""#,
-        ])
+        #expect(
+            Scorer.score("The Report Is Attached", against: reference).brokeShape == [
+                #"begins with "the report""#, #"ends with ".""#,
+            ])
     }
 
     /// A structured output has one written form, so a near miss in spacing or case is a miss.
