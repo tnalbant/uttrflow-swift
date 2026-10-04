@@ -1,6 +1,6 @@
 // Edits text already written into another app's field, by its recorded range and only once the range is verified.
 import ApplicationServices
-import UttrflowCore
+public import UttrflowCore
 
 /// A recorded insertion to edit, and what is known now about the field in front.
 public struct EditTarget: Sendable, Equatable {

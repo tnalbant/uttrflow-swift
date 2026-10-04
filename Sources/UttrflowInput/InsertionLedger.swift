@@ -1,6 +1,6 @@
 // Remembers, in memory only, where the last confirmed dictations landed, so a later command can find them.
 private import Synchronization
-import UttrflowCore
+public import UttrflowCore
 
 /// The focused field and its caret in UTF-16 units, read in one Accessibility pass.
 public struct FieldPlace: Sendable, Equatable {
