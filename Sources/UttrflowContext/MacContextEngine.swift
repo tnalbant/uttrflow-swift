@@ -71,7 +71,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
 
     private let readFrontmostApplication: @Sendable () async -> FrontmostApplication?
     private let readFocusOwner: @Sendable (FrontmostApplication) async -> FrontmostApplication?
-    private let readFocusedWindow: @Sendable (FrontmostApplication) async -> FocusedWindow?
+    private let readFocusedWindow: @Sendable (FrontmostApplication, FocusedWindowSink) async -> Void
     private let ownBundleIdentifier: String?
     private let ownProcessIdentifier: Int32
     private let clock: any Clock<Duration>
@@ -94,7 +94,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
         readFrontmostApplication: @escaping @Sendable () async -> FrontmostApplication?,
         readFocusOwner: @escaping @Sendable (FrontmostApplication) async -> FrontmostApplication? = { _ in nil
         },
-        readFocusedWindow: @escaping @Sendable (FrontmostApplication) async -> FocusedWindow?,
+        readFocusedWindow: @escaping @Sendable (FrontmostApplication, FocusedWindowSink) async -> Void,
         ownBundleIdentifier: String?,
         ownProcessIdentifier: Int32,
         clock: any Clock<Duration> = ContinuousClock(),
@@ -145,7 +145,7 @@ public final class MacContextEngine: ContextEngine, Sendable {
 
             // Uttrflow's own window in front means the focused window is Uttrflow's, and belongs to nobody else.
             guard subject == destination else { return }
-            reading.record(window: await readFocusedWindow(subject))
+            await readFocusedWindow(subject, reading.window)
         }
 
         var gathered = reading.value
@@ -252,13 +252,31 @@ private final class Reading: Sendable {
     /// The gathered value under a lock, in a class since a bare `Mutex` cannot be captured by a task.
     private let state = Mutex(Value())
 
-    var value: Value { state.withLock { $0 } }
+    /// Where the window read banks each answer, so the budget keeps whatever it already had.
+    let window = FocusedWindowSink()
+
+    var value: Value {
+        var gathered = state.withLock { $0 }
+        gathered.window = window.value
+        return gathered
+    }
 
     func record(application: FrontmostApplication) {
         state.withLock { $0.application = application }
     }
+}
 
-    func record(window: FocusedWindow?) {
-        state.withLock { $0.window = window }
+/// The focused window as far as the read has got, readable the instant the budget expires.
+final class FocusedWindowSink: Sendable {
+    private let state = Mutex<FocusedWindow?>(nil)
+
+    var value: FocusedWindow? { state.withLock { $0 } }
+
+    /// Replaces what was banked with a fuller answer; a field once found secure stays secure.
+    func bank(_ window: FocusedWindow) {
+        state.withLock { banked in
+            guard banked?.isSecure != true else { return }
+            banked = window
+        }
     }
 }
