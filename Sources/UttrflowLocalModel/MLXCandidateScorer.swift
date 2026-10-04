@@ -392,7 +392,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         let register = Register.infer(from: situation, typed: typed)
         // A host and a search phrase are not things a model can know: each exists in this person's history or nowhere, so a guess at one is refused rather than drawn. See `Docs/predict-precision.md`.
         guard !register.answersFromHistoryAlone else { return nil }
-        let message = PromptBuilder.message(typed: typed, in: situation, register: register, asking: ask)
+        let message = CompletionPromptBuilder.message(
+            typed: typed, in: situation, register: register, asking: ask)
         let opening = ask.opening(of: typed)
         // With the machine's values to choose among, the whole line before the word opens the turn and the word is one of them.
         let choice = opening.flatMap { CompletionText.choice(of: situation.choices, at: $0) }
