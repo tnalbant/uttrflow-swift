@@ -277,13 +277,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return WordShape.lowercased(word)
     }
 
-    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, an acronym, or a letter-and-digit code.
+    /// Whether a word keeps its case mid-sentence: "I" and its contractions, an acronym, or a technical token.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
         if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }
-        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
+        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.keepsWrittenCase(core)
     }
 
     /// Copies the case the word was heard in from where it stands, skipping fillers; a changed word is left alone.
