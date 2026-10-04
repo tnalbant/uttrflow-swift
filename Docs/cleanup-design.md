@@ -147,7 +147,7 @@ The eight shipped values (`DestinationFormatter.registry`):
 
 Everything a formatter decides is a policy value with two to four cases, so a change is a
 value change and a test change, never a new branch. Whether the caret sits in a code comment
-is read by `CodeCommentContext`, which is what switches the code editor's stop to `.always`.
+is read by `CaretStructure.region`, which is what switches the code editor's stop to `.always`.
 
 A decision that needs the grammar of what is being written (a SQL statement, a shell
 command, a formula) is not a destination decision. It belongs to a format adapter, whose

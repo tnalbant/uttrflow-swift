@@ -175,9 +175,10 @@ public struct DestinationFormatter: Sendable, Equatable {
     /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
     public static func standard(for situation: Situation) -> DestinationFormatter {
         let base = standard(for: situation.destination)
+        let preceding = situation.insertion.precedingText
         if situation.destination == .codeEditor,
-            CodeCommentContext.isDocumentProse(
-                precedingText: situation.insertion.precedingText, documentName: situation.app.documentName)
+            CaretStructure.region(precedingText: preceding, documentName: situation.app.documentName)
+                == .prose
         {
             return proseInCodeEditor(base)
         }
