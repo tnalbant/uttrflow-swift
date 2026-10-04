@@ -3479,10 +3479,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Whether the floating button collapses to a grip when idle, as the running button has it now.
     var dockShrinksToGrip: Bool { dock.shrinksToGrip }
 
-    /// Hides the main window while the user speaks, and deliberately does not bring it back.
+    /// Minimises the main window while the user speaks; it stays in the Dock until the user opens it.
     private func getOutOfTheWay(for state: DictationState) {
         guard settings.minimisesWhileDictating, case .recording = state else { return }
-        mainWindow?.hide()
+        mainWindow?.minimise()
     }
 
     /// Draws every window Uttrflow owns light or dark together; `nil` means follow the Mac.
