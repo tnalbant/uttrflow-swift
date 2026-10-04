@@ -230,6 +230,11 @@ character for character: ASCII classes match only a lone ASCII scalar, `\s` is
 `Character.isWhitespace`, `$` stands before any `Character.isNewline`, a case-insensitive `k`
 also matches U+212A KELVIN SIGN, and `\b` is the Unicode word boundary the pattern engine uses.
 
+Before `NamedSecretScan` walks the clip, `NamedSecretStems` requires `:` or `=` and a case-insensitive
+three-letter keyword prefix. The deterministic selectivity test compares this gate with the previous
+initial-letter gate over realistic non-secret clips; a separate recall test checks every accepted
+keyword spelling before it reaches the full scanner.
+
 `SecretShapesOracleTests` keeps the backtracking patterns (`BacktrackingPatterns`, never shipped)
 as the oracle and compares them with the readers on 200,000 random strings over eight seeds and
 on planted secrets. `SecretShapesScalingTests` bounds the characters read per character of the
