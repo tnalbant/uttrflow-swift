@@ -233,11 +233,6 @@ log-audit: ## Prove no log message carries text a person typed, read or said. Ne
 perf-budget: ## Prove the source keeps to the energy and memory budget, and that each check still bites. No build.
 	@python3 Scripts/perf_budget_audit.py --self-test
 
-# Needs a `uttrflow-dev bench` run, so it runs on a Mac rather than in CI.
-.PHONY: perf-budget-latency
-perf-budget-latency: ## Fail when a bench run's p95 for any stage is over its budget. RUN=path to the run.
-	@python3 Scripts/perf_budget_audit.py --latency "$(RUN)"
-
 .PHONY: size-budget
 size-budget: ## Prove the size budget check bites, and that the resolved Swift packages fit their count. No build.
 	@python3 Scripts/size_budget.py --self-test

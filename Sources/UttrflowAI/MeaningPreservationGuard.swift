@@ -346,9 +346,10 @@ public struct MeaningPreservationGuard: Sendable {
     ]
 
     /// Hindi in both scripts, since the prompt asks the model to romanise and the negation must survive that.
-    static let hindiNegations: Set<String> = HindiWords.negations.union([
+    static let hindiNegations: Set<String> = [
         "\u{0928}\u{0939}\u{0940}\u{0902}", "\u{0928}\u{093E}", "\u{092E}\u{0924}",
-    ])
+        "nahi", "nahin", "nahee", "na", "mat",
+    ]
 
     /// Function words added plus removed, counted as multisets over the supplied runs.
     static func functionWordChurn(_ kept: [GrammarToken], _ rewritten: [GrammarToken]) -> Int {

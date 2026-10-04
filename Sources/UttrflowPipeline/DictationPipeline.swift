@@ -915,8 +915,8 @@ public actor DictationPipeline {
         }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
-        // A secret is not a word to learn, by the same gate that keeps it out of History.
-        guard KeptWords.of(toWrite, intoSecureField: wasSecure) != nil else { return }
+        // A secret is not a word to learn.
+        guard !wasSecure else { return }
         // A destination reported by the inserter wins over a screen read made before the switch.
         if let landedID = landedIn(attempt)?.bundleIdentifier,
             let readID = appContext?.bundleIdentifier, landedID != readID

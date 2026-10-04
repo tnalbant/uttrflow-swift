@@ -40,9 +40,6 @@ public struct NumberFormsPass: PieceCleaningPass {
         "minutes", "hours",
     ]
 
-    /// The separator words of a spoken numeric date and the mark each is written as.
-    static let dateSeparators: [String: String] = ["slash": "/", "stroke": "/", "dash": "-"]
-
     /// Street words after which a scale number and a unit ordinal are a house number and a street name.
     static let streetWords: Set<String> = [
         "avenue", "street", "road", "drive", "lane", "boulevard", "court", "place", "way",
@@ -157,7 +154,6 @@ public struct NumberFormsPass: PieceCleaningPass {
         {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
-        if let date = numericDate(at: position, keys: keys, shapes: shapes) { return date }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
@@ -472,7 +468,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         NumberWords.spokenDigit(key).map(String.init)
     }
 
-    /// Joins three or more digit words with a nonzero one among them, no scale after them, and a cue before a count.
+    /// Joins three or more digit words with a nonzero one among them and no scale after them.
     private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard let first = singleDigit(keys[start]) else { return nil }
         var text = first
@@ -483,32 +479,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         }
         guard text.count >= 3, text.contains(where: { $0 != "0" }) else { return nil }
         guard !(joined(end, shapes) && NumberWords.scales[keys[end]] != nil) else { return nil }
-        var runStart = start
-        var run = text
-        while runStart > 0, joined(runStart, shapes), let digit = singleDigit(keys[runStart - 1]) {
-            run = digit + run
-            runStart -= 1
-        }
-        guard !isCount(run) || hasDigitCue(before: runStart, keys: keys, shapes: shapes) else { return nil }
         return Phrase(text: text, count: end - start)
-    }
-
-    /// Words before a digit run that say it is a code or a number to dial, not a count.
-    static let digitCues: Set<String> = contextWords.union([
-        "is", "code", "pin", "passcode", "password", "otp", "plus", "dial", "call", "on", "at", "was",
-    ])
-
-    /// Whether the digits step up or down by one each time, as a count-off or countdown does.
-    private static func isCount(_ digits: String) -> Bool {
-        let values = digits.compactMap(\.wholeNumberValue)
-        let steps = zip(values, values.dropFirst()).map { $1 - $0 }
-        return steps.allSatisfy { $0 == 1 } || steps.allSatisfy { $0 == -1 }
-    }
-
-    /// Whether the word before a run's first digit introduces a number or is itself one, within the same sentence.
-    private static func hasDigitCue(before start: Int, keys: [String], shapes: [WordShape]) -> Bool {
-        start > 0 && !startsASentence(start, shapes)
-            && (digitCues.contains(keys[start - 1]) || NumberWords.isNumber(keys[start - 1]))
     }
 
     private static func ordinalSuffix(_ value: Int) -> String {
@@ -536,53 +507,6 @@ public struct NumberFormsPass: PieceCleaningPass {
     ) -> Phrase {
         guard let year = dateYear(at: position + day.count, keys: keys, shapes: shapes) else { return day }
         return Phrase(text: day.text + order.yearSeparator + year.text, count: day.count + year.count)
-    }
-
-    /// "oh three slash oh four slash twenty twenty five" as 03/04/2025: the groups in the spoken order, padded as spoken.
-    private static func numericDate(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        guard let first = dateGroup(at: position, keys: keys, shapes: shapes) else { return nil }
-        let firstSeparator = position + first.count
-        guard joined(firstSeparator, shapes), let mark = dateSeparators[keys[firstSeparator]],
-            joined(firstSeparator + 1, shapes),
-            let second = dateGroup(at: firstSeparator + 1, keys: keys, shapes: shapes)
-        else { return nil }
-        let secondSeparator = firstSeparator + 1 + second.count
-        guard joined(secondSeparator, shapes), dateSeparators[keys[secondSeparator]] == mark,
-            let year = numericYear(at: secondSeparator + 1, keys: keys, shapes: shapes),
-            let firstValue = Int(first.text), let secondValue = Int(second.text),
-            min(firstValue, secondValue) <= 12
-        else { return nil }
-        return Phrase(
-            text: [first.text, second.text, year.text].joined(separator: mark),
-            count: secondSeparator + 1 + year.count - position)
-    }
-
-    /// A day or month of a numeric date, 1 to 31, with the leading zero only when one was spoken.
-    private static func dateGroup(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        if clockZeros.contains(keys[start]), joined(start + 1, shapes),
-            let digit = NumberWords.units[keys[start + 1]], (1...9).contains(digit)
-        {
-            return Phrase(text: "0\(digit)", count: 2)
-        }
-        guard let group = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
-            (1...31).contains(group.value), group.count <= 2
-        else { return nil }
-        return Phrase(text: String(group.value), count: group.count)
-    }
-
-    /// The year of a numeric date: a four-digit date year, or two digits as spoken.
-    private static func numericYear(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        if let year = dateYear(at: start, keys: keys, shapes: shapes) { return year }
-        guard joined(start, shapes) else { return nil }
-        if clockZeros.contains(keys[start]), joined(start + 1, shapes),
-            let digit = NumberWords.units[keys[start + 1]]
-        {
-            return Phrase(text: "0\(digit)", count: 2)
-        }
-        guard let group = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
-            (10...99).contains(group.value), group.count <= 2
-        else { return nil }
-        return Phrase(text: String(group.value), count: group.count)
     }
 
     /// The year that can close a date: four written digits from 1900 to 2099, or a spoken year.

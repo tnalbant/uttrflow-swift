@@ -30,7 +30,7 @@ public struct SpacingPass: PieceCleaningPass {
         return draft
     }
 
-    /// "done.Next" as "done." and "Next", "the.env" as "the" and ".env": one mark between plain words, never a file, host or abbreviation.
+    /// "done.Next" as "done." and "Next": one mark between plain words, never a file, host or abbreviation.
     static func gluedHalves(_ text: String) -> (String, String)? {
         let marks = text.indices.filter { clauseMarks.contains(text[$0]) }
         guard marks.count == 1, let at = marks.first, TechnicalToken.classify(text) == nil else { return nil }
@@ -42,10 +42,6 @@ public struct SpacingPass: PieceCleaningPass {
             right.allSatisfy(\.isLetter),
             Abbreviations.kind(of: String(left)) == nil
         else { return nil }
-        // A function word never starts a dotted name, so the dot opens a dot-file name after it: "the.env".
-        if mark == ".", FunctionWords.holds(left.lowercased()), right.allSatisfy(\.isLowercase) {
-            return (String(left), "." + right)
-        }
         let ending = right.lowercased()
         guard !TechnicalToken.fileExtensions.contains(ending), !TechnicalToken.topLevels.contains(ending)
         else {

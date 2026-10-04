@@ -32,7 +32,7 @@ public struct AppleFoundationCleanupModel: CleanupModel {
         await Self.warmed.replenish(for: instructions)
     }
 
-    /// Available unless Apple's model is off, Apple does not declare the language, or it is withheld.
+    /// Available unless Apple's model is off or the language is neither declared by Apple nor verified here.
     public func availability(for language: LanguageCode?) async -> TransformerAvailability {
         switch SystemLanguageModel.default.availability {
         case .available:
@@ -51,8 +51,13 @@ public struct AppleFoundationCleanupModel: CleanupModel {
         guard let language else { return .available }
         let declared = SystemLanguageModel.default.supportedLanguages
             .contains { $0.languageCode.map { LanguageCode($0.identifier) } == language }
-        return AppleModelLanguages.availability(of: language, declaredByApple: declared)
+        if declared { return .available }
+        return Self.verifiedBeyondApplesList.contains(language)
+            ? .available : .unsupportedLanguage(language)
     }
+
+    /// Languages Apple does not list but the corpus proves this model handles. See Docs/ai-model-output.md.
+    static let verifiedBeyondApplesList: Set<LanguageCode> = [.hindi]
 
     /// Rewrites one utterance as a structured value, in the warmed session or a fresh one.
     public func rewrite(

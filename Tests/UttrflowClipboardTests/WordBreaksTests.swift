@@ -4,7 +4,6 @@ import Foundation
 import Testing
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 import UttrflowTestSupport
 
 /// `WordBreaks` stands for the `\b` in the named-secret pattern, so it is measured against `\b` itself.

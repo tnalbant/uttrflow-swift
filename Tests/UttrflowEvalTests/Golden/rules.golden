@@ -150,7 +150,7 @@ editor-identifier-casing	The crash only happens in payment sheet after the card 
 editor-identifier-then-prose	We call set user prefs at launch so the settings page never has to set user prefs again.
 editor-ordinary-question	Can you remind me to renew the parking permit before the end of the month?
 editor-selected-identifier	Let's rename set user prefs before the release nobody knows what it does.
-ellipsis-glued-fillers	The...the invoice is...overdue.
+ellipsis-glued-fillers	The invoice is overdue.
 email-continues-mid-sentence	the quote you sent last week.
 email-greeting-kept	Hi meera just confirming the venue for the offsite is booked.
 email-two-paragraphs	Thanks for your note.\n\nI've attached the revised quote for the second floor.
@@ -177,27 +177,6 @@ fmt-boundary-so-joins-clause	It was raining so we stayed inside.
 fmt-boundary-stray-stop-mid-clause	Please water the plants on the balcony.
 fmt-boundary-two-statements	The kettle is broken we need a new one.
 fmt-bracket-aside	Bring a jacket open bracket it gets cold close bracket.
-fmt-casing-command-alone	Make it all caps.
-fmt-casing-mention-in	She wrote the title in all caps.
-fmt-casing-mention-in-before-word	Type it in all caps please.
-fmt-casing-mention-no	There are no all caps titles here.
-fmt-casing-mention-of	The problem of all caps text.
-fmt-casing-mention-subject	All caps is shouting.
-fmt-casing-mention-the-rule	The all caps rule applies to headings.
-fmt-casing-mention-use	Never use all caps headings.
-fmt-casing-mention-was	All caps was the old style.
-fmt-casing-not-capital-gains	Capital gains tax is due in April.
-fmt-casing-not-capital-of	The capital of France is Paris.
-fmt-casing-not-no-caps-bottles	There are no caps on the bottles.
-fmt-casing-span-without-off	All caps on the shelf.
-fmt-casing-use-before-words	This is IMPORTANT for everyone.
-fmt-casing-use-span	DO NOT ENTER without a badge.
-fmt-casing-use-span-mid	The sign says WET FLOOR near the door.
-fmt-casing-use-span-one-word	We are OPEN today.
-fmt-casing-use-two	The office will be CLOSED and parking is NOT available.
-fmt-casing-use-urgent	URGENT the server is down.
-fmt-casing-use-word	The office will be CLOSED on Monday.
-fmt-casing-use-word-ends-sentence	Please do NOT.
 fmt-code-camel-case	Call fetchOrders before render.
 fmt-code-file-name	Open README.md and package.json.
 fmt-code-markdown-heading-kept	# Release notes.

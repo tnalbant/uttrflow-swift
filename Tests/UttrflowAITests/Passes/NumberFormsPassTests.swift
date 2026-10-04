@@ -8,24 +8,6 @@ struct NumberFormsPassTests {
     private let sut = NumberFormsPass()
 
     @Test(
-        "writes a numeric date said with slash, stroke or dash in the spoken order, padded as spoken",
-        arguments: [
-            ("oh three slash oh four slash twenty twenty five", "03/04/2025"),
-            ("on twelve slash twenty five slash twenty four we met", "on 12/25/24 we met"),
-            ("twenty five slash twelve slash twenty twenty four", "25/12/2024"),
-            ("three dash four dash oh five", "3-4-05"),
-            ("five stroke nine stroke nineteen ninety nine", "5/9/1999"),
-            ("read and slash or write", "read and slash or write"),
-            ("three slash four", "three slash four"),
-            ("three slash four dash twenty twenty five", "three slash four dash 2025"),
-            ("twenty five slash twenty six slash twenty twenty", "25 slash 26 slash 2020"),
-        ]
-    )
-    func numericDates(input: String, expected: String) {
-        #expect(cleaned(input, by: sut) == expected)
-    }
-
-    @Test(
         "writes a number from ten up as a numeral, with commas only from ten thousand",
         arguments: [
             ("about fifteen people", "about 15 people"),
@@ -223,53 +205,6 @@ struct NumberFormsPassTests {
     }
 
     @Test(
-        "keeps a count-off or countdown with no introducing word as words",
-        arguments: [
-            "three two one go",
-            "one two three testing",
-            "five four three two one liftoff",
-            "ready? three two one",
-            "four three two one and we are live",
-            "two three four five six seven",
-            "seven six five four",
-            "one two three four five, you know the rest",
-            "six seven eight nine and go",
-            "nine eight seven six five four three two one",
-            "she counted one two three out loud",
-            "and one two three four",
-        ]
-    )
-    func keepsUncuedCountsAsWords(input: String) {
-        #expect(cleaned(input, by: sut) == input)
-    }
-
-    @Test(
-        "joins a count after a word that introduces a number",
-        arguments: [
-            ("my pin is one two three four", "my pin is 1234"),
-            ("the code is four three two one", "the code is 4321"),
-            ("dial one two three", "dial 123"),
-            ("extension two three four", "extension 234"),
-            ("room three four five", "room 345"),
-            ("call nine one one", "call 911"),
-            ("the otp is five six seven eight", "the otp is 5678"),
-            ("flight one two three", "flight 123"),
-            ("call me on nine eight seven six", "call me on 9876"),
-            ("page three two one", "page 321"),
-            ("password one two three", "password 123"),
-            ("my number was three four five six", "my number was 3456"),
-        ]
-    )
-    func joinsCuedCounts(input: String, expected: String) {
-        #expect(cleaned(input, by: sut) == expected)
-    }
-
-    @Test("writes a count as separate numerals where every number is a numeral")
-    func countInSpreadsheetCell() {
-        #expect(cleaned("three two one", by: NumberFormsPass(policy: .always, digits: .none)) == "3 2 1")
-    }
-
-    @Test(
         "keeps a run of only zero words as words",
         arguments: ["oh oh oh that is great", "zero zero zero", "oh oh no"]
     )
@@ -342,22 +277,6 @@ struct NumberFormsPassTests {
     )
     func times(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
-    }
-
-    /// A relative clock phrase keeps every word; only the place's number policy reaches the numbers in it.
-    @Test(
-        "keeps the words of a relative clock phrase under either policy",
-        arguments: [
-            ("meet at half past two", "meet at half past two", "meet at half past 2"),
-            ("leave at quarter to six", "leave at quarter to six", "leave at quarter to 6"),
-            ("it is twenty past four", "it is 20 past four", "it is 20 past 4"),
-            ("ten to six", "10 to six", "10 to 6"),
-            ("a quarter past eleven", "a quarter past 11", "a quarter past 11"),
-        ]
-    )
-    func relativeClockPhrases(input: String, fromTen: String, always: String) {
-        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == fromTen)
-        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == always)
     }
 
     @Test(

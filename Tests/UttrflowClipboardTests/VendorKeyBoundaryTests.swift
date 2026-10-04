@@ -1,7 +1,6 @@
 import Testing
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 
 @Suite("Vendor key prefixes start at token boundaries")
 struct VendorKeyBoundaryTests {

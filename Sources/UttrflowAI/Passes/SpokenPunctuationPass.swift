@@ -27,7 +27,8 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         var draft = draft
         var live = draft.presentIndices
         let repeated = repeatedNames(in: live, of: draft)
-        let literal = literalDashes(in: live, of: draft)
+        var names: Set<Int> = []
+        let literal = literalDashes(in: live, of: draft, names: &names)
         var position = 0
         // The end of the sentence `position` sits in, kept until a write changes the words; nil once stale.
         var sentenceEnd: Int?
@@ -37,7 +38,9 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 continue
             }
             let literalHyphens = literal.contains(live[position])
-            if literalHyphens, replaceShortFlag(at: position, in: &live, of: &draft) {
+            if literalHyphens, !names.contains(live[position]),
+                replaceShortFlag(at: position, in: &live, of: &draft)
+            {
                 sentenceEnd = nil
                 position += 1
                 continue
@@ -108,8 +111,8 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// Words that may stand between a name cue and its name: "the branch is fix dash login".
     static let nameLinks: Set<String> = ["is", "called", "named"]
 
-    /// The word indices of spoken dashes that belong to a command or a name rather than to prose.
-    private func literalDashes(in live: [Int], of draft: Draft) -> Set<Int> {
+    /// The word indices of spoken dashes that belong to a command or a name rather than to prose; `names` gets those joining a name.
+    private func literalDashes(in live: [Int], of draft: Draft, names: inout Set<Int>) -> Set<Int> {
         let dashes = live.filter { draft.shape(at: $0).key == "dash" }
         if isCommandLine { return Set(dashes) }
         var literal: Set<Int> = []
@@ -120,7 +123,10 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
             if inCommand && shape.key == "dash" { literal.insert(live[position]) }
             if namesCommand(at: position, in: live, of: draft) { inCommand = true }
             if Self.nameCues.contains(shape.key) && !shape.endsSentence {
-                position = nameDashes(after: position, in: live, of: draft, into: &literal)
+                var joins: Set<Int> = []
+                position = nameDashes(after: position, in: live, of: draft, into: &joins)
+                literal.formUnion(joins)
+                if !inCommand { names.formUnion(joins) }
                 continue
             }
             if shape.endsSentence { inCommand = false }
@@ -174,7 +180,10 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         return true
     }
 
-    /// Leaves a one-letter option as its own token: `git commit -m`, not `git commit-m`.
+    /// The most letters one spoken short-option cluster joins: `tar -xzvf` and a little more.
+    static let clusterLimit = 6
+
+    /// Writes a short option and its spelled letters or spoken number as one token: `ls -la`, `rm -rf`, `head -20`.
     private func replaceShortFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
         guard position + 1 < live.count, position > 0,
             let row = SpokenCommands.flags.first(where: {
@@ -182,17 +191,57 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
             }),
             !MentionGuard.isMentioned(
                 at: position, spanning: 1, in: live, of: draft,
-                reach: MentionGuard.phraseReach, kind: .joining)
+                reach: MentionGuard.phraseReach, kind: .joining),
+            let (option, length) =
+                letterCluster(after: position, in: live, of: draft)
+                ?? numericOption(after: position, in: live, of: draft)
         else { return false }
-        let next = draft.words[live[position + 1]].text
-        guard (1...2).contains(next.utf8.count),
-            next.unicodeScalars.allSatisfy({ (65...90).contains($0.value) || (97...122).contains($0.value) })
-        else { return false }
-        let index = live[position]
-        draft.replace(at: index, with: row.text + next, by: Self.id)
-        draft.remove(at: live[position + 1], by: Self.id)
-        live.remove(at: position + 1)
+        // The option keeps the mark its last word carried, so a spoken stop or comma survives the join.
+        let closing = draft.shape(at: live[position + length]).suffix
+        draft.replace(at: live[position], with: row.text + option + closing, by: Self.id)
+        for index in live[(position + 1)...(position + length)] { draft.remove(at: index, by: Self.id) }
+        live.removeSubrange((position + 1)...(position + length))
         return true
+    }
+
+    /// The letters spelled after an option marker, each one spoken alone or after "capital", and how many words said them.
+    private func letterCluster(after position: Int, in live: [Int], of draft: Draft) -> (String, Int)? {
+        var letters = ""
+        var next = position + 1
+        while next < live.count, letters.count < Self.clusterLimit {
+            let said = draft.shape(at: live[next])
+            let capital = said.key == "capital" && said.suffix.isEmpty && next + 1 < live.count
+            let shape = capital ? draft.shape(at: live[next + 1]) : said
+            // A one-word option said whole, "dash la", is its own cluster and ends it.
+            let limit = letters.isEmpty && !capital ? 2 : 1
+            guard shape.prefix.isEmpty, (1...limit).contains(shape.core.utf8.count),
+                Self.isLatinLetters(shape.core)
+            else { break }
+            letters += capital ? shape.core.uppercased() : shape.core
+            next += capital ? 2 : 1
+            if shape.core.utf8.count > 1 || !shape.suffix.isEmpty { break }
+        }
+        return letters.isEmpty ? nil : (letters, next - position - 1)
+    }
+
+    /// A spoken or written whole number after an option marker, `head -20`, and how many words said it.
+    private func numericOption(after position: Int, in live: [Int], of draft: Draft) -> (String, Int)? {
+        let first = draft.shape(at: live[position + 1])
+        if first.prefix.isEmpty, !first.core.isEmpty,
+            first.core.unicodeScalars.allSatisfy({ (48...57).contains($0.value) })
+        {
+            return (first.core, 1)
+        }
+        // The number stops at the first word that closes a clause, so "dash twenty, then" reads twenty.
+        let rest = live[(position + 1)...]
+        let end = rest.firstIndex { draft.shape(at: $0).endsClause }.map { $0 + 1 } ?? rest.endIndex
+        let said = rest[..<end]
+        guard let read = NumberWords.cardinal(said.map { draft.shape(at: $0).key }[...]) else { return nil }
+        return (String(read.value), read.count)
+    }
+
+    private static func isLatinLetters(_ word: String) -> Bool {
+        word.unicodeScalars.allSatisfy { (65...90).contains($0.value) || (97...122).contains($0.value) }
     }
 
     /// Writes the address over the first of its words and drops the rest, which spelled it.

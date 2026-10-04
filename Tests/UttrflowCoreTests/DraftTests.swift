@@ -13,18 +13,25 @@ struct DraftTests {
         #expect(draft.words.allSatisfy { $0.state == .kept && $0.confidence == 1 && $0.heard == $0.text })
     }
 
-    @Test(
-        "keeps every ellipsis inside its token as written",
-        arguments: [
-            "Ah...the...um...the invoice is...ah...overdue",
-            "wait\u{2026} we should\u{2026} move the\u{2026}the end\u{2026}",
-            "e.g. https://example.com/a...b hello...world",
-            "open ~/projects/.../Sources and pages 1...5 or src/a...b",
-        ])
-    func keepsEllipsesInTokens(text: String) {
-        let draft = Draft(text: text)
-        #expect(draft.words.map(\.text) == text.split(separator: " ").map(String.init))
-        #expect(draft.text == text)
+    @Test("splits pause ellipses only between adjacent words")
+    func splitsPauseEllipses() {
+        let draft = Draft(text: "Ah...the...um...the invoice is...ah...overdue")
+        #expect(
+            draft.words.map(\.text)
+                == ["Ah", "the", "um", "the", "invoice", "is", "ah", "overdue"])
+        #expect(draft.text == "Ah the um the invoice is ah overdue")
+    }
+
+    @Test("keeps a Unicode ellipsis as written, splitting only one that sits between two words")
+    func keepsUnicodeEllipsis() {
+        #expect(Draft(text: "wait\u{2026} we should\u{2026} move").words.map(\.text) == ["wait\u{2026}", "we", "should\u{2026}", "move"])
+        #expect(Draft(text: "the\u{2026}the end\u{2026}").words.map(\.text) == ["the", "the", "end\u{2026}"])
+    }
+
+    @Test("keeps abbreviations and URLs intact while splitting a pause")
+    func keepsAbbreviationsAndURLs() {
+        let draft = Draft(text: "e.g. https://example.com/a...b hello...world")
+        #expect(draft.words.map(\.text) == ["e.g.", "https://example.com/a...b", "hello", "world"])
     }
 
     @Test(

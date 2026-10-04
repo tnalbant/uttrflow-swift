@@ -716,24 +716,24 @@ struct SeamSnippetInput: Sendable {
     }
 
     func restoringUnconsumedStops(in expanded: ExpandedTranscript) -> ExpandedTranscript {
-        // The expander saw the text without the seam stops, so an unchanged answer equals that, not the source.
-        guard expanded.text != removingSeamStops() else { return .unchanged(text) }
+        guard expanded.text != source else { return .unchanged(text) }
         let expandedChars = Array(expanded.text)
         var result = ""
-        var expandedOffset = 0
-        let stopOffsets = Set(removableStops)
-        // A removed stop has no character in the expansion, so it never advances the expansion's offset.
-        for inputOffset in 0..<source.count {
-            if stopOffsets.contains(inputOffset) {
-                if expandedOffset < expandedChars.count, expandedChars[expandedOffset].isWhitespace {
+        var inputOffset = 0
+        var stopOffsets = Set(removableStops)
+        for _ in source {
+            if stopOffsets.remove(inputOffset) != nil {
+                if inputOffset < expandedChars.count,
+                    expandedChars[inputOffset].isWhitespace || expandedChars[inputOffset].isNewline
+                {
                     result.append(".")
                 }
-            } else if expandedOffset < expandedChars.count {
-                result.append(expandedChars[expandedOffset])
-                expandedOffset += 1
+            } else if inputOffset < expandedChars.count {
+                result.append(expandedChars[inputOffset])
             }
+            inputOffset += 1
         }
-        result += expandedChars.dropFirst(expandedOffset)
+        result += expandedChars.dropFirst(min(inputOffset, expandedChars.count))
         return ExpandedTranscript(text: result, snippets: expanded.snippets)
     }
 }

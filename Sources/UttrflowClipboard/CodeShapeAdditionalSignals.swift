@@ -1,5 +1,4 @@
 import Foundation
-import UttrflowCore
 
 extension CodeShapes {
     /// Error output is text to inspect, not source code to format.

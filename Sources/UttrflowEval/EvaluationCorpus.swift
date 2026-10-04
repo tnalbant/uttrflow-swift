@@ -316,7 +316,7 @@ public enum EvaluationCorpus {
         .init(
             id: "ellipsis-glued-fillers", category: .everyday,
             spoken: "Ah...the...um...the invoice is...ah...overdue",
-            expected: "The...the invoice is...overdue."
+            expected: "The invoice is overdue."
         ),
         .init(
             id: "filler-carrying-a-question-mark", category: .everyday,

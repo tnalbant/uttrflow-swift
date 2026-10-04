@@ -3,11 +3,11 @@
 import Foundation
 
 /// A clip's UTF-8 bytes read in place, and the character positions they fall in.
-package struct ClipBytes {
-    package let text: String
+struct ClipBytes {
+    let text: String
 
     /// Runs `body` over the text's UTF-8, copying it into contiguous storage first only if it is not already.
-    package static func read<Result>(
+    static func read<Result>(
         _ text: String, _ body: (ClipBytes, UnsafeBufferPointer<UInt8>) -> Result
     ) -> Result {
         if let result = text.utf8.withContiguousStorageIfAvailable({ body(ClipBytes(text: text), $0) }) {
@@ -20,18 +20,18 @@ package struct ClipBytes {
     }
 
     /// Whether `needle` occurs anywhere in the bytes, which every character-level occurrence requires.
-    package static func contains(_ bytes: UnsafeBufferPointer<UInt8>, _ needle: StaticString) -> Bool {
+    static func contains(_ bytes: UnsafeBufferPointer<UInt8>, _ needle: StaticString) -> Bool {
         guard let base = bytes.baseAddress, bytes.count >= needle.utf8CodeUnitCount else { return false }
         return memmem(base, bytes.count, needle.utf8Start, needle.utf8CodeUnitCount) != nil
     }
 
     /// Whether any of `needles` occurs in the text's bytes; a pattern needing one of them as characters needs it here.
-    package static func containsAny(_ text: String, _ needles: [StaticString]) -> Bool {
+    static func containsAny(_ text: String, _ needles: [StaticString]) -> Bool {
         read(text) { _, bytes in needles.contains { contains(bytes, $0) } }
     }
 
     /// Whether every byte is ASCII, in which case each byte is its own character except a CR before a LF.
-    package static func isASCII(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
+    static func isASCII(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
         !bytes.contains { $0 >= 0x80 }
     }
 
@@ -42,7 +42,7 @@ package struct ClipBytes {
     static let characterSteps = 8
 
     /// The start of the character holding the byte at `offset`, or of its scalar inside a very long character.
-    package func character(atOrBefore offset: Int) -> String.Index {
+    func character(atOrBefore offset: Int) -> String.Index {
         var probe = offset
         while probe > 0, offset - probe < Self.characterSteps {
             if let index = characterIndex(at: probe) { return index }

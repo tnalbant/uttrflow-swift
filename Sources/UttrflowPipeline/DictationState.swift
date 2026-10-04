@@ -30,10 +30,8 @@ public struct DictationFailure: Sendable, Equatable {
         self.speechEngineError = speechEngineError
     }
 
-    /// The salvaged words Uttrflow may keep or show, which is none for a secure field or a credential.
-    public var wordsToKeep: String? {
-        transcript.flatMap { KeptWords.of($0, intoSecureField: intoSecureField) }
-    }
+    /// The salvaged words Uttrflow may keep or show, which is none for a secure field.
+    public var wordsToKeep: String? { intoSecureField ? nil : transcript }
 
     /// Builds the notice from any error; the fallback keeps an unforeseen one off the screen as a type name.
     public init(
@@ -125,16 +123,8 @@ public struct DictationOutcome: Sendable, Equatable {
         self.unavailableEngines = unavailableEngines
     }
 
-    /// The words Uttrflow may keep or show, which is none for a secure field or a credential.
-    public var wordsToKeep: String? { KeptWords.of(text, intoSecureField: intoSecureField) }
-}
-
-/// The one gate deciding whether dictated words may outlive their insertion. See Docs/clipboard-secrets.md.
-enum KeptWords {
-    /// The words, or nil when they went into a secure field or are shaped like a credential.
-    static func of(_ words: String, intoSecureField: Bool) -> String? {
-        intoSecureField || SecretShapes.matches(words) ? nil : words
-    }
+    /// The words Uttrflow may keep or show, which is none for a secure field.
+    public var wordsToKeep: String? { intoSecureField ? nil : text }
 }
 
 /// Where a dictation has got to (§15); `failed` is a way of leaving that carries what recovery needs.

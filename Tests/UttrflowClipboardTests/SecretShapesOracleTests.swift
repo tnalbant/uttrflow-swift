@@ -4,7 +4,6 @@ import Foundation
 import Testing
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 import UttrflowTestSupport
 
 /// Every credential below is invented or a network's published test number, and assembled from pieces so no secret scanner matches the source.

@@ -2,17 +2,12 @@
 
 Every copy is checked for a credential before it is listed. A clip that is one is kind
 `.secret`: masked in the panel until deliberately revealed, and never written to the clipboard
-history or saved-clips files. `SecretShapes.matches(_:)` in `Sources/UttrflowCore/Secrets/` is the one
+history or saved-clips files. `SecretShapes.matches(_:)` in `Sources/UttrflowClipboard/` is the one
 answer; the shapes it asks are in `SecretShapes.swift`, `SecretScanners.swift`,
 `PatternWindows.swift`, `CardNumberShape.swift`, `CommandCredentialShape.swift`,
 `BearerURLShape.swift`, `DockerAuthShape.swift` and `BIP39RecoveryPhrase.swift`, and the
 password-manager markers are read by `PasteboardMarkers`. How the panel masks a secret is in
 [`panel.md`](panel.md#masking).
-
-The same answer decides whether a finished dictation is kept. `KeptWords.of(_:intoSecureField:)`
-in `Sources/UttrflowPipeline/DictationState.swift` withholds the words of a credential-shaped
-dictation exactly as it withholds a secure field's: the words are still inserted, but
-`wordsToKeep` is nil, so no History row, last-transcript copy or dictionary lesson keeps them.
 
 `SecretShapes.matches(_:)` is keener to say yes than no. A false positive masks something
 harmless: the row shows dots, Return still pastes it, one keystroke reveals it. A false negative

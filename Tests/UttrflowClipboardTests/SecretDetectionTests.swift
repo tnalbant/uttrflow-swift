@@ -5,7 +5,6 @@ import Testing
 import UttrflowTestSupport
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 
 /// The one detection rule with a cost attached to being wrong; every credential below is invented.
 @Suite("What must not be legible on a shared screen")

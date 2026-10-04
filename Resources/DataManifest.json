@@ -142,7 +142,7 @@
       "bytes": 9423
     },
     {
-      "path": "Sources/UttrflowCore/Resources/LICENSE-bip39.txt",
+      "path": "Sources/UttrflowClipboard/Resources/LICENSE-bip39.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
@@ -153,7 +153,7 @@
       "bytes": 1131
     },
     {
-      "path": "Sources/UttrflowCore/Resources/bip39-english.txt",
+      "path": "Sources/UttrflowClipboard/Resources/bip39-english.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
@@ -189,15 +189,6 @@
       "note": "read through DataTable; see Docs/data-tables.md",
       "sha256": "d10273c6febae571f7cbc7b446da62737a2916a0a2dc28aa606830f662e6a664",
       "bytes": 11864
-    },
-    {
-      "path": "Sources/UttrflowCore/Resources/Tables/hindi-words.json",
-      "origin": "authored",
-      "licence": "MIT",
-      "redistribution": true,
-      "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "dca4a0ebd2324388ddf5ff34312f09d3bda1a129db885b9c74b06261e7990326",
-      "bytes": 6679
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",

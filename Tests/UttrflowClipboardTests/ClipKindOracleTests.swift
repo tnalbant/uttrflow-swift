@@ -4,7 +4,6 @@ import Foundation
 import Testing
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 import UttrflowTestSupport
 
 /// Every fixture is invented, and each credential shape is assembled from pieces so no scanner matches the source.

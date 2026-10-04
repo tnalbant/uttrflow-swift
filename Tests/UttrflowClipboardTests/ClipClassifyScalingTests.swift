@@ -5,7 +5,6 @@ import Synchronization
 import Testing
 
 @testable import UttrflowClipboard
-@testable import UttrflowCore
 
 /// Every fixture here is invented, and nothing in it is shaped like a credential.
 extension HeavyClipScans {

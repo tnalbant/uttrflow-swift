@@ -232,12 +232,9 @@ public enum DictationPresenter {
         return estimate.isHolding ? "Almost ready" : "Getting ready"
     }
 
-    /// The words read aloud with the notice, withheld when the field is secure or they look like a credential.
+    /// The words read aloud with the notice, withheld when the field they went into is secure.
     static func said(_ outcome: DictationOutcome) -> String {
-        outcome.wordsToKeep
-            ?? (outcome.intoSecureField
-                ? "The words are hidden because the field is secure."
-                : "The words are hidden because they look like a password or key.")
+        outcome.wordsToKeep ?? "The words are hidden because the field is secure."
     }
 
     /// The missing-speech sentence with its leading space, or nothing when every piece decoded.
