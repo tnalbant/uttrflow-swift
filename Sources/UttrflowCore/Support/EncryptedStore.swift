@@ -292,4 +292,10 @@ public enum StoreKeyError: Error, Sendable {
     case revocationUnsupported
     /// A stored installation key does not have the required 256-bit size.
     case invalidKey
+
+    /// Whether the Keychain definitively has no installation key stored.
+    public var isMissing: Bool {
+        guard case .unavailable(let status) = self else { return false }
+        return status == Int32(errSecItemNotFound)
+    }
 }
