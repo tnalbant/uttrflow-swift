@@ -3738,9 +3738,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             show(.main(.history))
             Task { await pipeline?.acknowledge() }
         case .retryFromRecording:
-            // The audio sits in today's list on History with its own Retry.
-            show(.main(.history))
-            Task { await pipeline?.acknowledge() }
+            // History's Retry, run from the notice, so the words reach the clipboard in one press.
+            if case .failed(let failure) = lastDictationState, let id = failure.keptRecording {
+                carryOut(MainIntent.retryRecording(id))
+            } else {
+                show(.main(.history))
+                Task { await pipeline?.acknowledge() }
+            }
         }
     }
 

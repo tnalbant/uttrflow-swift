@@ -1110,9 +1110,10 @@ public actor DictationPipeline {
     private func fail(_ failure: DictationFailure) async {
         var failure = failure.markingSecure(destinationIsSecure)
         let wordsLost = failure.transcript == nil && failure.severity != .informational
+        let recording = openRecording
         let kept = await settleRecording(wordsLost: wordsLost)
-        if kept, failure.recovery == nil || failure.recovery == .retry {
-            failure = failure.offering(.retryFromRecording)
+        if kept, let recording, failure.recovery == nil || failure.recovery == .retry {
+            failure = failure.offeringRetry(of: recording)
         }
         transition(to: .failed(failure))
     }
