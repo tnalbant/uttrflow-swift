@@ -1636,7 +1636,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .pasteLastTranscript:
             await pasteLastTranscript()
         case .copyLastTranscript:
-            copyLastTranscript()
+            await copyLastTranscript()
         // Watched through the tap rather than registered, so it never arrives here.
         case .dictate:
             break
@@ -1645,7 +1645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Puts the last dictation back at the caret by the route a dictation takes, never the clipboard.
     private func pasteLastTranscript() async {
-        guard let text = lastTranscript, !text.isEmpty else {
+        guard let text = await keptLastTranscript() else {
             sayNoLastTranscript(to: "paste")
             return
         }
@@ -1665,8 +1665,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Writes the clipboard on purpose, which is the one shortcut whose whole job that is.
-    private func copyLastTranscript() {
-        guard let text = lastTranscript, !text.isEmpty else {
+    private func copyLastTranscript() async {
+        guard let text = await keptLastTranscript() else {
             sayNoLastTranscript(to: "copy")
             return
         }
@@ -2666,6 +2666,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         lastTranscriptGeneration += 1
         lastTranscript = nil
         lastTranscriptID = nil
+    }
+
+    /// The last transcript only while History still keeps its record, so retention forgets it too.
+    private func keptLastTranscript() async -> String? {
+        guard let text = lastTranscript, !text.isEmpty, let id = lastTranscriptID else { return nil }
+        let generation = lastTranscriptGeneration
+        let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+        let kept = await history.records(keeping: retention).contains { $0.id == id }
+        guard generation == lastTranscriptGeneration, id == lastTranscriptID else { return nil }
+        guard kept else {
+            forgetLastTranscript()
+            return nil
+        }
+        return text
     }
 
     /// Restores the newest retained dictation so paste-last works after relaunch.

@@ -6,6 +6,7 @@ import UttrflowClipboard
 import UttrflowHistory
 import UttrflowInput
 import UttrflowPipeline
+import UttrflowSettings
 import UttrflowUX
 import Testing
 
@@ -97,6 +98,31 @@ struct LastTranscriptForgetTests {
 
         #expect(await insertion.inserted == ["Newest words"])
         #expect(app.lastTranscriptID == newest.id)
+    }
+
+    @Test(
+        "both shortcuts refuse a dictation that has aged past retention",
+        arguments: [ShortcutAction.pasteLastTranscript, ShortcutAction.copyLastTranscript])
+    func agedPastRetentionIsForgotten(action: ShortcutAction) async throws {
+        let sandbox = Sandbox()
+        let history = DictationHistoryStore(
+            file: DictationHistoryStore.defaultFile(in: sandbox.root))
+        let aged = DictationRecord(text: "Aged words", when: .now.addingTimeInterval(-3 * 86_400))
+        try await history.append(aged, keeping: Retention(days: 30, now: .now))
+        let session = HeldSession(signedIn: true)
+        let app = AppDelegate(container: sandbox.root, account: session.layer)
+        app.settingsChanged(to: Settings(transcriptRetentionDays: 30))
+        let insertion = InsertionRecorder()
+        app.clipInserter = insertion
+        await app.restoreLastTranscript()
+        #expect(app.lastTranscriptID == aged.id)
+
+        app.settingsChanged(to: Settings(transcriptRetentionDays: 1))
+        await app.perform(action)
+
+        #expect(await insertion.inserted.isEmpty)
+        #expect(app.lastTranscript == nil)
+        #expect(app.actionNotice?.message.hasPrefix("There is no transcript to") == true)
     }
 
     @Test("both shortcuts say so when there is nothing to put back", arguments: [
