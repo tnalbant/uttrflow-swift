@@ -76,7 +76,8 @@ struct DataTableTests {
 
     @Test("Random damage to a valid table never crashes and never yields a row that breaks the rules.")
     func fuzzedInput() {
-        let valid = Array(#"{"schema": 1, "rows": [{"id": "a", "weight": 1}, {"id": "b", "weight": 2}]}"#.utf8)
+        let valid = Array(
+            #"{"schema": 1, "rows": [{"id": "a", "weight": 1}, {"id": "b", "weight": 2}]}"#.utf8)
         let alphabet = Array(#"{}[]":, 0129abschemrowsidwt-.\"#.utf8)
         var random = SeededRandom(seed: 0x5EED_7AB1E)
         var decoded = 0
@@ -90,7 +91,9 @@ struct DataTableTests {
                 default: bytes.insert(alphabet.randomElement(using: &random) ?? 0, at: position)
                 }
             }
-            guard let rows = try? DataTable<Row>.decode(Data(bytes), schema: 1, limits: limits) else { continue }
+            guard let rows = try? DataTable<Row>.decode(Data(bytes), schema: 1, limits: limits) else {
+                continue
+            }
             decoded += 1
             #expect(Set(rows.map(\.id)).count == rows.count)
             #expect(rows.allSatisfy { !$0.id.allSatisfy(\.isWhitespace) })
@@ -131,7 +134,9 @@ struct DataTableTests {
         #expect(table.source == .fallback(.unsupportedSchema(found: 9)))
     }
 
-    @Test("The shipped word tables load from the bundle with every word they held when they were written in code.")
+    @Test(
+        "The shipped word tables load from the bundle with every word they held when they were written in code."
+    )
     func shippedTables() {
         #expect(FunctionWords.table.source == .bundled)
         #expect(FunctionWords.table.rows.count == 203)
@@ -143,10 +148,11 @@ struct DataTableTests {
         #expect(NumberWords.units.count == 10)
         #expect(NumberWords.teens.count == 10)
         #expect(NumberWords.tens.count == 8)
-        #expect(NumberWords.scales == [
-            "hundred": 100, "thousand": 1_000, "million": 1_000_000,
-            "billion": 1_000_000_000, "trillion": 1_000_000_000_000,
-        ])
+        #expect(
+            NumberWords.scales == [
+                "hundred": 100, "thousand": 1_000, "million": 1_000_000,
+                "billion": 1_000_000_000, "trillion": 1_000_000_000_000,
+            ])
     }
 }
 

@@ -74,18 +74,21 @@ public struct DataTable<Row: DataTableRow>: Sendable {
             let data = try read(name, from: bundle)
             return DataTable(rows: try decode(data, schema: schema, limits: limits), source: .bundled)
         } catch {
-            log.fault("Table \(name, privacy: .public) fell back: \(String(describing: error), privacy: .public)")
+            log.fault(
+                "Table \(name, privacy: .public) fell back: \(String(describing: error), privacy: .public)")
             return DataTable(rows: fallback, source: .fallback(error))
         }
     }
 
     /// Checks and decodes a table's bytes; the seam malformed input is tested through.
-    public static func decode(_ data: Data, schema: Int, limits: DataTableLimits) throws(DataTableError) -> [Row] {
+    public static func decode(
+        _ data: Data, schema: Int, limits: DataTableLimits
+    ) throws(DataTableError) -> [Row] {
         guard data.count <= limits.maxBytes else { throw .tooLarge(bytes: data.count) }
         let decoder = JSONDecoder()
-        guard let header = try? decoder.decode(Header.self, from: data) else { throw .malformed }  // the shape is the error
+        guard let header = try? decoder.decode(Header.self, from: data) else { throw .malformed }
         guard header.schema == schema else { throw .unsupportedSchema(found: header.schema) }
-        guard let body = try? decoder.decode(Body.self, from: data) else { throw .malformed }  // the shape is the error
+        guard let body = try? decoder.decode(Body.self, from: data) else { throw .malformed }
         guard body.rows.count <= limits.maxRows else { throw .tooManyRows(count: body.rows.count) }
         try checkIDs(body.rows)
         return body.rows
