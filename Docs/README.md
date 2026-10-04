@@ -38,6 +38,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
+| [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
 | [context-budget.md](context-budget.md) | The context read's budget |
 | [stuck-recording.md](stuck-recording.md) | The recording that never stops |
 | [recordings.md](recordings.md) | Recordings kept for retry |
