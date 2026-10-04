@@ -84,7 +84,7 @@ struct ClipBytes {
     }
 }
 
-/// Runs the vendor-key pattern only on windows that open at one of its literal prefixes.
+/// Runs the vendor-key pattern on bounded windows around literal prefixes.
 enum VendorKeyWindows {
     /// Characters read from each prefix; the longest shortest match, `dop_v1_` and forty hex digits, is 47.
     static let width = 128
@@ -103,7 +103,9 @@ enum VendorKeyWindows {
                 guard offset >= coveredAll, let prefix = prefix(bytes, at: offset) else { continue }
                 let isSendGrid = prefix == .sendGrid
                 guard isSendGrid || offset >= coveredShort else { continue }
-                let start = clip.character(atOrBefore: offset)
+                // The window carries one preceding character for the regex boundary check.
+                let contextOffset = offset == 0 ? 0 : offset - 1
+                let start = clip.character(atOrBefore: contextOffset)
                 let end: String.Index
                 if isSendGrid {
                     // Its first segment has no longest length, so the window runs to the end of the token.

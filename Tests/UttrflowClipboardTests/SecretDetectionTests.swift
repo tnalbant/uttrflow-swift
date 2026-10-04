@@ -176,6 +176,48 @@ struct SecretDetectionTests {
         }
     }
 
+    @Test("keeps generated credentials detectable beside non-ASCII characters")
+    func generatedCredentialsAtNonASCIIBoundaries() {
+        let tokens = [
+            Self.keyBase,
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "Zx9kLmQ2rT7pQ3vB8nW4yH6sAbCdEfGh",
+            "K9x$Qz7Tr2Bn8LmVa",
+        ]
+        let boundaries = ["’", "é", "\u{200B}", "😀", "\u{0301}", "\u{00A0}"]
+
+        for token in tokens {
+            let byteResult = SecretShapes.hasHighEntropyToken(token)
+            #expect(byteResult)
+            #expect(SecretShapes.hasHighEntropyTokenByCharacter(token) == byteResult)
+            for boundary in boundaries {
+                for text in [boundary + token, token + boundary] {
+                    #expect(
+                        SecretShapes.hasHighEntropyTokenByCharacter(text) == byteResult,
+                        "Character path changed the result for \(text.debugDescription)")
+                    #expect(
+                        SecretShapes.hasHighEntropyToken(text) == byteResult,
+                        "Detection changed the result for \(text.debugDescription)")
+                    #expect(SecretShapes.matches(text), "Missed \(text.debugDescription)")
+                }
+            }
+        }
+    }
+
+    @Test("keeps bearer URLs and card numbers detectable beside non-ASCII characters")
+    func bearerURLsAndCardsAtNonASCIIBoundaries() {
+        let webhook = "hooks.slack.com/services/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"
+        for boundary in ["’", "é", "\u{200B}", "😀", "\u{0301}", "\u{00A0}"] {
+            for text in [boundary + webhook, webhook + boundary] {
+                #expect(SecretShapes.matches(text), "Missed \(text.debugDescription)")
+                #expect(ClipKindDetector.kind(of: text) == .secret)
+            }
+        }
+
+        #expect(SecretShapes.matches("4111111111111111\u{0301}"))
+        #expect(ClipKindDetector.kind(of: "4111111111111111\u{0301}") == .secret)
+    }
+
     @Test(
         "leaves canonical UUIDs as ordinary text",
         arguments: [
@@ -704,6 +746,31 @@ struct SecretDetectionTests {
         ])
     func entropyGates(_ text: String) {
         #expect(ClipKindDetector.kind(of: text) != .secret)
+    }
+
+    @Test(
+        "leaves known scheme-only URIs and quoted filesystem paths outside the entropy rule",
+        arguments: [
+            "mailto:a@example.com?subject=Hi%20there",
+            "spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
+            "magnet:?xt=urn:btih:4f3c2a1b0e9d8c7b6a594837261504f3c2a1b0e9",
+            "urn:example:Q7Vn2mR8xL4pK9cD",
+            "tel:+14155552671",
+            "\"/Volumes/Backup Drive/photos/2026/a.heic\"",
+            "\"/Volumes/Backup Drive/photos/2026/niño.heic\"",
+        ])
+    func ordinaryURIsAndQuotedPaths(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) != .secret)
+    }
+
+    @Test("still masks a quoted generated token")
+    func quotedGeneratedToken() {
+        #expect(ClipKindDetector.kind(of: "\"K9x$Qz7Tr2Bn8LmVa\"") == .secret)
+    }
+
+    @Test("still masks an exact vendor credential inside a URI")
+    func vendorCredentialInsideURI() {
+        #expect(ClipKindDetector.kind(of: "spotify:track:sk-ant-abcdefghijklmnop") == .secret)
     }
 
     /// A multi-line clip is a document, and documents legitimately carry digests.

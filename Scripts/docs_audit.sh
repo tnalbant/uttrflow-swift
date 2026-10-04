@@ -1457,12 +1457,13 @@ else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
 import re
 
-SOURCE = "Sources/UttrflowEval/EvaluationCorpus.swift"
+SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
 DOC = "Docs/bakeoff.md"
 
 real = {}
-for match in re.finditer(r"category: \.([A-Za-z]+),", open(SOURCE, errors="ignore").read()):
-    real[match.group(1)] = real.get(match.group(1), 0) + 1
+for source in SOURCES:
+    for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
+        real[match.group(1)] = real.get(match.group(1), 0) + 1
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()

@@ -274,6 +274,12 @@ let package = Package(
             swiftSettings: sharedSwiftSettings
         ),
 
+        // Test-only window whose fields misbehave on purpose; never a dependency of the app.
+        .executableTarget(
+            name: "uttrflow-insertion-fixture",
+            swiftSettings: sharedSwiftSettings
+        ),
+
         // Phase 8's harness. Separate from uttrflow-dev because it records real speech
         // and writes a corpus, which is a different job from poking at one stage.
         .executableTarget(
