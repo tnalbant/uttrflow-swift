@@ -11,18 +11,18 @@ and is excluded from the coverage gate for it; the insertion is `TextInsertion.c
 
 Tab by default. The right arrow in terminals, because Tab there is the shell's own
 completion and taking it would break the thing the user is actually trying to do.
-Option-Tab in editors and spreadsheets, because Tab there is indentation, native
+Option-Tab in editors, spreadsheets and notes apps, because Tab there is indentation, native
 completion, text navigation, or cell navigation. This includes code editors, query editors,
-document editors such as Word, Pages, and TextEdit, Numbers or Excel, and browser-based
-Google Sheets when its window title identifies it. The user can override any application
+document editors such as Word, Pages, and TextEdit, notes apps such as Notes, Notion, Obsidian and
+Bear, Numbers or Excel, and browser-based Google Sheets, Docs and Excel when the window title
+identifies them. The user can override any application
 (Settings → AI suggestions → **Accept with**), and the override wins over the kind.
 
-There is one table of which applications are terminals and editors: the terminal, code editor,
-query editor and document editor rows of `DestinationRules.standard` in `UttrflowCore`, the same
-rows that decide how a dictation into those applications is laid out. `TerminalApplications` (in
-`UttrflowCore`) and the editor list in `AcceptKeys` are read from those rows, lowercased and
-matched by prefix, so dictation and suggestions name the one type directly. Spreadsheets come
-from the destination table too, which can identify Google Sheets from its window title.
+There is one table of application kinds: the terminal, code editor, query editor, document editor,
+spreadsheet and notes rows of `DestinationRules.standard` in `UttrflowCore`, the same rows that
+decide how a dictation into those applications is laid out. `AcceptKeys` reads that table to
+choose Tab or Option-Tab, and `TerminalApplications` reads its terminal row to choose the right
+arrow. Browser-based Google Sheets, Docs and Excel are identified by their window titles.
 `TerminalApplications` has two readers: `AcceptKeys`, to hand a shell the right arrow, and
 `FocusedFieldSnapshot`, to keep a shell's `AXTextArea` out of the prose rule and to strip its
 prompt from the line. An application added to a row is a terminal or an editor to dictation and
