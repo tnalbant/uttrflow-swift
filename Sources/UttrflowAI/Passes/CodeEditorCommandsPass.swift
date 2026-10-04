@@ -30,23 +30,20 @@ public struct CodeEditorCommandsPass: PieceCleaningPass {
         case symbol(text: String, consumed: Int)
     }
 
-    private enum CaseStyle {
+    private enum CaseStyle: String {
         case camel, snake, kebab, upper
     }
 
     private static func casing(at position: Int, in live: [Int], of draft: Draft) -> Command? {
-        guard position + 1 < live.count else { return nil }
-        let first = draft.shape(at: live[position]).key
-        let second = draft.shape(at: live[position + 1]).key
-        let style: CaseStyle
-        switch (first, second) {
-        case ("camel", "case"): style = .camel
-        case ("snake", "case"): style = .snake
-        case ("kebab", "case"): style = .kebab
-        case ("all", "caps"): style = .upper
-        default: return nil
-        }
-        var end = position + 2
+        guard
+            let row = SpokenCommands.casings.first(where: {
+                $0.isEnabled(in: .codeEditor)
+                    && draft.spells($0.words, at: position, in: live, acrossSentences: true)
+            }),
+            let style = CaseStyle(rawValue: row.text)
+        else { return nil }
+        let named = row.words.count
+        var end = position + named
         var wordCount = 0
         while end < live.count {
             let shape = draft.shape(at: live[end])
@@ -56,7 +53,7 @@ public struct CodeEditorCommandsPass: PieceCleaningPass {
             if shape.endsClause || WordShape.trailsOff(shape.suffix) { break }
         }
         guard wordCount > 0 else { return nil }
-        return .casing(style: style, consumed: wordCount + 2, wordCount: wordCount)
+        return .casing(style: style, consumed: wordCount + named, wordCount: wordCount)
     }
 
     private static func symbol(at position: Int, in live: [Int], of draft: Draft) -> Command? {
@@ -67,13 +64,13 @@ public struct CodeEditorCommandsPass: PieceCleaningPass {
     }
 
     private static func isSpokenClauseWord(_ shape: WordShape) -> Bool {
-        ["comma", "period", "colon", "semicolon"].contains(shape.key)
+        SpokenCommands.marks.contains { $0.placement == .trailing && $0.words == [shape.key] }
     }
 
     private func apply(_ command: Command, at position: Int, in live: [Int], to draft: inout Draft) {
         switch command {
         case .casing(let style, let consumed, let wordCount):
-            let spoken = (position + 2)..<(position + 2 + wordCount)
+            let spoken = (position + consumed - wordCount)..<(position + consumed)
             let values = spoken.map { draft.shape(at: live[$0]).core }
             let suffix = draft.shape(at: live[position + consumed - 1]).suffix
             let converted: String
