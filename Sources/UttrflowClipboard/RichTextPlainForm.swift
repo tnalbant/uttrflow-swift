@@ -221,6 +221,15 @@ private struct PlainTextRenderer {
         link?.text += " "
     }
 
+    /// Keeps link words apart when their HTML would make separate text lines.
+    private mutating func requestBreak(_ count: Int) {
+        if link != nil {
+            appendSpaceToLink()
+        } else {
+            out.requestBreak(count)
+        }
+    }
+
     /// Emits the pending `<li>` marker at its first content, since an `<input>` inside may change it.
     private mutating func startContent() {
         guard let marker = pendingMarker else { return }
@@ -246,7 +255,7 @@ private struct PlainTextRenderer {
             } else {
                 lists.append(openList(tag))
             }
-            out.requestBreak(1)
+            requestBreak(1)
         case "li":
             if tag.isClosing {
                 // An item with nothing in it gets no line.
@@ -254,27 +263,27 @@ private struct PlainTextRenderer {
             } else {
                 openItem(tag)
             }
-            out.requestBreak(1)
+            requestBreak(1)
         case "input":
             if !tag.isClosing { applyCheckbox(tag) }
         case "pre":
             stepVerbatim(tag)
             trimNewlineAfterPre = !tag.isClosing
-            out.requestBreak(1)
+            requestBreak(1)
         case "code", "kbd", "samp", "tt":
             stepVerbatim(tag)
         case "td", "th":
             // Cells running into each other would mash two words into one; a space is the least this can do.
             if !tag.isClosing { out.requestSpace() }
         case "hr":
-            out.requestBreak(2)
+            requestBreak(2)
         // Everything else contributes its text and nothing else, the right default for an unknown tag.
         default:
             if isHeading(tag.name) {
                 // The one place a blank line is added: separation is plain text's only cue for a heading.
-                out.requestBreak(2)
+                requestBreak(2)
             } else if Self.blockTags.contains(tag.name) {
-                out.requestBreak(1)
+                requestBreak(1)
             }
         }
     }
