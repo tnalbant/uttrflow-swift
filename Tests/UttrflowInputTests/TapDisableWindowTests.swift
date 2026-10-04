@@ -1,5 +1,7 @@
+import Dispatch
 import Synchronization
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowInput
 
@@ -48,5 +50,28 @@ struct DeliveryGaveUpTests {
         // Immediately after, so it reads as the same fault and the window's limit is reached.
         #expect(!delivery.shouldReEnable())
         #expect(gaveUp.withLock { $0 })
+    }
+
+    @Test("disables a window apart on the delivery's clock both re-enable, and closer ones give up")
+    func measuredOnTheInjectedClock() {
+        let clock = ManualClock()
+        let delivery = Delivery(clock: clock)
+        #expect(delivery.shouldReEnable())
+        clock.advance(by: .nanoseconds(Int64(TapDisableWindow.windowNanoseconds)))
+        #expect(delivery.shouldReEnable())
+        clock.advance(by: .nanoseconds(Int64(TapDisableWindow.windowNanoseconds) - 1))
+        #expect(!delivery.shouldReEnable())
+    }
+
+    @Test("the interceptor's tap state measures its disables on the clock it is given")
+    func tapStateMeasuredOnTheInjectedClock() {
+        let clock = ManualClock()
+        let source = DispatchSource.makeUserDataAddSource(queue: DispatchQueue(label: "test.tap-clock"))
+        source.resume()
+        let state = TapState(signal: source, clock: clock)
+        #expect(state.shouldReEnable())
+        clock.advance(by: .nanoseconds(Int64(TapDisableWindow.windowNanoseconds)))
+        #expect(state.shouldReEnable())
+        #expect(!state.shouldReEnable())
     }
 }

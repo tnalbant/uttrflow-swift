@@ -59,6 +59,20 @@ struct StoredListTests {
         #expect(try isExcludedFromBackup(aside))
     }
 
+    @Test("A cached list refuses writes only while an unreadable file is still under its own name.")
+    func cachedRefusalFollowsTheFile() throws {
+        let file = try folder().appending(path: "list.json")
+        try Data("{ not json".utf8).write(to: file)
+        var setAside = CachedStoredList<[Int]>(file: file)
+        #expect(setAside.load() == nil)
+        #expect(!setAside.isUnreadable)
+
+        try Data("{ not json".utf8).write(to: file)
+        var leftInPlace = CachedStoredList<[Int]>(file: file) { _ in .unreadable(setAside: nil) }
+        #expect(leftInPlace.load() == nil)
+        #expect(leftInPlace.isUnreadable)
+    }
+
     @Test("A second unreadable file in the same second never replaces the first one set aside.")
     func collisions() throws {
         let file = try folder().appending(path: "list.json")

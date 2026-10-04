@@ -27,8 +27,14 @@ CACHE_CAP = 256 * 1_048_576
 
 # Wakeups below the floor that are allowed, keyed by file and interval expression, each with its reason printed on every run.
 WAKEUPS_ALLOWED = {
-    ("Sources/Uttrflow/Settings/SettingsPageView.swift", ".seconds(wait)"): (
+    ("Sources/Uttrflow/Settings/SettingsPauseCountdown.swift", ".seconds(min(60, remaining) + 0.5)"): (
         "the suggestion pause countdown, at most once a minute and only while a pause runs with Settings open"
+    ),
+    ("Sources/UttrflowPipeline/DictationPipeline.swift", "PendingInsertionConfirmation.interval"): (
+        "watches for a dictated insertion to land, bounded by PendingInsertionConfirmation.budget"
+    ),
+    ("Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift", "0.2"): (
+        "checks the caret only while a drawn offer can be accepted, and stops when the offer is withdrawn"
     ),
     ("Sources/UttrflowPipeline/DictationController.swift", "start.advanced(by:elapsed)"): (
         "the recording cap's countdown, every ten seconds in a recording's last minute and never at rest"
@@ -68,10 +74,13 @@ WAKEUPS_ALLOWED = {
     ),
 }
 
-# Loops whose interval is a stored value, checked against the constant that supplies it.
+# Loops whose interval is a stored value, checked against every constant that supplies it.
 WAKEUPS_BOUND_BY = {
-    ("Sources/UttrflowClipboard/PasteboardWatcher.swift", "interval"): "PasteboardWatcher.pollInterval",
-    ("Sources/Uttrflow/UsageTelemetry.swift", "interval"): "UsageTelemetry.flushInterval",
+    ("Sources/UttrflowClipboard/PasteboardWatcher.swift", "interval"): ("PasteboardWatcher.pollInterval",),
+    ("Sources/Uttrflow/UsageTelemetry.swift", "interval"): ("UsageTelemetry.flushInterval",),
+    ("Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift", "interval"): (
+        "SuggestionTicking.interval", "SuggestionTicking.ghostInterval",
+    ),
 }
 
 # Known breaches of the budget, each open under the issue that fixes it; a listed breach that is gone fails as stale.
@@ -384,13 +393,14 @@ def check_wakeups(tree, findings, report):
             )
             if bound_key:
                 seen.add(bound_key)
-                value = seconds(tree, WAKEUPS_BOUND_BY[bound_key], path)
-                if value is None:
-                    findings.fail("wakeups", path, line, f"{kind} bound by {WAKEUPS_BOUND_BY[bound_key]}, which no longer resolves")
-                elif value < WAKEUP_FLOOR:
-                    findings.fail("wakeups", path, line, f"{kind} every {value:g} s via {WAKEUPS_BOUND_BY[bound_key]}, under {WAKEUP_FLOOR:g} s", key)
-                else:
-                    report.append(f"  ✓ {path}:{line} {kind} every {value:g} s ({WAKEUPS_BOUND_BY[bound_key]})")
+                for bound in WAKEUPS_BOUND_BY[bound_key]:
+                    value = seconds(tree, bound, path)
+                    if value is None:
+                        findings.fail("wakeups", path, line, f"{kind} bound by {bound}, which no longer resolves")
+                    elif value < WAKEUP_FLOOR:
+                        findings.fail("wakeups", path, line, f"{kind} every {value:g} s via {bound}, under {WAKEUP_FLOOR:g} s", key)
+                    else:
+                        report.append(f"  ✓ {path}:{line} {kind} every {value:g} s ({bound})")
                 continue
             value = None if kind == "display link" else seconds(tree, expression, path)
             if value is not None and value >= WAKEUP_FLOOR:
@@ -526,6 +536,12 @@ def check_motion(tree, findings, report):
     report.append(f"  ✓ {counted} continuous animations read")
 
 
+# Taking MLX's cache cap, directly or through the pass count that shares it across concurrent passes.
+CACHE_HOLD = r"(?:\.hold|\bbeginPass|\b(?:bufferCachePasses|BufferCachePasses\s*\.\s*processWide)\s*\.\s*begin)\s*\(\s*\)"
+
+# Clearing MLX's cache, directly or by ending the pass that the last one out clears for.
+CACHE_CLEAR = r"(?:\.clear|\bendPass|\b(?:bufferCachePasses|BufferCachePasses\s*\.\s*processWide)\s*\.\s*end)\s*\(\s*\)"
+
 PASS_CALL = re.compile(r"\.\s*perform\s*[({]|\bMLXLMCommon\s*\.\s*generate\s*\(|\bTokenIterator\s*\(|\bChatSession\s*\(|\bgenerate\s*\(\s*input\s*:")
 
 
@@ -559,8 +575,8 @@ def check_cache(tree, findings, report):
         guard_pos = {}
         for name, start, opening, end, private in bodies:
             body = text[opening:end]
-            hold_match = re.search(r"\.hold\s*\(\s*\)", body)
-            defer_match = re.search(r"\bdefer\s*\{[^}]*\.clear\s*\(\s*\)", body)
+            hold_match = re.search(CACHE_HOLD, body)
+            defer_match = re.search(r"\bdefer\s*\{[^}]*" + CACHE_CLEAR, body)
             guard_pos[(name, start)] = (
                 opening + hold_match.start() if hold_match else None,
                 opening + defer_match.start() if defer_match else None,
@@ -617,7 +633,7 @@ def check_cache(tree, findings, report):
                     (path, "cache", innermost[0]),
                 )
         for name, start, opening, end, private in bodies:
-            if name == "release" and not re.search(r"\.clear\s*\(\s*\)", text[opening:end]):
+            if name == "release" and not re.search(CACHE_CLEAR, text[opening:end]):
                 findings.fail("cache", path, line_of(text, start), "release() drops the model without clearing MLX's cache", (path, "cache", "release"))
         for match in re.finditer(r"\bMemory\s*\.\s*cacheLimit\s*=\s*([^\n}]+)", text):
             if match.group(1).strip() != "GPUBufferCache.limit":
@@ -852,9 +868,10 @@ INJECTIONS = (
     ),
     (
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        bufferCache.hold()\n        defer { bufferCache.clear() }\n"
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.",
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.", "cache",
+        "            guard let vocabulary = self.vocabulary else { return [] }\n"
+        "            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.\n"
+        "            beginPass()\n            defer { endPass() }\n",
+        "            guard let vocabulary = self.vocabulary else { return [] }\n", "cache",
     ),
     (
         "Sources/Uttrflow/Dock/DockView.swift",
@@ -866,33 +883,18 @@ INJECTIONS = (
     ),
     (
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        await weights.unload()\n        bufferCache.clear()", "        await weights.unload()", "cache",
+        "        bufferCachePasses.begin()\n        await weights.unload()\n        bufferCachePasses.end()",
+        "        await weights.unload()", "cache",
     ),
     (
-        # Same guard statements, moved after the pass they are meant to cap — the audit
-        # used to accept this because it only checked whether both appeared anywhere in
-        # the function, not whether either preceded the pass.
+        # The same guard, moved after the cached read it is meant to cap: a defer registers
+        # when its statement runs, so it covers nothing written above it.
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        bufferCache.hold()\n        defer { bufferCache.clear() }\n"
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.\n"
-        "        if let line = judgementCache.recall(candidate: candidate) {\n"
-        "            judgementCacheHits += 1\n"
-        "            guard let container else { return [] }\n"
-        "            let bytes = vocabulary?.bytes ?? []\n"
-        "            return await container.perform { loaded in\n"
-        "                Self.judgedFromCache(\n"
-        "                    line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)\n"
-        "            }\n        }",
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.\n"
-        "        if let line = judgementCache.recall(candidate: candidate) {\n"
-        "            judgementCacheHits += 1\n"
-        "            guard let container else { return [] }\n"
-        "            let bytes = vocabulary?.bytes ?? []\n"
-        "            let result = await container.perform { loaded in\n"
-        "                Self.judgedFromCache(\n"
-        "                    line, candidate: candidate, context: context, bytes: bytes, tokenizer: loaded.tokenizer)\n"
-        "            }\n            bufferCache.hold()\n            defer { bufferCache.clear() }\n"
-        "            return result\n        }",
+        "            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.\n"
+        "            beginPass()\n            defer { endPass() }\n"
+        "            let judged = await container.perform { loaded in\n",
+        "            let judged = await container.perform { loaded in\n"
+        "            beginPass()\n            defer { endPass() }\n",
         "cache",
     ),
     (

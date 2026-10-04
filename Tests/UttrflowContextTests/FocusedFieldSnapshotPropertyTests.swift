@@ -1,7 +1,9 @@
 import Foundation
 import Testing
 
+import UttrflowCore
 @testable import UttrflowContext
+import UttrflowTestSupport
 
 /// Pieces a field's value is built from: plain words, whitespace, newlines, and every kind of character a caret can split.
 private let pieces = [

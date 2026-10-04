@@ -4,7 +4,7 @@
 # The conversation that produces the work is not public. The repository is. The boundary
 # between them is one way, and every mechanism in this file exists because it is one way.
 #
-# What must not cross it is set out in AGENTS.md under "What must never reach a tracked
+# What must not cross it is set out in Docs/agents/public-boundary.md under "What must never reach a tracked
 # file": named competitors, growth and business strategy, and anything said in a working
 # session that is not a technical requirement. This script is that rule made mechanical,
 # because the rule alone has already failed four times — a competitor feature-gap table
@@ -333,8 +333,8 @@ def scan_tree():
 
     if forbidden:
         report(forbidden, "forbidden", "the working tree")
-        print("  Nothing here may be committed. See AGENTS.md, \"What must never reach a")
-        print("  tracked file\". Take the requirement out of the reference and state it in")
+        print("  Nothing here may be committed. See Docs/agents/public-boundary.md.")
+        print("  Take the requirement out of the reference and state it in")
         print("  the product's own words; the reference itself does not stay.\n")
         return 1, counts
 
@@ -474,9 +474,9 @@ def scan_hook():
     names = ", ".join(sorted(set(found)))
     print(
         f"Blocked: this command would publish text the repository rule forbids ({names}).\n"
-        "AGENTS.md, \"What must never reach a tracked file\": named competitors, growth or\n"
-        "business strategy, and session talk never reach a commit, a PR, an issue or a\n"
-        "tracked file. State the requirement in the product's own words instead.",
+        "Docs/agents/public-boundary.md: conversation and reference material never reach a\n"
+        "commit, a PR, an issue or a tracked file. State the requirement in the product's\n"
+        "own words instead.",
         file=sys.stderr,
     )
     return 2

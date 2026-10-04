@@ -66,7 +66,7 @@ struct SnippetRowView: View {
             Text("\(row.timesUsed)×")
                 .monospacedDigit()
                 .foregroundStyle(PagePalette.text.opacity(0.6))
-                .accessibilityLabel("Used \(MainFormatting.count(row.timesUsed, "time", "times"))")
+                .accessibilityLabel(row.timesUsedSpoken)
             Text(row.lastUsed)
                 .font(.system(size: 12))
                 .foregroundStyle(PagePalette.faint)
@@ -172,7 +172,7 @@ struct SnippetEditorView: View {
             PageEditorField(label: editor.textLabel, symbolName: "keyboard", tint: PagePalette.suggestion) {
                 TextEditor(text: text)
                     .focused($focused, equals: .text)
-                    .onKeyPress(.return) { press in
+                    .onKeyPress(.return, phases: .down) { press in
                         guard
                             SnippetEditorKeyboard.savesTextEditorReturn(
                                 command: press.modifiers.contains(.command))
@@ -185,6 +185,17 @@ struct SnippetEditorView: View {
                     .lineSpacing(3)
                     .frame(minHeight: 44, maxHeight: 180)
                     .padding(.horizontal, -5)
+            }
+            if let arrival = editor.arrival {
+                HStack(spacing: 8) {
+                    Text(arrival)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(PagePalette.text)
+                    Spacer(minLength: 0)
+                    if let saveArrived = editor.saveArrived {
+                        PageButton(action: saveArrived, onIntent: onIntent)
+                    }
+                }
             }
             PageEditorFooter(
                 problem: editor.problem, cancel: editor.cancel, save: save,

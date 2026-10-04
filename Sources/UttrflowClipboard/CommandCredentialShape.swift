@@ -10,6 +10,7 @@ enum CommandCredentialShape {
         var word = ""
         var hasWord = false
         var hasCookieHeader = false
+        var netrc = NetrcState()
         var quote: Character?
         var escaped = false
         /// Ends the word being read, and with a separator or a line end, the command it belongs to.
@@ -24,20 +25,27 @@ enum CommandCredentialShape {
         for character in text {
             read += 1
             if escaped {
-                word.append(character)
+                word.append(literalShellCharacter(character))
                 escaped = false
                 continue
             }
             if character.isNewline {
                 quote = nil
                 endWord()
+                if hasNetrcPassword(words, state: &netrc, read: &read) { return true }
                 if handsOverCredential(words, read: &read) { return true }
                 words.removeAll(keepingCapacity: true)
                 hasCookieHeader = false
                 continue
             }
             if let open = quote {
-                if character == open { quote = nil } else { word.append(character) }
+                if character == open {
+                    quote = nil
+                } else if open == "'" || "{}<>".contains(character) {
+                    word.append(literalShellCharacter(character))
+                } else {
+                    word.append(character)
+                }
                 continue
             }
             switch character {
@@ -45,6 +53,7 @@ enum CommandCredentialShape {
                 quote = character
                 hasWord = true
             case "\\": escaped = true
+            case "<", ">": endWord()
             case ";" where hasCookieHeader || isCookieHeaderToken(word):
                 word.append(character)
                 hasWord = true
@@ -63,14 +72,40 @@ enum CommandCredentialShape {
             }
         }
         endWord()
+        if hasNetrcPassword(words, state: &netrc, read: &read) { return true }
         return handsOverCredential(words, read: &read)
+    }
+
+    /// Context carried between directives in one netrc machine or default block.
+    private struct NetrcState {
+        var inEntry = false
+        var inMacro = false
+    }
+
+    /// Preserves metacharacters that shell quoting or escaping makes literal.
+    private static func literalShellCharacter(_ character: Character) -> Character {
+        switch character {
+        case "$": "\u{E000}"
+        case "{": "\u{E001}"
+        case "}": "\u{E002}"
+        case "<": "\u{E003}"
+        case ">": "\u{E004}"
+        default: character
+        }
     }
 
     /// Whether the current command is reading a Cookie or Set-Cookie header value.
     private static func isCookieHeaderToken(_ word: String) -> Bool {
+        if isBareCookieHeaderToken(word) { return true }
         guard let colon = word.firstIndex(of: ":") else { return false }
         let name = word[..<colon].trimmingSuffix(while: \.isWhitespace).lowercased()
         return name == "cookie" || name == "set-cookie"
+    }
+
+    /// Whether a complete empty cookie header has its ordinary spelling.
+    private static func isBareCookieHeaderToken(_ word: String) -> Bool {
+        word.caseInsensitiveCompare("Cookie:") == .orderedSame
+            || word.caseInsensitiveCompare("Set-Cookie:") == .orderedSame
     }
 
     // MARK: - One command
@@ -118,14 +153,13 @@ enum CommandCredentialShape {
     /// Whether one command's words hand a credential to a program or a header.
     private static func handsOverCredential(_ words: [String], read: inout Int) -> Bool {
         guard !words.isEmpty else { return false }
-        if hasNetrcPassword(words) { return true }
         var programs: Set<String> = []
         var subcommands: Set<String> = []
         var htpasswdBatch = false
         for (index, word) in words.enumerated() {
             read += 1
             let next = index + 1 < words.count ? words[index + 1] : nil
-            if carriesHeaderCredential(word, following: words[(index + 1)...]) { return true }
+            if carriesHeaderCredential(word, following: words[(index + 1)...], read: &read) { return true }
             if isNamedAssignment(word) { return true }
             if word.hasPrefix("--"), let value = longFlagValue(word, next: next, programs: programs),
                 isCredential(value)
@@ -157,17 +191,70 @@ enum CommandCredentialShape {
         return false
     }
 
-    /// Whether a netrc machine entry gives a password after its host or default selector.
-    private static func hasNetrcPassword(_ words: [String]) -> Bool {
-        guard let selector = words.first?.lowercased(), selector == "machine" || selector == "default",
-            words.count >= 3
-        else { return false }
-        let fields = words.map { $0.lowercased() }
-        guard let password = fields.firstIndex(of: "password"), password > 1, password + 1 < words.count
-        else {
+    /// Whether a netrc password appears while reading a valid machine or default block.
+    private static func hasNetrcPassword(
+        _ words: [String], state: inout NetrcState, read: inout Int
+    ) -> Bool {
+        guard !words.isEmpty else {
+            if state.inMacro { state.inMacro = false }
             return false
         }
-        return isCredential(words[password + 1])
+        guard let first = words.first, !first.hasPrefix("#"), !state.inMacro else { return false }
+        let fields = Array(words.prefix { !$0.hasPrefix("#") })
+        guard var index = netrcDirectiveStart(fields, state: &state) else { return false }
+        while index < fields.count {
+            read += 1
+            let directive = fields[index].lowercased()
+            if directive == "macdef" {
+                guard index + 1 < fields.count else {
+                    state.inEntry = false
+                    return false
+                }
+                state.inMacro = true
+                return false
+            }
+            guard isNetrcDirective(directive), index + 1 < fields.count else {
+                state.inEntry = false
+                return false
+            }
+            let value = fields[index + 1]
+            if directive == "password", isCredential(value) { return true }
+            index += 2
+        }
+        return false
+    }
+
+    /// Selects the first directive after a block selector or on its own line.
+    private static func netrcDirectiveStart(_ fields: [String], state: inout NetrcState) -> Int? {
+        switch fields[0].lowercased() {
+        case "machine":
+            guard fields.count > 1 else {
+                state.inEntry = false
+                return nil
+            }
+            state.inEntry = true
+            return 2
+        case "default":
+            state.inEntry = true
+            return 1
+        default:
+            guard state.inEntry, isNetrcDirective(fields[0]) else {
+                state.inEntry = false
+                return nil
+            }
+            return 0
+        }
+    }
+
+    /// The netrc directives that take one value.
+    private static let netrcValueDirectives: Set<String> = [
+        "login", "user", "password", "account", "port", "protocol",
+    ]
+
+    /// Whether a field is one of the supported netrc directives.
+    private static func isNetrcDirective(_ field: String) -> Bool {
+        let directive = field.lowercased()
+        return directive == "macdef" || netrcValueDirectives.contains(directive)
     }
 
     /// Whether a Cookie header's named session value looks generated.
@@ -261,15 +348,23 @@ enum CommandCredentialShape {
     private static let schemes: Set<String> = ["basic", "bearer", "digest", "token", "negotiate", "ntlm"]
 
     /// Whether a word holds `Authorization:` or a secret-named header, with a value in it or in the words after it.
-    private static func carriesHeaderCredential(_ word: String, following: ArraySlice<String>) -> Bool {
+    private static func carriesHeaderCredential(
+        _ word: String, following: ArraySlice<String>, read: inout Int
+    ) -> Bool {
+        if isBareCookieHeaderToken(word), following.first.map(isCookieHeaderToken) == true {
+            return false
+        }
         guard let colon = word.firstIndex(of: ":") else { return false }
         let name = word[..<colon].trimmingSuffix(while: \.isWhitespace)
         let lowered = name.lowercased()
         // The header name is the last run of name characters before the colon, as `{Authorization` or `Proxy-Authorization` holds.
-        let header = String(lowered.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
+        let headerWord = lowered.hasPrefix("-h") ? lowered.dropFirst(2) : lowered[...]
+        let header = String(headerWord.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
         if header == "cookie" || header == "set-cookie" {
             let rest = word[word.index(after: colon)...]
-            let value = ([String(rest)] + following).joined(separator: " ")
+            let cookieWords = following.prefix { !isCookieHeaderToken($0) }
+            let value = ([String(rest)] + cookieWords).joined(separator: " ")
+            read += value.count
             return hasGeneratedCookieCredential(value)
         }
         guard header.hasSuffix("authorization") || header.contains("-") && namesSecret(header) else {

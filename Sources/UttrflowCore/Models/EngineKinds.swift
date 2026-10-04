@@ -16,23 +16,20 @@ public enum TransformerKind: String, Sendable, Equatable, CaseIterable, Codable 
     case localModel
     /// Deterministic punctuation, capitalisation and filler removal. Always works.
     case rules
-    /// A hosted model. Compiled in only when `UTTRFLOW_CLOUD` is defined.
+    /// A retired hosted engine no build contains; kept so a stored record naming it still decodes.
     case cloud
     /// Nothing tidied the words: every engine was starved or refused, so the transcript went in as heard.
     case untidied
 
-    /// The kinds this binary contains; the app defines no build flag here. See `Docs/core-engine-kinds.md`.
+    /// The kinds this binary contains. See `Docs/core-engine-kinds.md`.
     public static var selectable: [TransformerKind] {
         allCases.filter { kind in
             switch kind {
-            case .cloud:
-                #if UTTRFLOW_CLOUD
-                    true
-                #else
-                    false
-                #endif
             case .foundationModels, .rules:
                 true
+            // Retired: no build assembles a hosted engine, so a stored preference naming it is dropped.
+            case .cloud:
+                false
             // MLX is quarantined behind UttrflowLocalModel; no transformer assembly may link it, so this is never selectable.
             case .localModel:
                 false

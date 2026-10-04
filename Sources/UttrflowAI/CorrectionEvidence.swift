@@ -65,6 +65,8 @@ struct CorrectionEvidence: Sendable {
         case .heardAsStrayLetters: Self.readsAsWholeWords(words)
         // The one comparative signal, a run collapsing into one written word; symmetric, so it cancels.
         case .heardAsSeveralWords: words.count < other.count
+        // Decided by the letters alone, never by counting signals.
+        case .spelledAsInDictionary, .unknown: false
         }
     }
 

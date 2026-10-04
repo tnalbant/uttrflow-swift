@@ -16,7 +16,7 @@ struct DictationRecordMappingTests {
         let when = Date(timeIntervalSince1970: 1_750_000_000)
         let correction = DictationCorrection(
             heard: "sequel", wrote: "SQL", wordRange: 2..<3, entryID: entryID,
-            reason: "seenOnScreen", heardConfidence: 0.72, writtenWordIndex: 1)
+            reason: .seenOnScreen, heardConfidence: 0.72, writtenWordIndex: 1)
         let snippet = SnippetUse(snippetID: snippetID, matched: "my signoff", expansion: "Regards")
         let outcome = DictationOutcome(
             text: "Use SQL and Regards", method: .pasteboard, cleanedBy: .rules,

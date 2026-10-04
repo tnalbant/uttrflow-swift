@@ -54,14 +54,52 @@ comment-report: ## List the multi-line comments left, worst file first.
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
 
+.PHONY: closed-list-audit
+closed-list-audit: ## Prove no source file gained a literal list of four or more words. Needs no build.
+	@python3 Scripts/closed_list_audit.py
+
+.PHONY: closed-list-report
+closed-list-report: ## List the closed word lists still written into code, with the line.
+	@python3 Scripts/closed_list_audit.py --report
+
+.PHONY: word-split-audit
+word-split-audit: ## Prove no file gained text split into words by a hand-written separator. Needs no build.
+	@python3 Scripts/word_split_audit.py
+
+.PHONY: python-imports-audit
+python-imports-audit: ## Refuse a Scripts/ Python import that is not standard library, a repository module, or pinned with a hash. Needs no build.
+	@python3 Scripts/python_imports_audit.py
+	@python3 Scripts/python_imports_audit_test.py
+
 .PHONY: match-report
 match-report: ## List the word matches still decided by shape, with the line.
 	@python3 Scripts/loose_match_audit.py --report
 
+.PHONY: accessibility-controls
+accessibility-controls: ## Prove Docs/accessibility-controls.md lists every control in the view code. Needs no build.
+	@python3 Scripts/accessibility_controls.py --check
+	@python3 Scripts/accessibility_controls_test.py
+
+.PHONY: layering-audit
+layering-audit: ## Prove no logic module gained a UI-framework import or a platform dependency. Needs no build.
+	@python3 Scripts/layering_audit.py
+
+.PHONY: string-audit
+string-audit: ## Prove no file gained a fixed English string handed to a view. Needs no build.
+	@python3 Scripts/string_audit.py
+
 .PHONY: ratchet-test
-ratchet-test: ## Prove the comment and word-match baselines refuse a rise without --after-merge. Needs no build.
+ratchet-test: ## Prove the comment, word-match, closed-list, layering and string baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
 	@python3 Scripts/loose_match_audit_test.py
+	@python3 Scripts/closed_list_audit_test.py
+	@python3 Scripts/word_split_audit_test.py
+	@python3 Scripts/layering_audit_test.py
+	@python3 Scripts/string_audit_test.py
+
+.PHONY: mutation-probe-test
+mutation-probe-test: ## Prove the mutation probe finds each mutation it names and refuses the main checkout. Needs no build.
+	@python3 Scripts/mutation_probe_test.py
 
 .PHONY: range-test
 range-test: ## Prove the disclosure audit reads every revision range the pre-push hook hands it. Needs no build.
@@ -87,13 +125,25 @@ update-feed-test: ## Prove the release scripts parse update-feed URLs by host, n
 entitlement-gate-test: ## Prove the release gates read entitlement Boolean values, not just key names.
 	@python3 Scripts/entitlement_gate_test.py
 
+.PHONY: test-name-audit
+test-name-audit: ## Refuse a test file named after an issue number. Needs no build.
+	@python3 Scripts/test_name_audit.py
+
 .PHONY: issue-template-audit
 issue-template-audit: ## Refuse a public issue template that prompts for content the disclosure rule forbids. Needs no build.
 	@python3 Scripts/issue_template_audit.py
 
+.PHONY: audio-audit
+audio-audit: ## Refuse audio outside the synthetic fixture directory: a recording is personal data. Needs no build.
+	@python3 Scripts/audio_audit.py --self-test
+
 .PHONY: root-audit
 root-audit: ## Refuse any file or directory at the repository root that is not on the allowlist. Needs no build.
 	@python3 Scripts/root_layout_audit.py --self-test
+
+.PHONY: context-reach-audit
+context-reach-audit: ## Refuse a context module that reads by clipboard, posted keys, screen capture or text recognition. Needs no build.
+	@python3 Scripts/context_reach_audit.py --self-test
 
 .PHONY: issue-template-test
 issue-template-test: ## Prove the issue template audit catches the bug it was written for. Needs no build.
@@ -102,6 +152,11 @@ issue-template-test: ## Prove the issue template audit catches the bug it was wr
 .PHONY: dependabot-labels-test
 dependabot-labels-test: ## Keep Dependabot's automatically created default labels enabled.
 	@python3 Scripts/dependabot_labels_test.py
+
+.PHONY: flake-audit
+flake-audit: ## Refuse a quarantined flaky test past its expiry, and prove the flake report. Needs no build.
+	@python3 Scripts/flake_report_test.py
+	@python3 Scripts/flake_report.py --check-quarantine
 
 .PHONY: store-permissions
 store-permissions: ## Prove nothing writes a local store's files except through PrivateFile. Needs no build.
@@ -114,6 +169,17 @@ uitest-arguments: ## Prove the UI harness refuses a rounds count it cannot run. 
 .PHONY: eval-arguments
 eval-arguments: build ## Prove transcribe refuses negative report limits before measuring.
 	@python3 Scripts/eval_arguments_test.py
+
+ACCURACY_CORPUS := .build/accuracy-corpus
+ACCURACY_BASELINE := Scripts/accuracy_baseline.json
+
+.PHONY: accuracy-gate
+accuracy-gate: ## Fail when the shipping recogniser got worse on the synthesised passages. Needs the installed model.
+	$(SWIFT) build -c release --product uttrflow-eval $(SWIFT_BUILD_FLAGS)
+	rm -rf $(ACCURACY_CORPUS) .build/accuracy-results
+	./.build/release/uttrflow-eval synthesise --corpus-path $(ACCURACY_CORPUS)
+	./.build/release/uttrflow-eval transcribe --corpus-path $(ACCURACY_CORPUS) \
+		--results-path .build/accuracy-results --baseline $(ACCURACY_BASELINE) --fail-on-regression
 
 .PHONY: uitest-result-path
 uitest-result-path: ## Prove a second `make uitest` moves the prior result bundle aside. Needs no screen.
@@ -138,7 +204,14 @@ offline-test: ## Prove the offline audit still refuses every way of reaching the
 .PHONY: docs-audit
 docs-audit: ## Prove the documentation still describes this tree, including that CLAUDE.md delegates to AGENTS.md. Needs no build.
 	@python3 Scripts/preview_gen_test.py
+	@python3 Scripts/rule_file_duplicate_audit.py --self-test
+	@python3 Scripts/rule_file_duplicate_audit.py
 	./Scripts/docs_audit.sh --self-test
+
+.PHONY: data-manifest
+data-manifest: ## Prove every bundled resource file is in Resources/DataManifest.json with its digest. Needs no build.
+	@python3 Scripts/data_manifest_test.py
+	@python3 Scripts/data_manifest.py
 
 .PHONY: pii-audit
 pii-audit: ## Prove no personal data is in the tree. Needs no build.
@@ -151,6 +224,14 @@ log-audit: ## Prove no log message carries text a person typed, read or said. Ne
 .PHONY: perf-budget
 perf-budget: ## Prove the source keeps to the energy and memory budget, and that each check still bites. No build.
 	@python3 Scripts/perf_budget_audit.py --self-test
+
+.PHONY: size-budget
+size-budget: ## Prove the size budget check bites, and that the resolved Swift packages fit their count. No build.
+	@python3 Scripts/size_budget.py --self-test
+
+.PHONY: idle-wakeups
+idle-wakeups: ## Fail when the built app, idle in the menu bar, wakes or computes over the budget. Needs `make app` first.
+	@python3 Scripts/idle_wakeups.py --self-test
 
 # Needs the speech model and the suggestion model on disk, so it runs on a Mac rather than in CI.
 .PHONY: perf-budget-models
@@ -232,7 +313,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit root-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit ratchet-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit word-split-audit accessibility-controls layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
@@ -259,7 +340,7 @@ app: ## Build and sign Uttrflow.app into dist/ for this Mac.
 	./Scripts/bundle.sh
 
 .PHONY: app-preflight
-app-preflight: app ## Build the app bundle and run CI's strict signature verification.
+app-preflight: data-manifest app ## Build the app bundle and run CI's strict signature verification.
 	codesign --verify --deep --strict dist/Uttrflow.app
 
 # Its own identifier, so it runs beside the installed app and keeps its own settings,

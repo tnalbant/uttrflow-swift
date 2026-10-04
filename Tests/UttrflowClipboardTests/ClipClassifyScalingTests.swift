@@ -61,6 +61,23 @@ extension HeavyClipScans {
             #expect(CodeSample.of(text) == text)
         }
 
+        @Test("A one-megabyte unterminated CSS-like rule is sampled and classified in bounded time")
+        func unterminatedCSSRuleIsBounded() async {
+            let text = "#a {" + String(repeating: "b:c ", count: 249_999)
+            let (matched, bytesRead, elapsed) = await offTheTestPool {
+                let clock = ContinuousClock()
+                let start = clock.now
+                let tally = ScanTally()
+                let matched = CodeShapes.$tally.withValue(tally) { CodeShapes.matches(text) }
+                return (matched, tally.count, start.duration(to: clock.now))
+            }
+
+            #expect(text.utf8.count == 1_000_000)
+            #expect(!matched)
+            #expect(bytesRead <= CodeSample.longest)
+            #expect(elapsed < .seconds(5), "classified one megabyte in \(elapsed)")
+        }
+
         @Test(
             "A clip with no vendor prefix and no long digit run hands no characters to those patterns",
             arguments: units.keys.sorted())
@@ -98,7 +115,7 @@ extension HeavyClipScans {
             let snippet = "\nfunc load() {\n    return data;\n}\n"
             #expect(ClipKindDetector.kind(of: snippet + prose) == .code)
             #expect(ClipKindDetector.kind(of: prose + snippet) == .code)
-            // Between the first edge and the first middle window, which the sample does not read; see Docs/performance.md.
+            // Between the first edge and the first middle window, which the sample does not read; see Docs/performance-idle.md.
             let at = prose.utf8.index(prose.utf8.startIndex, offsetBy: 40_000)
             let hidden = String(prose[..<at]) + snippet + String(prose[at...])
             #expect(!CodeSample.of(hidden).contains("func load"))

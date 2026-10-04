@@ -12,7 +12,7 @@ enum DictationRecordMapping {
                 id: id, text: text, when: when, applicationName: outcome.insertedInto,
                 applicationIdentifier: outcome.insertedIntoIdentifier, spokenFor: outcome.spokenFor,
                 changes: RecordedChanges(
-                    corrections: outcome.changes.corrections.compactMap {
+                    corrections: outcome.changes.corrections.map {
                         RecordedCorrection(
                             heard: $0.heard, wrote: $0.wrote, wordRange: $0.wordRange,
                             entryID: $0.entryID, reason: $0.reason,
@@ -24,7 +24,8 @@ enum DictationRecordMapping {
                             snippetID: $0.snippetID, matched: $0.matched,
                             expansion: $0.expansion)
                     },
-                    spokenWords: outcome.changes.spokenWords))
+                    spokenWords: outcome.changes.spokenWords),
+                cleanedBy: outcome.cleanedBy)
         case .failed(let failure):
             guard let text = failure.wordsToKeep else { return nil }
             return DictationRecord(id: id, text: text, when: when)

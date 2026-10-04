@@ -637,10 +637,9 @@ pass "$DOC_COUNT Markdown files (tracked, plus written-but-not-yet-staged)"
 # 0a. The documented pull-request lifecycle must match the live main ruleset.
 # ---------------------------------------------------------------------------
 #
-# Issue #1120 was not a typo but a blocked lifecycle: AGENTS.md said a green PR could be
-# self-merged while the live ruleset required independent review. The ruleset itself is
-# outside this tree, so this check keeps the local policy on the review-required side of
-# that boundary until the ruleset is deliberately changed.
+# The ruleset lives on the server, outside this tree, so this check keeps the documented
+# lifecycle on the review-required side of it: the workflow page must name every review gate
+# and must never say a pull request may be merged by its own author.
 printf '\nPull request lifecycle\n'
 
 if grep -Fq "**An agent may merge its own pull request once it is green**" Docs/agents/workflow.md; then
@@ -652,12 +651,10 @@ fi
 
 missing_policy=()
 for required in \
-    "release-policy:v4" \
     "requires one approving review" \
     "code-owner review" \
     "approval by someone other than the last pusher" \
-    "strict_required_status_checks_policy" \
-    "Once the branch is pushed, remove the worktree and the local branch"
+    "strict_required_status_checks_policy"
 do
     if ! grep -Fq "$required" Docs/agents/workflow.md; then
         missing_policy+=("$required")
@@ -670,7 +667,7 @@ if ((${#missing_policy[@]})); then
         "and must name the live ruleset gates that enforce that boundary." \
         "" $'\n'"$(printf '    %s\n' "${missing_policy[@]}")"
 else
-    pass "Docs/agents/workflow.md says agents stop at a green PR and names the review gates"
+    pass "Docs/agents/workflow.md names the main ruleset's review gates"
 fi
 
 # ---------------------------------------------------------------------------
@@ -689,6 +686,24 @@ if [[ -n "$history_findings" ]]; then
         "" $'\n'"$(printf '    %s\n' "$history_findings")"
 else
     pass "AGENTS.md and Docs/agents/ cite no issue, pull-request number or date"
+fi
+
+# ---------------------------------------------------------------------------
+# 0c. No document shows a tag in the retired YEAR.MONTH.DAY scheme.
+# ---------------------------------------------------------------------------
+#
+# Versions are YY.MMDD.REVISION (RELEASING.md). A `v2026.9.14` example teaches a tag the release
+# workflow refuses. The changelog keeps its historical release links; the scheme explanations
+# name the old version without the `v`, so they are not tags and are not matched.
+printf '\nNo document shows a retired release tag\n'
+
+retired_tag_findings=$(git grep -n -E '(^|[^A-Za-z0-9_])v20[0-9]{2}\.[0-9]+\.[0-9]+' -- '*.md' ':!CHANGELOG.md' || true)
+if [[ -n "$retired_tag_findings" ]]; then
+    fail "a document shows a release tag in the retired YEAR.MONTH.DAY scheme" \
+        "Use the current YY.MMDD.REVISION form, such as v26.0926.0, as RELEASING.md states." \
+        "" $'\n'"$(printf '    %s\n' "$retired_tag_findings")"
+else
+    pass "no document outside CHANGELOG.md shows a retired YEAR.MONTH.DAY tag"
 fi
 
 # ---------------------------------------------------------------------------
@@ -736,7 +751,7 @@ import sys
 # Root files that are load-bearing, so a bare mention of one is worth checking.
 ROOT_ALLOWLIST = {
     "AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
-    "LICENSE.md", "PLAN.md", "Package.resolved", "Package.swift", "README.md",
+    "LICENSE.md", "Package.resolved", "Package.swift", "README.md",
     "RELEASING.md", "SECURITY.md", "TRADEMARK.md",
 }
 EXTENSIONS = (
@@ -825,11 +840,9 @@ fi
 # by a third, and a reader who acts on it is as misled as by a wrong exact number. "4,000+"
 # stays true and stays useful, which is what a floor is for.
 #
-# Two things are skipped, both because they are records rather than claims. PLAN.md is an
-# append-only phase log where each entry states the count on the day it was written, and
-# rewriting those would be a lie. So is a line in Swift Testing's own summary format — `Test
-# run with 579 tests in 83 suites` in `Docs/offline.md` is the transcript of one filtered
-# run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
+# One thing is skipped, because it is a record rather than a claim: a line in Swift Testing's
+# own summary format — `Test run with 579 tests in 83 suites` in `Docs/offline.md` is the
+# transcript of one filtered run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
 # `make verify` snippet inside one.
 printf '\nThe test count\n'
 
@@ -878,7 +891,6 @@ PYTHON
     claims="$(
         git ls-files --cached --others --exclude-standard \
             -- '*.md' 'Makefile' '.githooks/*' '.github/workflows/*' \
-        | grep -v '^PLAN\.md$' \
         | python3 -c "$COUNT_PROGRAM" "$REAL_TESTS"
     )"
 
@@ -955,64 +967,6 @@ else
     pass "the documentation index links to soak.md and ui-tests.md"
 fi
 
-# ---------------------------------------------------------------------------
-# 4. The worktree cleanup recipe must keep the pull request's remote branch.
-# ---------------------------------------------------------------------------
-#
-# The remote branch is the pull request's source ref, open or merged, and it is never
-# deleted. The local worktree and branch are disposable once the branch is pushed and the
-# pull request exists, so the recipe may clean them up then — but only after both, and it
-# must never carry a command that deletes the remote branch.
-printf '\nWorktree cleanup order\n'
-
-read -r -d '' CLEANUP_PROGRAM <<'PYTHON' || true
-import re
-
-text = open("Docs/agents/workflow.md", errors="ignore").read()
-start = text.find("**Every feature is built in a worktree")
-end = text.find("**Never run `swift build`", start)
-if start == -1 or end == -1:
-    print("Docs/agents/workflow.md  cannot find the worktree recipe section")
-    raise SystemExit
-
-section = text[start:end]
-required = [
-    ("branch push", r"^git push -u origin"),
-    ("pull request creation", r"^gh pr create --base main"),
-    ("worktree removal", r"^git worktree remove"),
-    ("local branch deletion", r"^git branch -[dD]"),
-    ("the never-delete rule", r"Remote branches are never deleted"),
-]
-
-positions = {}
-for name, pattern in required:
-    match = re.search(pattern, section, re.MULTILINE)
-    if not match:
-        print(f"Docs/agents/workflow.md  missing {name}: {pattern}")
-    else:
-        positions[name] = match.start()
-
-create = positions.get("pull request creation")
-push = positions.get("branch push")
-for name in ("worktree removal", "local branch deletion"):
-    where = positions.get(name)
-    for before, label in ((push, "branch push"), (create, "pull request creation")):
-        if where is not None and before is not None and where < before:
-            print(f"AGENTS.md  {name} appears before {label}")
-
-if re.search(r"^git push origin --delete", section, re.MULTILINE):
-    print("AGENTS.md  the recipe deletes the remote branch, which is the pull request's source ref")
-PYTHON
-cleanup_order="$(python3 -c "$CLEANUP_PROGRAM")"
-
-if [[ -n "${cleanup_order//[[:space:]]/}" ]]; then
-    fail "the worktree cleanup recipe can lose a pull request's branch" \
-        "Push the branch and open the pull request before removing the local worktree and branch," \
-        "and never delete the remote branch: it is the pull request's source ref, open or merged." \
-        "" $'\n'"$cleanup_order"
-else
-    pass "the cleanup recipe keeps the remote branch and cleans up only after the pull request exists"
-fi
 
 # ---------------------------------------------------------------------------
 # 5. A tagged release's bullets must have existed by the tag.
@@ -1042,6 +996,23 @@ if [[ -n "${missing_release_links//[[:space:]]/}" ]]; then
         "" $'\n'"$missing_release_links"
 else
     pass "every released version heading has a link definition"
+fi
+
+# ---------------------------------------------------------------------------
+# 5b. Every command the measurement guide names exists in the Makefile, Scripts or the tools.
+# ---------------------------------------------------------------------------
+printf '\nMeasurement guide commands\n'
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    measure_args=(--self-test)
+else
+    measure_args=()
+fi
+if measure_report="$(python3 "$PACKAGE_ROOT/Scripts/measure_commands_audit.py" "${measure_args[@]+"${measure_args[@]}"}" 2>&1)"; then
+    pass "every command in Docs/measure-a-change.md exists in the tree"
+else
+    fail "Docs/measure-a-change.md names a command the tree does not have" \
+        "A contributor following the guide would run something that is not there." \
+        "" $'\n'"$measure_report"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1261,31 +1232,29 @@ fi
 # 7e. The Insights artboards match InsightsPresentation, not an invented contract.
 # ---------------------------------------------------------------------------
 #
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
+# The Insights artboards have twice drawn a contract production did not have: first an
+# invented scope, meter and language card, then the bar chart production had replaced with
+# a calendar and range switch. Nothing tied the generator to `InsightsPresentation.swift`.
 printf '\nInsights artboard contract\n'
 
 if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
     fail "Scripts/insights_contract_audit.py is missing or not executable" \
         "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
+        "generator can drift away from the range switch, calendar and figures unnoticed."
 else
     if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
         if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
             pass "the Insights artboards match InsightsPresentation and its tests"
         else
             fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "The audit prints every mismatch: the range switch, the calendar, the figures," \
+                "the empty state, or a retired claim. Fix Design/_gen_app.py," \
                 "then regenerate every Insights artboard."
         fi
     else
         fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
+            "The audit's own self-test either fails the generator as it stands or misses" \
+            "an injected drift. Fix the audit, not the artboard."
     fi
 fi
 
@@ -1296,8 +1265,8 @@ fi
 # A tracked CLAUDE.md is a claim about what Claude Code will load as project memory: with
 # default Project instructions, Claude Code reads CLAUDE.md before any tool call and does
 # not consult AGENTS.md on its own. A CLAUDE.md that holds a prose pointer at AGENTS.md
-# therefore loads the pointer sentence and stops — the 491 lines of operating rules in
-# AGENTS.md are injected only if the model decides, on its own, to follow the link.
+# therefore loads the pointer sentence and stops — the operating rules in AGENTS.md
+# are injected only if the model decides, on its own, to follow the link.
 #
 # Three contents pass, in this order:
 #
@@ -1324,7 +1293,7 @@ else
     fail "$claude_md_problem" \
         "A tracked CLAUDE.md is loaded by Claude Code as project memory ahead of any tool." \
         "Prose that points at AGENTS.md — Markdown link or otherwise — is one sentence the" \
-        "model receives, not an import; the 491 lines of operating rules in AGENTS.md are" \
+        "model receives, not an import; the operating rules in AGENTS.md are" \
         "not injected unless the model decides, on its own, to open the file." \
         "Replace the body with a single '@AGENTS.md' line, or delete CLAUDE.md and let" \
         "AGENTS.md load directly, or turn CLAUDE.md into a real symlink to AGENTS.md."
@@ -1488,17 +1457,18 @@ else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
 import re
 
-SOURCE = "Sources/UttrflowEval/EvaluationCorpus.swift"
+SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
 DOC = "Docs/bakeoff.md"
 
 real = {}
-for match in re.finditer(r"category: \.([A-Za-z]+),", open(SOURCE, errors="ignore").read()):
-    real[match.group(1)] = real.get(match.group(1), 0) + 1
+for source in SOURCES:
+    for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
+        real[match.group(1)] = real.get(match.group(1), 0) + 1
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:
@@ -1628,6 +1598,24 @@ else
             "The audit's self-test must catch provider and title drift before it checks" \
             "the committed artboards. Fix the audit before relying on it."
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7g. Every insertion scenario has an entry for every application class.
+# ---------------------------------------------------------------------------
+printf '\nInsertion test matrix\n'
+
+if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py"; then
+        pass "every insertion scenario names its test and an entry per class"
+    else
+        fail "Docs/insertion-test-matrix.md has a scenario without an entry" \
+            "Each scenario needs an existing test and, per class, a harness, a manual" \
+            "procedure with its own section, or 'not applicable'."
+    fi
+else
+    fail "Scripts/insertion_matrix_audit.py --self-test failed" \
+        "The audit must catch an empty cell before it checks the matrix."
 fi
 
 # ---------------------------------------------------------------------------

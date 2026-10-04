@@ -3,8 +3,8 @@ private import UttrflowDictionary
 
 /// The hand-kept homophone partners of a word in `Homophones.groups`, so a confidently wrong hearing can be reconsidered.
 public struct HomophoneCandidates: CandidateSource {
-    /// The one partner a homophone word has in the table.
-    public static let maximumOffered = 1
+    /// Every partner in the largest group, so a three-way group never drops the one that was meant.
+    public static let maximumOffered = 2
 
     public init() {}
 

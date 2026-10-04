@@ -1,42 +1,40 @@
 # The personal dictionary store
 
-`PersonalDictionaryStore` holds the words this user says that a general model would not expect.
-`Docs/app-dictionary.md` covers the phonetics and the learning thresholds; this page covers the
-store itself — where it lives, what it caches, and what each reset promises.
+`PersonalDictionaryStore` (`Sources/UttrflowDictionary/PersonalDictionaryStore.swift`) holds the
+words this user says that a general model would not expect. `Docs/app-dictionary.md` covers the
+phonetics and the learning thresholds; this page covers the store itself — where it lives, what
+it caches, and what each reset promises.
 
 ## Its own file, and an actor
 
-The dictionary is its own file under Application Support, beside the history rather than inside
-it: the two age differently, are reset by different buttons, and a user who clears their history
-must not thereby forget how to spell their colleagues' names. The name is versioned so a shape too
-different to read field by field can one day be introduced beside it rather than on top of it.
+The dictionary is its own file under Application Support, `dictionary.v1.json`, beside the
+history rather than inside it: the two age differently, are reset by different buttons, and a user
+who clears their history must not thereby forget how to spell their colleagues' names. The name is
+versioned so a shape too different to read field by field can be introduced beside it rather than
+on top of it. The app writes it through `EncryptedStore`, as it does the history and the snippets
+(`Docs/local-store-encryption.md`).
 
 An actor, for the reason the history store gives: the writers are dictations that have already
 finished and the readers are windows, so waiting should be a suspension and not a blocked main
 thread.
 
-## Why this store caches and the history store does not
+## What it caches
 
-The history is read when a window is drawn, so re-reading the file is cheap enough to buy the
-certainty that the file is the only truth. This one is read on the hot path — once before every
-dictation and again after it — and rebuilding a phonetic index from disk each time would put the
-whole dictionary back into a cost the index exists to remove.
-
-So the index is built once and thrown away by every write. The cache is the `PhoneticIndex` and
-not the raw entries, because the index is what the hot path wants and caching the list would leave
-the expensive half to be redone anyway. The price is that a user who edits the file in the Finder
-while the app is running is not seen until the next write — a trade the history store could not
-make and this one can.
-
-The cache is dropped before a write is attempted rather than after it succeeds. A failed write
-leaves the disk holding the old list, and an index rebuilt from that is right either way; dropping
-it only on success would be one more state to be wrong about.
+The store is read on the hot path — once before every dictation and again after it — and
+rebuilding a phonetic index from disk each time would put the whole dictionary back into a cost
+the index exists to remove. Two caches answer that. `CachedStoredList` holds the decoded entries
+and reads the file again only when its stamp — inode, size and modification time — differs from
+the one it was read at, so an edit made to the file outside the app is seen on the next read.
+`index()` keeps the `PhoneticIndex` built from those entries and rebuilds it only when the list's
+`generation` has moved. A successful write hands the cache what it wrote; a failed one makes it
+forget, so the next read goes back to the disk.
 
 Reads answer with nothing when there is nothing readable there. Absent, unreadable, truncated,
 hand-edited, or written by a build that knew a different shape all mean the same thing to a user,
 which is that the app should still open: a dictionary that has forgotten everything makes dictation
 slightly worse, and one that refuses to load makes it impossible. The unreadable file is renamed
-aside first, as the history store describes, so the next word added cannot write over the only copy.
+aside first, as the history store describes (`Docs/history-store-file.md`), and a write is refused
+while the store holds an unreadable read, so the next word added cannot write over the only copy.
 
 A structurally valid entry can still carry a counter outside the domain the rest of the type
 assumes: negative, or absurdly large from a hand edit. `DictionaryEntry`'s decoder clamps
@@ -46,18 +44,19 @@ about the entry decodes untouched.
 
 ## Sightings are never written down
 
-Terms noticed on screen and said aloud, but not yet seen often enough to keep, live in memory and
-never reach the file. Two reasons. The first is privacy: these words came off the user's screen and
-most will never become entries, so a file of them would be a record of what they had open that no
+Terms noticed on screen and said aloud, but seen too few times to keep, live in memory and never
+reach the file. Two reasons. The first is privacy: these words came off the user's screen and most
+never become entries, so a file of them would be a record of what they had open that no
 page shows and no button clears. The second is the reset — this is the app's inference like any
 other, and holding it inside the actor that owns `removeLearned()` is what makes it impossible to
 forget to throw away.
 
 ## Adding
 
-`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word,
-case-insensitively: "Kubectl" and "kubectl" are one word to the user and two rows in a settings
-list is a bug they can see. The newcomer's spelling wins, since it is the one they just asked for.
+`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word.
+Spelling identity ignores case and spaces but retains `+`, `#`, `&`, `.`, `/` and `-`, so "Open AI"
+and "OpenAI" are one entry while "C++", "C#" and "C" remain distinct. The newcomer's spelling
+wins, since it is the one they just asked for.
 
 `add(word:pronunciation:at:)` is where the editor's input is turned into an entry, so the trimming,
 the empty-pronunciation rule and the origin are decided once. A blank pronunciation is stored as
@@ -67,17 +66,15 @@ why.
 
 ## An address for every entry
 
-The index used to key entries on Double Metaphone alone, and the coder emits nothing for any
-character outside A–Z. A spelling written in Devanagari, CJK, Cyrillic or digits alone therefore had
-no key, and `PhoneticIndex` dropped it: the row showed in the list, the entry reached the disk, and
-nothing ever looked it up, offered it or learnt from it — the same "never found, with nothing to say
-why" this page already warns about for the empty pronunciation.
+Double Metaphone emits nothing for any character outside A–Z, so a spelling written in
+Devanagari, CJK, Cyrillic or digits alone has no sound key — and an entry with no key is never
+looked up, offered or learnt from, with nothing to say why.
 
-`PronunciationCoder` is what the index keys on now. It asks Double Metaphone first, and where that
+`PronunciationCoder` is what the index keys on. It asks Double Metaphone first, and where that
 is silent it keys the spelling itself, folded for case and accents with marks dropped. So such a
 word is matched *exactly* rather than not at all, which is the honest ceiling for a script the coder
 cannot speak: the recogniser has to produce the same spelling. A pronunciation still beats both, and
-the editor now says so — where a spelling has no English letters and the pronunciation is blank, the
+the editor says so — where a spelling has no English letters and the pronunciation is blank, the
 hint tells the user what it costs instead of advising them to leave it blank.
 
 `PhoneticIndex.unaddressable` keeps whatever it could not file at all, which is now only a spelling
@@ -85,10 +82,11 @@ with no letter and no digit anywhere in it. The list exists so that the next gap
 visible rather than silent, and a test asserts every entry is found by its own spelling across seven
 scripts.
 
-It re-checks for an empty spelling and for a word already known even though the editor refuses both
-before its button goes live. The editor judges from the list it last drew, and that list can go
-stale while the editor is open now that a dictation finishing in another app can teach the
-dictionary a word. Only the store's answer is current.
+`add(word:pronunciation:at:)` re-checks for an empty spelling and for a word already known even
+though the editor refuses both before its button goes live. The editor judges from the list it last
+drew, and that list can go stale while the editor is open, because a dictation finishing in another
+app can teach the dictionary a word. Only the store's answer is current. An entry of more than
+`PhoneticIndex.maximumWordsPerEntry` (three) words is refused.
 
 ## Removing, and the three resets
 
@@ -100,14 +98,19 @@ person using it. That holds for a word the user typed in as much as one Uttrflow
 sighting path does not care how a word first arrived, only whether it is on disk and refused. The
 refusal binds only inference — typing the word in again adds it as before.
 
-The refusals are written to `<dictionary name>.refused.json` beside the dictionary, oldest first
-and capped at the ledger's 512, so a relaunch still refuses a word deleted before it. They are
-words the user already had in the dictionary and chose to remove, not terms read off the screen,
-and both resets delete the record with the rest.
+The refusals are written to `dictionary.v1.refused.json` beside the dictionary, oldest first
+and capped at the ledger's 512 (`SightingLedger.maximumRefused`), so a relaunch still refuses a word
+deleted before it. They are words the user already had in the dictionary and chose to remove, not
+terms read off the screen. `removeEverything()` deletes the record; `removeLearned()` keeps it.
+
+**Several words.** `remove(_:)` also takes a set of identifiers and is the one removal path: one
+word is a set of one. Every word in the set is refused, and the refusals and the dictionary are
+each written once. Past the 512 cap the oldest refusals lapse first, so a batch larger than the cap
+keeps the newest 512 refused.
 
 **Everything.** `removeEverything()` is the blunt instrument and takes the user's own words too.
-It also removes the seed record, so the next launch offers the shipped words as on a fresh install.
-If that record cannot be removed, the reset reports a write failure.
+It also removes the seed record and the refusals, so the next launch offers the shipped words as
+on a fresh install. If either record cannot be removed, the reset reports a write failure.
 `removeLearned()` keeps the seed record and individual deletions in force.
 
 **Everything inferred.** `removeLearned()` is the operation the rest of the design is insured by. A
@@ -116,7 +119,8 @@ once and reinforced, a colleague's surname bound to a typo — and the honest an
 dictionary is to throw the inferences away. Throwing away the user's own words at the same time
 would make the fix cost more than the fault, and they would stop using it.
 
-Both `learned` and `observed` go, because both are the app's inference and the user cannot be
+Both `learned` and `observed` go, through the same `remove(_:)`, so every one of them is refused
+and the same sightings do not bring it back. Both go because both are the app's inference and the user cannot be
 expected to know which of the two mechanisms guessed wrong. `added` survives, and so does
 `shipped`: a word this build was born knowing was inferred from nothing on this Mac, so there is
 nothing about it to forget. Deleting it one row at a time is still the user's to do, and it stays
@@ -124,17 +128,18 @@ deleted — see the section below. The half-counted
 sightings go with the entries: a word that appeared one dictation after the user asked Uttrflow to
 forget what it had worked out would make a liar of the button.
 
-This is also why the dictionary is not capped in size the way the history is. The history trims
-itself silently because nobody chose those records; here a silent trim would delete words a user
-deliberately taught the app. The reset is the answer instead, and it is one they ask for and can
-predict.
+Only the inferred entries are capped. At most `maximumInferredEntries` (256) `learned` and
+`observed` entries are kept when the dictionary learns or imports, the strongest first — most uses
+net of undos, then the most recently first seen, then alphabetical. Words the user added and words
+the build shipped are never trimmed: a silent trim there would delete words a user deliberately
+taught the app.
 
 ## The words the build ships knowing
 
-The dictionary used to start empty, which left the word most likely to be dictated while somebody
-writes *about* this product — its own name — the one word it could not help with. `ShippedWords`
-holds the list, `PersonalDictionaryStore.seedShippedWords(at:)` writes it, and `AppDelegate` calls
-that once per launch, off the launch's own path.
+An empty dictionary cannot help with the word most likely to be dictated while somebody writes
+*about* this product — its own name. `ShippedWords` holds the list (one word, "Uttrflow"),
+`PersonalDictionaryStore.seedShippedWords(at:)` writes it, and `AppDelegate` calls that once per
+launch, off the launch's own path.
 
 Matching is by sound, so one entry covers a family: "Uttrflow", "utter flow", "utterflow",
 "otter flow" and "udder flow" all carry the double metaphone code `ATRFL`, so any of them resolves
@@ -142,7 +147,7 @@ to the shipped spelling. That is also the limit of what seeding buys — a mishe
 something else is not reached by it, and the fix for those is a different mechanism, not a longer
 list.
 
-The seeding is recorded in `<dictionary name>.seeded.json` beside the dictionary, holding the
+The seeding is recorded in `dictionary.v1.seeded.json` beside the dictionary, holding the
 version of the list last applied and every shipped spelling ever offered. Two things follow, and
 both are deliberate: a word the user deletes does not reappear on the next launch, and a later build
 that adds a word seeds only that word, because each earlier spelling is already listed as offered
@@ -223,12 +228,16 @@ verdict used which reading was written where the run stood, and the pipeline cou
 beside the corrections' — once per dictation whichever path used an entry, or both. A reading that
 differs from the heard words only in its capitals is not counted: "Claude" for "claude" is what a
 sentence does to its first word whatever the dictionary holds, so the capital is no evidence the
-model chose the entry. Such an entry is still counted when the correction engine applies it. Before
-this, an entry that only ever reached the user through that line stayed at zero uses for its whole
-life.
+model chose the entry. Such an entry is still counted when the correction engine applies it.
 
-What that path does not yet do is let undo charge the entry. A taken reading is not a
-`DictationCorrection` — it has no word range in what was heard, because the model rewrote the
-sentence around it — so History has nothing to put back, and `timesReverted` only moves for
-corrections. An entry used only through the doubtful-word line therefore still cannot retire
-itself, and the recourse is the one above: delete the row, or restore and remove learnt words.
+Undo does not charge a taken reading. A taken reading is not a `DictationCorrection` — it has no
+word range in what was heard, because the model rewrote the sentence around it — so History has
+nothing to put back, and `timesReverted` only moves for corrections. An entry used only through the
+doubtful-word line therefore cannot retire itself, and the recourse is the one above: delete the
+row, or remove learnt words.
+
+## Related pages
+
+- `Docs/app-dictionary.md` — the phonetic index and the learning rules.
+- `Docs/personal-data-archive.md` — exporting and importing the dictionary.
+- `Docs/history-store-file.md` — the shared file-handling rules this store follows.

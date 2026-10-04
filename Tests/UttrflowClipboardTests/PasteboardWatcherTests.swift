@@ -3,6 +3,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowCore
 
 @testable import UttrflowClipboard
 
@@ -11,6 +12,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
     private struct State {
         var count = 0
         var text: String?
+        var rtf: Data?
         var html: String?
         var picture: (data: Data, width: Int, height: Int)?
         var application: String?
@@ -25,19 +27,22 @@ final class FakeClipboard: ClipboardSource, Sendable {
     private let state = Mutex(State())
 
     /// Writes to the clipboard as another application would: the contents change and the count goes up.
+    @discardableResult
     func write(
-        _ text: String?, html: String? = nil,
+        _ text: String?, html: String? = nil, rtf: Data? = nil,
         picture: (data: Data, width: Int, height: Int)? = nil, from application: String? = nil,
         marked markers: PasteboardMarkers = [], bundleIdentifier: String? = nil
-    ) {
+    ) -> Int {
         state.withLock {
             $0.count += 1
             $0.text = text
+            $0.rtf = rtf
             $0.html = html
             $0.picture = picture
             $0.application = application
             $0.bundleIdentifier = bundleIdentifier
             $0.markers = markers
+            return $0.count
         }
     }
 
@@ -74,6 +79,8 @@ final class FakeClipboard: ClipboardSource, Sendable {
         }
     }
 
+    func rtf() -> Data? { state.withLock(\.rtf) }
+
     /// Arms a write that lands while the watcher is reading the markers of the copy before it.
     func writeWhileMarkersAreRead(_ text: String, marked markers: PasteboardMarkers = []) {
         state.withLock { $0.landsDuringMarkers = (text, markers) }
@@ -93,6 +100,7 @@ final class FakeClipboard: ClipboardSource, Sendable {
 
     /// K4 — a picture the test put on the clipboard.
     func image() -> (data: Data, width: Int, height: Int)? { state.withLock(\.picture) }
+    func hasPicture() -> Bool { state.withLock { $0.picture != nil } }
 
     func frontmostApplicationName() -> String? { state.withLock(\.application) }
     func frontmostApplicationBundleIdentifier() -> String? { state.withLock(\.bundleIdentifier) }
@@ -333,6 +341,111 @@ struct PasteboardWatcherTests {
         #expect(noticed?.clip.richText == "<p>Hello <b>world</b></p>")
     }
 
+    @Test("records a bounded plain form when deeply nested HTML expands past the clip limit")
+    func deeplyNestedHTMLKeepsItsBoundedPlainForm() async throws {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, html: String(repeating: "<ul><li>x", count: 200_000))
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let clip = try #require(await watcher.newClip(at: noon)?.clip)
+
+        #expect(start.duration(to: clock.now) < .seconds(5))
+        #expect(!clip.text.isEmpty)
+        #expect(clip.text.utf8.count <= ClipboardBudget.standard.largestClip)
+        #expect(clip.text.hasSuffix("…"))
+        #expect(clip.richText == nil)
+    }
+
+    @Test("uses the watcher's output limit and keeps the bounded plain form")
+    func richOnlyCopyUsesItsConfiguredOutputLimit() async throws {
+        let clipboard = FakeClipboard()
+        let html = String(repeating: "<ul><li>x", count: 20)
+        let outputLimit = html.utf8.count
+        let watcher = PasteboardWatcher(
+            source: clipboard, budget: .standard.limiting(largestClip: outputLimit), now: { noon })
+        clipboard.write(nil, html: html)
+
+        let clip = try #require(await watcher.newClip(at: noon)?.clip)
+
+        #expect(clip.text.utf8.count <= outputLimit)
+        #expect(clip.text.hasSuffix("…"))
+        #expect(clip.richText == nil)
+    }
+
+    @Test("records an RTF-only copy as plain text")
+    func rtfOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let rtf = Data(#"{\rtf1\ansi Hello \b world\b0}"#.utf8)
+        clipboard.write(nil, rtf: rtf)
+
+        #expect(await watcher.newClip(at: noon)?.clip.text == "Hello world")
+    }
+
+    @Test("refuses RTF over the single-clip bound before importing it")
+    func oversizedRTFCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = PasteboardWatcher(
+            source: clipboard, budget: .standard.limiting(largestClip: 20), now: { noon })
+        clipboard.write(nil, rtf: Data(repeating: 0x61, count: 21))
+
+        #expect(await watcher.newClip(at: noon) == nil)
+    }
+
+    @Test("keeps a picture attached to copied text")
+    func textAndPictureCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let image = (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)
+        clipboard.write("described picture", picture: image)
+
+        let noticed = await watcher.newClip(at: noon)
+        #expect(noticed?.clip.text == "described picture")
+        #expect(noticed?.clip.kind != .image)
+        #expect(noticed?.picture?.data == image.data)
+    }
+
+    @Test("records a picture-only copy")
+    func pictureOnlyCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, picture: (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1))
+
+        let noticed = await watcher.newClip(at: noon)
+        #expect(noticed?.clip.kind == .image)
+        #expect(noticed?.picture?.data == Data([0x47, 0x49, 0x46]))
+    }
+
+    @Test("records a picture when its RTF flavour has no text")
+    func pictureWithEmptyRTF() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let image = (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)
+        let rtf = Data(#"{\rtf1 }"#.utf8)
+        clipboard.write(nil, rtf: rtf, picture: image)
+
+        #expect(RichTextPlainForm.plainText(fromRTF: rtf) == "")
+        let noticed = await watcher.newClip(at: noon)
+        #expect(noticed?.clip.kind == .image)
+        #expect(noticed?.picture?.data == image.data)
+    }
+
+    @Test("keeps meaningful RTF text when the copy also has a picture")
+    func pictureWithRTFText() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let image = (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)
+        clipboard.write(nil, rtf: Data(#"{\rtf1 Notes}"#.utf8), picture: image)
+
+        let noticed = await watcher.newClip(at: noon)
+
+        #expect(noticed?.clip.text == "Notes")
+        #expect(noticed?.clip.kind != .image)
+        #expect(noticed?.picture?.data == image.data)
+    }
+
     @Test("ignores a rich-only copy that is blank as plain text")
     func blankRichOnlyCopy() async {
         let clipboard = FakeClipboard()
@@ -404,8 +517,8 @@ struct PasteboardWatcherTests {
         clipboard.write("copied by the user")
         _ = await watcher.newClip(at: noon)?.clip
 
-        watcher.ignoreNextWrite(of: "copied by the user")
-        clipboard.write("copied by the user")
+        let finishWrite = watcher.ignoreNextWrite(of: "copied by the user")
+        finishWrite(clipboard.write("copied by the user"))
 
         #expect(await watcher.newClip(at: noon)?.clip == nil)
     }
@@ -416,10 +529,10 @@ struct PasteboardWatcherTests {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
 
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
         // A tick between the announcement and the write sees nothing and must not spend it.
         #expect(await watcher.newClip(at: noon)?.clip == nil)
-        clipboard.write("pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
 
         #expect(await watcher.newClip(at: noon)?.clip == nil)
     }
@@ -429,13 +542,13 @@ struct PasteboardWatcherTests {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
 
-        watcher.ignoreNextWrite(of: "first app paste")
+        let finishFirst = watcher.ignoreNextWrite(of: "first app paste")
         // A second asynchronous writer can announce before the first write lands.
-        watcher.ignoreNextWrite(of: "second app paste")
-        clipboard.write("first app paste")
+        let finishSecond = watcher.ignoreNextWrite(of: "second app paste")
+        finishFirst(clipboard.write("first app paste"))
         #expect(await watcher.newClip(at: noon) == nil)
 
-        clipboard.write("second app paste")
+        finishSecond(clipboard.write("second app paste"))
         #expect(await watcher.newClip(at: noon) == nil)
 
         clipboard.write("copied by the user")
@@ -448,8 +561,8 @@ struct PasteboardWatcherTests {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
 
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
-        clipboard.write("pasted by Uttrflow")
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
         // Copied before the next tick, so one tick sees both changes.
         clipboard.write("copied by the user")
 
@@ -463,8 +576,8 @@ struct PasteboardWatcherTests {
         let watcher = watcher(clipboard)
         let pasted = Data([0x89, 0x50, 0x4E, 0x47])
 
-        watcher.ignoreNextPicture(pasted)
-        clipboard.write(nil, picture: (data: pasted, width: 2, height: 2))
+        let finishWrite = watcher.ignoreNextPicture(pasted)
+        finishWrite(clipboard.write(nil, picture: (data: pasted, width: 2, height: 2)))
 
         #expect(await watcher.newClip(at: noon)?.clip == nil)
     }
@@ -476,8 +589,8 @@ struct PasteboardWatcherTests {
         let watcher = watcher(clipboard)
         let pasted = Data([0x89, 0x50, 0x4E, 0x47])
 
-        watcher.ignoreNextPicture(pasted)
-        clipboard.write(nil, picture: (data: pasted, width: 2, height: 2))
+        let finishWrite = watcher.ignoreNextPicture(pasted)
+        finishWrite(clipboard.write(nil, picture: (data: pasted, width: 2, height: 2)))
         clipboard.write("copied by the user")
 
         #expect(await watcher.newClip(at: noon)?.clip.text == "copied by the user")
@@ -488,8 +601,8 @@ struct PasteboardWatcherTests {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
 
-        watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
-        clipboard.write(nil, picture: (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1))
+        let finishWrite = watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
+        finishWrite(clipboard.write(nil, picture: (data: Data([0x47, 0x49, 0x46]), width: 1, height: 1)))
 
         #expect(await watcher.newClip(at: noon)?.clip.kind == .image)
     }
@@ -506,17 +619,29 @@ struct PasteboardWatcherTests {
         #expect(await watcher.newClip(at: noon) == nil)
     }
 
+    @Test("records a same-text copy after the announced write is refused")
+    func refusedWriteDoesNotHideTheUsersCopy() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+
+        let withdraw = watcher.ignoreNextWrite(of: "same words")
+        withdraw(nil)
+        clipboard.write("same words")
+
+        #expect(await watcher.newClip(at: noon)?.clip.text == "same words")
+    }
+
     @Test("still ignores its own write when the copy arrives first")
     func announcementSurvivesUntilItsOwnWriteArrives() async {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
 
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
         clipboard.write("copied by the user")
         #expect(await watcher.newClip(at: noon)?.clip.text == "copied by the user")
 
         // Not spent by somebody else's copy, so Uttrflow's own write is still ignored.
-        clipboard.write("pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
         #expect(await watcher.newClip(at: noon)?.clip == nil)
     }
 
@@ -524,8 +649,8 @@ struct PasteboardWatcherTests {
     func announcementIsSpentOnce() async {
         let clipboard = FakeClipboard()
         let watcher = watcher(clipboard)
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
-        clipboard.write("pasted by Uttrflow")
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
         _ = await watcher.newClip(at: noon)?.clip
 
         clipboard.write("copied by the user")
@@ -540,10 +665,10 @@ struct PasteboardWatcherTests {
         let watcher = PasteboardWatcher(source: clipboard, now: { clock.withLock { $0 } })
 
         // Announced, and then the write throws before it reaches the clipboard.
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        watcher.ignoreNextWrite(of: "pasted by Uttrflow")(nil)
 
-        // Minutes later, long past the announcement's lifetime.
-        let later = noon.addingTimeInterval(PasteboardWatcher.announcementLifetime + 60)
+        // Minutes later, after the failed write has withdrawn its reservation.
+        let later = noon.addingTimeInterval(60)
         clock.withLock { $0 = later }
         clipboard.write("copied by the user, long afterwards")
 
@@ -557,12 +682,39 @@ struct PasteboardWatcherTests {
         let clock = Mutex(noon)
         let watcher = PasteboardWatcher(source: clipboard, now: { clock.withLock { $0 } })
 
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
-        let soon = noon.addingTimeInterval(PasteboardWatcher.announcementLifetime)
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        let soon = noon.addingTimeInterval(2)
         clock.withLock { $0 = soon }
-        clipboard.write("pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
 
         #expect(await watcher.newClip(at: soon)?.clip == nil)
+    }
+
+    @Test("a delayed poll still ignores the exact write Uttrflow announced")
+    func delayedPollIgnoresOwnWrite() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let finishWrite = watcher.ignoreNextWrite(of: "same words")
+        let changeCount = clipboard.write("same words")
+        finishWrite(changeCount)
+
+        let later = noon.addingTimeInterval(2.5)
+        #expect(await watcher.newClip(at: later) == nil)
+
+        // Identical text from a newer generation is still a user copy.
+        clipboard.write("same words")
+        #expect(await watcher.newClip(at: later)?.clip.text == "same words")
+    }
+
+    @Test("a delayed poll does not record an app-owned concealed write as a secret clip")
+    func delayedPollIgnoresConcealedOwnWrite() async {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        let finishWrite = watcher.ignoreNextWrite(of: "same words")
+        finishWrite(clipboard.write("same words", marked: .concealed))
+
+        let later = noon.addingTimeInterval(2.5)
+        #expect(await watcher.newClip(at: later) == nil)
     }
 
     // MARK: - Pasting a clip does not disturb the list
@@ -592,8 +744,8 @@ struct PasteboardWatcherTests {
         #expect(await store.clips(keeping: window).map(\.text) == ["three", "two", "one"])
 
         // The user picks the third row. Uttrflow announces, writes and presses ⌘V.
-        watcher.ignoreNextWrite(of: "one")
-        clipboard.write("one")
+        let finishWrite = watcher.ignoreNextWrite(of: "one")
+        finishWrite(clipboard.write("one"))
         try await tick()
 
         #expect(await store.clips(keeping: window).map(\.text) == ["three", "two", "one"])
@@ -641,7 +793,7 @@ struct PasteboardWatcherTests {
         await task.value
     }
 
-    /// The panel catches up as it opens, so the poll is set by battery rather than by the gesture. See `Docs/performance.md`.
+    /// The panel catches up as it opens, so the poll is set by battery rather than by the gesture. See `Docs/performance-idle.md`.
     @Test("polls no more than twice a second")
     func interval() {
         #expect(PasteboardWatcher.pollInterval >= .milliseconds(500))
@@ -677,14 +829,14 @@ struct PasteboardWatcherTests {
         #expect(handed.withLock { $0 } == 0)
     }
 
-    /// Left to itself it reads the real clock, which is what the app gets.
-    @Test("times its own announcements by the wall clock when it is not told otherwise")
+    /// Matching uses the generation returned by the write, without needing a clock.
+    @Test("matches the generation the write created")
     func defaultClock() async {
         let clipboard = FakeClipboard()
         let watcher = PasteboardWatcher(source: clipboard)
 
-        watcher.ignoreNextWrite(of: "pasted by Uttrflow")
-        clipboard.write("pasted by Uttrflow")
+        let finishWrite = watcher.ignoreNextWrite(of: "pasted by Uttrflow")
+        finishWrite(clipboard.write("pasted by Uttrflow"))
         #expect(await watcher.newClip(at: Date()) == nil)
 
         clipboard.write("copied by the user")

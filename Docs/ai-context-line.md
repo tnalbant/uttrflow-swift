@@ -1,8 +1,9 @@
 # The context line, measured
 
-`AppContextDescriber` turns what the user is looking at into one caption above the
-dictation; `PromptBuilder` assembles the instructions that tell the model how to use it.
-Every choice in the wording is a measured one against Apple's on-device model. The prompt-level
+`AppContextDescriber` (`Sources/UttrflowAI/AppContextDescriber.swift`) turns what the user is
+looking at into one caption above the dictation, the "Typed into:" line; `PromptBuilder`
+assembles the instructions that tell the model how to use it. The caption corrects spelling and
+nothing else. Every choice in its wording was measured against Apple's on-device model. The prompt-level
 measurements (SQL invention, the spelling-only rule, the name-miss table) are in
 `Docs/bakeoff.md` under "Context, measured"; this file holds the ones about the line itself.
 
@@ -28,16 +29,15 @@ tab is the place, and the title is what names it.
 ## Selected text earns its place, and 120 characters of it is enough
 
 A colleague's name that appears only in the selection is corrected, so the field stays.
-Sixty, 120 and 360 characters of the same passage produced byte-identical output, at about
-0.01 s each, so the selection is capped at 120 characters (`selectionLimit`) and window
+Sixty, 120 and 360 characters of the same passage produced byte-identical output, so the
+selection is capped at 120 characters (`selectionLimit`) and window
 titles at 60 (`documentLimit`): a bounded quotation cannot crowd out the spoken words, and
 less of the screen is copied around.
 
 ## The line goes above the dictation
 
-The same line placed after the spoken words changed nothing at all, in either of the two
-prompt designs it was tried with. Above the dictation, matching the worked examples, it
-works. When there is nothing to describe no line is added, so the prompt for an utterance
+Placed after the spoken words, the same line changes nothing at all, in either of the two
+prompt designs measured. Above the dictation, matching the worked examples, it works. When there is nothing to describe no line is added, so the prompt for an utterance
 with no context is byte-identical to the context-free one.
 
 ## It is a label, not a sentence
@@ -61,8 +61,14 @@ on screen can forge a second prompt line or close the quotation early.
 
 ## Worked examples over instructions
 
-Twice in this prompt an example fixed what an instruction could not: a dictated question
-answered with "Paris", and a trailing English clause rewritten into Hinglish. Against the
-first plain version of the prompt the model also wrote working Python for a dictated
-request and prefixed output with "Sure, here is the text:"; asking for a structured
-`CleanedDictation` value stopped the prefix where wording did not.
+Twice in this prompt an example does what an instruction could not: it stops a dictated
+question being answered ("Paris"), and it stops a trailing English clause being rewritten into
+Hinglish. A plain prompt also lets the model write working Python for a dictated request and
+prefix its output with "Sure, here is the text:"; asking for a structured `CleanedDictation`
+value stops the prefix where wording does not (`Docs/ai-model-output.md`).
+
+## Related pages
+
+- `Docs/cleanup.md` — the one table that names the destination and the kind.
+- `Docs/ai-model-output.md` — the guard that holds the model to the words.
+- `Docs/bakeoff.md` — the prompt-level context measurements.

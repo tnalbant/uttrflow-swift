@@ -133,8 +133,10 @@ public enum SettingsPresenter {
 
     // MARK: - General
 
-    /// Said before anything else: a key that is not claimed does nothing, whatever the row shows.
-    static let unarmed = "Uttrflow could not claim this shortcut, so it does nothing. Try another."
+    /// Said before anything else: a key that is not claimed does nothing, and the refusal says why.
+    static func unarmed(_ cause: HotkeyError) -> String {
+        "Unavailable, so this shortcut does nothing. \(cause.userMessage)"
+    }
 
     /// Said once a modifier held alone has been put back, so the change is not a mystery.
     static let returnedToDefault = """
@@ -169,8 +171,8 @@ public enum SettingsPresenter {
         let control = SettingsControl.shortcut(
             action: descriptor.action, keys: binding.map(SettingsShortcut.keycaps(for:)) ?? [])
         let explanation: String? =
-            if capabilities.unarmedShortcuts.contains(descriptor.action) {
-                unarmed
+            if let cause = capabilities.unarmedShortcuts[descriptor.action] {
+                unarmed(cause)
             } else if settings.shortcutsReturnedToDefault.contains(descriptor.action) {
                 returnedToDefault
             } else if binding?.isFunctionHold == true {
@@ -482,7 +484,7 @@ public enum SettingsPresenter {
     static func tidied(at level: SettingsTidyingLevel) -> String {
         switch level {
         case .light: "So I think we should ship it on friday."
-        case .standard: "I think we should ship it on Friday."
+        case .standard: "So I think we should ship it on Friday."
         }
     }
 
@@ -687,8 +689,16 @@ public enum SettingsPresenter {
         switch capabilities.suggestionRuntime {
         case .starting:
             return SettingsBanner(
+                symbolName: "clock", title: "Starting suggestions…",
+                message: "Suggestions will be ready shortly.")
+        case .tapResting:
+            return SettingsBanner(
                 symbolName: "clock", title: "Suggestions are paused briefly",
-                message: "The key tap is restarting. Suggestions will resume automatically.")
+                message: "Suggestions will resume automatically.")
+        case .restarting:
+            return SettingsBanner(
+                symbolName: "clock", title: "Restarting suggestions…",
+                message: "Suggestions will resume automatically.")
         case .secureInputBlocked:
             return SettingsBanner(
                 symbolName: "lock", title: "Suggestions are paused",
@@ -703,7 +713,9 @@ public enum SettingsPresenter {
             return SettingsBanner(
                 symbolName: "exclamationmark.triangle", title: "Suggestions could not start",
                 message:
-                    "The suggestion corpus could not be opened. Check its file access, then turn suggestions off and on again."
+                    "Uttrflow could not open its saved suggestions file (predict.v1.sqlite). "
+                    + "Check that the Uttrflow folder in Application Support is available, then "
+                    + "turn suggestions off and on again."
             )
         case .idle, .running:
             break
@@ -933,7 +945,14 @@ public enum SettingsPresenter {
             explanation:
                 "Forget \(counted(learned, "completion", "completions")) from "
                 + "\(application.name). Everywhere else is untouched.",
-            control: .removal(SettingsRemoval(reset: reset, title: "Forget", confirmation: nil)),
+            control: .removal(
+                SettingsRemoval(
+                    reset: reset, title: "Forget…",
+                    confirmation: SettingsConfirmation(
+                        title: "Forget learned completions?",
+                        message:
+                            "This removes \(counted(learned, "completion", "completions")) from \(application.name). This cannot be undone.",
+                        confirmTitle: "Forget", cancelTitle: "Cancel"))),
             unavailability: SettingsEditor.unavailability(of: reset, given: personalisation),
             style: .inset)
     }

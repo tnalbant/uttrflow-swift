@@ -48,9 +48,12 @@ extension SpeechEngineError: CataloguedFailure {
         case .modelNotInstalled: .modelDownloadFailed(description: "")
         case .modelDownloadFailed: .notEnoughSpace(neededBytes: 0)
         case .notEnoughSpace: .modelLoadFailed(description: "")
-        case .modelLoadFailed: .audioTooShort
+        case .modelLoadFailed: .modelDamaged(fileCount: 0)
+        case .modelDamaged: .audioTooShort
         case .audioTooShort: .nothingHeard
-        case .nothingHeard: .transcriptionFailed(description: "")
+        case .nothingHeard: .speechWithoutWords
+        case .speechWithoutWords: .recogniserTimedOut
+        case .recogniserTimedOut: .transcriptionFailed(description: "")
         case .transcriptionFailed: nil
         }
     }
@@ -91,7 +94,8 @@ extension DictionaryStoreError: CataloguedFailure {
         case .couldNotReadSeedRecord: .wordIsEmpty
         case .wordIsEmpty: .wordAlreadyKnown
         case .wordAlreadyKnown: .entryHasTooManyWords(maximum: 3)
-        case .entryHasTooManyWords: nil
+        case .entryHasTooManyWords: .entryIsTooLong(maximum: 80)
+        case .entryIsTooLong: nil
         }
     }
 }
@@ -132,7 +136,9 @@ extension TextInsertionError: CataloguedFailure {
         case .insertionRejected: .insertionUnconfirmed
         case .insertionUnconfirmed: .insertionTargetChanged
         case .insertionTargetChanged: .insertionNeedsCopy(description: "")
-        case .insertionNeedsCopy: nil
+        case .insertionNeedsCopy: .insertionInterrupted(typed: 0, total: 0)
+        case .insertionInterrupted: .insertionCancelled
+        case .insertionCancelled: nil
         }
     }
 }

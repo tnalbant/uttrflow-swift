@@ -3,6 +3,7 @@ import CoreGraphics
 import Dispatch
 import Synchronization
 import Testing
+import UttrflowTestSupport
 
 @testable import UttrflowInput
 
@@ -20,16 +21,18 @@ struct KeyHoldTests {
 
     @Test("nothing is held back until a keystroke is taken")
     func passesWhenIdle() throws {
-        let hold = KeyHold()
-        #expect(!hold.keep(try #require(Self.key(36)), now: 10))
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
+        #expect(!hold.keep(try #require(Self.key(36))))
     }
 
     @Test("a Return pressed during a slow accept reaches the application after the typed completion")
     func returnAfterCompletion() async throws {
-        let hold = KeyHold()
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
         var delivered: [String] = []
-        hold.begin(now: 100)
-        #expect(hold.keep(try #require(Self.key(36)), now: 200))
+        hold.begin()
+        #expect(hold.keep(try #require(Self.key(36))))
         // The fake typist finishes its text before the held Return is released.
         delivered.append("u ubuntu")
         hold.release { delivered.append("key \($0.getIntegerValueField(.keyboardEventKeycode))") }
@@ -38,38 +41,42 @@ struct KeyHoldTests {
 
     @Test("held keys are replayed oldest first, and once")
     func replaysInOrder() throws {
-        let hold = KeyHold()
-        hold.begin(now: 1)
-        for code: CGKeyCode in [0, 1, 36] { #expect(hold.keep(try #require(Self.key(code)), now: 2)) }
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
+        hold.begin()
+        for code: CGKeyCode in [0, 1, 36] { #expect(hold.keep(try #require(Self.key(code)))) }
         var posted: [CGEvent] = []
         hold.release { posted.append($0) }
         #expect(Self.codes(posted) == [0, 1, 36])
         posted = []
         hold.release { posted.append($0) }
         #expect(posted.isEmpty)
-        #expect(!hold.keep(try #require(Self.key(36)), now: 3))
+        #expect(!hold.keep(try #require(Self.key(36))))
     }
 
     @Test("expiry discards earlier held keys before later keys pass through")
     func expiryDiscardsHeldKeys() throws {
-        let hold = KeyHold()
-        hold.begin(now: 5)
-        #expect(hold.keep(try #require(Self.key(0)), now: 6))
-        #expect(hold.keep(try #require(Self.key(1)), now: 7))
-        #expect(!hold.keep(try #require(Self.key(36)), now: 5 + KeyHold.limitNanoseconds))
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
+        hold.begin()
+        #expect(hold.keep(try #require(Self.key(0))))
+        #expect(hold.keep(try #require(Self.key(1))))
+        clock.advance(by: .nanoseconds(Int64(KeyHold.limitNanoseconds)))
+        #expect(!hold.keep(try #require(Self.key(36))))
 
         var posted: [Int64] = []
         hold.release { posted.append($0.getIntegerValueField(.keyboardEventKeycode)) }
         #expect(posted.isEmpty)
-        #expect(!hold.keep(try #require(Self.key(49)), now: 6 + KeyHold.limitNanoseconds))
+        #expect(!hold.keep(try #require(Self.key(49))))
     }
 
     @Test("a normal hold replays keys in arrival order")
     func normalHoldReplaysInOrder() throws {
-        let hold = KeyHold()
-        hold.begin(now: 10)
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
+        hold.begin()
         for code: CGKeyCode in [1, 0, 36] {
-            #expect(hold.keep(try #require(Self.key(code)), now: 11))
+            #expect(hold.keep(try #require(Self.key(code))))
         }
 
         var posted: [CGEvent] = []
@@ -79,22 +86,27 @@ struct KeyHoldTests {
 
     @Test("a hold that outlives its limit lets keys through again")
     func expires() throws {
-        let hold = KeyHold()
-        hold.begin(now: 5)
-        #expect(!hold.keep(try #require(Self.key(36)), now: 5 + KeyHold.limitNanoseconds))
-        #expect(!hold.keep(try #require(Self.key(36)), now: 6 + KeyHold.limitNanoseconds))
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
+        hold.begin()
+        clock.advance(by: .nanoseconds(Int64(KeyHold.limitNanoseconds) - 1))
+        #expect(hold.keep(try #require(Self.key(0))))
+        clock.advance(by: .nanoseconds(1))
+        #expect(!hold.keep(try #require(Self.key(36))))
+        #expect(!hold.keep(try #require(Self.key(36))))
     }
 
     @Test("release drains a key whose eligibility check is in progress")
     func keepAndReleaseAreAtomic() throws {
-        let hold = KeyHold()
+        let clock = ManualClock()
+        let hold = KeyHold(clock: clock)
         let enteredEligibilityCheck = DispatchSemaphore(value: 0)
         let finishKeep = DispatchSemaphore(value: 0)
         let releaseStarted = DispatchSemaphore(value: 0)
         let releaseFinished = DispatchSemaphore(value: 0)
         let keepResult = Mutex<Bool?>(nil)
         let posted = Mutex<[Int64]>([])
-        hold.begin(now: 100)
+        hold.begin()
 
         DispatchQueue.global().async {
             guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: true) else {
@@ -102,7 +114,7 @@ struct KeyHoldTests {
                 keepResult.withLock { $0 = false }
                 return
             }
-            let kept = hold.keep(event, now: 200) {
+            let kept = hold.keep(event) {
                 enteredEligibilityCheck.signal()
                 finishKeep.wait()
             }
@@ -124,7 +136,7 @@ struct KeyHoldTests {
         #expect(keepResult.withLock { $0 } == true)
         #expect(posted.withLock { $0 } == [36])
         #expect(!hold.isHolding)
-        #expect(!hold.keep(try #require(Self.key(49)), now: 300))
+        #expect(!hold.keep(try #require(Self.key(49))))
         var replayedAgain: [Int64] = []
         hold.release { replayedAgain.append($0.getIntegerValueField(.keyboardEventKeycode)) }
         #expect(replayedAgain.isEmpty)

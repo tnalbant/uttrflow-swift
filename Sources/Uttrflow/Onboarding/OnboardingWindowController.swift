@@ -21,7 +21,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     /// Called as soon as a sign-in's profile is kept, before the setup pages after it.
     var onSignIn: (() -> Void)?
     /// Applies onboarding choices to the running app.
-    var onSettingsChange: ((Settings) -> Void)? {
+    var onSettingsChange: ((UttrflowSettings.Settings) -> Void)? {
         didSet { flow.onSettingsChange = onSettingsChange }
     }
 

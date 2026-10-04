@@ -15,8 +15,8 @@ import UttrflowUX
     .enabled(if: AXIsProcessTrusted(), "SwiftUI builds its tree only for a trusted client"))
 struct SettingsVersionAccessibilityTests {
     private struct Store: SettingsStore {
-        func load() -> Settings { .default }
-        func save(_: Settings) {}
+        func load() -> UttrflowSettings.Settings { .default }
+        func save(_: UttrflowSettings.Settings) {}
     }
 
     private struct Personalisation: SettingsPersonalisationStore {
@@ -68,8 +68,10 @@ struct SettingsVersionAccessibilityTests {
         askAsAnAssistiveApp()
 
         let versionElement = elements(under: host).first { element in
-            element.accessibilityLabel?() as? String == "Version"
-                && element.accessibilityValue?() as? String == version
+            let value =
+                (element as? NSAccessibilityElement)?.accessibilityValue()
+                ?? (element as? NSView)?.accessibilityValue()
+            return element.accessibilityLabel?() as? String == "Version" && value as? String == version
         }
         #expect(versionElement != nil)
     }

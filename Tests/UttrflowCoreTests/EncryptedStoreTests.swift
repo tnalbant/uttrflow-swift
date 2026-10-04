@@ -27,6 +27,17 @@ struct EncryptedStoreTests {
         }
     }
 
+    private final class UnlockingKeys: StoreKeyProviding, Sendable {
+        let value = SymmetricKey(size: .bits256)
+        let locked = Mutex(true)
+        let lookups = Mutex(0)
+        func key(createIfMissing: Bool) throws -> SymmetricKey {
+            lookups.withLock { $0 += 1 }
+            if locked.withLock({ $0 }) { throw StoreKeyError.unavailable(Int32(errSecInteractionNotAllowed)) }
+            return value
+        }
+    }
+
     private final class RevocableKeys: StoreKeyProviding, StoreKeyRevoking, Sendable {
         private let stored = Mutex<SymmetricKey?>(nil)
 
@@ -61,6 +72,60 @@ struct EncryptedStoreTests {
 
         #expect(try Data(contentsOf: file).starts(with: Data("UTTFLOWE".utf8)))
         #expect(store.read([String].self, from: file).value == ["private"])
+    }
+
+    @Test("file fallback keeps one key across provider instances and removes it on reset")
+    func fileKeyFallbackPersistsAndRevokes() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyFile = directory.appending(path: "key.v1")
+        let first = KeychainStoreKeyProvider(fileURL: keyFile)
+        let key = try first.resolveKeychainResult(
+            status: errSecItemNotFound,
+            data: nil,
+            createIfMissing: true
+        ) { _ in errSecMissingEntitlement }
+        #expect(try Data(contentsOf: keyFile).count == 32)
+        #expect(
+            try first.resolveKeychainResult(
+                status: errSecItemNotFound,
+                data: nil,
+                createIfMissing: false
+            ) { _ in
+                Issue.record("Must reuse the existing fallback without adding a Keychain item");
+                return errSecSuccess
+            }
+            .withUnsafeBytes { Data($0) }
+                == key.withUnsafeBytes { Data($0) })
+
+        try first.revokeKey()
+        #expect(!FileManager.default.fileExists(atPath: keyFile.path))
+        #expect(throws: (any Error).self) {
+            try first.resolveKeychainResult(
+                status: errSecItemNotFound,
+                data: nil,
+                createIfMissing: false
+            ) { _ in
+                Issue.record("Must not add while reading a missing key"); return errSecSuccess
+            }
+        }
+    }
+
+    @Test("does not use the file fallback for unrelated Keychain failures")
+    func keychainFailuresStayFailClosed() throws {
+        let directory = try folder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let provider = KeychainStoreKeyProvider(fileURL: directory.appending(path: "key.v1"))
+
+        #expect(throws: (any Error).self) {
+            try provider.resolveKeychainResult(
+                status: errSecInteractionNotAllowed,
+                data: nil,
+                createIfMissing: true
+            ) { _ in
+                Issue.record("Must not try to add after a locked-keychain response"); return errSecSuccess
+            }
+        }
     }
 
     @Test("rejects a different key and leaves the source bytes set aside")
@@ -187,6 +252,18 @@ struct EncryptedStoreTests {
         let unreadable = store.read([String].self, from: retainedCopy)
         #expect(unreadable.value == nil)
         #expect(LocalStore.hasSetAside(retainedCopy))
+    }
+
+    @Test("a locked key is read again after unlock and then reused")
+    func lockedKeyIsRetriedThenCached() throws {
+        let keys = UnlockingKeys()
+        let store = EncryptedStore(keys: keys)
+        #expect(throws: StoreKeyError.self) { try store.seal(Data([1]), for: "chunk") }
+        keys.locked.withLock { $0 = false }
+        let sealed = try store.seal(Data([1]), for: "chunk")
+        _ = try store.seal(Data([2]), for: "chunk")
+        #expect(try store.open(sealed, for: "chunk") == Data([1]))
+        #expect(keys.lookups.withLock { $0 } == 2)
     }
 
     @Test("rejects unsupported, truncated and modified envelopes")

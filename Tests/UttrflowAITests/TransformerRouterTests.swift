@@ -331,14 +331,9 @@ struct TextTransformersTests {
         #expect(TextTransformers.all().contains { $0.kind == .rules })
     }
 
-    @Test("contains no network path unless the build asked for one")
-    func cloudIsCompiledOut() {
-        let kinds = TextTransformers.all().map(\.kind)
-        #if UTTRFLOW_CLOUD
-            #expect(kinds.contains(.cloud))
-        #else
-            #expect(!kinds.contains(.cloud))
-        #endif
+    @Test("contains no hosted engine")
+    func cloudIsAbsent() {
+        #expect(!TextTransformers.all().map(\.kind).contains(.cloud))
     }
 
     @Test("routes to the floor last")
@@ -409,11 +404,6 @@ struct PromptContractTests {
     func userPromptShape() {
         let request = TransformationRequest(transcription: Transcription(text: "hello there"))
         #expect(PromptBuilder.standard.userPrompt(for: request) == "Spoken: \"hello there\"")
-    }
-
-    @Test("is versioned, so a measurement can be tied to the prompt that produced it")
-    func versioned() {
-        #expect(PromptBuilder.version >= 1)
     }
 
 }

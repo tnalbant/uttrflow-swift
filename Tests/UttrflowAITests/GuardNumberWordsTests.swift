@@ -32,4 +32,21 @@ struct GuardNumberWordsTests {
                 original: "we raised three thousand rupees", rewritten: "We raised 3,000 rupees.")
                 == .accepted)
     }
+
+    /// Every word the guard reads as a number comes from `NumberWords`, so a key added only here fails.
+    @Test("the guard's number words are exactly NumberWords, English and Hindi")
+    func numberWordsHaveOneHome() {
+        let expected = NumberWords.english.merging(NumberWords.hindi) { first, _ in first }.mapValues(
+            String.init)
+        #expect(MeaningPreservationGuard.numberWords == expected)
+    }
+
+    /// The scales above a thousand are the only words the guard gained when its own table went.
+    @Test("a million spoken and a million written are the same number to the guard")
+    func millionIsANumber() {
+        #expect(MeaningPreservationGuard.numberWords["million"] == "1000000")
+        #expect(
+            MeaningPreservationGuard.inventedNumber(
+                original: "one million rows", rewritten: "one million rows") == nil)
+    }
 }

@@ -32,6 +32,16 @@ struct MenuBarPopoverView: View {
         return VStack(alignment: .leading, spacing: 0) {
             MenuBarHeaderView(
                 header: presentation.header, onCommand: onCommand, focus: $focus, showsFocus: usesKeyboard)
+            if !presentation.learned.isEmpty {
+                MenuBarRule()
+                MenuBarSectionLabel(text: "LEARNED")
+                ForEach(Array(presentation.learned.enumerated()), id: \.offset) { index, row in
+                    MenuBarLearnedRowView(
+                        row: row, onCommand: onCommand, isFocused: shows(keyboard.learnedStart + index)
+                    )
+                    .menuBarKey($focus, keyboard.learnedStart + index)
+                }
+            }
             buttonRow(keyboard).padding(.top, 14)
             if let last = presentation.lastDictation {
                 MenuBarRule()
@@ -183,11 +193,18 @@ private struct MenuBarHintView: View {
 /// A dot and a title, a quieter line under it, and a bar when there is progress to show.
 private struct MenuBarStatusView: View {
     let status: MenuBarStatus
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiatesWithoutColour
+
+    private var marker: String {
+        status.emphasis.marker(differentiatesWithoutColour: differentiatesWithoutColour)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 7) {
-                Circle().fill(MenuBarColour.dot(status.emphasis)).frame(width: 7, height: 7)
+                Image(systemName: marker)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(MenuBarColour.dot(status.emphasis))
                 Text(status.title)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(MenuBarColour.text)
@@ -268,7 +285,7 @@ private struct MenuBarRoundButton: View {
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(MenuBarColour.buttonLabel)
                         .lineLimit(1)
-                    if button.isBeta { BetaBadge() }
+                    if isBeta { BetaBadge() }
                 }
             }
             .contentShape(Rectangle())
@@ -276,7 +293,7 @@ private struct MenuBarRoundButton: View {
         .buttonStyle(.plain)
         .disabled(!button.command.isEnabled)
         .accessibilityLabel(
-            button.isBeta ? BetaFeature.accessibilityName(button.command.title) : button.command.title)
+            isBeta ? BetaFeature.accessibilityName(button.command.title) : button.command.title)
     }
 
     private var isBeta: Bool {
@@ -359,5 +376,42 @@ private struct MenuBarRowView: View {
         }
         .accessibilityLabel(row.title)
         .accessibilityHint("Pastes at the cursor. Option-click copies it.")
+    }
+}
+
+/// A learned word, where it came from, and an Undo that removes it and stops it being learned again.
+private struct MenuBarLearnedRowView: View {
+    let row: MenuBarLearnedRow
+    let onCommand: (MenuBarIntent) -> Void
+    let isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "character.book.closed")
+                .font(.system(size: 11))
+                .foregroundStyle(MenuBarColour.quiet)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.word)
+                    .font(.system(size: 13))
+                    .foregroundStyle(MenuBarColour.row)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(row.source)
+                    .font(.system(size: 11))
+                    .foregroundStyle(MenuBarColour.quiet)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            Button(row.undo.title) { onCommand(row.undo.intent) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(MenuBarColour.row)
+                .disabled(!row.undo.isEnabled)
+                .menuBarFocusRing(Capsule(), isShown: isFocused)
+                .help(row.undo.tooltip ?? "")
+                .accessibilityLabel("Undo learning \(row.word)")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
     }
 }

@@ -1,6 +1,7 @@
 // The panel's state: the scope and filter tabs, and the snapshot every keystroke transforms.
 public import Foundation
 public import UttrflowClipboard
+public import UttrflowCore
 
 /// Which slice of the clipboard the bottom bar shows: kept, filed, or neither. Combines with ``PanelFilter``.
 public enum PanelScope: String, Sendable, Equatable, CaseIterable, Codable {
@@ -235,6 +236,7 @@ extension PanelSnapshot {
         now: Date
     ) {
         self.clips = clips
+        revalidateTransientTargets()
         checklistProgresses.prune(to: Set(clips.map(\.id)))
         self.missingImages = missingImages
         self.formattableLanguages = formattableLanguages
@@ -246,5 +248,25 @@ extension PanelSnapshot {
             pendingResume = nil
             restore(resume)
         }
+    }
+
+    /// Clears selections, sheets and reveals whose targets disappear from a refreshed list.
+    private mutating func revalidateTransientTargets() {
+        let ids = Set(clips.map(\.id))
+        if let selection, !ids.contains(selection) { self.selection = nil }
+        revealed.formIntersection(ids)
+        guard let sheet else { return }
+        let targetExists: Bool
+        if let clip = sheet.clip {
+            targetExists = ids.contains(clip)
+        } else if let category = sheet.category {
+            targetExists = categories.contains(category)
+        } else {
+            targetExists = false
+        }
+        guard !targetExists else { return }
+        self.sheet = nil
+        notice = PanelNotice(
+            symbolName: "exclamationmark.triangle", message: "That item is no longer available")
     }
 }

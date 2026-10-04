@@ -13,7 +13,7 @@ public protocol ReleasableModel: CandidateScoring, CandidateGenerating {
     func release() async
 }
 
-/// How long a suggestion model may sit unasked before it is let go. See `Docs/performance.md`.
+/// How long a suggestion model may sit unasked before it is let go. See `Docs/performance-suggestions.md`.
 public enum IdleRelease {
     /// The window on a Mac with at least 16 GB.
     public static let roomy = Duration.seconds(600)

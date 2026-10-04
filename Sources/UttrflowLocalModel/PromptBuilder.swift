@@ -1,3 +1,4 @@
+import UttrflowAI
 import UttrflowPredict
 
 /// What one pass asks the model for: the one line the person waits for, or the others behind it.
@@ -68,13 +69,13 @@ enum PromptBuilder {
     static func message(
         typed: String, in situation: GenerationSituation, register: Register, asking ask: Ask = .one
     ) -> String {
-        var located = "application \(situation.application)"
+        var located = "application \(PromptText.quoted(situation.application, limit: locatorCap))"
         if let title = situation.windowTitle {
-            located += ", window \"\(Self.unquoted(Self.head(title, within: locatorCap)))\""
+            located += ", window \"\(PromptText.quoted(title, limit: locatorCap))\""
         }
-        if let field = situation.field { located += ", field \(Self.head(field, within: locatorCap))" }
+        if let field = situation.field { located += ", field \(PromptText.quoted(field, limit: locatorCap))" }
         if let document = situation.document {
-            located += ", document \(Self.head(document, within: locatorCap))"
+            located += ", document \(PromptText.quoted(document, limit: locatorCap))"
         }
         var opening = "In \(located).\nHints: \(register.hints.joined(separator: "; "))."
         // Adds the script instruction only when the context shows another script. See `Docs/predict.md`.
@@ -89,7 +90,7 @@ enum PromptBuilder {
             case .one:
                 "\(Self.instruction(for: register)):\n\(Self.delimited(typed))"
             case .others(let leader):
-                "Give up to three other ways to finish this \(register.kind), each different from \"\(Self.unquoted(leader))\", "
+                "Give up to three other ways to finish this \(register.kind), each different from \"\(PromptText.quoted(leader))\", "
                     + "one per line:\n\(Self.delimited(typed))"
             }
 
@@ -197,17 +198,6 @@ enum PromptBuilder {
         }
     }
 
-    /// The text with double quotes made single, so quoted words cannot forge a prompt line.
-    static func unquoted(_ text: String) -> String {
-        text.replacingOccurrences(of: "\"", with: "'")
-    }
-
-    /// The start of the text, which is where a title or a name says what it is, cut to the allowance in characters.
-    static func head(_ text: String, within allowance: Int) -> String {
-        guard allowance > 0 else { return "" }
-        return text.count > allowance ? String(text.prefix(allowance)) : text
-    }
-
     /// The longest end of the text whose estimate fits the allowance in tokens, which is the part nearest the line.
     static func tail(_ text: String, within allowance: Int) -> String {
         guard allowance > 0 else { return "" }
@@ -223,7 +213,19 @@ enum PromptBuilder {
                 high = mid - 1
             }
         }
-        return String(characters[(characters.count - low)...])
+        let start = characters.count - low
+        guard start < characters.count else { return "" }
+        if characters[start...].allSatisfy(\.isWhitespace) {
+            guard let lastWord = text.split(whereSeparator: \.isWhitespace).last,
+                estimatedTokens(lastWord) <= allowance
+            else { return "" }
+            return String(lastWord)
+        }
+        guard start > 0, !characters[start - 1].isWhitespace, !characters[start].isWhitespace else {
+            return String(characters[start...])
+        }
+        guard let boundary = characters[start...].firstIndex(where: \.isWhitespace) else { return "" }
+        return String(characters[(boundary + 1)...])
     }
 
     /// The longest start of the text whose estimate fits the allowance in tokens.
@@ -237,7 +239,17 @@ enum PromptBuilder {
             let mid = (low + high + 1) / 2
             if estimatedTokens(String(characters[..<mid])) <= allowance { low = mid } else { high = mid - 1 }
         }
-        return String(characters[..<low])
+        if low > 0, characters[..<low].allSatisfy(\.isWhitespace) {
+            guard let firstWord = text.split(whereSeparator: \.isWhitespace).first,
+                estimatedTokens(firstWord) <= allowance
+            else { return "" }
+            return String(firstWord)
+        }
+        guard low > 0, low < characters.count,
+            !characters[low - 1].isWhitespace, !characters[low].isWhitespace
+        else { return String(characters[..<low]) }
+        guard let boundary = characters[..<low].lastIndex(where: \.isWhitespace) else { return "" }
+        return String(characters[...boundary])
     }
 
     /// The newest lines that fit the allowance in tokens, oldest dropped first, and the newest alone cut down when even it does not fit.

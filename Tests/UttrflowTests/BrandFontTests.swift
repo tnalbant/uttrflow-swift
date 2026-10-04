@@ -43,4 +43,22 @@ struct BrandFontTests {
         let preferred = BrandFont.display(size: 20, weight: .semibold, available: true)
         #expect(BrandFont.display(size: 20) == preferred)
     }
+
+    @Test("the wordmark font and its licence ship in the bundle and register")
+    func wordmarkShips() {
+        #expect(BrandFont.wordmarkFileURL != nil)
+        #expect(Bundle.module.url(forResource: "EBGaramond-OFL", withExtension: "txt") != nil)
+        #expect(BrandFont.isWordmarkAvailable)
+        let font = CTFontCreateWithName(BrandFont.wordmarkFamily as CFString, 20, nil)
+        #expect(CTFontCopyFamilyName(font) as String == BrandFont.wordmarkFamily)
+    }
+
+    @Test("the wordmark font falls back to the system serif when the typeface is missing")
+    func wordmarkFallsBack() {
+        let fallback = BrandFont.wordmark(size: 30, weight: .semibold, available: false)
+        let branded = BrandFont.wordmark(size: 30, weight: .semibold, available: true)
+        #expect(fallback == .system(size: 30, weight: .semibold, design: .serif))
+        #expect(branded == .custom("EB Garamond", size: 30).weight(.semibold))
+        #expect(BrandFont.wordmark(size: 30) == branded)
+    }
 }

@@ -154,3 +154,34 @@ private actor Witness {
         return await withCheckedContinuation { waitingToWake.append($0) }
     }
 }
+
+@Suite("A deadline on an injected clock")
+struct DeadlineValueTests {
+    @Test("Time left falls only as the injected clock moves, and the deadline is spent when it reaches zero.")
+    func remainingFollowsTheClock() async {
+        let clock = ManualClock()
+        let deadline = Deadline(.milliseconds(100), clock: clock)
+        #expect(deadline.remaining == .milliseconds(100))
+        #expect(!deadline.isSpent)
+        clock.advance(by: .milliseconds(60))
+        #expect(deadline.remaining == .milliseconds(40))
+        clock.advance(by: .milliseconds(60))
+        #expect(deadline.remaining == .zero)
+        #expect(deadline.isSpent)
+    }
+
+    @Test("A race run after part of the allowance has gone gets only what is left.")
+    func raceUsesWhatIsLeft() async throws {
+        let clock = ManualClock()
+        let deadline = Deadline(.milliseconds(100), clock: clock)
+        clock.advance(by: .milliseconds(70))
+        let racing = Task {
+            try await deadline.race { () async throws -> String in
+                try await clock.sleep(for: .seconds(30))
+                return "late"
+            }
+        }
+        while !clock.advanceIfSomethingIsWaiting(exactly: .milliseconds(30)) { await Task.yield() }
+        #expect(try await racing.value == nil)
+    }
+}

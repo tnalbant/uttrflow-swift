@@ -286,17 +286,6 @@ private final class TimedCleaner: TranscriptCleaning, Sendable {
     func warm(for situation: Situation?) async {}
 }
 
-private final class CollectingInserter: TextInserting, Sendable {
-    private let received = Mutex<[String]>([])
-
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        received.withLock { $0.append(text) }
-        return InsertionAttempt(.accessibility)
-    }
-
-    var texts: [String] { received.withLock { $0 } }
-}
-
 /// A dictionary that rewrites the first word of whatever it is shown.
 private struct FirstWordCorrector: WordCorrecting {
     let entry = UUID()
@@ -308,7 +297,7 @@ private struct FirstWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: first, wrote: first.uppercased(), wordRange: 0..<1, entryID: entry,
-                reason: "test", heardConfidence: 0.1)
+                reason: .unknown("test"), heardConfidence: 0.1)
         ]
     }
 }
@@ -325,7 +314,7 @@ private actor ScreenWordCorrector: WordCorrecting {
         return [
             DictationCorrection(
                 heard: "Maddox", wrote: "Madison", wordRange: 0..<1, entryID: UUID(),
-                reason: "seenOnScreen", heardConfidence: 0.2)
+                reason: .seenOnScreen, heardConfidence: 0.2)
         ]
     }
 }
@@ -381,7 +370,7 @@ struct DictationPipelineEarlyWorkTests {
         capture: FakeAudioCaptureEngine,
         speech: any SpeechEngine = NumberingSpeechEngine(),
         cleaner: any TranscriptCleaning = ShoutingCleaner(),
-        inserter: CollectingInserter = CollectingInserter(),
+        inserter: FakeTextInserter = FakeTextInserter(),
         context: FakeContextEngine = FakeContextEngine(context: .fixture()),
         corrector: any WordCorrecting = NoTextChanges(),
         metrics: any MetricsRecording = NoOpMetricsRecorder(),
@@ -406,7 +395,7 @@ struct DictationPipelineEarlyWorkTests {
         await capture.setCaptured(Take.threePieces)
         let speech = NumberingSpeechEngine()
         let cleaner = ShoutingCleaner()
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(capture: capture, speech: speech, cleaner: cleaner, inserter: inserter)
 
         await pipeline.startRecording()
@@ -455,7 +444,7 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(take))
         await capture.setCaptured(take)
         let cleaner = ShoutingCleaner()
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(capture: capture, cleaner: cleaner, inserter: inserter)
 
         await pipeline.startRecording()
@@ -574,7 +563,7 @@ struct DictationPipelineEarlyWorkTests {
                 applicationName: "TextEdit", bundleIdentifier: "com.apple.TextEdit",
                 precedingText: "Hello"))
         let cleaner = HeldCleaner()
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             capture: capture, speech: KeepingSpeechEngine(), cleaner: cleaner,
             inserter: inserter, context: context)
@@ -585,7 +574,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.texts == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x.w2 x"])
     }
 
     @Test("a different frontmost app makes the insertion caret unknown")
@@ -597,7 +586,7 @@ struct DictationPipelineEarlyWorkTests {
                 applicationName: "Terminal", bundleIdentifier: "com.apple.Terminal",
                 precedingText: "Hello"))
         let cleaner = HeldCleaner()
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             capture: capture, speech: KeepingSpeechEngine(), cleaner: cleaner,
             inserter: inserter, context: context)
@@ -610,7 +599,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.texts == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x.w2 x"])
     }
 
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
@@ -634,7 +623,7 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
         let speech = NumberingSpeechEngine()
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(capture: capture, speech: speech, inserter: inserter)
 
         await pipeline.startRecording()
@@ -643,7 +632,7 @@ struct DictationPipelineEarlyWorkTests {
         await pipeline.finishRecording()
 
         #expect(await pipeline.currentState == .idle)
-        #expect(inserter.texts.isEmpty)
+        #expect(inserter.received.isEmpty)
     }
 
     @Test("a speech swap waits for a cancelled early decode, then loads after it returns")
@@ -651,7 +640,8 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
         let before = HeldSwapSpeechEngine()
-        let after = faster()
+        let after = FakeSpeechEngine(
+            kind: .appleSpeech, transcribeOutcome: .success(.fixture(text: "faster")))
         let pipeline = makePipeline(capture: capture, speech: before, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()
@@ -824,7 +814,7 @@ struct DictationPipelineEarlyWorkTests {
     @Test("a piece with speech that decodes to no words twice is left out and counted, and the rest go in")
     func speechBearingPieceIsSkippedAfterTwoDecodes() async {
         let speech = NumberingSpeechEngine(blankCalls: [2, 3])
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
             speech: speech, inserter: inserter, earlyPoll: .seconds(60))
@@ -835,14 +825,14 @@ struct DictationPipelineEarlyWorkTests {
         let outcome = await pipeline.currentState.outcome
         #expect(outcome?.text == "W1 X. W4 X")
         #expect(outcome?.missedPieces == 1)
-        #expect(inserter.texts == ["W1 X. W4 X"])
+        #expect(inserter.received == ["W1 X. W4 X"])
     }
 
     @Test(
         "a recording whose every speech-bearing piece decodes to no words fails as untranscribed, not silent")
     func everyPieceMissedFails() async {
         let speech = NumberingSpeechEngine(blankCalls: Set(1...6))
-        let inserter = CollectingInserter()
+        let inserter = FakeTextInserter()
         let pipeline = makePipeline(
             capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
             speech: speech, inserter: inserter, earlyPoll: .seconds(60))
@@ -854,9 +844,8 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
-        #expect(inserter.texts.isEmpty)
+                        SpeechEngineError.speechWithoutWords)))
+        #expect(inserter.received.isEmpty)
     }
 
     @Test("a genuinely silent trailing window is skipped after speech")
@@ -913,8 +902,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
+                        SpeechEngineError.speechWithoutWords)))
     }
 
     @Test("corrections keep pointing at their words after the pieces are joined")
@@ -1120,7 +1108,7 @@ struct DictationPipelineEarlyWorkTests {
         // No early poll ever fires, so nothing is ever in flight to wait for.
         let pipeline = DictationPipeline(
             capture: capture, speech: NumberingSpeechEngine(), cleaner: ShoutingCleaner(),
-            context: FakeContextEngine(context: .fixture()), inserter: CollectingInserter(),
+            context: FakeContextEngine(context: .fixture()), inserter: FakeTextInserter(),
             metrics: metrics, windowing: quick, earlyPoll: .seconds(60))
 
         await pipeline.startRecording()

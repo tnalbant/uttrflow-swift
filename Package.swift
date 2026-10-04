@@ -76,7 +76,7 @@ let package = Package(
     ],
     targets: [
         // Platform-free domain layer: protocols, models, errors. Imports nothing but the stdlib.
-        .target(name: "UttrflowCore", swiftSettings: sharedSwiftSettings),
+        .target(name: "UttrflowCore", resources: [.process("Resources")], swiftSettings: sharedSwiftSettings),
 
         // Microphone capture. Everything that can be reasoned about without hardware —
         // resampling, accumulation, encoding — lives outside the AVAudioEngine boundary.
@@ -203,6 +203,7 @@ let package = Package(
                 "UttrflowHistory", "UttrflowPredict",
                 "UttrflowSettings",
             ],
+            resources: [.process("Resources")],
             swiftSettings: sharedSwiftSettings
         ),
 
@@ -270,6 +271,12 @@ let package = Package(
                 "UttrflowSpeech",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
+            swiftSettings: sharedSwiftSettings
+        ),
+
+        // Test-only window whose fields misbehave on purpose; never a dependency of the app.
+        .executableTarget(
+            name: "uttrflow-insertion-fixture",
             swiftSettings: sharedSwiftSettings
         ),
 
@@ -360,7 +367,7 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowTests",
-            dependencies: ["Uttrflow", "UttrflowTestSupport"],
+            dependencies: ["Uttrflow", "UttrflowPredict", "UttrflowTestSupport"],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
@@ -402,7 +409,9 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowInputTests",
-            dependencies: ["UttrflowInput", "UttrflowPredict", "UttrflowTestSupport"],
+            dependencies: [
+                "UttrflowClipboard", "UttrflowInput", "UttrflowPredict", "UttrflowTestSupport",
+            ],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(
@@ -430,6 +439,7 @@ let package = Package(
         .testTarget(
             name: "UttrflowEvalTests",
             dependencies: ["UttrflowAI", "UttrflowAudio", "UttrflowEval", "UttrflowTestSupport"],
+            exclude: ["Golden"],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(

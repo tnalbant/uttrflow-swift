@@ -58,6 +58,9 @@ DESCRIBED = {
     ("Sources/Uttrflow/Suggestion/SuggestionLog.swift", "String(describing: error)"): (
         "a TextInsertionError, whose one payload is fixed wording, or in `failure` a case with no payload"
     ),
+    ("Sources/UttrflowInput/ActivationMonitor.swift", "String(describing: error)"): (
+        "a HotkeyError from a typed throw, a case with no payload"
+    ),
 }
 
 

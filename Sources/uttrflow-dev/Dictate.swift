@@ -27,7 +27,7 @@ struct Dictate: AsyncParsableCommand {
         let model = try resolve(modelVariant)
         let store = try modelsDirectory.store()
         guard store.isInstalled(model) else {
-            throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
+            throw notInstalled(model, in: store)
         }
         let audio = try AudioFileReader.read(contentsOf: URL(fileURLWithPath: file))
         guard !audio.isEmpty else { throw CleanExit.message("The file holds no audio.") }
@@ -38,7 +38,7 @@ struct Dictate: AsyncParsableCommand {
         let inserter = PrintingInserter()
         let pipeline = DictationPipeline(
             capture: playback, speech: speech, cleaner: TextTransformers.router(),
-            context: NoScreen(), inserter: inserter,
+            context: FixedScreen(), inserter: inserter,
             windowing: allAtOnce ? .onePiece : .standard)
 
         print("Loading the recogniser…")
@@ -160,8 +160,10 @@ actor PlaybackCaptureEngine: AudioCaptureEngine {
 }
 
 /// Nothing on screen, which is what the command line has.
-struct NoScreen: ContextEngine {
-    func currentContext() async -> AppContext { AppContext() }
+struct FixedScreen: ContextEngine {
+    var context = AppContext()
+
+    func currentContext() async -> AppContext { context }
 }
 
 /// Puts the words on standard output rather than into another app.

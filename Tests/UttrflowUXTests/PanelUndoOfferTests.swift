@@ -89,7 +89,7 @@ struct PanelUndoOfferTests {
         #expect(await store.imageData(for: image) == bytes)
 
         var offer = PanelUndoOffer()
-        offer.offer(clip)
+        _ = offer.offer(clip)
         let release = ReleaseGate()
         let expiry = Task {
             await PanelUndoExpiry.expire(

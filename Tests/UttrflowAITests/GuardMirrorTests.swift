@@ -34,7 +34,7 @@ struct GuardMirrorTests {
         "the rewrite wrote":
             "an amount is refused whichever way the symbol moved, so the pair is one check rather than two arms",
         "the rewrite changed":
-            "the churn allowance is set by the produced side, which PLAN.md records as a corpus measurement still owed",
+            "the churn allowance is set by the produced side, as Docs/ai-model-output.md records",
         "the rewrite composed a list the speaker did not speak":
             "a list taken away is a dropped break, which the check above already refuses; composing one is the arm Tier 3 names",
         "the rewrite added a line break the speaker did not ask for":

@@ -33,19 +33,25 @@ extension DictationPresenter {
 
         case .inserted(let outcome) where outcome.method == .clipboard && outcome.isFromRecording:
             return DictationAnnouncement(
-                text: "Copied to the clipboard. Press Command V to paste it. \(preview(of: said(outcome)))",
+                text: "Copied to the clipboard. Press Command V to paste it.\(missing(outcome)) "
+                    + preview(of: said(outcome)),
                 isUrgent: false)
 
         case .inserted(let outcome) where outcome.method == .clipboard:
             return DictationAnnouncement(
                 text: "Copied to the clipboard, not typed. Press Command V to paste it. "
-                    + "Uttrflow needs Accessibility access to type for you.",
+                    + "Uttrflow needs Accessibility access to type for you.\(missing(outcome))",
                 isUrgent: true)
 
         case .inserted(let outcome) where outcome.arrival == .unconfirmed:
             return DictationAnnouncement(
-                text: "Inserted, but not confirmed. Press Command V if the words are missing.",
+                text: "Inserted, but not confirmed. Press Command V if the words are missing."
+                    + missing(outcome),
                 isUrgent: false)
+
+        case .inserted(let outcome) where MissedSpeech.isMissing(outcome.missedPieces):
+            return DictationAnnouncement(
+                text: "Inserted. \(MissedSpeech.sentence) \(preview(of: said(outcome)))", isUrgent: false)
 
         case .inserted(let outcome):
             return DictationAnnouncement(text: "Inserted: \(preview(of: said(outcome)))", isUrgent: false)
@@ -94,8 +100,8 @@ private extension RecoveryAction {
             "Choose Download from the Uttrflow menu."
         case .pasteManually:
             "The text is on your clipboard. Press Command V to paste it."
-        case .showRecentDictations:
-            "Open Recent from the Uttrflow menu to find your words."
+        case .showHistory:
+            "Open History from the Uttrflow menu to find your words."
         case .copyTranscript:
             "Choose Copy on the floating button to copy your words."
         case .retryFromRecording:
