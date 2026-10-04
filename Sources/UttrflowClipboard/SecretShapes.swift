@@ -132,14 +132,19 @@ public enum SecretShapes {
     /// Bits per character above which a token counts as generated; measured. See Docs/clipboard-secrets.md.
     private static let entropyFloor = 3.8
 
+    /// URI schemes whose opaque forms are ordinary links rather than generated credentials.
+    private static let entropyExemptURISchemes: Set<String> = ["mailto", "spotify", "magnet", "urn", "tel"]
+
     /// Whether any word on a one-line clip looks generated; multi-line clips are documents, left alone.
     static func hasHighEntropyToken(_ text: String) -> Bool {
-        ClipBytes.read(text) { _, bytes in asciiHighEntropyToken(bytes) }
+        guard !isQuotedPath(text) else { return false }
+        return ClipBytes.read(text) { _, bytes in asciiHighEntropyToken(bytes) }
             ?? hasHighEntropyTokenByCharacter(text)
     }
 
     /// The statistical rule read character by character, which any clip can be.
     static func hasHighEntropyTokenByCharacter(_ text: String) -> Bool {
+        guard !isQuotedPath(text) else { return false }
         guard !text.contains(where: \.isNewline) else { return false }
         return text.split(whereSeparator: \.isWhitespace).contains { word in
             quotedPieces(of: Array(word)).contains { looksGenerated(String($0)) }
@@ -192,7 +197,9 @@ public enum SecretShapes {
             token.count >= prefix.utf8CodeUnitCount
                 && (0..<prefix.utf8CodeUnitCount).allSatisfy { token[$0] == prefix.utf8Start[$0] }
         }
-        guard !(opens("/") || opens("~/") || opens("./") || opens("../") || ClipBytes.contains(token, "://"))
+        guard
+            !(opens("/") || opens("~/") || opens("./") || opens("../") || ClipBytes.contains(token, "://")
+                || hasKnownURIScheme(token))
         else { return false }
         func isDigit(_ byte: UInt8) -> Bool { (0x30...0x39).contains(byte) }
         func isLetter(_ byte: UInt8) -> Bool { (0x41...0x5A).contains(byte) || (0x61...0x7A).contains(byte) }
@@ -221,7 +228,7 @@ public enum SecretShapes {
     }
 
     static func looksGenerated(_ token: String) -> Bool {
-        guard !isPathLike(token) else { return false }
+        guard !isEntropyExemptAddress(token) else { return false }
         guard !isUUID(token) else { return false }
 
         // Hex has a sixteen-symbol alphabet and can never reach the general floor.
@@ -271,9 +278,28 @@ public enum SecretShapes {
             || "+/=_-!@#$%^&*()[]{}:;,.?~`\\|<>\"'".contains(character)
     }
 
-    /// A path shares base64's alphabet, so anything that opens like one is left to the general rules.
-    private static func isPathLike(_ token: String) -> Bool {
-        PathShape.starts.contains(where: token.hasPrefix) || token.contains("://")
+    /// A path or known URI shares base64's alphabet, so entropy alone cannot distinguish it from a credential.
+    private static func isEntropyExemptAddress(_ token: String) -> Bool {
+        PathShape.starts.contains(where: token.hasPrefix) || token.contains("://") || hasKnownURIScheme(token)
+    }
+
+    private static func isQuotedPath(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.contains(where: \.isNewline), let first = trimmed.first,
+            (first == "\"" || first == "'"), trimmed.last == first
+        else { return false }
+        return PathShape.matches(String(trimmed.dropFirst().dropLast()))
+    }
+
+    private static func hasKnownURIScheme(_ token: String) -> Bool {
+        guard let colon = token.firstIndex(of: ":") else { return false }
+        return entropyExemptURISchemes.contains(token[..<colon].lowercased())
+    }
+
+    private static func hasKnownURIScheme(_ token: UnsafeBufferPointer<UInt8>) -> Bool {
+        guard let colon = token.firstIndex(of: 0x3A), colon > 0 else { return false }
+        let scheme = String(decoding: token[..<colon], as: UTF8.self).lowercased()
+        return entropyExemptURISchemes.contains(scheme)
     }
 
     /// Shannon entropy of the token's own characters, in bits per character.

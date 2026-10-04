@@ -706,6 +706,31 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) != .secret)
     }
 
+    @Test(
+        "leaves known scheme-only URIs and quoted filesystem paths outside the entropy rule",
+        arguments: [
+            "mailto:a@example.com?subject=Hi%20there",
+            "spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
+            "magnet:?xt=urn:btih:4f3c2a1b0e9d8c7b6a594837261504f3c2a1b0e9",
+            "urn:example:Q7Vn2mR8xL4pK9cD",
+            "tel:+14155552671",
+            "\"/Volumes/Backup Drive/photos/2026/a.heic\"",
+            "\"/Volumes/Backup Drive/photos/2026/niño.heic\"",
+        ])
+    func ordinaryURIsAndQuotedPaths(_ text: String) {
+        #expect(ClipKindDetector.kind(of: text) != .secret)
+    }
+
+    @Test("still masks a quoted generated token")
+    func quotedGeneratedToken() {
+        #expect(ClipKindDetector.kind(of: "\"K9x$Qz7Tr2Bn8LmVa\"") == .secret)
+    }
+
+    @Test("still masks an exact vendor credential inside a URI")
+    func vendorCredentialInsideURI() {
+        #expect(ClipKindDetector.kind(of: "spotify:track:sk-ant-abcdefghijklmnop") == .secret)
+    }
+
     /// A multi-line clip is a document, and documents legitimately carry digests.
     @Test("does not mask a document because one line of it looks random")
     func documentsWithDigests() {

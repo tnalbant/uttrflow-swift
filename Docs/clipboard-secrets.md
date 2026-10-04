@@ -170,6 +170,9 @@ ASCII letters, digits or the printable ASCII symbols the scanner allows, and con
 letter and a digit. The byte and character readers use the same alphabet. Hex of 32 or more
 characters is a digest outright, because a sixteen-symbol alphabet can never reach the general
 floor. Anything that opens like a path is left to the general rules.
+The entropy rule also leaves `mailto:`, `spotify:`, `magnet:`, `urn:` and `tel:` URIs alone,
+including forms without `://`. A quoted value is left alone as a path only when its unquoted
+contents match the complete local-path shape in `PathShape`.
 
 Measured over three thousand random base64 strings at each length: a floor of 4.0 catches 96%
 of 24-character tokens and everything longer; 3.8 catches 99.8%. The difference is the
