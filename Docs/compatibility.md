@@ -25,6 +25,7 @@ source would defeat the page.
 | Paste | lands / ignored / other shortcut fires / forwarded elsewhere | `uttrflow-dev insert --via paste` |
 | Confirmed | landed / not reported / gave up | the same run's printout, with the caveat below |
 | Full route | once / twice / nowhere | `uttrflow-dev insert`, no `--via` |
+| Typed substitutions | none / which of smart quotes, smart dashes, text replacement, capitalisation, spelling | `uttrflow-dev insert --via typed` with the strings below; its `read back:` line |
 | Caret | right / wrong place / none | `uttrflow-dev probe surface`, plus looking at the screen |
 | Value | yes / value only / no | `uttrflow-dev probe surface` |
 | Marked text | yes / no | `uttrflow-dev probe ime` |
@@ -34,9 +35,25 @@ source would defeat the page.
 `Full route` is the route `uttrflow-dev insert` takes with no `--via`: `TextInsertion.coordinator`,
 which is Accessibility, then paste, then the clipboard floor — the route a clip inserted from the
 menu bar or main window takes. Dictation and an accepted suggestion take Accessibility then typed
-keys ([insertion.md](insertion.md), "Which route each insertion takes"), and no `uttrflow-dev`
-command forces the typed strategy, so typed delivery is measured by dictating or accepting a
-suggestion in the application.
+keys ([insertion.md](insertion.md), "Which route each insertion takes"); `--via typed` forces the
+typed strategy alone.
+
+### Typed substitutions
+
+Typed keys reach a text view's own substitutions, which an Accessibility write bypasses. Run each
+string with `uttrflow-dev insert --via typed "<string>"` in a field with the system's defaults and
+compare the `read back:` line with the input; `changed by the field: true` names a substitution.
+
+| String | What it reaches |
+|---|---|
+| `"quoted" and 'single'` | smart quotes |
+| `one -- two` | smart dashes |
+| `omw` | text replacement, with the system's default entry present |
+| `first. second` | automatic capitalisation |
+| `Uttrflow teh` | automatic spelling correction |
+
+The read-back takes as many characters before the caret as were typed, so a substitution that
+changes the length shows a shifted window rather than the whole string.
 
 ### Reading a `--via` run
 

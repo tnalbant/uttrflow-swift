@@ -18,7 +18,7 @@ struct Insert: AsyncParsableCommand {
     var delay: Int = 4
 
     // The coordinator hides which strategy ran, so forcing one is how a broken paste is found.
-    @Option(name: .long, help: "Force one strategy: accessibility, paste or clipboard.")
+    @Option(name: .long, help: "Force one strategy: accessibility, paste, clipboard or typed.")
     var via: String?
 
     /// Says what waiting for the words found out, which is the only place the paste lag is visible.
@@ -41,15 +41,26 @@ struct Insert: AsyncParsableCommand {
         case "accessibility": .accessibility
         case "paste": .pasteboard
         case "clipboard": .clipboard
+        case "typed": .typed
         default: nil
         }
+    }
+
+    /// Reads back the text left of the caret, so any edit the field makes to typed keys shows.
+    static func readBack(_ text: String, from focus: some AccessibilityFocus) {
+        guard let found = focus.precedingText(text.count) else {
+            print("  read back: the field will not say what it holds")
+            return
+        }
+        print("  read back: \(found.debugDescription)")
+        print("  changed by the field: \(found != text)")
     }
 
     func validate() throws {
         guard !text.isEmpty else { throw ValidationError("Nothing to insert.") }
         guard (0...60).contains(delay) else { throw ValidationError("--delay must be 0 to 60.") }
-        if let via, !["accessibility", "paste", "clipboard"].contains(via) {
-            throw ValidationError("--via must be accessibility, paste or clipboard.")
+        if let via, !["accessibility", "paste", "clipboard", "typed"].contains(via) {
+            throw ValidationError("--via must be accessibility, paste, clipboard or typed.")
         }
     }
 
@@ -70,7 +81,10 @@ struct Insert: AsyncParsableCommand {
         Terminal.clearLine()
 
         // Built by the app's own factory, so a forced strategy still reads the secure field and destination.
-        let coordinator = TextInsertion.coordinator(reporting: Self.report, only: Self.method(named: via))
+        let only = Self.method(named: via)
+        let focus = AXAccessibilityFocus()
+        let coordinator = TextInsertion.coordinator(
+            focus: focus, reporting: Self.report, clipboardFallback: only != .typed, only: only)
         let clock = ContinuousClock()
         let start = clock.now
         do {
@@ -81,6 +95,7 @@ struct Insert: AsyncParsableCommand {
             print("  destination: \(name)")
             print("  secure: \(attempt.intoSecureField)")
             print("  took \(String(format: "%.2f", start.duration(to: clock.now).inSeconds))s in all")
+            Self.readBack(text, from: focus)
         } catch {
             print(error.userMessage)
             throw ExitCode.failure
