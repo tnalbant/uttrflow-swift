@@ -156,4 +156,11 @@ private struct SystemFieldSource: FocusedWindowSource {
     func isMultiline(_ field: AXUIElement) -> Bool? { SurfaceProbe.boolean(field, "AXMultiline") }
 
     func markedRange(of field: AXUIElement) -> CFRange? { CompositionProbe.markedRange(of: field) }
+
+    func identity(of field: AXUIElement) -> FieldIdentity? {
+        guard let processIdentifier = SurfaceProbe.owner(of: field) else { return nil }
+        return FieldIdentity(
+            processIdentifier: processIdentifier, windowNumber: FocusedFieldReader.windowNumber(of: field),
+            element: Int(bitPattern: CFHash(field)))
+    }
 }

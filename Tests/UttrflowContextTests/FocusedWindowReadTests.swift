@@ -11,6 +11,7 @@ private final class StallingSource: FocusedWindowSource {
     let stallAfter: Step?
     let names: FieldNames
     let isValueSecure: Bool
+    var field: FieldIdentity?
     private(set) var stalled = false
 
     init(
@@ -53,6 +54,7 @@ private final class StallingSource: FocusedWindowSource {
         answered(.multiline)
         return true
     }
+    func identity(of field: Int) -> FieldIdentity? { self.field }
 }
 
 @Suite("Focused window read")
@@ -65,6 +67,18 @@ struct FocusedWindowReadTests {
         let sink = FocusedWindowSink()
         MacContextEngine.read(source, isTerminal: false, into: sink, while: { !source.stalled })
         return sink.value
+    }
+
+    @Test("carries the field's identity through a secure field, a stalled read and a full one")
+    func carriesTheFieldIdentity() {
+        let identity = FieldIdentity(processIdentifier: 4, windowNumber: 2, element: 9)
+        for source in [
+            StallingSource(stallAfter: nil), StallingSource(stallAfter: .names),
+            StallingSource(stallAfter: nil, isValueSecure: true),
+        ] {
+            source.field = identity
+            #expect(banked(source)?.field == identity)
+        }
     }
 
     @Test("keeps the title when the read stalls right after it, with no caret text")

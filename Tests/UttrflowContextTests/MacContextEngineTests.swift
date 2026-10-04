@@ -98,6 +98,19 @@ struct MacContextEngineTests {
         #expect(context.bundleIdentifier == "com.tinyspeck.slackmacgap")
     }
 
+    @Test("carries the focused field's identity, secure or not, so a write can refuse another field")
+    func carriesTheFieldIdentity() async {
+        let field = FieldIdentity(processIdentifier: 42, windowNumber: 5, element: 9)
+        let plain = await makeEngine(frontmost: slack, window: FocusedWindow(title: "general", field: field))
+            .currentContext()
+        let secure = await makeEngine(
+            frontmost: slack, window: FocusedWindow(title: "login", isSecure: true, field: field)
+        ).currentContext()
+
+        #expect(plain.field == field)
+        #expect(secure.field == field)
+    }
+
     @Test("names the owner of a focused panel that never activated, not the application underneath")
     func followsTheFocusedElementsOwner() async {
         let launcher = FrontmostApplication(

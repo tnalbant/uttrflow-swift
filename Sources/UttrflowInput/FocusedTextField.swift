@@ -64,6 +64,9 @@ public protocol AccessibilityFocus: Sendable {
     /// The focused field and its caret, or `nil` when it is secure, has a selection or will not say.
     func focusedFieldPlace() -> FieldPlace?
 
+    /// The focused element, secure or not, or `nil` when it cannot be told apart from another.
+    func focusedFieldIdentity() -> FieldIdentity?
+
     /// Whether macOS lets this process drive other apps, read when an insertion fails so the cause is named.
     func isTrusted() -> Bool
 
@@ -135,6 +138,9 @@ extension AccessibilityFocus {
 
     /// A reader that cannot tell one field from another cannot place a write.
     public func focusedFieldPlace() -> FieldPlace? { nil }
+
+    /// A reader that cannot tell one field from another cannot refuse a write for being in another.
+    public func focusedFieldIdentity() -> FieldIdentity? { nil }
 
     /// A reader with no process-wide trust flag behind it cannot be refused by one.
     public func isTrusted() -> Bool { true }

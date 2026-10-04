@@ -417,14 +417,23 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     /// The focused field and a bare caret, refusing a secure field and a selection that a write would have collapsed.
     public func focusedFieldPlace() -> FieldPlace? {
         guard let element = focusedElement(), !focusedFieldIsSecure(),
-            let range = selectionRange(of: element), range.length == 0
+            let range = selectionRange(of: element), range.length == 0,
+            let field = Self.identity(of: element)
         else { return nil }
+        return FieldPlace(field: field, caret: range.location)
+    }
+
+    public func focusedFieldIdentity() -> FieldIdentity? {
+        focusedElement().flatMap(Self.identity(of:))
+    }
+
+    /// The element's owner, window and hash, the same three the context read records.
+    private static func identity(of element: AXUIElement) -> FieldIdentity? {
         var owner: pid_t = 0
         guard AXUIElementGetPid(element, &owner) == .success else { return nil }
-        let field = FieldIdentity(
-            processIdentifier: owner, windowNumber: Self.windowNumber(of: element),
+        return FieldIdentity(
+            processIdentifier: owner, windowNumber: windowNumber(of: element),
             element: Int(bitPattern: CFHash(element)))
-        return FieldPlace(field: field, caret: range.location)
     }
 
     /// The focused element, asked system-wide then per-application, preferring whichever names a text-entry role. See `Docs/insertion.md`.

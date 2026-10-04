@@ -918,7 +918,7 @@ public actor DictationPipeline {
                 unavailableEngines: whole.cleaned.cleaning?.unavailableEngines ?? [],
                 destination: InsertionDestination(
                     applicationName: appContext?.applicationName,
-                    bundleIdentifier: appContext?.bundleIdentifier))
+                    bundleIdentifier: appContext?.bundleIdentifier, field: appContext?.field))
         else { return }
         // Read before the next await, since the next dictation may start once these words are on screen.
         let wasSecure = destinationIsSecure
