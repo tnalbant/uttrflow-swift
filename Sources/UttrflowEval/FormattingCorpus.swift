@@ -255,6 +255,13 @@ extension EvaluationCorpus {
             mustKeep: ["sign", "lunch"], classes: [.quotesAndBrackets]
         ),
         .init(
+            id: "fmt-quote-nested", category: .everyday,
+            spoken:
+                "she said open quote he wrote open single quote done close single quote on the board close quote and left",
+            expected: "She said \"he wrote 'done' on the board\" and left.",
+            mustKeep: ["wrote", "board"], classes: [.quotesAndBrackets]
+        ),
+        .init(
             id: "fmt-bracket-aside", category: .everyday,
             spoken: "bring a jacket open bracket it gets cold close bracket",
             expected: "Bring a jacket (it gets cold).",
