@@ -472,7 +472,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         NumberWords.spokenDigit(key).map(String.init)
     }
 
-    /// Joins three or more digit words with a nonzero one among them and no scale after them.
+    /// Joins three or more digit words with a nonzero one among them, no scale after them, and a cue before a count.
     private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard let first = singleDigit(keys[start]) else { return nil }
         var text = first
@@ -483,7 +483,25 @@ public struct NumberFormsPass: PieceCleaningPass {
         }
         guard text.count >= 3, text.contains(where: { $0 != "0" }) else { return nil }
         guard !(joined(end, shapes) && NumberWords.scales[keys[end]] != nil) else { return nil }
+        guard !isCount(text) || hasDigitCue(before: start, keys: keys, shapes: shapes) else { return nil }
         return Phrase(text: text, count: end - start)
+    }
+
+    /// Words before a digit run that say it is a code or a number to dial, not a count.
+    static let digitCues: Set<String> = contextWords.union([
+        "is", "code", "pin", "passcode", "password", "otp", "plus", "dial", "call", "on", "at", "was",
+    ])
+
+    /// Whether the digits step up or down by one each time, as a count-off or countdown does.
+    private static func isCount(_ digits: String) -> Bool {
+        let values = digits.compactMap(\.wholeNumberValue)
+        let steps = zip(values, values.dropFirst()).map { $1 - $0 }
+        return steps.allSatisfy { $0 == 1 } || steps.allSatisfy { $0 == -1 }
+    }
+
+    /// Whether the word before `start` introduces a number within the same sentence.
+    private static func hasDigitCue(before start: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        start > 0 && !startsASentence(start, shapes) && digitCues.contains(keys[start - 1])
     }
 
     private static func ordinalSuffix(_ value: Int) -> String {

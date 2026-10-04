@@ -223,6 +223,53 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "keeps a count-off or countdown with no introducing word as words",
+        arguments: [
+            "three two one go",
+            "one two three testing",
+            "five four three two one liftoff",
+            "ready? three two one",
+            "four three two one and we are live",
+            "two three four five six seven",
+            "seven six five four",
+            "one two three four five, you know the rest",
+            "six seven eight nine and go",
+            "nine eight seven six five four three two one",
+            "she counted one two three out loud",
+            "and one two three four",
+        ]
+    )
+    func keepsUncuedCountsAsWords(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test(
+        "joins a count after a word that introduces a number",
+        arguments: [
+            ("my pin is one two three four", "my pin is 1234"),
+            ("the code is four three two one", "the code is 4321"),
+            ("dial one two three", "dial 123"),
+            ("extension two three four", "extension 234"),
+            ("room three four five", "room 345"),
+            ("call nine one one", "call 911"),
+            ("the otp is five six seven eight", "the otp is 5678"),
+            ("flight one two three", "flight 123"),
+            ("call me on nine eight seven six", "call me on 9876"),
+            ("page three two one", "page 321"),
+            ("password one two three", "password 123"),
+            ("my number was three four five six", "my number was 3456"),
+        ]
+    )
+    func joinsCuedCounts(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("writes a count as separate numerals where every number is a numeral")
+    func countInSpreadsheetCell() {
+        #expect(cleaned("three two one", by: NumberFormsPass(policy: .always, digits: .none)) == "3 2 1")
+    }
+
+    @Test(
         "keeps a run of only zero words as words",
         arguments: ["oh oh oh that is great", "zero zero zero", "oh oh no"]
     )
