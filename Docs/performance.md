@@ -225,7 +225,7 @@ no build, no model and no window, and reads the source for the ways a budget can
 | cache | a model pass (`perform`, `generate`, `TokenIterator`, `ChatSession`) sits in no function that caps MLX's cache and clears it on exit, a `release()` does not clear it, or the cap is over 256 MB |
 | counters | `ResourceBudget`'s limits differ from the memory or disk budget table |
 | suggestions | the key-path limits above differ from what `SuggestionCoordinator` and `SuggestionPanelController` do |
-| latency | the table under "The latency target" has no rows, or a row whose p50 is not above 0 and at most its p95 |
+| latency | the table under "Latency budget per stage" has no rows, or a row whose budget is not its p95 plus 20% |
 
 `--self-test` injects one violation per check into the tree as read and fails unless the audit
 catches it, so a rule that has stopped matching the code is found rather than trusted. A known
@@ -252,36 +252,52 @@ the idle line, its peak against a dictation's, each pass's peak and settled foot
 suggestion lines, and the footprint a second after a release against the idle line. The profile
 also reads the support folder against the disk budget. `ResourceBudget` is the one judge both use.
 
-## The latency target
+## Latency budget per stage
 
-The wait is key release to the words being ready, as `uttrflow-dev bench` reports it: the shipping
-tidier, clean audio, played at speaking pace (`rt`) so early transcription works while the key is
-held. Insertion is not in it. A row is judged on at least 3 clips, by the same `percentile` that
+Each stage's budget is its measured p95 plus 20%: `LATENCY_HEADROOM` in
+`Scripts/perf_budget_audit.py` is the one place that figure lives, and the source audit fails a row
+whose budget is not its p95 times it. A run comes from `uttrflow-dev bench` with the shipping tidier,
+clean audio, played at speaking pace (`rt`), and is judged by the same `percentile` that
 `Scripts/dictation_bench.py score` prints.
 
-**These numbers are placeholders, not decided targets.** They are one run on an Apple M5 Pro
-(48 GB), Release, at a load average of 250–310 from other builds, so they record what a saturated
-Mac did rather than what a dictation should cost, and run several times over the quiet-Mac waits in
-[`performance-dictation.md`](performance-dictation.md#the-wait); they are to be replaced once per-stage budgets are set.
+| stage | what it times |
+|---|---|
+| `wait:<category>` | key release to the words being ready, one row per dictation length; insertion is not in it |
+| `asr:<field>` | one piece's recognition and its sub-stages, from the `asr` events `bench` writes |
+| `clean` | one tidy by the shipping tidier |
 
-| category | mode | wait p50 s | wait p95 s |
+**These numbers were measured on a loaded Mac and are to be re-measured on an idle one.** One run on
+an Apple M5 Pro (48 GB), Release, 2 repeats of the `dur5`, `dur30` and `dur120` clips, at a load
+average of 225 to 374 from other builds, so they are several times the quiet-Mac waits in
+[`performance-dictation.md`](performance-dictation.md#the-wait).
+
+| stage | p95 s | budget s | samples |
 |---|---|---|---|
-| `dur5` | `rt` | 6.32 | 7.20 |
-| `dur30` | `rt` | 20.80 | 84.77 |
-| `dur120` | `rt` | 6.30 | 6.69 |
+| `asr:decodeSeconds` | 8.269 | 9.923 | 78 |
+| `asr:decoderSetupSeconds` | 0.031 | 0.038 | 78 |
+| `asr:encodeSeconds` | 0.637 | 0.765 | 78 |
+| `asr:melSeconds` | 0.574 | 0.689 | 78 |
+| `asr:recognitionSeconds` | 11.813 | 14.176 | 78 |
+| `asr:wordTimingSeconds` | 0.574 | 0.689 | 78 |
+| `clean` | 5.557 | 6.669 | 75 |
+| `wait:dur120` | 38.950 | 46.740 | 6 |
+| `wait:dur30` | 13.985 | 16.782 | 6 |
+| `wait:dur5` | 9.518 | 11.422 | 6 |
 
-The source audit only checks that the rows exist and are coherent. Timing needs the models and a
-quiet Mac, so it is not in `make verify` or CI; a release candidate runs it:
+The source audit checks only the table. Timing needs the models and a quiet Mac, so it is not in
+`make verify` or CI; a release candidate runs it, and `--measure` prints the rows above for a new run:
 
 ```
 python3 Scripts/dictation_bench.py jobs --mode rt --clean-only --cleaners shipping \
-    --categories dur5,dur30,dur120 > .build/bench/jobs-rt.tsv
+    --categories dur5,dur30,dur120 --repeat 2 > .build/bench/jobs-rt.tsv
 .build/release/uttrflow-dev bench .build/bench/jobs-rt.tsv > .build/bench/run.out
+python3 Scripts/perf_budget_audit.py --measure .build/bench/run.out
 make perf-budget-latency RUN=.build/bench/run.out
 ```
 
-It exits 1 when any row's p50 or p95 is over its target or has fewer than 3 clips. `--self-test`
-proves a run on target passes and the same run 50% slower fails every row.
+It exits 1 when any stage's p95 is over its budget or has fewer than 3 samples. `--self-test`
+proves a run within budget passes, the same run 50% slower fails every stage, and a budget loosened
+past its p95 plus headroom fails the table check.
 
 ## Processor
 

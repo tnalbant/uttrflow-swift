@@ -231,7 +231,7 @@ perf-budget: ## Prove the source keeps to the energy and memory budget, and that
 
 # Needs a `uttrflow-dev bench` run, so it runs on a Mac rather than in CI.
 .PHONY: perf-budget-latency
-perf-budget-latency: ## Fail when a bench run's wait after key release is over the latency target. RUN=path to the run.
+perf-budget-latency: ## Fail when a bench run's p95 for any stage is over its budget. RUN=path to the run.
 	@python3 Scripts/perf_budget_audit.py --latency "$(RUN)"
 
 .PHONY: size-budget

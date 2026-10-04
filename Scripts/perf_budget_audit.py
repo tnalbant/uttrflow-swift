@@ -4,6 +4,7 @@
 import argparse
 import ast
 import json
+import math
 import os
 import re
 import sys
@@ -792,41 +793,63 @@ def check_suggestion_path(tree, findings, report):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Latency: the wait after key release, judged from a `uttrflow-dev bench` run
+# Latency: each stage's p95 against its budget, judged from a `uttrflow-dev bench` run
 # ---------------------------------------------------------------------------------------------------------------
 
-LATENCY_ROW = re.compile(r"^\|\s*`(\w+)`\s*\|\s*`(\w+)`\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|", re.M)
+LATENCY_ROW = re.compile(r"^\|\s*`([\w:.-]+)`\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|", re.M)
 
-# The fewest clips a target row is judged on; fewer is a failure rather than a pass.
-LATENCY_MIN_CLIPS = 3
+# A stage's budget is its measured p95 times this; the one place the headroom is set.
+LATENCY_HEADROOM = 1.2
+
+# The fewest samples a stage is judged on; fewer is a failure rather than a pass.
+LATENCY_MIN_SAMPLES = 3
+
+# The categories whose wait after key release has a budget, one per dictation length.
+LATENCY_WAIT_CATEGORIES = ("dur5", "dur30", "dur120")
+
+# Recognition's sub-stages as `uttrflow-dev bench` writes them on each `asr` event.
+LATENCY_ASR_FIELDS = (
+    "melSeconds", "encodeSeconds", "decoderSetupSeconds", "decodeSeconds", "wordTimingSeconds", "recognitionSeconds",
+)
+
+
+def latency_budget(p95):
+    """The budget for a measured p95, rounded up to the table's 0.001 s."""
+    return math.ceil(p95 * LATENCY_HEADROOM * 1000 - 1e-6) / 1000
 
 
 def latency_targets(doc):
-    """The `(category, mode) -> (p50, p95)` rows of the latency target table in Docs/performance.md."""
-    start = doc.find("## The latency target")
+    """The `stage -> (measured p95, budget)` rows of the stage budget table in Docs/performance.md."""
+    start = doc.find("## Latency budget per stage")
     if start < 0:
         return {}
     end = doc.find("\n## ", start + 1)
     section = doc[start : end if end > 0 else len(doc)]
-    return {(m[1], m[2]): (float(m[3]), float(m[4])) for m in LATENCY_ROW.finditer(section)}
+    return {m[1]: (float(m[2]), float(m[3])) for m in LATENCY_ROW.finditer(section)}
 
 
 def check_latency_table(tree, findings, report):
-    """The targets exist and are coherent; whether a build meets them needs a bench run (`--latency`)."""
+    """Every budget is its measured p95 plus the headroom; whether a build meets them needs `--latency`."""
     targets = latency_targets(tree.read("Docs/performance.md"))
     if not targets:
-        findings.failures.append("latency: Docs/performance.md has no rows under `## The latency target`")
+        findings.failures.append("latency: Docs/performance.md has no rows under `## Latency budget per stage`")
         return
-    for (category, mode), (p50, p95) in sorted(targets.items()):
-        if p50 <= 0 or p95 < p50:
-            findings.failures.append(f"latency: `{category}` `{mode}` has p50 {p50} and p95 {p95}; need 0 < p50 <= p95")
-        else:
-            report.append(f"  ✓ {category} {mode}: wait p50 {p50:.2f} s, p95 {p95:.2f} s")
+    findings.failures.extend(unearned_budgets(targets))
+    report.extend(f"  ✓ {stage}: p95 {p95:.3f} s, budget {budget:.3f} s" for stage, (p95, budget) in sorted(targets.items()))
 
 
-def bench_waits(lines, corpus):
-    """Waits after key-up per `(category, mode)`, clean audio and the shipping tidier only."""
-    waits = {}
+def unearned_budgets(targets):
+    """One line per row whose budget is not its measured p95 times the headroom."""
+    return [
+        f"latency: `{stage}` budget {budget} is not its p95 {p95} x {LATENCY_HEADROOM} ({latency_budget(p95)})"
+        for stage, (p95, budget) in sorted(targets.items())
+        if p95 <= 0 or abs(budget - latency_budget(p95)) > 0.0005
+    ]
+
+
+def stage_samples(lines, corpus):
+    """Seconds per stage, from clean audio, real-time mode and the shipping tidier only."""
+    samples = {}
     for line in lines:
         if not line.startswith("BENCH "):
             continue
@@ -834,27 +857,41 @@ def bench_waits(lines, corpus):
         clip = corpus.get(event.get("id"))
         if event.get("event") != "result" or clip is None or event.get("failed"):
             continue
-        if clip["variant"] != "clean" or event.get("cleaner") != "shipping":
+        if clip["variant"] != "clean" or event.get("cleaner") != "shipping" or event.get("mode") != "rt":
             continue
-        waits.setdefault((clip["category"], event["mode"]), []).append(float(event["wait"]))
-    return waits
+        if clip["category"] in LATENCY_WAIT_CATEGORIES:
+            samples.setdefault(f"wait:{clip['category']}", []).append(float(event["wait"]))
+        for step in event.get("events", []):
+            if step.get("kind") == "asr":
+                for field in LATENCY_ASR_FIELDS:
+                    samples.setdefault(f"asr:{field}", []).append(float(step[field]))
+            elif step.get("kind") == "clean":
+                samples.setdefault("clean", []).append(float(step["t1"]) - float(step["t0"]))
+    return samples
 
 
-def latency_breaches(targets, waits):
-    """One line per target the run misses, has too few clips for, or leaves out."""
+def latency_breaches(targets, samples):
+    """One line per stage over its budget, with too few samples, or left out of the run."""
     breaches, report = [], []
-    for (category, mode), (p50_limit, p95_limit) in sorted(targets.items()):
-        got = waits.get((category, mode), [])
-        if len(got) < LATENCY_MIN_CLIPS:
-            breaches.append(f"latency: `{category}` `{mode}` has {len(got)} clip(s), needs {LATENCY_MIN_CLIPS}")
+    for stage, (_, budget) in sorted(targets.items()):
+        got = samples.get(stage, [])
+        if len(got) < LATENCY_MIN_SAMPLES:
+            breaches.append(f"latency: `{stage}` has {len(got)} sample(s), needs {LATENCY_MIN_SAMPLES}")
             continue
-        p50, p95 = bench.percentile(got, 50), bench.percentile(got, 95)
-        line = f"{category} {mode}: {len(got)} clips, wait p50 {p50:.2f}/{p50_limit:.2f} s, p95 {p95:.2f}/{p95_limit:.2f} s"
-        if p50 > p50_limit or p95 > p95_limit:
+        p95 = bench.percentile(got, 95)
+        line = f"{stage}: {len(got)} samples, p95 {p95:.3f}/{budget:.3f} s"
+        if p95 > budget:
             breaches.append(f"latency: {line}")
         else:
             report.append(f"  ✓ {line}")
     return breaches, report
+
+
+def read_run(run_path, corpus_path):
+    with open(corpus_path, encoding="utf-8") as handle:
+        corpus = {clip["id"]: clip for clip in json.load(handle)}
+    with open(run_path, encoding="utf-8") as handle:
+        return stage_samples(handle, corpus)
 
 
 def performance_doc(root):
@@ -863,33 +900,46 @@ def performance_doc(root):
 
 
 def check_latency_run(root, run_path, corpus_path):
-    targets = latency_targets(performance_doc(root))
-    with open(corpus_path, encoding="utf-8") as handle:
-        corpus = {clip["id"]: clip for clip in json.load(handle)}
-    with open(run_path, encoding="utf-8") as handle:
-        waits = bench_waits(handle, corpus)
-    breaches, report = latency_breaches(targets, waits)
+    breaches, report = latency_breaches(latency_targets(performance_doc(root)), read_run(run_path, corpus_path))
     print("\n".join(report))
     return breaches
 
 
+def measure_latency(run_path, corpus_path):
+    """Prints the budget table's rows for a run: each stage's p95 and that times the headroom."""
+    for stage, got in sorted(read_run(run_path, corpus_path).items()):
+        p95 = bench.percentile(got, 95)
+        print(f"| `{stage}` | {p95:.3f} | {latency_budget(p95):.3f} | {len(got)} |")
+
+
 def latency_self_test(root):
-    """A run at every target passes; the same run made 50% slower fails every row."""
+    """A run read back from bench lines at every budget passes; the same run 50% slower fails every stage."""
     targets = latency_targets(performance_doc(root))
-    corpus = {}
-    lines = []
-    for (category, mode), (p50, p95) in targets.items():
-        for index, wait in enumerate((p50 * 0.9, p50, p95)):
-            clip_id = f"{category}-{mode}-{index}"
-            corpus[clip_id] = {"category": category, "variant": "clean"}
-            lines.append("BENCH " + json.dumps({"event": "result", "id": clip_id, "mode": mode, "cleaner": "shipping", "wait": wait}))
-    slowed = ["BENCH " + json.dumps(dict(e, wait=e["wait"] * 1.5)) for e in (json.loads(line[6:]) for line in lines)]
-    met, _ = latency_breaches(targets, bench_waits(lines, corpus))
-    missed, _ = latency_breaches(targets, bench_waits(slowed, corpus))
-    if not targets or met or len(missed) != len(targets):
-        print(f"  ✗ latency: on-target run failed {len(met)}, 50% slower run failed {len(missed)} of {len(targets)}")
+
+    def run(scale):
+        corpus, lines = {}, []
+        for index in range(LATENCY_MIN_SAMPLES):
+            for category in LATENCY_WAIT_CATEGORIES:
+                clip_id = f"{category}-{index}"
+                corpus[clip_id] = {"category": category, "variant": "clean"}
+                wait = targets.get(f"wait:{category}", (0, 0))[1] * scale
+                asr = {f: str(targets.get(f"asr:{f}", (0, 0))[1] * scale) for f in LATENCY_ASR_FIELDS}
+                clean = targets.get("clean", (0, 0))[1] * scale
+                events = [dict(asr, kind="asr"), {"kind": "clean", "t0": "1.0", "t1": str(1.0 + clean)}]
+                lines.append("BENCH " + json.dumps({
+                    "event": "result", "id": clip_id, "mode": "rt", "cleaner": "shipping", "wait": wait, "events": events}))
+        return stage_samples(lines, corpus)
+
+    met, _ = latency_breaches(targets, run(0.999))
+    missed, _ = latency_breaches(targets, run(1.5))
+    loosened = {stage: (p95, budget * 1.5) for stage, (p95, budget) in targets.items()}
+    if unearned_budgets(targets) or len(unearned_budgets(loosened)) != len(targets):
+        print("  ✗ latency: the table check does not catch a budget loosened past its p95 plus headroom")
         return 1
-    print(f"  ✓ latency catches a 50% slowdown on all {len(targets)} target rows and passes a run on target")
+    if not targets or met or len(missed) != len(targets):
+        print(f"  ✗ latency: on-budget run failed {len(met)}, 50% slower run failed {len(missed)} of {len(targets)}")
+        return 1
+    print(f"  ✓ latency catches a 50% slowdown on all {len(targets)} stages and passes a run within budget")
     return 0
 
 
@@ -909,7 +959,7 @@ def audit(root, quiet=False, overrides=None):
         ("Cache: every model pass caps MLX's cache and clears it", lambda r: check_cache(tree, findings, r)),
         ("Counters: the harness judges readings by the budget table", lambda r: check_counters(tree, findings, r)),
         ("Suggestions: typing reads, callbacks and draws stay within their budget", lambda r: check_suggestion_path(tree, findings, r)),
-        ("Latency: the wait targets are written and coherent", lambda r: check_latency_table(tree, findings, r)),
+        ("Latency: every stage budget is its measured p95 plus headroom", lambda r: check_latency_table(tree, findings, r)),
     ):
         report = []
         check(report)
@@ -1089,9 +1139,13 @@ def main():
     )
     parser.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser.add_argument("--self-test", action="store_true", help="also prove each check fails on an injected violation")
-    parser.add_argument("--latency", metavar="RUN", help="judge a `uttrflow-dev bench` run against the latency targets instead")
+    parser.add_argument("--latency", metavar="RUN", help="judge a `uttrflow-dev bench` run against the stage budgets instead")
+    parser.add_argument("--measure", metavar="RUN", help="print the stage budget rows a `uttrflow-dev bench` run gives")
     parser.add_argument("--corpus", default=os.path.join(bench.DEFAULT_OUT, "corpus.json"), help="the run's corpus.json")
     options = parser.parse_args()
+    if options.measure:
+        measure_latency(options.measure, options.corpus)
+        return 0
     if options.latency:
         breaches = check_latency_run(options.root, options.latency, options.corpus)
         for breach in breaches:
