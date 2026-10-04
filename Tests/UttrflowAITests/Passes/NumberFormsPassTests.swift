@@ -8,6 +8,24 @@ struct NumberFormsPassTests {
     private let sut = NumberFormsPass()
 
     @Test(
+        "writes a numeric date said with slash, stroke or dash in the spoken order, padded as spoken",
+        arguments: [
+            ("oh three slash oh four slash twenty twenty five", "03/04/2025"),
+            ("on twelve slash twenty five slash twenty four we met", "on 12/25/24 we met"),
+            ("twenty five slash twelve slash twenty twenty four", "25/12/2024"),
+            ("three dash four dash oh five", "3-4-05"),
+            ("five stroke nine stroke nineteen ninety nine", "5/9/1999"),
+            ("read and slash or write", "read and slash or write"),
+            ("three slash four", "three slash four"),
+            ("three slash four dash twenty twenty five", "three slash four dash 2025"),
+            ("twenty five slash twenty six slash twenty twenty", "25 slash 26 slash 2020"),
+        ]
+    )
+    func numericDates(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "writes a number from ten up as a numeral, with commas only from ten thousand",
         arguments: [
             ("about fifteen people", "about 15 people"),
