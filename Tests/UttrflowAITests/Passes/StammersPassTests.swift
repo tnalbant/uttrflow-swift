@@ -149,4 +149,34 @@ struct StammersPassTests {
     func keepsDoubledNumberAtPieceEdge(input: String) {
         #expect(cleaned(input, by: sut) == input)
     }
+
+    /// A doubled number directly after "point" is a digit of the decimal, not a stammer.
+    @Test(
+        "keeps a doubled number directly after \"point\" so the decimal survives",
+        arguments: [
+            "apr is nineteen point nine nine percent",
+            "the rate is three point five five percent",
+            "the price is two point five five dollars",
+            "we scored ninety nine point nine nine percent",
+            "the interest is four point four four percent a year",
+            "the area is twelve point two two square metres",
+            "the dose is point five five milligrams",
+        ]
+    )
+    func keepsDoubledNumberAfterPoint(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    /// A word spoken in Devanagari is Hindi, so the English function-word list never reads its romanised spelling.
+    @Test(
+        "keeps a doubled word that was spoken in Devanagari",
+        arguments: [
+            ("वो दो दो", "wo do do"), ("मैं मैं", "main main"), ("तो तो चलो", "to to chalo"),
+            ("वो थे थे", "wo the the"),
+        ]
+    )
+    func keepsDevanagariDoubles(spoken: String, romanised: String) {
+        let draft = sut.apply(Draft(romanising: Transcription(text: spoken)))
+        #expect(draft.text == romanised)
+    }
 }

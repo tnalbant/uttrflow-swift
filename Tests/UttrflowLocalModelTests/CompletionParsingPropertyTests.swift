@@ -1,7 +1,9 @@
 import Testing
+import UttrflowCore
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// Words a line might be made of, none of which forms one of the prompt's own headings.
 private let words = [
@@ -53,7 +55,9 @@ struct ParseCase: Sendable, CustomTestStringConvertible {
             line = random.pick(["", " ", "\t", "   "]) + line + random.pick(["", " ", "\t"])
             lines.append(line)
             // A line in another script is never offered, however well it continues the typing.
-            if let whole, LatinScript.writes(whole), !expected.contains(whole) { expected.append(whole) }
+            if let whole, LatinScript.writesOnlyLatin(whole), !expected.contains(whole) {
+                expected.append(whole)
+            }
             if random.chance(0.15) { lines.append(line) }
         }
         response = lines.joined(separator: random.pick(["\n", "\r\n", "\n\n"]))
@@ -216,6 +220,8 @@ struct CompletionParsingPropertyTests {
         arguments: 0..<200)
     func degeneracyHasTwoShapes(seed: Int) {
         var random = Seeded(seed: seed)
+        #expect(CompletionText.isDegenerate("see you soon see you soon"))
+        #expect(CompletionText.isDegenerate("I will be there at 5 I will be there at 5"))
         let few = (0..<Int.random(in: 1...5, using: &random)).map { _ in random.pick(words) }.joined(
             separator: " ")
         #expect(!CompletionText.isDegenerate(few))
@@ -229,6 +235,11 @@ struct CompletionParsingPropertyTests {
         let loop = Array(repeating: word, count: Int.random(in: 6...20, using: &random)).joined(
             separator: " ")
         #expect(CompletionText.isDegenerate(loop))
+        for phraseLength in 2...5 {
+            let phrase = (0..<phraseLength).map { _ in random.pick(words) }
+            let repeatedPhrase = (phrase + phrase).joined(separator: " ")
+            #expect(CompletionText.isDegenerate(repeatedPhrase))
+        }
         let long = String(repeating: "ab ", count: CompletionText.maximumContinuationLength)
         #expect(CompletionText.isDegenerate(long))
     }

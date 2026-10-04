@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import Security
+import Synchronization
 import Testing
 import UttrflowCore
 import UttrflowPredict
@@ -41,6 +43,31 @@ private let moment = Date(timeIntervalSince1970: 1_800_000_000)
 private struct CorpusKeys: StoreKeyProviding {
     let value: SymmetricKey
     func key(createIfMissing _: Bool) throws -> SymmetricKey { value }
+}
+
+private struct UnavailableCorpusKeys: StoreKeyProviding {
+    let status: Int32
+    func key(createIfMissing _: Bool) throws -> SymmetricKey {
+        throw StoreKeyError.unavailable(status)
+    }
+}
+
+private final class RevocableCorpusKeys: StoreKeyProviding, StoreKeyRevoking, Sendable {
+    private let stored = Mutex<SymmetricKey?>(nil)
+
+    func key(createIfMissing: Bool) throws -> SymmetricKey {
+        try stored.withLock { current in
+            if let current { return current }
+            guard createIfMissing else {
+                throw StoreKeyError.unavailable(Int32(errSecItemNotFound))
+            }
+            let generated = SymmetricKey(size: .bits256)
+            current = generated
+            return generated
+        }
+    }
+
+    func revokeKey() throws { stored.withLock { $0 = nil } }
 }
 
 @Suite("Encrypted suggestion corpus")
@@ -97,6 +124,43 @@ struct EncryptedPredictStoreTests {
         #expect(try Data(contentsOf: URL(filePath: corpus.path)) == bytes)
         _ = store
     }
+
+    @Test("a revoked corpus key sets its old snapshot aside and starts an empty corpus")
+    func missingKeyStartsEmptyCorpus() async throws {
+        let corpus = Corpus()
+        let keys = RevocableCorpusKeys()
+        let encryptedStore = EncryptedStore(keys: keys)
+        let store = try PredictStore(path: corpus.path, encryptedStore: encryptedStore)
+        try await store.record("private saved line", in: terminal, at: moment)
+        let original = try Data(contentsOf: URL(filePath: corpus.path))
+
+        try encryptedStore.revokeKey()
+        let reopened = try PredictStore(path: corpus.path, encryptedStore: encryptedStore)
+
+        #expect(try await reopened.recent(in: terminal, limit: 5).isEmpty)
+        #expect(LocalStore.hasSetAside(URL(fileURLWithPath: corpus.path)))
+        #expect(try Data(contentsOf: URL(filePath: corpus.path)) != original)
+        _ = store
+    }
+
+    @Test("a temporarily unavailable corpus key leaves its snapshot in place")
+    func unavailableKeyDoesNotReplaceSnapshot() throws {
+        let corpus = Corpus()
+        let original = CorpusKeys(value: SymmetricKey(size: .bits256))
+        let store = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: original))
+        let bytes = try Data(contentsOf: URL(filePath: corpus.path))
+        let unavailable = UnavailableCorpusKeys(status: Int32(errSecInteractionNotAllowed))
+
+        do {
+            _ = try PredictStore(path: corpus.path, encryptedStore: EncryptedStore(keys: unavailable))
+            Issue.record("Opening with an unavailable key unexpectedly succeeded")
+        } catch let error {
+            #expect(error == .cannotOpen("encrypted corpus could not be authenticated"))
+        }
+
+        #expect(try Data(contentsOf: URL(filePath: corpus.path)) == bytes)
+        _ = store
+    }
 }
 
 @Suite("Remembering what was entered")
@@ -137,6 +201,32 @@ struct RecordingTests {
         let found = try await store.candidates(for: terminal, matching: "make")
         #expect(found.count == 1)
         #expect(found.first?.evidence?.count == 3)
+    }
+
+    @Test("A future clock reading is clamped when a line is learned.")
+    func futureLearningTimestampIsClamped() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        let future = Date(timeIntervalSince1970: 4_102_444_800)
+        try await store.record("deploy future", in: terminal, at: future)
+
+        let candidate = try await store.candidates(for: terminal, matching: "deploy ").first
+        #expect((candidate?.evidence?.lastUsed ?? .distantFuture) <= Date())
+    }
+
+    @Test("A future timestamp already on disk is clamped when the corpus is read.")
+    func futureStoredTimestampIsClampedOnRead() async throws {
+        let corpus = Corpus()
+        let store = try store(corpus)
+        try await store.record("deploy legacy", in: terminal, at: moment)
+        let database = try Database(path: corpus.path)
+        try database.run("UPDATE entry SET last_used = ? WHERE text = ?") {
+            $0.bind(1, 4_102_444_800.0)
+            $0.bind(2, "deploy legacy")
+        }
+
+        let candidate = try await store.candidates(for: terminal, matching: "deploy ").first
+        #expect((candidate?.evidence?.lastUsed ?? .distantFuture) <= Date())
     }
 
     @Test("A line differing only by case is offered once.")
@@ -760,18 +850,20 @@ struct RecoveryTests {
     @Test("A database written by a newer build is refused and left exactly as it was, not replaced.")
     func refusesTheFuture() throws {
         let corpus = Corpus()
-        let database = try Database(path: corpus.path)
-        try Schema.migrate(database)
-        try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(99)) }
-        try database.run("INSERT INTO surface (bundle_id, role) VALUES ('com.example.app', 'AXTextArea')") {
-            _ in
+        do {
+            let database = try Database(path: corpus.path)
+            try Schema.migrate(database)
+            try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(99)) }
+            try database.run("INSERT INTO surface (bundle_id, role) VALUES ('com.example.app', 'AXTextArea')")
+            {
+                _ in
+            }
         }
+        let original = try Data(contentsOf: URL(filePath: corpus.path))
         #expect(throws: PredictStoreError.newerThanThisBuild(version: 99)) {
             try PredictStore(path: corpus.path)
         }
-        let version = try database.rows("SELECT version FROM schema_version", { _ in }) { $0.integer(0) }
-        #expect(version == [99])
-        #expect(try database.rows("SELECT COUNT(*) FROM surface", { _ in }) { $0.integer(0) } == [1])
+        #expect(try Data(contentsOf: URL(filePath: corpus.path)) == original)
     }
 
     @Test("A file from the build before gains the recency index and the current version on opening.")
@@ -803,8 +895,9 @@ struct RecoveryTests {
             $0.bind(2, "make verify")
             $0.bind(3, moment.timeIntervalSince1970)
         }
-        try database.execute("ALTER TABLE surface DROP COLUMN last_used")
+        // SQLite refuses to drop an indexed column, so a version-five file is rebuilt index first.
         try database.execute("DROP INDEX IF EXISTS surface_recent")
+        try database.execute("ALTER TABLE surface DROP COLUMN last_used")
         try database.run("UPDATE schema_version SET version = ?") { $0.bind(1, Int64(5)) }
         let legacyColumns = try database.rows("PRAGMA table_info(surface)", { _ in }) { $0.text(1) }
         #expect(!legacyColumns.contains("last_used"))

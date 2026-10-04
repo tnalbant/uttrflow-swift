@@ -5,6 +5,7 @@ screen never means hand-editing a y coordinate — which is how the old fixed
 coordinates would have drifted the moment the sidebar rows landed.
 """
 import json
+from pathlib import Path
 
 MAIN = (980, 700)      # every screen inside the app shell
 SIGNIN = (660, 760)
@@ -131,7 +132,7 @@ for note_id, text, row in ROWS:
     annotations.append({"id": note_id, "x": -360, "y": y, "w": 300, "text": text})
     y += max(h for _, _, h, _ in row) + ROW_GAP
 
-with open("canvas.json", "w") as f:
+with open(Path(__file__).resolve().parent / "canvas.json", "w") as f:
     json.dump({"artboards": artboards, "annotations": annotations,
                "launch": {"view": "canvas"}}, f, indent=2)
 print(f"{len(artboards)} artboards, {len(annotations)} notes")

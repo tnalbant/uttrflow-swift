@@ -1,16 +1,35 @@
 // The chords a row's actions answer to, in one table so the handler, the ⋯ menu and the docs agree.
 
-/// A ⌘ chord, named by the character the key reports so a view can match a key press without a key code.
+/// A ⌘ chord, labelled by its Latin key and matched by its physical key code.
 public struct PanelChord: Sendable, Equatable, Hashable {
-    /// The character, lower-cased; AppKit reports Backspace as `\u{7F}`.
+    /// The character shown in shortcut labels; AppKit reports Backspace as `\u{7F}`.
     public let character: Character
     /// Whether ⇧ is held as well as ⌘, which keeps a chord off the search field's own editing keys.
     public let isShifted: Bool
 
+    /// The physical US key position used when a layout does not produce a Latin letter.
+    public var keyCode: UInt16? { Self.keyCodes[character] }
+
+    /// Whether the layout's produced letter matches, falling back to the US key position only without one.
+    public func matches(characters: String, keyCode: UInt16, shifted: Bool) -> Bool {
+        guard shifted == isShifted else { return false }
+        if let produced = characters.first(where: { $0.isASCII && $0.isLetter }) {
+            return PanelChord(produced, shifted: shifted) == self
+        }
+        return self.keyCode == keyCode
+    }
+
     public init(_ character: Character, shifted: Bool = false) {
-        self.character = character
+        self.character = character.lowercased().first ?? character
         self.isShifted = shifted
     }
+
+    private static let keyCodes: [Character: UInt16] = [
+        "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "g": 5,
+        "h": 4, "i": 34, "j": 38, "k": 40, "l": 37, "m": 46, "n": 45,
+        "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32,
+        "v": 9, "w": 13, "x": 7, "y": 16, "z": 6, "\u{7F}": 51,
+    ]
 
     /// The chord as the user reads it, in the menu and in `Docs/shortcuts.md`.
     public var label: String {

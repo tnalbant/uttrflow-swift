@@ -85,7 +85,7 @@ body = f"""  <div>
     </div>
   </div>"""
 
-with open("Errors.dc.html", "w") as handle:
+with open(DESIGN_DIR / "Errors.dc.html", "w") as handle:
     handle.write(
         page("Errors", 900, 700, body, extra_css=ERR_CSS, pad=38).replace(
             'class="stage"', 'class="stage err"'

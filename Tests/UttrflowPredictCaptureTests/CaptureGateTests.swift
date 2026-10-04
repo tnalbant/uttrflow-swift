@@ -109,8 +109,15 @@ struct CaptureGateTests {
     func shortNumericWebValuesAreRefused() {
         let browser = FieldReading(bundleIdentifier: "com.example.browser", role: "AXTextField")
 
-        for value in ["12", "1234", "123456", "01011990"] {
+        for value in ["12", "1234", "123456", "01011990", "12 34", "123 456", "12-3456", "4111.1111"] {
             #expect(CaptureGate.refusal(toRecord: value, from: browser, given: allowed) == .sensitiveValue)
+        }
+    }
+
+    @Test("Malformed groups and values over eight digits remain ordinary text.")
+    func malformedOrLongGroupedNumbersPass() {
+        for value in ["1--2", "-1234", "1234.", "1 2 3 4 5 6 7 8 9"] {
+            #expect(CaptureGate.refusal(toRecord: value, from: field(), given: allowed) == nil)
         }
     }
 

@@ -117,7 +117,7 @@ body = f"""  <div>
     </div>
   </div>"""
 
-with open("Dock-Placement.dc.html", "w") as handle:
+with open(DESIGN_DIR / "Dock-Placement.dc.html", "w") as handle:
     handle.write(
         page("Dock placement", 900, 700, body, extra_css=PL_CSS, pad=38).replace(
             'class="stage"', 'class="stage pl"'

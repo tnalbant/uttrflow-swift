@@ -122,7 +122,7 @@ body = f"""  <div>
     </div>
   </div>"""
 
-with open("MenuBar.dc.html", "w") as handle:
+with open(DESIGN_DIR / "MenuBar.dc.html", "w") as handle:
     handle.write(
         page("Menu bar", 700, 620, body, extra_css=MB_CSS, pad=36).replace(
             'class="stage"', 'class="stage mb"'

@@ -1,7 +1,11 @@
 # Personal dictionary: phonetics and learning
 
-The numbers and reasons behind `Sources/UttrflowDictionary/DoubleMetaphone.swift`,
-`LearnableWords.swift` and `Utterance.swift`.
+The personal dictionary holds the names and terms a user says that a general recogniser
+would not spell right. This page is its phonetic index and what it learns on its own:
+`Sources/UttrflowDictionary/DoubleMetaphone.swift`, `PronunciationCoder.swift`,
+`PhoneticIndex.swift`, `LearnableWords.swift`, `GeneralVocabulary.swift` and `Utterance.swift`.
+How entries are stored and reset is `Docs/app-dictionary-store.md`; how they correct a
+dictation is `Docs/ai-correction-thresholds.md`.
 
 ## Why Double Metaphone and not Soundex
 
@@ -31,9 +35,9 @@ also codes a Devanagari spelling's romanisation, so "Raghunath" is found whichev
 recognition wrote it in. Devanagari spelling variants — chandrabindu against anusvara, a
 nukta letter against its base consonant — are folded to one key before that romanisation, so
 पहुँच and पहुंच meet the same entry. A correction learnt across scripts is stored under its
-Latin spelling, since dictation output is romanised (`Docs/latin-output.md`). What remains
-open: two spellings that romanise to different Latin text (transliteration, not the writer's
-own spelling choice) still key apart.
+Latin spelling, since dictation output is romanised (`Docs/latin-output.md`). Two spellings
+that romanise to different Latin text (transliteration, not the writer's own spelling choice)
+key apart.
 
 ## Learning: the default is to learn nothing
 
@@ -44,15 +48,19 @@ and a word gets in only by defeating all of them. Every learnt word is thrown aw
 ### Seen and said
 
 - A term must be both in the window or document title and spoken — judged by sound **and by
-  opening letters**, through `ReadingRestraint`, so a title's "MDT" is not taken for a spoken
-  "made" on a shared sound key — in
-  **three** separate dictations (`sightingsBeforeLearning`). One sighting is a coincidence;
+  opening letters**, through `ReadingRestraint`, so two words that merely share a sound key do
+  not meet — in **three** separate dictations (`sightingsBeforeLearning`). One sighting is a coincidence;
   two is usually the same task seeing the same title; three is the same number
   `DictionaryEntry.isTrustworthy` already calls "enough to stop being an accident". Five would
   end a fortnight's project before its vocabulary is learnt. The restraint binds what may be
   *learnt* here, never what a learnt word may later be offered for: a spelling the user taught is
   evidence in its own right, and `DictionaryCandidates` asks no restraint of it — see the
   doubtful-words row of `Docs/cleanup.md`.
+- Only a term worth learning: at least three characters (`shortestWorthLearning`), not a word
+  `GeneralVocabulary` knows, not spelt the same as what was heard, holding no digit, and not an
+  all-capitals abbreviation of two to five letters. A trailing version number is cut off a title
+  word first, so numbered files share one spelling. At most `WorkingSet.maximumWordsOnScreen`
+  (64) title words are read.
 - Never from the application name, which is on screen for every dictation in that app.
 - Never from the selected text: both insertion routes write over the selection, so every word
   in it is a word the user is deleting.
@@ -60,20 +68,34 @@ and a word gets in only by defeating all of them. Every learnt word is thrown aw
 ### Corrected by the user
 
 `LearnableWords.corrected(over:wrote:)` learns the replacement when: both sides are at most
-`PhoneticIndex.maximumWordsPerEntry` (three) words; they are spelt differently, spaces
-included, capitals alone not counting; the whole phrases sound the same; and every word of the
+`PhoneticIndex.maximumWordsPerEntry` (three) words; they are spelt differently, capitals
+alone not counting; the whole phrases sound the same and open alike (`ReadingRestraint`),
+read through their romanisation when either side is Devanagari; and every word of the
 replacement is one `GeneralVocabulary` would not know (otherwise re-dictating "there" as
-"their" would index a homophone of an ordinary word). The entry is stored without a
+"their" would index a homophone of an ordinary word). The one exception is a spelling
+preference: when each replacement word and the word it replaces are both listed romanised Hindi
+and share `Romaniser.soundKey` ("thik" to "theek"), the user's spelling is learnt. The entry is stored without a
 pronunciation, because the two spellings already sound identical.
+
+"A word a general model already knows" is `GeneralVocabulary`: a fixed list of common
+English and of romanised Hindi and Hinglish, not `NSSpellChecker`. The system checker is
+main-actor UI framework, answers differently with what is installed, and has no view on
+Hinglish, so every Hinglish word would read as new and the dictionary would fill with
+`nahi` and `matlab`.
 
 ### The sighting ledger
 
-Held in memory only. The words in it came off the user's screen and most never become
-entries; writing them to disk would keep a record of what somebody had open in a file no page
-shows and no button clears. Bounded at 128 pending terms, pruned best-corroborated first then
-alphabetically so two machines learn the same words in the same order. A deleted word is
-refused for the rest of the run; whether a deletion should outlive a quit is an open product
-decision. A reset clears both the tally and the refusals.
+`SightingLedger` holds the pending tally in memory only. The words in it came off the user's
+screen and most never become entries; writing them to disk would keep a record of what
+somebody had open in a file no page shows and no button clears. Bounded at 128 pending terms
+(`maximumPending`), pruned best-corroborated first then alphabetically so two machines learn
+the same words in the same order.
+
+A word the user deletes is refused: it and anything that sounds like it stop being counted.
+The refusals are words the user already had and removed, not terms read off the screen, so
+the store writes them down and a relaunch still refuses them; at most 512 are kept
+(`maximumRefused`), the oldest lapsing first. Removing learnt words clears the pending tally
+and keeps the refusals; removing everything clears both (`Docs/app-dictionary-store.md`).
 
 ## Candidate budget
 
@@ -81,3 +103,9 @@ The candidates offered for a dictation are a function of the `Utterance` alone: 
 `maximumLength × words.count` spans, ordered least confident first so the budget is spent on
 the words that needed it. A run's confidence is its minimum, so longer runs sort ahead of the
 single words inside them.
+
+## Related pages
+
+- `Docs/app-dictionary-store.md` — the file, the caches and the three resets.
+- `Docs/ai-correction-thresholds.md` — when an entry may replace a heard word.
+- `Docs/cleanup.md` — the doubtful-words line, where entries are offered to the model.

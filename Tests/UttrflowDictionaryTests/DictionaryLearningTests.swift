@@ -391,4 +391,49 @@ struct DictionaryLearningTests {
             try await dictate(into: store, saying: "try pgvector", titled: "pgvector — notes")
                 .isEmpty)
     }
+
+    /// Bulk removal follows the single removal rule: every inferred word removed is refused.
+    @Test("Forget learned words refuses them, so the same sightings do not bring them back")
+    func forgettingLearnedWordsRefusesThem() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        #expect(await store.allEntries().count == 1)
+        try await store.removeLearned()
+
+        for _ in 1...LearnableWords.sightingsBeforeLearning {
+            try await dictate(into: store, saying: "use Zorvain for this", titled: "Zorvane — notes")
+        }
+        #expect(await store.allEntries().isEmpty)
+    }
+
+    @Test("Removing twenty words in one call refuses all twenty in one refusal record")
+    func removingSeveralRefusesEach() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        for index in 0..<20 {
+            try await store.add(word: "Wordling\(index)x", pronunciation: "", at: epoch)
+        }
+        let ids = Set(await store.allEntries().map(\.id))
+        #expect(try await store.remove(ids).isEmpty)
+        let record = sandbox.file.deletingLastPathComponent()
+            .appending(path: "\(sandbox.file.deletingPathExtension().lastPathComponent).refused.json")
+        let refused = try JSONDecoder().decode([String].self, from: Data(contentsOf: record))
+        #expect(refused.count == 20)
+    }
+
+    @Test("A batch larger than the refusal cap keeps the newest refusals")
+    func aBatchPastTheCapLapsesTheOldest() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let words = (0..<600).map { "Wordling\($0)x" }
+        for word in words { try await store.add(word: word, pronunciation: "", at: epoch) }
+        try await store.remove(Set(await store.allEntries().map(\.id)))
+        let record = sandbox.file.deletingLastPathComponent()
+            .appending(path: "\(sandbox.file.deletingPathExtension().lastPathComponent).refused.json")
+        let refused = try JSONDecoder().decode([String].self, from: Data(contentsOf: record))
+        #expect(refused.count == SightingLedger.maximumRefused)
+    }
 }

@@ -2,6 +2,12 @@
 
 /// A URL whose holder can act with it: a chat webhook, or one signed or carrying a token. See Docs/clipboard-secrets.md.
 enum BearerURLShape {
+    private static let maximumSchemeLessAddressLength = 256
+    private static let schemeLessSlackPathPrefixes = [
+        Array("services".utf8), Array("workflows".utf8), Array("triggers".utf8),
+    ]
+    private static let schemeLessSlackPrefixReadLimit = 25
+
     /// Whether any URL in the text, or nested in one, is a bearer credential, reading each byte of it a bounded number of times.
     static func matches(_ text: String, read: inout Int) -> Bool {
         var count = 0
@@ -17,7 +23,7 @@ enum BearerURLShape {
                 if hasWebhook(bytes, from: start, to: end) { return true }
                 from = end
             }
-            if hasSchemeLessSlackWebhook(bytes) { return true }
+            if hasSchemeLessSlackWebhook(bytes, read: &count) { return true }
             return false
         }
     }
@@ -52,7 +58,8 @@ enum BearerURLShape {
 
     /// Whether a byte cannot stand in a URL as copied: ASCII space or control, a quote or an angle bracket.
     private static func endsURL(_ byte: UInt8) -> Bool {
-        byte <= 0x20 || byte == 0x7F || byte == UInt8(ascii: "\"") || byte == UInt8(ascii: "'")
+        byte <= 0x20 || byte >= 0x80 || byte == 0x7F || byte == UInt8(ascii: "\"")
+            || byte == UInt8(ascii: "'")
             || byte == UInt8(ascii: "<") || byte == UInt8(ascii: ">") || byte == UInt8(ascii: "`")
     }
 
@@ -116,6 +123,16 @@ enum BearerURLShape {
     /// Incoming-webhook addresses of the chat services, which post as whoever holds them.
     private static func isWebhook(host: String, path: [Substring]) -> Bool {
         switch host {
+        case "api.telegram.org":
+            guard let bot = path.first, bot.hasPrefix("bot"), let colon = bot.firstIndex(of: ":") else {
+                return false
+            }
+            let identifier = bot[bot.index(bot.startIndex, offsetBy: 3)..<colon]
+            let token = bot[bot.index(after: colon)...]
+            return !identifier.isEmpty && identifier.allSatisfy(\.isNumber)
+                && identifier.allSatisfy(\.isASCII)
+                && token.count == 35 && token.allSatisfy(\.isASCII)
+                && token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
         case "hooks.slack.com":
             guard ["services", "workflows", "triggers"].contains(path.first ?? ""), path.count >= 4,
                 hasIdentifier(path[1], prefix: "T"), hasIdentifier(path[2], prefix: "B")
@@ -135,21 +152,55 @@ enum BearerURLShape {
     }
 
     /// Whether a Slack address copied without its scheme has the same team, channel and generated-token shape.
-    private static func hasSchemeLessSlackWebhook(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
+    private static func hasSchemeLessSlackWebhook(
+        _ bytes: UnsafeBufferPointer<UInt8>, read: inout Int
+    ) -> Bool {
         let host = Array("hooks.slack.com".utf8)
         guard bytes.count >= host.count else { return false }
-        for start in 0...(bytes.count - host.count) {
-            guard host.indices.allSatisfy({ bytes[start + $0].lowercasedASCII == host[$0] }),
-                start == 0 || !isHostByte(bytes[start - 1])
+        var start = 0
+        while start + host.count <= bytes.count {
+            guard bytes[start].lowercasedASCII == host[0] else {
+                read += 1
+                start += 1
+                continue
+            }
+            let candidateStart = start
+            start += 1
+            read += host.count
+            guard host.indices.allSatisfy({ bytes[candidateStart + $0].lowercasedASCII == host[$0] }),
+                candidateStart == 0 || !isHostByte(bytes[candidateStart - 1])
             else { continue }
-            let pathStart = start + host.count
+            let pathStart = candidateStart + host.count
             guard pathStart < bytes.count, bytes[pathStart] == UInt8(ascii: "/") else { continue }
+
+            let segmentStart = pathStart + 1
+            guard
+                Self.schemeLessSlackPathPrefixes.contains(where: {
+                    matches($0, bytes: bytes, from: segmentStart)
+                })
+            else {
+                read += Self.schemeLessSlackPrefixReadLimit
+                continue
+            }
+
             var end = pathStart
-            while end < bytes.count, !endsURL(bytes[end]) { end += 1 }
-            let location = Location(urlText(bytes, from: start, to: end))
+            let limit = min(bytes.count, candidateStart + Self.maximumSchemeLessAddressLength)
+            while end < limit, !endsURL(bytes[end]) { end += 1 }
+            read += end - pathStart
+            guard end == bytes.count || endsURL(bytes[end]) else { continue }
+            let location = Location(urlText(bytes, from: candidateStart, to: end))
             if isWebhook(host: location.host, path: location.path) { return true }
         }
         return false
+    }
+
+    /// Whether the path at `start` begins with a webhook route and a segment boundary.
+    private static func matches(
+        _ expected: [UInt8], bytes: UnsafeBufferPointer<UInt8>, from start: Int
+    ) -> Bool {
+        guard start + expected.count < bytes.count else { return false }
+        return expected.indices.allSatisfy({ bytes[start + $0].lowercasedASCII == expected[$0] })
+            && bytes[start + expected.count] == UInt8(ascii: "/")
     }
 
     /// Whether a byte can continue a hostname.

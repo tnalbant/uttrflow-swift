@@ -1,22 +1,41 @@
 # The speech engines, and what WhisperKit does when nobody is looking
 
-`UttrflowSpeech` drives two recognisers behind one `TranscriptionBackend`: WhisperKit
-(`WhisperKitBackend`) and the macOS system recogniser (`AppleSpeechBackend`). Switching between
-them is a change to `EngineConfiguration` and nothing else; `SpeechEngineFactory` is the one
-switch that names a concrete recogniser. This page holds the measurements and traps the code
-relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the no-network rule.
+`UttrflowSpeech` (`Sources/UttrflowSpeech/`) drives two recognisers behind one
+`TranscriptionBackend`: WhisperKit (`WhisperKitBackend`, the default, with the
+`openai_whisper-large-v3-v20240930_turbo_632MB` model) and the macOS system recogniser
+(`AppleSpeechBackend`). `BackedSpeechEngine` wraps either one with what every recogniser needs:
+the voice-activity trim ([`silence.md`](silence.md)), the shortest-clip floor, one call at a time,
+and loop repair. Switching recognisers is a change to `EngineConfiguration` and nothing else;
+`SpeechEngineFactory` is the one switch that names a concrete recogniser. This page holds the
+measurements and traps the code relies on. [`bakeoff.md`](bakeoff.md) compares the engines;
+[`offline.md`](offline.md) states the no-network rule;
+[`speech-vocabulary-prompt.md`](speech-vocabulary-prompt.md) covers the personal-dictionary
+prompt; [`speech-model-install.md`](speech-model-install.md) covers installing the model.
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `BackedSpeechEngine.minimumDuration` | 250 ms | shorter audio is refused as too short |
+| `AppleSpeechBackend.chunkFrames` | 4096 frames | the chunk the system analyser is fed |
+| `AnalyserInput.maxFramesPerConversion` | 2048 frames | the slice fed to its converter |
+| `LanguageHeldDecoder.compressionRatioThresholds` | `en`: default, `hi`: 3.0 | one decision per transcribed language; default keeps Whisper's 2.4 |
+| `RecognitionLoop.fastestSpeech` | 4.5 words a second | faster than this, a repeated run is a loop |
+| `RecognitionLoop.mostCopyDifference` | 0.2 WER | how far copies may differ and still be one loop |
+| `RecognitionLoop.fewestCopyWords` | 3 | the shortest copy that counts |
+| `CappedDecodeRetry.tokenCapThreshold` | 215 tokens | a decode this long ran out of decoder positions |
+| `CappedDecodeRetry.maxRetries` | 10 | re-decodes of the tail after a cap |
+| `CappedDecodeRetry.collapsedGapSeconds` | 1.0 s | silence after a window's last word that marks a collapsed window |
 
 ## The system recogniser
 
-- Needs no download and is faster than Whisper, but recognises 30 locales and Hindi is not
-  among them, so it cannot be the product's default.
-- Its `load()` downloads the locale asset when it is absent. That is a network call on the
-  dictation path, the same shape as the tokenizer fetch below, and Settings compounds it by
-  declaring the engine "always ready". It is left in place because the failure it produces is
-  honest and recoverable (`SpeechEngineError.modelDownloadFailed` says to check the connection,
-  and that fixes it). Refusing to download here without first giving Settings a way to install
-  the asset, and a readiness check that consults it, would replace a slow first dictation with
-  a dead end. Both of those live outside the module, so the change belongs in one piece.
+- Needs no model download and is faster than Whisper, but Hindi is not among the locales it
+  recognises, so it cannot be the product's default. It loads `en-US`.
+- Its `load()` downloads the locale's speech asset through `AssetInventory` when it is absent.
+  That is a network call on the dictation path, the same shape as the tokenizer fetch below. A
+  failure is `SpeechEngineError.modelDownloadFailed`, which says to check the connection, and that
+  fixes it. The app reads the same inventory (`AppleSpeechBackend.assetStatus()`) to show whether
+  the asset is installed, needs a download, is downloading or is unsupported.
+- The personal dictionary reaches it as the analyser's contextual strings
+  (`AnalysisContext.contextualStrings`), trimmed, de-duplicated and sorted.
 - Audio is fed to the analyser in 4096-frame chunks, matching how a live microphone delivers.
 - The asset check and the analyser's audio format are settled once, in `load()`, and again only
   after a transcription fails. An analyser is finished after one clip, so each piece takes a fresh
@@ -26,6 +45,69 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   else, `AnalyserInput` converts through `AVAudioConverter`, fed in 2048-frame slices within one
   conversion so neither the converter's truncation nor its filter delay drops audio.
 - Excluded from the coverage gate: it can only be exercised by real speech.
+
+## Where the speech model runs
+
+`WhisperKitBackend.computeOptions` names the Core ML compute units for each stage rather than
+taking the package's defaults, so an upgrade cannot move the model to other hardware unnoticed.
+The values equal WhisperKit's own defaults on macOS 14 and later; nothing changed when they were
+written down.
+
+| Stage | Compute units |
+|---|---|
+| Mel spectrogram | `.cpuAndGPU` |
+| Audio encoder | `.cpuAndNeuralEngine` |
+| Text decoder | `.cpuAndNeuralEngine` |
+
+`WhisperKitContractTests.computeUnitsArePinned` fails if the app's values leave this table or the
+linked package's defaults leave the app's.
+
+## Model variants and compute plans, measured
+
+`SpeechComputePlan` names the compute plans a harness may ask for; the app passes only
+`.shipping`. Two `uttrflow-eval` options compare candidates without installing them:
+`--model-folder` loads any folder from WhisperKit's model repository, and `--compute` picks a
+plan. `uttrflow-eval synthesise` fills a corpus with the system voice reading the English
+passages, so the comparison needs no microphone.
+
+```bash
+uttrflow-eval synthesise --corpus-path ./synth --voice Samantha
+/usr/bin/time -l uttrflow-eval transcribe --corpus-path ./synth \
+    --model-folder <folder> --compute <plan> --results-path ./results-<name>
+```
+
+Host: Apple M5 Pro (Mac17,8), 48 GB, release build. Corpus: the 6 English passages, 305
+words, in the Samantha voice. Each row is one fresh process; "load" is the one-minute load
+average at the start and end of the run, since other builds shared the machine. Latency is
+per passage (typical / slowest). Ready is the engine load, which includes Core ML's first
+compile for a variant or plan never loaded before, so a first-run figure is not a warm launch.
+
+| Variant | Plan | WER | Latency | Ready | Peak RSS | On disk | Load |
+|---|---|---|---|---|---|---|---|
+| `large-v3-v20240930_turbo_632MB` (shipping) | shipping | 3.6% | 1.13 / 1.14 s | 138.2 s (first compile) | 0.77 GB | 618 MB | 18 → 68 |
+| `large-v3-v20240930_turbo_632MB` | neuralEngine | 3.9% | 1.09 / 1.13 s | 2.5 s | 0.33 GB | 618 MB | 74 → 80 |
+| `large-v3-v20240930_turbo_632MB` | gpu | 3.9% | 1.03 / 6.93 s | 30.4 s | 6.10 GB | 618 MB | 68 → 74 |
+| `large-v3-v20240930_turbo_632MB` | all | 3.9% | 1.04 / 2.74 s | 33.4 s | 6.13 GB | 618 MB | 80 → 52 |
+| `large-v3-v20240930_turbo_632MB` | cpu | 4.3% | 4.04 / 4.16 s | 20.1 s | 3.55 GB | 618 MB | 52 → 30 |
+| `large-v3-v20240930_turbo` (unquantised) | shipping | 4.3% | 1.05 / 1.10 s | 127.8 s (first compile) | 1.62 GB | 1.5 GB | 14 → 18 |
+| `large-v3-v20240930_626MB` (full decoder) | shipping | 3.6% | 1.43 / 1.47 s | 65.4 s (first compile) | 0.54 GB | 600 MB | 18 → 29 |
+| `large-v3-v20240930_547MB` (full decoder) | shipping | 3.9% | 1.37 / 1.47 s | 11.3 s | 0.48 GB | 527 MB | 29 → 28 |
+| `small` | shipping | 4.3% | 0.83 / 0.94 s | 19.5 s | 0.36 GB | 467 MB | 28 → 23 |
+| `small_216MB` | shipping | 5.6% | 1.25 / 1.42 s | 15.5 s | 0.30 GB | 210 MB | 23 → 18 |
+
+What the table supports, and what it does not:
+
+- **No candidate beats the shipping model on accuracy.** The spread is 3.6% to 5.6% over 305
+  words, where one word is 0.33 points; every large-v3 row is within four words of another.
+  The quantised 632 MB build is not worse than its unquantised 1.5 GB source here (3.6% against
+  4.3%) and holds less than half the memory.
+- **The shipping plan stays.** Moving the encoder and decoder to the GPU, or letting Core ML
+  choose, keeps the typical latency, multiplies the slowest passage and holds about 6 GB. The
+  CPU alone is about four times slower. `.neuralEngine` (the mel stage on the Neural Engine
+  too) matched the shipping plan within the load noise.
+- **It cannot decide a switch.** Six synthetic English passages say nothing about Hindi,
+  Hinglish, accents or noise, and the machine was not idle. A change of model or plan needs
+  the recorded multilingual corpus behind the regression gate first.
 
 ## Keeping WhisperKit off the network
 
@@ -55,7 +137,8 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   (`Core/TranscribeTask.swift`), and hands the raw array to that loop when no
   `chunkingStrategy` is set. A clip of one second or less therefore never enters the loop and
   decodes to an empty string: a spoken "yes" is about 0.35 s, 0.75 s once `VoiceActivity` has
-  kept its 200 ms either side, and came back as "nothing heard".
+  kept its 200 ms either side, and unpadded it comes back as "nothing heard". The padding below
+  is what lets it through.
 - `windowClipTime` exists to keep a window from starting in the last second of audio, where
   Whisper invents words, so it stays at 1.0. `VocabularyPrompt.decodingOptions` names it and
   every other `DecodingOptions` field, so a WhisperKit upgrade that moves a default changes
@@ -66,8 +149,8 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
   appends silence to trimmed speech shorter than the backend's floor. The decoder already pads
   every window to 30 seconds with silence, so the appended samples add no signal it did not
   already see; the seek loop runs once over the real speech and stops before the padding.
-- Not yet measured against the corpus. The same padding reaches a short final piece of a long
-  dictation, which is decoded alone rather than merged into the piece before it.
+- The same padding reaches a short final piece of a long dictation that is decoded alone; its
+  effect on accuracy is not measured against the corpus.
 
 ## Which language the recogniser may answer in
 
@@ -118,12 +201,11 @@ relies on. `Docs/bakeoff.md` compares the engines; `Docs/offline.md` states the 
 - `RecognitionLoop.undone`, run on every piece `BackedSpeechEngine` transcribes, keeps one copy
   of a repeated run when at least three copies of three or more words differ by no more than 20%
   word error rate and the words come faster than 4.5 a second of speech. A matching trailing
-  partial copy is removed with the run. The existing two-copy check still applies when there are
-  exactly two copies. A piece that fails the speech-rate or copy-match check is left as heard. So
+  partial copy is removed with the run. Exactly two copies are checked the same way. A piece that fails the speech-rate or copy-match check is left as heard. So
   a sentence really said twice at a speaking rate keeps both.
 - 4.5 words a second is set above the corpus recorder's own "this take was cut off" line (a
   passage read faster than 2.5 / 0.6, about 4.2 words a second) and below the 5.1 of the looped
-  clip. It is not yet measured against recorded speech. Measure it with the eval corpus before
+  clip. It is not measured against recorded speech; measure it with the eval corpus before
   lowering it.
 - Double quotes that open the first word and close the last are taken off when there are no
   other quotes in the piece. The recogniser writes these; the speaker did not say them.
@@ -162,7 +244,7 @@ decoder steps, which makes that density a latency cost rather than a matter of t
   | Hindi speech, `hi` hint, dictionary-shaped romanised prompt | 82.7 | 3.8x | Devanagari, 12 of 12 |
   | Hindi speech, `en` hint | 49.4 | 2.3x | Latin, and translated |
 
-  The 2.7x reproduces the shape the issue reported. Both alternatives are worse.
+  Both alternatives are worse than what ships.
 
 - **A romanised conditioning prompt does not move the script, and costs steps to fail.** Offered the
   romanised words of another passage through `VocabularyPrompt`, every clip still came back in
@@ -185,9 +267,8 @@ decoder steps, which makes that density a latency cost rather than a matter of t
   translates.** `हाँ ठीक है…` came back as English prose, which `Docs/latin-output.md` forbids outright. It is
   not even reliably fast: 2 of the 6 pure Hindi clips came back empty, and the times ranged from
   0.72 s to 3.83 s because an English token over Hindi audio trips the thresholds above and
-  re-decodes the window warmer, which is how 1.0 tokens a word still measures 2.3x. The section on
-  which language the recogniser may answer in already constrains the language token for this reason;
-  this is that failure measured.
+  re-decodes the window warmer, which is how 1.0 tokens a word still measures 2.3x. This is the
+  failure the language-token constraint above exists to prevent.
 
 - **No option measured reaches 1.3x**, and the only one whose density could — English tokens over
   Hindi audio — gets there by translating. Romanised decoding would land near it if it were
@@ -197,17 +278,16 @@ decoder steps, which makes that density a latency cost rather than a matter of t
 
 **So Devanagari stays.** The density is the tokenizer's property, not this repository's, and every
 way of spending fewer steps on it changes what the speaker sees: a translation, a spelling nobody
-tested, or a script that varies clip to clip. A 2.4x saving in decoder steps is real and is worth
-revisiting, but only behind a decoder that writes romanised Hindi as its own output rather than one
-talked into it — a different model, judged against a baseline that does not exist yet
-(`Docs/measuring-accuracy.md`).
+tested, or a script that varies clip to clip. A 2.4x saving in decoder steps is real, and only a
+decoder that writes romanised Hindi as its own output, rather than one talked into it, could take
+it ([`measuring-accuracy.md`](measuring-accuracy.md)).
 
 **What these numbers are not.** The clips are synthetic, and synthetic Hindi speech is not a stand-in
-for a read corpus — the recorded audio `Docs/measuring-accuracy.md` calls the whole gap is still
-missing, so these figures rank the options against each other and assert nothing about how well the
-product hears Hindi. Word accuracy here was scored word by word against the parallel references with
-a grapheme-aware split, deliberately not through `Scripts/dictation_bench.py`, whose Hindi rate is
-counted over letter fragments (#705) and is therefore not a word error rate at all.
+for recorded speech ([`measuring-accuracy.md`](measuring-accuracy.md)), so these figures rank the
+options against each other and assert nothing about how well the product hears Hindi. Word accuracy
+here was scored word by word against the parallel references with a grapheme-aware split, not
+through `Scripts/dictation_bench.py`, whose Hindi rate is counted over letter fragments and is
+therefore not a word error rate.
 
 ## Why one noisy clip answers differently every run
 
@@ -230,12 +310,22 @@ counted over letter fragments (#705) and is therefore not a word error rate at a
   (`Core/Models.swift:366`, "order matters here"), so such a window never gets a no-speech
   probability and is retried warmer instead of being discarded as silence. It fired at temperature
   0 on all 50 runs, and at 1.0 on the 34 that ended empty.
+- **The silence test cannot fire at all in the WhisperKit this package pins.** The decoder sets
+  `noSpeechProb` to a constant 0 (`Core/TextDecoder.swift:817`, marked as not yet implemented), so
+  `noSpeechThreshold: 0.6` is never exceeded, neither in the fallback verdict
+  (`Core/Models.swift:369`) nor in the segment skip (`Core/Text/SegmentSeeker.swift:59`). That is
+  why moving the threshold to 0.4 or 0.8 changes nothing on non-speech clips (#2430). A window of
+  breath, cough or key noise therefore ends empty at temperature 0 on the first-token check and is
+  sent up the ladder, where a warmer draw can return a sound caption that differs run to run.
+  Refusing the ladder for such a window needs a real no-speech probability (the `<|nospeech|>`
+  token's probability at the start-of-transcript position) computed outside WhisperKit, or a
+  decision that a first-token rejection at temperature 0 is final.
 - The ladder keeps the first draw that passes the thresholds and otherwise the last one
   (`Core/TranscribeTask.swift:327-405`). Every one of the 16 words came from temperature 0.8;
   0.2 to 0.6 were rejected every time, and the 34 empties are the abandoned decode at 1.0.
 - **Neither a word list nor a confidence floor separates the misreading from a correct
-  transcript.** Rejecting a fallback result that adds a listed word the greedy result lacks reads,
-  as shipped, against a greedy result with no words in it, so it fires on the accident that the
+  transcript.** Rejecting a fallback result that adds a listed word the greedy result lacks
+  compares against a greedy result with no words in it, so it fires on the accident that the
   window was abandoned; the moment the first-token check passes, the misreading *is* the greedy
   result and the comparison sees nothing. The average log-probability the ladder accepts on is
   0.02 apart for the right and the wrong reading, which no floor can sit between. The per-word
@@ -305,17 +395,17 @@ counted over letter fragments (#705) and is therefore not a word error rate at a
   that `sampleBegin`, reporting the model as English-only so they trust the number rather than
   hunting for a token a prompt has moved. WhisperKit still appends its own inert copy beside
   ours, which costs an early return per step. `DecoderPrefillTests` holds the behaviour.
-- An earlier `PromptPrefillGuard` held the end token shut for `tokens.count == prefill`, which
-  is every prefill iteration *and* the first sampled token, because the token array does not
-  grow while the prompt is forced — so no logits filter can tell those steps apart. WhisperKit
-  0.18 ended a window on an end token sampled during its own prefill and every prompt tried
-  returned an empty transcript; 1.1.0 ignores one sampled there (`Core/TextDecoder.swift:679`)
-  and honours one sampled at the last prefill token, where it is a real prediction that the
-  window holds no speech. The guard's only remaining effect was to suppress that prediction, so
-  it is gone.
-- `WhisperKitBackend` still re-runs a blank biased transcription without the vocabulary: a
-  WhisperKit release or model variant that finds another way to return nothing must cost the
-  user a slower dictation, never a silent one. Silence transcribes to nothing too, so this can
+- No filter holds the end token shut during the prefill. A filter keyed on
+  `tokens.count == prefill` matches every prefill iteration *and* the first sampled token, because
+  the token array does not grow while the prompt is forced, so no logits filter can tell those
+  steps apart. WhisperKit 1.1.0 ignores an end token sampled during its own prefill
+  (`Core/TextDecoder.swift:679`) and honours one sampled at the last prefill token, where it is a
+  real prediction that the window holds no speech; such a filter would only suppress that
+  prediction.
+- A blank biased transcription is re-run without the vocabulary
+  (`CappedDecodeRetry.transcribeRecoveringEmptyPrompt`): a WhisperKit release or model variant
+  that finds another way to return nothing must cost the user a slower dictation, never a silent
+  one. Silence transcribes to nothing too, so this can
   decode twice for no gain, which is the right price.
 
 ## One call into the recogniser at a time
@@ -341,7 +431,7 @@ rather than showing "transcribing" for ever.
 Measured with the default model on synthetic speech: a cancelled decode stops within about
 ten milliseconds, since WhisperKit checks for cancellation before every decoder step, so
 after a timeout the wait is short. After a cancelled dictation it is the rest of that
-decode. Four overlapping decodes on one kit, two with a prompt and two without, returned
+decode. Without the turn, four overlapping decodes on one kit, two with a prompt and two without, returned
 the unprompted text for both prompted decodes in one round of three: the filters of one
 call had been replaced by another's.
 
@@ -364,13 +454,26 @@ call had been replaced by another's.
   the timestamp rules are measured from, and an unprompted decode keeps WhisperKit's seeker. The
   seeker lives on the kit like the filters, so the turn above is what keeps one call's offset from
   reaching another's decode.
-- Still seen after the fix: with 100 words, one 53-second clip's first window came back as a
-  single segment with no inner timestamps, so the window ended at its fixed 30 seconds and the
-  four words spoken across that boundary were lost. That is the decoder's segmentation under a
-  long prompt, not the alignment.
+- A separate failure survives the alignment: with 100 words, one 53-second clip's first window
+  came back as a single segment with no inner timestamps, so the window ended at its fixed 30
+  seconds and the four words spoken across that boundary were lost. That is the decoder's
+  segmentation under a long prompt, not the alignment.
 - `CappedDecodeRetry.collapsedWindow` catches that shape: a segment that ends at a 30-second
   window (or spans a whole one) while its last word ends more than a second before it, with audio
   still after it. The segments after it are dropped and the audio is decoded again from that last
   word, so the boundary words are recovered at the cost of one extra decode of the remainder,
-  paid only when a window collapses (#1567). Unit-tested against a fake recogniser; the cost on
-  the 53-second clip has not been re-measured on real audio.
+  paid only when a window collapses. Unit-tested against a fake recogniser (`CappedDecodeTests`);
+  the cost on real audio is not measured.
+
+## A decode that ran out of decoder positions
+
+The prompt and the transcript share WhisperKit's 223 decoder positions
+([`speech-vocabulary-prompt.md`](speech-vocabulary-prompt.md)), and Devanagari spends about 4.7
+tokens a word, so a long Hindi piece can stop mid-word because the decoder ran out of room rather
+than because the speech ended. `CappedDecodeRetry` treats a decode of `tokenCapThreshold` (215)
+tokens or more as capped; a backend that does not report tokens is judged by its last segment
+ending more than `RawTranscript.cappedDecodeGap` (2.5 s) before the audio does. It keeps the
+segments up to the last ordinary word (a final word longer than `fragmentWordDuration`, 900 ms, is
+the recogniser stretching a fragment to fill the audio) and decodes the rest again, up to
+`maxRetries` (10) times. A dictation still capped when the retries run out, or with no point to
+resume from, is marked `DecodeEffort.capUnresolved` rather than returned as if it were complete.

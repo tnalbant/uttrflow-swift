@@ -1,109 +1,45 @@
 import Testing
 import UttrflowAI
 import UttrflowCore
+import UttrflowTestSupport
 
 @testable import UttrflowEval
 
 /// The corpus cases the deterministic passes must pass on their own, with no model anywhere near them.
 @Suite("The rules over the corpus")
 struct RulesCorpusTests {
-    /// Every case the passes are answerable for; one leaving this list is a regression, not a tuning choice.
-    static let rulesMustPass: Set<String> = [
-        "np3", "sub1", "sub4", "bec1", "and1", "but1",
-        "pronoun-opening-that-is-it", "pronoun-opening-it-is-good-idea",
-        "demonstrative-opening-this-is-good-idea", "demonstrative-opening-that-was-good-point",
-        "pronoun-opening-it-is-my-two-cents", "pronoun-opening-i-am-sure",
-        "pronoun-opening-it-is-good-control", "pronoun-opening-she-is-nurse-control",
-        "determiner-opening-report-is-idea-control", "pronoun-opening-it-is-not-idea-control",
-        "deictic-opening-here-is-list", "deictic-opening-here-are-files", "deictic-opening-there-is-list",
-        "pronoun-opening-everything-is", "pronoun-opening-nothing-is",
-        "false-start", "self-correction", "single-word-self-correction",
-        "lowercase-start-after-complete-sentence-ebay",
-        "lowercase-start-after-complete-sentence-pronoun",
-        "lowercase-start-after-complete-sentence-vitals",
-        "lowercase-start-after-complete-sentence-that",
-        "lowercase-start-after-complete-sentence-she", "lowercase-start-after-answer-stops",
-        "actually-ordinary-adverb-weather", "actually-ordinary-adverb-sales",
-        "actually-ordinary-adverb-server", "actually-ordinary-adverb-team",
-        "no-ordinary-determiner-reason", "no-ordinary-determiner-thanks", "filler-heavy",
-        "ellipsis-glued-fillers",
-        "noun-spelled-like-a-filler",
-        "pronoun-i", "initialisms-spelled-as-letter-names", "article-before-spelled-letter",
-        "spelled-eg", "spelled-asap", "spelled-apr", "standalone-pronoun-i",
-        "number-words", "spoken-decade", "twenty-four-seven-idiom",
-        "fifty-fifty-idiom", "page-fraction", "money-billion", "short-yes",
-        "filler-carrying-a-question-mark", "filler-carrying-an-exclamation-mark",
-        "filler-between-commas",
-        "repeated-phrase", "repeated-intensifier-chain", "repeated-continuation-kept",
-        "i-mean-correction", "correction-between-commas", "actually-between-numbers",
-        "number-correction-with-unit",
-        "correction-between-amounts", "correction-between-percentages",
-        "false-no-stays",
-        "trigger-as-its-own-sentence",
-        "coordinated-list-kept", "repeated-frame-kept", "emphatic-double-kept",
-        "coordination-kept-not-restatement", "repeated-frame-for-kept",
-        "doubled-place-name-kept", "coordinated-apology-kept", "spoken-comma",
-        "comma-as-a-word", "quotation-opening-the-text",
-        "spoken-comma-after-a-greeting", "spoken-comma-after-an-opener", "spoken-comma-after-yes",
-        "spoken-commas-in-a-bare-list", "spoken-comma-before-and", "spoken-colon-before-a-clause",
-        "spoken-colon-before-an-item", "spoken-colon-at-the-end", "spoken-dash-before-a-clause",
-        "hinglish-spoken-comma-before-aur", "hinglish-spoken-colon-before-kal",
-        "colon-cancer-as-words", "colon-trouble-as-words", "colon-surgery-as-words", "colon-health-as-words",
-        "comma-separated-as-words", "comma-usage-as-words", "comma-splices-as-words",
-        "comma-placement-as-words", "dash-training-as-words", "dash-cam-as-words", "dash-drills-as-words",
-        "period-furniture-as-words", "new-paragraph", "time-of-day",
-        "percentage", "money",
-        "period-as-a-word", "spoken-period", "demonstrative-subject-spoken-period",
-        "period-after-new-line", "full-stop-new-paragraph", "question-mark-new-line",
-        "dates", "spoken-date-with-the", "spoken-date-without-the",
-        "ordinal-not-date", "compound-ordinal-above-one-hundred",
-        "version-number", "port-number", "acronyms", "kubernetes", "function-name", "sql-terms",
-        "mid-sentence-brand-name-case", "mid-sentence-mixed-case-brand",
-        "spoken-email-address", "spoken-email-address-with-a-name",
-        "spoken-email-address-ending-the-sentence", "spoken-email-addresses-in-a-list",
-        "look-at-a-domain-as-words", "met-at-the-office-as-words",
-        "extension-repeated-digits", "door-code-repeated-digits", "card-group-repeated-digits",
-        "spoken-phone-digit-run", "spoken-code-digit-run", "spoken-emergency-digit-run",
-        "spoken-international-phone-digit-run", "spoken-oh-and-zero-digit-run", "spoken-leading-oh-digit-run",
-        "extension-is-digits-kept", "extension-is-spoken-digit-run",
-        "two-single-digits-kept", "hyphenated-bedroom-count-kept",
-        "dictated-question", "dictated-instruction", "injection", "asks-for-help", "sounds-like-a-prompt",
-        "message-two-sentences-no-stop", "mid-sentence-continues-lower-case", "spreadsheet-cell-no-stop",
-        "document-sentence-with-stop", "document-list-only-when-spoken", "document-sentence-not-a-list",
-        "document-numbered-items-after-a-sentence", "document-number-one-after-a-sentence-not-an-item",
-        "document-sentence-ending-in-a-percentage", "document-sentence-ending-in-a-close-quote",
-        "document-bullet-caret-capitalises", "document-numbered-caret-capitalises",
-        "spreadsheet-number-in-cell", "spreadsheet-percentage-in-cell", "sql-editor-prose-stays-prose",
-        "sql-editor-numerals", "sql-editor-large-number-ungrouped",
-        "code-editor-large-number-ungrouped",
-        "code-editor-line-break-preserved", "code-editor-numeral-no-stop",
-        "code-editor-code-keeps-no-stop", "code-editor-comment-gets-a-stop",
-        "code-editor-comment-keeps-its-stop",
-        "terminal-command-keeps-case", "terminal-command-keeps-case-mid-pipeline",
-        "terminal-command-keeps-no-stop",
-        "message-short-no-stop", "email-greeting-kept", "email-continues-mid-sentence",
-        "email-two-paragraphs",
-        "numbered-items-for-a-trip", "numbered-items-three-of-them", "numbered-items-a-plan",
-        "numbered-items-before-lunch", "numbered-items-as-digits", "numbered-items-an-agenda",
-        "numbered-items-priorities", "numbered-items-steps", "numbered-items-continuing",
-        "numbered-items-reminders", "numbered-items-repeated-label", "number-ring-not-an-item",
-        "number-call-not-an-item",
-        "number-check-not-an-item", "number-bus-not-an-item", "number-row-not-an-item",
-        "number-invoice-not-an-item", "number-gate-not-an-item", "number-platform-not-an-item",
-        "number-flight-not-an-item", "number-room-not-an-item", "number-press-not-an-item",
-        "number-jersey-not-an-item",
-        "hindi-translation-refused", "hindi-worked-example-refused",
-        "hinglish-late", "hinglish-trailing-english", "hinglish-false-start",
-        "hinglish-correction-nahi-nahi", "hinglish-request",
-        "hinglish-question", "hinglish-question-after-verb", "hinglish-kaunsa-question",
-        "hinglish-kya-hua-question",
-        "hinglish-question-word-after-subject", "hinglish-na-question-tag", "hinglish-apology-kept",
-    ]
+    /// What the rules alone write for every corpus case, as last recorded in `Golden/rules.golden`.
+    static let golden = GoldenFile(suite: "rules")
+
+    /// Every case whose recorded rules output passes; a case leaving it shows as a golden diff, not a tuning choice.
+    static let rulesMustPass: Set<String> = {
+        let recorded = (try? golden.recorded()) ?? [:]
+        return Set(
+            EvaluationCorpus.all.filter { testCase in
+                recorded[testCase.id].map { Scorer.score($0, against: testCase).passed } ?? false
+            }.map(\.id))
+    }()
 
     /// Destination cases only the model can pass: a spelling off the screen, or a question mark from a sentence's shape.
     static let modelOnly: Set<String> = [
         "sql-editor-identifier-from-screen", "code-editor-identifier-from-screen",
         "message-question-keeps-its-mark", "doubtful-word-from-window",
+    ]
+
+    /// Probe cases the rules still fail, a baseline that only shrinks: a case that starts passing must leave it.
+    static let knownFailures: Set<String> = [
+        "probe-ticket-and-units", "probe-retry-bullets", "probe-backtick-identifiers", "probe-short-hash",
+        "probe-repro-steps", "probe-docker-run-flags", "probe-sql-join", "probe-regex-pattern",
+        "probe-yaml-keys", "probe-todo-comment", "probe-log-call", "probe-http-status", "probe-version-bump",
+        "probe-shell-pipeline", "probe-dockerfile-from", "probe-git-commands", "probe-stack-frame",
+        "probe-protocol-names", "probe-file-name-opening", "probe-bug-title", "probe-changelog-bullets",
+        "probe-decision-record", "probe-git-commit-flags", "probe-docker-build-no-cache",
+        "probe-spoken-correction", "probe-support-email", "probe-laugh-then-question", "probe-meeting-notes",
+        "probe-revenue-figures", "probe-option-pricing", "probe-apology-message", "probe-cover-letter",
+        "probe-meeting-time-zones", "probe-recipe-quantities", "probe-flight-details", "probe-clinical-note",
+        "probe-contract-clauses", "probe-quoted-citation", "probe-short-verse", "probe-hashtag-and-handle",
+        "probe-phone-and-address", "probe-chained-corrections", "probe-topic-shifts", "probe-hinglish-status",
+        "probe-quote-unquote",
     ]
 
     /// The request the bake-off hands an engine, with the case's own destination and caret.
@@ -112,15 +48,24 @@ struct RulesCorpusTests {
         return Scorer.score(result.text, against: testCase)
     }
 
-    @Test(
-        "passes every case the passes are answerable for",
-        arguments: EvaluationCorpus.all.filter { rulesMustPass.contains($0.id) })
-    func passes(testCase: EvaluationCase) async throws {
-        let score = try await score(testCase)
+    @Test("writes exactly the recorded output for every corpus case")
+    func matchesGolden() async throws {
+        var outputs: [String: String] = [:]
+        for testCase in EvaluationCorpus.all {
+            let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
+            outputs[testCase.id] = result.text
+        }
+        let inputs = Dictionary(uniqueKeysWithValues: EvaluationCorpus.all.map { ($0.id, $0.spoken) })
+        let differences = try Self.golden.compare(outputs, inputs: inputs)
         #expect(
-            score.passed,
-            "\(testCase.id): \(Int(score.similarity * 100))%, lost \(score.lost), \(score.invented) \(score.brokeShape)"
+            differences.isEmpty,
+            "\(differences.count) outputs moved; rerun with \(GoldenFile.updateVariable)=1 if intended:\n\(differences.map(\.description).joined(separator: "\n"))"
         )
+    }
+
+    @Test("still requires the rules to pass the cases they always have")
+    func mustPassIsPopulated() {
+        #expect(Self.rulesMustPass.count >= 200)
     }
 
     @Test("passes every case that names its destination, under that destination's formatter and its caret")
@@ -128,8 +73,12 @@ struct RulesCorpusTests {
         // Grammar cases name a destination too, but repairs are the model's alone; the floor is below.
         let named = Set(
             EvaluationCorpus.all.filter { $0.destination != .plain && $0.category != .grammar }.map(\.id))
-        #expect(named.count == 56)
-        #expect(named.subtracting(Self.modelOnly).isSubset(of: Self.rulesMustPass))
+        #expect(named.count == 64 + Self.knownFailures.count)
+        #expect(
+            named.subtracting(Self.modelOnly).subtracting(Self.knownFailures).isSubset(of: Self.rulesMustPass)
+        )
+        #expect(Self.knownFailures.isSubset(of: named))
+        #expect(Self.knownFailures.isDisjoint(with: Self.rulesMustPass))
         #expect(Self.modelOnly.isSubset(of: named))
         #expect(Self.modelOnly.isDisjoint(with: Self.rulesMustPass))
         #expect(Set(EvaluationCorpus.cases(in: .grammar).map(\.id)).isDisjoint(with: Self.rulesMustPass))
@@ -170,6 +119,15 @@ struct RulesCorpusTests {
     @Test("covers every grammar case in the leave-alone list, so a new slip cannot skip the floor")
     func grammarCasesAreAllHeld() {
         #expect(EvaluationCorpus.cases(in: .grammar).count == 22)
+    }
+
+    @Test("writes every second-language case as spoken, with no article, preposition or tense repaired")
+    func rulesKeepSecondLanguageGrammar() async throws {
+        #expect(EvaluationCorpus.secondLanguage.count == 40)
+        for testCase in EvaluationCorpus.secondLanguage {
+            let written = try await RuleBasedTransformer().transform(testCase.transformationRequest()).text
+            #expect(written == testCase.expected, "\(testCase.id) wrote \(written)")
+        }
     }
 
     @Test("gives every destination at least three cases, so the bake-off can score its block")
@@ -224,6 +182,7 @@ struct RulesCorpusTests {
             ("fifty-fifty-idiom", "It's fifty fifty."),
             ("page-fraction", "Page 2 of 3."),
             ("spoken-comma", "We still need milk, eggs, and bread from the shop."),
+            ("spoken-comma-before-next-sentence-of-course", "We shipped, of course it broke."),
             ("new-paragraph", "Thanks for the update.\n\nThe second issue is the login timeout."),
             ("time-of-day", "The dentist moved my appointment to 2:30 pm tomorrow."),
             ("port-number", "The gateway listens on port 8080 in staging."),
@@ -292,5 +251,14 @@ struct RulesCorpusTests {
     func exactText(id: String, expected: String) async throws {
         let testCase = try #require(EvaluationCorpus.all.first { $0.id == id })
         #expect(try await RuleBasedTransformer().transform(testCase.transformationRequest()).text == expected)
+    }
+
+    @Test("a spoken comma before a new sentence is written without keeping the mark word")
+    func spokenCommaBeforeNextSentenceOfCourse() async throws {
+        let testCase = try #require(
+            EvaluationCorpus.all.first { $0.id == "spoken-comma-before-next-sentence-of-course" })
+        let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
+
+        #expect(result.text == testCase.expected)
     }
 }

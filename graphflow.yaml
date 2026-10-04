@@ -18,6 +18,7 @@ issues:
   provider: github
 
 tracker:
+  # Local working file, gitignored and never committed. Future work is a GitHub issue.
   path: PLAN.md
 
 rules_files:

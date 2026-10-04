@@ -50,7 +50,7 @@ public enum Plausibility: Sendable, Equatable {
     case overBudget
 }
 
-/// What the machine says the next word may be, which decides whether the model writes freely, chooses, or is not asked. See `Docs/predict-agent.md`, A3.
+/// What the machine says the next word may be, which decides whether the model writes freely, chooses, or is not asked. See `Docs/predict-agent.md`.
 public enum ArgumentOptions: Equatable, Sendable {
     /// Anything: the word is one the command reads as text, or the machine has not answered yet.
     case open
@@ -68,10 +68,10 @@ public enum Verification {
     /// How unlikely, per token, a candidate may be before the model's objection counts, set from `uttrflow-bakeoff score`.
     public static let plausibilityFloor = -6.0
 
-    /// The mean log-probability per token its own pass must have given a generated line for it to be drawn alone, set from `uttrflow-bakeoff complete --fixtures`. See `Docs/predict-precision.md`, P6.
+    /// The mean log-probability per token its own pass must have given a generated line for it to be drawn alone, set from `uttrflow-bakeoff complete --fixtures`. See `Docs/predict-precision.md`.
     public static let certainFloor = -0.9
 
-    /// The same measure a generated line needs to be offered among alternatives, looser because the person picks from a list. See `Docs/predict-precision.md`, P6.
+    /// The same measure a generated line needs to be offered among alternatives, looser because the person picks from a list. See `Docs/predict-precision.md`.
     public static let choiceFloor = -1.5
 
     /// Whether a generated line's score clears a floor; a line no pass scored never does.

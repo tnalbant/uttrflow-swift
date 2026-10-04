@@ -37,34 +37,24 @@ public struct AcceptKeys: Sendable, Equatable {
         key(for: AppContext(bundleIdentifier: bundleIdentifier))
     }
 
-    /// The key that accepts in this application, including browser tab titles when they identify a spreadsheet.
+    /// The key that accepts in this application, including when a browser title identifies its destination.
     public func key(for application: AppContext) -> AcceptKey {
         let identifier = application.bundleIdentifier.map(ApplicationKey.of)
         if let identifier, let chosen = overrides[identifier] { return chosen }
         if let identifier, TerminalApplications.contains(identifier) { return .rightArrow }
-        if let identifier, Self.editors.contains(where: identifier.hasPrefix) { return .optionTab }
-        if DestinationClassifier.kind(for: application) == .spreadsheet { return .optionTab }
+        if let kind = DestinationClassifier.kind(for: application) {
+            switch kind {
+            case .codeEditor, .sqlEditor, .documentEditor, .spreadsheet, .notes:
+                return .optionTab
+            case .chat, .email, .terminal:
+                return .tab
+            }
+        }
         return .tab
     }
 
     /// The same answer for a field, which is what the rest of the module carries around.
     public func key(for surface: Surface) -> AcceptKey {
         key(forBundleIdentifier: surface.bundleIdentifier)
-    }
-
-    /// The editors in the destination table, matched on a lowercased prefix.
-    private static let editors = DestinationRules.bundlePrefixes(
-        of: [.codeEditor, .sqlEditor, .documentEditor])
-}
-
-/// The applications whose text areas hold commands rather than prose, which Accessibility cannot tell by role alone.
-public enum TerminalApplications {
-    /// Lowercased bundle-identifier prefixes, so one entry covers a vendor's whole family.
-    public static let bundleIdentifierPrefixes = DestinationRules.bundlePrefixes(of: [.terminal])
-
-    /// Whether this application is a terminal, matched on a lowercased prefix since macOS is inconsistent about case.
-    public static func contains(_ bundleIdentifier: String) -> Bool {
-        let identifier = ApplicationKey.of(bundleIdentifier)
-        return bundleIdentifierPrefixes.contains(where: identifier.hasPrefix)
     }
 }

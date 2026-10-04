@@ -2,6 +2,7 @@
 private import Synchronization
 import Foundation
 import UttrflowClipboard
+import UttrflowCore
 
 /// Remembers the rows last drawn, keyed by clip, with selection applied afterwards.
 final class PanelRowMemo: Sendable, Equatable {

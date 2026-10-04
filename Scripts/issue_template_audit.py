@@ -4,7 +4,7 @@
 This repository's public intake surface is its `.github/ISSUE_TEMPLATE/*.yml` files. Each
 one renders, on GitHub, into a form a contributor fills in to open an issue; the answers
 go straight into the issue body, which is published as soon as the issue is filed. The
-disclosure rule in `AGENTS.md` already polices commits and pull requests, but it cannot
+disclosure rule in `Docs/agents/public-boundary.md` already polices commits and pull requests, but it cannot
 reach the contributor inside the form — by the time a maintainer sees the answer, it is
 already a published page on a public repository.
 
@@ -381,7 +381,7 @@ def report(findings):
         file=sys.stderr,
     )
     print(
-        "    See `AGENTS.md`, \"What must never reach a tracked file\".",
+        "    See `Docs/agents/public-boundary.md`.",
         file=sys.stderr,
     )
     print("", file=sys.stderr)

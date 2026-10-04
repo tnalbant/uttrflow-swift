@@ -1,5 +1,5 @@
 /// What the user is looking at when they dictate; every field is optional, macOS grants each conditionally.
-public struct AppContext: Sendable, Equatable, Codable {
+public struct AppContext: Sendable, Equatable {
     /// Localised name of the frontmost application, e.g. `"Slack"`.
     public let applicationName: String?
     /// Bundle identifier of the frontmost application, e.g. `"com.tinyspeck.slackmacgap"`.
@@ -42,26 +42,6 @@ public struct AppContext: Sendable, Equatable, Codable {
         self.isMultiline = isMultiline
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case applicationName, bundleIdentifier, documentName, selectedText, precedingText
-        case followingText, isSecure, accessibilityRole, isMultiline
-    }
-
-    /// Reads a context written before ``isSecure`` existed as one that is not secure.
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            applicationName: try container.decodeIfPresent(String.self, forKey: .applicationName),
-            bundleIdentifier: try container.decodeIfPresent(String.self, forKey: .bundleIdentifier),
-            documentName: try container.decodeIfPresent(String.self, forKey: .documentName),
-            selectedText: try container.decodeIfPresent(String.self, forKey: .selectedText),
-            precedingText: try container.decodeIfPresent(String.self, forKey: .precedingText),
-            followingText: try container.decodeIfPresent(String.self, forKey: .followingText),
-            isSecure: try container.decodeIfPresent(Bool.self, forKey: .isSecure) ?? false,
-            accessibilityRole: try container.decodeIfPresent(String.self, forKey: .accessibilityRole),
-            isMultiline: try container.decodeIfPresent(Bool.self, forKey: .isMultiline))
-    }
-
     /// The context available when macOS tells us nothing.
     public static let unknown = AppContext()
 
@@ -73,5 +53,20 @@ public struct AppContext: Sendable, Equatable, Codable {
             && selectedText == nil
             && precedingText == nil
             && followingText == nil
+    }
+}
+
+extension AppContext: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    /// The application only, so a log line or interpolation never carries what the field holds.
+    public var description: String {
+        "AppContext(\(applicationName ?? "unknown app"), \(bundleIdentifier ?? "no bundle"), field text redacted)"
+    }
+
+    /// The same redacted line as ``description``.
+    public var debugDescription: String { description }
+
+    /// A mirror with the application only, so `dump` and debugger views cannot print field text.
+    public var customMirror: Mirror {
+        Mirror(self, children: ["identity": identity], displayStyle: .struct)
     }
 }

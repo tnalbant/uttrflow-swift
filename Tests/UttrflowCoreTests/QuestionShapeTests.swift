@@ -10,6 +10,16 @@ private func shapes(_ text: String) -> [WordShape] {
 @Suite("QuestionShape")
 struct QuestionShapeTests {
     @Test(
+        "reads an inversion around a quantifier as a question",
+        arguments: [
+            "are both builds green", "is every test passing", "are all checks done", "is each step clear",
+            "is either option fine", "is neither branch merged",
+        ])
+    func asksAroundAQuantifier(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
         "reads a direct question from its word order",
         arguments: [
             "where did you put the keys", "which branch should I merge into",
@@ -32,12 +42,17 @@ struct QuestionShapeTests {
             "I'm blocked on the credentials for the sandbox account can someone help",
             "I think this will break if the array is empty can you add a check",
             "what I mean is we should wait",
+            "who owns the service that is down", "what about the release",
             "This duplicates the logic in the helper class can we reuse that instead",
             "I don't have access to the production database can someone grant it",
             "kya tum aa rahe ho", "kab tak ho jayega", "tum aa rahe ho kya", "report bhej di kya",
             "report bhej diya kya", "report karoge kya", "kaunsa option better hai", "kaunsi file chahiye",
             "kaunse option sahi hain", "kya hua", "meeting kab hai", "tum kyun nahi aaye",
             "tum kal aa rahe ho na",
+            "may i come in", "may we leave early", "do they know", "had you heard about it",
+            "were you there when it happened", "did it work",
+            "how many of you are coming", "how much of it is left", "how about you",
+            "how old are you", "what a mess is this",
         ])
     func asks(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
@@ -46,8 +61,11 @@ struct QuestionShapeTests {
     @Test(
         "leaves a statement, an indirect question and a command alone",
         arguments: [
+            "how nice of you to come", "how beautiful it is here", "what a day i am so tired",
+            "what an idea you had", "what a lovely surprise", "what a mess this is", "what a day",
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
-            "what works for you is fine", "the person who owns the notification service is unclear",
+            "what works for you is fine", "who owns the house is unclear",
+            "the person who owns the notification service is unclear",
             "where I put the keys is a mystery",
             "I don't know why the build failed", "when the build finishes we ship",
             "do the dishes before you leave",
@@ -61,9 +79,33 @@ struct QuestionShapeTests {
             "the printer is jammed again who used it last",
             "please close the door will you be home tonight",
             "are you around yet i should be there in ten",
+            "the report is late, which is annoying",
+            "we moved the launch, which has upset the client",
+            "the server crashed twice, which can happen",
+            "the plan is simple, which does not help",
+            "I forgot my umbrella again, which is really annoying",
+            "the memory usage keeps growing, which looks like a leak in the cache layer",
+            "the author, whose work I had admired, retired last year",
+            "the man, whom I met yesterday, sent a follow-up note",
+            "do it now", "do it yourself", "have it ready by friday", "have it your way",
+            "may the force be with you", "may the best team win", "may he rest in peace",
+            "may all your dreams come true", "had i known i would have come", "do this before lunch",
+            "have a seat", "do your best",
         ])
     func leaves(text: String) {
         #expect(!QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
+        "keeps a comma-led determiner \"which\" as a question opener",
+        arguments: [
+            "I sent it, which one do you want",
+            "I have three, which is it",
+            "Which version are you running",
+            "i forgot my umbrella, which one do you want",
+        ])
+    func commaLedWhichAsks(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
     }
 
     @Test(
@@ -108,6 +150,26 @@ struct QuestionShapeTests {
     }
 
     @Test(
+        "reads a name before a verb that can take a noun phrase as a statement",
+        arguments: [
+            "ravi is the owner of the account", "maria is the one who called",
+            "siobhan is the lead on the ferrovia launch", "priya has the keys to the office",
+            "dhruv was the one who fixed it", "papa does the dishes every night",
+            "maria is the manager", "maria is my sister", "maria is happy with the results",
+            "maria is the lead",
+        ])
+    func namedStatementBeforeNounPhrase(text: String) {
+        #expect(!QuestionShape.asks(shapes(text)))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes(text)) == nil)
+    }
+
+    @Test("still reads a name before a modal and a noun phrase as an address")
+    func namedAddressBeforeModal() {
+        #expect(QuestionShape.asks(shapes("priya can the build go out today")))
+        #expect(QuestionShape.leadingQuestionOpenerIndex(in: shapes("priya can the build go out today")) == 0)
+    }
+
+    @Test(
         "keeps dependent clauses inside an inverted question",
         arguments: [
             "is it okay if i leave at five", "is it fine if we start late", "is it okay when i call later",
@@ -133,8 +195,33 @@ struct QuestionShapeTests {
             "mujhe nahi pata ye kya hai", "mujhe pata nahi tum kab aaoge",
             "mujhe nahi pata ki tum kab aaoge", "maine kaha tum kab aaoge", "I don't know ye kya hai",
             "kya baat hai", "woh kya hai na yaani mujhe time chahiye",
+            "mujhe nahi pata woh kahan hai", "usne bataya meeting kab hai",
+            "mujhe yaad nahi kitna paisa diya",
+            "main dekh raha hoon kaise hota hai", "mujhe pata hai tum kyun nahi aaye",
         ] {
             #expect(!QuestionShape.asks(shapes(text)), "Expected a statement: \(text)")
         }
+    }
+}
+
+@Suite("ReviewTag")
+struct ReviewTagTests {
+    @Test(
+        "reads a review label said first only where it heads a clause",
+        arguments: [
+            ("nit spelling mistake here", true), ("minor we should log it", true),
+            ("question is this needed", true), ("question is that needed", false),
+            ("minor changes only", false), ("question is whether we ship", false),
+            ("question for you all", false), ("nit: done here", false), ("nit done", false),
+            ("we have one nit", false),
+        ])
+    func leads(text: String, expected: Bool) {
+        #expect(ReviewTag.leads(shapes(text)) == expected)
+    }
+
+    @Test("judges the clause after a colon on its own")
+    func clauseAfterColon() {
+        #expect(QuestionShape.asks(shapes("question: why is this async")))
+        #expect(!QuestionShape.asks(shapes("note: we ship today")))
     }
 }

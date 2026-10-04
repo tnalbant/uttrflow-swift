@@ -411,7 +411,7 @@ def write_pair(stem, build):
     names = []
     for dark, suffix in ((False, ""), (True, "-Dark")):
         name = f"{stem}{suffix}.dc.html"
-        with open(name, "w") as handle:
+        with open(DESIGN_DIR / name, "w") as handle:
             handle.write(build(dark))
         names.append(name)
     return names

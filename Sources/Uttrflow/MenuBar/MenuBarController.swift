@@ -384,7 +384,7 @@ final class MenuBarController: NSObject {
         return flags
     }
 
-    /// The coloured dot beside the status line.
+    /// The coloured marker beside the status line, shaped per emphasis under Differentiate Without Colour.
     private static func statusDot(for emphasis: MenuBarEmphasis) -> NSImage? {
         let colour: NSColor =
             switch emphasis {
@@ -393,7 +393,9 @@ final class MenuBarController: NSObject {
             case .normal: .systemGreen
             }
 
-        let dot = NSImage(systemSymbolName: "circlebadge.fill", accessibilityDescription: nil)
+        let withoutColour = NSWorkspace.shared.accessibilityDisplayShouldDifferentiateWithoutColor
+        let marker = emphasis.marker(differentiatesWithoutColour: withoutColour)
+        let dot = NSImage(systemSymbolName: marker, accessibilityDescription: nil)
         let image = dot?.withSymbolConfiguration(.init(paletteColors: [colour]))
         image?.isTemplate = false
         return image

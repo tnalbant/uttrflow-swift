@@ -35,6 +35,16 @@ struct Insert: AsyncParsableCommand {
         }
     }
 
+    /// The strategy a `--via` name forces, or nil for the full route.
+    static func method(named via: String?) -> TextInsertionMethod? {
+        switch via {
+        case "accessibility": .accessibility
+        case "paste": .pasteboard
+        case "clipboard": .clipboard
+        default: nil
+        }
+    }
+
     func validate() throws {
         guard !text.isEmpty else { throw ValidationError("Nothing to insert.") }
         guard (0...60).contains(delay) else { throw ValidationError("--delay must be 0 to 60.") }
@@ -59,30 +69,17 @@ struct Insert: AsyncParsableCommand {
         }
         Terminal.clearLine()
 
-        let coordinator =
-            switch via {
-            case "accessibility":
-                TextInsertionCoordinator(strategies: [
-                    AccessibilityTextInsertionEngine(focus: AXAccessibilityFocus())
-                ])
-            case "paste":
-                TextInsertionCoordinator(strategies: [
-                    PasteboardTextInsertionEngine(
-                        focus: AXAccessibilityFocus(), pasteboard: SystemPasteboard(),
-                        keystrokes: CGEventKeystrokeSender())
-                ])
-            case "clipboard":
-                TextInsertionCoordinator(strategies: [
-                    ClipboardTextInsertionEngine(pasteboard: SystemPasteboard())
-                ])
-            default:
-                TextInsertion.coordinator(reporting: Self.report)
-            }
+        // Built by the app's own factory, so a forced strategy still reads the secure field and destination.
+        let coordinator = TextInsertion.coordinator(reporting: Self.report, only: Self.method(named: via))
         let clock = ContinuousClock()
         let start = clock.now
         do {
             let attempt = try await coordinator.insert(text)
             print("Inserted via \(attempt.method.rawValue), \(attempt.arrival.rawValue).")
+            let destination = attempt.destination
+            let name = destination?.applicationName ?? destination?.bundleIdentifier ?? "unknown"
+            print("  destination: \(name)")
+            print("  secure: \(attempt.intoSecureField)")
             print("  took \(String(format: "%.2f", start.duration(to: clock.now).inSeconds))s in all")
         } catch {
             print(error.userMessage)

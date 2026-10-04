@@ -12,6 +12,8 @@ public struct SnippetRow: Sendable, Equatable, Identifiable {
     public let text: String
     /// How often it has fired, as text.
     public let timesUsed: String
+    /// "Used 3 times", what VoiceOver reads for the use count.
+    public let timesUsedSpoken: String
     /// "Today", "Tuesday", "12 Aug" — or "Never", because an unused snippet is worth spotting.
     public let lastUsed: String
     /// Edit and Delete.
@@ -21,13 +23,14 @@ public struct SnippetRow: Sendable, Equatable, Identifiable {
 
     /// Builds a row from its parts.
     public init(
-        id: UUID, trigger: MainPill, text: String, timesUsed: String, lastUsed: String,
-        actions: [MainAction], tint: Int = 0
+        id: UUID, trigger: MainPill, text: String, timesUsed: String, timesUsedSpoken: String,
+        lastUsed: String, actions: [MainAction], tint: Int = 0
     ) {
         self.id = id
         self.trigger = trigger
         self.text = text
         self.timesUsed = timesUsed
+        self.timesUsedSpoken = timesUsedSpoken
         self.lastUsed = lastUsed
         self.actions = actions
         self.tint = tint
@@ -52,6 +55,10 @@ public struct SnippetEditor: Sendable, Equatable {
     public let badge: MainPill
     /// Why this cannot be saved yet, in words. Absent when it can.
     public let problem: String?
+    /// "Said aloud, this arrives as “email 1”.", present only when dictation changes the trigger's words.
+    public let arrival: String?
+    /// Saves the snippet under the words that arrive, so it fires; absent when there is no arrival or a problem.
+    public let saveArrived: MainAction?
     /// Commits the snippet.
     public let save: MainAction
     /// Closes the editor unchanged.
@@ -70,6 +77,8 @@ public struct SnippetEditor: Sendable, Equatable {
         textLabel: String,
         badge: MainPill,
         problem: String?,
+        arrival: String? = nil,
+        saveArrived: MainAction? = nil,
         save: MainAction,
         cancel: MainAction
     ) {
@@ -81,6 +90,8 @@ public struct SnippetEditor: Sendable, Equatable {
         self.textLabel = textLabel
         self.badge = badge
         self.problem = problem
+        self.arrival = arrival
+        self.saveArrived = saveArrived
         self.save = save
         self.cancel = cancel
     }
@@ -106,6 +117,20 @@ public struct SnippetDraft: Sendable, Equatable {
     public var isUntouched: Bool { trigger.isEmpty && text.isEmpty }
 }
 
+/// What one trigger phrase becomes once dictation has cleaned it, which is what the matcher compares.
+public struct SnippetArrival: Sendable, Equatable {
+    /// The trigger as typed when this was measured.
+    public let trigger: String
+    /// The same words as they reach the matcher after the dictionary and the tidier.
+    public let arrives: String
+
+    /// Pairs a trigger with how it arrives.
+    public init(trigger: String, arrives: String) {
+        self.trigger = trigger
+        self.arrives = arrives
+    }
+}
+
 /// Everything the snippets page is drawn from.
 public struct SnippetsSnapshot: Sendable, Equatable {
     /// In the store's order.
@@ -116,18 +141,24 @@ public struct SnippetsSnapshot: Sendable, Equatable {
     public let refusal: String?
     /// What has been typed into the search field.
     public let query: String
+    /// The chosen order's identifier; empty or unknown is ``SnippetSort/standard``.
+    public let sort: String
     /// The clock the page is drawn against.
     public let now: Date
+    /// How the draft's trigger arrives when said, once measured; one for an older trigger is ignored.
+    public let arrival: SnippetArrival?
 
     /// Builds a snapshot; everything but the clock defaults to empty.
     public init(
         snippets: [Snippet] = [], draft: SnippetDraft? = nil, refusal: String? = nil,
-        query: String = "", now: Date
+        query: String = "", sort: String = "", now: Date, arrival: SnippetArrival? = nil
     ) {
+        self.arrival = arrival
         self.snippets = snippets
         self.draft = draft
         self.refusal = refusal
         self.query = query
+        self.sort = sort
         self.now = now
     }
 }
@@ -172,7 +203,9 @@ public enum SnippetsPresenter {
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent
     ) -> SnippetsPresentation {
-        let listed = matches(snapshot.snippets, query: snapshot.query, locale: locale)
+        let sort = SnippetSort(named: snapshot.sort)
+        let listed = sort.ordered(
+            matches(snapshot.snippets, query: snapshot.query, locale: locale), id: \.id, locale: locale)
         let places = Dictionary(
             snapshot.snippets.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         let rows = listed.map {
@@ -191,6 +224,7 @@ public enum SnippetsPresenter {
                 search: snapshot.snippets.isEmpty
                     ? nil
                     : MainSearchField(placeholder: searchPlaceholder, query: snapshot.query),
+                sort: snapshot.snippets.isEmpty ? nil : sort.menu,
                 addAction: isBare
                     ? nil : MainAction(title: "New Snippet", symbolName: "plus", intent: .addSnippet)),
             rows: rows,
@@ -232,6 +266,7 @@ public enum SnippetsPresenter {
             trigger: MainPill(text: snippet.trigger, tone: .accent),
             text: snippet.expansion,
             timesUsed: "\(snippet.timesUsed)",
+            timesUsedSpoken: "Used \(MainFormatting.count(snippet.timesUsed, "time", "times"))",
             lastUsed: snippet.lastUsed.map {
                 MainFormatting.day($0, now: now, calendar: calendar, locale: locale)
             } ?? "Never",
@@ -246,7 +281,9 @@ public enum SnippetsPresenter {
 
     /// The inline editor over a draft, with the reason it cannot be saved yet.
     static func editor(for draft: SnippetDraft, in snapshot: SnippetsSnapshot) -> SnippetEditor {
-        SnippetEditor(
+        let problem = problem(with: draft, in: snapshot)
+        let arrived = arrival(of: draft, in: snapshot)
+        return SnippetEditor(
             editing: draft.editing,
             trigger: draft.trigger,
             text: draft.text,
@@ -254,12 +291,35 @@ public enum SnippetsPresenter {
             triggerLabel: "When I say",
             textLabel: "Type this",
             badge: MainPill(text: draft.editing == nil ? "New" : "Editing"),
-            problem: problem(with: draft, in: snapshot),
+            problem: problem,
+            arrival: arrived.map { "Said aloud, this arrives as “\($0)”." },
+            saveArrived: problem == nil && !draft.text.isEmpty
+                ? arrived.map {
+                    MainAction(
+                        title: "Save as “\($0)”",
+                        intent: .saveSnippet(trigger: $0, text: draft.text, replacing: draft.editing))
+                } : nil,
             save: MainAction(
                 title: "Save",
                 intent: .saveSnippet(
                     trigger: draft.trigger, text: draft.text, replacing: draft.editing)),
             cancel: MainAction(title: "Cancel", intent: .cancelSnippetEdit))
+    }
+
+    /// The words the draft's trigger arrives as, only when the matcher would see different words from those typed.
+    static func arrival(of draft: SnippetDraft, in snapshot: SnippetsSnapshot) -> String? {
+        let trigger = draft.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let arrival = snapshot.arrival,
+            arrival.trigger.trimmingCharacters(in: .whitespacesAndNewlines) == trigger
+        else { return nil }
+        let arrives = arrival.arrives.trimmingCharacters(in: .whitespacesAndNewlines)
+        let heard = matchKey(arrives)
+        return heard.isEmpty || heard == matchKey(trigger) ? nil : arrives
+    }
+
+    /// The words the matcher compares, which is the one definition of a trigger's identity.
+    private static func matchKey(_ trigger: String) -> [String] {
+        Snippet(trigger: trigger, expansion: " ", created: .distantPast).triggerWords
     }
 
     /// Why a draft cannot be saved; a duplicate trigger is refused, since one of two would never fire.
@@ -274,7 +334,7 @@ public enum SnippetsPresenter {
             return "A snippet needs something to type."
         }
         // Compared on the matcher's view of the trigger, so "my address" and "My address:" are one snippet.
-        let key = Snippet(trigger: trigger, expansion: " ", created: .distantPast).triggerWords
+        let key = matchKey(trigger)
         let clash = snapshot.snippets.contains {
             $0.id != draft.editing && $0.triggerWords == key
         }

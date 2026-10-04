@@ -1,58 +1,28 @@
-# Making speech accuracy measurable
+# Measuring speech accuracy
 
-A proposal, written after WhisperKit 1.1.0 was declined because nobody could say whether
-it was better or worse. This is about the smallest thing that would have answered that.
+Speech accuracy is measured by reading a fixed set of passages aloud once, then running every
+speech-engine change over the same recordings and comparing word error rates against a stored
+baseline. The passages are `TranscriptionCorpus` (`Sources/UttrflowEval/TranscriptionCorpus.swift`),
+the scorer is `TranscriptionScorer` and the gate is `AccuracyBaseline` and `RegressionTolerance`
+(`Sources/UttrflowEval/`), and the command is `uttrflow-eval` (`Sources/uttrflow-eval/`). How each
+measurement decision is made is in [`eval-methodology.md`](eval-methodology.md); the edit distance
+itself is in [`core-word-error-rate.md`](core-word-error-rate.md). To pick the command a given
+change needs, start at [measure-a-change.md](measure-a-change.md); the targets a measurement is
+held to are in [accuracy-targets.md](accuracy-targets.md).
 
-**The package depends on 1.1.0 anyway, and that is not a change of mind.** `Package.swift`
-declared `from: "0.18.0"` when this repository was published on 29 August; dependabot raised
-it to 1.1.0 the same day (`34b8440`, a `version-update:semver-major`), and this page was
-written the next morning without noticing. So the version this document says was declined is
-the version the recogniser has been running on since before the document existed — a
-major-version change to the dictation path that arrived without the measurement argued for
-below, because nothing gates it. The argument still stands; only its premise was stale.
+## What exists
 
-**Nothing gates it, so the version no longer floats.** `Package.swift` now pins WhisperKit
-exactly, for the reason Sparkle is pinned exactly and this one was not: a `from:` range lets
-a dependabot bump change how every dictation is decoded, and until the baseline below exists
-there is nothing that would notice. The pin is not a claim that 1.1.0 is the right version —
-it is a claim that moving off it should be somebody's decision rather than a Tuesday. What
-the repository does assert about the recogniser it links is in `WhisperKitContractTests`:
-the context window, the prompt cap `VocabularyPrompt` sizes itself to, the prefill length
-the timestamp rules count from, and every decoding option the product names. Those fail a
-build when upstream moves them; the words coming out still need the corpus.
-
-## The finding
-
-**Almost all of it already exists.** The blocker is fifteen minutes of somebody reading
-out loud, not the sixteen hours the operator runbook implies.
-
-| Piece | State |
+| Piece | Where |
 |---|---|
-| The passages to read | **Written.** 18 of them, in `TranscriptionCorpus.swift` |
-| A scorer, with `mustKeep` enforcement | **Written.** `TranscriptionScorer` |
-| Recording tool that works offline | **Written.** `uttrflow-eval record` |
-| Scoring tool that works offline | **Written.** `uttrflow-eval transcribe` |
-| A regression gate for CI | **Written.** `--fail-on-regression --tolerance` |
-| **The audio** | **Missing. This is the whole gap.** |
+| The passages to read | 18, in `TranscriptionCorpus.swift` |
+| A scorer that enforces `mustKeep` | `TranscriptionScorer` |
+| Recording, offline | `uttrflow-eval record` |
+| Scoring, offline | `uttrflow-eval transcribe` |
+| A regression gate | `transcribe --baseline … --fail-on-regression --tolerance` |
 
-## Why the sixteen hours is the wrong number
+No recordings are committed. Each contributor records their own (below).
 
-The runbook says *"about a thousand samples, roughly sixteen hours"*, and that is why this
-has never been started. But a thousand samples is **many speakers in many settings** —
-statistical power to say *"Uttrflow hears Indian-accented English this well"*, which is a
-claim about the product.
-
-Deciding whether a version bump made things worse needs something much weaker: **the same
-voice, the same passages, the same room, before and after.** Every source of variance
-except the engine is held constant, so a difference is attributable. One reader is not a
-weakness there; it is the design.
-
-The repository already computes what that costs. `TranscriptionCorpus.estimatedReadingTime`
-uses 120 words a minute plus thirty seconds a passage for settling and retakes:
-
-```
-18 passages · 686 words  →  14.7 minutes
-```
+## The corpus
 
 | Language | Passages | Words |
 |---|---|---|
@@ -60,140 +30,101 @@ uses 120 words a minute plus thirty seconds a passage for settling and retakes:
 | Hindi | 6 | 201 |
 | Hinglish | 6 | 183 |
 
-Five stressors are covered: everyday speech, proper nouns, digits, technical terms, and
-false starts. Those are exactly the axes on which recognisers differ — a model that
-regresses usually regresses on names and numbers first, and both are already isolated.
+Five stressors are spread across them: everyday speech, proper nouns, digits, technical terms and
+false starts. Recognisers usually regress on names and numbers first, and both are isolated.
 
-**So the minimum viable corpus is the one already written. It needs reading once.**
+`TranscriptionCorpus.estimatedReadingTime` allows 120 words a minute plus thirty seconds a passage
+for settling and retakes: 686 words over 18 passages is about 14.7 minutes of reading.
+`uttrflow-eval record --list-passages` prints the passages to read through first.
 
-## It already works without the backend
+## Why one reader is enough for a regression check
 
-This was the other assumption worth checking, because it is what stops a contributor
-running any of it. Both defaults are already the local ones:
+A claim about the product — how well it hears Indian-accented English, say — needs many speakers
+in many settings. Deciding whether an engine change made things worse needs much less: the same
+voice, passages and room before and after. Every source of variance except the engine is held
+constant, so a difference is attributable to the engine. The larger multi-speaker corpus in
+[`operator-runbook.md`](operator-runbook.md) is for claiming an accuracy number, not for catching
+a regression.
 
-- **`record` writes to disk first.** `--corpus-path` is where recordings go; `--upload` is
-  an opt-in extra that offers each take to the corpus service as it is recorded. `--sync`
-  is a separate, later step — it sends whatever `--upload` could not and does no
-  recording of its own, so it is not something to add to a first recording run. The
-  comment in `RecordCorpus.swift` is explicit that the local write is the commit and
-  uploading is layered on top, so a dead connection costs an upload and never a take.
-- **`transcribe` reads local recordings by default.** `--from-catalogue` is the flag that
-  goes to the backend instead. Nobody needs `CORPUS_BUCKET` or an operator token to measure
-  a change.
+## Running it
 
-Nothing has to be built for the offline path. It is the path.
-
-## What it would take
+Both defaults are local; nobody needs `CORPUS_BUCKET` or an operator token to measure a change.
 
 ```bash
-# once, ~15 minutes
+# once, about 15 minutes
 uttrflow-eval record --corpus-path ./corpus --cohort <reader>-quiet \
                      --speaker <label> --setting "quiet room, built-in mic"
 
-# per engine change, unattended
+# once per engine, to record the baseline
 uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
                          --baseline ./baseline.json --save-baseline
 
-# afterwards, to compare
+# after a change, to compare
 uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
                          --baseline ./baseline.json --fail-on-regression
 ```
 
-`--fail-on-regression` exits non-zero when any slice has got worse, with `--tolerance` in
-percentage points. Results are reported **by language, by stressor and by cohort** and are
-never pooled into one number — an engine that improves on English and regresses on Hinglish
-has not improved, and `AccuracyBaseline` already refuses to average that away. A run the
-gate cannot give a verdict on — different label, no shared samples, a changed recording,
-or a baseline/run whose normalisation rules are not recorded — also exits non-zero, since
-"no verdict" is not "no regression". The printed reason names which side needs re-measuring.
+- **`record` writes to disk first.** `--upload` offers each take to the corpus service as it is
+  accepted, and `--sync` later sends whatever `--upload` could not, recording nothing itself. The
+  local write is the commit, so a dead connection costs an upload and never a take.
+- **`transcribe` reads local recordings by default.** `--from-catalogue` reads the backend's
+  catalogue instead.
 
-**The gate checks it is still the exact recording set, not just the same case IDs.** Every
-score carries a `recordingIdentity` — a digest of the WAV bytes for a local take, the
-catalogue's own key for a backend sample — and `--save-baseline` stores it per passage.
-A later `--fail-on-regression` run refuses an ordinary verdict, rather than reporting a
-regression or a pass, when a shared case ID's identity has changed: the passage was read
-again since the baseline, and the movement is the new recording's, not the engine's. A
-baseline captured before this existed is reported the same way against a freshly identified
-run — unverifiable rather than silently treated as the same take.
+## What the gate says
 
-## What this would have said about WhisperKit 1.1.0
+`--fail-on-regression` exits non-zero when any slice has got worse by more than `--tolerance`
+percentage points (default 0.5). Results are reported by language, by stressor and by cohort and
+never pooled: an engine that improves on English and regresses on Hinglish has not improved.
 
-The decision that could not be made, made:
+A run the gate cannot judge also exits non-zero, because no verdict is not "no regression": a
+different label, no shared samples, a changed recording, or a baseline or run whose normalisation
+rules are not recorded. The printed reason names which side needs re-measuring.
 
-```
-uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
-                         --baseline ./baseline-0.18.0.json --fail-on-regression
-```
+The gate checks the exact recording set, not only the case IDs. Every score carries a
+`recordingIdentity` — a digest of the WAV bytes for a local take, the catalogue's own key for a
+backend sample — and `--save-baseline` stores it per passage. When a shared case ID's identity
+has changed, the passage was read again since the baseline, and the gate reports the comparison
+as unverifiable rather than as a pass or a regression. A baseline with no identities is reported
+the same way against a run that has them.
 
-Three outcomes, each with an obvious next step:
+## The committed baseline
 
-- **No slice moves beyond tolerance.** The bump is neutral on accuracy, so it is judged on
-  its costs alone — and 1.1.0 has one, a second copy of the Hugging Face download code
-  linked into the app as `ArgmaxCore`. Neutral benefit against a real cost is a decline,
-  but a decline for a stated reason.
-- **Hinglish or proper nouns regress.** Decline, with a number, and a bug report upstream
-  worth writing.
-- **Something improves materially.** Now the `ArgmaxCore` duplication is a trade rather than
-  a pure cost, and the conversation is about whether `Hub` can be dropped.
+`make accuracy-gate` synthesises the English passages with the `say` voice Samantha, transcribes
+them with the installed shipping model and compares with `Scripts/accuracy_baseline.json`. It
+needs no recordings, so every Mac with the model can run it; a Mac without the model stops at
+"is not installed". The baseline's label names the model variant, and each passage's
+`recordingIdentity` pins the synthesised audio, so a macOS release that changes the voice reports
+"unverifiable", not a pass. Its 305 words judge the overall rate; every smaller slice reports as
+too small to judge. Recorded speech is not in this baseline.
 
-Today none of those can be reached, so the answer defaults to "no" for every speech-engine
-change — which is a decision made by absence rather than on merit.
+Measured on an Apple M5 Pro, 48 GB, macOS 26.5.1, with
+`openai_whisper-large-v3-v20240930_turbo_632MB`: 3.6% word error rate over 6 passages, two runs
+identical. A baseline is replaced only through `--save-baseline` in the change that moves it.
 
-## Public datasets: later, and only for one axis
+## The recogniser's version is pinned
 
-Common Voice (CC0) and LibriSpeech (CC BY 4.0) are both permissively licensed and could be
-redistributed. They are **not** a shortcut here:
+`Package.swift` pins WhisperKit with `exact:`, as it pins Sparkle, so no dependency update changes
+how dictation is decoded without somebody deciding it. `WhisperKitContractTests`
+(`Tests/UttrflowSpeechTests/`) asserts what the product relies on from it: the 224-token context
+window, the prompt cap `VocabularyPrompt` sizes itself to, the prefill `DecoderPrefill` counts,
+the fallback and acceptance thresholds, and every decoding option the product names. Those fail a
+build when upstream moves them; whether the words still come out right needs the corpus.
 
-- Neither contains Hinglish, which is a third of this corpus and the part most likely to
-  regress.
-- Their audio comes with its own reference text, so the `mustKeep` requirements — the names,
-  version numbers and technical terms these passages were written around — do not apply.
-  A different thing would be measured.
-- They answer *"how does this engine do on many voices?"*, not *"did this change break
-  anything?"*
+## Public datasets are not the baseline
 
-They earn their place later, for the accent axis, once there is a baseline to extend. Not
-for the first fifteen minutes.
+Permissively licensed speech datasets are not used for the regression check:
 
-## Committing the audio: a real decision, not a detail
+- None contains Hinglish, a third of this corpus and the part most likely to regress.
+- Their reference text carries no `mustKeep` requirements — the names, versions and terms these
+  passages are written around — so they would measure a different thing.
+- They answer how an engine does across many voices, not whether a change broke anything.
 
-A corpus in the repository is what would let a contributor verify an engine change. Size is
-not the obstacle — 686 words is about 5.7 minutes of speech:
+They fit the accent axis of the larger corpus, not the before-and-after check.
 
-| Format | Size |
-|---|---|
-| 16 kHz mono WAV (what the store writes) | ~11 MB |
-| FLAC | ~5.5 MB |
-| Opus, 24 kbps | ~1 MB |
+## Why the audio is not committed
 
-**The obstacle is that a voice recording is personal data.** It is biometric, it is
-identifiable, and publishing it is irreversible in exactly the way this repository has
-already had cause to think carefully about. `Scripts/pii_audit.sh` would not catch it,
-because it reads text.
-
-Three options, and this is the operator's call:
-
-1. **Do not commit it.** Contributors record their own fifteen minutes and get a baseline
-   for their own voice — which is all a regression check needs, since the comparison is
-   always before-and-after on one voice. Costs a contributor fifteen minutes; keeps nobody's
-   voice in a public repository.
-2. **Commit it, with the reader's informed consent**, understanding it cannot be withdrawn.
-   Best reproducibility: everybody measures the same audio.
-3. **Commit a public-dataset subset** for English only, and keep the Hindi and Hinglish
-   recordings local. Reproducible for part of the corpus, silent on the part that matters
-   most.
-
-**Option 1 is the recommendation.** The corpus is fifteen minutes of reading; asking a
-contributor who wants to change the speech engine to spend fifteen minutes is proportionate,
-and it avoids publishing a voice for a benefit — shared audio — that a regression check does
-not actually need.
-
-## What is not proposed
-
-No new tooling. Every command above exists. The gap is a recording session and a decision
-about where the audio lives, and inventing a corpus format or a scoring harness to sit
-beside the ones already written would be the opposite of the smallest thing that works.
-
-The thousand-sample corpus in `Docs/operator-runbook.md` is still the right ambition for
-claiming an accuracy *number*. It is simply not what is needed to catch a regression, and
-conflating the two is what has kept both at zero.
+Size is not the obstacle — 686 words is about 5.7 minutes of speech, about 11 MB as 16 kHz mono
+WAV. **A voice recording is personal data**: biometric, identifiable, and impossible to withdraw
+once published, and `Scripts/pii_audit.sh` reads text, so `make audio-audit` refuses one instead. A regression
+check compares one voice before and after, so each contributor's own fifteen-minute recording is
+all it needs.

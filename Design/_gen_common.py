@@ -7,6 +7,11 @@ drawing system label/window colours; only `--label-4` keeps its original system-
 reading, for the one decorative dot that uses it.
 """
 
+from pathlib import Path
+
+# Generators write here whatever the working directory is, so a run from the repo root cannot strand output.
+DESIGN_DIR = Path(__file__).resolve().parent
+
 TOKENS = """
     :root {
       /* Matches BrandPalette.Text.primary.light. */

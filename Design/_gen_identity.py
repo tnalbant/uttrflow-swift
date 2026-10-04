@@ -103,7 +103,7 @@ body = f"""  <div>
     <div class="swatch-row">{swatches}</div>
   </div>"""
 
-with open("Identity.dc.html", "w") as handle:
+with open(DESIGN_DIR / "Identity.dc.html", "w") as handle:
     handle.write(
         page("Identity", 900, 780, body, extra_css=ID_CSS, pad=38).replace(
             'class="stage"', 'class="stage id"'

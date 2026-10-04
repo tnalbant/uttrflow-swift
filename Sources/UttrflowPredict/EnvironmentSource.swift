@@ -1,4 +1,5 @@
 public import struct Foundation.Date
+private import UttrflowCore
 
 /// One kind of thing this machine knows about itself, each read a different way.
 public enum EnvironmentKind: Sendable, Hashable {
@@ -260,11 +261,6 @@ public struct EnvironmentSource: Sendable {
     /// Whether a name could go on to finish what has been typed of it, case folded since the filesystem is not case sensitive here.
     static func hasPrefix(_ name: String, _ token: String) -> Bool {
         name.lowercased().hasPrefix(token.lowercased())
-    }
-
-    /// The names that could finish `prefix`, in whatever order they were given — the one filter a listing applies before anything is stat'ed.
-    static func matching(_ names: [String], prefix: String) -> [String] {
-        names.filter { Self.hasPrefix($0, prefix) }
     }
 
     /// The values that finish the token, shortest first, since the nearest completion is the likeliest.

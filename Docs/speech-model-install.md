@@ -1,9 +1,21 @@
 # Installing a speech model, one component at a time
 
 `FileSystemSpeechModelStore` in `Sources/UttrflowSpeech/SpeechModelStore.swift` owns where
-speech models live on disk and how they get there. The download itself is injected, so
-everything else — where files go, what counts as installed, refusing to re-download, cleaning
-up a failed install — is testable against a temporary directory with no network.
+speech models live on disk and how they get there: a `Models` folder under Application Support
+(`FileSystemSpeechModelStore.defaultRoot()`), one folder per model variant. The model is
+`SpeechModel.default` (`Sources/UttrflowSpeech/SpeechModel.swift`), and the tokenizer is fetched
+by `TokenizerDownload` (`Sources/UttrflowSpeech/TokenizerDownload.swift`). The download itself is
+injected, so everything else (where files go, what counts as installed, refusing to re-download,
+cleaning up a failed install) is testable against a temporary directory with no network.
+[`offline.md`](offline.md) states what may touch the network;
+[`speech-engines.md`](speech-engines.md) covers why the tokenizer is fetched here.
+
+| Value | Where | What it is |
+|---|---|---|
+| 645,668,913 bytes | `SpeechModel.largeV3Turbo.downloadBytes` | the default model's weights download |
+| 200 MB | `FileSystemSpeechModelStore.installMargin` | free space required beyond the rest of the download |
+| `.weights-revision` | `WeightsAssets.revisionFileName` | the file recording which pinned weights revision is installed |
+| `<root>/.partial/<variant>/` | `stagingLocation(of:)` | where weights download before they are complete |
 
 ## Two components, fetched separately
 
@@ -12,12 +24,11 @@ so the store asks for them one at a time instead of treating an install as all o
 
 ## Installed means "everything needed to transcribe with it"
 
-The weights alone are not enough, and treating them as enough made `isInstalled` a lie.
-WhisperKit will quietly fetch a missing tokenizer from Hugging Face the first time somebody
-dictates — on a plane, that is an unrecoverable failure reported as a load error rather than
-the missing download it actually is. Answering `false` is what puts the offer to install back
-in front of the user, which is the whole remedy for an install made by a build that only
-fetched weights.
+The weights alone are not enough. WhisperKit quietly fetches a missing tokenizer from Hugging
+Face the first time somebody dictates; on a plane, that is an unrecoverable failure reported as a
+load error rather than the missing download it actually is. So `isInstalled` answers `true` only
+when the weights *and* both tokenizer files are present, and answering `false` is what puts the
+offer to install back in front of the user.
 
 An empty directory is what a cancelled download leaves behind, and is likewise not installed:
 treating it as installed would fail later, further from the cause.
@@ -35,6 +46,13 @@ it there, so a manifest that forgets a file fails before it ships.
 The store checks pinned byte counts and a recorded weights revision on every menu draw; hashing
 600 MB there is not affordable. The downloader hashes each staged file before reusing it, so a
 revision bump fetches only changed files while the complete replacement stays in staging.
+
+An install made before the revision record existed has every pinned file and no record, so it
+reads as not installed. `install(_:onProgress:)` hashes such a folder in place first: when every
+file matches its pinned digest it writes the record and fetches nothing, and otherwise the
+ordinary repair runs. `whyNotInstalled(_:)` names which of these cases applies, and the
+`uttrflow-dev` refusals print it. Measured on an Apple M5 Pro with a pre-record install of the
+default model: `uttrflow-dev models install` adopted it in 4 seconds with no `.partial` folder.
 
 ## Missing components are ordered weights-first
 
@@ -59,12 +77,14 @@ replaces the whole directory in one `replaceItemAt`. A process killed at any poi
 including between the copy and the swap — leaves the model's directory as it was, so nothing
 half-fetched is ever mistaken for a model.
 
-The model root, staging folders, installed model folders and tokenizer files are marked
-`isExcludedFromBackup`. They are public downloaded data and can be fetched again, so backup tools
+The model root, staging folders, installed model folders and tokenizer files are excluded from
+backup (`PrivateFile.excludeFromBackup`). They are public downloaded data and can be fetched again, so backup tools
 that honour Finder's exclusion flag should not spend space carrying them.
 
-After a successful default install, unused non-default model folders are removed and their freed
-bytes are logged. Active recognisers hold a shared lock associated with their model folder until unload.
+After a successful default install, every other model folder not in use is removed and the freed
+bytes are logged. A loaded recogniser holds a shared lock on its model folder until it unloads
+(`ModelDirectoryUseLease`), and removal takes the exclusive lock, so a folder in use is never
+deleted.
 
 ## Unwinding a failed fetch, in proportion
 
@@ -120,14 +140,25 @@ LFS `oid` for a file stored in LFS, and `shasum -a 256` of the downloaded file f
 **To bump a tokenizer revision**, take the repository's current commit and the files' digests:
 
 ```bash
-curl -s https://huggingface.co/openai/whisper-base | head -0   # see the repository
-curl -s https://huggingface.co/api/models/openai/whisper-base | python3 -c 'import sys,json;print(json.load(sys.stdin)["sha"])'
-curl -sL https://huggingface.co/openai/whisper-base/resolve/<commit>/tokenizer.json | shasum -a 256
+curl -s https://huggingface.co/api/models/openai/whisper-large-v3 | python3 -c 'import sys,json;print(json.load(sys.stdin)["sha"])'
+curl -sL https://huggingface.co/openai/whisper-large-v3/resolve/<commit>/tokenizer.json | shasum -a 256
+curl -sL https://huggingface.co/openai/whisper-large-v3/resolve/<commit>/tokenizer_config.json | shasum -a 256
 ```
 
-Put both in `SpeechModel`, and say in the pull request what changed in the tokenizer and why the
+Put the commit in `tokenizerRevision` and the digests in `tokenizerDigests`, and say in the pull request what changed in the tokenizer and why the
 app should follow it. `Scripts/offline_audit.sh` fails on `resolve/main/`, so a revision cannot
 quietly become a branch again.
+
+## A load that fails
+
+A load checks only that each pinned file is present at its byte count, so a file damaged at the
+same size passes that check and fails inside Core ML. When a load fails, `WeightsAssets.loadFailure`
+reads the files: a missing or wrong-size file or tokenizer is `modelNotInstalled`; a file whose
+SHA-256 no longer matches its pin is `modelDamaged`, whose recovery is the download, and the
+revision record is withdrawn so the next install re-verifies through staging and fetches only the
+bad files; anything else stays `modelLoadFailed` with its retry. Nothing is downloaded until the
+person asks. Hashing the 618 MB large-v3 turbo install takes about 1.3 s on an Apple M5 Pro
+(`shasum -a 256` over its `.bin` files), paid only on the failure path, off the main actor.
 
 ## `FileManager`
 

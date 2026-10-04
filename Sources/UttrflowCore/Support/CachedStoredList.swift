@@ -36,7 +36,7 @@ public struct CachedStoredList<Value: Decodable & Encodable & Sendable>: Sendabl
 
     /// How many times the file has been decoded, which a test counts.
     public private(set) var diskReads = 0
-    /// Whether the last read found bytes that could not safely be treated as empty.
+    /// Whether the last read left unreadable bytes in place, so a write would replace the only copy.
     public private(set) var isUnreadable = false
 
     /// Goes up whenever the held value is replaced, so anything derived from it knows to rebuild.
@@ -61,7 +61,7 @@ public struct CachedStoredList<Value: Decodable & Encodable & Sendable>: Sendabl
         let read = reader(file)
         // An unreadable file is not held, so the set-aside path runs exactly as it did before.
         guard !read.isUnreadable else {
-            isUnreadable = true
+            isUnreadable = read.isLeftInPlace
             held = nil
             generation += 1
             return nil

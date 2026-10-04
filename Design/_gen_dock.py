@@ -209,7 +209,7 @@ body = f"""  <div style="padding: 4px 0 0">
     </div>
   </div>"""
 
-with open("Dock-States.dc.html", "w") as handle:
+with open(DESIGN_DIR / "Dock-States.dc.html", "w") as handle:
     handle.write(
         page("Dock states", 900, 880, body, extra_css=DOCK_CSS, pad=34).replace(
             'class="stage"', 'class="stage dock"'

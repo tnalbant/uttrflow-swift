@@ -2,6 +2,7 @@ public import UttrflowPredict
 
 // The MLX macros expand to code naming these types, so the imports cannot be private.
 import Foundation
+import UttrflowCore
 import HuggingFace
 import MLX
 import MLXHuggingFace
@@ -52,7 +53,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         self.confidenceMemory = initialConfidenceMemory
     }
 
-    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance.md`.
+    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance-suggestions.md`.
     private let weights: ReloadableWeights<ModelContainer>
 
     /// How many passes are using the model now, which a release waits out before it empties the weights.
@@ -62,8 +63,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     /// The Hugging Face cache a whole model is loaded from without asking the hub.
     private let cache: URL
 
-    /// The load in flight, which a second caller joins rather than starting its own.
-    private var loadInFlight: Task<Void, any Error>?
+    /// Shares model loading and lets a download caller retry a disk-only miss.
+    private let inFlightLoad = InFlightModelLoad()
 
     /// Loads the weights from disk when they are whole there, downloading them only when they are not.
     public func prepare(onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
@@ -81,13 +82,10 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws {
         guard container == nil else { return }
-        if let loadInFlight { return try await loadInFlight.value }
-        let step = Task { try await self.fill(downloader: downloader, onProgress: onProgress) }
-        loadInFlight = step
-        defer { if loadInFlight == step { loadInFlight = nil } }
-        // The caller that started the load stopping it stops the load, so a release never waits out the read.
-        try await withTaskCancellationHandler(
-            operation: { try await step.value }, onCancel: { step.cancel() })
+        try await inFlightLoad.run(
+            downloads: downloader != nil,
+            shouldRetry: { $0 is WeightsNotOnDisk },
+            operation: { try await self.fill(downloader: downloader, onProgress: onProgress) })
     }
 
     /// Reads the weights in, fetching them through `downloader` only where one is given.
@@ -122,8 +120,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     /// Empties the weights once every pass using them has ended, and hands the freed GPU buffers back to the system.
     public func release() async {
         container = nil
-        loadInFlight?.cancel()
-        loadInFlight = nil
+        await inFlightLoad.cancel()
         forgetReadings()
         await passesEnded()
         bufferCachePasses.begin()
@@ -226,7 +223,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         let cache: [KVCache]
     }
 
-    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance.md`.
+    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance-suggestions.md`.
     struct KeptPrefix<Cache>: @unchecked Sendable {
         // Held by one pass at a time, which is what makes writing to it safe.
         let tokens: [Int]
@@ -346,7 +343,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
-    private struct Run {
+    struct Run {
         let forgetGeneration: Int
         let text: String
         let stop: GenerateStopReason?
@@ -365,7 +362,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// What the parser makes of a pass, withholding a budget-cut line that has not ended.
-    private static func completions(
+    static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
         guard !(ask == .one && run.stop == .length) else { return [] }
@@ -377,12 +374,8 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
                 response = ""
             }
         }
-        let context = CompletionText.contextNeverCopied(in: situation)
-        // The prefill is the line's own start, so the answer reads as the whole line it would echo.
-        let lines = CompletionText.parse(response, typed: typed).compactMap {
-            CompletionText.trimmed($0, typed: typed, echoing: context)
-        }
-        return CompletionText.finished(lines, typed: typed, in: situation)
+        return CompletionText.modelCompletions(
+            from: response, typed: typed, echoPolicy: .required, in: situation)
     }
 
     /// One pass over the model: prefilled under the container's lock, decoded outside it so a score never waits on a line; a pass that fails throws, so the caller can tell it from an empty answer.
@@ -390,7 +383,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
         let forgetGeneration = self.forgetGeneration
-        guard let container, !Task.isCancelled, LatinScript.writes(typed),
+        guard let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
         beginPass()
@@ -546,17 +539,41 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     /// Every token the model is judged on with its log-probability, which is where a score comes from.
     public func judgedTokens(of candidate: String, following context: String) async -> [JudgedToken] {
         let generation = forgetGeneration
-        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.
-        if let line = judgementCache.recall(candidate: candidate) {
-            judgementCacheHits += 1
-            guard let container else { return [] }
-            guard let vocabulary = self.vocabulary else { return [] }
-            let judged = await container.perform { loaded in
-                Self.judgedFromCache(
-                    line, candidate: candidate, context: context, vocabulary: vocabulary,
-                    tokenizer: loaded.tokenizer)
+        // Reuse the candidate's token scores when its requested prefix-mass position is still current.
+        if let cachedLine = judgementCache.recall(candidate: candidate) {
+            guard let container else {
+                judgementCacheHits += 1
+                return []
             }
-            return generation == forgetGeneration ? judged : []
+            guard let vocabulary = self.vocabulary else { return [] }
+            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.
+            beginPass()
+            defer { endPass() }
+            let result = await container.perform { loaded -> (JudgedLine, [JudgedToken], Bool) in
+                let requestedStart = Self.requestedStart(
+                    cachedLine.tokens, candidate: candidate, context: context,
+                    vocabulary: vocabulary, tokenizer: loaded.tokenizer)
+                guard cachedLine.isEmpty || cachedLine.prefixMassIndex == requestedStart else {
+                    let line = Self.judge(
+                        candidate, context: context, vocabulary: vocabulary, with: loaded)
+                    let judged = Self.judgedFromCache(
+                        line, candidate: candidate, context: context, vocabulary: vocabulary,
+                        tokenizer: loaded.tokenizer)
+                    return (line, judged, false)
+                }
+                let judged = Self.judgedFromCache(
+                    cachedLine, candidate: candidate, context: context, vocabulary: vocabulary,
+                    tokenizer: loaded.tokenizer)
+                return (cachedLine, judged, true)
+            }
+            guard generation == forgetGeneration else { return [] }
+            if result.2 {
+                judgementCacheHits += 1
+            } else {
+                judgementCacheMisses += 1
+                judgementCache.remember(result.0, for: candidate)
+            }
+            return result.1
         }
         judgementCacheMisses += 1
         // A cancelled pass says nothing about the candidate, so it leaves the cache as it found it.
@@ -567,11 +584,12 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
                 for: candidate)
             return []
         }
+        guard let scoringVocabulary = self.vocabulary else { return [] }
         beginPass()
         defer { endPass() }
-        guard let scoringVocabulary = self.vocabulary else { return [] }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
-            let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)
+            let line = Self.judge(
+                candidate, context: context, vocabulary: scoringVocabulary, with: loaded)
             let judged = Self.judgedFromCache(
                 line, candidate: candidate, context: context, vocabulary: scoringVocabulary,
                 tokenizer: loaded.tokenizer)
@@ -587,41 +605,58 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 
     /// The whole candidate as the model reads it, keeping only the scores needed for typed-prefix judgements.
     private static func judge(
-        _ candidate: String, vocabulary: TokenHealing.Vocabulary, with loaded: ModelContext
+        _ candidate: String, context: String, vocabulary: TokenHealing.Vocabulary,
+        with loaded: ModelContext
     ) -> JudgedLine {
         let whole = loaded.tokenizer.encode(text: leadIn + candidate)
         guard !whole.isEmpty else {
             return JudgedLine(tokens: [], tokenLogProbabilities: [], prefixLogMasses: [], texts: [])
         }
+        let requestedStart = requestedStart(
+            whole, candidate: candidate, context: context, vocabulary: vocabulary,
+            tokenizer: loaded.tokenizer)
         let tokens = MLXArray(whole.map(Int32.init)).expandedDimensions(axis: 0)
         let output = loaded.model(LMInput.Text(tokens: tokens), cache: nil, state: nil)
         // Softmax in Float32, since the bf16 logits would round every log-probability to a coarse grid.
         let probabilities = logSoftmax(output.logits.asType(.float32), axis: -1)[0]
-        eval(probabilities)
-        var tokenLogProbabilities: [Float] = []
-        var prefixLogMasses: [Float?] = []
-        tokenLogProbabilities.reserveCapacity(whole.count)
-        prefixLogMasses.reserveCapacity(whole.count)
+        var tokenScores: [MLXArray] = []
+        var prefixMasses = [MLXArray?](repeating: nil, count: whole.count)
+        tokenScores.reserveCapacity(whole.count)
         for position in whole.indices {
             let row = probabilities[position]
             let token = whole[position]
-            tokenLogProbabilities.append(row[token].item(Float.self))
+            tokenScores.append(row[token])
+            guard position == requestedStart else { continue }
             let bytes = ScoredSpan.written(by: token, in: vocabulary.bytes)
             let continuing = ScoredSpan.continuing(bytes, in: vocabulary).filter { $0 != token }
-            prefixLogMasses.append(Self.logMass(of: continuing, in: row))
+            prefixMasses[position] = Self.logMass(of: continuing, in: row)
+        }
+        let readback = JudgementReadback.read(
+            tokenScores: tokenScores, prefixMasses: prefixMasses
+        ) { scalars in
+            concatenated(scalars.map { $0.expandedDimensions(axis: 0) }).asArray(Float.self)
         }
         let texts = whole.map { loaded.tokenizer.decode(tokenIds: [$0]) }
         return JudgedLine(
-            tokens: whole, tokenLogProbabilities: tokenLogProbabilities,
-            prefixLogMasses: prefixLogMasses, texts: texts)
+            tokens: whole, tokenLogProbabilities: readback.tokenScores,
+            prefixLogMasses: readback.prefixMasses, prefixMassIndex: requestedStart,
+            texts: texts)
+    }
+
+    private static func requestedStart(
+        _ whole: [Int], candidate: String, context: String,
+        vocabulary: TokenHealing.Vocabulary, tokenizer: any MLXLMCommon.Tokenizer
+    ) -> Int? {
+        let typed = tokenizer.encode(
+            text: leadIn + CompletionText.typedPart(of: candidate, following: context))
+        return ScoredSpan(whole: whole, typed: typed, bytes: vocabulary.bytes)?.start
     }
 
     /// The log probability mass of a token prefix, accumulated without copying a vocabulary-sized row.
-    private static func logMass(of tokens: [Int], in row: MLXArray) -> Float? {
-        let values = tokens.map { row[$0].item(Float.self) }
-        guard let largest = values.max(), largest > -.infinity else { return nil }
-        let sum = values.reduce(Float.zero) { $0 + exp($1 - largest) }
-        return largest + Foundation.log(sum)
+    private static func logMass(of tokens: [Int], in row: MLXArray) -> MLXArray? {
+        guard !tokens.isEmpty else { return nil }
+        let indices = MLXArray(tokens.map(Int32.init))
+        return row[indices].logSumExp()
     }
 
     /// The judged tokens for a typed prefix, cut from the cached line so a re-typed keystroke skips the forward pass.
@@ -637,7 +672,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 }
 
 extension WeightLoading<ModelContainer> {
-    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance.md`.
+    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance-suggestions.md`.
     static let mlx = WeightLoading(
         build: { try await MLXCandidateScorer.buildContainer(from: $0) },
         refill: { container, directory in

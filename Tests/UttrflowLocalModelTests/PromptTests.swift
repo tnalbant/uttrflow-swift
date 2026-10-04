@@ -211,29 +211,40 @@ struct PromptTests {
         "Trimming keeps the end of a text, the start of a name and the newest lines, and nothing when there is no room."
     )
     func trimmingKeepsWhatIsNearest() {
-        #expect(PromptBuilder.tail("one two three four", within: 2) == "hree four")
+        #expect(PromptBuilder.tail("one two three four", within: 2) == "four")
         #expect(PromptBuilder.tail("abc", within: 10) == "abc")
         #expect(PromptBuilder.tail("abc", within: 0) == "")
         #expect(PromptBuilder.leading("one two three four", within: 2) == "one two ")
         #expect(PromptBuilder.leading("abc", within: 0) == "")
         #expect(PromptBuilder.nearestLines("far\nnear", within: 1) == "")
         #expect(PromptBuilder.nearestLines("far\n  \nnear", within: 5) == "far\nnear")
-        #expect(PromptBuilder.head("abcdef", within: 3) == "abc")
-        #expect(PromptBuilder.head("abc", within: 0) == "")
         #expect(PromptBuilder.newest(["new", "older", "oldest"], within: 5) == ["new", "older"])
         #expect(PromptBuilder.newest(["new"], within: 1) == [])
         #expect(PromptBuilder.newest([], within: 100) == [])
+        let tail = PromptBuilder.tail("head abcdefgh word", within: 2)
+        #expect(tail == "word")
+        #expect(PromptBuilder.estimatedTokens(tail) <= 2)
+        let leading = PromptBuilder.leading("word abcdefgh", within: 2)
+        #expect(leading == "word ")
+        #expect(PromptBuilder.estimatedTokens(leading) <= 2)
+        let nearest = PromptBuilder.nearestLines("older abcdefgh word", within: 3)
+        #expect(nearest == "word")
+        #expect(PromptBuilder.estimatedTokens(nearest) <= 2)
+        #expect(PromptBuilder.tail("overlongword", within: 1).isEmpty)
+        #expect(PromptBuilder.leading("overlongword", within: 1).isEmpty)
+        #expect(PromptBuilder.nearestLines("overlongword", within: 2).isEmpty)
+        #expect(PromptBuilder.tail("earlier two     ", within: 1) == "two")
+        #expect(PromptBuilder.leading("     two later", within: 1) == "two")
+        #expect(PromptBuilder.nearestLines("earlier two     ", within: 2) == "two")
     }
 
-    @Test(
-        "A newest line too long for its allowance is kept cut down rather than dropped with the person's whole voice."
-    )
+    @Test("An overlong newest line keeps only whole words that fit its allowance")
     func theNewestLineIsCutRatherThanDropped() {
         let long = Array(repeating: "word", count: 60).joined(separator: " ")
         let kept = PromptBuilder.newest([long, "short"], within: 21)
         #expect(kept.count == 1 && long.hasPrefix(kept[0]))
         #expect(PromptBuilder.estimatedTokens(kept[0]) == 20)
-        #expect(PromptBuilder.newest(["newest line"], within: 2) == ["newe"])
+        #expect(PromptBuilder.newest(["newest line"], within: 2) == [])
         #expect(PromptBuilder.newest(["🙏🙏"], within: 1) == [])
         #expect(PromptBuilder.nearestLines(long, within: 11).hasSuffix("word word"))
     }
@@ -280,7 +291,7 @@ struct PromptTests {
         let prompt = message("yes, ", situation)
         #expect(
             prompt.contains(
-                "window \"" + String(repeating: "t", count: PromptBuilder.locatorCap) + "\", field"))
+                "window \"" + String(repeating: "t", count: PromptBuilder.locatorCap) + "…\", field"))
         #expect(!prompt.contains(String(repeating: "t", count: PromptBuilder.locatorCap + 1)))
         #expect(prompt.contains("Lines this person wrote here before:\non my way\nrunning late, sorry"))
         #expect(prompt.contains("On screen around the field:\nSearch or enter website name"))

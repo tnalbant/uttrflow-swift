@@ -89,7 +89,7 @@ public enum RemovalAudit {
         var place = split
         var negations: [Int] = []
         for trigger in said {
-            if trigger.count == 1, MeaningPreservationGuard.negatingWords.contains(trigger[0]) {
+            if trigger.count == 1, MeaningPreservationGuard.isNegation(trigger[0]) {
                 negations.append(run[place])
             }
             place += trigger.count

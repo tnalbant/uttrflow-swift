@@ -1,199 +1,226 @@
 # Telemetry: what leaves the Mac, and why a dictation never waits for it
 
-Three types carry Uttrflow's usage reporting: `TelemetryCollector` accumulates counters,
-`TelemetryReport` is the value that goes on the wire, and `TelemetryService` sends it and
-remembers what it sent. The code says what each does; this page says what the shapes
-guarantee and where the numbers come from.
+Uttrflow's usage reporting is opt-in counts and timings, never text. Four types in
+`Sources/UttrflowAccount/` carry it: `TelemetryCollector` accumulates counters,
+`TelemetryReport` is the value that goes on the wire, `TelemetryService` queues and sends
+reports and remembers what it sent, and `HTTPTelemetrySender` posts them. In the app target,
+`Sources/Uttrflow/UsageTelemetry.swift` owns the service, feeds it each finished dictation and
+flushes it on a timer; `AppDelegate.startTelemetry()` builds it from the saved setting. The
+code says what each type does; this page says what is sent, when, and what the shapes
+guarantee.
 
-## What is sent, when, and how to turn it off
+## Is it on?
 
-**It is off by default.** Settings → Privacy → "Share usage
-statistics" is `Settings.sharesUsageStatistics`, `false` until the user chooses to share.
-The statistics are not anonymous: while somebody is signed in, every report is
-attributed to their account, as **Where** below explains. What a report can carry does not
-change with that: it is numbers only. Turning it off stops collection at once and drops every report still waiting to
-be sent; turning it back on starts from an empty window.
+**Off by default.** The switch is `Settings.sharesUsageStatistics`
+(`Sources/UttrflowSettings/SettingsStore.swift`), `false` until the user chooses to share. It
+appears in two places:
 
-**What is sent** is one `TelemetryReport` per window, and nothing else: how many
-dictations started, were cancelled and failed; how long the microphone was open and how
-long the user waited, in total; how many characters were inserted, as a count; end-to-end
-latency percentiles; how many dictations were in each language on a closed list; per-stage
-failure counts and latency percentiles; the app version as three numbers and the macOS
-major version. Every field is below; none of them can hold text.
+| Where | UI |
+|---|---|
+| Settings → Privacy → "Your data" | toggle "Share usage statistics", explained as "Counts and timings, linked to your account when you are signed in. Never what you dictate." |
+| Onboarding, sign-in page | "Keep off" and "Share" buttons, with "Usage statistics are off unless you choose to share them." |
 
-**When:** `UsageTelemetry` in the app target flushes the service once an hour and once more
-while the app quits, after any dictation in flight has landed and for at most three
-seconds. A flush closes the window, queues its report and posts everything queued. A window
-with no dictation in it produces no report, so an idle Mac sends nothing.
+The statistics are not anonymous while somebody is signed in: every report is attributed to
+their account (see **Where is it sent?**). What a report can carry does not change with that:
+it is numbers only. Turning the switch off stops collection at once and drops every report
+still waiting to be sent; turning it back on starts from an empty window.
 
-**Where:** `HTTPTelemetrySender` posts the report's `encodedForIngest()` bytes to
-`POST /v1/telemetry` on the same API host the account uses, through the same
-`BackendTransport`. It carries the signed-in bearer token when there is one and posts
-anonymously otherwise; a development build, which has no backend configured, gets a
-`RecordingTelemetrySender` and sends nothing anywhere. The server answers `202`; anything
-else is a `TelemetryError`, and the report stays queued for the next flush.
+## What is sent?
 
-**What feeds it:** the pipeline's stage timings reach the collector through `MetricsFanOut`,
-beside the diagnostics recorder, and `UsageTelemetry.observe` counts each dictation when it
-is inserted or fails, reading only its length, how long it was spoken for and the first
-language in Settings.
+One `TelemetryReport` per window, and nothing else. Every field is an `Int`, a `Date` or a
+closed enumeration:
 
-## There is no `String` anywhere in a report
+| Field | What it holds |
+|---|---|
+| `windowStartedAt`, `windowEndedAt` | the period summarised, encoded as ISO-8601 |
+| `appVersion` | `CFBundleShortVersionString` as three numbers (`26.0926.0` → `26`, `926`, `0`); an unreadable version becomes `0.0.0` |
+| `osVersionMajor` | the macOS major version |
+| `dictationCount` | dictations counted in the window (inserted, cancelled or failed) |
+| `cancelledCount` | dictations the user abandoned, never more than `dictationCount` |
+| `failureCount` | dictations that failed |
+| `audioTotalMs` | total time spoken, from each inserted dictation's spoken duration |
+| `processingTotalMs` | total time the user waited, from the end of listening to insertion, cancellation or failure |
+| `charactersInserted` | a count of characters inserted, not the characters |
+| `latencyP50Ms`, `latencyP90Ms`, `latencyP99Ms` | end-to-end wait percentiles of inserted dictations |
+| `languages` | dictations per `TelemetryLanguage`, sorted by tag |
+| `stages` | per `TelemetryStage`: failure count and p50/p90 latency, sorted by name |
 
-The stored properties of `TelemetryReport` are the complete answer to "what leaves my
-Mac". Every one is an `Int`, a `Date`, or a value of a closed enumeration. There is no
-`String` on the type, none on any type it contains, and none reachable through either, so
-there is nowhere to put a transcript, a window title, an application name or a dictionary
-entry, and no reviewer has to take anyone's word for it. `TelemetryPrivacyTests` says the
-same thing in a test, and the backend's `migrations/0005_telemetry.sql` says it a third
-time in its columns.
+## What feeds it?
 
-The dates are the exception that proves it: a `Date` is a number of seconds, and the
-ISO-8601 string the server wants is produced during encoding rather than stored.
+`UsageTelemetry.observe` receives every pipeline state change. It starts the wait clock when
+the pipeline leaves recording, and on `.inserted` or `.failed` calls
+`TelemetryCollector.recordDictation` with the outcome, the wait, the spoken duration and the
+inserted text's length; the language is the first of the user's preferred languages in
+Settings. When an active dictation returns directly to `.idle`, it records a cancellation, with
+no audio or latency sample. The pipeline's stage timings reach the collector through
+`MetricsFanOut`, beside the diagnostics recorder, so the pipeline needs no telemetry-specific code.
 
-The same line is held at the point of collection, not only at the point of upload: no
-recording method on `TelemetryCollector` has a parameter of any text type, so a caller
-cannot hand it a transcript to discard.
+## When is it sent?
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `UsageTelemetry.flushInterval` | 3600 s | the timer flushes once an hour, the first an hour after launch |
+| `UsageTelemetry.quitBudget` | 3 s | the flush while quitting gives up after this |
+
+On quit, `applicationShouldTerminate` lets the dictation in flight land first, then calls
+`flushBeforeQuitting`. A flush closes the window, queues its report and posts everything
+queued. A window with no dictation in it produces no report, so an idle Mac sends nothing.
+
+## Where is it sent?
+
+`HTTPTelemetrySender` posts the report's `encodedForIngest()` bytes to the same API root the
+account uses, through the same `BackendTransport` (see
+[account-transport.md](account-transport.md)). It asks
+`HTTPAuthenticationService.accessTokenIfSignedIn()` for a bearer token before each post and
+posts without one when nobody is signed in. Any `2xx` is delivery; anything else is
+`TelemetryError.refused(status:)`, no answer is `TelemetryError.unreachable`, and either
+leaves the report queued for the next flush.
+
+`OnboardingAccountLayer` wires `HTTPTelemetrySender` only in a build that has a backend
+configured. A development build gets `RecordingTelemetrySender`, which keeps reports in
+memory and sends nothing anywhere.
+
+## Why is there no `String` in a report?
+
+The stored properties of `TelemetryReport` are the complete answer to "what leaves my Mac".
+There is no `String` on the type, none on any type it contains, and none reachable through
+either, so there is nowhere to put a transcript, a window title, an application name or a
+dictionary entry. `TelemetryPrivacyTests` checks this at every depth. The dates are numbers of
+seconds; the ISO-8601 string the server wants is produced during encoding rather than stored.
+
+The same line is held at the point of collection: no recording method on `TelemetryCollector`
+has a parameter of any text type, so a caller cannot hand it a transcript to discard.
 
 ### Languages are a closed set
 
-`TelemetryLanguage` narrows the app's `LanguageCode` once, at its initialiser, and after
-that there is no free text in the report. `LanguageCode` wraps a `String`, and a `String`
-on an uploaded type is a place a transcript can go, if not today then later, by somebody
-who needs "just a bit more context". Every raw value is a BCP-47 primary subtag matching
-the pattern the backend's `language_tag` domain enforces, so a value that exists here
-cannot be one the server refuses. Unrecognised languages become `other` (`und`, BCP-47's
-own "undetermined") rather than passing through: an unusual tag is itself identifying, and
-the product question ("which languages do people dictate in") is answered as well by
-knowing this one is not on the list. The mapping is one line on purpose: a hand-written
-table is a table somebody could add a passthrough to.
+`TelemetryLanguage` narrows the app's `LanguageCode` once, in its initialiser, to one of 28
+BCP-47 primary subtags or `other` (`und`, BCP-47's own "undetermined"). `LanguageCode` wraps a
+`String`, and a `String` on an uploaded type is a place a transcript could go. Unrecognised
+languages become `other` rather than passing through, because an unusual tag is itself
+identifying. The mapping is one line (`TelemetryLanguage(rawValue:) ?? .other`): a hand-written
+table is a table somebody could add a passthrough to. `TelemetryPrivacyTests` checks the list
+stays within what the server accepts.
 
 ### Stages the server cannot name are not sent
 
-`TelemetryStage` is a separate vocabulary from `PipelineStage` because the two genuinely
-differ: the server has stages this app does not measure, and spells two of the shared
-ones differently. The mapping is a total `switch`, so a stage added to the pipeline is a
-compile error here, which is the moment to decide whether it should be reported at all.
+`TelemetryStage` is a separate vocabulary from `PipelineStage`: the server names four stages
+(`audio-capture`, `transcription`, `tidying`, `insertion`), and spells two of them differently
+from the app (`capture` → `audio-capture`, `transformation` → `tidying`). The mapping in
+`TelemetryStage.init(_:)` is a total `switch`, so a stage added to the pipeline is a compile
+error there, which is the moment to decide whether it is reported. `microphoneOpen`,
+`keyDownToAudio`, `drain`, `correction` and `expansion` map to `nil` and are not sent, because
+the server's stage set is closed and an unknown value would refuse the whole report. No total
+is lost: `processingTotalMs` still times the whole wait.
 
-Correction and expansion are measured on the Mac and shown on the diagnostics page, but
-the backend's `pipeline_stage` column is a closed domain and `migrations/0005_telemetry`
-is not this repository's to widen: inventing a value would turn every report from a user
-with a dictionary into a 400. Declining to send them costs no total, because
-`processingTotalMs` still times the whole journey. When the column gains the two names,
-`TelemetryStage.init(_:)` is the one place that changes.
+## Which values are clamped, and which refused?
 
-## Counts are clamped, and a version is not
+The server's ingest schema rejects unknown keys and out-of-range values, and for a measurement
+a report that cannot be sent is worse than one rounded into shape. `TelemetryLimit`
+(`TelemetryReport.swift`) names the ranges once so the types that enforce them cannot drift
+apart:
 
-The backend's Zod schema is `.strict()` and its table has `check` constraints: an
-out-of-range count or duration is a 400 or a 500, and for a measurement a report that
-cannot be sent is worse than one rounded into shape. `TelemetryLimit` names the ranges once
-so the four types that enforce them cannot drift apart:
+| Limit | Range | Used for |
+|---|---|---|
+| `TelemetryLimit.count` | 0...2 147 483 647 | every count, a non-negative 32-bit integer |
+| `TelemetryLimit.durationMs` | 0...604 800 000 | every duration and latency (a week) |
+| `TelemetryLimit.versionPart` | 0...999 | the version's third number, and `osVersionMajor` |
+| `TelemetryLimit.versionDate` | 0...9999 | the version's first two numbers, a year and a month-and-day |
 
-| limit         | range               | note                                    |
-|---------------|---------------------|-----------------------------------------|
-| `count`       | 0...2 147 483 647   | a non-negative 32-bit integer           |
-| `durationMs`  | 0...604 800 000     | a week; no honest measurement reaches it |
-| `versionPart` | 0...999             | a version's third number (the revision), and the macOS major version |
-| `versionDate` | 0...9999            | a version's first two numbers, a year and a month-and-day |
-
-Percentiles are never allowed below the one under them (p90 is raised to p50, p99 to
-p90), `cancelledCount` is capped at `dictationCount`, and a `Duration` is floored at zero
-so a clock stepping backwards mid-stage cannot produce a negative number that costs the
-whole report.
+Counts and durations are clamped. Percentiles are never allowed below the one under them (p90
+is raised to p50, p99 to p90), `cancelledCount` is capped at `dictationCount`, and a negative
+`Duration` is floored at zero so a clock stepping backwards cannot cost the whole report.
 
 ### The version is refused, not clamped
 
-A version is not a quantity, and rounding one into range does not make it approximately
-right — it makes it another release's version, which a reader has no way to doubt. The app
-is versioned `YY.MMDD.REVISION` (`26.0926.0`, then `26.0926.1` for a second release that
-day), which telemetry carries as the numbers `26`, `926` and `0`. The month-and-day reaches
-`1231`, and the retired `YEAR.MONTH.DAY` scheme put a four-digit year first, so the first
-two numbers share `versionDate`, wide enough for either; the revision stays on `versionPart`.
+A version is not a quantity, and rounding one into range makes it another release's version,
+which a reader has no way to doubt. So a version part outside its range, or an
+`osVersionMajor` outside `versionPart`, makes the initialiser return `nil` and the window
+produces no report. `versionDate` is wide enough for a two-digit year and a month-and-day up
+to `1231`, and for a four-digit year.
 
-So a version outside those ranges refuses the whole report rather than arriving as a
-different one. Version is the one field that separates one release's behaviour from
-another's: a report that cannot say which release it came from is worth less than no
-report, because it is counted against a release that did not produce it. The same holds
-for `osVersionMajor`, which rides the same `versionPart` range.
-
-**The backend has to agree, and it is a separate repository.** Its `app_version_major` and
-`app_version_minor` columns and its ingest validator allow `0...9999`, matching these ranges.
-
-A report is refused outright (the initialiser returns `nil`) otherwise only when the window
-did not advance or nothing happened in it: the table requires
-`window_ended_at > window_started_at`, and a report of no dictations is a request that
-costs the user's battery to tell the server nothing.
+The initialiser also returns `nil` when the window did not advance (`windowEndedAt` must be
+after `windowStartedAt`) or held no dictation: a report of nothing costs the user's battery
+to tell the server nothing.
 
 Optionals are omitted with `encodeIfPresent` rather than encoded as `null`, because the
-server's fields are `.optional()` and Zod refuses an explicit `null` for those. The
-timestamps are formatted inside `encode(to:)` rather than left to the encoder's date
-strategy, so a differently configured `JSONEncoder` cannot send a number and be refused.
+server refuses an explicit `null` for an optional field. The timestamps are formatted inside
+`encode(to:)` rather than left to the encoder's date strategy, so a differently configured
+`JSONEncoder` cannot send a number and be refused. `TelemetryBackendContractTests` posts real
+bytes to a running backend when `UTTRFLOW_BACKEND_URL` is set.
 
-## Why a dictation never waits
+## Why does a dictation never wait?
 
-Every recording method on `TelemetryCollector` is synchronous and non-`async`. The
-compiler enforces that rather than a comment asserting it: a function with no `async` in
-its signature has no suspension point, so a dictation calling it cannot be parked behind
-a network request, a disk write, or another actor's queue. Each call does a handful of
-integer additions and at most one array element written in place, under an uncontended
-`Mutex`. Sending lives in `TelemetryService`, the only `async` thing in the subsystem, and
-is never called from the dictation path.
+Every recording method on `TelemetryCollector` is synchronous. The compiler enforces that: a
+function with no `async` in its signature has no suspension point, so a dictation calling it
+cannot be parked behind a network request, a disk write, or another actor's queue. Each call
+does a handful of integer additions and at most one array element written in place, under a
+`Mutex`. Sending lives in `TelemetryService.flush`, the only `async` work in the subsystem,
+and only the timer and the quit path call it.
 
-`TelemetryCollector` conforms to `MetricsRecording` rather than inventing a second way to
-time things, so the pipeline needs no telemetry-specific code: whatever already measures
-a stage feeds telemetry too. The protocol requirement is `async` and the witness is not,
-which Swift allows and which is the point.
+`TelemetryCollector` conforms to `MetricsRecording` rather than inventing a second way to time
+things. The protocol requirement is `async` and the witness is not, which Swift allows and
+which is the point.
 
 ### Sample capacity
 
-Each latency series keeps 512 samples in a ring that overwrites its earliest entry when
-full. The window between reports is as long as the app has been running, so an unbounded
-array would grow without limit for a user who never quits. 512 samples put a percentile
-within a fraction of a millisecond of the true one and cost four kilobytes. Overwriting
-rather than refusing keeps the recent latencies, which are the interesting ones; a buffer
-that stops accepting would report yesterday's percentiles for ever.
+| Constant | Value |
+|---|---|
+| `TelemetryCollector.sampleCapacity` | 512 samples per latency series |
+
+Each series is a ring that overwrites its earliest entry when full. The window between reports
+lasts until the next flush, and a flush that finds no dictation leaves the window open, so an
+unbounded array could grow without limit. 512 `Int` samples cost four kilobytes. Overwriting
+rather than refusing keeps the recent latencies; a buffer that stopped accepting would report
+old percentiles for ever.
 
 The percentile index is `count * fraction`, which at `0.5` is `count / 2`, the same median
-`StageLatency.typical` reports, so Uttrflow has one definition of its own median and
+`StageLatency.typical` reports, so Uttrflow has one definition of its own median;
 `TelemetryCollectorTests` checks the two agree. A series nothing timed answers `nil`, not
-zero: a stage nothing timed is not a stage that was instant, and the server's column is
-nullable so the difference survives.
+zero: a stage nothing timed is not a stage that was instant, and the field is optional on the
+wire so the difference survives.
 
-## Opting out forgets everything
+## What does opting out forget?
 
-Switching collection off discards everything gathered so far in the same call, and
-`TelemetryService.setEnabled` empties the outbox too. Reports waiting for a connection
-have not left the Mac yet, and a user who has just opted out has said something about
-those as well; sending them on the next flight home would keep the letter of the setting
-and break all of it that matters. `reset` assigns a whole fresh `State` rather than
-zeroing fields one by one, so a counter added later cannot be left behind holding the
-previous window's data.
+Everything. `TelemetryCollector.setEnabled` discards the counters in the same call, and
+`TelemetryService.setEnabled(false, at:)` empties the outbox too. Reports waiting for a
+connection have not left the Mac yet, and a user who has just opted out has said something
+about those as well. `reset` assigns a whole fresh `State` rather than zeroing fields one by
+one, so a counter added later cannot be left holding the previous window's data.
 
 The opt-out is enforced at one door: every accumulation goes through `mutate`, `state` is
-private, and a recording method added later cannot forget to check.
+private, and a recording method added later cannot forget to check. `flush` re-checks
+`isEnabled` under the outbox lock, so an opt-out that lands mid-flush still drops the report.
 
 ## The outbox and the ledger
 
-The outbox holds at most 8 reports. An outbox is the classic place for an offline app to
-quietly consume a disk, and a fortnight-old report is worth close to nothing. When it
-overflows the earliest report is dropped, because a report describes a window that has
-already closed: the recent ones say what Uttrflow is like now.
+| Constant | Value |
+|---|---|
+| `TelemetryService.outboxCapacity` | 8 reports waiting to be sent |
+| `TelemetryService.ledgerCapacity` | 64 sent reports remembered |
 
-The ledger of sent reports holds 64 entries, and each entry is the very value that was
-encoded and posted, not a description written separately. It is there so that a
-screen showing a user their reports can show the same bytes that were posted; nothing reads
-`sentReports` today except the tests, and there is no such screen yet. `TelemetryReport.encodedForIngest()` exists so that page and the sender would look
-at the same bytes rather than at two descriptions of them.
+An outbox is the classic place for an offline app to quietly consume a disk. When it
+overflows the earliest report is dropped, because a recent window says more about how Uttrflow
+behaves.
+
+The ledger (`sentReports`) holds each `TelemetryDispatch`: the very value that was encoded and
+posted, and when. `encodedForIngest()` is the one encoding, so anything that shows a report
+shows the bytes that were posted.
 
 `flush` cannot throw and cannot report a problem. No caller should do anything differently
-because telemetry failed, and a version that threw would eventually be `try`-ed somewhere
-that mattered. One flush runs at a time: two overlapping ones would each see the same
-report at the front of the queue and send it twice, which the server would faithfully
-count. A delivered report is removed from the queue by value rather than assumed to still
-be at the front, because opting out can empty the queue while a send is in flight.
+because telemetry failed, and a version that threw would eventually be `try`-ed somewhere that
+mattered. One flush runs at a time: two overlapping ones would each see the same report at the
+front of the queue and send it twice. A delivered report is removed from the queue by value
+rather than assumed to still be at the front, because opting out can empty the queue while a
+send is in flight.
 
-`TelemetryError` is deliberately not a `UttrflowFailure`. Everything conforming to that
-protocol owes the user a sentence and an offer of recovery, and telemetry owes neither: an
-alert about it would be the app interrupting somebody's work to complain about its own
-analytics. Its status is a number rather than the server's message, so no string from the
-network becomes the one text-shaped thing in the subsystem.
+`TelemetryError` is not a `UttrflowFailure`. Everything conforming to that protocol owes the
+user a sentence and an offer of recovery, and telemetry owes neither: an alert about it would
+interrupt somebody's work to complain about the app's own analytics. Its status is a number
+rather than the server's message, so no string from the network becomes the one text-shaped
+thing in the subsystem.
+
+## Related
+
+- [account-session.md](account-session.md): the access token a report is attributed with.
+- [crash-reporting.md](crash-reporting.md): the other opt-in report, sent separately.
+- [offline.md](offline.md): every network path in the app.

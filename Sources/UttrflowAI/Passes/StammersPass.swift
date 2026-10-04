@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Removes the doubled function word a false start leaves behind: "the the deployment".
-public struct StammersPass: CleaningPass {
+public struct StammersPass: PieceCleaningPass {
     public static let id: PassID = .stammers
     public static let removes: RemovalGrant = .repetition
 
@@ -20,7 +20,7 @@ public struct StammersPass: CleaningPass {
                 previous = word
                 continue
             }
-            if word == previous,
+            if word == previous, !draft.isHindi(at: index),
                 (!FunctionWords.isContent(word) || MeaningPreservationGuard.isGrammarWord(word)),
                 !Self.legitimateDoubles.contains(word)
             {
@@ -56,7 +56,11 @@ public struct StammersPass: CleaningPass {
 
     /// Whether a number word sits immediately before or after the doubled pair at `i`.
     private static func surroundedByNumber(at i: Int, in live: [Int], draft: Draft) -> Bool {
-        if i >= 2, NumberWords.isNumber(draft.words[live[i - 2]].text.lowercased()) { return true }
+        if i >= 2 {
+            let prev = draft.words[live[i - 2]].text.lowercased()
+            if NumberWords.isNumber(prev) { return true }
+            if prev == "point" { return true }
+        }
         if i + 1 < live.count,
             NumberWords.isNumber(draft.words[live[i + 1]].text.lowercased())
         {

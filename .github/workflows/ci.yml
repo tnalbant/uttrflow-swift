@@ -66,11 +66,24 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # `make verify` is lint, the PII audit, a full build, 8,000+ tests, the 95% per-module
+      # `make verify` is lint, the PII audit, a full build, the test suite, the 95% per-module
       # coverage floor, and the offline audit. The app bundle and its signature are checked
       # separately by app-preflight below, matching the local sequence in CONTRIBUTING.md.
+      - name: Start the verify clock
+        run: echo "VERIFY_START=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Verify
         run: make verify
+
+      # The delivery budget in Docs/performance.md is read from this line, run by run.
+      - name: Record verify time
+        if: ${{ !cancelled() }}
+        run: echo "make verify took $(( ($(date +%s) - VERIFY_START) / 60 )) min; budget 20 min (Docs/performance.md#delivery-budget)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Compile every test target even when an earlier audit stops verification before the build.
+      - name: Compile tests
+        if: ${{ !cancelled() }}
+        run: swift build --build-tests
 
       # `make verify`'s test run has crashed on this runner with no error and no exit code —
       # the log simply stops. `coverage.sh` now tees that output to a file as it runs, so if

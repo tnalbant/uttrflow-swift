@@ -7,9 +7,6 @@ import UttrflowCore
 /// One dictionary-backed substitution: the stored change itself, named here so no page imports the store.
 public typealias Correction = UttrflowHistory.Correction
 
-/// The correction engine's own reasons, kept on the record; ``CorrectionReason/title`` is the row's pill.
-public typealias CorrectionReason = UttrflowHistory.CorrectionReason
-
 /// Which corrections the page is listing; shared with the store, because both narrow the same list.
 public typealias CorrectionsScope = UttrflowHistory.CorrectionsScope
 

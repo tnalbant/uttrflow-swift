@@ -14,6 +14,9 @@ struct CommandCredentialTests {
             "curl --user admin:Hunter2x https://api.example.com",
             "curl -uadmin:Hunter2x https://api.example.com",
             "mysql -u root -pS3cretPass appdb",
+            "mysql -p'Pa$sw0rd'",
+            "mysql -p'{Pa}sw0rd'",
+            "mysqldump -psecret>dump.sql",
             "sudo -u postgres mysqldump -pS3cretPass appdb",
             "sshpass -p 'S3cret!' ssh deploy@db.example.com",
             "docker login -u ci -p S3cr3tValue registry.example.com",
@@ -31,6 +34,8 @@ struct CommandCredentialTests {
             "MYSQL_PWD=sunshine mysql -u root",
             "curl -H \"Authorization: Basic YWxpY2U6czNjcjN0\" https://api.example.com",
             "curl -H \"Authorization: Bearer 8fK2pQ7xLm4Rt9vW3nB6cY1zH5jD0sAe\"",
+            "curl -H\"Authorization: Bearer sunshine\" https://api.example.com",
+            "curl -H'Authorization: Bearer sunshine' https://api.example.com",
             "curl -H 'Proxy-Authorization: Digest sunshine' https://api.example.com",
             "curl -H 'X-Api-Key: sunshine' https://api.example.com",
             "Authorization: token sunshine",
@@ -75,5 +80,32 @@ struct CommandCredentialTests {
         #expect(SecretShapes.hasCommandCredential("cd app\nmysql -u root -pS3cretPass appdb\nls"))
         #expect(!SecretShapes.hasCommandCredential("echo 'unclosed\nmysql -u root -p appdb"))
         #expect(SecretShapes.hasCommandCredential("ls | sshpass -p sunshine ssh host"))
+    }
+
+    @Test(
+        "A netrc password is read inside its machine or default block",
+        arguments: [
+            "machine example.com\nlogin u\npassword hunter2x9",
+            "default\nlogin u\npassword hunter2x9",
+            "machine example.com login u password hunter2x9",
+            "machine example.com\nlogin u\naccount acct\npassword hunter2x9",
+            "machine example.com\nmacdef init\npassword ordinary\n\nmachine next.example\nlogin u\npassword hunter2x9",
+        ])
+    func multilineNetrc(_ text: String) {
+        #expect(SecretShapes.matches(text))
+        #expect(ClipKindDetector.kind(of: text) == .secret)
+    }
+
+    @Test("A netrc macro body is not a password directive")
+    func netrcMacroBody() {
+        let text = "machine example.com\nmacdef init\npassword ordinary\n\n"
+        #expect(!SecretShapes.hasCommandCredential(text))
+        #expect(!SecretShapes.matches(text))
+    }
+
+    @Test("Password in ordinary prose is not a netrc credential")
+    func prosePassword() {
+        #expect(!SecretShapes.hasCommandCredential("Please enter your password on the next line."))
+        #expect(!SecretShapes.matches("Please enter your password on the next line."))
     }
 }

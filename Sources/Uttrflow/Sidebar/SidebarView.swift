@@ -90,7 +90,7 @@ struct SidebarView: View {
             UttrflowMarkView(height: 20)
                 .foregroundStyle(IslandPalette.ink)
             Text(presentation.productName.lowercased())
-                .font(BrandFont.display(size: 21, weight: .semibold))
+                .font(BrandFont.wordmark(size: 21, weight: .semibold))
                 .tracking(-0.4)
                 .foregroundStyle(IslandPalette.ink)
                 .fixedSize()

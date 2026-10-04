@@ -213,6 +213,6 @@ for name, active, html in [
     ("Settings-Dictation.dc.html", "Dictation", dictation),
     ("Settings-Privacy.dc.html", "Privacy", privacy),
 ]:
-    with open(name, "w") as handle:
+    with open(DESIGN_DIR / name, "w") as handle:
         handle.write(settings(active, html))
 print("wrote settings artboards")

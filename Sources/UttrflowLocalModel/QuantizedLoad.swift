@@ -5,7 +5,7 @@ import MLXLLM
 import MLXLMCommon
 import MLXNN
 
-/// Builds each quantized layer from placeholders shaped like the weights on disk, so loading leaves no MLX graph behind. See `Docs/performance.md`.
+/// Builds each quantized layer from placeholders shaped like the weights on disk, so loading leaves no MLX graph behind. See `Docs/performance-leaks.md`.
 enum QuantizedLoad {
     /// The model in `directory` in a container, its quantized layers built before the weights replace their placeholders.
     static func container(

@@ -19,7 +19,8 @@ class TranscribeLimitArgumentTests(unittest.TestCase):
         )
 
     def assert_refused(self, option, expected):
-        finished = self.run_with(option, "-1")
+        # Joined with "=", since a separate "-1" reads as an option rather than a value.
+        finished = self.run_with(f"{option}=-1")
         self.assertEqual(finished.returncode, 64, finished.stderr)
         said = finished.stdout + finished.stderr
         self.assertIn(expected, said)

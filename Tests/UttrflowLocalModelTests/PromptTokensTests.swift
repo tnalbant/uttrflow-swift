@@ -8,6 +8,7 @@ import Tokenizers
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// A template shaped like Gemma 3's: the instructions and a blank line open the first turn, and the message is trimmed.
 private let gemmaTemplate =
