@@ -90,7 +90,7 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Refuses a rewrite that drops or substitutes punctuation a pass wrote from spoken instructions.
     static func spokenPunctuationVerdict(draft: Draft, rewritten: String) -> GuardVerdict {
-        let marks = Set(SpokenPunctuationPass.marks.flatMap { Array($0.mark) } + Array("()[]{}"))
+        let marks = Set(SpokenCommands.marks.flatMap { Array($0.text) } + Array("()[]{}"))
         var required: [Character: Int] = [:]
         for word in draft.words {
             for edit in word.edits where edit.by == .spokenPunctuation && edit.kind == .replaced {
@@ -384,7 +384,7 @@ public struct MeaningPreservationGuard: Sendable {
     static func sentenceEnds(_ text: String) -> Int {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         return words.indices.count { index in
-            FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
+            Abbreviations.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
         }
     }
 }

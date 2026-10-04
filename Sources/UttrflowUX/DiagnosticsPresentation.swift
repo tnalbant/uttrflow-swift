@@ -360,7 +360,7 @@ public enum DiagnosticsPresenter {
             latency: summaries.isEmpty ? nil : latency(for: summaries, missing: missing),
             latencyEmptyState: summaries.isEmpty ? noTimingsYet : nil,
             reliability: reliability(for: snapshot.measurements, locale: locale),
-            decoding: decodingRows(for: snapshot.decoding),
+            decoding: decodingRows(for: snapshot.decoding, locale: locale),
             engines: engines,
             cleanUp: cleanUpRows(for: snapshot.cleaning),
             vocabularyPrompt: DiagnosticsRow(
@@ -581,11 +581,13 @@ public enum DiagnosticsPresenter {
         message: "Dictate something and the times appear here. They stay on this Mac.")
 
     /// Counts only aggregate decode outcomes, never the pieces or their words.
-    static func decodingRows(for decoding: [DecodeEffort]) -> [DiagnosticsRow] {
+    static func decodingRows(
+        for decoding: [DecodeEffort], locale: Locale = .autoupdatingCurrent
+    ) -> [DiagnosticsRow] {
         guard !decoding.isEmpty else { return [] }
         let repeated = decoding.count { $0.fallbacks > 0 || $0.retriedWithoutPrompt }
         let retried = decoding.count { $0.retriedWithoutPrompt }
-        return [
+        let rows = [
             DiagnosticsRow(
                 title: "Pieces needing more than one decode",
                 detail: "\(repeated) of \(decoding.count) pieces", state: .good),
@@ -593,6 +595,23 @@ public enum DiagnosticsPresenter {
                 title: "Empty-result retries",
                 detail: MainFormatting.count(retried, "retry", "retries"), state: .good),
         ]
+        return rows + [recognitionSplitRow(for: decoding, locale: locale)].compactMap(\.self)
+    }
+
+    /// The mean time per piece in each recognition sub-stage, or nothing when no piece was timed.
+    static func recognitionSplitRow(for decoding: [DecodeEffort], locale: Locale) -> DiagnosticsRow? {
+        let timed = decoding.map(\.timings).filter { $0.recognitionSeconds > 0 }
+        guard !timed.isEmpty else { return nil }
+        let total = timed.reduce(RecognitionTimings.zero) { $0.adding($1) }
+        func mean(_ seconds: Double) -> String {
+            MainFormatting.secondsValue(.seconds(seconds / Double(timed.count)), locale: locale)
+        }
+        return DiagnosticsRow(
+            title: "Recognition split per piece",
+            detail: "mel \(mean(total.melSeconds)), encode \(mean(total.encodeSeconds)), "
+                + "decode \(mean(total.decodeSeconds)), word timing \(mean(total.wordTimingSeconds)) "
+                + "of \(mean(total.recognitionSeconds))",
+            state: .good)
     }
 
     // MARK: - Latency
@@ -938,7 +957,7 @@ public enum DiagnosticsPresenter {
         if snapshot.decoding.isEmpty {
             lines += ["", "Decode effort: none recorded yet"]
         } else {
-            let decoding = decodingRows(for: snapshot.decoding)
+            let decoding = decodingRows(for: snapshot.decoding, locale: locale)
             lines += ["", "Decode effort (\(snapshot.decoding.count) pieces)"]
             lines += decoding.map { "  \($0.title): \($0.detail)" }
         }

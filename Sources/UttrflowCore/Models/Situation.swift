@@ -3,11 +3,13 @@ public struct Situation: Sendable, Equatable {
     public let app: AppContext
     public let insertion: InsertionPoint
     public let destination: Destination
+    public let intent: WritingIntent
 
     public init(app: AppContext, insertion: InsertionPoint, destination: Destination) {
         self.app = app
         self.insertion = insertion
         self.destination = destination
+        self.intent = WritingIntent(app: app, insertion: insertion)
     }
 
     /// The situation when the screen says nothing at all.

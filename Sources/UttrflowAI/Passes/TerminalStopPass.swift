@@ -80,7 +80,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         let start = live.indices.dropLast().lastIndex { position in
             let index = live[position]
             guard !draft.words[index].isLayoutMark else { return true }
-            return FirstWordPass.endsSentence(
+            return Abbreviations.endsSentence(
                 draft.words[index].text, followedBy: draft.words[live[position + 1]].text
             )
         }
@@ -152,7 +152,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         let start = live.indices.dropLast().lastIndex { position in
             let index = live[position]
             guard !draft.words[index].isLayoutMark else { return true }
-            return FirstWordPass.endsSentence(
+            return Abbreviations.endsSentence(
                 draft.words[index].text, followedBy: draft.words[live[position + 1]].text
             )
         }

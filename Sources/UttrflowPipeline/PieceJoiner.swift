@@ -541,7 +541,8 @@ enum PieceJoiner {
         let pieceStarts = Set(starts)
         return live.indices.filter { position in
             position == live.startIndex || pieceStarts.contains(live[position])
-                || draft.shape(at: live[position - 1]).endsSentence
+                || Abbreviations.endsSentence(
+                    draft.words[live[position - 1]].text, followedBy: draft.words[live[position]].text)
         }.map { live[$0] }
     }
 

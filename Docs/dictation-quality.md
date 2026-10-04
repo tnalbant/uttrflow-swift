@@ -22,6 +22,16 @@ The budgets are the values of `StageTimeout`, listed per stage in [pipeline.md](
 end-to-end limit is `tail-latency`, set in [performance.md](performance.md). A layer that cannot
 meet its budget is cancelled and the fallback answers; no layer extends another's budget.
 
+## Turning a layer on and off
+
+Each switchable layer is a case of `QualityLayer` in
+`Sources/UttrflowCore/Support/QualityLayer.swift`, with its default state, the stage budget it runs
+inside and a one-line summary. `QualityLayers` resolves which are on from those defaults, overridden
+only by the local defaults key `QualityLayer.<name>` (`-QualityLayer.<name> NO` for one launch),
+never from a network source. `QualityLayers.ablation(only:without:)` builds the set a bake-off or
+eval run asks for, and refuses an unknown name. A new layer is added as a case with `defaultOn`
+false, measured, then turned on in a reviewed pull request.
+
 ## Rules that hold across every layer
 
 1. **Doing nothing is the default.** A layer that is unsure leaves the words as heard. Only the
@@ -47,3 +57,34 @@ A new cleaning is a new pass, not a new branch in the pipeline.
    adapter ([adapters.md](adapters.md)).
 4. Run `make bakeoff`, then `make bakeoff ARGS="--against <saved-result.json>"`, and put the
    layer's metric before and after in the pull request.
+
+## Where each new component lives
+
+A component's module is decided here before its first file lands, because the first file's imports
+become the module's dependencies. Each row names the module, the protocol lower modules read it
+through, and who may import the module. A type that a change creates names its module from this
+table; a component not listed is added here first.
+
+| Component | Module | Read through | Who may import the module |
+|---|---|---|---|
+| Clause analyser | `UttrflowCore` (`Sources/UttrflowCore/Cleaning/`) | its own types | any module |
+| Destination adapter registry | `UttrflowCore` (`Sources/UttrflowCore/Adapters/`) | its own types | any module |
+| N-gram data reader | `UttrflowCore` | its own types | any module |
+| Persona store | a new leaf `UttrflowPersona`, depending on `UttrflowCore` only | a read-only `PersonaReading` protocol in `UttrflowCore` | the app target and `UttrflowSettings`; never `UttrflowSpeech` or `UttrflowAI` |
+| Hypothesis reranker, candidate scorer, language model | `UttrflowAI` | its own types | `UttrflowPipeline` and above |
+| Override gate | `UttrflowAI` (beside `WordCorrectionEngine`) | its own types | `UttrflowPipeline` and above |
+| Seam decider | `UttrflowPipeline` (beside `PieceJoiner`) | its own types | the app target |
+
+The dependency rules these placements keep:
+
+1. `UttrflowSpeech` imports `UttrflowCore` and `UttrflowDictionary` only; never `UttrflowAI`.
+2. No dictation module (`UttrflowSpeech`, `UttrflowDictionary`, `UttrflowAI`, `UttrflowPipeline`)
+   imports `UttrflowPredict` or anything that depends on it, so `UttrflowSettings`,
+   `UttrflowContext` and `UttrflowInput` are never their dependencies.
+3. No dictation module imports `UttrflowLocalModel`; a scorer or language model on the dictation
+   path is not MLX-backed ([offline.md](offline.md)).
+4. A lower module that needs data owned higher up reads it through a protocol in `UttrflowCore`,
+   and the app target injects the implementation.
+
+The dependency graph is `Package.swift`; `make layering-audit` checks UI imports and platform
+dependencies, not these rules.

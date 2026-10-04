@@ -16,7 +16,9 @@ public struct NumberFormsPass: PieceCleaningPass {
         "port", "version", "extension", "page", "chapter", "step", "number", "line", "section", "figure",
         "table", "level", "room", "floor", "route", "flight", "interstate", "highway", "bus", "gate",
     ]
-    static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
+    static let currencies: Set<String> = [
+        "rupee", "rupees", "dollar", "dollars", "euro", "euros", "pound", "pounds",
+    ]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
     /// The words a speaker uses for the leading zero of a clock minute.
     static let clockZeros: Set<String> = ["oh", "o", "zero"]
@@ -36,6 +38,11 @@ public struct NumberFormsPass: PieceCleaningPass {
         "yen", "dirham", "dirhams", "franc", "francs", "kilometre", "kilometres", "kilometer", "kilometers",
         "kilogram", "kilograms", "metre", "metres", "meter", "meters", "litre", "litres", "liter", "liters",
         "minutes", "hours",
+    ]
+
+    /// Street words after which a scale number and a unit ordinal are a house number and a street name.
+    static let streetWords: Set<String> = [
+        "avenue", "street", "road", "drive", "lane", "boulevard", "court", "place", "way",
     ]
 
     /// One rendered number and how many words it replaces.
@@ -266,8 +273,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
-            let beforeAmount =
-                joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+            let beforeAmount = joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+                || completesAmount(at: position, keys: keys, shapes: shapes)
             guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
             text = NumberWords.render(value, grouped: digits == .thousands && !inContext)
@@ -301,18 +308,35 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Phrase(text: time.text, count: end - position)
     }
 
-    /// Requires temporal evidence when the hour and minute form one phrase.
+    /// Words before an hour-and-minute phrase that mark it as a time of day.
+    static let timeCues: Set<String> = [
+        "at", "by", "until", "till", "from", "around", "about", "before", "after", "since",
+    ]
+
+    /// Whether the number here is the smaller part of an amount, after a number and its currency.
+    private static func completesAmount(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        var currency = position - 1
+        if currency > 0, keys[currency] == "and", joined(currency + 1, shapes) { currency -= 1 }
+        guard currency > 0, currencies.contains(keys[currency]), joined(currency + 1, shapes),
+            joined(currency, shapes)
+        else { return false }
+        let major = currency - 1
+        return NumberWords.digits(keys[major]) != nil || NumberWords.cardinal(keys[major..<currency]) != nil
+    }
+
+    /// Requires a time cue, or a sentence end after the minute, when the hour and minute form one phrase.
     private static func timeAcceptable(
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
         let hasBeforeCue =
             position > 0 && !startsASentence(position, shapes)
-            && ["at", "by", "until", "from"].contains(keys[position - 1])
+            && timeCues.contains(keys[position - 1])
+        let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
         let hasAfterCue =
             minuteEnd < shapes.count && joined(minuteEnd, shapes)
             && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
-        return hasBeforeCue || hasAfterCue
+        return hasBeforeCue || hasAfterCue || endsTheSentence
     }
 
     /// Whether the words here finish a scale the parser could not read whole, as in "a hundred and fifty".
@@ -495,11 +519,19 @@ public struct NumberFormsPass: PieceCleaningPass {
                 ordinalPosition += 1
                 count += 1
             }
-            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10 {
+            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10,
+                !isHouseNumber(endingAt: position + cardinal.count - 1, keys: keys, shapes: shapes)
+            {
                 return (cardinal.value + unit, count + 1)
             }
         }
         return ordinalUnits[keys[position]].map { ($0, 1) }
+    }
+
+    /// Whether a number ending on a scale word is a house number, because a unit ordinal and a street word follow it.
+    private static func isHouseNumber(endingAt last: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        NumberWords.scales[keys[last]] != nil && joined(last + 1, shapes) && joined(last + 2, shapes)
+            && streetWords.contains(keys[last + 2])
     }
 
     /// Keeps date-like and interrupted date forms intact for the existing date parser to handle.

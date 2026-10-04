@@ -25,12 +25,14 @@ struct GitRepository: Sendable {
             let dotGit = TerminalPath.joined(current, ".git")
             switch files.kind(atPath: dotGit) {
             case .directory:
-                return repository(gitDirectory: dotGit, files: files)
+                return repository(gitDirectory: dotGit, worktreeRoot: current, files: files)
             case .file:
                 guard let pointer = files.contents(ofFile: dotGit, limit: 4_096),
                     let named = Self.value(of: "gitdir:", in: pointer)
                 else { return nil }
-                return repository(gitDirectory: TerminalPath.resolved(named, from: current), files: files)
+                return repository(
+                    gitDirectory: TerminalPath.resolved(named, from: current), worktreeRoot: current,
+                    files: files)
             case .unknown:
                 return nil
             case .missing:
@@ -42,18 +44,50 @@ struct GitRepository: Sendable {
     }
 
     /// The repository whose git directory this is, following a worktree's `commondir`; absent for refs kept in a reftable.
-    private static func repository(gitDirectory: String, files: any FileSystemProbing) -> GitRepository? {
-        let common =
-            files.contents(ofFile: TerminalPath.joined(gitDirectory, "commondir"), limit: 4_096)
-            .map {
-                TerminalPath.resolved($0.trimmingCharacters(in: .whitespacesAndNewlines), from: gitDirectory)
-            }
-            ?? gitDirectory
+    private static func repository(
+        gitDirectory: String, worktreeRoot: String, files: any FileSystemProbing
+    ) -> GitRepository? {
+        let commonPath = TerminalPath.joined(gitDirectory, "commondir")
+        let common: String
+        switch files.kind(atPath: commonPath) {
+        case .missing:
+            common = gitDirectory
+        case .file:
+            guard let text = files.contents(ofFile: commonPath, limit: 4_096) else { return nil }
+            common = TerminalPath.resolved(
+                text.trimmingCharacters(in: .whitespacesAndNewlines), from: gitDirectory)
+        case .directory, .unknown:
+            return nil
+        }
+        guard
+            validMetadata(
+                gitDirectory: gitDirectory, commonDirectory: common, worktreeRoot: worktreeRoot, files: files)
+        else { return nil }
         guard files.kind(atPath: TerminalPath.joined(common, "reftable")) == .missing else { return nil }
         return GitRepository(
             commonDirectory: common,
             files: files,
             packedRefsCache: PackedRefsCache(path: TerminalPath.joined(common, "packed-refs"), files: files))
+    }
+
+    /// Keeps metadata inside this worktree or proves a linked worktree belongs to its common Git directory.
+    private static func validMetadata(
+        gitDirectory: String, commonDirectory: String, worktreeRoot: String,
+        files: any FileSystemProbing
+    ) -> Bool {
+        if gitDirectory == TerminalPath.joined(worktreeRoot, ".git"), commonDirectory == gitDirectory {
+            return true
+        }
+        guard TerminalPath.lastName(of: commonDirectory) == ".git" else { return false }
+        let worktrees = TerminalPath.joined(commonDirectory, "worktrees") + "/"
+        guard gitDirectory.hasPrefix(worktrees), !gitDirectory.dropFirst(worktrees.count).contains("/") else {
+            return false
+        }
+        guard let backlink = files.contents(ofFile: TerminalPath.joined(gitDirectory, "gitdir"), limit: 4_096)
+        else { return false }
+        return TerminalPath.resolved(
+            backlink.trimmingCharacters(in: .whitespacesAndNewlines), from: gitDirectory)
+            == TerminalPath.joined(worktreeRoot, ".git")
     }
 
     /// The text after a `key:` line's key, trimmed.
