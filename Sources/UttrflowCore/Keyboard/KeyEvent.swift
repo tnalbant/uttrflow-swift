@@ -11,7 +11,7 @@ public enum KeyPhase: Sendable, Equatable {
 }
 
 /// One thing the keyboard did, in the only shape the rest of the product reads it in.
-public struct KeyStroke: Sendable, Equatable {
+public struct KeyEvent: Sendable, Equatable {
     /// Hardware key code, which is positional and so survives a non-QWERTY layout.
     public let keyCode: UInt16
     /// Every modifier down at this instant, Fn included.
@@ -42,7 +42,7 @@ public struct KeyStroke: Sendable, Equatable {
 public protocol KeyboardEventSource: Sendable {
     /// Starts delivering, or says the system refused, which it does without Accessibility; `consumeKeyDown: true` asks for a tap that can swallow the caller's key-downs.
     func start(
-        _ deliver: @escaping @Sendable (KeyStroke) -> Void,
+        _ deliver: @escaping @Sendable (KeyEvent) -> Void,
         consumeKeyDown: Bool
     ) throws(KeyboardSourceError)
     func stop()

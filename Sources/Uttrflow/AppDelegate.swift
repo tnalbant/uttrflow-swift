@@ -2612,7 +2612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: Windows
 
     /// Opens whichever surface was asked for, so nothing else knows which class owns a window.
-    private func show(_ destination: UttrflowUX.Destination) {
+    private func show(_ destination: UttrflowUX.AppLocation) {
         // The one gate every window passes: with no session, whatever was asked for, sign-in opens.
         let routed = SessionGate.route(destination, isSignedIn: isSignedIn)
         lastOpened = routed
@@ -2638,7 +2638,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Where the last request to open a surface went after the gate; internal so a test can read it.
-    private(set) var lastOpened: UttrflowUX.Destination?
+    private(set) var lastOpened: UttrflowUX.AppLocation?
     /// Whether surfaces are put on screen; a test turns this off to read the gate without a window.
     var drawsWindows = true
 
