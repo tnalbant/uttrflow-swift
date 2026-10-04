@@ -6,7 +6,7 @@ import Testing
 @testable import UttrflowPipeline
 @testable import UttrflowTestSupport
 
-/// A recogniser that names each piece by the order it was asked for.
+/// A recogniser that names each piece by the order it is asked for.
 private actor CountingSpeechEngine: SpeechEngine {
     let kind = SpeechEngineKind.whisperKit
     private(set) var calls = 0
@@ -23,7 +23,7 @@ private actor CountingSpeechEngine: SpeechEngine {
     }
 }
 
-/// A tidier that returns what it was given.
+/// A tidier that returns its input unchanged.
 private struct EchoCleaner: TranscriptCleaning {
     func clean(_ request: TransformationRequest) async throws(TransformationError) -> TransformationResult {
         TransformationResult(text: request.transcription.text, producedBy: .foundationModels)

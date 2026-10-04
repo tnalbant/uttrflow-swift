@@ -112,8 +112,10 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
 
     /// The text the selection covers before the write, when the field will say.
     private func selectedText(_ selection: CFRange?) -> String? {
-        guard let selection, selection.length > 0 else { return nil }
-        let range = selection.location..<(selection.location + selection.length)
+        guard let selection, selection.location >= 0, selection.length > 0 else { return nil }
+        let (end, overflow) = selection.location.addingReportingOverflow(selection.length)
+        guard !overflow else { return nil }
+        let range = selection.location..<end
         if let text = field.text(in: range) { return text }
         guard let value = field.value(), range.upperBound <= value.utf16.count else { return nil }
         let units = Array(value.utf16)[range]

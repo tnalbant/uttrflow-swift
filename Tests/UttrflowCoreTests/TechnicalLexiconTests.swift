@@ -49,7 +49,8 @@ struct TechnicalLexiconTests {
 
     @Test("Pronunciations default to empty, and a term without destinations applies everywhere.")
     func defaults() throws {
-        let term = try #require(try decode(#"[{"id": "API", "category": "acronym", "spoken": ["a p i"]}]"#).first)
+        let term = try #require(
+            try decode(#"[{"id": "API", "category": "acronym", "spoken": ["a p i"]}]"#).first)
         #expect(term.pronunciations.isEmpty)
         #expect(Destination.allCases.allSatisfy(term.applies(in:)))
     }
