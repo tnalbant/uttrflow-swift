@@ -106,7 +106,8 @@ private func makeRig(holding stage: HeldStage) -> Rig {
         capture: FakeAudioCaptureEngine(),
         speech: GatedSpeech(gate: stage == .transcribing ? gate : open),
         cleaner: FakeTranscriptCleaner(
-            answering: ScriptedSequence(.success(TransformationResult(text: "Hello there.", producedBy: .rules))),
+            answering: ScriptedSequence(
+                .success(TransformationResult(text: "Hello there.", producedBy: .rules))),
             holding: { await cleanerGate.pass() }),
         context: FakeContextEngine(context: .fixture()),
         inserter: inserter,
