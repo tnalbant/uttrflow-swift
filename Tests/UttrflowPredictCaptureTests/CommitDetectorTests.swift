@@ -120,6 +120,20 @@ struct CommitDetectorTests {
         #expect(detector.receive(.returnPressed(at: start.addingTimeInterval(61))) == nil)
     }
 
+    @Test("An accepted extension followed by typing retires the idle draft it extended.")
+    func acceptedExtensionFollowedByTypingSupersedesIdleDraft() {
+        var detector = CommitDetector()
+        _ = typing("foo bar", into: &detector)
+        #expect(detector.receive(.tick(at: start.addingTimeInterval(60)))?.text == "foo bar")
+
+        #expect(detector.accepted("foo bar baz") == "foo bar")
+        _ = detector.receive(.keystroke("foo bar baz!", at: start.addingTimeInterval(61)))
+
+        #expect(
+            detector.receive(.returnPressed(at: start.addingTimeInterval(62)))
+                == Commit(text: "foo bar baz!", supersedes: "foo bar baz", reason: .returnPressed))
+    }
+
     @Test("An idle the caller will not admit is not remembered, so Return still commits the same value.")
     func refusedIdleLeavesReturnFree() {
         var detector = CommitDetector()

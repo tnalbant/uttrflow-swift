@@ -125,6 +125,7 @@ public struct CommitDetector: Sendable, Equatable {
             typedSinceRead = ""
             hasUnverifiableKeySinceRead = false
             lastKeystroke = moment
+            if acceptedLine != nil { acceptedLine = nil }
             // A line emptied by hand holds nothing inserted, so what is typed into it next is learned again.
             if pending.isEmpty {
                 holdsInsertion = false
@@ -159,9 +160,15 @@ public struct CommitDetector: Sendable, Equatable {
     }
 
     /// Takes the line a completion wrote as the one now standing, so an ending does not record what it replaced.
-    public mutating func accepted(_ text: String) {
+    public mutating func accepted(_ text: String) -> String? {
+        let superseded = committed == text.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : committed
         pending = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let superseded {
+            committedPrior = superseded
+            committed = pending
+        }
         acceptedLine = pending
+        return superseded
     }
 
     /// Forgets the field, which is what a new field focused in the same session amounts to.
