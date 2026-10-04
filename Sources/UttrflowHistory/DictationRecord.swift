@@ -20,7 +20,7 @@ public struct DictationRecord: Sendable, Equatable, Identifiable, Codable {
     public var changes: RecordedChanges?
     /// Whether the user has said this came out wrong; the one judgement here Uttrflow does not make.
     public var isFlagged: Bool
-    /// What the user said was wrong, when they said; `nil` on a flagged record is an unlabelled flag.
+    /// What a flag names as wrong; `nil` on a flagged record is an unlabelled flag.
     public var flagReason: FlagReason?
 
     /// Builds a record; every field after `text` and `when` defaults to unknown or unflagged.
