@@ -160,20 +160,15 @@ enum PieceJoiner {
             && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
     }
 
-    /// Finds a spoken mark at the start or end of a piece.
+    /// Finds a spoken mark from the shared registry at the start or end of a piece.
     private static func spokenMark(
         at words: [Substring], fromStart: Bool
     ) -> (words: [String], symbol: String, opening: Bool)? {
-        let names: [([String], String, Bool)] = [
-            (["open", "quote"], "\"", true), (["close", "quote"], "\"", false),
-            (["full", "stop"], ".", false), (["question", "mark"], "?", false),
-            (["exclamation", "mark"], "!", false), (["exclamation", "point"], "!", false),
-            (["semi", "colon"], ";", false), (["comma"], ",", false), (["period"], ".", false),
-            (["colon"], ":", false), (["semicolon"], ";", false),
-        ]
-        for (name, symbol, opening) in names where words.count >= name.count {
-            let candidate = fromStart ? words.prefix(name.count) : words.suffix(name.count)
-            if candidate.map({ WordShape(String($0)).key }) == name { return (name, symbol, opening) }
+        for mark in SpokenCommands.marks where mark.placement != .joining && words.count >= mark.words.count {
+            let candidate = fromStart ? words.prefix(mark.words.count) : words.suffix(mark.words.count)
+            if candidate.map({ WordShape(String($0)).key }) == mark.words {
+                return (mark.words, mark.text, mark.placement == .opening)
+            }
         }
         return nil
     }
