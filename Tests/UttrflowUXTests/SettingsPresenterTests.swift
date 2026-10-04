@@ -619,11 +619,26 @@ struct SettingsPrivacyPaneTests {
         SettingsPresenter.pane(for: .privacy, settings: settings, capabilities: .everything)
     }
 
-    @Test("opens with the promise, before anything that can be changed")
-    func opensWithThePromise() {
-        let first = privacy().everyRow.first
-        #expect(first?.id == "onDevice")
-        #expect(first?.control == .status("On-device"))
+    @Test("counts what left this Mac by purpose, and dictation as none, from the ledger")
+    func countsNetworkActivity() {
+        let personalisation = SettingsPersonalisation(
+            learnedWords: 0, addedWords: 0, transcripts: 0,
+            network: [.modelDownload: NetworkTally(count: 3, last: Date())])
+        let pane = SettingsPresenter.pane(
+            for: .privacy, settings: .default, capabilities: .everything, personalisation: personalisation)
+        let network = pane.groups.first { $0.id == "network" }
+        #expect(network?.rows.first?.label == "Dictation")
+        #expect(network?.rows.first?.control == .status("0 requests"))
+        #expect(pane.row("network.modelDownload")?.control == .status("3 requests"))
+        #expect(pane.row("network.updateCheck")?.control == .status("0 requests"))
+        #expect(network?.rows.count == NetworkPurpose.allCases.count + 1)
+        #expect(pane.row("onDevice") == nil)
+    }
+
+    @Test("renders every purpose at zero on a Mac that has made no request")
+    func rendersForZeroActivity() {
+        let rows = privacy().groups.first { $0.id == "network" }?.rows ?? []
+        #expect(rows.allSatisfy { $0.control == .status("0 requests") })
         #expect(privacy().callout?.message.contains(SettingsPresenter.privacyPromise) == true)
         // A banner is only ever the suggestion model's news, which the capable Mac here has none of.
         #expect(everyPane().allSatisfy { $0.banner == nil })

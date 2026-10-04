@@ -659,6 +659,40 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 8. Every shipped call site counts its requests, and every purpose has a call site.
+# ---------------------------------------------------------------------------
+#
+# The Privacy pane shows what left this Mac from NetworkActivityLedger; a call site that
+# does not record makes that count a lie, and a purpose nobody records is a dead row.
+printf '\nNetwork-activity ledger\n'
+ledger_failures=$failures
+LEDGER_FILES=(
+    'Sources/UttrflowAccount/BackendTransport+URLSession.swift'
+    "$DOWNLOAD_ISLAND"
+    'Sources/UttrflowLocalModel/AnonymousHub.swift'
+    'Sources/Uttrflow/Updates/UpdateController.swift'
+    'Sources/Uttrflow/AppDelegate.swift'
+)
+for file in "${LEDGER_FILES[@]}"; do
+    if [[ ! -f "$file" ]]; then
+        fail "a ledger call site no longer exists: $file" \
+            "Move the name in LEDGER_FILES to wherever that request is now made."
+    elif ! grep -q 'NetworkActivityLedger' "$file"; then
+        fail "a call site sends without counting: $file" \
+            "Record each request with NetworkActivityLedger under its NetworkPurpose."
+    fi
+done
+PURPOSE_FILE='Sources/UttrflowCore/Support/NetworkActivity.swift'
+purposes=$(sed -n '/^public enum NetworkPurpose/,/^}/p' "$PURPOSE_FILE" | sed -n 's/^ *case \([a-zA-Z]*\)$/\1/p')
+for purpose in $purposes; do
+    if ! grep -rqE "(record\(|purpose: )\.$purpose\b" Sources --include='*.swift'; then
+        fail "the purpose .$purpose is recorded nowhere" \
+            "A purpose with no call site is a row that always says zero; remove it or record it."
+    fi
+done
+[[ "$failures" -eq "$ledger_failures" ]] && pass "every ledger call site records, and every purpose is recorded"
+
+# ---------------------------------------------------------------------------
 printf '\n'
 if [[ "$failures" -gt 0 ]]; then
     printf 'offline audit: %d check(s) failed — see above.\n' "$failures" >&2

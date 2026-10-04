@@ -76,6 +76,15 @@ No clean-up engine is hosted: `TextTransformers.all` assembles only on-device en
 runs without the network. `TransformerKind.cloud` survives only so a stored record naming it
 still decodes; it is never selectable.
 
+### What the person can see
+
+Each shipped call site counts its requests in `NetworkActivityLedger` (`UttrflowCore`) under a
+closed `NetworkPurpose`: account, model download, update check, crash report, usage statistics.
+The ledger keeps a count per purpose per day for 30 days, as integers and dates only, in
+`network-activity.v1.json` beside the other local stores, and never sends it anywhere. The
+Privacy pane lists each purpose with its count, and a "Dictation: 0 requests" row: dictation has
+no purpose, so no request can be counted under it. Check 8 below keeps the two in step.
+
 ### Dependencies
 
 The binary check reads the undefined symbols of every object the app links, against a family
@@ -294,6 +303,7 @@ module nobody added to it; a list of what is allowed covers a new module by defa
 | 6 | Sparkle is imported in one file in the app shell, and one target depends on it | Source grep, grep on `Package.swift` |
 | 6b | Sentry is imported only in `UttrflowDiagnostics`, one target links it, and only the app depends on that module | Source grep, grep on `Package.swift` |
 | 7 | No linked Uttrflow object can reach the network unless its source file is allowed one, and no network-capable dependency outside `ALLOWED_NETWORK_DEPENDENCIES` (`Hub ArgmaxCore HuggingFace EventSource Cmlx`) is linked | one `nm -uA` over every object in `Uttrflow.product/Objects.LinkFileList` |
+| 8 | Every shipped call site in `LEDGER_FILES` records its requests in `NetworkActivityLedger`, and every `NetworkPurpose` is recorded somewhere | Source grep |
 
 Check 7 needs the built binary. With `--require-binary`, or whenever `CI` is set, a missing one
 is a failure, because it is the only check that can see a dependency's network call. A bare

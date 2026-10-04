@@ -973,12 +973,6 @@ public enum SettingsPresenter {
                     id: "retention",
                     title: "Your data",
                     rows: [
-                        SettingsRow(
-                            id: "onDevice",
-                            label: "Your words stay on your Mac",
-                            explanation: "Nothing you say is uploaded",
-                            control: .status("On-device"),
-                            icon: .symbol("checkmark.shield", .dictation)),
                         retentionRow(settings),
                         toggleRow(
                             .sharesUsageStatistics,
@@ -995,6 +989,9 @@ public enum SettingsPresenter {
                             settings, .everything
                         ).with(icon: .symbol("exclamationmark.bubble", .neutral)),
                     ]),
+                SettingsGroup(
+                    id: "network", title: "Network, last \(NetworkActivity.windowDays) days",
+                    rows: networkRows(personalisation.network)),
                 SettingsGroup(id: "appearance", title: "Appearance", rows: [appearanceRow(settings)]),
                 SettingsGroup(
                     id: "reset",
@@ -1005,6 +1002,34 @@ public enum SettingsPresenter {
                 symbolName: "lock",
                 message: "\(privacyPromise) \(signingOutKeepsEverything)",
                 tint: .dictation))
+    }
+
+    /// Dictation first, which no purpose belongs to, then every purpose with its count from the ledger.
+    static func networkRows(_ network: [NetworkPurpose: NetworkTally]) -> [SettingsRow] {
+        let dictation = SettingsRow(
+            id: "network.dictation",
+            label: "Dictation",
+            explanation: "Nothing you say is uploaded",
+            control: .status(counted(0, "request", "requests")),
+            icon: .symbol("checkmark.shield", .dictation))
+        return [dictation]
+            + NetworkPurpose.allCases.map { purpose in
+                SettingsRow(
+                    id: "network.\(purpose.rawValue)",
+                    label: networkLabel(purpose),
+                    control: .status(counted(network[purpose]?.count ?? 0, "request", "requests")))
+            }
+    }
+
+    /// The name each purpose goes by in the Privacy pane.
+    static func networkLabel(_ purpose: NetworkPurpose) -> String {
+        switch purpose {
+        case .account: "Account and sign-in"
+        case .modelDownload: "Downloads"
+        case .updateCheck: "Update checks"
+        case .crashReport: "Crash reports"
+        case .usageStatistics: "Usage statistics"
+        }
     }
 
     /// What a crash report carries, in the words the row shows. See `Docs/crash-reporting.md`.

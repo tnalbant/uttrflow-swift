@@ -26,6 +26,7 @@ struct ReleasedStoreFixtureTests {
     private static let uncovered: Set<LocalStoreEntry> = [
         .clipboard, .clipboardPreferences, .predict, .predictConsent,
         .recordings, .speechModels, .encryptionKey, .instanceLock, .speechModelLoads,
+        .networkActivity,
     ]
 
     private static let covered: [LocalStoreEntry: Opened] = [
