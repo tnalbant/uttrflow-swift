@@ -3781,8 +3781,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             _ = await MicrophonePermissionGate().requestOrOpenSettings()
         case .appleIntelligence:
             SystemSettingsOpener().open(.appleIntelligence)
-        case .keyboard:
-            SystemSettingsOpener().open(.keyboard)
+        case .keyboard, .soundInput:
+            SystemSettingsOpener().open(pane)
         }
     }
 }

@@ -51,7 +51,8 @@ extension SpeechEngineError: CataloguedFailure {
         case .modelLoadFailed: .modelDamaged(fileCount: 0)
         case .modelDamaged: .audioTooShort
         case .audioTooShort: .nothingHeard
-        case .nothingHeard: .speechWithoutWords
+        case .nothingHeard: .noSignal
+        case .noSignal: .speechWithoutWords
         case .speechWithoutWords: .recogniserTimedOut
         case .recogniserTimedOut: .transcriptionFailed(description: "")
         case .transcriptionFailed: nil
