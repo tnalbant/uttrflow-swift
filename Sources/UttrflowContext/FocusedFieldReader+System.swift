@@ -469,6 +469,12 @@ public enum FocusedFieldReader {
             _ = AXUIElementSetMessagingTimeout(element, elementTimeoutInSeconds)
         }
 
+        /// The focused field as its caller already capped it, its messaging timeout left as it is.
+        init(keepingTimeout element: AXUIElement) {
+            self.element = element
+            answers = Answers(element)
+        }
+
         static func == (lhs: AXNode, rhs: AXNode) -> Bool { CFEqual(lhs.element, rhs.element) }
     }
 
@@ -616,11 +622,50 @@ public enum FocusedFieldReader {
         func isSecure(_ node: AXNode) -> Bool { node.answers.isSecure }
         func text(of node: AXNode) -> String? { node.answers.text }
         func frame(of node: AXNode) -> CGRect? { node.answers.frame }
-        func children(of node: AXNode) -> [AXNode] { node.answers.children.map(AXNode.init) }
+        func children(of node: AXNode) -> [AXNode] { node.answers.children.map { AXNode($0) } }
+
+        func attribute(_ name: String, of node: AXNode) -> FieldAnswer {
+            Self.answer {
+                var value: AnyObject?
+                return (AXUIElementCopyAttributeValue(node.element, name as CFString, &value), value)
+            }
+        }
+
+        func attribute(_ name: String, of node: AXNode, range: NSRange) -> FieldAnswer {
+            var cfRange = CFRange(location: range.location, length: range.length)
+            guard let parameter = AXValueCreate(.cfRange, &cfRange) else { return .unsupported }
+            return Self.answer {
+                var value: AnyObject?
+                let error = AXUIElementCopyParameterizedAttributeValue(
+                    node.element, name as CFString, parameter, &value)
+                return (error, value)
+            }
+        }
+
+        /// Asked in one message; an element that will not answer the batch is asked one attribute at a time.
+        func attributes(_ names: [String], of node: AXNode) -> [FieldAnswer] {
+            var answers: CFArray?
+            let result = AXUIElementCopyMultipleAttributeValues(
+                node.element, names as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &answers)
+            guard result == .success, let values = answers as? [AnyObject], values.count == names.count else {
+                return names.map { attribute($0, of: node) }
+            }
+            return values.map { .value($0) }
+        }
+
+        /// One message's outcome as a `FieldAnswer`, a failure at the element's timeout counted as timed out.
+        private static func answer(_ send: () -> (AXError, AnyObject?)) -> FieldAnswer {
+            let started = DispatchTime.now().uptimeNanoseconds
+            let (error, value) = send()
+            let elapsed = DispatchTime.now().uptimeNanoseconds - started
+            return FieldAnswer.classify(
+                code: error.rawValue, value: value, elapsedSeconds: Double(elapsed) / 1_000_000_000,
+                timeoutSeconds: Double(elementTimeoutInSeconds))
+        }
 
         /// The element's parent, stopping at the window so the walk never crosses into the application's other windows.
         func parent(of node: AXNode) -> AXNode? {
-            guard node.answers.role != kAXWindowRole, let parent = node.answers.parent.map(AXNode.init),
+            guard node.answers.role != kAXWindowRole, let parent = node.answers.parent.map({ AXNode($0) }),
                 parent.answers.role != kAXApplicationRole
             else { return nil }
             return parent
