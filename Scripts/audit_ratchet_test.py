@@ -135,6 +135,60 @@ class RatchetTests(unittest.TestCase):
                 self.assertEqual(workspace.baseline()["files"], {"Sources/Example/New.swift": 1})
 
 
+class ExclusionSizeTests(unittest.TestCase):
+    """An oversized coverage exclusion may shrink but never grow past the size it was accepted at."""
+
+    PATH = "Uttrflow/AppDelegate.swift"
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="uttrflow-exclusion-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.baseline = os.path.join(self.root, "exclusion_baseline.json")
+        shutil.copy(os.path.join(HERE, "exclusion_baseline.json"), self.baseline)
+
+    def run_report(self, *arguments):
+        return subprocess.run(
+            [sys.executable, os.path.join(HERE, "coverage_report.py"), *arguments],
+            cwd=os.path.dirname(HERE),
+            env={**os.environ, "EXCLUSION_BASELINE": self.baseline},
+            capture_output=True,
+            text=True,
+        )
+
+    def recorded(self):
+        with open(self.baseline) as handle:
+            return json.load(handle)["files"]
+
+    def record(self, delta):
+        """Moves the recorded size of the file by `delta`; -1 leaves the tree one line past it."""
+        files = self.recorded()
+        files[self.PATH] += delta
+        with open(self.baseline, "w") as handle:
+            json.dump({"total": sum(files.values()), "files": files}, handle)
+        return files[self.PATH]
+
+    def test_a_grown_exclusion_is_refused(self):
+        self.record(-1)
+        done = self.run_report("--check-exclusions")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn(f"{self.PATH} is", done.stderr)
+
+    def test_update_refuses_the_rise(self):
+        was = self.record(-1)
+        self.assertEqual(self.run_report("--update").returncode, 1)
+        self.assertEqual(self.recorded()[self.PATH], was)
+
+    def test_after_merge_records_the_rise(self):
+        was = self.record(-1)
+        self.assertEqual(self.run_report("--update", "--after-merge").returncode, 0)
+        self.assertEqual(self.recorded()[self.PATH], was + 1)
+
+    def test_a_fall_is_recorded(self):
+        was = self.record(1)
+        self.assertEqual(self.run_report("--update").returncode, 0)
+        self.assertEqual(self.recorded()[self.PATH], was - 1)
+
+
 class DisclosureRangeTests(unittest.TestCase):
     """`--range` has to accept a range that carries git's own flags, not just `A..B`.
 
