@@ -369,7 +369,8 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     public init() {}
 
     /// How long one Accessibility message may take, generous because it is the dictation itself.
-    private static let messagingTimeout: Float = 2
+    private static let messagingTimeout = Float(
+        SelectionWriter<AXSelectionAttributes>.messagingTimeout.components.seconds)
     /// Keeps a suggestion read comfortably inside the one-second key hold.
     private static let acceptanceMessagingTimeout: Float = 0.1
     /// Bounds whole-value fallback to fields small enough to copy cheaply.
