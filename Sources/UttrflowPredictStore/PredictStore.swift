@@ -24,7 +24,7 @@ public actor PredictStore: PredictionStore {
     static let candidateLimit = 16
 
     /// The open file every read and write goes through.
-    private var database: Database
+    private(set) var database: Database
 
     /// Opens the corpus, replacing a file that is not a database at all and refusing one from a newer build.
     public init(path: String, encryptedStore: EncryptedStore? = nil) throws(PredictStoreError) {
@@ -233,14 +233,18 @@ public actor PredictStore: PredictionStore {
         let evidence: Entry?
         if let a = first.evidence, let b = second.evidence {
             evidence = Entry(
-                text: a.text, count: a.count + b.count, accepted: a.accepted + b.accepted,
+                text: b.lastUsed > a.lastUsed ? b.text : a.text, count: a.count + b.count,
+                accepted: a.accepted + b.accepted,
                 rejected: a.rejected + b.rejected, selfSourced: a.selfSourced + b.selfSourced,
                 lastUsed: max(a.lastUsed, b.lastUsed))
         } else {
             evidence = first.evidence ?? second.evidence
         }
+        // The spelling used most recently is the one offered.
+        let firstUsed = first.evidence?.lastUsed ?? .distantPast
+        let newer = (second.evidence?.lastUsed ?? .distantPast) > firstUsed
         return Candidate(
-            text: first.text, source: first.source, evidence: evidence,
+            text: newer ? second.text : first.text, source: first.source, evidence: evidence,
             editDistance: min(first.editDistance, second.editDistance),
             isIrreversible: first.isIrreversible)
     }
@@ -303,7 +307,8 @@ public actor PredictStore: PredictionStore {
                     $0.bind(3, upper)
                     $0.bind(4, Int64(Self.candidateLimit))
                 }, distance: 0)
-            found += read.filter { seen.insert($0.text.lowercased()).inserted }
+            // Only a row both queries returned is dropped; case variants are summed later by `merged`.
+            found += read.filter { seen.insert($0.text).inserted }
         }
         return found
     }
@@ -349,7 +354,7 @@ public actor PredictStore: PredictionStore {
                 evidence: Entry(
                     text: text, count: row.integer(1), accepted: row.integer(2),
                     rejected: row.integer(3), selfSourced: row.integer(4),
-                    lastUsed: Date(timeIntervalSince1970: row.double(5))),
+                    lastUsed: Self.clampedLastUsed(row.double(5))),
                 editDistance: distance,
                 isIrreversible: DestructiveCommand.matches(text, failClosedOnUnresolved: true))
         }
@@ -364,12 +369,18 @@ public actor PredictStore: PredictionStore {
         selfSourced: Bool = false, at moment: Date
     ) throws(PredictStoreError) {
         guard !text.isEmpty else { return }
+        let moment = min(moment, Date())
         try database.transaction { () throws(PredictStoreError) in
             try write(
                 Spelling.canonical(text), in: surface, after: previous.map(Spelling.canonical),
                 selfSourced: selfSourced, at: moment)
         }
         try? compactIfNeeded()
+    }
+
+    /// Keeps a stored clock jump from outranking entries used at the actual current time.
+    private static func clampedLastUsed(_ timestamp: Double) -> Date {
+        min(Date(timeIntervalSince1970: timestamp), Date())
     }
 
     /// The steps of a record, which stand or fall together.
@@ -623,23 +634,6 @@ public actor PredictStore: PredictionStore {
         }
     }
 
-    /// How many entries each application has taught, keyed by bundle identifier.
-    public func entryCountsByApplication() throws(PredictStoreError) -> [String: Int] {
-        let counted = try database.rows(
-            """
-            SELECT bundle_id, COUNT(*) FROM entry
-            JOIN surface ON surface.id = entry.surface_id
-            GROUP BY bundle_id
-            """, { _ in }
-        ) { ($0.text(0), $0.integer(1)) }
-        return Dictionary(counted, uniquingKeysWith: +)
-    }
-
-    /// How many entries the corpus holds across every surface.
-    public func entryCount() throws(PredictStoreError) -> Int {
-        try database.rows("SELECT COUNT(*) FROM entry", { _ in }) { $0.integer(0) }.first ?? 0
-    }
-
     // MARK: - Prefix hygiene
 
     /// Whether a longer non-superseded line the user entered begins with this one, making it a fragment.
@@ -839,7 +833,7 @@ public actor PredictStore: PredictionStore {
                 evidence: Entry(
                     text: row.text(0), count: row.integer(1), accepted: row.integer(2),
                     rejected: row.integer(3), selfSourced: row.integer(4),
-                    lastUsed: Date(timeIntervalSince1970: row.double(5))),
+                    lastUsed: Self.clampedLastUsed(row.double(5))),
                 editDistance: distance,
                 isIrreversible: DestructiveCommand.matches(row.text(0), failClosedOnUnresolved: true))
         }

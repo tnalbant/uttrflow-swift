@@ -47,6 +47,13 @@ struct PanelThumbnailsTests {
     /// What one of those weighs, asked of the cache's own function so the two cannot disagree.
     static let thumbnailBytes = PanelThumbnails.bytes(of: bitmap())
 
+    private static func oversizedPNG() throws -> Data {
+        let encoded =
+            "iVBORw0KGgoAAAANSUhEUgAA//8AAP//AQMAAACMy0sTAAAACVBMVEUA"
+            + "AAD///+AgIBEyIOaAAAABklEQVR4nGMAAADq4gSQAAAAAElFTkSuQmCC"
+        return try #require(Data(base64Encoded: encoded))
+    }
+
     private func thumbnails(
         _ answers: [URL: NSImage] = [:], budget: Int? = nil, retryAfter: Duration = .seconds(2)
     ) -> (PanelThumbnails, Counter) {
@@ -77,6 +84,35 @@ struct PanelThumbnailsTests {
         for _ in 0..<20 { _ = thumbnails.thumbnail(for: file) }
 
         #expect(counter.files == [file])
+    }
+
+    @Test("rejects a tiny PNG with an oversized header before decoding and keeps the placeholder")
+    func oversizedHeaderDoesNotDecode() async throws {
+        let file = FileManager.default.temporaryDirectory
+            .appending(path: "uttrflow-oversized-thumbnail-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let png = try Self.oversizedPNG()
+        #expect(png.count == 84)
+        try png.write(to: file)
+        let header = try #require(CGImageSourceCreateWithURL(file as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(header, 0, nil) as? [CFString: Any])
+        #expect(properties[kCGImagePropertyPixelWidth] as? Int == 65_535)
+        #expect(properties[kCGImagePropertyPixelHeight] as? Int == 65_535)
+        let counter = Counter()
+        let source = PanelThumbnailSource { file, maxPixel in
+            PanelThumbnailSource.load(file, maxPixel: maxPixel) { source, options in
+                counter.count()
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+            }
+        }
+        let thumbnails = PanelThumbnails(source: source)
+
+        thumbnails.prepare(file)
+        await thumbnails.waitForIdle(file: file)
+
+        #expect(counter.calls == 0)
+        #expect(thumbnails.known.keys.contains(file))
+        #expect(thumbnails.thumbnail(for: file) == nil)
     }
 
     @Test("a view starts from the cached picture and a miss is awaited, not polled")

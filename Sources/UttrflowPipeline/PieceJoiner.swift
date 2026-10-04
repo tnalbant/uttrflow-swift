@@ -80,8 +80,24 @@ enum PieceJoiner {
     static func seamed(
         _ pieces: [String], heard: [String] = [], under formatter: DestinationFormatter
     ) -> [String] {
-        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
-        return pieces.enumerated().map { index, text in
+        let joined = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
+        // A piece tidied to nothing has no seam, so each seam is judged against the next piece with words.
+        let worded = joined.indices.filter { !joined[$0].allSatisfy(\.isWhitespace) }
+        let heard = heard.count == joined.count ? worded.map { heard[$0] } : []
+        var seamed = joined
+        for (position, text) in seamedWorded(worded.map { joined[$0] }, heard: heard, under: formatter)
+            .enumerated()
+        {
+            seamed[worded[position]] = text
+        }
+        return seamed
+    }
+
+    /// Seams pieces that all have words, each judged against its neighbours.
+    private static func seamedWorded(
+        _ pieces: [String], heard: [String], under formatter: DestinationFormatter
+    ) -> [String] {
+        pieces.enumerated().map { index, text in
             guard index > 0,
                 sentenceRunsOn(pieces[index - 1], into: text)
                     || groupRunsAcross(
@@ -136,11 +152,7 @@ enum PieceJoiner {
             $0.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
         }
         guard let previous = prior.last else { return false }
-        if ["the", "a", "an", "this", "that", "these", "those", "my", "your", "our", "their"].contains(
-            previous)
-        {
-            return true
-        }
+        if QuestionShape.determiners.contains(previous) { return true }
         if let lastSentenceEnd = prior.lastIndex(where: { [".", "?", "!"].contains($0) }) {
             return lastSentenceEnd == prior.index(before: prior.endIndex)
         }
@@ -148,20 +160,15 @@ enum PieceJoiner {
             && ["the", "a", "this", "that"].contains(prior.dropLast().last ?? "")
     }
 
-    /// Finds a spoken mark at the start or end of a piece.
+    /// Finds a spoken mark from the shared registry at the start or end of a piece.
     private static func spokenMark(
         at words: [Substring], fromStart: Bool
     ) -> (words: [String], symbol: String, opening: Bool)? {
-        let names: [([String], String, Bool)] = [
-            (["open", "quote"], "\"", true), (["close", "quote"], "\"", false),
-            (["full", "stop"], ".", false), (["question", "mark"], "?", false),
-            (["exclamation", "mark"], "!", false), (["exclamation", "point"], "!", false),
-            (["semi", "colon"], ";", false), (["comma"], ",", false), (["period"], ".", false),
-            (["colon"], ":", false), (["semicolon"], ";", false),
-        ]
-        for (name, symbol, opening) in names where words.count >= name.count {
-            let candidate = fromStart ? words.prefix(name.count) : words.suffix(name.count)
-            if candidate.map({ WordShape(String($0)).key }) == name { return (name, symbol, opening) }
+        for mark in SpokenCommands.marks where mark.placement != .joining && words.count >= mark.words.count {
+            let candidate = fromStart ? words.prefix(mark.words.count) : words.suffix(mark.words.count)
+            if candidate.map({ WordShape(String($0)).key }) == mark.words {
+                return (mark.words, mark.text, mark.placement == .opening)
+            }
         }
         return nil
     }
@@ -239,7 +246,7 @@ enum PieceJoiner {
     private static func endedAtSeam(
         _ text: String, before next: String, under formatter: DestinationFormatter
     ) -> String {
-        if endsWithSpokenLineCommand(text) { return WordShape.withoutTrailingStop(text) }
+        if endsWithSpokenLineCommand(text, before: next) { return WordShape.withoutTrailingStop(text) }
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
         if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
@@ -250,13 +257,19 @@ enum PieceJoiner {
             ? WordShape.withoutTrailingStop(text) : WordShape.finished(text)
     }
 
-    /// Whether a piece ends with the spoken command that opens a new line.
-    private static func endsWithSpokenLineCommand(_ text: String) -> Bool {
-        let draft = Draft(keepingLineBreaks: text)
+    /// Whether a piece ends with the spoken command that opens a new line, read with the piece after it.
+    private static func endsWithSpokenLineCommand(_ text: String, before next: String) -> Bool {
+        let count = Draft(keepingLineBreaks: text).presentIndices.count
+        return count >= 2 && isLineCommand(at: count - 2, in: Draft(keepingLineBreaks: text + " " + next))
+    }
+
+    /// Whether the live words at `position` ask for a new line, rather than naming one as in "a new line of shoes".
+    private static func isLineCommand(at position: Int, in draft: Draft) -> Bool {
         let live = draft.presentIndices
-        guard live.count >= 2 else { return false }
-        return draft.shape(at: live[live.count - 2]).key == "new"
-            && draft.shape(at: live[live.count - 1]).key == "line"
+        guard position >= 0, position + 1 < live.count else { return false }
+        return draft.shape(at: live[position]).key == "new"
+            && draft.shape(at: live[position + 1]).key == "line"
+            && !MentionGuard.namesLayout(at: position, spanning: 2, in: draft)
     }
 
     // MARK: The stop at a seam
@@ -329,8 +342,7 @@ enum PieceJoiner {
         for opening in starts.indices.dropFirst() {
             let live = draft.presentIndices
             guard let position = live.firstIndex(of: starts[opening]), position >= 2,
-                draft.shape(at: live[position - 2]).key == "new",
-                draft.shape(at: live[position - 1]).key == "line"
+                isLineCommand(at: position - 2, in: draft)
             else { continue }
             draft.replace(at: live[position - 2], with: "\n", by: id)
             draft.remove(at: live[position - 1], by: id)
@@ -524,7 +536,8 @@ enum PieceJoiner {
         let pieceStarts = Set(starts)
         return live.indices.filter { position in
             position == live.startIndex || pieceStarts.contains(live[position])
-                || draft.shape(at: live[position - 1]).endsSentence
+                || Abbreviations.endsSentence(
+                    draft.words[live[position - 1]].text, followedBy: draft.words[live[position]].text)
         }.map { live[$0] }
     }
 

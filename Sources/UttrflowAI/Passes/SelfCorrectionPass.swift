@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Removes the discarded half of a spoken correction a trigger phrase announces. See `Docs/cleanup.md`.
-public struct SelfCorrectionPass: CleaningPass {
+public struct SelfCorrectionPass: PieceCleaningPass {
     public static let id: PassID = .selfCorrection
     public static let removes: RemovalGrant = .retraction
 
@@ -40,7 +40,7 @@ public struct SelfCorrectionPass: CleaningPass {
     private func isCutOff(at position: Int, in live: [Int], of draft: Draft) -> Bool {
         guard position + 1 < live.count else { return false }
         let fragment = draft.shape(at: live[position])
-        guard fragment.suffix == "-", !fragment.core.isEmpty else { return false }
+        guard fragment.isCutOff else { return false }
         if WordForms.sameForm(
             fragment.key, draft.shape(at: live[position + 1]).key, whenCutOff: true)
         {
@@ -99,11 +99,20 @@ public struct SelfCorrectionPass: CleaningPass {
     ) -> (span: Range<Int>, through: Bool)? {
         let trigger = Restatement.triggerRun(at: position, in: live, of: draft)
         guard trigger > 0, position > 0, position + trigger < live.count,
+            !followsOpeningMark(position, in: live, of: draft),
             let start = Restatement.discardedStart(
                 before: position, after: position + trigger, in: live, of: draft)
         else { return nil }
         let through = Restatement.standsAlone(position, before: position + trigger, in: live, of: draft)
         return (start..<(position + trigger), through)
+    }
+
+    /// Whether a spoken opening mark ends just before `position`, so the word there begins a quotation rather than a correction.
+    private func followsOpeningMark(_ position: Int, in live: [Int], of draft: Draft) -> Bool {
+        SpokenCommands.openings.contains { opening in
+            let start = position - opening.words.count
+            return start >= 0 && draft.spells(opening.words, at: start, in: live, acrossSentences: true)
+        }
     }
 
     /// Lowers the restart's capital when the word it replaces was lower case, since only the stop gave it one.

@@ -57,11 +57,21 @@ extension SettingsReset {
     /// Whether the last dictation's words go too, which every reset that clears the transcripts does.
     public var forgetsTheLastDictation: Bool { targets.contains(.history) }
 
+    /// Whether a dictation under way writes to what this removes, so running both leaves its words behind.
+    public var meetsADictation: Bool {
+        targets.contains { target in
+            switch target {
+            case .learnedWords, .everyWord, .history, .clipboard, .recordings: true
+            case .preferences, .suggestions, .everySuggestion, .snippets, .suggestionConsent: false
+            }
+        }
+    }
+
     /// Whether the user is asked first, which only what nothing brings back requires.
     public var isConfirmed: Bool {
         switch self {
-        case .learnedWords, .suggestions: false
-        case .everything: true
+        case .learnedWords: false
+        case .everything, .suggestions: true
         }
     }
 }

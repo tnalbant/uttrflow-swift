@@ -25,11 +25,11 @@ extension HistoryFixture {
     /// The Dictionary page over these inputs.
     static func dictionary(
         entries: [DictionaryEntry] = [], draft: DictionaryDraft? = nil, query: String = "",
-        filter: String = "", corrections: [Correction] = []
+        filter: String = "", sort: String = "", corrections: [Correction] = []
     ) -> DictionaryPresentation {
         DictionaryPresenter.page(
             for: DictionarySnapshot(
-                entries: entries, draft: draft, query: query, filter: filter,
+                entries: entries, draft: draft, query: query, filter: filter, sort: sort,
                 corrections: corrections, now: now),
             calendar: calendar, locale: locale)
     }
@@ -37,10 +37,10 @@ extension HistoryFixture {
 
 @Suite("The words Uttrflow knows")
 struct DictionaryPageTests {
-    @Test("every word is listed in the order the store keeps it")
+    @Test("every word is listed, the newest first")
     func lists() {
         let page = HistoryFixture.dictionary(entries: [
-            HistoryFixture.word("Uttrflow"), HistoryFixture.word("pgvector"),
+            HistoryFixture.word("pgvector", daysAgo: 5), HistoryFixture.word("Uttrflow"),
         ])
         #expect(page.rows.map(\.word) == ["Uttrflow", "pgvector"])
         #expect(

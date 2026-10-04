@@ -49,6 +49,17 @@ struct FullTreeSwitchTests {
         #expect(tree.switchedOn == [9: FullTreeSwitch.enhancedAttribute])
     }
 
+    @Test("Chrome with the manual switch already on still gets the screen reader's one.")
+    func chromeManualOnStillTakesTheEnhancedSwitch() {
+        let tree = FullTreeSwitch()
+        let chrome = FakeApplication(
+            values: [FullTreeSwitch.manualAttribute: true],
+            supported: [FullTreeSwitch.manualAttribute, FullTreeSwitch.enhancedAttribute])
+        tree.switchOn(processIdentifier: 9, bundleIdentifier: "com.google.Chrome", host: chrome.host)
+        #expect(chrome.values[FullTreeSwitch.enhancedAttribute] == true)
+        #expect(tree.switchedOn == [9: FullTreeSwitch.enhancedAttribute])
+    }
+
     @Test("A write that takes but is answered as a failure still counts, so it is turned off again.")
     func appliedWriteAnsweredAsFailureCounts() {
         let tree = FullTreeSwitch()

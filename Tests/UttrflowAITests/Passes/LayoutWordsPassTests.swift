@@ -440,4 +440,29 @@ struct LayoutWordsPassTests {
     func oneLineNonList(input: String) {
         #expect(cleaned(input, by: Self.oneLine) == input)
     }
+    @Test(
+        "writes a numbered list after a heading through the shipped pipeline",
+        arguments: [
+            (
+                "the agenda number one budget number two hiring number three travel",
+                "The agenda\n1. Budget\n2. Hiring\n3. Travel"
+            ),
+            (
+                "agenda new line number one budget new line number two hiring",
+                "Agenda\n\n1. Budget\n\n2. Hiring"
+            ),
+            (
+                "steps new line number one open the app new line number two tap settings"
+                    + " new line number three sign out",
+                "Steps\n\n1. Open the app\n\n2. Tap settings\n\n3. Sign out"
+            ),
+            (
+                "agenda colon new line number one budget review new line number two hiring plan",
+                "Agenda:\n\n1. Budget review\n\n2. Hiring plan"
+            ),
+        ]
+    )
+    func listsAfterHeadingThroughPipeline(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
 }
