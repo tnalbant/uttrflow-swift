@@ -162,8 +162,8 @@ them into one upper-case word: `T-A-V-I-S-H` becomes `TAVISH`.
 | Spelled file name ("R E A D M E dot t x t") | left as the recogniser wrote it, `readme.txt` | Already joined |
 
 One rule is added, for the spelled word; every other shape is either already written as
-intended or not consistent enough to read. One cleaning regression was measured: in "A as in Alpha" the spelled letter loses its capital
-("a as in Alpha"), because the article "a" and the letter name are one spelling.
+intended or not consistent enough to read. One cleaning regression was measured: in "A as in
+Alpha" the spelled letter loses its capital ("a as in Alpha"), because the article "a" and the letter name are one spelling.
 
 Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
 `uttrflow-dev transcribe --raw -l en` (the shipping WhisperKit model) and
@@ -186,8 +186,8 @@ Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
 
 The recogniser's own errors (a dropped letter in 2, "8 8" heard as letters in 11) are
 recognition, not cleaning, and are out of reach of any rule here. Synthetic voices spell more
-<<<<<<< HEAD
->>>>>>> origin/dq/issue-3846
+evenly than people do, so a recorded human set may still change these shapes.
+
 ## Dictation that reads like a request
 
 Dictation that sounds addressed to the model is still dictation, and its expected text is the

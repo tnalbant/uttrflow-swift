@@ -39,6 +39,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
         var live = draft.presentIndices
+        for index in live {
+            let shape = draft.shape(at: index)
+            if let joined = Self.joinedHyphenatedSpelling(shape.core) {
+                draft.replace(at: index, with: shape.replacingCore(with: joined), by: Self.id)
+            }
+        }
         var position = 0
         while position < live.count {
             guard let end = runEnd(from: position, in: live, draft: draft), end - position >= 2 else {
@@ -143,6 +149,15 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             end += 1
         }
         return end
+    }
+
+    /// The word a recogniser-hyphenated spelling names ("T-A-V-I-S-H" is "TAVISH"): three or more single capitals.
+    static func joinedHyphenatedSpelling(_ core: String) -> String? {
+        let parts = core.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count >= 3,
+            parts.allSatisfy({ $0.count == 1 && $0.first?.isUppercase == true && $0.first?.isASCII == true })
+        else { return nil }
+        return parts.joined()
     }
 
     /// The letter a word names, where a cut-off is an unfinished word and names no letter.

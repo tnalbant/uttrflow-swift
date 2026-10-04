@@ -25,6 +25,28 @@ struct SpelledInitialismPassTests {
                 .run(Draft(text: input)).text == expected)
     }
 
+    @Test(
+        "joins a recogniser-hyphenated spelling into one word",
+        arguments: [
+            ("My name is Tavish. That's T-A-V-I-S-H.", "My name is Tavish. That's TAVISH."),
+            ("The city is spelled E-L-D-R-A-V-I-A.", "The city is spelled ELDRAVIA."),
+            ("C-A-L-L-U-M, with two Ls", "CALLUM, with two Ls"),
+            ("(O-R-R-I-N)", "(ORRIN)"),
+        ])
+    func joinsHyphenatedSpelling(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "leaves hyphenated words that are not a spelling",
+        arguments: [
+            "an X-ray of it", "the T-shirt", "a well-known name", "JRA-412", "the A-B test",
+            "a-b-c lower case", "x-y-z",
+        ])
+    func keepsOtherHyphenatedWords(input: String) {
+        #expect(sut.apply(Draft(text: input)).text == input)
+    }
+
     @Test("leaves a stammered pronoun as two words rather than an initialism")
     func stammeredPronoun() {
         #expect(sut.apply(Draft(text: "I I think we should ship it")).text == "I I think we should ship it")
