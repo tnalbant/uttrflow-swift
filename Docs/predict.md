@@ -571,3 +571,5 @@ alone misleads in the same direction:
    quarter of one typed. Without it, offering a candidate makes it likelier to be offered, and the
    set of things the feature knows narrows to what it already said while the acceptance rate
    climbs.
+   Positive acceptance lift is scaled by the share of the entry's evidence that was typed by hand;
+   refusals retain their full penalty.
