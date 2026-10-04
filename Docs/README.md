@@ -36,6 +36,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-synthetic-keystrokes.md](input-synthetic-keystrokes.md) | The key events this app posts, and what the system does with them |
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
+| [web-field-probe.md](web-field-probe.md) | What the dictation read gets from a web field |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
 | [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
