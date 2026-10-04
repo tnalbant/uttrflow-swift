@@ -28,6 +28,7 @@ public enum EvaluationCorpus {
             spoken: "My manager. Wants the slides by noon",
             expected: "My manager wants the slides by noon."
         ),
+        // Contested: the spoken stop is kept as a fragment because dictation is a transcript, not a rewrite.
         .init(
             id: "sub4", category: .everyday,
             spoken: "the server. crashed twice last night",
@@ -844,6 +845,12 @@ public enum EvaluationCorpus {
             mustKeep: ["hear you from here", "knew the new build", "next week"]
         ),
         .init(
+            id: "spoken-comma-before-next-sentence-of-course", category: .everyday,
+            spoken: "we shipped comma. Of course it broke",
+            expected: "We shipped, of course it broke.",
+            mustKeep: ["shipped", "course", "broke"], mustNotAdd: ["comma"]
+        ),
+        .init(
             id: "spoken-period", category: .everyday,
             spoken: "ship it period",
             expected: "Ship it.",
@@ -948,6 +955,7 @@ public enum EvaluationCorpus {
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
         ),
+        // Contested: words are kept above one hundred until the numeral policy decides compound ordinals.
         .init(
             id: "compound-ordinal-above-one-hundred", category: .everyday,
             spoken: "one hundred and twenty first",
@@ -1383,7 +1391,7 @@ public enum EvaluationCorpus {
     // MARK: Context pairs, identical words under two windows. See Docs/eval-context-cases.md.
 
     static let contextual: [EvaluationCase] = [
-        // Pair one: prose against SQL; no direction or LIMIT was spoken, so none is owed.
+        // Pair one: prose against SQL from editor context alone (contested); no direction or LIMIT was spoken.
         .init(
             id: "sql-editor-totals", category: .contextual,
             spoken: "add up the invoices grouped by currency and sort by the total",
@@ -1579,6 +1587,128 @@ public enum EvaluationCorpus {
             destination: .document,
             mustBeginWith: "Should",
             mustEndWith: "?"
+        ),
+
+        // A line a calendar or task app parses keeps every date word and takes no stop.
+        .init(
+            id: "quick-entry-things", category: .contextual,
+            spoken: "remind me to call the plumber tomorrow",
+            expected: "Remind me to call the plumber tomorrow",
+            mustKeep: ["plumber", "tomorrow"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Remind",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-things-every-month", category: .contextual,
+            spoken: "pay rent every month",
+            expected: "Pay rent every month",
+            mustKeep: ["rent", "every", "month"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Upcoming"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Pay",
+            mustEndWith: "month"
+        ),
+        .init(
+            id: "quick-entry-omnifocus", category: .contextual,
+            spoken: "renew the passport next week",
+            expected: "Renew the passport next week",
+            mustKeep: ["passport", "next", "week"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Renew",
+            mustEndWith: "week"
+        ),
+        .init(
+            id: "quick-entry-omnifocus-weekday", category: .contextual,
+            spoken: "dentist on friday",
+            expected: "Dentist on Friday",
+            mustKeep: ["Dentist", "Friday"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Forecast"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Dentist",
+            mustEndWith: "Friday"
+        ),
+        .init(
+            id: "quick-entry-fantastical", category: .contextual,
+            spoken: "lunch with Sam tomorrow",
+            expected: "Lunch with Sam tomorrow",
+            mustKeep: ["Sam", "tomorrow"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Lunch",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-fantastical-every-week", category: .contextual,
+            spoken: "team review every monday",
+            expected: "Team review every Monday",
+            mustKeep: ["every", "Monday"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Team",
+            mustEndWith: "Monday"
+        ),
+        .init(
+            id: "quick-entry-todoist", category: .contextual,
+            spoken: "water the plants every other day",
+            expected: "Water the plants every other day",
+            mustKeep: ["every", "other", "day"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Water",
+            mustEndWith: "day"
+        ),
+        .init(
+            id: "quick-entry-todoist-today", category: .contextual,
+            spoken: "send the invoice today",
+            expected: "Send the invoice today",
+            mustKeep: ["invoice", "today"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Send",
+            mustEndWith: "today"
         ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.
@@ -2177,6 +2307,7 @@ public enum EvaluationCorpus {
             mustBeginWith: "npm",
             mustEndWith: "build"
         ),
+        // Contested: "dash" is kept here while other terminal cases write `-`; the terminal adapter decides.
         .init(
             id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
             spoken: "uh ls dash la",
@@ -2471,7 +2602,8 @@ public enum EvaluationCorpus {
             expected: "Print the handout on A4 paper please.", begins: "Print the handout on A4"),
         codeTokenCase(
             "seam-q3", spoken: "We missed the targets for. Q3 by a small margin",
-            expected: "We missed the targets for Q3 by a small margin.", begins: "We missed the targets for Q3"),
+            expected: "We missed the targets for Q3 by a small margin.",
+            begins: "We missed the targets for Q3"),
         codeTokenCase(
             "seam-m2", spoken: "The build runs fastest on the. M2 machine",
             expected: "The build runs fastest on the M2 machine.", begins: "The build runs fastest on the M2"),
@@ -2498,7 +2630,8 @@ public enum EvaluationCorpus {
             expected: "model in the lab.", begins: "model in"),
         codeTokenCase(
             "word-seam-after", spoken: "We finish the review and. After that we can leave",
-            expected: "We finish the review and after that we can leave.", begins: "We finish the review and after"),
+            expected: "We finish the review and after that we can leave.",
+            begins: "We finish the review and after"),
         codeTokenCase(
             "word-seam-again", spoken: "The tests failed on. Again this morning",
             expected: "The tests failed on again this morning.", begins: "The tests failed on again"),

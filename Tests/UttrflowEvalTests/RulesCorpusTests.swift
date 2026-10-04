@@ -57,7 +57,7 @@ struct RulesCorpusTests {
         // Grammar cases name a destination too, but repairs are the model's alone; the floor is below.
         let named = Set(
             EvaluationCorpus.all.filter { $0.destination != .plain && $0.category != .grammar }.map(\.id))
-        #expect(named.count == 56)
+        #expect(named.count == 64)
         #expect(named.subtracting(Self.modelOnly).isSubset(of: Self.rulesMustPass))
         #expect(Self.modelOnly.isSubset(of: named))
         #expect(Self.modelOnly.isDisjoint(with: Self.rulesMustPass))
@@ -153,6 +153,7 @@ struct RulesCorpusTests {
             ("fifty-fifty-idiom", "It's fifty fifty."),
             ("page-fraction", "Page 2 of 3."),
             ("spoken-comma", "We still need milk, eggs, and bread from the shop."),
+            ("spoken-comma-before-next-sentence-of-course", "We shipped, of course it broke."),
             ("new-paragraph", "Thanks for the update.\n\nThe second issue is the login timeout."),
             ("time-of-day", "The dentist moved my appointment to 2:30 pm tomorrow."),
             ("port-number", "The gateway listens on port 8080 in staging."),
@@ -221,5 +222,14 @@ struct RulesCorpusTests {
     func exactText(id: String, expected: String) async throws {
         let testCase = try #require(EvaluationCorpus.all.first { $0.id == id })
         #expect(try await RuleBasedTransformer().transform(testCase.transformationRequest()).text == expected)
+    }
+
+    @Test("a spoken comma before a new sentence is written without keeping the mark word")
+    func spokenCommaBeforeNextSentenceOfCourse() async throws {
+        let testCase = try #require(
+            EvaluationCorpus.all.first { $0.id == "spoken-comma-before-next-sentence-of-course" })
+        let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
+
+        #expect(result.text == testCase.expected)
     }
 }

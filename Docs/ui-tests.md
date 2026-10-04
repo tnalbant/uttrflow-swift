@@ -76,3 +76,9 @@ visible, and show an inline suggestion in another app, then take a screenshot, a
 recording and a video-call screen share. The captures should omit those windows. If one does
 not, record the macOS version, the capture tool and the app version on this page, and rely on
 ordinary secret masking as the fallback protection.
+
+For a local development-build capture check, run
+`open dist/Uttrflow-Dev.app --args --uttrflow-allow-window-capture`. Only the
+`com.uttrflow.Uttrflow.dev` bundle honours this argument, and it leaves window sharing at AppKit's
+default; without it, and in the release build, the windows remain excluded from capture. A capture
+can contain text visible in the app, so use the argument only for intentional local checks.

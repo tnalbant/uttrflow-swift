@@ -61,7 +61,9 @@ extension CleaningPipeline {
         spoken: String? = nil, steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
+            passes: afterModelPiece(
+                digits: formatter.digits, situation: situation, heard: heard, spoken: spoken
+            ).passes
                 + message(
                     for: formatter, situation: situation, heard: heard, steps: steps, vocabulary: vocabulary
                 ).passes)
@@ -69,7 +71,7 @@ extension CleaningPipeline {
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
     public static func afterModelPiece(
-        situation: Situation, heard: String? = nil, spoken: String? = nil
+        digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [
             SpokenPunctuationPass(destination: situation.destination),
@@ -77,6 +79,7 @@ extension CleaningPipeline {
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
                 spokenText: heard),
             CaretCloserPass(precedingText: situation.insertion.precedingText, spokenText: spoken),
+            DigitGroupingPass(digits: digits, spokenText: spoken),
         ])
     }
 

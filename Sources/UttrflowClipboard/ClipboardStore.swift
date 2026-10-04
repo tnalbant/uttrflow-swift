@@ -289,13 +289,13 @@ public actor ClipboardStore {
         return try change(id, keeping: retention) { $0.alias = alias }
     }
 
-    /// Replaces a clip's plain text, keeping its identity and leaving its formatted note alone.
+    /// Replaces a clip's plain text and clears the old formatted form, keeping its identity.
     @discardableResult
     public func setText(
         _ text: String, of id: UUID, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
         try change(id, keeping: retention) { clip in
-            clip = Self.rebuilding(clip, text: text, richText: clip.richText, image: clip.image)
+            clip = Self.rebuilding(clip, text: text, richText: nil, image: clip.image)
         }
     }
 

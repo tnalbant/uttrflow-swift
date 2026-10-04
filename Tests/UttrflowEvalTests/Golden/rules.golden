@@ -313,6 +313,14 @@ prose-keeps-spoken-parentheses	Open paren close paren.
 prose-keeps-spoken-snake-case	Snake case max retries.
 question-mark-new-line	Is it ready?\nYes.
 question-mark-new-line-thanks	What do you think?\nThanks.
+quick-entry-fantastical	Lunch with Sam tomorrow
+quick-entry-fantastical-every-week	Team review every Monday
+quick-entry-omnifocus	Renew the passport next week
+quick-entry-omnifocus-weekday	Dentist on Friday
+quick-entry-things	Remind me to call the plumber tomorrow
+quick-entry-things-every-month	Pay rent every month
+quick-entry-todoist	Water the plants every other day
+quick-entry-todoist-today	Send the invoice today
 quotation-opening-the-text	"The build is green" that is what he said.
 quoted-whole-utterance	"We ship on Friday."
 reminders-title-no-stop	Water the plants
@@ -347,6 +355,7 @@ spoken-comma-after-an-opener	However, the second build passed.
 spoken-comma-after-yes	Yes, that works for me.
 spoken-comma-before-a-clause	If the tests pass, we ship tonight.
 spoken-comma-before-and	We stayed late, and then we went home.
+spoken-comma-before-next-sentence-of-course	We shipped, of course it broke.
 spoken-commas-around-a-clause	The cafe by the station, which opens early, is the best one?
 spoken-commas-in-a-bare-list	We need apples, pears, plums.
 spoken-commas-in-a-list	Pack the charger, the cable, and the adapter.

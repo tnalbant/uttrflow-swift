@@ -84,11 +84,6 @@ enum CompletionText {
     /// Marks that may close a sentence after its end mark, a quote or a bracket.
     private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
 
-    /// Short words a full stop follows without ending the sentence.
-    private static let abbreviations: Set<String> = [
-        "mr", "mrs", "ms", "dr", "st", "vs", "jr", "sr", "prof", "approx", "dept", "fig", "eg", "ie", "etc",
-    ]
-
     /// The line ended at the first sentence end its continuation reaches, or the whole line when it reaches none.
     static func firstSentence(of line: String, typed: String) -> String {
         let characters = Array(line)
@@ -103,12 +98,8 @@ enum CompletionText {
             let isEllipsis = end > index && characters[index...end].allSatisfy { $0 == "." }
             while end + 1 < characters.count, sentenceClosers.contains(characters[end + 1]) { end += 1 }
             // A mark with no space after it is inside a number, a name or an address, not at a sentence's end.
-            let abbreviation = isAbbreviation(before: index, in: characters)
-            let abbreviationEndsSentence =
-                abbreviation
-                && canEndSentence(before: index, after: end, in: characters)
             if end + 1 < characters.count, characters[end + 1].isWhitespace, !isEllipsis,
-                (!abbreviation || abbreviationEndsSentence)
+                endsSentence(at: index, through: end, in: characters)
             {
                 return String(characters[...end])
             }
@@ -117,34 +108,13 @@ enum CompletionText {
         return line
     }
 
-    /// Whether the full stop at this offset closes an abbreviation or an initial rather than a sentence.
-    private static func isAbbreviation(before stop: Int, in characters: [Character]) -> Bool {
-        guard characters[stop] == "." else { return false }
+    /// Whether the mark at `stop`, with its run through `end`, closes the sentence rather than an abbreviation.
+    private static func endsSentence(at stop: Int, through end: Int, in characters: [Character]) -> Bool {
         var start = stop
         while start > 0, !characters[start - 1].isWhitespace { start -= 1 }
-        let word = String(characters[start..<stop]).lowercased()
-        // "e.g" and "U.S" carry a stop inside, and one letter before a stop is an initial.
-        if word.contains(".") { return true }
-        if word.count == 1, word.first?.isLetter == true { return true }
-        return abbreviations.contains(word)
-    }
-
-    /// Whether an abbreviation can end this sentence instead of introducing a name or example.
-    private static func canEndSentence(before stop: Int, after end: Int, in characters: [Character]) -> Bool {
-        var start = stop
-        while start > 0, !characters[start - 1].isWhitespace { start -= 1 }
-        let word = String(characters[start..<stop]).lowercased()
-        guard !["mr", "mrs", "ms", "dr", "prof", "st", "e.g", "i.e"].contains(word) else {
-            return false
-        }
-        var next = end + 1
-        while next < characters.count,
-            characters[next].isWhitespace
-                || ["\"", "'", "“", "‘", "(", "["].contains(String(characters[next]))
-        {
-            next += 1
-        }
-        return next < characters.count && characters[next].isUppercase
+        let rest = characters[(end + 1)...].drop(while: \.isWhitespace)
+        let next = rest.isEmpty ? nil : String(rest.prefix { !$0.isWhitespace })
+        return Abbreviations.endsSentence(String(characters[start...end]), followedBy: next)
     }
 
     /// The lines a pass keeps once each is unsigned, ended at its first sentence where it is prose, grounded in its specifics and held to the register's length; prose that copies the screen is dropped.

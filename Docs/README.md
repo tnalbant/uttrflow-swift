@@ -38,6 +38,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
+| [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
 | [context-budget.md](context-budget.md) | The context read's budget |
 | [stuck-recording.md](stuck-recording.md) | The recording that never stops |
 | [recordings.md](recordings.md) | Recordings kept for retry |
@@ -52,6 +53,8 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [adapters.md](adapters.md) | Format adapters: one registry that grows out of the destination formatter |
 | [latin-output.md](latin-output.md) | Latin letters only |
 | [adding-a-language.md](adding-a-language.md) | What adding a language requires, and where each language is keyed |
+| [adding-a-pass.md](adding-a-pass.md) | Adding a cleaning pass, step by step |
+| [adding-a-destination.md](adding-a-destination.md) | Adding a destination, step by step |
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
@@ -107,6 +110,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [app-settings-controls.md](app-settings-controls.md) | Settings controls |
 | [app-updates.md](app-updates.md) | Updates: why the app holds Sparkle's install handle |
 | [quitting.md](quitting.md) | Quitting |
+| [localisation.md](localisation.md) | Words the app shows: localisable, and never the dictation |
 
 ## What is kept, and what leaves the Mac
 
