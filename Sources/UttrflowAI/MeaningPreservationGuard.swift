@@ -37,6 +37,7 @@ public struct MeaningPreservationGuard: Sendable {
         grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
+        let rewritten = Self.respellingClockTimes(rewritten, as: draft.text)
         let excusingPreamble = Self.rewriteStartsWithOfferedReading(
             draft: draft, rewritten: rewritten, offering: doubtful)
         if case .rejected(let reason, let kind) = Self.textVerdict(
@@ -1208,7 +1209,6 @@ public struct MeaningPreservationGuard: Sendable {
         {
             return true
         }
-        if equivalentClockTime(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
@@ -1223,18 +1223,17 @@ public struct MeaningPreservationGuard: Sendable {
         return false
     }
 
-    /// Treats a two digit dotted hour and minute as the same clock token as its colon form.
-    private static func equivalentClockTime(_ first: String, _ second: String) -> Bool {
-        func clockParts(_ token: String) -> (hour: String, minute: String)? {
-            let parts = token.split(whereSeparator: { $0 == "." || $0 == ":" })
-            guard parts.count == 2, parts[0].allSatisfy(\.isNumber), parts[1].count == 2,
-                parts[1].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
-                let minute = Int(parts[1]), (0...59).contains(minute)
-            else { return nil }
-            return (String(hour), String(parts[1]))
+    /// Spells each `H:MM` back as the kept `H.MM` that `NumberFormsPass` would itself write as that clock.
+    static func respellingClockTimes(_ rewritten: String, as kept: String) -> String {
+        let clocks = NumberFormsPass.dottedClockTimes(in: kept)
+        guard !clocks.isEmpty else { return rewritten }
+        var result = rewritten
+        for dotted in clocks {
+            let colon = dotted.replacingOccurrences(of: ".", with: ":")
+            result = result.replacingOccurrences(
+                of: "(?<![\\d.:])\(colon)(?![\\d:]|\\.\\d)", with: dotted, options: .regularExpression)
         }
-        guard let left = clockParts(first), let right = clockParts(second) else { return false }
-        return left.hour == right.hour && left.minute == right.minute
+        return result
     }
 
     /// Aux verbs the rewrite can still contract to the same word; a dropped or substituted one is a rewrite.

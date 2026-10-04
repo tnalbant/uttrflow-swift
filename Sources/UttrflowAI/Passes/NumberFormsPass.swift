@@ -71,12 +71,9 @@ public struct NumberFormsPass: PieceCleaningPass {
                 continue
             }
             if let time = Self.dottedTime(at: position, keys: keys, shapes: shapes) {
-                let last = position + 1
                 draft.replace(
-                    at: live[position], with: shapes[position].prefix + time.text + shapes[last].suffix,
-                    by: Self.id)
-                draft.remove(at: live[last], by: Self.id)
-                position += 2
+                    at: live[position], with: shapes[position].replacingCore(with: time), by: Self.id)
+                position += 1
                 continue
             }
             guard let phrase = Self.phrase(at: position, in: shapes, policy: policy, digits: digits)
@@ -104,24 +101,30 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Phrase(text: number.text, count: number.count + 1)
     }
 
-    /// Reads `H.MM` as a clock only with a meridiem or an `at`/`by` cue.
-    private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        guard position + 1 < shapes.count,
-            let hour = Int(keys[position]), (1...12).contains(hour),
-            shapes[position].core.allSatisfy(\.isNumber),
-            let minute = Int(keys[position + 1]), (0...59).contains(minute),
-            shapes[position + 1].core.count == 2,
-            shapes[position].suffix == ".", shapes[position + 1].suffix.isEmpty,
-            joined(position + 1, shapes)
+    /// The `H.MM` words in `text` that read as a clock by the cue rule this pass writes them with.
+    static func dottedClockTimes(in text: String) -> Set<String> {
+        let shapes = text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
+        let keys = shapes.map(\.key)
+        let clocks = shapes.indices.filter { dottedTime(at: $0, keys: keys, shapes: shapes) != nil }
+        return Set(clocks.map { shapes[$0].core })
+    }
+
+    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue.
+    private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> String? {
+        let parts = keys[position].split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2, shapes[position].prefix.isEmpty,
+            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+            parts[1].count == 2, parts[1].allSatisfy(\.isNumber), let minute = Int(parts[1]),
+            (0...59).contains(minute)
         else { return nil }
         let hasMeridiem =
-            position + 2 < keys.count && joined(position + 2, shapes)
-            && meridiems.contains(keys[position + 2].trimmingCharacters(in: CharacterSet(charactersIn: ".")))
+            shapes[position].suffix.isEmpty && joined(position + 1, shapes)
+            && meridiems.contains(keys[position + 1].trimmingCharacters(in: CharacterSet(charactersIn: ".")))
         let hasCue =
             position > 0 && !startsASentence(position, shapes)
             && ["at", "by"].contains(keys[position - 1])
         guard hasMeridiem || hasCue else { return nil }
-        return Phrase(text: "\(hour):\(keys[position + 1])", count: 2)
+        return "\(hour):\(parts[1])"
     }
 
     /// The numeral for the number phrase starting at `position`, or nil when the words stay as they are.
