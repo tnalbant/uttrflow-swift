@@ -51,7 +51,7 @@ So every stage runs under `withStageTimeout`, with these limits:
 | Stopping capture | `StageTimeout.quick`, 15 s | the dictation fails, and the pipeline returns to idle |
 | Transcription | `StageTimeout.transcription`, 120 s | the dictation fails, and the pipeline returns to idle |
 | Reading the screen | `StageTimeout.quick`, 15 s | the dictation goes on with no context |
-| Tidying | `StageTimeout.transformation`, 30 s, as a backstop | each engine has its own allowance inside it — `StageTimeout.engine` (20 s) for a model, `StageTimeout.rules` (2 s) for the deterministic floor — and the router spends them in turn, so a model that hangs costs its own turn and the floor still answers; only if the floor is starved too do the words go in untidied |
+| Tidying | `StageTimeout.transformation`, 30 s, as a backstop | each engine has its own allowance inside it — `StageTimeout.engine` (20 s) for a model, `StageTimeout.rules` (2 s) for the deterministic floor — and the router spends them in turn inside one `StageTimeout.route` (28 s) deadline, cutting each model's allowance so the floor's turn always fits even after two models time out; only if the floor is starved too do the words go in untidied |
 | Correction, snippet expansion | `StageTimeout.quick`, 15 s | the stage is skipped and the words go in as they were |
 | Insertion | `StageTimeout.quick`, 15 s | the dictation fails with `insertionTimedOut`, carrying the transcript so it can still be offered |
 
