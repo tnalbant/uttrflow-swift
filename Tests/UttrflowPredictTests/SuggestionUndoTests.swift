@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UttrflowCore
 
 @testable import UttrflowPredict
 
@@ -19,15 +20,28 @@ private let corrected = [remembered("git commit -m", count: 40, editDistance: 1)
 private func taking(_ candidates: [Candidate], over typed: String) throws -> SuggestionSession {
     var session = SuggestionSession()
     let update = try draw(&session, typing: typed, candidates: candidates)
-    try #require(update?.suggestion.accepting == "git commit -m")
-    try #require(session.route(KeyStroke(.tab)) == .accept("git commit -m"))
+    let line = try #require(update?.suggestion.accepting)
+    try #require(session.route(KeyStroke(.tab)) == .accept(line))
     // The read that lands the taken line.
-    _ = try draw(&session, typing: "git commit -m", candidates: [])
+    _ = try draw(&session, typing: line, candidates: [])
     return session
 }
 
 @Suite("A line taken and undone is not offered again straight away")
 struct SuggestionUndoTests {
+    @Test("Undo memory matches case-folded and canonically equivalent spellings")
+    func unicodeUndoMemory() throws {
+        for (line, prefix) in [
+            ("Straße", "Stra"), ("İstanbul", "İst"), ("café", "caf"), ("cafe\u{301}", "caf"),
+        ] {
+            let candidate = [remembered(line, count: 40)]
+            var session = try taking(candidate, over: prefix)
+            let update = try draw(&session, typing: prefix, candidates: candidate)
+            #expect(update?.suggestion.accepting == nil, "undone \(line)")
+            #expect(session.undoneHere == [TextMatching.caseFoldedKey(line)])
+        }
+    }
+
     @Test("Undo back to the prefix, or backspacing into the line, silences the same offer for that prefix.")
     func undoneLineIsNotReoffered() throws {
         for undone in ["git c", "git comm", "git commit -"] {

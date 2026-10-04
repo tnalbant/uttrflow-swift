@@ -2,7 +2,7 @@
 
 import Dispatch
 
-/// Reports each change in memory pressure on the main actor. See `Docs/performance.md`.
+/// Reports each change in memory pressure on the main actor. See `Docs/performance-suggestions.md`.
 @MainActor
 final class MemoryPressureSource {
     private var source: (any DispatchSourceMemoryPressure)?

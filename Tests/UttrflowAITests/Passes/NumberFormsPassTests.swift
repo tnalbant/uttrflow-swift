@@ -72,6 +72,24 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
     }
 
+    @Test(
+        "a small amount in another currency or unit is a numeral in prose",
+        arguments: [
+            ("it costs five yen", "it costs 5 yen"),
+            ("we walked three kilometres", "we walked 3 kilometres"),
+            ("wait two minutes", "wait 2 minutes"),
+            ("one of them", "one of them"),
+            ("I lost a pound", "I lost a pound"),
+            ("I lost one pound", "I lost one pound"),
+            ("give me a second", "give me a second"),
+            ("two seconds", "two seconds"),
+            ("six feet", "six feet"),
+        ]
+    )
+    func smallAmountsAreNumerals(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == expected)
+    }
+
     @Test("the place a dictation lands in decides how many of its numbers are numerals")
     func policyComesFromTheFormatter() {
         #expect(cleaned("one of them", by: NumberFormsPass(policy: .fromTen)) == "one of them")
@@ -168,6 +186,19 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == input)
     }
 
+    @Test(
+        "keeps a run of only zero words as words",
+        arguments: ["oh oh oh that is great", "zero zero zero", "oh oh no"]
+    )
+    func keepsAllZeroRuns(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("does not join single digits that a scale word follows")
+    func keepsDigitsBeforeAScale() {
+        #expect(!cleaned("it was one one one hundred", by: sut).contains("111 hundred"))
+    }
+
     @Test("keeps a digit string after an intervening is")
     func keepsExtensionDigitsAfterIs() {
         #expect(cleaned("my extension is 445", by: sut) == "my extension is 445")
@@ -204,6 +235,12 @@ struct NumberFormsPassTests {
             ("ten am", "10 am"),
             ("ten a.m.", "10 a.m."),
             ("two oh five pm", "2:05 pm"),
+            ("at eight oh five", "at 8:05"),
+            ("at eight oh five am", "at 8:05 am"),
+            ("eight oh five am", "8:05 am"),
+            ("at twelve o five", "at 12:05"),
+            ("call at eight oh five five five", "call at 80555"),
+            ("the code eight oh five", "the code 805"),
             ("five o'clock", "5 o'clock"),
             ("at four thirty", "at 4:30"),
             ("by two thirty", "by 2:30"),
@@ -233,6 +270,26 @@ struct NumberFormsPassTests {
         ]
     )
     func compoundOrdinals(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "joins a colloquial hundred when it cannot be a time",
+        arguments: [
+            ("blood pressure one twenty seven over eighty two", "blood pressure 127 over 82"),
+            ("bp is one fifty over ninety five", "bp is 150 over 95"),
+            ("ldl one sixty five", "ldl 165"),
+            ("he weighs one ninety", "he weighs 190"),
+            ("route one twenty eight", "route 128"),
+            ("flight one twenty three", "flight 123"),
+            ("interstate four fifty", "interstate 450"),
+            ("meet in room two twelve", "meet in room 212"),
+            ("one oh five over sixty", "105 over 60"),
+            ("one twenty over there", "one 20 over there"),
+            ("I have two twenty dollar bills", "I have two 20 dollar bills"),
+        ]
+    )
+    func colloquialHundreds(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 

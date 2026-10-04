@@ -1,5 +1,6 @@
 import Foundation
 public import UttrflowCore
+import UttrflowDictionary
 
 /// Capitalises each sentence and the pronoun "I", then cases the first word the way the formatter and the caret say.
 public struct FirstWordPass: WholeTextCleaningPass {
@@ -11,18 +12,25 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let onScreen: [String]
     /// The transcript whose case `.asSpoken` copies; nil reads it off the draft's own heard words.
     public let heard: String?
-    /// Whether calendar and known proper names use their standard casing.
+    /// Whether calendar and known proper names use their standard casing, and stray mid-sentence capitals are lowered.
     public let capitaliseCalendarWords: Bool
+    /// Each word of the user's dictionary entries for this dictation, lower-cased; a capital on one of them is kept.
+    public let ownWords: Set<String>
 
     public init(
         policy: FirstWordPolicy = .fromInsertionPoint, state: InsertionPoint.SentenceState = .unknown,
-        onScreen: [String] = [], heard: String? = nil, capitaliseCalendarWords: Bool = true
+        onScreen: [String] = [], heard: String? = nil, capitaliseCalendarWords: Bool = true,
+        vocabulary: [String] = []
     ) {
         self.policy = policy
         self.state = state
         self.onScreen = onScreen
         self.heard = heard
         self.capitaliseCalendarWords = capitaliseCalendarWords
+        self.ownWords = Set(
+            vocabulary.flatMap { $0.split(whereSeparator: \.isWhitespace) }.map {
+                WordShape(String($0)).core.lowercased()
+            })
     }
 
     public func apply(_ draft: Draft) -> Draft {
@@ -33,18 +41,21 @@ public struct FirstWordPass: WholeTextCleaningPass {
             ?? draft.words.map(\.heard).filter { !$0.isEmpty }
         var startOfSentence = true
         var isFirst = true
-        for index in draft.presentIndices {
+        var afterPause = false
+        let present = draft.presentIndices
+        for (order, index) in present.enumerated() {
             let word = draft.words[index]
             guard !word.isLayoutMark else {
                 // Every layout mark starts a new sentence.
                 startOfSentence = true
                 continue
             }
-            let letterAdjacent = Self.hasLetterNameBesideI(at: index, in: draft)
+            let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)
             if letterAdjacent, WordShape(word.text).key == "i" {
                 let cased = WordShape(word.text).replacingCore(with: "i")
                 draft.replace(at: index, with: cased, by: Self.id)
                 startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+                afterPause = WordShape.trailsOff(WordShape(cased).suffix)
                 isFirst = false
                 continue
             }
@@ -59,14 +70,15 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 cased = WordShape.capitalised(cased)
             } else if capitaliseCalendarWords {
                 cased = Self.properNameCapitalised(
-                    Self.calendarWordCapitalised(cased), in: text)
+                    Self.calendarWordCapitalised(afterPause ? cased : strayCapitalLowered(cased, in: text)),
+                    in: text)
             }
             draft.replace(at: index, with: cased, by: Self.id)
             // A word trailing off in an ellipsis is a pause, so the next keeps the case it was heard in.
-            let next = draft.presentIndices.drop(while: { $0 <= index }).first
-                .map { draft.words[$0].text }
+            let next = present.dropFirst(order + 1).first.map { draft.words[$0].text }
             startOfSentence =
                 Self.endsSentence(cased, followedBy: next) && !WordShape.trailsOff(WordShape(cased).suffix)
+            afterPause = WordShape.trailsOff(WordShape(cased).suffix)
             isFirst = false
         }
         return draft
@@ -143,9 +155,9 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return shape.replacingCore(with: "I" + shape.core.dropFirst())
     }
 
-    private static func hasLetterNameBesideI(at index: Int, in draft: Draft) -> Bool {
-        let live = draft.presentIndices
-        guard let position = live.firstIndex(of: index), WordShape(draft.words[index].text).key == "i" else {
+    private static func hasLetterNameBesideI(at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        let index = live[position]
+        guard WordShape(draft.words[index].text).key == "i" else {
             return false
         }
         let names = SpelledInitialismPass.letterNamesForCasing
@@ -204,8 +216,14 @@ public struct FirstWordPass: WholeTextCleaningPass {
             systemNames + [
                 "london", "tokyo", "paris", "texas", "german", "germans", "indian", "indians",
             ]
-        ).subtracting(["china", "turkey"])
+        ).subtracting(namesThatAreOrdinaryWords)
     }()
+
+    /// Locale names that are also everyday English words, so they carry no capital without a cue.
+    private static let namesThatAreOrdinaryWords: Set<String> = [
+        "afar", "chad", "china", "ewe", "fang", "guernsey", "guinea", "jersey", "polish", "slave",
+        "turkey", "world",
+    ]
 
     /// Whether a word names a weekday or an unambiguous month.
     static func isCalendarWord(_ text: String) -> Bool {
@@ -218,11 +236,23 @@ public struct FirstWordPass: WholeTextCleaningPass {
         "december",
     ]
 
-    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, or an acronym.
+    /// An ordinary word the recogniser capitalised mid-sentence, lowered unless the dictionary or the screen holds it capitalised.
+    func strayCapitalLowered(_ word: String, in text: String) -> String {
+        let core = WordShape(word).core
+        guard policy == .fromInsertionPoint, core.first?.isUppercase == true, !Self.keepsCapital(word),
+            GeneralVocabulary.isOrdinary(core), !ownWords.contains(core.lowercased()),
+            !Self.isCalendarWord(word), !Self.isProperName(word, in: text),
+            !Self.looksLikeName(word, in: onScreen)
+        else { return word }
+        return WordShape.lowercased(word)
+    }
+
+    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, an acronym, or a letter-and-digit code.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
+        if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }
         return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
     }
 
@@ -248,7 +278,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
             return lines.contains { line in
                 zip(line, line.dropFirst()).contains { previous, token in
                     let candidate = bareWord(token)
-                    let startsSentence = previous.last.map(sentenceEnds.contains) ?? false
+                    let startsSentence = previous.last.map(SentenceMarks.ends.contains) ?? false
                     return (candidate.first?.isUppercase ?? false) && candidate.lowercased() == wanted
                         && !startsSentence
                 }
@@ -271,6 +301,4 @@ public struct FirstWordPass: WholeTextCleaningPass {
         else { return "" }
         return token[start...end]
     }
-
-    private static let sentenceEnds: Set<Character> = [".", "!", "?"]
 }

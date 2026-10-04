@@ -257,9 +257,9 @@ struct PanelCategoryKeyTests {
     func jumps() {
         let panel = PanelFixture.panel(Self.clips)
 
-        #expect(panel.applying(.category(number: 2)).state.category == "Prod")
-        #expect(panel.applying(.category(number: 3)).state.category == "Personal")
-        #expect(panel.applying([.category(number: 3), .return]).outcome == .insert(Self.clips[2]))
+        #expect(panel.applying(.category(number: 2)).state.category == "Personal")
+        #expect(panel.applying(.category(number: 3)).state.category == "Prod")
+        #expect(panel.applying([.category(number: 3), .return]).outcome == .insert(Self.clips[1]))
     }
 
     /// The way back needs a key of its own, or the mouse is the only way out of a collection.

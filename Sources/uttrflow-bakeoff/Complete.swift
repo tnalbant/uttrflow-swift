@@ -143,7 +143,8 @@ struct Complete: AsyncParsableCommand {
         report.printFailures()
         // An errored pass fails the run so the gate that protects the correct-or-not-shown promise is not passed by a broken model.
         if report.summary.errors > 0 {
-            FileHandle.standardError.write(Data("\n\(report.summary.errors) error(s); run exits non-zero.\n".utf8))
+            FileHandle.standardError.write(
+                Data("\n\(report.summary.errors) error(s); run exits non-zero.\n".utf8))
             throw ExitCode.failure
         }
         guard let json else { return }
@@ -304,15 +305,10 @@ struct Complete: AsyncParsableCommand {
             scope: fixture.situation.application == "Terminal" ? directory : nil)
         let store = FixturePredictionStore(candidates: fixture.seededCandidates)
         let index = EnvironmentIndex(reader: FixtureArbitrationMachine(answers: fixture.machine ?? [:]))
-        for lookup in Verification.offerings(
-            for: CompletionToken(fixture.typed) ?? CompletionToken(leading: "", token: ""))
-        {
-            for kind in lookup.kinds {
-                _ = await index.values(of: kind, in: directory, now: Date())
-            }
-        }
-        await index.settle()
         let environment = EnvironmentSource(index: index)
+        // The first ask starts the reads the source will want; the second finds them answered.
+        _ = await environment.candidates(for: surface, matching: fixture.typed, now: Date())
+        await index.settle()
         let now = Date()
         let candidates = await CandidateSources.candidates(
             from: store, environment: environment, for: surface, matching: fixture.typed, now: now)
@@ -367,7 +363,7 @@ struct Complete: AsyncParsableCommand {
         guard
             let update = session.resolveGenerated(
                 standing, for: query, elapsedMilliseconds: 0, scores: scores),
-            let line = update.suggestion.accepting
+            update.suggestion.accepting != nil
         else { return ([], nil, nil) }
         return (Self.drawnLines(update.suggestion), "model", nil)
     }

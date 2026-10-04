@@ -1,6 +1,7 @@
 import Testing
 
 @testable import UttrflowContext
+import UttrflowTestSupport
 
 @Suite("Reading a terminal line for its prompt costs one pass over a bounded stretch")
 struct ShellPromptScalingTests {

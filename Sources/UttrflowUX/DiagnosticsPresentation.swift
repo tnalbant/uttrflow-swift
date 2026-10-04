@@ -511,7 +511,7 @@ public enum DiagnosticsPresenter {
             return card("Not checked yet", [], "Checking", .unknown)
         }
         let origin = inUse == .localModel ? "Downloaded" : "Built in"
-        return card(name(for: inUse), inUse == .cloud ? [origin] : [origin, onDevice], "Ready", .good)
+        return card(name(for: inUse), [origin, onDevice], "Ready", .good)
     }
 
     /// The model AI suggestions need, and how far along it is.
@@ -790,27 +790,7 @@ public enum DiagnosticsPresenter {
 
     /// What one step did, in the first few words it did it to and a count of the rest.
     static func detail(of change: CleaningRecord.Change) -> String {
-        var parts: [String] = []
-        if change.removedCount > 0 {
-            parts.append(
-                "removed \(change.removedCount): \(listed(change.removed, of: change.removedCount))")
-        }
-        if change.replacedCount > 0 {
-            let rewrites = change.replaced.map { "\($0.from) → \($0.to)" }
-            parts.append(
-                "rewrote \(change.replacedCount): \(listed(rewrites, of: change.replacedCount))")
-        }
-        if change.insertedCount > 0 {
-            parts.append(
-                "added \(change.insertedCount): \(listed(change.inserted, of: change.insertedCount))")
-        }
-        return parts.joined(separator: "; ")
-    }
-
-    /// The first few words, then how many more of `total` there were, because the row is one line of a page.
-    static func listed(_ words: [String], of total: Int) -> String {
-        guard total > quoted else { return words.joined(separator: ", ") }
-        return words.prefix(quoted).joined(separator: ", ") + " and \(total - quoted) more"
+        change.summary(quoting: quoted)
     }
 
     /// The same steps counted rather than quoted, for the report that leaves this Mac by hand.

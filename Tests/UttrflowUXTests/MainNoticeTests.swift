@@ -87,6 +87,15 @@ struct MainNoticeTests {
         #expect(ineligible.action == nil)
     }
 
+    @Test("only a dictation no clean-up finished on is announced as inserted without it")
+    func announcesSkippedCleanUp() throws {
+        let skipped = try #require(MainNotice.cleanUpSkipped(by: .untidied))
+        #expect(skipped.headline == "Inserted without clean-up.")
+        #expect(skipped.action == nil)
+        #expect(MainNotice.cleanUpSkipped(by: .rules) == nil)
+        #expect(MainNotice.cleanUpSkipped(by: .foundationModels) == nil)
+    }
+
     @Test("a notice built from its parts keeps them")
     func keepsItsParts() {
         let notice = MainNotice(message: "No.", symbolName: "xmark", tone: .good)
@@ -94,14 +103,5 @@ struct MainNoticeTests {
         #expect(notice.symbolName == "xmark")
         #expect(notice.tone == .good)
         #expect(notice.action == nil)
-    }
-
-    @Test("a newly learned correction is visible and can be undone")
-    func announcesLearnedCorrection() {
-        let id = UUID()
-        let notice = MainNotice.learnedCorrection("Uttrflow", id: id)
-
-        #expect(notice.message.contains("Uttrflow"))
-        #expect(notice.action == MainAction(title: "Undo", intent: .undoLearnedWord(id)))
     }
 }

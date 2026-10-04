@@ -17,6 +17,8 @@ struct ShellWordsTests {
         #expect(words(#"echo "a \"b\" \$c \\ \d""#) == [["echo", #"a "b" $c \ \d"#]])
         #expect(words("echo 'it''s'") == [["echo", "its"]])
         #expect(words("cat a\\\nb") == [["cat", "ab"]])
+        #expect(words("cd x \\\n y") == [["cd", "x", "y"]])
+        #expect(words("\\\n echo x") == [["echo", "x"]])
         #expect(words("echo \"a\\\nb\"") == [["echo", "ab"]])
     }
 

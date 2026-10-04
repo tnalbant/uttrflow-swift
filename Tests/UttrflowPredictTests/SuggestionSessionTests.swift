@@ -244,6 +244,17 @@ struct SuggestionRejectionTests {
         #expect(session.rejectionsHere == 0)
     }
 
+    @Test("Typing eszett or Turkish dotted-i through an offer is not a refusal.")
+    func unicodeCaseFoldEquivalentIsNotTypingPast() throws {
+        for (typed, offered) in [("Straße", "strasse is ready"), ("İstanbul", "i\u{307}stanbul is ready")] {
+            var session = SuggestionSession()
+            _ = try draw(&session, typing: typed, candidates: lone(offered))
+            let turn = session.turn(in: field, at: PredictionContext(typed: typed + " is"))
+            #expect(turn.rejected == nil)
+            #expect(session.rejectionsHere == 0)
+        }
+    }
+
     @Test("Leaving the field is not a refusal, and forgets the ones it collected.")
     func leavingForgets() throws {
         var session = SuggestionSession()

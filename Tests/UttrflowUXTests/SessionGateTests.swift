@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UttrflowAccount
 import UttrflowCore
@@ -33,8 +34,8 @@ struct SessionGateTests {
     @Test("signed out, the menu runs Quit and nothing else")
     func signedOutMenuRunsOnlyQuit() {
         let intents: [MenuBarIntent] = [
-            .startDictation, .stopDictation, .recover(.retry), .insertRecent(index: 0),
-            .copyRecent(index: 0), .insertClip(index: 0), .copyClip(index: 0),
+            .startDictation, .stopDictation, .recover(.retry), .insertRecent(id: UUID()),
+            .copyRecent(id: UUID()), .insertClip(id: UUID()), .copyClip(id: UUID()),
             .open(.main(.home)), .open(.settings(.general)), .open(.onboarding), .openClipboard,
             .setFeature(.dictation, isOn: false),
         ]

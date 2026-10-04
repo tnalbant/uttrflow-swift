@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Removes hesitation sounds while keeping standalone replies and fixed interjections.
-public struct FillersPass: CleaningPass {
+public struct FillersPass: PieceCleaningPass {
     public static let id: PassID = .fillers
     public static let removes: RemovalGrant = .sound
 

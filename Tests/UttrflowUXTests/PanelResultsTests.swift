@@ -71,7 +71,7 @@ struct PanelFilteringTests {
         #expect(panel.categories.isEmpty)
     }
 
-    @Test("the collections are the ones clips are filed under, in the order first met")
+    @Test("the collections are the ones clips are filed under, in alphabetical order")
     func categoryNames() {
         let clips = [
             PanelFixture.clip("one", minutesAgo: 1, category: "Prod"),
@@ -81,7 +81,7 @@ struct PanelFilteringTests {
             PanelFixture.clip("five", minutesAgo: 5, category: "  "),
         ]
 
-        #expect(PanelFixture.panel(clips).categories == ["Prod", "Personal"])
+        #expect(PanelFixture.panel(clips).categories == ["Personal", "Prod"])
     }
 }
 

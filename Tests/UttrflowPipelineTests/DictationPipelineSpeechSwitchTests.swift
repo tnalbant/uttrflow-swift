@@ -44,22 +44,6 @@ private final class HeldFailingSpeechEngine: SpeechEngine, Sendable {
     }
 }
 
-/// A tidier that hands the words back as they came.
-private struct PassThroughCleaner: TranscriptCleaning {
-    func clean(
-        _ request: TransformationRequest
-    ) async throws(TransformationError) -> TransformationResult {
-        TransformationResult(text: request.transcription.text, producedBy: .rules)
-    }
-}
-
-/// A place for the words to land that never refuses.
-private struct LandingInserter: TextInserting {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
 // MARK: - Fixtures
 
 private let spoken: AudioSamples = {
@@ -79,8 +63,8 @@ private func faster() -> FakeSpeechEngine {
 private func makePipeline(speech: any SpeechEngine) -> DictationPipeline {
     DictationPipeline(
         capture: FakeAudioCaptureEngine(stopOutcome: .success(spoken)), speech: speech,
-        cleaner: PassThroughCleaner(), context: FakeContextEngine(context: .fixture()),
-        inserter: LandingInserter(), earlyPoll: .seconds(60))
+        cleaner: FakeTranscriptCleaner(), context: FakeContextEngine(context: .fixture()),
+        inserter: FakeTextInserter(), earlyPoll: .seconds(60))
 }
 
 extension DictationState {

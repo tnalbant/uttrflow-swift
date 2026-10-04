@@ -43,7 +43,7 @@ enum Specifics {
         return found
     }
 
-    /// The numbers code writes that carry no value of their own: nothing, one, the last one, as an initialiser, an index, a bound or a step. See `Docs/predict-precision.md`, P8.
+    /// The numbers code writes that carry no value of their own: nothing, one, the last one, as an initialiser, an index, a bound or a step. See `Docs/predict-precision.md`.
     static let conventionalNumbers: Set<String> = ["0", "1", "-1", "0.0", "1.0"]
 
     /// The last words of a name that says its value picks out one record, so even a conventional number there is an invented id.

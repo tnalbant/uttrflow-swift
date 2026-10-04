@@ -130,6 +130,26 @@ struct FirstWordPassTests {
         #expect(cleaned("this is a new idea about york", by: sut) == "This is a new idea about york")
     }
 
+    @Test(
+        "leaves locale names that are everyday words in lower case",
+        arguments: [
+            ("i need to polish the table", "I need to polish the table"),
+            ("the best in the world", "The best in the world"),
+            ("the world cup final is tonight", "The world cup final is tonight"),
+            ("print hello world", "Print hello world"),
+            ("she wore a wool jersey", "She wore a wool jersey"),
+            ("she wore a guernsey", "She wore a guernsey"),
+            ("the guinea pig escaped", "The guinea pig escaped"),
+            ("the lamb is a ewe", "The lamb is a ewe"),
+            ("we saw it from afar", "We saw it from afar"),
+            ("the slave trade was abolished", "The slave trade was abolished"),
+            ("the snake bared a fang", "The snake bared a fang"),
+            ("a hanging chad", "A hanging chad"),
+        ])
+    func leavesOrdinaryWordNamesAlone(spoken: String, written: String) {
+        #expect(cleaned(spoken, by: sut) == written)
+    }
+
     @Test("keeps a known proper name capital at a mid-sentence caret")
     func properNameAtCaret() {
         #expect(fromCaret("london is lovely", state: .midSentence) == "London is lovely")
@@ -320,6 +340,21 @@ struct FirstWordPassTests {
         #expect(!FirstWordPass.keepsCapital("Ice"))
     }
 
+    @Test(
+        "keeps the capital of a letter-and-digit code, which no sentence start explains",
+        arguments: ["A4", "Q3", "M2", "S3", "B12", "I-95", "H2", "A4,", "\"Q3\""])
+    func keepsCodeCapital(code: String) {
+        #expect(FirstWordPass.keepsCapital(code))
+        #expect(FirstWordPass.lowercasedAtRunOnSeam(code, in: "") == nil)
+    }
+
+    @Test(
+        "still lowers an ordinary word with no digit in it",
+        arguments: ["Be", "After", "Again", "Bring", "Quarter", "Model", "So", "Highway"])
+    func lowersOrdinaryWord(word: String) {
+        #expect(!FirstWordPass.keepsCapital(word))
+    }
+
     /// The first "total" was dropped by a pass, so the case comes from the "Total" that is still there.
     @Test("as spoken reads the case from where the first word stands, not from a copy a pass dropped")
     func asSpokenReadsItsOwnPlace() {
@@ -329,6 +364,41 @@ struct FirstWordPassTests {
         draft.remove(at: 1, by: .fillers)
         let cased = FirstWordPass(policy: .asSpoken).apply(draft)
         #expect(cased.text == "Total Revenue")
+    }
+
+    @Test(
+        "lowers a capital the recogniser put on an ordinary word mid-sentence",
+        arguments: [
+            ("The train leaves at 7.15 from Platform 4.", "The train leaves at 7.15 from platform 4."),
+            (
+                "Tamsin will present the Zephyrix Roadmap on Monday.",
+                "Tamsin will present the Zephyrix roadmap on Monday."
+            ),
+            (
+                "Please Rebase your branch on Main and Push again.",
+                "Please rebase your branch on main and push again."
+            ),
+            ("The Database Index reduced the query time.", "The database index reduced the query time."),
+            ("I said API and Q4 to London.", "I said API and Q4 to London."),
+        ]
+    )
+    func lowersAStrayCapital(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps a mid-sentence capital the dictionary or the screen holds")
+    func keepsAStrayCapitalWithEvidence() {
+        let text = "I bought an Apple and a Bill."
+        #expect(
+            cleaned(text, by: FirstWordPass(vocabulary: ["Apple Music"])) == "I bought an Apple and a bill.")
+        #expect(
+            cleaned(text, by: FirstWordPass(onScreen: ["ask Bill about it"]))
+                == "I bought an apple and a Bill.")
+    }
+
+    @Test("leaves mid-sentence capitals alone where the policy copies the heard case")
+    func leavesStrayCapitalsAsSpoken() {
+        #expect(asSpoken("we merged to Main", heard: "we merged to Main") == "we merged to Main")
     }
 
     @Test("records a changed word against this pass, once")

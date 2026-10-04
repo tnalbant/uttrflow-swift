@@ -2,6 +2,7 @@
 
 public import struct Foundation.Data
 public import struct Foundation.Date
+public import struct Foundation.UUID
 
 private import Synchronization
 private import Dispatch
@@ -26,7 +27,7 @@ public actor PasteboardWatcher {
     private static let readQueue = DispatchQueue(
         label: "com.uttrflow.clipboard-read", qos: .userInitiated, attributes: .concurrent)
 
-    /// How often the change count is read; the panel catches up as it opens, so this is set by battery. See `Docs/performance.md`.
+    /// How often the change count is read; the panel catches up as it opens, so this is set by battery. See `Docs/performance-idle.md`.
     public static let pollInterval = Duration.milliseconds(500)
 
     /// How far the system may move one poll to coalesce it with other wakeups: a fifth of the interval.
@@ -34,8 +35,6 @@ public actor PasteboardWatcher {
         interval / 5
     }
 
-    /// How long an announcement stays armed, so a write that never happened cannot sit waiting.
-    static let announcementLifetime: Double = 2
     /// Bounds announcements from a burst of app-owned writes between clipboard polls.
     static let maxPendingAnnouncements = 32
 
@@ -94,36 +93,59 @@ public actor PasteboardWatcher {
     // MARK: - Ignoring ourselves
 
     /// Announces a write — call immediately before it — naming its text. See `Docs/insertion.md`.
-    public nonisolated func ignoreNextWrite(of text: String) {
+    @discardableResult
+    public nonisolated func ignoreNextWrite(of text: String) -> @Sendable (Int?) -> Void {
         announce(.text(text))
     }
 
     /// K4 — announces a picture write, named by the bytes it puts there. See `Docs/insertion.md`.
-    public nonisolated func ignoreNextPicture(_ data: Data) {
+    @discardableResult
+    public nonisolated func ignoreNextPicture(_ data: Data) -> @Sendable (Int?) -> Void {
         announce(.picture(data))
     }
 
-    /// Records what is about to be written, reading the count before the write moves it.
-    private nonisolated func announce(_ written: Written) {
+    /// Reserves an announcement before the write, then records its exact resulting generation.
+    private nonisolated func announce(_ written: Written) -> @Sendable (Int?) -> Void {
         let before = source.changeCount()
-        let at = now()
+        let id = UUID()
         announced.withLock { pending in
-            pending.removeAll { at.timeIntervalSince($0.at) > Self.announcementLifetime }
             if pending.count == Self.maxPendingAnnouncements { pending.removeFirst() }
-            pending.append(Announcement(after: before, at: at, wrote: written))
+            pending.append(Announcement(id: id, after: before, changeCount: nil, wrote: written))
+        }
+        return { [self] changeCount in
+            guard let changeCount else { return withdrawAnnouncement(id) }
+            announced.withLock { pending in
+                guard let index = pending.firstIndex(where: { $0.id == id }) else { return }
+                pending[index].changeCount = changeCount
+            }
+        }
+    }
+
+    /// Withdraws a write that the pasteboard refused or that could not be read back.
+    private nonisolated func withdrawAnnouncement(_ id: UUID) {
+        announced.withLock { pending in pending.removeAll { $0.id == id } }
+    }
+
+    /// Drops announcements that could have described a change whose contents stayed unreadable.
+    private nonisolated func withdrawAnnouncements(forChange count: Int) {
+        announced.withLock { pending in
+            pending.removeAll { $0.changeCount.map { count >= $0 } ?? (count > $0.after) }
         }
     }
 
     /// Whether this change is the announced write, matched on what it put there. See `Docs/insertion.md`.
-    private nonisolated func claims(
-        _ count: Int, at date: Date, holding text: String?, picture: Data?
-    ) -> Bool {
+    private nonisolated func claims(_ count: Int, holding text: String?, picture: Data?) -> Bool {
         announced.withLock { pending in
-            // A write that never happened must not sit armed over somebody's copy.
-            pending.removeAll { date.timeIntervalSince($0.at) > Self.announcementLifetime }
+            // Once a later generation is observed, an earlier write cannot describe it.
+            pending.removeAll { $0.changeCount.map { count > $0 } ?? false }
             guard
                 let match = pending.firstIndex(where: { announcement in
-                    guard count > announcement.after else { return false }
+                    if let writtenCount = announcement.changeCount {
+                        guard count == writtenCount else { return false }
+                    } else {
+                        // The write may be visible a moment before its synchronous result is reported.
+                        guard count > announcement.after else { return false }
+                    }
                     switch announcement.wrote {
                     case .text(let wrote): return text == wrote
                     case .picture(let wrote): return text == nil && picture == wrote
@@ -165,14 +187,34 @@ public actor PasteboardWatcher {
         isReading = true
         defer { isReading = false }
         // Fetched only now, and once, so an idle tick costs one integer read.
-        guard let copied = await bounded({ [source] in source.text() }) else { return nil }
+        guard let copied = await bounded({ [source] in source.text() }) else {
+            withdrawAnnouncements(forChange: count)
+            return nil
+        }
+        let rtf: Data?
+        if copied == nil {
+            guard let data = await bounded({ [source] in source.rtf() }) else {
+                withdrawAnnouncements(forChange: count)
+                return nil
+            }
+            rtf = data.flatMap {
+                budget.largestClip == 0 || $0.count <= budget.largestClip ? $0 : nil
+            }
+        } else {
+            rtf = nil
+        }
+        let rtfText = rtf.flatMap(RichTextPlainForm.plainText(fromRTF:))
         // Read once, bounded and outside the lock, and only when a picture announcement could claim it.
         var read: ClipboardPicture?? = .none
-        if copied == nil, awaitsPicture() {
-            guard let picture = await bounded({ [source] in source.image() }) else { return nil }
+        let hasPicture = source.hasPicture()
+        if copied == nil, hasPicture, awaitsPicture(at: count) {
+            guard let picture = await bounded({ [source] in source.image() }) else {
+                withdrawAnnouncements(forChange: count)
+                return nil
+            }
             read = .some(picture)
         }
-        guard !claims(count, at: date, holding: copied, picture: read??.data) else { return nil }
+        guard !claims(count, holding: copied, picture: read??.data) else { return nil }
 
         // A copy its writer marked as not for history is never recorded, text or picture.
         guard let markers = await bounded({ [source] in source.markers() }) else { return nil }
@@ -181,7 +223,15 @@ public actor PasteboardWatcher {
         guard source.changeCount() == count else { return nil }
 
         // K4 — a picture, asked first because the branch below returns for anything textless.
-        if copied == nil, let picture = await pictureRead(read) {
+        let picture: ClipboardPicture?
+        if let read {
+            picture = read
+        } else if hasPicture {
+            picture = await bounded({ [source] in source.image() }) ?? nil
+        } else {
+            picture = nil
+        }
+        if copied == nil, rtfText == nil, let picture {
             guard !markers.contains(.concealed), source.changeCount() == count else { return nil }
             return NoticedClip(
                 clip: Clip(
@@ -198,7 +248,8 @@ public actor PasteboardWatcher {
         // Before the conversion, which costs in proportion to the HTML however the bound would judge it.
         guard fitsTheBound(copied ?? "", html) else { return nil }
         // E1 — the plain form is derived only here, where the alternative is no clip at all.
-        guard let text = copied ?? html.map(RichTextPlainForm.plainText(fromHTML:)),
+        guard
+            let text = copied ?? rtfText ?? html.map(RichTextPlainForm.plainText(fromHTML:)),
             ClipContent.isWorthKeeping(text)
         else { return nil }
 
@@ -216,23 +267,19 @@ public actor PasteboardWatcher {
                 // Only of a clip already judged to be code, so prose never pays for the detector.
                 language: classified.language,
                 // E — kept beside the plain form, never instead of it.
-                richText: html))
+                richText: html),
+            picture: picture)
     }
 
     /// Whether a picture announcement is armed, asked without reading the clipboard.
-    private nonisolated func awaitsPicture() -> Bool {
+    private nonisolated func awaitsPicture(at count: Int) -> Bool {
         announced.withLock { pending in
             pending.contains { announcement in
+                if let writtenCount = announcement.changeCount, writtenCount != count { return false }
                 if case .picture = announcement.wrote { return true }
                 return false
             }
         }
-    }
-
-    /// The picture the claim already read, or a fresh bounded read when the claim had no need of one.
-    private func pictureRead(_ read: ClipboardPicture??) async -> ClipboardPicture? {
-        if let read { return read }
-        return await bounded({ [source] in source.image() }) ?? nil
     }
 
     /// One clipboard read, given up on once ``readLimit`` has passed, since the writing app answers it.
@@ -321,8 +368,9 @@ private enum Written: Sendable, Equatable {
 
 /// An Uttrflow write that has been announced and not yet seen on the clipboard.
 private struct Announcement: Sendable {
+    let id: UUID
     let after: Int
-    let at: Date
+    var changeCount: Int?
     /// What is about to be written, which the change is matched against.
     let wrote: Written
 }

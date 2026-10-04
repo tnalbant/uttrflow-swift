@@ -1,6 +1,7 @@
 // Owns the Settings page's model, which the main window draws beside its sidebar.
 
 import UttrflowCore
+import UttrflowPredict
 import UttrflowSettings
 import UttrflowUX
 
@@ -13,7 +14,7 @@ final class SettingsPageController {
     private var suggestionModel: SuggestionModelReadiness = .notAsked
     private var suggestionRuntime: SuggestionRuntimeStatus = .idle
     /// Which shortcuts the window server refused, kept for the same reason.
-    private var unarmedShortcuts: Set<ShortcutAction> = []
+    private var unarmedShortcuts: [ShortcutAction: HotkeyError] = [:]
     /// Asks this Mac which clean-up engines are ready for a profile; injected so a test can order the answers.
     private let probe: @Sendable (UserProfile) async -> SettingsCapabilities
     /// Counts capability probes, so only the most recently started one may apply its answer.
@@ -31,6 +32,7 @@ final class SettingsPageController {
         onReset: @escaping (SettingsReset) -> Void = { _ in },
         onShortcutRecording: @escaping (Bool) -> Void = { _ in },
         readGlobeKeyAction: @escaping () -> GlobeKeyAction = { GlobeKeySettings.action },
+        readIsDictating: @escaping () -> Bool = { DictationInProgress.shared.isDictating },
         probe: @escaping @Sendable (UserProfile) async -> SettingsCapabilities = {
             await SettingsCapabilities.refreshed(for: $0)
         }
@@ -39,7 +41,8 @@ final class SettingsPageController {
         model = SettingsViewModel(
             store: store, personalisation: personalisation, capabilities: capabilities,
             onChange: onChange, onRequest: onRequest, onReset: onReset,
-            onShortcutRecording: onShortcutRecording, readGlobeKeyAction: readGlobeKeyAction)
+            onShortcutRecording: onShortcutRecording, readGlobeKeyAction: readGlobeKeyAction,
+            readIsDictating: readIsDictating)
     }
 
     /// The tab the page is on, which the sidebar lights its Settings row for.
@@ -94,7 +97,7 @@ final class SettingsPageController {
     }
 
     /// Told by the app when a shortcut could not be claimed, so its row stops advertising a dead key.
-    func setUnarmedShortcuts(_ unarmed: Set<ShortcutAction>) {
+    func setUnarmedShortcuts(_ unarmed: [ShortcutAction: HotkeyError]) {
         unarmedShortcuts = unarmed
         model.session.capabilities.unarmedShortcuts = unarmed
     }

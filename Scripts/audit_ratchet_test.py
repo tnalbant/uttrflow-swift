@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 AUDITS = {
     "comment_audit.py": ("comment_baseline.json", "// one\n// two\nstruct Example {}\n"),
     "loose_match_audit.py": ("loose_match_baseline.json", "let stem = String(word.prefix(3))\n"),
+    "layering_audit.py": ("layering_baseline.json", "import AppKit\n"),
 }
 
 
@@ -28,7 +29,10 @@ class Workspace:
         self.baseline_name = baseline
         os.makedirs(os.path.join(self.root, "Scripts"))
         os.makedirs(os.path.join(self.root, "Sources", "Example"))
-        shutil.copy(os.path.join(HERE, script), os.path.join(self.root, "Scripts", script))
+        for name in (script, "ratchet.py"):
+            shutil.copy(os.path.join(HERE, name), os.path.join(self.root, "Scripts", name))
+        with open(os.path.join(self.root, "Package.swift"), "w") as handle:
+            handle.write("let package = Package(name: \"Example\", targets: [])\n")
 
     def write(self, name, text):
         with open(os.path.join(self.root, "Sources", "Example", name), "w") as handle:

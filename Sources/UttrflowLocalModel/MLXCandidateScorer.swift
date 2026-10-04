@@ -2,6 +2,7 @@ public import UttrflowPredict
 
 // The MLX macros expand to code naming these types, so the imports cannot be private.
 import Foundation
+import UttrflowCore
 import HuggingFace
 import MLX
 import MLXHuggingFace
@@ -52,7 +53,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         self.confidenceMemory = initialConfidenceMemory
     }
 
-    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance.md`.
+    /// The model's modules, built on the first load and only emptied and refilled after it. See `Docs/performance-suggestions.md`.
     private let weights: ReloadableWeights<ModelContainer>
 
     /// How many passes are using the model now, which a release waits out before it empties the weights.
@@ -226,7 +227,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         let cache: [KVCache]
     }
 
-    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance.md`.
+    /// The last pass's prompt tokens and the model's state after them, so the next pass reads only what changed. See `Docs/performance-suggestions.md`.
     struct KeptPrefix<Cache>: @unchecked Sendable {
         // Held by one pass at a time, which is what makes writing to it safe.
         let tokens: [Int]
@@ -346,7 +347,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// The model's words, how the pass ended, and the opening of its turn handed to it.
-    private struct Run {
+    struct Run {
         let forgetGeneration: Int
         let text: String
         let stop: GenerateStopReason?
@@ -365,7 +366,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     }
 
     /// What the parser makes of a pass, withholding a budget-cut line that has not ended.
-    private static func completions(
+    static func completions(
         from run: Run, typed: String, asking ask: Ask, in situation: GenerationSituation
     ) -> [String] {
         guard !(ask == .one && run.stop == .length) else { return [] }
@@ -390,7 +391,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
         let forgetGeneration = self.forgetGeneration
-        guard let container, !Task.isCancelled, LatinScript.writes(typed),
+        guard let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
         beginPass()
@@ -551,6 +552,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
             judgementCacheHits += 1
             guard let container else { return [] }
             guard let vocabulary = self.vocabulary else { return [] }
+            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.
+            beginPass()
+            defer { endPass() }
             let judged = await container.perform { loaded in
                 Self.judgedFromCache(
                     line, candidate: candidate, context: context, vocabulary: vocabulary,
@@ -567,9 +571,9 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
                 for: candidate)
             return []
         }
+        guard let scoringVocabulary = self.vocabulary else { return [] }
         beginPass()
         defer { endPass() }
-        guard let scoringVocabulary = self.vocabulary else { return [] }
         let result = await container.perform { loaded -> (JudgedLine, [JudgedToken]) in
             let line = Self.judge(candidate, vocabulary: scoringVocabulary, with: loaded)
             let judged = Self.judgedFromCache(
@@ -637,7 +641,7 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
 }
 
 extension WeightLoading<ModelContainer> {
-    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance.md`.
+    /// Builds through mlx-swift-lm once, then swaps weights in place so a reload never quantises fresh arrays. See `Docs/performance-suggestions.md`.
     static let mlx = WeightLoading(
         build: { try await MLXCandidateScorer.buildContainer(from: $0) },
         refill: { container, directory in

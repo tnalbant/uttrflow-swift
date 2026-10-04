@@ -28,7 +28,7 @@ public actor SnippetStore {
 
     /// Where the snippets live, versioned in the name; only a test passes a `directory`.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("snippets.v1.json", in: directory)
+        LocalStoreEntry.snippets.location(in: directory)
     }
 
     // MARK: - Reading
@@ -38,17 +38,24 @@ public actor SnippetStore {
         load()
     }
 
-    /// Replaces the stored snapshot after an archive has been fully validated and merged.
-    public func replaceAll(_ snippets: [Snippet]) throws(SnippetStoreError) {
+    /// Replaces the list with what `merge` derives from it in one actor step, so no write lands in between.
+    public func replaceAll<Outcome: Sendable>(
+        _ merge: @Sendable ([Snippet]) -> (snippets: [Snippet], outcome: Outcome)
+    ) throws(SnippetStoreError) -> Outcome {
+        let derived = merge(load())
         var triggers = Set<[String]>()
-        for snippet in snippets {
-            guard !snippet.triggerWords.isEmpty else { throw .triggerHasNoWords }
-            guard !TextTidy.collapseWhitespace(snippet.expansion).isEmpty else {
-                throw .expansionIsEmpty
-            }
+        for snippet in derived.snippets {
+            try Self.validate(snippet)
             guard triggers.insert(snippet.triggerWords).inserted else { throw .triggerAlreadyUsed }
         }
-        try persist(snippets)
+        try persist(derived.snippets)
+        return derived.outcome
+    }
+
+    /// The rules every stored snippet meets, whichever path writes it.
+    public static func validate(_ snippet: Snippet) throws(SnippetStoreError) {
+        guard !snippet.triggerWords.isEmpty else { throw .triggerHasNoWords }
+        guard !TextTidy.collapseWhitespace(snippet.expansion).isEmpty else { throw .expansionIsEmpty }
     }
 
     /// The matcher, built from what is on disk right now rather than from a list fetched earlier.
@@ -61,10 +68,7 @@ public actor SnippetStore {
     /// Keeps a snippet, replacing in place the one with the same identifier so an edit does not move it.
     @discardableResult
     public func save(_ snippet: Snippet) throws(SnippetStoreError) -> [Snippet] {
-        guard !snippet.triggerWords.isEmpty else { throw .triggerHasNoWords }
-        guard !TextTidy.collapseWhitespace(snippet.expansion).isEmpty else {
-            throw .expansionIsEmpty
-        }
+        try Self.validate(snippet)
 
         var kept = load()
         // Two snippets on one trigger is a question with no right answer, mid-dictation.

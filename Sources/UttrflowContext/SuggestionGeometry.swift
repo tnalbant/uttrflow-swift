@@ -31,6 +31,7 @@ public enum SuggestionGeometry {
         fontDescent: CGFloat? = nil
     ) -> SuggestionAnchor? {
         guard placement == .inlineGhost, let caret = usable(caret, on: screen),
+            isVerticallyVisible(caret, in: window, field: field),
             let room = availableWidth(
                 caret: caret, field: field, window: window, screen: screen, direction: direction),
             size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0,
@@ -55,6 +56,22 @@ public enum SuggestionGeometry {
             ascent >= 0, descent >= 0
         else { return caret.maxY }
         return caret.minY + descent + ascent
+    }
+
+    /// A caret outside its visible container cannot anchor an inline ghost.
+    private static func isVerticallyVisible(_ caret: CGRect, in window: CGRect?, field: CGRect?) -> Bool {
+        if let window, !window.isNull, !window.isInfinite,
+            (caret.minY < window.minY || caret.maxY > window.maxY)
+        {
+            return false
+        }
+        if let field, !field.isNull, !field.isInfinite, field.width > minimumWidth,
+            field.minX <= caret.midX, caret.midX <= field.maxX,
+            (caret.minY < field.minY || caret.maxY > field.maxY)
+        {
+            return false
+        }
+        return true
     }
 
     /// How far the ghost may run from the caret before it meets the containing edge in its writing direction.

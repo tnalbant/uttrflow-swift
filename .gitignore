@@ -44,4 +44,10 @@ UITests/*.xcodeproj
 
 # Per-person agent rules: private, never committed. Read via AGENTS.md "Local rules".
 /AGENTS.local.md
+/PLAN.local.md
 /CLAUDE.local.md
+
+# Plans and agent working artefacts: local to each checkout, never committed. Future work
+# is a GitHub issue; see Docs/agents/workflow.md, "Plans and future work".
+/PLAN.md
+/.plans/

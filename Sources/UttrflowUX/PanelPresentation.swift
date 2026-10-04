@@ -123,6 +123,8 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
     public let id: Clip.ID
     /// The one line the row shows — bullets, when the clip is masked.
     public let summary: String
+    /// Additional pasted lines, including a final newline, shown beside the summary.
+    public let additionalLineCount: Int
     public let kind: ClipKind
     /// SF Symbol for the icon at the head of the row.
     public let symbolName: String
@@ -153,14 +155,18 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
     public let isMonospaced: Bool
     public let actions: [PanelAction]
 
-    /// C6 — the whole line for a truncated row, and never on a masked one. See `Docs/panel.md`.
+    /// The bounded full-text preview, never on a masked row. See `Docs/panel.md`.
     public var tooltip: String? {
-        isMasked ? nil : summary
+        isMasked ? nil : preview
     }
+    /// The complete clip up to the clipboard module's preview bound.
+    public let preview: String
 
     public init(
         id: Clip.ID,
         summary: String,
+        additionalLineCount: Int = 0,
+        preview: String = "",
         kind: ClipKind,
         symbolName: String,
         when: String,
@@ -181,6 +187,8 @@ public struct PanelRow: Sendable, Equatable, Identifiable {
     ) {
         self.id = id
         self.summary = summary
+        self.additionalLineCount = additionalLineCount
+        self.preview = preview
         self.kind = kind
         self.symbolName = symbolName
         self.when = when
@@ -434,6 +442,8 @@ public enum PanelPresenter {
         return PanelRow(
             id: clip.id,
             summary: isMasked ? mask : (excerpt ?? clip.summary),
+            additionalLineCount: isMasked ? 0 : clip.additionalLineCount,
+            preview: isMasked ? mask : clip.preview,
             kind: clip.kind,
             symbolName: symbolName(for: clip.kind),
             when: when,

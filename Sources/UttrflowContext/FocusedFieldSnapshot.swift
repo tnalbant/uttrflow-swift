@@ -119,6 +119,14 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         windowTitle: String? = nil,
         windowNumber: UInt32? = nil
     ) {
+        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
+        let line = Self.caretLine(
+            of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
+        let isSecure =
+            isSecure
+            || (TerminalApplications.contains(bundleIdentifier)
+                && ShellPrompt.isCredentialPrompt(in: line.text))
+
         self.bundleIdentifier = bundleIdentifier
         self.applicationName = applicationName
         self.role = role
@@ -127,7 +135,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.placeholder = placeholder
         self.accessibilityDescription = accessibilityDescription
         self.document = document
-        self.value = value
+        self.value = isSecure ? nil : value
         self.selection = selection
         self.caret = caret
         self.writingDirection = writingDirection
@@ -147,10 +155,7 @@ public struct FocusedFieldSnapshot: Sendable, Equatable {
         self.readMicroseconds = readMicroseconds
         self.windowTitle = windowTitle
         self.windowNumber = windowNumber
-        let prose = role == Self.proseRole && Self.isProseApplication(bundleIdentifier)
-        let line = Self.caretLine(
-            of: value, at: selection, in: bundleIdentifier, prose: prose, windowTitle: windowTitle)
-        self.currentLine = line.text
+        self.currentLine = isSecure ? "" : line.text
         self.isLineCut = line.isCut
     }
 }
@@ -266,8 +271,7 @@ extension FocusedFieldSnapshot {
         return found
     }
 
-    /// The marks that end a sentence, and the quotes and brackets that may close one after its mark.
-    private static let sentenceEnds: Set<Character> = [".", "?", "!"]
+    /// The quotes and brackets that may close a sentence after its end mark.
     private static let sentenceClosers: Set<Character> = ["\"", "'", ")", "”", "’", "]"]
 
     /// Whether the whitespace at `space` follows a sentence's end mark, spaces, closing quotes and brackets stepped over.
@@ -280,7 +284,7 @@ extension FocusedFieldSnapshot {
             let character = value[index]
             if sentenceClosers.contains(character) || character.isWhitespace { continue }
             // An ellipsis trails off inside a sentence rather than ending it.
-            guard sentenceEnds.contains(character) else { return false }
+            guard SentenceMarks.ends.contains(character) else { return false }
             return !(character == "." && index > lineStart && value[value.index(before: index)] == ".")
         }
         return false

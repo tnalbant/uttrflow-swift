@@ -1,3 +1,4 @@
+import UttrflowAI
 import UttrflowPredict
 
 /// What one pass asks the model for: the one line the person waits for, or the others behind it.
@@ -68,13 +69,13 @@ enum PromptBuilder {
     static func message(
         typed: String, in situation: GenerationSituation, register: Register, asking ask: Ask = .one
     ) -> String {
-        var located = "application \(situation.application)"
+        var located = "application \(PromptText.quoted(situation.application, limit: locatorCap))"
         if let title = situation.windowTitle {
-            located += ", window \"\(Self.unquoted(Self.head(title, within: locatorCap)))\""
+            located += ", window \"\(PromptText.quoted(title, limit: locatorCap))\""
         }
-        if let field = situation.field { located += ", field \(Self.head(field, within: locatorCap))" }
+        if let field = situation.field { located += ", field \(PromptText.quoted(field, limit: locatorCap))" }
         if let document = situation.document {
-            located += ", document \(Self.head(document, within: locatorCap))"
+            located += ", document \(PromptText.quoted(document, limit: locatorCap))"
         }
         var opening = "In \(located).\nHints: \(register.hints.joined(separator: "; "))."
         // Adds the script instruction only when the context shows another script. See `Docs/predict.md`.
@@ -89,7 +90,7 @@ enum PromptBuilder {
             case .one:
                 "\(Self.instruction(for: register)):\n\(Self.delimited(typed))"
             case .others(let leader):
-                "Give up to three other ways to finish this \(register.kind), each different from \"\(Self.unquoted(leader))\", "
+                "Give up to three other ways to finish this \(register.kind), each different from \"\(PromptText.quoted(leader))\", "
                     + "one per line:\n\(Self.delimited(typed))"
             }
 
@@ -195,17 +196,6 @@ enum PromptBuilder {
         case .nonspacingMark, .spacingMark, .enclosingMark: true
         default: false
         }
-    }
-
-    /// The text with double quotes made single, so quoted words cannot forge a prompt line.
-    static func unquoted(_ text: String) -> String {
-        text.replacingOccurrences(of: "\"", with: "'")
-    }
-
-    /// The start of the text, which is where a title or a name says what it is, cut to the allowance in characters.
-    static func head(_ text: String, within allowance: Int) -> String {
-        guard allowance > 0 else { return "" }
-        return text.count > allowance ? String(text.prefix(allowance)) : text
     }
 
     /// The longest end of the text whose estimate fits the allowance in tokens, which is the part nearest the line.

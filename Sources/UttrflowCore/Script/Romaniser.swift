@@ -26,9 +26,11 @@ public enum Romaniser {
                 while end < scalars.count, isWordScalar(scalars[end]) { end += 1 }
                 let spelled = word(Array(scalars[index..<end]))
                 let opens = capitalisingSentences && outputEndsSentence
+                if index > 0, isOtherScriptLetter(scalars[index - 1]) { output.append(" ") }
                 output.append(
                     contentsOf: (opens ? spelled.prefix(1).uppercased() + spelled.dropFirst() : spelled)
                         .unicodeScalars)
+                if end < scalars.count, isOtherScriptLetter(scalars[end]) { output.append(" ") }
                 outputEndsSentence = false
                 index = end
             } else {
@@ -73,6 +75,10 @@ public enum Romaniser {
         // A final "h" after a vowel is not said: "woh" is "wo", "yeh" is "ye".
         if key.count > 1, key.hasSuffix("h"), let before = key.dropLast().last, "aeiou".contains(before) {
             key.removeLast()
+        }
+        // A final "ay" after a consonant is typed "ai" as often: "chay" and "chai".
+        if key.count > 2, key.hasSuffix("ay"), let before = key.dropLast(2).last, !"aeiou".contains(before) {
+            key = String(key.dropLast()) + "i"
         }
         return key
     }
@@ -189,7 +195,8 @@ public enum Romaniser {
             let after = syllables[index + 1]
             // A conjunct after it keeps the vowel: "ananya", not "annya".
             guard !before.vowel.isEmpty, !before.isNasal, !after.vowel.isEmpty,
-                after.consonants.count == 1
+                after.consonants.count == 1,
+                after.consonants != [Consonant(base: ha, hasNukta: false)]  // "p" then "h" would read "ph": दोपहर is "dopahar"
             else { continue }
             syllables[index].vowel = ""
         }
@@ -278,6 +285,11 @@ public enum Romaniser {
     /// Whether a scalar is in the Devanagari block.
     static func isDevanagari(_ scalar: Unicode.Scalar) -> Bool {
         (0x0900...0x097F).contains(scalar.value)
+    }
+
+    /// Whether a scalar is a letter or digit of another script, so a change to or from Devanagari beside it is a word boundary.
+    private static func isOtherScriptLetter(_ scalar: Unicode.Scalar) -> Bool {
+        !isDevanagari(scalar) && CharacterSet.alphanumerics.contains(scalar)
     }
 
     /// Whether a scalar belongs inside a Devanagari word: a letter or sign, or a joiner between them.
@@ -404,5 +416,6 @@ public enum Romaniser {
         ("इंतजार", "intezaar"), ("संपादक", "sampadak"), ("रहा", "raha"), ("रही", "rahi"),
         ("रहे", "rahe"), ("था", "tha"), ("थी", "thi"), ("थे", "the"), ("अभी", "abhi"), ("कभी", "kabhi"),
         ("सभी", "sabhi"), ("कोई", "koi"), ("बात", "baat"), ("आज", "aaj"), ("कल", "kal"),
+        ("चाय", "chai"), ("जनवरी", "janvari"), ("फ़रवरी", "farvari"), ("फरवरी", "farvari"),
     ]
 }

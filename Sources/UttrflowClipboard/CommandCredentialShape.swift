@@ -10,6 +10,7 @@ enum CommandCredentialShape {
         var word = ""
         var hasWord = false
         var hasCookieHeader = false
+        var netrc = NetrcState()
         var quote: Character?
         var escaped = false
         /// Ends the word being read, and with a separator or a line end, the command it belongs to.
@@ -31,6 +32,7 @@ enum CommandCredentialShape {
             if character.isNewline {
                 quote = nil
                 endWord()
+                if hasNetrcPassword(words, state: &netrc, read: &read) { return true }
                 if handsOverCredential(words, read: &read) { return true }
                 words.removeAll(keepingCapacity: true)
                 hasCookieHeader = false
@@ -63,7 +65,14 @@ enum CommandCredentialShape {
             }
         }
         endWord()
+        if hasNetrcPassword(words, state: &netrc, read: &read) { return true }
         return handsOverCredential(words, read: &read)
+    }
+
+    /// Context carried between directives in one netrc machine or default block.
+    private struct NetrcState {
+        var inEntry = false
+        var inMacro = false
     }
 
     /// Whether the current command is reading a Cookie or Set-Cookie header value.
@@ -118,7 +127,6 @@ enum CommandCredentialShape {
     /// Whether one command's words hand a credential to a program or a header.
     private static func handsOverCredential(_ words: [String], read: inout Int) -> Bool {
         guard !words.isEmpty else { return false }
-        if hasNetrcPassword(words) { return true }
         var programs: Set<String> = []
         var subcommands: Set<String> = []
         var htpasswdBatch = false
@@ -157,17 +165,70 @@ enum CommandCredentialShape {
         return false
     }
 
-    /// Whether a netrc machine entry gives a password after its host or default selector.
-    private static func hasNetrcPassword(_ words: [String]) -> Bool {
-        guard let selector = words.first?.lowercased(), selector == "machine" || selector == "default",
-            words.count >= 3
-        else { return false }
-        let fields = words.map { $0.lowercased() }
-        guard let password = fields.firstIndex(of: "password"), password > 1, password + 1 < words.count
-        else {
+    /// Whether a netrc password appears while reading a valid machine or default block.
+    private static func hasNetrcPassword(
+        _ words: [String], state: inout NetrcState, read: inout Int
+    ) -> Bool {
+        guard !words.isEmpty else {
+            if state.inMacro { state.inMacro = false }
             return false
         }
-        return isCredential(words[password + 1])
+        guard let first = words.first, !first.hasPrefix("#"), !state.inMacro else { return false }
+        let fields = Array(words.prefix { !$0.hasPrefix("#") })
+        guard var index = netrcDirectiveStart(fields, state: &state) else { return false }
+        while index < fields.count {
+            read += 1
+            let directive = fields[index].lowercased()
+            if directive == "macdef" {
+                guard index + 1 < fields.count else {
+                    state.inEntry = false
+                    return false
+                }
+                state.inMacro = true
+                return false
+            }
+            guard isNetrcDirective(directive), index + 1 < fields.count else {
+                state.inEntry = false
+                return false
+            }
+            let value = fields[index + 1]
+            if directive == "password", isCredential(value) { return true }
+            index += 2
+        }
+        return false
+    }
+
+    /// Selects the first directive after a block selector or on its own line.
+    private static func netrcDirectiveStart(_ fields: [String], state: inout NetrcState) -> Int? {
+        switch fields[0].lowercased() {
+        case "machine":
+            guard fields.count > 1 else {
+                state.inEntry = false
+                return nil
+            }
+            state.inEntry = true
+            return 2
+        case "default":
+            state.inEntry = true
+            return 1
+        default:
+            guard state.inEntry, isNetrcDirective(fields[0]) else {
+                state.inEntry = false
+                return nil
+            }
+            return 0
+        }
+    }
+
+    /// The netrc directives that take one value.
+    private static let netrcValueDirectives: Set<String> = [
+        "login", "user", "password", "account", "port", "protocol",
+    ]
+
+    /// Whether a field is one of the supported netrc directives.
+    private static func isNetrcDirective(_ field: String) -> Bool {
+        let directive = field.lowercased()
+        return directive == "macdef" || netrcValueDirectives.contains(directive)
     }
 
     /// Whether a Cookie header's named session value looks generated.

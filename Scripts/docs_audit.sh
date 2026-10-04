@@ -637,10 +637,9 @@ pass "$DOC_COUNT Markdown files (tracked, plus written-but-not-yet-staged)"
 # 0a. The documented pull-request lifecycle must match the live main ruleset.
 # ---------------------------------------------------------------------------
 #
-# Issue #1120 was not a typo but a blocked lifecycle: AGENTS.md said a green PR could be
-# self-merged while the live ruleset required independent review. The ruleset itself is
-# outside this tree, so this check keeps the local policy on the review-required side of
-# that boundary until the ruleset is deliberately changed.
+# The ruleset lives on the server, outside this tree, so this check keeps the documented
+# lifecycle on the review-required side of it: the workflow page must name every review gate
+# and must never say a pull request may be merged by its own author.
 printf '\nPull request lifecycle\n'
 
 if grep -Fq "**An agent may merge its own pull request once it is green**" Docs/agents/workflow.md; then
@@ -652,7 +651,6 @@ fi
 
 missing_policy=()
 for required in \
-    "release-policy:v4" \
     "requires one approving review" \
     "code-owner review" \
     "approval by someone other than the last pusher" \
@@ -688,6 +686,24 @@ if [[ -n "$history_findings" ]]; then
         "" $'\n'"$(printf '    %s\n' "$history_findings")"
 else
     pass "AGENTS.md and Docs/agents/ cite no issue, pull-request number or date"
+fi
+
+# ---------------------------------------------------------------------------
+# 0c. No document shows a tag in the retired YEAR.MONTH.DAY scheme.
+# ---------------------------------------------------------------------------
+#
+# Versions are YY.MMDD.REVISION (RELEASING.md). A `v2026.9.14` example teaches a tag the release
+# workflow refuses. The changelog keeps its historical release links; the scheme explanations
+# name the old version without the `v`, so they are not tags and are not matched.
+printf '\nNo document shows a retired release tag\n'
+
+retired_tag_findings=$(git grep -n -E '(^|[^A-Za-z0-9_])v20[0-9]{2}\.[0-9]+\.[0-9]+' -- '*.md' ':!CHANGELOG.md' || true)
+if [[ -n "$retired_tag_findings" ]]; then
+    fail "a document shows a release tag in the retired YEAR.MONTH.DAY scheme" \
+        "Use the current YY.MMDD.REVISION form, such as v26.0926.0, as RELEASING.md states." \
+        "" $'\n'"$(printf '    %s\n' "$retired_tag_findings")"
+else
+    pass "no document outside CHANGELOG.md shows a retired YEAR.MONTH.DAY tag"
 fi
 
 # ---------------------------------------------------------------------------
@@ -735,7 +751,7 @@ import sys
 # Root files that are load-bearing, so a bare mention of one is worth checking.
 ROOT_ALLOWLIST = {
     "AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md",
-    "LICENSE.md", "PLAN.md", "Package.resolved", "Package.swift", "README.md",
+    "LICENSE.md", "Package.resolved", "Package.swift", "README.md",
     "RELEASING.md", "SECURITY.md", "TRADEMARK.md",
 }
 EXTENSIONS = (
@@ -824,11 +840,9 @@ fi
 # by a third, and a reader who acts on it is as misled as by a wrong exact number. "4,000+"
 # stays true and stays useful, which is what a floor is for.
 #
-# Two things are skipped, both because they are records rather than claims. PLAN.md is an
-# append-only phase log where each entry states the count on the day it was written, and
-# rewriting those would be a lie. So is a line in Swift Testing's own summary format — `Test
-# run with 579 tests in 83 suites` in `Docs/offline.md` is the transcript of one filtered
-# run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
+# One thing is skipped, because it is a record rather than a claim: a line in Swift Testing's
+# own summary format — `Test run with 579 tests in 83 suites` in `Docs/offline.md` is the
+# transcript of one filtered run. Fenced code blocks as a whole are *not* skipped: three of the #76 claims lived in a
 # `make verify` snippet inside one.
 printf '\nThe test count\n'
 
@@ -877,7 +891,6 @@ PYTHON
     claims="$(
         git ls-files --cached --others --exclude-standard \
             -- '*.md' 'Makefile' '.githooks/*' '.github/workflows/*' \
-        | grep -v '^PLAN\.md$' \
         | python3 -c "$COUNT_PROGRAM" "$REAL_TESTS"
     )"
 
@@ -983,6 +996,23 @@ if [[ -n "${missing_release_links//[[:space:]]/}" ]]; then
         "" $'\n'"$missing_release_links"
 else
     pass "every released version heading has a link definition"
+fi
+
+# ---------------------------------------------------------------------------
+# 5b. Every command the measurement guide names exists in the Makefile, Scripts or the tools.
+# ---------------------------------------------------------------------------
+printf '\nMeasurement guide commands\n'
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    measure_args=(--self-test)
+else
+    measure_args=()
+fi
+if measure_report="$(python3 "$PACKAGE_ROOT/Scripts/measure_commands_audit.py" "${measure_args[@]+"${measure_args[@]}"}" 2>&1)"; then
+    pass "every command in Docs/measure-a-change.md exists in the tree"
+else
+    fail "Docs/measure-a-change.md names a command the tree does not have" \
+        "A contributor following the guide would run something that is not there." \
+        "" $'\n'"$measure_report"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1202,31 +1232,29 @@ fi
 # 7e. The Insights artboards match InsightsPresentation, not an invented contract.
 # ---------------------------------------------------------------------------
 #
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
+# The Insights artboards have twice drawn a contract production did not have: first an
+# invented scope, meter and language card, then the bar chart production had replaced with
+# a calendar and range switch. Nothing tied the generator to `InsightsPresentation.swift`.
 printf '\nInsights artboard contract\n'
 
 if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
     fail "Scripts/insights_contract_audit.py is missing or not executable" \
         "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
+        "generator can drift away from the range switch, calendar and figures unnoticed."
 else
     if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
         if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
             pass "the Insights artboards match InsightsPresentation and its tests"
         else
             fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "The audit prints every mismatch: the range switch, the calendar, the figures," \
+                "the empty state, or a retired claim. Fix Design/_gen_app.py," \
                 "then regenerate every Insights artboard."
         fi
     else
         fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
+            "The audit's own self-test either fails the generator as it stands or misses" \
+            "an injected drift. Fix the audit, not the artboard."
     fi
 fi
 
@@ -1237,8 +1265,8 @@ fi
 # A tracked CLAUDE.md is a claim about what Claude Code will load as project memory: with
 # default Project instructions, Claude Code reads CLAUDE.md before any tool call and does
 # not consult AGENTS.md on its own. A CLAUDE.md that holds a prose pointer at AGENTS.md
-# therefore loads the pointer sentence and stops — the 491 lines of operating rules in
-# AGENTS.md are injected only if the model decides, on its own, to follow the link.
+# therefore loads the pointer sentence and stops — the operating rules in AGENTS.md
+# are injected only if the model decides, on its own, to follow the link.
 #
 # Three contents pass, in this order:
 #
@@ -1265,7 +1293,7 @@ else
     fail "$claude_md_problem" \
         "A tracked CLAUDE.md is loaded by Claude Code as project memory ahead of any tool." \
         "Prose that points at AGENTS.md — Markdown link or otherwise — is one sentence the" \
-        "model receives, not an import; the 491 lines of operating rules in AGENTS.md are" \
+        "model receives, not an import; the operating rules in AGENTS.md are" \
         "not injected unless the model decides, on its own, to open the file." \
         "Replace the body with a single '@AGENTS.md' line, or delete CLAUDE.md and let" \
         "AGENTS.md load directly, or turn CLAUDE.md into a real symlink to AGENTS.md."
@@ -1439,7 +1467,7 @@ real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:

@@ -219,7 +219,7 @@ Apple Silicon Mac, macOS 26 or later. Xcode 26.6 or later supplies the toolchain
 itself is SwiftPM.
 
 ```bash
-make verify     # lint, PII audit, build, 8,000+ tests, coverage floor, offline audit
+make verify     # lint, PII audit, build, test suite, coverage floor, offline audit
 make app        # builds and ad-hoc signs dist/Uttrflow.app
 open dist/Uttrflow.app
 make help       # every target
@@ -325,9 +325,6 @@ handle the request wins. An engine that cannot cope with the spoken language ste
 aside rather than producing bad output — which is how Hindi is routed away from
 Apple's model, whose 23 supported locales do not include it. The preference list must
 always end in `.rules`, which can handle anything, so the pipeline can never dead-end.
-
-`.cloud` is compiled in only when `UTTRFLOW_CLOUD` is defined. The shipping binary
-contains no network path.
 
 </details>
 
@@ -436,10 +433,9 @@ breadcrumbs, and nothing you dictated or copied. Builds made from source carry n
 key and never send anything. [Docs/crash-reporting.md](Docs/crash-reporting.md) has the details.
 
 The app is not hermetic and does not claim to be: it downloads a speech model on first run,
-roughly 646 MB, and signs you in once. After that it dictates with no network at all. A
-cloud clean-up engine exists behind the `UTTRFLOW_CLOUD` compilation flag and is **not** in
-the shipping binary, and the evaluation corpus is not a library product so it cannot be
-imported into the app.
+roughly 646 MB, and signs you in once. After that it dictates with no network at all. No
+clean-up engine is hosted, and the evaluation corpus is not a library product so it cannot
+be imported into the app.
 
 ## Contributing
 

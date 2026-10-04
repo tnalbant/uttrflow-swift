@@ -7,9 +7,23 @@ public enum PanelComposition {
         guard isComposing else { return true }
         switch key {
         // Return commits the candidate, the arrows walk the candidate list, and Escape cancels the word.
-        case .return, .returnPlain, .up, .down, .escape: return false
-        // Everything else is the panel's: a chip, a collection number, or the text the field has committed.
+        case .return, .returnPlain, .up, .down, .escape, .jump: return false
+        // A collection number is a command chord; everything else is a chip or committed field text.
+        case .category: return false
         default: return true
+        }
+    }
+
+    /// Whether the panel may act on a resolved key or command chord while the field editor composes text.
+    public static func panelMayTake(_ decision: PanelKeyDecision, whileComposing isComposing: Bool) -> Bool {
+        guard isComposing else { return true }
+        switch decision {
+        case .key(let key), .keyAfterClosingMenu(let key):
+            return panelMayTake(key, whileComposing: true)
+        case .intent:
+            return false
+        case .closeMenu, .ignore:
+            return true
         }
     }
 }

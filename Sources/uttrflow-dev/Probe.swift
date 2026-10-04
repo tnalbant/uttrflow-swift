@@ -2,6 +2,7 @@ import ArgumentParser
 private import ApplicationServices
 private import Foundation
 private import UttrflowContext
+private import UttrflowEval
 private import UttrflowPredict
 
 /// Phase 0's measurements: what fields will tell us, what retrieval costs, whether the tap works.
@@ -9,7 +10,9 @@ struct Probe: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "probe",
         abstract: "Measure what tab-to-complete can rely on, before any of it is built.",
-        subcommands: [ProbeSurface.self, ProbeRetrieval.self, ProbeTap.self, ProbeIME.self]
+        subcommands: [
+            ProbeSurface.self, ProbeRetrieval.self, ProbeTap.self, ProbeIME.self, ProbeModifiers.self,
+        ]
     )
 }
 
@@ -26,6 +29,8 @@ struct ProbeSurface: AsyncParsableCommand {
     @Option(name: .long, help: "Where to write the markdown report.")
     var output: String?
 
+    @OptionGroup var log: ProbeLogOptions
+
     func validate() throws {
         guard seconds >= 1 else {
             throw ValidationError("--seconds must be 1 or greater.")
@@ -39,6 +44,7 @@ struct ProbeSurface: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
+        let load = HostLoad.current()
         print("Sweeping for \(seconds)s. Click into a text field in each app you want measured.\n")
         var sweep = CapabilitySweep()
         for tick in 0..<seconds {
@@ -57,10 +63,19 @@ struct ProbeSurface: AsyncParsableCommand {
 
         let markdown = ProbeReport(sweep).markdown()
         print("\n" + markdown)
-        guard let output else { return }
-        try markdown.write(toFile: output, atomically: true, encoding: .utf8)
-        print("Written to \(output)")
+        if let output {
+            try markdown.write(toFile: output, atomically: true, encoding: .utf8)
+            print("Written to \(output)")
+        }
+        let apps = Set(sweep.readings.map(\.application)).count
+        log.printRow(
+            result:
+                "\(sweep.readings.count) fields in \(apps) apps; \(percent(sweep.eligibleShare)) take a suggestion, "
+                + "\(percent(sweep.inlineShare)) the inline ghost",
+            loadBefore: load)
     }
+
+    private func percent(_ share: Double) -> String { "\(Int((share * 100).rounded()))%" }
 
     private func describe(_ reading: SurfaceCapability) -> String {
         switch reading.placement {
@@ -81,6 +96,8 @@ struct ProbeRetrieval: AsyncParsableCommand {
     @Option(name: .long, help: "How many entries to measure against.")
     var entries: Int = 50_000
 
+    @OptionGroup var log: ProbeLogOptions
+
     func validate() throws {
         guard entries >= 1 else {
             throw ValidationError("--entries must be 1 or greater.")
@@ -88,6 +105,7 @@ struct ProbeRetrieval: AsyncParsableCommand {
     }
 
     func run() async throws {
+        let load = HostLoad.current()
         let corpus = RetrievalBenchmark.corpus(entries)
         print("\(corpus.count) entries\n")
 
@@ -106,6 +124,7 @@ struct ProbeRetrieval: AsyncParsableCommand {
             RetrievalBenchmark.fuzzy("gti c", in: corpus, within: 1, prefiltered: false)
         }
         print(String(format: "  fuzzy, no prefilter  %9.1f µs", loose))
+        var masked: [String] = []
         for width in [6, 12] {
             let sized = RetrievalBenchmark.corpus(entries, maskWidth: width)
             let elapsed = RetrievalBenchmark.time {
@@ -115,12 +134,18 @@ struct ProbeRetrieval: AsyncParsableCommand {
                 String(
                     format: "  prefilter, %2d-byte   %9.1f µs   (%.1fx faster)", width, elapsed,
                     loose / elapsed))
+            masked.append(String(format: "%d-byte mask %.1f µs", width, elapsed))
         }
 
         let exactHits = RetrievalBenchmark.exactPrefix("git p", in: corpus)
         let fuzzyHits = RetrievalBenchmark.fuzzy("git p", in: corpus, within: 1, prefiltered: true)
         print("\n  'git p' matches \(exactHits) exactly and \(fuzzyHits) within one edit.")
         print("  Fuzzy must therefore stay a fallback, never a parallel path.")
+        let medians = String(
+            format: "%d entries: range scan %.1f µs, LIKE %.1f µs, fuzzy %.1f µs, ", corpus.count, ranged,
+            liked,
+            loose)
+        log.printRow(result: medians + masked.joined(separator: ", "), loadBefore: load)
     }
 }
 
@@ -137,11 +162,14 @@ struct ProbeTap: AsyncParsableCommand {
     @Flag(name: .long, help: "Stall inside the callback, to force the system to disable the tap.")
     var stall = false
 
+    @OptionGroup var log: ProbeLogOptions
+
     func run() async throws {
         guard AXIsProcessTrusted() else {
             print("Accessibility is not granted to this binary; an event tap cannot be created.")
             throw ExitCode.failure
         }
+        let load = HostLoad.current()
         let observer = TapObserver(stalling: stall)
         guard observer.start() else {
             print("The tap could not be created even though Accessibility is granted.")
@@ -151,6 +179,7 @@ struct ProbeTap: AsyncParsableCommand {
         try await Task.sleep(for: .seconds(seconds))
         observer.stop()
         print(observer.summary())
+        log.printRow(result: observer.oneLineSummary(), loadBefore: load)
     }
 }
 
@@ -164,11 +193,16 @@ struct ProbeIME: AsyncParsableCommand {
     @Option(name: .long, help: "How long to watch for, in seconds.")
     var seconds: Int = 60
 
+    @OptionGroup var log: ProbeLogOptions
+
     func run() async throws {
         guard AXIsProcessTrusted() else {
             print("Accessibility is not granted to this binary, so every read would return nothing.")
             throw ExitCode.failure
         }
+        let load = HostLoad.current()
+        var composingTicks = 0
+        var publishedTicks = 0
 
         print("Watching for \(seconds)s. Switch to an input method and type, so composition shows.\n")
         var previous = ""
@@ -177,6 +211,8 @@ struct ProbeIME: AsyncParsableCommand {
             let marked = app.map { CompositionProbe.markedText(of: $0) } ?? .unanswered
             let source = await MainActor.run { CompositionProbe.refreshInputSourceKind() }
             let composing = Composition.isComposing(markedText: marked, inputSource: source)
+            if composing { composingTicks += 1 }
+            if marked != .unanswered { publishedTicks += 1 }
             let line =
                 "\(describe(marked)) · input source is a \(describe(source)) · composing=\(composing)"
             if line != previous {
@@ -185,6 +221,10 @@ struct ProbeIME: AsyncParsableCommand {
             }
             if tick < seconds - 1 { try await Task.sleep(for: .seconds(1)) }
         }
+        log.printRow(
+            result:
+                "\(seconds) one-second ticks; marked range published in \(publishedTicks), composing in \(composingTicks)",
+            loadBefore: load)
     }
 
     private func describe(_ marked: MarkedText) -> String {

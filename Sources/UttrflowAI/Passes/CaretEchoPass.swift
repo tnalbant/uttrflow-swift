@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Takes back the text before a mid-sentence caret when a model repeats it at the head of its answer.
-public struct CaretEchoPass: CleaningPass {
+public struct CaretEchoPass: PieceCleaningPass {
     public static let id: PassID = .caretEcho
 
     public let state: InsertionPoint.SentenceState
@@ -85,7 +85,7 @@ public struct CaretEchoPass: CleaningPass {
 
     /// Lower-cased, with the quote the prompt swaps and the ellipsis it cuts with both folded away.
     static func folded(_ text: String) -> String {
-        text.lowercased().replacingOccurrences(of: "\"", with: "'").replacingOccurrences(of: "…", with: "")
+        PromptText.withSingleQuotes(text.lowercased()).replacingOccurrences(of: "…", with: "")
     }
 
     /// The text without the punctuation and spaces after its last letter or digit.

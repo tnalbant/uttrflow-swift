@@ -18,6 +18,13 @@ public enum FocusedElementPreference {
         return owner == requested && owner != current
     }
 
+    /// The process typed text reaches: the focused element's owner, else the frontmost application. See `Docs/insertion.md`.
+    public static func destination<Application>(
+        focusOwner: Application?, frontmost: Application?
+    ) -> Application? {
+        focusOwner ?? frontmost
+    }
+
     /// The system-wide answer if it is a text-entry role, else the application's, else whichever answered. See `Docs/insertion.md`.
     public static func choose<Element>(
         systemWide: Element?, systemWideRole: (Element) -> String?,

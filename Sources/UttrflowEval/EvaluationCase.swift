@@ -2,7 +2,7 @@
 public import UttrflowCore
 
 /// What the product should do with one utterance; `expected` is a reference, not the only right answer.
-public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
+public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public enum Category: String, Sendable, Equatable, CaseIterable, Codable {
         /// Everyday speech: fillers, false starts, missing punctuation.
         case everyday
@@ -16,6 +16,8 @@ public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
         case contextual
         /// Grammar slips a formatter may repair, and the dialect that must stay.
         case grammar
+        /// An entry into a one-line field of no known purpose, which is a value and takes no stop alone.
+        case oneLineField
     }
 
     public let id: String
@@ -40,6 +42,8 @@ public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
     public let mustEndWith: String?
     /// The spoken runs the recogniser was unsure of, which is what makes a case about a doubtful reading fire.
     public let doubtful: [String]
+    /// The formatting case classes this case exercises, which is what the coverage matrix counts.
+    public let classes: [FormattingClass]
 
     public init(
         id: String,
@@ -53,7 +57,8 @@ public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
         destination: Destination = .plain,
         mustBeginWith: String? = nil,
         mustEndWith: String? = nil,
-        doubtful: [String] = []
+        doubtful: [String] = [],
+        classes: [FormattingClass] = []
     ) {
         self.id = id
         self.category = category
@@ -67,6 +72,7 @@ public struct EvaluationCase: Sendable, Equatable, Codable, Identifiable {
         self.mustBeginWith = mustBeginWith
         self.mustEndWith = mustEndWith
         self.doubtful = doubtful
+        self.classes = classes
     }
 
     /// Below the correction engine's threshold, which is the line a doubtful word has to fall under.

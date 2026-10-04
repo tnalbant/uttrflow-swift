@@ -12,8 +12,12 @@ final class TapState: @unchecked Sendable {
     let armed = Atomic<UInt32>(0)
     /// Whether an application menu is open, which returns claimed keys to the application.
     private let nativeMenuIsOpen = Atomic<Bool>(false)
+    /// The accept key whose repeat key-downs stay swallowed after the first press.
+    private let repeatingAcceptKey = Atomic<UInt32>(TapState.noAcceptKey)
+    /// Marks no accept key as repeating; key codes are 16-bit, so it never names a real key.
+    private static let noAcceptKey = UInt32.max
     /// The keys pressed after a taken keystroke, kept back until it has been carried out.
-    let hold = KeyHold()
+    let hold: KeyHold
 
     /// Written by the tap's thread and read by the drain; a slot is written again only once the drain has read it.
     private let ring: UnsafeMutablePointer<UInt32>
@@ -25,15 +29,19 @@ final class TapState: @unchecked Sendable {
     private let read = Atomic<UInt64>(0)
     /// How many disables have counted against the tap inside the current window.
     private let disables = Atomic<Int>(0)
-    /// When the last disable arrived, in uptime nanoseconds.
+    /// When the last disable arrived, in nanoseconds on `clock`.
     private let lastDisable = Atomic<UInt64>(0)
     /// The tap port, retained here so the callback can re-enable it without a lock.
     private let tapPointer = Atomic<UnsafeMutableRawPointer?>(nil)
     /// Woken on every write, so the drain runs off the tap's own thread.
     private let signal: any DispatchSourceUserDataAdd
+    /// The time disables and holds are measured on, injected so a test can move it by hand.
+    private let clock: ElapsedClock
 
-    init(signal: any DispatchSourceUserDataAdd) {
+    init(signal: any DispatchSourceUserDataAdd, clock: some Clock<Duration> = ContinuousClock()) {
         self.signal = signal
+        self.clock = ElapsedClock(clock)
+        hold = KeyHold(clock: clock)
         ring = .allocate(capacity: Self.capacity)
         ring.initialize(repeating: 0, count: Self.capacity)
     }
@@ -80,7 +88,7 @@ final class TapState: @unchecked Sendable {
 
     /// Whether the tap should be turned back on, which it is unless it keeps being disabled within a short window.
     func shouldReEnable() -> Bool {
-        let now = DispatchTime.now().uptimeNanoseconds
+        let now = clock.nanoseconds
         let last = lastDisable.exchange(now, ordering: .relaxed)
         let (count, reEnable) = TapDisableWindow.decide(
             last: last, now: now, count: disables.load(ordering: .relaxed))
@@ -131,18 +139,26 @@ final class TapState: @unchecked Sendable {
                 let bareTabIsArmed = armed.load(ordering: .acquiring) & ArmedKeys.tab.rawValue != 0
                 return !suppressUnarmedTab || stroke != KeyStroke(.tab) || bareTabIsArmed
             })
+        repeatingAcceptKey.store(Self.noAcceptKey, ordering: .releasing)
         return isListening
     }
 
     /// Decides one real key-down on the tap's thread, answering true when it is taken or held back.
     func takes(_ event: CGEvent) -> Bool {
+        let keyCode = UInt32(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+            repeatingAcceptKey.load(ordering: .acquiring) == keyCode
+        {
+            return true
+        }
         // A key pressed while a taken keystroke is carried out waits for it, so it cannot overtake an insertion.
         if hold.keep(event) { return true }
         guard !nativeMenuIsOpen.load(ordering: .acquiring) else { return false }
         let stroke = KeyStroke(
-            keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)),
+            keyCode: UInt16(truncatingIfNeeded: keyCode),
             modifiers: KeyModifiers(event.flags))
         guard route(ArmedKeys.slot(of: stroke)) else { return false }
+        repeatingAcceptKey.store(keyCode, ordering: .releasing)
         hold.begin(suppressingUnarmedTab: stroke == KeyStroke(.tab))
         return true
     }

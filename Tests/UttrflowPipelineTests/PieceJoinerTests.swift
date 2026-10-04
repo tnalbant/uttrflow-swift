@@ -103,6 +103,30 @@ struct PieceJoinerListTests {
         #expect(layouts[0] == "- Finish onboarding\n- Fix login\n- Review design")
     }
 
+    @Test(
+        "lays out a spoken sequence the same at every cut between its sentences",
+        arguments: [Destination.document, .messaging, .email],
+        [
+            ["We need a plan.", "First, finish onboarding.", "Second, fix login.", "Third, review design."],
+            ["First, milk.", "Second, eggs."],
+            ["First place went to Sam.", "Second place went to Priya.", "Third place went to Lee."],
+            ["There are two things to do.", "First, fix the build.", "Second, review the PR."],
+            ["Second, review the PR.", "Third, ship it."],
+        ])
+    func sequenceLayoutHoldsAtEveryCut(destination: Destination, sentences: [String]) {
+        let cuts = (0..<(1 << (sentences.count - 1))).map { mask in
+            sentences.indices.dropFirst().reduce(into: [sentences[0]]) { pieces, index in
+                if mask & (1 << (index - 1)) != 0 {
+                    pieces.append(sentences[index])
+                } else {
+                    pieces[pieces.count - 1] += " " + sentences[index]
+                }
+            }
+        }
+        let layouts = Set(cuts.map { joined($0, destination) })
+        #expect(layouts.count == 1, "\(layouts)")
+    }
+
     @Test("keeps the prose a list is introduced with, above the items")
     func leadInStaysProse() {
         let text = joined(
@@ -220,6 +244,19 @@ struct PieceJoinerParagraphTests {
         #expect(
             joined(["First item new line", "second item"], .document)
                 == "First item\nsecond item.")
+    }
+
+    @Test("keeps a named new line at the end of a piece as words")
+    func mentionedLineCommandAtPieceEnd() {
+        #expect(
+            joined(["Please add a new line.", "Of products to the catalogue."], .document)
+                == "Please add a new line of products to the catalogue.")
+        #expect(
+            joined(["We launched a new line.", "Of shoes last spring."], .document)
+                == "We launched a new line of shoes last spring.")
+        #expect(
+            joined(["The product line.", "Is growing fast."], .document)
+                == "The product line is growing fast.")
     }
 
     @Test("opens a paragraph where the next piece opens a topic")
@@ -418,7 +455,7 @@ struct PieceJoinerWholeTests {
         let entry = UUID()
         let correction = DictationCorrection(
             heard: "cubernetes", wrote: "Kubernetes", wordRange: 1..<2, entryID: entry,
-            reason: "dictionary", heardConfidence: 0.3)
+            reason: .unknown("dictionary"), heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [
                 piece("First, we deploy it.", heard: "first we deploy it"),
@@ -433,7 +470,7 @@ struct PieceJoinerWholeTests {
     func correctionsSurviveTheLayout() {
         let entry = UUID()
         let correction = DictationCorrection(
-            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: "dictionary",
+            heard: "peeair", wrote: "PR", wordRange: 3..<4, entryID: entry, reason: .unknown("dictionary"),
             heardConfidence: 0.3)
         let whole = PieceJoiner.join(
             [
@@ -509,6 +546,16 @@ struct PieceJoinerSeamTests {
             [piece("the word"), piece("full stop")], under: .standard(for: .messaging))
 
         #expect(whole.cleaned.text == "the word full stop")
+    }
+
+    @Test(
+        "keeps a spoken mark name after any determiner across a piece boundary",
+        arguments: ["the", "which", "whose", "both", "all", "his", "her", "its", "some", "any"])
+    func keepsSpokenMarkNameAfterDeterminer(determiner: String) {
+        let whole = PieceJoiner.join(
+            [piece("tell me \(determiner)"), piece("comma")], under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text.hasSuffix(" comma") && !whole.cleaned.text.contains("\(determiner),"))
     }
 
     @Test("keeps a question mark at a seam rather than adding a stop after it")
@@ -635,6 +682,32 @@ struct PieceJoinerSeamTests {
         #expect(seamed.first == "I finished the draft.")
     }
 
+    @Test("keeps a sentence stop between adjacent digit groups")
+    func digitGroupsAfterSentenceStopStaySeparate() {
+        let whole = PieceJoiner.join(
+            [piece("It costs 20."), piece("30 people came.")],
+            under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text == "It costs 20. 30 people came.")
+    }
+
+    @Test("joins number groups across a stop only when the heard piece ends on a scale word")
+    func scaleWordSupportsStoppedGroupContinuation() {
+        let seamed = PieceJoiner.seamed(
+            ["It costs 200.", "30 people came."], heard: ["It costs two hundred", "thirty people came"],
+            under: .standard(for: .document))
+
+        #expect(seamed.first == "It costs 200")
+    }
+
+    @Test("joins digit groups across a cut without a sentence stop")
+    func digitGroupsWithoutSentenceStopRunOn() {
+        let seamed = PieceJoiner.seamed(
+            ["Call me at 555", "123"], under: .standard(for: .document))
+
+        #expect(seamed.first == "Call me at 555")
+    }
+
     /// A fronted phrase opens a sentence, and only a preposition a speaker never fronts counts as evidence.
     @Test("still stops a seam where the next piece opens on a fronted phrase")
     func frontedPhraseAtASeamStillStops() {
@@ -712,10 +785,40 @@ struct PieceJoinerSeamTests {
     @Test("joins a split currency amount across pieces")
     func joinsSplitCurrencyAmount() {
         let whole = PieceJoiner.join(
-            [piece("The total came to"), piece("400"), piece("and $20")],
+            [piece("The total came to"), piece("400", heard: "four hundred"), piece("and $20")],
             under: .standard(for: .document))
 
         #expect(whole.cleaned.text == "The total came to $420")
+    }
+
+    @Test(
+        "never adds an integer that was not a spoken scale to the next amount",
+        arguments: [
+            ("we owe him 12", "we owe him twelve", "and $5"), ("seats 12", "seats twelve", "and $5"),
+            ("we owe him 3", "we owe him three", "and $5"), ("page 7", "page seven", "and $5"),
+            ("table 20", "table twenty", "and $5"), ("room 400", "room four hundred", "and $400"),
+            ("gate 1,000", "gate one thousand", "and $5,000"), ("bus 100", "bus one hundred", "and $500"),
+        ])
+    func keepsUnrelatedIntegerApartFromAmount(cleaned: String, heard: String, amount: String) {
+        let seamed = PieceJoiner.seamed(
+            [cleaned, amount], heard: [heard, amount], under: .standard(for: .document))
+
+        #expect(seamed.last == amount)
+    }
+
+    @Test("joins a spoken scale with the smaller amount after it at every scale")
+    func joinsEveryScaleWithSmallerAmount() {
+        let cases: [(String, String, String, String)] = [
+            ("400", "four hundred", "and $20", "$420"),
+            ("2,000", "two thousand", "and $50", "$2050"),
+            ("3,000,000", "three million", "and $5", "$3,000,005"),
+        ]
+        for (number, heard, amount, sum) in cases {
+            let seamed = PieceJoiner.seamed(
+                ["It cost " + number, amount], heard: ["it cost " + heard, amount],
+                under: .standard(for: .document))
+            #expect(seamed.first == "It cost " + sum)
+        }
     }
 
     @Test("keeps separate figures apart when the second number has no currency")
@@ -732,5 +835,59 @@ struct PieceJoinerSeamTests {
         let whole = PieceJoiner.join([piece("On my way")], under: .standard(for: .messaging))
 
         #expect(whole.cleaned.text == "On my way")
+    }
+
+    /// Invented numbers and codes said in groups; the 555 0100 to 0199 range is reserved for fiction.
+    static let groupsAcrossPause = [
+        "555 0100", "555 0142", "Call 555 0187", "415 555 0123", "Dial 0800 555 0150",
+        "Order 7731 4402", "The code is QX 4417", "AB 123", "Card 1234 5678 9012 3456",
+        "Ref ZK 2290 18", "PIN 0000 1111", "Room KT 404",
+    ]
+
+    /// Sentences that end on a number before one that opens on a number, which the group row joins.
+    static let sentencesAcrossNumbers = [
+        ("It costs 12.", "13 people came."), ("We sold 40.", "25 came back."),
+        ("The score was 3.", "2 goals were late."), ("I counted 7.", "8 were missing."),
+        ("Page 10.", "11 is blank."), ("She is 30.", "40 is next year."),
+        ("We need 6.", "5 are here."), ("Gate 9.", "10 minutes to board."),
+    ]
+
+    @Test(
+        "joins the groups of one spoken number or code at every cut, with or without the recogniser's stop",
+        arguments: [Destination.document, .messaging, .plain, .email])
+    func groupsAcrossPauseJoin(destination: Destination) {
+        for text in Self.groupsAcrossPause {
+            let words = text.split(separator: " ").map(String.init)
+            for cut in 1..<words.count where words[cut - 1].allSatisfy({ $0.isNumber || $0.isUppercase }) {
+                for stop in ["", "."] {
+                    let pieces = [
+                        words[..<cut].joined(separator: " ") + stop, words[cut...].joined(separator: " "),
+                    ]
+                    let whole = PieceJoiner.join(pieces.map { piece($0) }, under: .standard(for: destination))
+
+                    #expect(whole.cleaned.text == text, "\(pieces) in \(destination)")
+                }
+            }
+        }
+    }
+
+    @Test("keeps the stop between two groups when the recogniser heard a question or an exclamation")
+    func groupRowAbstainsOnQuestionOrExclamation() {
+        for mark in ["?", "!"] {
+            let seamed = PieceJoiner.seamed(
+                ["It costs 12" + mark, "13 people came."], under: .standard(for: .document))
+
+            #expect(seamed.first == "It costs 12" + mark)
+        }
+    }
+
+    /// The group row's measured cost: these were ended before it and are joined by it.
+    @Test("joins a sentence that ends on a number to one that opens on a number")
+    func groupRowCost() {
+        let kept = Self.sentencesAcrossNumbers.filter { first, next in
+            PieceJoiner.seamed([first, next], under: .standard(for: .document)).first == first
+        }
+
+        #expect(kept.isEmpty)
     }
 }

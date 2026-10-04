@@ -1,6 +1,6 @@
 // Every change the pipeline makes to what the user said, in a form it can show and undo.
 public import struct Foundation.UUID
-import UttrflowCore
+public import UttrflowCore
 
 /// One word Uttrflow replaced, with everything an undo needs on the value. See Docs/pipeline-changes.md.
 public struct DictationCorrection: Sendable, Equatable {
@@ -12,15 +12,15 @@ public struct DictationCorrection: Sendable, Equatable {
     public let wordRange: Range<Int>
     /// The dictionary entry that won, which `recordUse(of:)` and `recordRevert(of:)` both take.
     public let entryID: UUID
-    /// Why, in the proposing engine's own words; a string because the pipeline must not reinterpret it.
-    public let reason: String
+    /// Why the proposing engine made the change, carried through unchanged.
+    public let reason: CorrectionReason
     /// What the recogniser scored the replaced words, so a sceptic can see the engine only moved on a guess.
     public let heardConfidence: Double
     /// Where the written words begin among the inserted text's words, or `nil` when tidying changed them.
     public let writtenWordIndex: Int?
 
     public init(
-        heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: String,
+        heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: CorrectionReason,
         heardConfidence: Double, writtenWordIndex: Int? = nil
     ) {
         self.heard = heard

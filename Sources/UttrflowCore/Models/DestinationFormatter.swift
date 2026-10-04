@@ -14,6 +14,11 @@ public enum TerminalStopPolicy: Sendable, Equatable, Codable {
     case never
     /// Withheld when the text holds this many sentences or fewer.
     case offForShortMessages(sentences: Int)
+
+    /// The policy in a one-line field of no known purpose, which holds a value: one sentence there gets no stop.
+    var inOneLineField: TerminalStopPolicy {
+        self == .always ? .offForShortMessages(sentences: 1) : self
+    }
 }
 
 /// How a numeral's digits are grouped, which is a separate question from which numbers become numerals.
@@ -32,7 +37,7 @@ public enum SentenceCount {
         var openSentence = false
         let characters = Array(text)
         for (index, character) in characters.enumerated() {
-            if ends.contains(character) {
+            if SentenceMarks.ends.contains(character) {
                 let next = index + 1 < characters.count ? characters[index + 1] : nil
                 // A stop between two digits is a decimal point, not the end of a sentence.
                 let insideNumber = character == "." && (next?.isNumber ?? false)
@@ -47,8 +52,6 @@ public enum SentenceCount {
         }
         return count + (openSentence ? 1 : 0)
     }
-
-    private static let ends: Set<Character> = [".", "!", "?", "।", "॥"]
 }
 
 /// Which spoken numbers a place wants written as numerals.
@@ -149,6 +152,14 @@ public struct DestinationFormatter: Sendable, Equatable {
             layout: [.paragraphs, .lists], grammar: .repair, numbers: .fromTen, promptBlock: "plain"),
     ]
 
+    /// Whether this place's first-word or stop policy would still change `text`, so an answer returning it unchanged did no work.
+    public func owesFormatting(_ text: String) -> Bool {
+        let first = text.first.map(String.init) ?? ""
+        let owesCapital = firstWord != .asSpoken && first != first.uppercased()
+        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        return owesCapital && owesStop
+    }
+
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
     public static func standard(for destination: Destination) -> DestinationFormatter {
         registry[destination]
@@ -174,7 +185,9 @@ public struct DestinationFormatter: Sendable, Equatable {
         return DestinationFormatter(
             destination: base.destination,
             firstWord: isSearch ? .asSpoken : base.firstWord,
-            terminalStop: isSearch ? .never : (ruleStop ?? base.terminalStop),
+            terminalStop: isSearch
+                ? .never
+                : (ruleStop ?? (isSingleLine ? base.terminalStop.inOneLineField : base.terminalStop)),
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock)

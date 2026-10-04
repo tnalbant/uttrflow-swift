@@ -16,7 +16,7 @@ private struct SuggestionRequest: Equatable {
     /// What is already in the field, so the surface offers only what the suggestion adds.
     var typed: String = ""
     var placement: SuggestionPlacement = .inlineGhost
-    var direction: SuggestionDirection = .leftToRight
+    var direction: WritingDirection = .leftToRight
     var caret: CGRect?
     var window: CGRect?
     /// The field's own rectangle, whose right edge a long ghost is cut at.
@@ -111,7 +111,7 @@ final class SuggestionPanelController {
         _ suggestion: Suggestion,
         typed: String = "",
         placement: SuggestionPlacement,
-        direction: SuggestionDirection = .leftToRight,
+        direction: WritingDirection = .leftToRight,
         caret: CGRect? = nil,
         window: CGRect? = nil,
         field: CGRect? = nil,
@@ -236,8 +236,8 @@ final class SuggestionPanelController {
             fieldPointSize: request.fieldPointSize, appearance: Self.appearance(),
             acceptKey: request.acceptKey, fontFamily: request.fontFamily,
             isBold: request.isBold, isItalic: request.isItalic,
-            fieldTextColor: request.textColor, maximumWidth: room,
-            statusMessage: statusMessage,
+            fieldTextColor: request.textColor, statusMessage: statusMessage,
+            maximumWidth: room,
             direction: request.direction == .rightToLeft ? .rightToLeft : .leftToRight)
         // A ghost cut short would hide words Tab inserts, so one that does not fit its room is not drawn at all.
         if let inline = presentation.inline, let room = presentation.maximumWidth,

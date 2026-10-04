@@ -90,6 +90,14 @@ public struct ClipboardBudget: Sendable, Equatable {
     /// What the tiers add up to, compared against `ceiling` by a test rather than clamped here.
     public var claimed: Int { copied.bytes + dictation.bytes + images.bytes }
 
+    /// Whether a positive image header stays within this budget's pixel bound.
+    public func fitsPicture(width: Int, height: Int) -> Bool {
+        guard width > 0, height > 0 else { return false }
+        guard largestPicture > 0 else { return true }
+        let (pixels, overflow) = width.multipliedReportingOverflow(by: height)
+        return !overflow && pixels <= largestPicture
+    }
+
     /// The shape this build ships with: 44 MB claimed against a 64 MB ceiling. See Docs/clipboard-budget.md.
     public static let standard = ClipboardBudget(
         ceiling: 64 * 1_000_000,

@@ -2,7 +2,7 @@ import NaturalLanguage
 public import UttrflowCore
 
 /// Turns "new line", "new paragraph", "bullet point" and "number one" into layout, between words only.
-public struct LayoutWordsPass: CleaningPass {
+public struct LayoutWordsPass: PieceCleaningPass {
     public static let id: PassID = .layoutWords
 
     private let layout: LayoutPolicy
@@ -29,14 +29,18 @@ public struct LayoutWordsPass: CleaningPass {
         var draft = draft
         var live = draft.presentIndices
         let numbered = Set(live.indices.compactMap { itemValue(at: $0, in: live, of: draft) })
-        let labelledItems = labelledItems(in: live, of: draft, among: numbered)
+        // Asked of the words as spoken, so an item already laid out cannot hide the run a later item belongs to.
+        let corroborated = Set(
+            live.indices.filter { isCorroborated(at: $0, in: live, of: draft, among: numbered) }
+                .map { live[$0] })
+        let labelledItems = labelledItems(in: live, of: draft, among: corroborated)
         var position = 0
         while position < live.count {
             guard
                 let found = opening(mark(at: position, in: live, of: draft), at: position),
                 position + found.length < live.count,
-                isUsed(found, at: position, in: live, of: draft, among: numbered),
-                isCorroborated(at: position, in: live, of: draft, among: numbered)
+                isUsed(found, at: position, in: live, of: draft, among: corroborated),
+                corroborated.contains(live[position])
             else {
                 position += 1
                 continue
@@ -60,7 +64,38 @@ public struct LayoutWordsPass: CleaningPass {
             live.removeSubrange(position + 1..<position + found.length)
             position += 1
         }
+        if layout.contains(.singleLine) { Self.joinOnOneLine(&draft, by: Self.id) }
         return draft
+    }
+
+    /// Lays every break and item mark on one line, writing the list separator at each boundary between items.
+    static func joinOnOneLine(_ draft: inout Draft, by pass: PassID) {
+        var items: [[Int]] = [[]]
+        for index in draft.presentIndices {
+            let word = draft.words[index]
+            guard word.isLayoutMark else {
+                items[items.count - 1].append(index)
+                continue
+            }
+            let label = word.isListMark ? "" : word.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !items[items.count - 1].isEmpty { items.append([]) }
+            if label.isEmpty {
+                draft.remove(at: index, by: pass)
+            } else {
+                draft.replace(at: index, with: label, by: pass)
+                items[items.count - 1].append(index)
+            }
+        }
+        let filled = items.filter { !$0.isEmpty }
+        // A comma inside an item would blur its edges, so the items are then kept apart with semicolons.
+        let holdsComma = filled.contains { item in
+            item.dropLast().contains { draft.shape(at: $0).suffix.contains(",") }
+        }
+        let separator = holdsComma ? ";" : ","
+        for item in filled.dropLast() {
+            guard let last = item.last, !draft.shape(at: last).endsSentence else { continue }
+            draft.replace(at: last, with: WordShape.marked(draft.words[last].text, with: separator), by: pass)
+        }
     }
 
     /// Removes a comma or semicolon stranded before a list marker.
@@ -77,12 +112,12 @@ public struct LayoutWordsPass: CleaningPass {
     }
 
     /// Labels that repeat before a corroborated, consecutive sequence of numbered items.
-    private func labelledItems(in live: [Int], of draft: Draft, among numbered: Set<Int>) -> [Int: Int] {
+    private func labelledItems(in live: [Int], of draft: Draft, among corroborated: Set<Int>) -> [Int: Int] {
         var groups: [String: [(marker: Int, label: Int, value: Int)]] = [:]
         for position in live.indices {
             guard let found = mark(at: position, in: live, of: draft), position + found.length < live.count,
-                isUsed(found, at: position, in: live, of: draft, among: numbered),
-                isCorroborated(at: position, in: live, of: draft, among: numbered),
+                isUsed(found, at: position, in: live, of: draft, among: corroborated),
+                corroborated.contains(live[position]),
                 position > 0,
                 let item = itemNumber(at: position + 1, in: live, of: draft),
                 !followsLayoutBreak(at: position - 1, in: live, of: draft),
@@ -128,7 +163,7 @@ public struct LayoutWordsPass: CleaningPass {
     /// Whether the phrase is dictated layout rather than named; an item opening its sentence needs a mark. See `Docs/cleanup.md`.
     private func isUsed(
         _ found: (length: Int, mark: String, isList: Bool), at position: Int, in live: [Int], of draft: Draft,
-        among numbered: Set<Int>
+        among corroborated: Set<Int>
     ) -> Bool {
         let length = found.length
         if position == 0, found.mark.allSatisfy(\.isNewline), insertionState != .unknown { return true }
@@ -151,7 +186,7 @@ public struct LayoutWordsPass: CleaningPass {
         if position > 0, found.mark.allSatisfy(\.isNewline) { return true }
         let last = draft.shape(at: live[position + length - 1])
         return (last.endsClause && !last.endsSentence)
-            || isCorroborated(at: position, in: live, of: draft, among: numbered)
+            || corroborated.contains(live[position])
     }
 
     /// Whether a numbered item inside its sentence has a neighbouring item said beside it, since a lone one is a designator.
@@ -229,6 +264,9 @@ public struct LayoutWordsPass: CleaningPass {
         return itemNumber(at: position + 1, in: live, of: draft)?.value
     }
 
+    /// A one-line field takes a spoken list too, written with separators instead of marks.
+    private var allowsLists: Bool { layout.contains(.lists) || layout.contains(.singleLine) }
+
     /// The layout the words at `position` become: one of the fixed phrases, or a numbered item.
     private func mark(
         at position: Int, in live: [Int], of draft: Draft
@@ -237,12 +275,12 @@ public struct LayoutWordsPass: CleaningPass {
     )? {
         if let found = Self.marks.first(where: {
             matches($0.words, at: position, in: live, of: draft)
-                && (layout.contains(.lists) || !$0.requiresLists)
+                && (allowsLists || !$0.requiresLists)
         }) {
             return (found.words.count, found.mark, found.requiresLists)
         }
         guard draft.shape(at: live[position]).key == Self.numbering, position + 1 < live.count,
-            layout.contains(.lists),
+            allowsLists,
             let item = itemNumber(at: position + 1, in: live, of: draft)
         else { return nil }
         let lineBreak = position == 0 ? "" : "\n"

@@ -22,6 +22,12 @@ struct TapStateHoldTests {
         return event
     }
 
+    private static func repeatKey(_ code: CGKeyCode) throws -> CGEvent {
+        let event = try Self.key(code)
+        event.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        return event
+    }
+
     @Test("a key pressed after Tab is held even once the accept disarms every slot, and replayed on release")
     func heldThroughDisarm() throws {
         let state = Self.makeState()
@@ -94,6 +100,19 @@ struct TapStateHoldTests {
         let state = Self.makeState()
         #expect(!state.arm([]))
         #expect(!state.takes(try Self.key(48)))
+    }
+
+    @Test("accept-key repeats stay swallowed before and after release")
+    func acceptRepeatsStaySwallowed() throws {
+        let state = Self.makeState()
+        #expect(state.arm(.tab))
+        #expect(state.takes(try Self.key(48)))
+        #expect(state.takes(try Self.repeatKey(48)))
+        #expect(state.arm([]))
+        #expect(state.takes(try Self.repeatKey(48)))
+        var posted: [Int64] = []
+        #expect(!state.releaseHeldKeys { posted.append($0.getIntegerValueField(.keyboardEventKeycode)) })
+        #expect(posted.isEmpty)
     }
 
     @Test("an open native menu receives a key that the suggestion has armed")

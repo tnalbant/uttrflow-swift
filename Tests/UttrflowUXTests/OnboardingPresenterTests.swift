@@ -69,6 +69,27 @@ private func intents(_ page: OnboardingPage) -> [OnboardingIntent] {
 @Suite("Onboarding pages")
 struct OnboardingPresenterTests {
 
+    @Test("shows the rebound Clipboard shortcut in the onboarding hint")
+    func clipboardHintFollowsBinding() {
+        let binding = HotkeyBinding(keyCode: 0, modifiers: [.option, .command])
+        let shortcuts = ShortcutSet([.clipboard: [binding]])
+        let state = OnboardingState(step: .ready, detail: .finishing(.ready))
+
+        let page = OnboardingPresenter.page(
+            for: state, hotkey: Settings.default.hotkey, shortcuts: shortcuts)
+        var menuState = MenuBarState()
+        menuState.shortcuts = shortcuts
+
+        #expect(
+            page.hint
+                == "Open the Clipboard panel with \(SettingsShortcut.compact(binding)) to browse and paste recent copies."
+        )
+        #expect(page.explanation?.contains(SettingsShortcut.compact(binding)) == true)
+        #expect(
+            MenuBarPresenter.present(menuState).command(.openClipboard)?.shortcut
+                == MenuBarShortcut(key: "a", modifiers: [.option, .command]))
+    }
+
     @Test("offers telemetry opt-in and opt-out side by side during first-run onboarding")
     func usageStatisticsChoice() {
         let state = OnboardingState(step: .signIn, detail: .signIn(.offering))
@@ -423,7 +444,7 @@ struct OnboardingPresenterTests {
                     title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil,
                     caption: nil))
         #expect(trying.link == nil)
-        #expect(trying.hint == nil)
+        #expect(trying.hint == "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies.")
 
         let pressed = page(
             OnboardingState(step: .ready, detail: .finishing(.ready)), activation: .pressToToggle)
@@ -533,7 +554,7 @@ struct OnboardingPresenterTests {
             pressed.subtitle
                 == "Click a text field in another app, then press control and option, say anything, then press again."
         )
-        #expect(!pressed.subtitle.contains("let go"))
+        #expect(pressed.subtitle?.contains("let go") == false)
     }
 
     @Test("offers the way to put right an ending that cannot be tried")

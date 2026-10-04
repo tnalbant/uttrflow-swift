@@ -25,11 +25,11 @@ extension HistoryFixture {
     /// The Dictionary page over these inputs.
     static func dictionary(
         entries: [DictionaryEntry] = [], draft: DictionaryDraft? = nil, query: String = "",
-        filter: String = "", corrections: [Correction] = []
+        filter: String = "", sort: String = "", corrections: [Correction] = []
     ) -> DictionaryPresentation {
         DictionaryPresenter.page(
             for: DictionarySnapshot(
-                entries: entries, draft: draft, query: query, filter: filter,
+                entries: entries, draft: draft, query: query, filter: filter, sort: sort,
                 corrections: corrections, now: now),
             calendar: calendar, locale: locale)
     }
@@ -37,13 +37,16 @@ extension HistoryFixture {
 
 @Suite("The words Uttrflow knows")
 struct DictionaryPageTests {
-    @Test("every word is listed in the order the store keeps it")
+    @Test("every word is listed, the newest first")
     func lists() {
         let page = HistoryFixture.dictionary(entries: [
-            HistoryFixture.word("Uttrflow"), HistoryFixture.word("pgvector"),
+            HistoryFixture.word("pgvector", daysAgo: 5), HistoryFixture.word("Uttrflow"),
         ])
         #expect(page.rows.map(\.word) == ["Uttrflow", "pgvector"])
-        #expect(page.chrome.caption == "Names and terms Uttrflow would otherwise get wrong. · 2 words")
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 2 words · 1 given to the recogniser"
+        )
         #expect(page.chrome.title == "Dictionary")
     }
 
@@ -53,7 +56,43 @@ struct DictionaryPageTests {
             HistoryFixture.word("Uttrflow"),
             HistoryFixture.word("Retired", used: 4, reverted: 3),
         ])
-        #expect(page.chrome.caption == "Names and terms Uttrflow would otherwise get wrong. · 1 word")
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 1 word · 1 given to the recogniser"
+        )
+    }
+
+    @Test("each row says whether the recogniser is given it, and the caption counts those")
+    func promptStanding() {
+        let page = DictionaryPresenter.page(
+            for: DictionarySnapshot(
+                entries: [
+                    HistoryFixture.word("Uttrflow", used: 9),
+                    HistoryFixture.word("pgvector", pronunciation: nil, used: 2),
+                    HistoryFixture.word("Retired", used: 4, reverted: 3),
+                ],
+                now: HistoryFixture.now, packed: ["Uttrflow"]),
+            calendar: HistoryFixture.calendar, locale: HistoryFixture.locale)
+        #expect(page.rows.map(\.prompt.text) == ["In prompt · 1", "No room · 2", "Retired"])
+        #expect(page.rows.map(\.prompt.isInPrompt) == [true, false, false])
+        #expect(page.rows[1].prompt.spoken.contains("no room"))
+        #expect(
+            page.chrome.caption
+                == "Names and terms Uttrflow would otherwise get wrong. · 2 words · 1 given to the recogniser"
+        )
+    }
+
+    @Test("every standing has its own words")
+    func promptChipWording() {
+        let chips: [DictionaryPromptChip] = [
+            .init(.inPrompt(rank: 1)), .init(.belowLimit(rank: 30, limit: 28)),
+            .init(.sharesSound(with: "Nikhil")), .init(.retired), .init(.unusedInferred),
+            .init(.tooLong(rank: 4)), .init(nil),
+        ]
+        #expect(Set(chips.map(\.text)).count == chips.count)
+        #expect(Set(chips.map(\.spoken)).count == chips.count)
+        #expect(chips[1].text == "Ranked 30 · top 28")
+        #expect(chips[2].spoken.contains("Nikhil"))
     }
 
     @Test("a row says how it sounds, where it came from and how it has fared")
@@ -359,7 +398,43 @@ struct DictionaryEditorTests {
         #expect(!editor.canSave)
     }
 
-    /// The page refuses exactly what the store refuses: case only, so an accented twin is a new word.
+    @Test("a respelling of a held word names it and offers to replace it")
+    func closedUpDuplicate() throws {
+        let held = HistoryFixture.word("OpenAI", pronunciation: nil)
+        let editor = try #require(
+            HistoryFixture.dictionary(entries: [held], draft: DictionaryDraft(word: "Open AI")).editor)
+        let named = "\u{2018}Open AI\u{2019} is already in your dictionary as \u{2018}OpenAI\u{2019}."
+        #expect(editor.problem == named)
+        #expect(!editor.canSave)
+        #expect(editor.replace?.intent == .replaceWord(held.id, word: "Open AI", pronunciation: ""))
+    }
+
+    @Test("two spellings of one word are flagged as sounding alike and offered a merge")
+    func respellingsAreMergeable() {
+        let joined = HistoryFixture.word("OpenAI", pronunciation: nil)
+        let spaced = HistoryFixture.word("Open AI", pronunciation: nil)
+        let rows = HistoryFixture.dictionary(entries: [joined, spaced]).rows
+        #expect(rows.map(\.soundsLike) == [sounds("Open AI"), sounds("OpenAI")])
+        let merge = MainIntent.mergeWords(keeping: joined.id, absorbing: spaced.id)
+        #expect(rows[0].actions.first?.intent == merge)
+    }
+
+    @Test("different words that share a sound are flagged without a merge")
+    func soundAlikesAreNotMerged() {
+        let british = HistoryFixture.word("Colour", pronunciation: nil)
+        let american = HistoryFixture.word("Color", pronunciation: nil)
+        let rows = HistoryFixture.dictionary(entries: [british, american]).rows
+        #expect(rows.map(\.soundsLike) == [sounds("Color"), sounds("Colour")])
+        let titles = rows.flatMap { $0.actions.map(\.title) }
+        #expect(!titles.contains("Keep this spelling"))
+    }
+
+    /// The chip a row wears when another entry competes for its sound.
+    private func sounds(_ word: String) -> String {
+        "Sounds like \u{2018}\(word)\u{2019}"
+    }
+
+    /// The page refuses exactly what the store refuses: case, spaces and punctuation, so an accented twin is a new word.
     @Test("a word that differs only by an accent is a different word")
     func accentsAreNotDuplicates() throws {
         let editor = try #require(
@@ -474,5 +549,73 @@ struct DictionaryFixesTests {
         let page = HistoryFixture.dictionary(
             entries: [HistoryFixture.word()], corrections: [HistoryFixture.correction()])
         #expect(page.fixesLabel == "Fixed today · 1 correction")
+    }
+}
+
+@Suite("What the pronunciation will do")
+struct PronunciationNoteTests {
+    private func editor(_ word: String, _ said: String) throws -> DictionaryEditor {
+        try #require(
+            HistoryFixture.dictionary(draft: DictionaryDraft(word: word, pronunciation: said)).editor)
+    }
+
+    @Test(
+        "the spelling again adds nothing, and says so",
+        arguments: [
+            ("PayPal", "pay pal"), ("Uttrflow", "uttrflow"), ("iOS", "i o s"),
+            ("Kubectl", "kubectl"), ("GitHub", "git-hub"), ("Zorvex", "ZORVEX"),
+        ])
+    func addsNothing(word: String, said: String) throws {
+        let editor = try editor(word, said)
+        #expect(editor.pronunciationNote == "This is the spelling again, so it adds nothing. Leave it blank.")
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "one ordinary word is noted as a word every doubt about it will offer",
+        arguments: ["time", "people", "year", "look", "good", "work"])
+    func ordinaryWord(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.pronunciationNote
+                == "Uttrflow will offer \u{201C}Zorvex\u{201D} whenever it doubts \u{201C}\(said)\u{201D}; the screen or your own earlier words must back it."
+        )
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "one function word is refused, since swapping it changes the meaning",
+        arguments: ["the", "and", "of", "is", "would", "because"])
+    func functionWord(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.problem
+                == "\u{201C}\(said)\u{201D} is too common a small word to stand for \u{201C}Zorvex\u{201D}; swapping it would change what was said."
+        )
+        #expect(editor.pronunciationNote == nil)
+        #expect(!editor.canSave)
+    }
+
+    @Test(
+        "digits or symbols are noted as matched as written",
+        arguments: ["r2d2", "c#", "k8s", "dot.net", "x+y", "zor_vex"])
+    func literal(said: String) throws {
+        let editor = try editor("Zorvex", said)
+        #expect(
+            editor.pronunciationNote
+                == "Digits and symbols have no sound to match, so this is matched as written.")
+        #expect(editor.canSave)
+    }
+
+    @Test(
+        "a blank or a sounded-out phrase gets no note",
+        arguments: [
+            ("Kubectl", "cube control"), ("Uttrflow", "utter-flow"), ("Zorvex", ""),
+            ("Nikhil", "nikkel"), ("Zorvex", "zore vecks"), ("Zorvex", "   "),
+        ])
+    func silent(word: String, said: String) throws {
+        let editor = try editor(word, said)
+        #expect(editor.pronunciationNote == nil)
+        #expect(editor.problem == nil)
     }
 }

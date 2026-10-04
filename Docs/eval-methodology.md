@@ -1,8 +1,13 @@
 # How `uttrflow-eval transcribe` measures a recogniser
 
-`uttrflow-eval` (`Sources/uttrflow-eval`) runs the recorded corpus through a speech engine and
-reports word error rate, latency and failures. This page holds the measurement decisions the
-code relies on, so the one-line comments in the source can stay short.
+`uttrflow-eval` (`Sources/uttrflow-eval/`) runs the recorded corpus through a speech engine and
+reports word error rate, latency and failures; the decisions it relies on live in `UttrflowEval`
+(`Sources/UttrflowEval/`): `TranscriptionCorpus`, `TextNormaliser`, `TranscriptionScorer`,
+`AccuracyBaseline` and `RegressionTolerance`. This page holds those measurement decisions, so the
+one-line comments in the source can stay short. The targets these measurements are judged
+against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
+[`measuring-accuracy.md`](measuring-accuracy.md); the edit distance is in
+[`core-word-error-rate.md`](core-word-error-rate.md).
 
 ## The baseline gate
 
@@ -19,8 +24,7 @@ code relies on, so the one-line comments in the source can stay short.
   compared with anything.
 - Matching a shared case ID is not enough: `recordingIdentity` (a WAV digest locally, a
   catalogue sample's own key from the backend) has to match too, or the gate reports it as
-  unverifiable instead of comparing rates that may belong to two different takes. See
-  `Docs/measuring-accuracy.md`.
+  unverifiable instead of comparing rates that may belong to two different takes.
 
 ## What is scored and what is only timed
 
@@ -51,7 +55,7 @@ code relies on, so the one-line comments in the source can stay short.
 ## Local recordings and the catalogue
 
 - The local corpus is the passages somebody read on this Mac; the catalogue is the backend's
-  bucket (around a thousand samples). Both are a `(passages, audio directory)` pair to the
+  bucket. Both are a `(passages, audio directory)` pair to the
   runner, which is what lets them be compared at all.
 - `transcribe --from-catalogue` refuses to download missing audio. A measurement run that also
   fetches gigabytes reports a latency that includes somebody's broadband, and an interrupted
@@ -61,16 +65,16 @@ code relies on, so the one-line comments in the source can stay short.
 
 ## Recording a corpus (`record`)
 
-- The recordings are the only half a machine cannot do: roughly twenty minutes of somebody's
-  afternoon, after which every transcription measurement runs unattended off the same audio.
+- The recordings are the only half a machine cannot do: about fifteen minutes of somebody's
+  reading, after which every transcription measurement runs unattended off the same audio.
 - Each take reaches disk before the corpus service is told anything. Upload is layered on top
-  of that, and `--sync` sends whatever has no receipt beside it. See `Docs/recordings.md` for
-  the same rule inside the app.
+  of that, and `--sync` sends whatever has no receipt beside it. [`recordings.md`](recordings.md)
+  has the same rule inside the app.
 - A cohort name is validated before a word is spoken, because a name the catalogue refuses is
-  otherwise discovered after forty passages.
-- A take is warned about immediately when it is silent (no microphone access produces silence)
-  or too short: fewer than two and a half words a second means the recording stopped before the
-  passage ended.
+  otherwise discovered after the whole sitting.
+- A take is warned about immediately when it is silent (peak under 0.001, which is what no
+  microphone access produces), very quiet (under 0.05), clipping (over 0.99), or too short: under
+  60% of the passage's length at two and a half words a second means it stopped early.
 
 ## The corpus connection
 
@@ -107,7 +111,13 @@ code relies on, so the one-line comments in the source can stay short.
 
 - Two runs of the same model over the same audio can differ by a word. A gate that called that a
   regression would be switched off within a week, which is the real failure mode of an accuracy
-  gate. `RegressionTolerance` says how much movement counts.
+  gate. `RegressionTolerance` says how much movement counts:
+
+  | field | default | meaning |
+  |---|---|---|
+  | `percentagePoints` | 0.5 | how far a slice's rate may rise before it is a regression (`--tolerance`) |
+  | `minimumReferenceWords` | 200 | the fewest reference words a slice needs to be judged |
+
 - A slice under `minimumReferenceWords` is still printed, as "too small to judge", never as a
   verdict: a cohort of two short samples swings by ten points on one misheard name.
 - Slices are never pooled. An engine that gets better at English and worse at Hinglish has not
@@ -136,9 +146,9 @@ code relies on, so the one-line comments in the source can stay short.
 - A receipt that cannot be written is not worth failing an upload over: the backend upserts by
   slug, so the worst case is one repeated transfer.
 - Hinglish has no BCP-47 tag, so it files under `hi-IN` and the outbox adds the `code-switching`
-  stress, which is what the catalogue reads it back as Hinglish by. Rows uploaded before the outbox
-  added it read back as Hindi: delete those recordings' receipts under `uploads/` and flush again,
-  and the backend's upsert by slug rewrites their stresses.
+  stress, which is what the catalogue reads it back as Hinglish by. Deleting a recording's receipt
+  under `uploads/` and flushing again re-sends it, and the backend's upsert by slug rewrites its
+  stresses.
 - Catalogue rows are a faithful mirror of the database. Several tools read that database, and a
   client that renamed or dropped fields would be the reason two of them disagree.
 
@@ -157,6 +167,9 @@ What is deliberately not done matters as much as what is:
   and "teen" are also English words. "एक" and "दो" are left out even so: one is the everyday word
   for "a", the other for "give". Nothing above ninety-nine is mapped; the corpus keeps large
   numbers as digits the operator reads aloud.
+- `TextNormaliser` keeps its own number table (`NumberWords` in `TextNormaliser.swift`) rather
+  than reading `UttrflowCore`'s: it must not compose scales, and sharing the table would move every
+  stored baseline.
 - "3 point 11" joins to "3.11" only when both neighbours are entirely digits.
 - ICU transliteration is a last resort. It romanises akshara by akshara, so "करना" becomes
   "karana" where a person writes "karna", and every score computed through it is an upper bound.
@@ -175,6 +188,9 @@ What is deliberately not done matters as much as what is:
 - A recording carries the whole `TranscriptionCase`, not only its id, so a reworded passage never
   silently scores old audio against new words; `drifted(from:)` names the recordings whose text
   has changed, as a prompt to re-record rather than an error.
+- Digits are read aloud as the reader says them. `en-versions` says "production is on 443", read
+  as "four four three"; a recogniser that writes `4 4 3` scores three errors there, which is the
+  digits stressor working, not a defect in the normaliser.
 - Three files per passage share one id: `<id>.json` for the harness, `<id>.wav`, and `<id>.txt`
   for whoever opens the folder in six months. Audio is written before the record, so a crash
   between the two leaves a passage that reads as not yet recorded rather than a record pointing
@@ -202,7 +218,7 @@ What is deliberately not done matters as much as what is:
   pages back), but a figure that climbs at every repetition and never comes down ends with a
   swapping Mac after an afternoon's work. Readings are taken after the same point in each cycle,
   never including the first dictation of the process, which pays for buffers the rest reuse.
-- The allowance is 32 MB over the default ten dictations: a little over 3 MB each, which for a
+- The allowance is 32 MiB (`LeakCheck.defaultAllowanceBytes`) over the default ten dictations: a little over 3 MB each, which for a
   hundred dictations in a working day is roughly a third of a gigabyte. Anything looser would
   call that noise. Growth that wobbles is "suspect" and needs a longer run; two readings are
-  "undetermined", which is not a pass.
+  "undetermined", which is not a pass. Readings are in [`performance-leaks.md`](performance-leaks.md).

@@ -98,7 +98,7 @@ extension HeavyClipScans {
             let snippet = "\nfunc load() {\n    return data;\n}\n"
             #expect(ClipKindDetector.kind(of: snippet + prose) == .code)
             #expect(ClipKindDetector.kind(of: prose + snippet) == .code)
-            // Between the first edge and the first middle window, which the sample does not read; see Docs/performance.md.
+            // Between the first edge and the first middle window, which the sample does not read; see Docs/performance-idle.md.
             let at = prose.utf8.index(prose.utf8.startIndex, offsetBy: 40_000)
             let hidden = String(prose[..<at]) + snippet + String(prose[at...])
             #expect(!CodeSample.of(hidden).contains("func load"))

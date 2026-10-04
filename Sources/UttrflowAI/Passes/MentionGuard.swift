@@ -1,13 +1,21 @@
 import NaturalLanguage
-import UttrflowCore
+public import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
-enum MentionGuard {
+public enum MentionGuard {
+    /// Whether the spoken layout phrase at live `position` names the thing rather than asking for it.
+    public static func namesLayout(at position: Int, spanning length: Int, in draft: Draft) -> Bool {
+        isMentioned(at: position, spanning: length, in: draft.presentIndices, of: draft, reach: phraseReach)
+    }
+
     private static let namingWords: Set<String> = ["word", "say", "write", "type", "spell", "said"]
     private static let finalPeriodCompoundModifiers: Set<String> = [
-        "cooling", "day", "following", "grace", "holding", "month", "notice", "off", "time", "trial",
-        "victorian", "waiting", "week", "year",
+        "cooling", "following", "grace", "holding", "notice", "time", "trial", "victorian", "waiting",
     ]
+    /// Units that name a period only when a number counts them: "a six month period", not "a nice day period".
+    private static let countedPeriodUnits: Set<String> = ["day", "week", "month", "year"]
+    /// Particles that name a period only after the -ing word they complete: "cooling off", not "the light off".
+    private static let gerundPeriodParticles: Set<String> = ["off"]
 
     /// Whether a hesitation spelling is named by the immediately preceding word or an opening quote.
     static func namesToken(at position: Int, in live: [Int], of draft: Draft) -> Bool {
@@ -26,6 +34,7 @@ enum MentionGuard {
         "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
         "every",
         "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
+        "which", "whose",
     ]
 
     /// The ones a modifier may stand between and the mark; a verb takes its object with nothing in between.
@@ -33,7 +42,7 @@ enum MentionGuard {
         "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "one", "my",
         "your",
         "his",
-        "her", "its", "their", "our", "another", "any", "some", "same",
+        "her", "its", "their", "our", "another", "any", "some", "same", "which", "whose",
     ]
 
     /// How far back the word that opens a noun phrase may stand: "the hundred metre dash".
@@ -51,6 +60,7 @@ enum MentionGuard {
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
+        if kind == .closing, isOpenQuotation(before: position, in: live, of: draft) { return false }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
             finalMark: kind == .trailing && position + length == live.count,
@@ -60,6 +70,18 @@ enum MentionGuard {
         }
         let next = position + length
         return next < live.count && draft.shape(at: live[next]).key == "of"
+    }
+
+    /// Whether a quotation opened earlier in this sentence is still open, so a closing mark here closes it.
+    private static func isOpenQuotation(before position: Int, in live: [Int], of draft: Draft) -> Bool {
+        for back in stride(from: position - 1, through: 0, by: -1) {
+            let shape = draft.shape(at: live[back])
+            if shape.suffix.contains(where: WordShape.openingQuotes.contains) || shape.endsSentence {
+                return false
+            }
+            if shape.prefix.contains(where: WordShape.openingQuotes.contains) { return true }
+        }
+        return false
     }
 
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
@@ -82,7 +104,8 @@ enum MentionGuard {
             if let bridging {
                 if !bridging.contains(shape.key) || markNames.contains(shape.key) { return false }
             } else if !isModifier(
-                shape.key, before: draft.shape(at: live[position]).key, finalMark: finalMark
+                shape.key, before: draft.shape(at: live[position]).key, finalMark: finalMark,
+                after: back < position ? draft.shape(at: live[position - back - 1]).key : nil
             ) {
                 return false
             }
@@ -91,9 +114,10 @@ enum MentionGuard {
     }
 
     /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
-    private static func isModifier(_ word: String, before head: String, finalMark: Bool) -> Bool {
-        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.digits(word) != nil)
-        {
+    private static func isModifier(
+        _ word: String, before head: String, finalMark: Bool, after preceding: String?
+    ) -> Bool {
+        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.isNumber(word)) {
             return true
         }
         let phrase = "the \(word) \(head)"
@@ -105,7 +129,11 @@ enum MentionGuard {
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
-        if head == "period" && finalMark && finalPeriodCompoundModifiers.contains(word) { return true }
+        if head == "period" && finalMark {
+            if finalPeriodCompoundModifiers.contains(word) { return true }
+            if countedPeriodUnits.contains(word) { return preceding.map(NumberWords.isNumber) ?? false }
+            if gerundPeriodParticles.contains(word) { return preceding?.hasSuffix("ing") ?? false }
+        }
         if lexicalClass == .noun && head == "period" && !finalMark {
             return true
         }

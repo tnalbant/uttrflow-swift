@@ -1,38 +1,60 @@
 # Decoding a stored history: one unreadable change costs one change
 
-`DictationHistoryStore` reads its file all-or-nothing and discards a file it cannot
-decode; the next write puts the survivors — none — over it. So a single throwing field in
-`RecordedCorrection` or `RecordedSnippet` would cost the user every dictation on disk, on
-nothing worse than running an older build after a newer one.
+The dictation history is decoded from one file as a whole: `DictationHistoryStore`
+(`Sources/UttrflowHistory/DictationHistoryStore.swift`) treats a file it cannot decode as
+unreadable and keeps none of it (see [history-store-file.md](history-store-file.md)). So a
+single field that throws inside `DictationRecord`, `RecordedChanges`, `RecordedCorrection` or
+`RecordedSnippet` would cost the user every dictation on disk, on nothing worse than running an
+older build after a newer one. The decoders in `Sources/UttrflowHistory/DictationRecord.swift`
+and `Sources/UttrflowHistory/Corrections.swift` are written so that cannot happen.
 
-## The rule
+## Which fields may be missing
 
-- Anything added to `RecordedCorrection`, `RecordedSnippet` or `DictationRecord` is read
-  with `decodeIfPresent` and given an honest default, or it is not added.
-- Only fields with an honest default get one. `isUndone` and `isFlagged` default to
-  `false`: a file without the key and a change nobody undid are the same fact.
-  `heardConfidence` has no honest default — a missing score read as zero would claim the
-  recogniser was certain about words it never scored — so it stays required, and a file
-  missing it costs that one change.
-- `reason` stays required: a change this build cannot name must not be drawn under a name
-  somebody guessed for it. A fifth `CorrectionReason` creates exactly that case for every
-  user who runs an older build again, and it is contained one level up rather than
-  defaulted away.
-- `RecordedChanges.init(from:)` reads both lists entry by entry through `Salvaged`, a
-  `Decodable` wrapper that never throws, so an entry this build cannot read is left out
-  rather than thrown. The `try?` there is the point, not a swallowed error: the changes a
-  user cannot see are the ones they cannot undo, and a build that cannot read a change has
-  nothing true to say about it.
-- The write path gives the same answer: `AppDelegate` builds each `RecordedCorrection`
-  through the failable initialiser and `compactMap`s away any reason it cannot name.
+A field added to any of these types is read with `decodeIfPresent` and given an honest
+default, or it is not added. Only fields with an honest default get one.
+
+| Field | When absent | Why |
+|---|---|---|
+| `DictationRecord.isFlagged` | `false` | A file without the key and a dictation nobody flagged are the same fact. |
+| `DictationRecord.changes` | `nil` | Absent means unmeasured, not "nothing changed"; see [core-history-accuracy.md](core-history-accuracy.md). |
+| `DictationRecord.applicationName`, `applicationIdentifier`, `spokenFor` | `nil` | Unknown is their honest value. |
+| `RecordedCorrection.isUndone` | `false` | A file without the key and a change nobody undid are the same fact. |
+| `RecordedCorrection.writtenWordIndex` | `nil` | Unknown; undo falls back to the heard-space range ([core-history-undo.md](core-history-undo.md)). |
+| `RecordedChanges.corrections`, `snippets` | empty | Lists that were never written hold nothing. |
+| `RecordedChanges.spokenWords` | `nil` | Also `nil` when negative, so a damaged count retires the accuracy figure instead of trapping. |
+
+Two fields stay required:
+
+- `RecordedCorrection.heardConfidence` has no honest default. A missing score read as zero
+  would claim the recogniser was certain about words it never scored, so a stored change
+  without it is dropped.
+- `RecordedCorrection.reason` stays required, but a spelling this build cannot name decodes to
+  `CorrectionReason.unknown`, shown as "Other" and written back verbatim. A reason added in a
+  newer build is therefore kept, shown and undoable on an older one, never renamed.
+
+## How one bad change is contained
+
+`RecordedChanges.init(from:)` reads both lists entry by entry through `Salvaged`, a private
+`Decodable` wrapper whose `init(from:)` uses `try?` and never throws. An entry this build cannot
+read is left out of the list rather than failing the record, the record list, and the file. The
+`try?` is deliberate: the changes a user cannot see are the ones they cannot undo, and a build
+that cannot read a change has nothing true to say about it.
+
+The write path carries the reason as the one `UttrflowCore.CorrectionReason` from the engine to
+the store, so no string conversion can lose a correction between them.
 
 ## Why the decoders are hand-written
 
 Swift's synthesised `init(from:)` throws on any absent non-optional key and ignores the
-property's default, so adding `isFlagged` to `DictationRecord` without a hand-written
-decoder would make every file already on disk unreadable. The hand-written decoders keep
-the synthesised behaviour for every other field.
+property's default value. Adding `isFlagged` to `DictationRecord` with a synthesised decoder
+would make every file already on disk unreadable. The hand-written decoders keep the
+synthesised behaviour for every other field.
 
-`DictationRecordTests.decodesTheShapeBeforeChanges()` holds a literal of the shape an
-older build writes, rather than re-encoding today's shape: a test that encodes before it
-decodes cannot fail the way an upgrade does.
+## Tests
+
+`DictationRecordTests.decodesTheShapeBeforeChanges()`
+(`Tests/UttrflowHistoryTests/DictationRecordTests.swift`) decodes a JSON literal of the shape an
+older build writes, rather than re-encoding today's shape: a test that encodes before it decodes
+cannot fail the way an upgrade does. `RecordedChangesDecodingTests` in
+`Tests/UttrflowHistoryTests/CorrectionsTests.swift` covers an unreadable change inside an
+otherwise readable record.

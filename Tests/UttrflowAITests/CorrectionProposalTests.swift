@@ -1,4 +1,5 @@
 import Foundation
+import UttrflowCore
 import UttrflowDictionary
 import Testing
 
@@ -13,16 +14,16 @@ struct CorrectionProposalTests {
     /// The Corrections page shows these, so each must say something a person can check.
     @Test("every reason has a label a user could act on", arguments: CorrectionReason.allCases)
     func reasonsAreLegible(reason: CorrectionReason) {
-        #expect(!reason.summary.isEmpty)
-        #expect(reason.summary.first?.isUppercase == true)
+        #expect(!reason.title.isEmpty)
+        #expect(reason.title.first?.isUppercase == true)
     }
 
     @Test("the labels are the ones the Corrections page shows")
     func reasonLabels() {
-        #expect(CorrectionReason.seenOnScreen.summary == "Seen on screen")
-        #expect(CorrectionReason.saidClearlyElsewhere.summary == "You said it clearly elsewhere")
-        #expect(CorrectionReason.heardAsStrayLetters.summary == "Heard as stray letters")
-        #expect(CorrectionReason.heardAsSeveralWords.summary == "Heard as several words")
+        #expect(CorrectionReason.seenOnScreen.title == "Seen on screen")
+        #expect(CorrectionReason.saidClearlyElsewhere.title == "You said it clearly elsewhere")
+        #expect(CorrectionReason.heardAsStrayLetters.title == "Heard as stray letters")
+        #expect(CorrectionReason.heardAsSeveralWords.title == "Heard as several words")
     }
 
     /// A reason survives the dictation record, where the Corrections page reads it a day later.

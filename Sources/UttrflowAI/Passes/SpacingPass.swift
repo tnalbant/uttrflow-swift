@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Fixes a mark that arrived as its own word onto the word before it, and collapses doubled clause marks.
-public struct SpacingPass: CleaningPass {
+public struct SpacingPass: PieceCleaningPass {
     public static let id: PassID = .spacing
 
     static let clauseMarks: Set<Character> = [",", ".", "?", "!", ":", ";"]

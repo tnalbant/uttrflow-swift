@@ -1003,6 +1003,9 @@ CORPUS_STRINGS="$(
 
 # ---------------------------------------------------------------------------
 
+# 12. The bundle and the resolved packages fit the delivery budget in Scripts/size_budget.json.
+python3 Scripts/size_budget.py --app "$APP" || fail "$APP is over the size budget; Docs/performance.md#delivery-budget says how it was set"
+
 # Basenames only; the full paths are build-tree noise nobody reading this needs.
 RESOURCE_SUMMARY="no resource bundles"
 if (( ${#RESOURCE_BUNDLES[@]} > 0 )); then

@@ -29,6 +29,12 @@ public enum StoredList<Value: Decodable & Sendable>: Sendable {
         guard case .unreadable = self else { return false }
         return true
     }
+
+    /// Whether an unreadable file is still under its own name, so writing there would destroy it.
+    public var isLeftInPlace: Bool {
+        guard case .unreadable(setAside: nil) = self else { return false }
+        return true
+    }
 }
 
 extension LocalStore {

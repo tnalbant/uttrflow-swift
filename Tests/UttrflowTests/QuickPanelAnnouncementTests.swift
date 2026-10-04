@@ -1,5 +1,6 @@
 // Tests that the panel speaks notices on each opening without repeating them on redraws.
 
+import Foundation
 import Testing
 import UttrflowUX
 

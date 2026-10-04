@@ -116,6 +116,10 @@ struct SpokenAddressTests {
             ("visit example dot com slash docs", "visit example.com/docs"),
             ("the site is www dot example dot com", "the site is www.example.com"),
             ("go to https colon slash slash example dot com", "go to https://example.com"),
+            ("go to w w w dot example dot org", "go to www.example.org"),
+            ("visit w w w dot example dot com slash pricing", "visit www.example.com/pricing"),
+            ("the url is h t t p s colon slash slash example dot com", "the url is https://example.com"),
+            ("the url is http colon slash slash example dot com", "the url is http://example.com"),
             (
                 "the docs live at docs dot example dot com slash api slash v two",
                 "the docs live at docs.example.com/api/v2"
@@ -127,10 +131,71 @@ struct SpokenAddressTests {
             ("my handle is sam at discord", "my handle is sam@discord"),
             ("my handle is sam at example dot com", "my handle is sam@example.com"),
             ("the variable is user underscore id", "the variable is user_id"),
+            ("Visit example dot com slash pricing.", "Visit example.com/pricing."),
+            ("The site is example dot org slash docs slash intro.", "The site is example.org/docs/intro."),
+            (
+                "The url is https colon slash slash example dot com slash docs.",
+                "The url is https://example.com/docs."
+            ),
+            ("The path is slash users slash sam slash notes.", "The path is /users/sam/notes."),
         ]
     )
     func writesSpokenAddresses(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "writes a label spoken with digits, an underscore, a hyphen or a plus tag",
+        arguments: [
+            ("email sam dot jones nine nine at example dot com", "email sam.jones99@example.com"),
+            ("email sam dot jones 99 at example dot com", "email sam.jones99@example.com"),
+            ("send it to team twenty one at example dot org", "send it to team21@example.org"),
+            ("send it to sam underscore jones at example dot com", "send it to sam_jones@example.com"),
+            ("email sam plus invoices at example dot com", "email sam+invoices@example.com"),
+            ("email ops dash team at example dot com", "email ops-team@example.com"),
+            ("email ops hyphen team at example dot net", "email ops-team@example.net"),
+            ("email sam at my dash mail dot example dot com", "email sam@my-mail.example.com"),
+            (
+                "write to sam underscore lee two at mail dash box dot example dot org",
+                "write to sam_lee2@mail-box.example.org"
+            ),
+            ("cc sam plus news underscore feed at example dot com", "cc sam+news_feed@example.com"),
+            ("my handle is sam underscore jones at example dot com", "my handle is sam_jones@example.com"),
+            ("email j dot doe two thousand at example dot com", "email j.doe2000@example.com"),
+            (
+                "forward it to build underscore bot at ci dash runner dot example dot net",
+                "forward it to build_bot@ci-runner.example.net"
+            ),
+            (
+                "contact help plus urgent at support dot example dot io",
+                "contact help+urgent@support.example.io"
+            ),
+            ("email sam dot lee 2024 at example dot co dot uk", "email sam.lee2024@example.co.uk"),
+        ]
+    )
+    func writesJoinedLabels(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "writes no address from prose that says a joiner or a number near at",
+        arguments: [
+            "plus the dash at the end",
+            "the plus side at example dot com",
+            "we met nine at example dot com",
+            "it is plus two at the moment",
+            "add a dash at the start",
+            "she ran nine miles at dawn",
+            "the score was five plus three at half time",
+            "send the report at example dot com",
+            "we met at nine at example dot com",
+            "it went from plus to minus at the close",
+            "type a dash at the prompt",
+            "he scored twenty at the game",
+        ]
+    )
+    func leavesJoinerProse(input: String) {
+        #expect(!cleaned(input, by: sut).contains("@"))
     }
 
     @Test(

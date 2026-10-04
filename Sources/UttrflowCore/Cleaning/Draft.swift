@@ -40,17 +40,20 @@ public struct Draft: Sendable, Equatable {
         public let heard: String
         /// The recogniser's confidence in the heard word, 0 to 1.
         public let confidence: Double
+        /// The script the recogniser wrote the word in, kept after romanising so English-only lists can skip Hindi.
+        public let origin: Origin
         public var state: State
         /// Every change a pass has made to this word, oldest first.
         public private(set) var edits: [Edit]
 
         public init(
-            text: String, heard: String, confidence: Double = 1, state: State = .kept,
-            edits: [Edit] = []
+            text: String, heard: String, confidence: Double = 1, origin: Origin = .latin,
+            state: State = .kept, edits: [Edit] = []
         ) {
             self.text = text
             self.heard = heard
             self.confidence = confidence
+            self.origin = origin
             self.state = state
             self.edits = edits
         }
@@ -83,6 +86,15 @@ public struct Draft: Sendable, Equatable {
             return !digits.isEmpty && digits.allSatisfy(\.isNumber)
         }
     }
+
+    /// The script a word was recognised in, before romanising wrote every word in Latin letters.
+    public enum Origin: Sendable, Equatable {
+        case latin
+        case devanagari
+    }
+
+    /// Whether the word at `index` was spoken as Hindi, so a list keyed on English spelling does not apply to it.
+    public func isHindi(at index: Int) -> Bool { words[index].origin == .devanagari }
 
     /// Whether the words after the last paragraph or list mark are a list item, which takes no full stop.
     public var endsInListItem: Bool {
@@ -154,6 +166,17 @@ public struct Draft: Sendable, Equatable {
         self.init(words: Self.confidences(of: timed, onto: spoken), confidencesAreReal: true)
     }
 
+    /// Romanises each Devanagari word of the transcription, remembering that it was Devanagari.
+    public init(romanising transcription: Transcription) {
+        let heard = Draft(transcription: transcription)
+        let words = heard.words.map { word in
+            guard Romaniser.containsDevanagari(word.text) else { return word }
+            let latin = Romaniser.romanised(word.text)
+            return Word(text: latin, heard: latin, confidence: word.confidence, origin: .devanagari)
+        }
+        self.init(words: words, confidencesAreReal: heard.confidencesAreReal)
+    }
+
     private static func split(_ text: String, confidence: Double) -> [Word] {
         text.split(whereSeparator: \.isWhitespace).flatMap { token in
             splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence) }
@@ -162,29 +185,40 @@ public struct Draft: Sendable, Equatable {
 
     /// Splits a pause ellipsis between words while keeping URL punctuation inside its token.
     private static func splitPauseEllipses(in token: String) -> [String] {
-        let normalized = token.replacingOccurrences(of: "…", with: "...")
-        let lowercased = normalized.lowercased()
+        let lowercased = token.lowercased()
         guard !lowercased.contains("://"), !lowercased.hasPrefix("www."), !lowercased.contains("@")
         else { return [token] }
 
-        let characters = Array(normalized)
+        let characters = Array(token)
         var parts = [""]
         var index = 0
         while index < characters.count {
-            if index > 0, index + 3 < characters.count,
-                characters[index] == ".", characters[index + 1] == ".", characters[index + 2] == ".",
-                characters[index + 3] != ".",
-                characters[index - 1].isLetter || characters[index - 1].isNumber,
-                characters[index + 3].isLetter || characters[index + 3].isNumber
+            if index > 0, let length = pauseEllipsisLength(in: characters, at: index),
+                characters[index - 1].isLetter || characters[index - 1].isNumber
             {
                 parts.append("")
-                index += 3
+                index += length
                 continue
             }
             parts[parts.count - 1].append(characters[index])
             index += 1
         }
         return parts
+    }
+
+    /// The length of a three-dot or single-character ellipsis at `index` that a letter or digit follows, else nil.
+    private static func pauseEllipsisLength(in characters: [Character], at index: Int) -> Int? {
+        let length: Int
+        if characters[index] == "\u{2026}" {
+            length = 1
+        } else if index + 2 < characters.count, characters[index...(index + 2)].allSatisfy({ $0 == "." }) {
+            length = 3
+        } else {
+            return nil
+        }
+        guard index + length < characters.count else { return nil }
+        let next = characters[index + length]
+        return next.isLetter || next.isNumber ? length : nil
     }
 
     /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.

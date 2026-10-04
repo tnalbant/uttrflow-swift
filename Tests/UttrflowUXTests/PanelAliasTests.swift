@@ -46,6 +46,48 @@ struct PanelAliasCorrectionTests {
         #expect(proposal.isUsable)
     }
 
+    @Test("Latin and Cyrillic lookalikes share a comparison skeleton")
+    func cyrillicLookalikeConflicts() {
+        let clip = PanelFixture.clip("first", alias: "paypal")
+        let proposal = PanelAlias.propose("раураl", for: UUID(), among: [clip], locale: Self.locale)
+
+        #expect(proposal.canCompareUnicodeNames)
+        #expect(proposal.takenBy == clip.id)
+        #expect(!proposal.isUsable)
+    }
+
+    @Test("Greek lookalikes collide with Latin names")
+    func greekLookalikeConflicts() {
+        let clip = PanelFixture.clip("first", alias: "po")
+        let proposal = PanelAlias.propose("ρο", for: UUID(), among: [clip], locale: Self.locale)
+
+        #expect(proposal.takenBy == clip.id)
+    }
+
+    @Test("mixed Latin and Cyrillic letters are rejected")
+    func mixedLookalikeScriptsAreRejected() {
+        let proposal = PanelAlias.propose("pаypal", for: UUID(), among: [], locale: Self.locale)
+
+        #expect(proposal.mixesScripts)
+        #expect(!proposal.isUsable)
+    }
+
+    @Test("Latin names mixed with another alphabet are refused")
+    func arabicLettersDoNotMixWithLatin() {
+        let proposal = PanelAlias.propose("aم", for: UUID(), among: [], locale: Self.locale)
+
+        #expect(proposal.mixesScripts)
+        #expect(!proposal.isUsable)
+    }
+
+    @Test("script extensions keep a character shared by Latin names usable")
+    func scriptExtensionsResolveWithLatin() {
+        let proposal = PanelAlias.propose("aʼ", for: UUID(), among: [], locale: Self.locale)
+
+        #expect(!proposal.mixesScripts)
+        #expect(proposal.isUsable)
+    }
+
     /// The interface prints the slash, so typing it follows instructions and is not a correction.
     @Test("dropping the convention's slash is not reported as a correction")
     func theSlashIsNotACorrection() {

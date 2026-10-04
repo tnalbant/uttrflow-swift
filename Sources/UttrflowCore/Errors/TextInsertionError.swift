@@ -18,20 +18,22 @@ public enum TextInsertionError: UttrflowFailure {
     case insertionTargetChanged
     /// Clipboard-free insertion refused, so the user may copy the retained transcript explicitly.
     case insertionNeedsCopy(description: String)
+    /// Typing stopped partway, so only the first `typed` of `total` characters reached the field.
+    case insertionInterrupted(typed: Int, total: Int)
 
     /// A plain sentence per case, saying where the words are.
     public var userMessage: String {
         switch self {
         case .noFocusedTextField:
-            "There's no text field to type into. Your dictation is saved under Recent in the menu bar."
+            "There's no text field to type into. Your dictation is saved in History."
         case .accessibilityDenied:
             "Accessibility access is required to insert text into other applications."
         case .clipboardUnavailable:
-            "The text couldn't be inserted or copied. It's kept under Recent in the menu bar."
+            "The text couldn't be inserted or copied. It's kept in History."
         case .clipboardChanged:
-            "Your clipboard changed during insertion. Your dictation is saved under Recent in the menu bar."
+            "Your clipboard changed during insertion. Your dictation is saved in History."
         case .insertionTimedOut:
-            "Your dictation didn't arrive in time. It's saved under Recent in the menu bar."
+            "Your dictation didn't arrive in time. It's saved in History."
         case .insertionRejected:
             "The text couldn't be inserted here. It's been copied, so press ⌘V to paste it."
         case .insertionUnconfirmed:
@@ -40,22 +42,25 @@ public enum TextInsertionError: UttrflowFailure {
             "The app in front changed. Focus the intended field and try again."
         case .insertionNeedsCopy:
             "The text couldn't be inserted. Your clipboard is unchanged."
+        case .insertionInterrupted(let typed, let total):
+            "Typing stopped after \(typed) of \(total) characters. Your dictation is saved under Recent in the menu bar."
         }
     }
 
-    /// Wherever the words are: the clipboard, or Recent when the clipboard is what failed.
+    /// Wherever the words are: the clipboard, or History when the clipboard is what failed.
     public var recovery: RecoveryAction? {
         switch self {
-        case .noFocusedTextField: .showRecentDictations
+        case .noFocusedTextField: .showHistory
         case .accessibilityDenied: .openSystemSettings(.accessibility)
         // The clipboard failed, so "paste" would point at the one place the words are not.
-        case .clipboardUnavailable: .showRecentDictations
-        case .clipboardChanged: .showRecentDictations
-        case .insertionTimedOut: .showRecentDictations
-        case .insertionTargetChanged: .showRecentDictations
+        case .clipboardUnavailable: .showHistory
+        case .clipboardChanged: .showHistory
+        case .insertionTimedOut: .showHistory
+        case .insertionTargetChanged: .showHistory
         case .insertionRejected: .pasteManually
-        case .insertionUnconfirmed: .showRecentDictations
+        case .insertionUnconfirmed: .showHistory
         case .insertionNeedsCopy: .copyTranscript
+        case .insertionInterrupted: .showHistory
         }
     }
 
@@ -67,7 +72,7 @@ public enum TextInsertionError: UttrflowFailure {
         // The words exist and the user can reach them; they only missed where they were aimed.
         case .accessibilityDenied, .clipboardUnavailable, .clipboardChanged, .insertionTimedOut,
             .insertionRejected,
-            .insertionUnconfirmed, .insertionTargetChanged, .insertionNeedsCopy:
+            .insertionUnconfirmed, .insertionTargetChanged, .insertionNeedsCopy, .insertionInterrupted:
             .degraded
         }
     }
@@ -75,7 +80,8 @@ public enum TextInsertionError: UttrflowFailure {
     /// Whether another route must not attempt the same insertion.
     public var stopsFallback: Bool {
         switch self {
-        case .insertionUnconfirmed, .insertionTargetChanged, .clipboardChanged: true
+        // Part of the text is already in the field, so another route would type it twice.
+        case .insertionUnconfirmed, .insertionTargetChanged, .clipboardChanged, .insertionInterrupted: true
         default: false
         }
     }

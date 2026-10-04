@@ -54,6 +54,17 @@ struct ShellPromptTests {
         #expect(ShellPrompt.input(in: "root@host:~# apt update") == "apt update")
     }
 
+    @Test("recognises dollar and root prompts with whitespace before their marker")
+    func spacedDollarAndRootPrompts() {
+        #expect(ShellPrompt.input(in: "~/proj $ ls") == "ls")
+        #expect(ShellPrompt.input(in: "user@host ~/p $ git st") == "git st")
+        #expect(ShellPrompt.input(in: "/ # ls") == "ls")
+        #expect(ShellPrompt.input(in: "bash-5.1# ls") == "ls")
+        #expect(ShellPrompt.input(in: "sh-4.2# ls") == "ls")
+        #expect(ShellPrompt.input(in: "host# ls") == "ls")
+        #expect(ShellPrompt.input(in: "echo 5 $ ") == "echo 5 $ ")
+    }
+
     @Test("A python prompt is a run of chevrons.")
     func pythonPrompt() {
         #expect(ShellPrompt.input(in: ">>> import os") == "import os")
@@ -123,6 +134,16 @@ struct ShellPromptTests {
         #expect(
             ShellPrompt.input(in: #"user@host experiments % echo "50% done""#)
                 == #"echo "50% done""#)
+    }
+
+    @Test("A spaced modulo operator is not a zsh prompt.")
+    func moduloOperatorIsNotAPrompt() {
+        #expect(ShellPrompt.input(in: "expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "let x=7 % 2") == "let x=7 % 2")
+        #expect(ShellPrompt.input(in: "bc <<< 7 % 2") == "bc <<< 7 % 2")
+        #expect(ShellPrompt.input(in: "user@host experiments % expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "user@host % expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "zsh % expr 10 % 3") == "expr 10 % 3")
     }
 
     @Test("A dollar inside a command is not a prompt, whether quoted or expanding a name.")

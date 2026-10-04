@@ -4,7 +4,8 @@ public import UttrflowCore
 /// The hand-written cases every clean-up candidate is measured against.
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
-        everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + grammar
+        everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
+        + grammar + oneLineField + formatting
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -127,6 +128,18 @@ public enum EvaluationCorpus {
             id: "pronoun-opening-she-is-nurse-control", category: .everyday,
             spoken: "she is a nurse",
             expected: "She is a nurse."
+        ),
+        .init(
+            id: "name-opening-is-the-owner-statement", category: .everyday,
+            spoken: "ravi is the owner of the account",
+            expected: "Ravi is the owner of the account.",
+            mustBeginWith: "Ravi is", mustEndWith: "."
+        ),
+        .init(
+            id: "name-opening-is-the-one-statement", category: .everyday,
+            spoken: "maria is the one who called",
+            expected: "Maria is the one who called.",
+            mustBeginWith: "Maria is", mustEndWith: "."
         ),
         .init(
             id: "determiner-opening-report-is-idea-control", category: .everyday,
@@ -312,6 +325,13 @@ public enum EvaluationCorpus {
             expected: "\"We ship on Friday.\"",
             mustKeep: ["Friday"]
         ),
+        // The prompt folds double quotes to single; the answer must carry the speaker's double ones.
+        .init(
+            id: "quoted-words-mid-sentence", category: .everyday,
+            spoken: "he said \"we ship on Friday\" and left",
+            expected: "He said \"we ship on Friday\" and left.",
+            mustKeep: ["Friday"]
+        ),
         // What PromptContract asks for and Docs/cleanup.md records the model refusing: measured, not asserted.
         .init(
             id: "restatement-slot-adjacent", category: .everyday,
@@ -474,6 +494,62 @@ public enum EvaluationCorpus {
             expected: "Let's get coffee at three.",
             mustKeep: ["coffee"],
             mustNotAdd: ["two"]
+        ),
+        .init(
+            id: "correction-between-amounts-spoken", category: .everyday,
+            spoken: "the budget is ten k correction twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "correction"]
+        ),
+        .init(
+            id: "correction-as-a-noun-kept", category: .everyday,
+            spoken: "the correction was small",
+            expected: "The correction was small.",
+            mustKeep: ["correction", "small"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "strike-that-restates-a-phrase", category: .everyday,
+            spoken: "pick the red one strike that the blue one",
+            expected: "Pick the blue one.",
+            mustKeep: ["Pick", "blue"],
+            mustNotAdd: ["red", "strike"]
+        ),
+        .init(
+            id: "strike-that-as-an-order-kept", category: .everyday,
+            spoken: "strike that match and light the candle",
+            expected: "Strike that match and light the candle.",
+            mustKeep: ["Strike that match", "candle"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "or-rather-replaces-a-word", category: .everyday,
+            spoken: "she wanted tea or rather coffee",
+            expected: "She wanted coffee.",
+            mustKeep: ["wanted", "coffee"],
+            mustNotAdd: ["tea", "rather"]
+        ),
+        .init(
+            id: "or-rather-before-a-negation-kept", category: .everyday,
+            spoken: "would you like to stay or rather not",
+            expected: "Would you like to stay or rather not?",
+            mustKeep: ["stay or rather not"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "actually-make-it-between-amounts", category: .everyday,
+            spoken: "the budget is ten k actually make it twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "make it"]
+        ),
+        .init(
+            id: "actually-make-it-as-arriving-kept", category: .everyday,
+            spoken: "we did not actually make it to the party",
+            expected: "We did not actually make it to the party.",
+            mustKeep: ["actually make it", "party"],
+            mustNotAdd: []
         ),
         // The recogniser writes a paused trigger as its own sentence, which is a pause rather than a sentence end.
         .init(
@@ -662,6 +738,18 @@ public enum EvaluationCorpus {
             spoken: "note colon kal chutti hai",
             expected: "Note: kal chutti hai.",
             mustKeep: ["note", "kal chutti hai"], mustNotAdd: ["colon"]
+        ),
+        .init(
+            id: "hinglish-interjections-not-letters", category: .everyday,
+            spoken: "are o bhai sun",
+            expected: "Are o bhai sun.",
+            mustKeep: ["are o bhai"], mustNotAdd: ["RO"]
+        ),
+        .init(
+            id: "hinglish-jay-jay-not-letters", category: .everyday,
+            spoken: "jay jay ho",
+            expected: "Jay jay ho.",
+            mustKeep: ["jay jay"], mustNotAdd: ["JJ"]
         ),
         // Issue 237: the same bare names said as ordinary words, which must survive as words.
         .init(
@@ -2342,6 +2430,83 @@ public enum EvaluationCorpus {
         ),
     ]
 
+    // MARK: Letter-and-digit codes, whose capital no sentence start explains
+
+    /// A notes document with the caret where the words land.
+    private static func codeTokenCase(
+        _ id: String, after preceding: String = "", spoken: String, expected: String, begins: String
+    ) -> EvaluationCase {
+        .init(
+            id: "code-token-" + id, category: .technical, spoken: spoken, expected: expected,
+            context: AppContext(
+                applicationName: "Notes", bundleIdentifier: "com.apple.Notes", documentName: "Planning",
+                precedingText: preceding),
+            destination: .document, mustBeginWith: begins)
+    }
+
+    static let codeToken: [EvaluationCase] = [
+        codeTokenCase(
+            "caret-a4", after: "Print the handout on ", spoken: "A4 paper please",
+            expected: "A4 paper please.", begins: "A4 paper"),
+        codeTokenCase(
+            "caret-q3", after: "We missed the targets for ", spoken: "Q3 by a small margin",
+            expected: "Q3 by a small margin.", begins: "Q3 by"),
+        codeTokenCase(
+            "caret-m2", after: "The build runs fastest on the ", spoken: "M2 machine in the lab",
+            expected: "M2 machine in the lab.", begins: "M2 machine"),
+        codeTokenCase(
+            "caret-s3", after: "Upload the archive to ", spoken: "S3 before the end of the day",
+            expected: "S3 before the end of the day.", begins: "S3 before"),
+        codeTokenCase(
+            "caret-b12", after: "The doctor suggested more ", spoken: "B12 in the morning",
+            expected: "B12 in the morning.", begins: "B12 in"),
+        codeTokenCase(
+            "caret-i-95", after: "Traffic was heavy on ", spoken: "I-95 all afternoon",
+            expected: "I-95 all afternoon.", begins: "I-95 all"),
+        codeTokenCase(
+            "caret-h2", after: "Move that heading to an ", spoken: "H2 in the outline",
+            expected: "H2 in the outline.", begins: "H2 in"),
+        codeTokenCase(
+            "seam-a4", spoken: "Print the handout on. A4 paper please",
+            expected: "Print the handout on A4 paper please.", begins: "Print the handout on A4"),
+        codeTokenCase(
+            "seam-q3", spoken: "We missed the targets for. Q3 by a small margin",
+            expected: "We missed the targets for Q3 by a small margin.", begins: "We missed the targets for Q3"),
+        codeTokenCase(
+            "seam-m2", spoken: "The build runs fastest on the. M2 machine",
+            expected: "The build runs fastest on the M2 machine.", begins: "The build runs fastest on the M2"),
+        codeTokenCase(
+            "filler-s3", spoken: "Upload the archive to um. S3 before lunch",
+            expected: "Upload the archive to S3 before lunch.", begins: "Upload the archive to S3"),
+        codeTokenCase(
+            "filler-i-95", spoken: "Traffic was heavy on uh. I-95 all afternoon",
+            expected: "Traffic was heavy on I-95 all afternoon.", begins: "Traffic was heavy on I-95"),
+        codeTokenCase(
+            "word-caret-be", after: "Tell them to ", spoken: "Be careful with the stairs",
+            expected: "be careful with the stairs.", begins: "be careful"),
+        codeTokenCase(
+            "word-caret-after", after: "We finish the review and ", spoken: "After that we can leave",
+            expected: "after that we can leave.", begins: "after that"),
+        codeTokenCase(
+            "word-caret-again", after: "The tests failed ", spoken: "Again this morning",
+            expected: "again this morning.", begins: "again this"),
+        codeTokenCase(
+            "word-caret-quarter", after: "Revenue fell last ", spoken: "Quarter by a little",
+            expected: "quarter by a little.", begins: "quarter by"),
+        codeTokenCase(
+            "word-caret-model", after: "The build runs fastest on the new ", spoken: "Model in the lab",
+            expected: "model in the lab.", begins: "model in"),
+        codeTokenCase(
+            "word-seam-after", spoken: "We finish the review and. After that we can leave",
+            expected: "We finish the review and after that we can leave.", begins: "We finish the review and after"),
+        codeTokenCase(
+            "word-seam-again", spoken: "The tests failed on. Again this morning",
+            expected: "The tests failed on again this morning.", begins: "The tests failed on again"),
+        codeTokenCase(
+            "word-filler-the", spoken: "Upload the archive to um. The shared drive",
+            expected: "Upload the archive to the shared drive.", begins: "Upload the archive to the"),
+    ]
+
     // MARK: Grammar slips and dialect
 
     /// Model cases: the rules never repair a slip, and `RulesCorpusTests` proves the floor leaves each of these alone.
@@ -2726,6 +2891,61 @@ public enum EvaluationCorpus {
             destination: .messaging,
             mustBeginWith: "He come",
             mustEndWith: "yesterday"
+        ),
+    ]
+    // MARK: One-line fields of no known purpose
+
+    static let oneLineFieldContext = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+
+    static let oneLineField: [EvaluationCase] = [
+        .init(
+            id: "one-line-name", category: .oneLineField, spoken: "jordan rivera", expected: "Jordan Rivera",
+            context: oneLineFieldContext, mustEndWith: "a"
+        ),
+        .init(
+            id: "one-line-title", category: .oneLineField, spoken: "project plan", expected: "Project plan",
+            context: oneLineFieldContext, mustEndWith: "n"
+        ),
+        .init(
+            id: "one-line-rename", category: .oneLineField, spoken: "quarterly report final",
+            expected: "Quarterly report final",
+            context: oneLineFieldContext, mustEndWith: "l"
+        ),
+        .init(
+            id: "one-line-room", category: .oneLineField, spoken: "room twelve", expected: "Room 12",
+            context: oneLineFieldContext, mustEndWith: "2"
+        ),
+        .init(
+            id: "one-line-phrase", category: .oneLineField, spoken: "blue cotton shirt",
+            expected: "Blue cotton shirt",
+            context: oneLineFieldContext, mustEndWith: "t"
+        ),
+        .init(
+            id: "one-line-reason", category: .oneLineField, spoken: "waiting on the vendor",
+            expected: "Waiting on the vendor",
+            context: oneLineFieldContext, mustEndWith: "r"
+        ),
+        .init(
+            id: "one-line-question", category: .oneLineField, spoken: "is the office open on sunday",
+            expected: "Is the office open on Sunday?",
+            context: oneLineFieldContext, mustEndWith: "?"
+        ),
+        .init(
+            id: "one-line-exclaim", category: .oneLineField, spoken: "happy birthday!",
+            expected: "Happy birthday!",
+            context: oneLineFieldContext, mustEndWith: "!"
+        ),
+        .init(
+            id: "one-line-two-sentences", category: .oneLineField,
+            spoken: "the door is locked. use the side entrance",
+            expected: "The door is locked. Use the side entrance.",
+            context: oneLineFieldContext, mustEndWith: "."
+        ),
+        .init(
+            id: "one-line-three-sentences", category: .oneLineField,
+            spoken: "bring a laptop. arrive early. park at the back",
+            expected: "Bring a laptop. Arrive early. Park at the back.",
+            context: oneLineFieldContext, mustEndWith: "."
         ),
     ]
 }

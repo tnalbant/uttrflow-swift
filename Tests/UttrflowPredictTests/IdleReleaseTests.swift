@@ -197,6 +197,24 @@ struct IdleReleaseTests {
         await told.waitForOne()
     }
 
+    @Test("the discretionary wrapper lets a query reload a released model, without loading it itself")
+    func theWrapperAllowsAReload() async throws {
+        let inner = RecordingModel()
+        let model = IdleReleasingModel(model: inner, idleAfter: .seconds(600))
+        let scoring = DiscretionaryModel(model, mayRun: { true })
+        try await model.prepare(onProgress: { _ in })
+        await scoring.release()
+        #expect(await model.isReady == false)
+        await model.pendingWork?.value
+        #expect(await inner.steps == ["load", "release"])
+
+        await scoring.allowReloadAfterRelease()
+        #expect(await inner.steps == ["load", "release"])
+        #expect(await model.isReady == false)
+        await model.pendingWork?.value
+        #expect(await inner.steps == ["load", "release", "reload"])
+    }
+
     @Test("a reload after an idle release says when it starts and when it is done")
     func reloadIsReported() async throws {
         let inner = RecordingModel()

@@ -70,12 +70,6 @@ private final class WatchingCleaner: TranscriptCleaning, Sendable {
     var destinations: [UttrflowCore.Destination] { seen.withLock { $0 } }
 }
 
-private struct SilentInserter: TextInserting {
-    func insert(_ text: String) async throws(TextInsertionError) -> InsertionAttempt {
-        InsertionAttempt(.accessibility)
-    }
-}
-
 @Suite("The pipeline hands on what the clean-up steps did")
 struct DictationCleaningRecordTests {
     private static let audio = AudioSamples.canonical(
@@ -92,7 +86,7 @@ struct DictationCleaningRecordTests {
             speech: FixedSpeechEngine(heard: "um we ship"),
             cleaner: cleaner,
             context: FakeContextEngine(context: context),
-            inserter: SilentInserter(),
+            inserter: FakeTextInserter(),
             cleaningRecorder: recorder,
             destinationOverrides: overrides)
     }

@@ -1,71 +1,76 @@
 # The key events this app posts, and what the system does with them
 
-`CGEventKeystrokeSender` presses ⌘V for clipboard-panel pastes, and `CGEventTypist` types
-characters for dictation and accepted completions and presses Delete for replacements.
-They post events into the same stream the user's own keyboard feeds. An event can
-carry both a Unicode string and a physical key code, and the receiving application decides
-which representation it uses.
-`Docs/insertion.md` covers where the events are posted; this page covers what is in them.
+Uttrflow posts keyboard events in two places, both in `Sources/UttrflowInput/SystemInput.swift`:
+`CGEventKeystrokeSender` presses ⌘V for the paste strategy, and `CGEventTypist` types characters
+for dictation and accepted suggestions and presses Delete when a suggestion replaces text. The
+events enter the same stream the user's own keyboard feeds, through `postTaggedKeyPair`. An event
+can carry both a Unicode string and a physical key code, and the receiving application decides
+which it reads. [insertion.md](insertion.md) covers which route posts them; this page covers what
+is in them.
 
-There are no per-application results on this page and there should not be: a posted event carries
-the same thing wherever it lands. It feeds the `Completion` column of
-[compatibility.md](compatibility.md) and the undo note beside it.
+There are no per-application results here: a posted event carries the same thing wherever it
+lands. This page feeds the `Completion` column of [compatibility.md](compatibility.md) and the undo
+note beside it.
 
 ## Every posted event is stamped as ours
 
-The feature reads the keyboard from two places — the `CGEventTap` in `KeyInterceptor` and
-the `NSEvent` monitor in `SuggestionCoordinator` — and both see this app's own synthetic
-keys upstream of the target application. Untagged, accepting a completion by pressing Tab
-would type a Tab that the tap then read as another accept.
+Three readers see this app's own synthetic keys upstream of the target application: the dictation
+shortcut's tap in `SystemKeyboard`, the suggestion tap in `KeyInterceptor`, and the `NSEvent`
+monitor in `SuggestionCoordinator`. Untagged, accepting a completion with Tab would type a Tab that
+the tap then read as another accept.
 
-`SyntheticEvent` writes a sentinel into `.eventSourceUserData` before the event is posted,
-and both readers drop anything carrying it. The value is deliberately not zero: an event
-that never had the field set reads as zero, so zero would make every ordinary keystroke
-look like ours.
+`SyntheticEvent.tag(_:)` writes `SyntheticEvent.sentinel` into `.eventSourceUserData` before the
+event is posted, and all three readers drop anything for which `SyntheticEvent.isOurs(_:)` is true.
+The sentinel is not zero: an event that never had the field set reads as zero, so zero would make
+every ordinary keystroke look like ours.
 
 ## Typed text uses one mapped key per character
 
-`CGEventTypist` posts one key pair per Unicode scalar. Each event carries that scalar as
-its Unicode string and uses the current layout's physical key code for the same character;
-when the layout produces it with Shift, the event carries Shift as well. This lets a field
-that reads the Unicode string receive the character and gives a field that reads physical
-keys a matching key and modifier instead of key code 0. Text is resolved in full before
-any event is posted. If a scalar has no single physical key on the selected layout, typing
-refuses the whole string. Completion checks that condition before deleting the text it
-would replace.
+`CGEventTypist.type(_:)` posts one key-down and key-up per Unicode scalar. Each event carries that
+scalar as its Unicode string and the current layout's physical key code for the same character,
+with Shift, Option or both set when the layout needs them (`LayoutKeyCode.stroke(for:in:)`). A
+field that reads the Unicode string gets the character, and a field that reads physical keys gets
+a matching key and modifiers instead of key code 0.
 
-The event format alone does not establish which representation a particular application
-uses. The `Completion` column in [compatibility.md](compatibility.md) records observed
-results by application; it does not identify whether a successful field read the Unicode
-string or the physical key. Terminal emulators, cross-platform editors, remote desktops,
-virtual machines and games still need measurements that separate those two behaviors.
+A scalar with no single key on the selected layout — a character above U+FFFF, one reached only
+through a dead key (é on a US layout), or any Latin letter while a Devanagari, Cyrillic, Arabic,
+Hebrew or Greek layout is selected — is posted as its own key pair with key code 0, no modifiers
+and the scalar's UTF-16 units as the Unicode string (`LayoutKeyCode.keypresses(for:stroke:)`).
+One unmapped character therefore never refuses the rest of the text; it falls back to the plain
+Unicode-string event the typed route used before layout keys were added.
 
-## Flags are cleared on every event
+The event format alone does not establish which representation a particular application uses.
+The `Completion` column in [compatibility.md](compatibility.md) records observed results by
+application without separating the two; terminal emulators, cross-platform editors, remote
+desktops, virtual machines and games need measurements that do.
 
-A modifier the user is still holding when the paste or the typing goes out is applied to
-it: the shortcut is held down while dictation ends, so ⌥ on a typed `t` becomes `†`, and
-a Delete with ⌥ held deletes a whole word instead of one character. Every posted event
-sets `flags` explicitly rather than inheriting the current state — `.maskCommand` for the
-⌘V, empty for everything else.
+## Flags are set on every event
+
+A modifier the user is still holding when the paste or the typing goes out would otherwise be
+applied to it: the shortcut is held while a dictation ends, so ⌥ on a typed `t` becomes `†`, and a
+Delete with ⌥ held deletes a whole word. Every posted event sets `flags` explicitly rather than
+inheriting the current state: `.maskCommand` for ⌘V, the layout's own modifiers for a typed
+character, and none for Delete.
 
 ## One Delete per character
 
-There is no bulk delete a synthetic keyboard can reach for, so taking back what a
-completion replaces costs one key-down/key-up pair per character. That is also why the
-target application's undo sees several edits on this route and one on the Accessibility
-route; `Docs/predict-accept.md` has what ⌘Z costs on each.
+No bulk delete is reachable from a synthetic keyboard, so taking back what a completion replaces
+costs one key pair per character (`deleteBackwards(_:)`, key code 51, which is positional and so
+the same on every layout). That is why the target's undo sees several edits on the typed route and
+one on the Accessibility route; [predict-accept.md](predict-accept.md) has what ⌘Z costs on each.
 
 ## The key code for ⌘V is resolved, not fixed
 
-A key code is a key's *position*, but an application matches a ⌘ shortcut against the
-*character* the current layout gives that position. On US QWERTY those agree, so posting
-key code 9 has always looked like posting V — but on Dvorak the same position types `k`,
-so the same event fires ⌘K instead. `PasteKeyLayout` reads the selected layout's table
-with `UCKeyTranslate`, ⌘ held so a layout with a separate ⌘ map (Dvorak – QWERTY ⌘) is read
-from that map, and caches the key code that produces `v` under it, falling back to
-the system's ASCII-capable layout when the selected one has no Latin letters, and to key
-code 9 when neither layout can be read. The cache fills on `startObserving()` and follows
-`kTISNotifySelectedKeyboardInputSourceChanged`, on the main queue, the way
-`CompositionProbe` reads Text Input Sources. `LayoutKeyCode.code(for:in:)` is the pure
-lookup and is tested against real layout tables (QWERTY, AZERTY, Dvorak, and a layout with
-a separate ⌘ map) rather than asserted here.
+A key code is a key's position, but an application matches a ⌘ shortcut against the character the
+current layout gives that position. On US QWERTY, key code 9 types V; on Dvorak the same position
+types `k`, so posting key code 9 fires ⌘K.
+
+`PasteKeyLayout` reads the selected layout's table with `UCKeyTranslate`, with ⌘ held so a layout
+with a separate ⌘ table (Dvorak – QWERTY ⌘) is read from that table, and caches the key code that
+produces `v`. When the selected layout has no Latin letters it reads the system's ASCII-capable
+layout instead, and when neither can be read it posts key code 9. The cache fills on
+`startObserving()` and follows `kTISNotifySelectedKeyboardInputSourceChanged`, refreshed on the
+main queue because Text Input Sources asserts it, the way `CompositionProbe` reads input sources.
+The same cached table supplies the typed route's key codes. `LayoutKeyCode.code(for:in:modifiers:)`
+is the pure lookup, and `Tests/UttrflowInputTests/LayoutKeyCodeTests.swift` checks it against real
+layout tables: US QWERTY, AZERTY, Dvorak, Dvorak – QWERTY ⌘, and Russian.

@@ -30,8 +30,8 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 position += 1
                 continue
             }
-            let letters = live[position..<end].compactMap { Self.letterNames[draft.shape(at: $0).key] }
-            guard letters.count == end - position else {
+            let letters = live[position..<end].compactMap { Self.letterName(draft.shape(at: $0)) }
+            guard letters.count == end - position, Self.isSpelled(live[position..<end], in: draft) else {
                 position += 1
                 continue
             }
@@ -41,8 +41,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 ? letters.map { $0.lowercased() }.joined(separator: ".") + "."
                 : value
             let first = live[position]
+            // The run keeps the mark its last letter carried, so a spoken stop or comma survives the join.
+            let closing = draft.shape(at: live[end - 1]).suffix
+            let cased = Self.casedOutput(output, first: draft.words[first].text)
             draft.replace(
-                at: first, with: Self.casedOutput(output, first: draft.words[first].text), by: Self.id)
+                at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id
+            )
             for index in live[(position + 1)..<end] { draft.remove(at: index, by: Self.id) }
             live.removeSubrange((position + 1)..<end)
             position += 1
@@ -51,10 +55,14 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     }
 
     private func runEnd(from position: Int, in live: [Int], draft: Draft) -> Int? {
-        guard position < live.count, Self.letterNames[draft.shape(at: live[position]).key] != nil else {
+        guard position < live.count, Self.letterName(draft.shape(at: live[position])) != nil else {
             return nil
         }
         let token = draft.shape(at: live[position])
+        // The pronoun said twice running is a stammer, never an initialism.
+        if token.key == "i", position + 1 < live.count, draft.shape(at: live[position + 1]).key == "i" {
+            return nil
+        }
         if token.key == "a", position + 1 < live.count,
             draft.shape(at: live[position + 1]).key == "m",
             isClockContext(before: position, in: live, draft: draft)
@@ -64,7 +72,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
         let inSpokenPhrase = position > 0 && !draft.shape(at: live[position - 1]).endsClause
         if token.key == "a", inSpokenPhrase, token.core.first?.isUppercase != true {
             let candidateEnd = candidateRunEnd(from: position, in: live, draft: draft)
-            let value = live[position..<candidateEnd].compactMap { Self.letterNames[draft.shape(at: $0).key] }
+            let value = live[position..<candidateEnd].compactMap { Self.letterName(draft.shape(at: $0)) }
                 .joined().lowercased()
             guard candidateEnd - position >= 3 || Self.dottedPairs.contains(value) else { return nil }
         }
@@ -74,10 +82,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             live[end] == live[end - 1] + 1,
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
-            Self.letterNames[draft.shape(at: live[end]).key] != nil,
+            Self.letterName(draft.shape(at: live[end])) != nil,
+            // A letter a closing a clause cannot be an article, so it ends the initialism.
             (draft.shape(at: live[end]).key != "a" || end == initialismStart
+                || end + 1 == live.count || draft.shape(at: live[end]).endsClause
                 || end + 1 < live.count
-                    && Self.letterNames[draft.shape(at: live[end + 1]).key] != nil
+                    && Self.letterName(draft.shape(at: live[end + 1])) != nil
                     && draft.shape(at: live[end + 1]).key != "a")
         {
             end += 1
@@ -101,14 +111,24 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
 
     private func candidateRunEnd(from position: Int, in live: [Int], draft: Draft) -> Int {
         var end = position
-        while end < live.count, !draft.shape(at: live[end]).endsClause,
+        while end < live.count, end == position || !draft.shape(at: live[end - 1]).endsClause,
             end == position || live[end] == live[end - 1] + 1,
             !draft.words[live[end]].isLayoutMark,
-            Self.letterNames[draft.shape(at: live[end]).key] != nil
+            Self.letterName(draft.shape(at: live[end])) != nil
         {
             end += 1
         }
         return end
+    }
+
+    /// The letter a word names, where a cut-off is an unfinished word and names no letter.
+    private static func letterName(_ shape: WordShape) -> String? {
+        shape.isCutOff ? nil : letterNames[shape.key]
+    }
+
+    /// Whether a run is evidence of spelling: three or more letter names, or a pair of bare single letters.
+    private static func isSpelled(_ run: ArraySlice<Int>, in draft: Draft) -> Bool {
+        run.count >= 3 || run.allSatisfy { draft.shape(at: $0).key.count == 1 }
     }
 
     private static func casedOutput(_ output: String, first: String) -> String {

@@ -37,13 +37,11 @@ public struct MeaningPreservationGuard: Sendable {
         grammar: GrammarPolicy = .repair,
         grants: [PassID: RemovalGrant] = CleaningPipeline.standard.grants
     ) -> GuardVerdict {
-        if case .rejected(let reason, let kind) = verdict(original: draft.text, rewritten: rewritten) {
-            guard kind == .preamble,
-                Self.rewriteStartsWithOfferedReading(draft: draft, rewritten: rewritten, offering: doubtful)
-            else { return .rejected(reason: reason, kind: kind) }
-        }
-        if case .rejected(let reason, let kind) = Self.spokenAmpersandVerdict(
-            original: draft.text, rewritten: rewritten)
+        let rewritten = Self.respellingClockTimes(rewritten, as: draft.text)
+        let excusingPreamble = Self.rewriteStartsWithOfferedReading(
+            draft: draft, rewritten: rewritten, offering: doubtful)
+        if case .rejected(let reason, let kind) = Self.textVerdict(
+            original: draft.text, rewritten: rewritten, excusingPreamble: excusingPreamble)
         {
             return .rejected(reason: reason, kind: kind)
         }
@@ -51,9 +49,6 @@ public struct MeaningPreservationGuard: Sendable {
             draft: draft, rewritten: rewritten)
         {
             return .rejected(reason: reason, kind: kind)
-        }
-        if let changed = Self.changedQuantity(original: draft.text, rewritten: rewritten) {
-            return .rejected(reason: "the rewrite wrote \(changed) as another amount", kind: .changedNumber)
         }
         let restored = Self.restored(RemovalAudit.unauthorised(in: draft, grants: grants))
         if case .rejected(let reason, let kind) = Self.removalVerdict(
@@ -139,7 +134,7 @@ public struct MeaningPreservationGuard: Sendable {
     static func restored(_ removals: [UnauthorisedRemoval]) -> [(pass: PassID, token: GrammarToken)] {
         removals.flatMap { removal in
             grammarTokens(removal.text)
-                .filter { $0.isPlain && (isContent($0) || negatingWords.contains($0.matching)) }
+                .filter { $0.isPlain && (isContent($0) || isNegation($0.matching)) }
                 .map { (removal.pass, $0) }
         }
     }
@@ -152,10 +147,10 @@ public struct MeaningPreservationGuard: Sendable {
         var negations = negators(in: grammarTokens(kept))
         let romanisedHindiContext = hasRomanisedHindiContext(grammarTokens(kept) + written)
         for (pass, token) in restored {
-            let isNegation = negatingWords.contains(token.matching)
-            if isNegation { negations += 1 }
+            let negates = Self.isNegation(token.matching)
+            if negates { negations += 1 }
             let present =
-                isNegation
+                negates
                 ? negators(in: written) >= negations
                 : written.contains {
                     survives(token.matching, as: $0, allowingRomanisedHindiSpellings: romanisedHindiContext)
@@ -186,7 +181,7 @@ public struct MeaningPreservationGuard: Sendable {
         var taken: [Reading] = []
         guard !doubtful.isEmpty else { return (.accepted, excused, taken) }
         for span in doubtful {
-            for place in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)) {
+            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated() {
                 let touched = alignment.changes.filter { $0.kept.overlaps(place) }
                 // A run the rewrite left where it stood is the run as it was heard, and needs no reading.
                 guard let first = touched.first, let last = touched.last else { continue }
@@ -198,10 +193,26 @@ public struct MeaningPreservationGuard: Sendable {
                 // The rewrite may inflect the run it was given — "payment sheets" for "payment sheet" — and change it no further.
                 func writes(_ reading: String) -> Bool {
                     let wanted = DoubtfulSpan.closedUp(reading)
-                    return inflections(of: wanted).union([wanted]).map { before + $0 + after }
+                    return WordForms.inflections(of: wanted).union([wanted]).map { before + $0 + after }
                         .contains(alignment.standing(in: start..<end))
                 }
                 let offered = span.candidates.filter { writes($0.spelling) }
+                // A later mention of the same words was offered nothing, so it stands as it was heard.
+                guard span.isDoubted(at: ordinal) else {
+                    guard
+                        Self.reading(
+                            among: offered, heard: span.heard,
+                            standing: alignment.standingAsWritten(in: start..<end)) == nil
+                    else {
+                        return (
+                            .rejected(
+                                reason: "the rewrite read '\(span.heard)' as a reading offered for another mention",
+                                kind: .unofferedReading),
+                            excused, taken
+                        )
+                    }
+                    continue
+                }
                 guard writes(span.heard) || !offered.isEmpty else {
                     return (
                         .rejected(
@@ -248,7 +259,7 @@ public struct MeaningPreservationGuard: Sendable {
         guard !wanted.isEmpty else { return false }
         let (written, begins, ends) = closedUpEdges(rewritten)
         // The rewrite may inflect the run it was given — "payment sheets" for "payment sheet" — and change it no further.
-        let forms = inflections(of: wanted).union([wanted])
+        let forms = WordForms.inflections(of: wanted).union([wanted])
         return begins.contains { start in
             forms.contains { form in
                 let end = start + form.count
@@ -316,8 +327,8 @@ public struct MeaningPreservationGuard: Sendable {
         return (paragraphs, lines)
     }
 
-    /// Accepts a rewrite unless it is empty, chatty, far longer, mostly dropped, or invents a number.
-    public func verdict(original: String, rewritten: String) -> GuardVerdict {
+    /// Accepts a rewrite unless it is empty, chatty (unless excused), far longer, mostly dropped, invents a number, or adds quotation or exclamation marks.
+    static func textVerdict(original: String, rewritten: String, excusingPreamble: Bool) -> GuardVerdict {
         let originalWords = TextTidy.words(original)
         let rewrittenWords = TextTidy.words(rewritten)
 
@@ -330,10 +341,12 @@ public struct MeaningPreservationGuard: Sendable {
             return .rejected(reason: reason, kind: kind)
         }
         // A speaker who opens with "I have" or "sure" gets their words; the entry's punctuation is the model's, not theirs.
-        if let preamble = Self.preambles.first(where: {
-            rewritten.lowercased().hasPrefix($0)
-                && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
-        }) {
+        if !excusingPreamble,
+            let preamble = Self.preambles.first(where: {
+                rewritten.lowercased().hasPrefix($0)
+                    && !original.lowercased().hasPrefix($0.trimmingCharacters(in: .punctuationCharacters))
+            })
+        {
             return .rejected(reason: "the rewrite begins with '\(preamble)'", kind: .preamble)
         }
         if Double(rewrittenWords.count) > Double(originalWords.count) * Self.maximumGrowthFactor + 4 {
@@ -357,6 +370,9 @@ public struct MeaningPreservationGuard: Sendable {
         }
         if Self.addsQuotationPair(original: original, rewritten: rewritten) {
             return .rejected(reason: "the rewrite added quotation marks", kind: .inventedQuotation)
+        }
+        if rewritten.count(where: { $0 == "!" }) > original.count(where: { $0 == "!" }) {
+            return .rejected(reason: "the rewrite added an exclamation mark", kind: .inventedExclamation)
         }
         return .accepted
     }
@@ -520,8 +536,12 @@ public struct MeaningPreservationGuard: Sendable {
         if added > 0 {
             return .rejected(reason: "the rewrite added a negation", kind: .negationAdded)
         }
+        let long = words(in: alignment.rewrittenText) > wordsPerSentenceEnd
+        if long, sentenceEnds(alignment.rewrittenText) == 0 {
+            return .rejected(reason: "the rewrite of a long text ends no sentence", kind: .unpunctuated)
+        }
         let churn = alignedFunctionWordChurn(alignment)
-        if churn > 3 * sentenceCount(alignment.rewrittenText) {
+        if churn > 3 * churnSentences(alignment) {
             return .rejected(reason: "the rewrite changed \(churn) small words", kind: .smallWordChurn)
         }
         // A word put back where a pass took it without the grant to is the speaker's, not the model's.
@@ -539,7 +559,7 @@ public struct MeaningPreservationGuard: Sendable {
                     let keptIrregular = Self.asSpokenIrregularForms[kept.matching]
                     let rewrittenIrregular = Self.asSpokenIrregularForms[rewritten.matching]
                     guard
-                        sameForm(kept.matching, rewritten.matching)
+                        WordForms.sameForm(kept.matching, rewritten.matching)
                             || (keptIrregular != nil && keptIrregular == rewrittenIrregular)
                     else { continue }
                     return .rejected(reason: "the rewrite changed a kept word's form", kind: .lostWord)
@@ -563,23 +583,30 @@ public struct MeaningPreservationGuard: Sendable {
     private static func removableSpeechArtifacts(in alignment: RewriteAlignment) -> Set<Int> {
         let kept = alignment.kept
         var removable = Set(kept.indices.filter { FillersPass.fillerWords.contains(kept[$0].matching) })
+        let keptGaps = grammarTokenGaps(alignment.keptText)
+        let rewrittenGaps = grammarTokenGaps(alignment.rewrittenText)
+        guard keptGaps.count == kept.count + 1, rewrittenGaps.count == alignment.rewritten.count + 1
+        else { return removable }
+        // The draft the passes read, so a name the spoken-punctuation pass judged a mention is judged the same here.
+        let draft = Draft(
+            words: kept.indices.map { Draft.Word(kept[$0].text + keptGaps[$0 + 1]) })
         for mark in Set(SpokenPunctuationPass.marks.map(\.mark)) {
             guard let character = mark.first, String(character) == mark else { continue }
-            let added =
-                alignment.rewrittenText.filter { $0 == character }.count
-                - alignment.keptText.filter { $0 == character }.count
-            guard added > 0 else { continue }
-            var remaining = added
-            let names = Set(SpokenPunctuationPass.marks.filter { $0.mark == mark }.map(\.words))
-                .sorted { $0.count > $1.count }
-            for change in alignment.changes where remaining > 0 {
-                for name in names where remaining > 0 {
+            let names = SpokenPunctuationPass.marks.filter { $0.mark == mark }
+                .sorted { $0.words.count > $1.words.count }
+            for change in alignment.changes {
+                var remaining =
+                    addedMarks(character, in: change, keptGaps: keptGaps, rewrittenGaps: rewrittenGaps)
+                for (name, _, kind) in names where remaining > 0 {
                     guard name.count <= change.kept.count else { continue }
                     for start in change.kept where remaining > 0 {
                         let end = start + name.count
                         guard end <= change.kept.upperBound,
                             zip(name, kept[start..<end]).allSatisfy({ $0 == $1.matching }),
-                            !removable.contains(where: { start..<end ~= $0 })
+                            !removable.contains(where: { start..<end ~= $0 }),
+                            !MentionGuard.isMentioned(
+                                at: start, spanning: name.count, in: Array(kept.indices), of: draft,
+                                reach: MentionGuard.phraseReach, kind: kind)
                         else { continue }
                         removable.formUnion(start..<end)
                         remaining -= 1
@@ -588,6 +615,23 @@ public struct MeaningPreservationGuard: Sendable {
             }
         }
         return removable
+    }
+
+    /// Marks a changed run's rewrite has beyond its draft, counted at its edges and between its words, the text's closing stop only for a name that closed the draft.
+    private static func addedMarks(
+        _ character: Character, in change: RewriteAlignment.Change, keptGaps: [String],
+        rewrittenGaps: [String]
+    ) -> Int {
+        let count: (ArraySlice<String>) -> Int = { $0.joined().filter { $0 == character }.count }
+        var written = count(rewrittenGaps[change.rewritten.lowerBound...change.rewritten.upperBound])
+        // A closing mark at the very end answers a spoken name only when that name ended the draft too.
+        if change.rewritten.upperBound == rewrittenGaps.count - 1,
+            change.kept.upperBound < keptGaps.count - 1, ".!?".contains(character),
+            rewrittenGaps[rewrittenGaps.count - 1].contains(character)
+        {
+            written -= 1
+        }
+        return written - count(keptGaps[change.kept.lowerBound...change.kept.upperBound])
     }
 
     /// Refuses a carried word that a changed run lost, judging it only against the words standing in that run's place.
@@ -651,7 +695,8 @@ public struct MeaningPreservationGuard: Sendable {
             let offeredReading = doubtful.enumerated().first { entry in
                 let (spanIndex, span) = entry
                 guard !usedReadings.contains(spanIndex) else { return false }
-                return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).contains { source in
+                return alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated()
+                    .filter { span.isDoubted(at: $0.offset) }.map(\.element).contains { source in
                     alignment.changes.contains { change in
                         change.kept.overlaps(source) && change.rewritten.contains(index)
                             && span.candidates.contains { survivesCandidate(token, candidate: $0.spelling) }
@@ -710,12 +755,12 @@ public struct MeaningPreservationGuard: Sendable {
         let rewritten = alignment.rewritten
         // Non-Latin negations are commonly romanised by the cleanup model; their existing count check remains authoritative.
         let keptNegations = kept.indices.filter {
-            kept[$0].isPlain && negatingWords.contains(kept[$0].matching)
+            kept[$0].isPlain && isNegation(kept[$0].matching)
         }
         guard !keptNegations.isEmpty else { return .accepted }
         let written = rewritten + echo
         let writtenNegations = written.indices.filter {
-            written[$0].isPlain && negatingWords.contains(written[$0].matching)
+            written[$0].isPlain && isNegation(written[$0].matching)
         }
         guard keptNegations.count == writtenNegations.count else { return .accepted }
 
@@ -762,7 +807,7 @@ public struct MeaningPreservationGuard: Sendable {
                 clause += 1
                 clauseStart = index
             }
-            if negatingWords.contains(token.matching) {
+            if isNegation(token.matching) {
                 let clauseEnd =
                     tokens[(index + 1)...].firstIndex {
                         ["but", "and", "or"].contains($0.matching)
@@ -777,7 +822,7 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Negations and function words do not identify the proposition a negation belongs to.
     private static func isAnchor(_ token: GrammarToken) -> Bool {
-        token.isPlain && !negatingWords.contains(token.matching) && !FunctionWords.holds(token.lookup)
+        token.isPlain && !isNegation(token.matching) && !FunctionWords.holds(token.lookup)
     }
 
     /// Whether an identifier is spelled wholly from said words, every part of it one of them and in the order they were said.
@@ -840,6 +885,35 @@ public struct MeaningPreservationGuard: Sendable {
             startsSentence = endsSentence
         }
         return joiningOneWordSpellings(tokens)
+    }
+
+    /// The text between the words `grammarTokens` reads, one more than there are words, so a mark is found at its place.
+    static func grammarTokenGaps(_ text: String) -> [String] {
+        var gaps = [""]
+        var raw: [GrammarToken] = []
+        let pieces = withoutThousandsSeparators(text)
+            .split(whereSeparator: { $0.isWhitespace || $0 == "-" || $0 == "/" })
+        for piece in pieces {
+            let leading = piece.prefix(while: { !$0.isLetter && !$0.isNumber })
+            let trailing = String(
+                piece.dropFirst(leading.count).reversed()
+                    .prefix(while: { !$0.isLetter && !$0.isNumber }).reversed())
+            guard leading.count < piece.count else {
+                gaps[gaps.count - 1] += String(piece)
+                continue
+            }
+            gaps[gaps.count - 1] += String(leading)
+            raw.append(contentsOf: grammarTokens(String(piece)).prefix(1))
+            gaps.append(trailing)
+        }
+        // A pair read as one word gives up the gap between its halves.
+        var joined = [gaps[0]]
+        var index = 0
+        for token in grammarTokens(text) where index < raw.count {
+            index += raw[index].matching == token.matching ? 1 : 2
+            joined.append(gaps[min(index, gaps.count - 1)])
+        }
+        return joined
     }
 
     /// Two words written apart for one word, keyed by the one word; a listed pair, never a rule about shape.
@@ -1101,12 +1175,29 @@ public struct MeaningPreservationGuard: Sendable {
                 if !matched.isEmpty { return matched }
             }
 
+            if let letters = spokenLetters(spelling: token.matching, excluding: used) { return letters }
+
             return tokens.indices.first { index in
                 !used.contains(index)
-                    && MeaningPreservationGuard.sameForm(
+                    && WordForms.sameForm(
                         tokens[index].matching, token.matching, allowingRegularInflections: false,
                         allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
             }.map { [$0] }
+        }
+
+        /// Finds the adjacent unused letter names spoken one per word that spell the written initialism letter for letter.
+        private func spokenLetters(spelling initialism: String, excluding used: Set<Int>) -> [Int]? {
+            let letters = initialism.map(String.init)
+            guard letters.count > 1, initialism.allSatisfy(\.isLetter), tokens.count >= letters.count else {
+                return nil
+            }
+            for start in 0...(tokens.count - letters.count) {
+                let run = Array(start..<(start + letters.count))
+                if zip(run, letters).allSatisfy({ !used.contains($0) && tokens[$0].matching == $1 }) {
+                    return run
+                }
+            }
+            return nil
         }
 
         func contains(_ word: String) -> Bool { places[word] != nil }
@@ -1133,19 +1224,18 @@ public struct MeaningPreservationGuard: Sendable {
     static func survives(
         _ word: String, as candidate: GrammarToken, allowingRomanisedHindiSpellings: Bool = false
     ) -> Bool {
-        if sameForm(
+        if WordForms.sameForm(
             word, candidate.matching, allowingRegularInflections: false,
             allowingRomanisedHindiSpellings: allowingRomanisedHindiSpellings)
         {
             return true
         }
-        if equivalentClockTime(word, candidate.matching) { return true }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
         if Homophones.share(word, candidate.matching) { return true }
         // A word spelled into an identifier — "invoices" inside "fetchInvoices" — is still there.
-        if symbolNames[word] == nil, spelledInto(word, candidate.text) { return true }
+        if symbolNames[word] == nil, WordForms.spelledInto(word, candidate.text) { return true }
         // An auxiliary the rewrite contracted to its "n't" form is the same word.
         if Self.auxContractionRoots.contains(word), candidate.matching == "\(word)nt" { return true }
         if Self.auxContractionRoots.contains(candidate.matching), word == "\(candidate.matching)nt" {
@@ -1154,18 +1244,17 @@ public struct MeaningPreservationGuard: Sendable {
         return false
     }
 
-    /// Treats a two digit dotted hour and minute as the same clock token as its colon form.
-    private static func equivalentClockTime(_ first: String, _ second: String) -> Bool {
-        func clockParts(_ token: String) -> (hour: String, minute: String)? {
-            let parts = token.split(whereSeparator: { $0 == "." || $0 == ":" })
-            guard parts.count == 2, parts[0].allSatisfy(\.isNumber), parts[1].count == 2,
-                parts[1].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
-                let minute = Int(parts[1]), (0...59).contains(minute)
-            else { return nil }
-            return (String(hour), String(parts[1]))
+    /// Spells each `H:MM` back as the kept `H.MM` that `NumberFormsPass` would itself write as that clock.
+    static func respellingClockTimes(_ rewritten: String, as kept: String) -> String {
+        let clocks = NumberFormsPass.dottedClockTimes(in: kept)
+        guard !clocks.isEmpty else { return rewritten }
+        var result = rewritten
+        for dotted in clocks {
+            let colon = dotted.replacingOccurrences(of: ".", with: ":")
+            result = result.replacingOccurrences(
+                of: "(?<![\\d.:])\(colon)(?![\\d:]|\\.\\d)", with: dotted, options: .regularExpression)
         }
-        guard let left = clockParts(first), let right = clockParts(second) else { return false }
-        return left.hour == right.hour && left.minute == right.minute
+        return result
     }
 
     /// Aux verbs the rewrite can still contract to the same word; a dropped or substituted one is a rewrite.
@@ -1177,151 +1266,23 @@ public struct MeaningPreservationGuard: Sendable {
         "can", "could", "may", "might", "must",
     ]
 
-    /// Whether two words have the same spelling, a reviewed Hindi respelling, or a listed verb form.
-    static func sameForm(
-        _ word: String, _ other: String, allowingRegularInflections: Bool = true,
-        allowingRomanisedHindiSpellings: Bool = false
-    ) -> Bool {
-        if word == other || sameIrregularVerbForm(word, other)
-            || (allowingRomanisedHindiSpellings && sameRomanisedHindiSpelling(word, other))
-        {
-            return true
-        }
-        guard allowingRegularInflections else { return false }
-        return inflections(of: word).contains(other) || inflections(of: other).contains(word)
-    }
-
-    /// Whether two spellings are a measured spelling variant of one romanised Hindi word.
-    private static func sameRomanisedHindiSpelling(_ word: String, _ other: String) -> Bool {
-        guard let first = romanisedHindiSpellingKeys[word], let second = romanisedHindiSpellingKeys[other]
-        else { return false }
-        return first == second
-    }
-
     /// Detects romanised Hindi from a negation or a known verb form outside the ambiguous spelling pairs.
     private static func hasRomanisedHindiContext(_ tokens: [GrammarToken]) -> Bool {
         tokens.contains { token in
             let word = token.matching
-            return negatingWords.contains(word) || hindiVerbStems.contains(word)
-                || hindiVerbStems.contains { hindiForms(of: $0).contains(word) }
+            return isNegation(word) || WordForms.hindiVerbStems.contains(word)
+                || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
         }
-    }
-
-    /// Common romanised Hindi spellings grouped by the word they represent.
-    private static let romanisedHindiSpellingKeys: [String: String] = [
-        "hai": "hai", "he": "hai",
-        "nahi": "nahi", "nahin": "nahi",
-        "kar": "kar", "kr": "kar",
-        "mein": "mein", "me": "mein",
-        "yeh": "ye", "ye": "ye",
-    ]
-
-    /// Whether a bare cut-off is completed by the next word, using the same spelling rules as a whole word.
-    static func sameForm(_ fragment: String, _ word: String, whenCutOff: Bool) -> Bool {
-        sameForm(fragment, word) || (whenCutOff && spelledInto(fragment, word, atCutOff: true))
-    }
-
-    /// Whether both words belong to the same listed English verb paradigm.
-    private static func sameIrregularVerbForm(_ word: String, _ other: String) -> Bool {
-        guard let group = irregularVerbFormGroups[word] else { return false }
-        return irregularVerbFormGroups[other] == group
-    }
-
-    /// Reviewed English verb paradigms whose past and participle forms do not follow the regular endings.
-    private static let irregularVerbFormGroups: [String: String] = Dictionary(
-        uniqueKeysWithValues: [
-            ("begin", ["began", "begun"]),
-            ("break", ["broke", "broken"]),
-            ("drive", ["drove", "driven"]),
-            ("eat", ["ate", "eaten"]),
-            ("go", ["went", "gone"]),
-            ("speak", ["spoke", "spoken"]),
-            ("take", ["took", "taken"]),
-            ("write", ["wrote", "written"]),
-        ].flatMap { root, forms in
-            ([root] + forms).map { ($0, root) }
-        })
-
-    /// Whether two romanised Hindi words are one word in two forms: by `sameForm`, a verb and its stem ("aata" and "aa"), or two cases of one pronoun ("yah" and "is").
-    static func sameRomanisedForm(_ word: String, _ other: String) -> Bool {
-        if sameForm(word, other, allowingRomanisedHindiSpellings: true) { return true }
-        let (first, second) = (Romaniser.soundKey(word), Romaniser.soundKey(other))
-        if hindiIrregularVerbForms[first] == second || hindiIrregularVerbForms[second] == first {
-            return true
-        }
-        if hindiVerbStems.contains(first), hindiForms(of: first).contains(second) { return true }
-        if hindiVerbStems.contains(second), hindiForms(of: second).contains(first) { return true }
-        guard let pronoun = hindiPronouns[first] else { return false }
-        return hindiPronouns[second] == pronoun
-    }
-
-    /// Verb stems whose listed endings have inflected forms in common romanisation.
-    static let hindiVerbStems: Set<String> = Set(
-        [
-            "aa", "a", "ja", "kar", "kh", "de", "le", "ho", "bol", "chal", "mil",
-            "dekh", "sun", "likh", "padh", "bhej", "bata", "samajh", "rakh", "uth", "baith",
-            "so", "pi", "ban", "mang", "khel", "khil", "la", "pa", "nikal", "dikh",
-        ].map(Romaniser.soundKey))
-
-    /// Common verb forms that do not follow the regular stem endings.
-    static let hindiIrregularVerbForms: [String: String] = ["kha": "khila"]
-
-    /// The forms Hindi inflects a known verb stem into, as sound keys.
-    static func hindiForms(of stem: String) -> Set<String> {
-        guard !stem.isEmpty else { return [] }
-        let endings = [
-            "ta", "ti", "te", "na", "ne", "ni", "ya", "yi", "ye", "a", "i", "e", "o", "on", "kar",
-            "unga", "ungi", "enge", "oge", "ega", "egi", "iye",
-        ]
-        return Set(endings.map { Romaniser.soundKey(stem + $0) })
-    }
-
-    /// The cases of the Hindi demonstratives by sound key, to the one they are: "yah" is "is" before a postposition, "vah" is "us".
-    static let hindiPronouns: [String: String] = Dictionary(
-        uniqueKeysWithValues: [
-            ("yah", ["yah", "yeh", "ye", "is", "in", "ise", "inhe"]),
-            ("vah", ["vah", "woh", "wo", "us", "un", "use", "unhe"]),
-        ].flatMap { pronoun, cases in Set(cases.map(Romaniser.soundKey)).map { ($0, pronoun) } })
-
-    /// The forms speech inflects a word into: plural, third person, past and progressive.
-    static func inflections(of word: String) -> Set<String> {
-        guard word.count >= 3 else { return [] }
-        var forms: Set<String> = [word + "s", word + "es", word + "ed", word + "d", word + "ing"]
-        let trunk = String(word.dropLast())
-        if trunk.count >= 3, word.hasSuffix("y") { forms.formUnion([trunk + "ies", trunk + "ied"]) }
-        if trunk.count >= 3, word.hasSuffix("e") { forms.formUnion([trunk + "ed", trunk + "ing"]) }
-        // A final consonant doubles before the ending it carries: "stop" becomes "stopped", "run" "running".
-        if let last = word.last, last.isLetter, !"aeiou".contains(last) {
-            forms.formUnion([word + String(last) + "ed", word + String(last) + "ing"])
-        }
-        return forms
-    }
-
-    /// Whether `word` is spelled into an identifier as one of its words — "invoices" in "fetchInvoices", never "ravi" in "gravity".
-    static func spelledInto(_ word: String, _ identifier: String) -> Bool {
-        guard word.count >= 3 else { return false }
-        let written = Array(identifier)
-        let lowered = Array(identifier.lowercased())
-        let wanted = Array(word)
-        guard lowered.count == written.count, lowered.count > wanted.count else { return false }
-        return (0...(lowered.count - wanted.count)).contains { start in
-            let end = start + wanted.count
-            guard Array(lowered[start..<end]) == wanted else { return false }
-            let opens = start == 0 || written[start].isUppercase || !written[start - 1].isLetter
-            let closes = end == written.count || written[end].isUppercase || !written[end].isLetter
-            return opens && closes
-        }
-    }
-
-    /// Whether a fragment of at least two letters is the start of the next word at a spoken cut-off.
-    private static func spelledInto(_ fragment: String, _ word: String, atCutOff: Bool) -> Bool {
-        guard atCutOff, fragment.count >= 2, fragment.count < word.count else { return false }
-        return word.lowercased().hasPrefix(fragment.lowercased())
     }
 
     /// How many words in `tokens` turn a sentence's meaning around.
     static func negators(in tokens: [GrammarToken]) -> Int {
-        tokens.filter { negatingWords.contains($0.matching) }.count
+        tokens.filter { isNegation($0.matching) }.count
+    }
+
+    /// Whether a word reverses a sentence, read without its apostrophes so "doesn't" and "doesnt" are one negation.
+    static func isNegation(_ word: String) -> Bool {
+        negatingWords.contains(word.replacingOccurrences(of: "'", with: ""))
     }
 
     /// The words that reverse a sentence, apostrophes aside; dropping or adding one is the worst edit the model can make.
@@ -1355,13 +1316,27 @@ public struct MeaningPreservationGuard: Sendable {
         return Set(before.keys).union(after.keys).reduce(0) { $0 + abs((before[$1] ?? 0) - (after[$1] ?? 0)) }
     }
 
+    /// Words a sentence of dictation runs to before a text without any sentence end counts as unpunctuated.
+    static let wordsPerSentenceEnd = 40
+
+    /// Sentences the churn allowance is for: those the rewrite closes, or those the input's length implies, whichever is more.
+    static func churnSentences(_ alignment: RewriteAlignment) -> Int {
+        let byLength = (words(in: alignment.keptText) + wordsPerSentenceEnd - 1) / wordsPerSentenceEnd
+        return max(sentenceCount(alignment.rewrittenText), byLength)
+    }
+
+    /// Whitespace-separated words in the text.
+    static func words(in text: String) -> Int { text.split(whereSeparator: \.isWhitespace).count }
+
     /// Sentences in the rewrite, counted by closing marks followed by space or end, never below one.
-    static func sentenceCount(_ text: String) -> Int {
+    static func sentenceCount(_ text: String) -> Int { max(1, sentenceEnds(text)) }
+
+    /// Closing marks followed by space or end, which may be none.
+    static func sentenceEnds(_ text: String) -> Int {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-        let count = words.indices.count { index in
+        return words.indices.count { index in
             FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
         }
-        return max(1, count)
     }
 
     // MARK: Checks
@@ -1494,41 +1469,11 @@ public struct MeaningPreservationGuard: Sendable {
 
     /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.
     static let numberWords: [String: String] = Dictionary(
-        uniqueKeysWithValues: Array(englishNumberWords) + Array(hindiNumberWords))
+        uniqueKeysWithValues: Array(englishNumberWords) + NumberWords.hindi.map { ($0.key, String($0.value)) }
+    )
 
-    /// Hindi number words in both scripts, without which every Hindi utterance with a number fails the guard.
-    private static let hindiNumberWords: [String: String] = [
-        "एक": "1", "ek": "1",
-        "दो": "2", "do": "2",
-        "तीन": "3", "teen": "3", "tin": "3",
-        "चार": "4", "char": "4", "chaar": "4",
-        "पांच": "5", "पाँच": "5", "paanch": "5", "panch": "5",
-        "छह": "6", "छे": "6", "chhe": "6", "chah": "6",
-        "सात": "7", "saat": "7", "sat": "7",
-        "आठ": "8", "aath": "8", "ath": "8",
-        "नौ": "9", "nau": "9",
-        "दस": "10", "das": "10",
-        "ग्यारह": "11", "gyarah": "11",
-        "बारह": "12", "barah": "12",
-        "पंद्रह": "15", "pandrah": "15",
-        "बीस": "20", "bees": "20", "bis": "20",
-        "तीस": "30", "tees": "30",
-        "चालीस": "40", "chalis": "40",
-        "पचास": "50", "pachas": "50",
-        "सौ": "100", "sau": "100",
-        "हज़ार": "1000", "हजार": "1000", "hazaar": "1000", "hazar": "1000",
-    ]
-
-    /// The English number words people dictate in practice: times, counts and short quantities.
-    private static let englishNumberWords: [String: String] = [
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
-        "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
-        "eleven": "11", "twelve": "12", "thirteen": "13", "fourteen": "14",
-        "fifteen": "15", "sixteen": "16", "seventeen": "17", "eighteen": "18",
-        "nineteen": "19", "twenty": "20", "thirty": "30", "forty": "40", "fifty": "50",
-        "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
-        "hundred": "100", "thousand": "1000",
-    ]
+    /// The English number words as digits, read from `NumberWords`.
+    private static let englishNumberWords: [String: String] = NumberWords.english.mapValues(String.init)
 
     /// The positions of every spoken number run the rewrite wrote as the one numeral it comes to.
     static func composedNumbers(_ tokens: [GrammarToken], in pool: Set<String>) -> Set<Int> {

@@ -69,12 +69,13 @@ struct Bakeoff: AsyncParsableCommand {
 
         let contextNote = ignoreContext ? ", context withheld" : ""
         print(
-            "Bake-off — \(EvaluationCorpus.all.count) cases, prompt v\(PromptBuilder.version)"
+            "Bake-off — \(EvaluationCorpus.all.count) cases, prompt \(PromptBuilder.version)"
                 + "\(contextNote)\n")
 
         var measured: [Measurement] = []
         if models == nil {
             measured.append(await measureBaseline(kind: .rules, description: .rules))
+            await compareShapes()
             measured.append(await measureBaseline(kind: .foundationModels, description: .appleOnDevice))
             measured.append(await measureShipping())
         }
@@ -183,6 +184,23 @@ struct Bakeoff: AsyncParsableCommand {
             return .produced(try await router.transform(request).text)
         }
         return Measurement(description: description, report: report)
+    }
+
+    /// Scores the rules floor on bare and recogniser-shaped input side by side, naming what only the shape breaks.
+    private func compareShapes() async {
+        let rules = RuleBasedTransformer()
+        var reports: [InputShape: EvaluationReport] = [:]
+        for shape in InputShape.allCases {
+            reports[shape] = await EvaluationRunner(shape: shape).run(label: shape.rawValue) { testCase in
+                .produced(try await rules.transform(request(for: testCase)).text)
+            }
+        }
+        guard let bare = reports[.bare], let shaped = reports[.recogniser] else { return }
+        print("  input shape: bare \(percent(bare.passRate)), recogniser \(percent(shaped.passRate))")
+        let passedShaped = Set(shaped.scores.filter(\.passed).map(\.caseID))
+        for score in bare.scores where score.passed && !passedShaped.contains(score.caseID) {
+            print("  fails only shaped: \(score.caseID)")
+        }
     }
 
     /// Measures the whole router as the app configures it, fallback included.
@@ -478,8 +496,9 @@ struct StoredReport: Codable, Sendable {
             CaseResult(
                 caseID: $0.caseID, category: corpus[$0.caseID]?.category.rawValue ?? "unknown",
                 destination: corpus[$0.caseID]?.destination.rawValue,
-                similarity: $0.similarity, lost: $0.lost, invented: $0.invented,
+                similarity: $0.similarity,
                 markAccuracy: $0.markAccuracy, caseAccuracy: $0.caseAccuracy,
+                lost: $0.lost, invented: $0.invented,
                 brokeShape: $0.brokeShape, passed: $0.passed, declined: $0.declined)
         }
     }

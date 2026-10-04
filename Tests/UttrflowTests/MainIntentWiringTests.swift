@@ -1,5 +1,6 @@
 // Tests that the main window's buttons reach the stores.
 
+import AppKit
 import Foundation
 import Synchronization
 import UttrflowAI
@@ -8,6 +9,7 @@ import UttrflowClipboard
 import UttrflowCore
 import UttrflowDictionary
 import UttrflowHistory
+import UttrflowInput
 import UttrflowUX
 import Testing
 
@@ -44,6 +46,28 @@ private func refusingWrites<T>(under root: URL, _ body: () async throws -> T) as
 struct MainIntentWiringTests {
 
     // MARK: The dictionary
+
+    @Test("launch respells legacy dictionary entries and reports the change")
+    func launchRespellsLegacyDictionaryEntries() async throws {
+        let sandbox = Sandbox()
+        let devanagari = "\u{0906}\u{0930}\u{0935}"
+        let held = DictionaryEntry(
+            word: devanagari, origin: .added, firstSeen: Date(timeIntervalSince1970: 0))
+        try PrivateFile.write(
+            JSONEncoder().encode([held]), to: PersonalDictionaryStore.defaultFile(in: sandbox.root))
+        let app = AppDelegate(container: sandbox.root)
+
+        app.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        await app.dictionaryMigrationWork?.value
+
+        let stored = await PersonalDictionaryStore(
+            file: PersonalDictionaryStore.defaultFile(in: sandbox.root)
+        ).allEntries()
+        #expect(stored.first?.id == held.id)
+        #expect(stored.first?.word == Romaniser.romanised(devanagari))
+        #expect(app.actionNotice?.message.contains("\(devanagari)") == true)
+        #expect(app.actionNotice?.message.contains(Romaniser.romanised(devanagari)) == true)
+    }
 
     @Test("saving a word puts it in the dictionary")
     func savesAWord() async throws {
@@ -289,10 +313,10 @@ struct MainIntentWiringTests {
         let clipboard = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = Retention(days: 30, now: .now)
         let window = ClipRetention(days: 30, now: .now)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let undone = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -357,10 +381,10 @@ struct MainIntentWiringTests {
 
         let entry = DictionaryEntry(word: "SQL", origin: .added, firstSeen: .now)
         try await dictionary.add(entry)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: entry.id,
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -505,10 +529,10 @@ struct MainIntentWiringTests {
         let history = DictationHistoryStore(
             file: DictationHistoryStore.defaultFile(in: sandbox.root))
         let retention = Retention(days: 30, now: .now)
-        let correction = try #require(
+        let correction =
             RecordedCorrection(
                 heard: "s q l", wrote: "SQL", wordRange: 1..<4, entryID: UUID(),
-                reason: "heardAsStrayLetters", heardConfidence: 0.4))
+                reason: .heardAsStrayLetters, heardConfidence: 0.4)
         let record = DictationRecord(
             text: "print SQL", when: .now,
             changes: RecordedChanges(corrections: [correction], snippets: []))
@@ -659,6 +683,48 @@ struct MainIntentWiringTests {
         app.carryOut(.show(.snippets))
 
         #expect(app.actionNotice == nil)
+    }
+
+    @Test("a refused clipboard write reports failure instead of success")
+    func refusedCopyShowsFailure() async throws {
+        let sandbox = Sandbox()
+        let pasteboard = RefusingPasteboard()
+        let app = AppDelegate(container: sandbox.root, pasteboard: pasteboard)
+
+        app.carryOut(.copy("Copy this back to me"))
+
+        let notice = try #require(app.actionNotice)
+        #expect(notice.message == MainNotice.clipboardCopyFailed.message)
+        #expect(notice.message != "Copied — click where you want it, then press ⌘V")
+        #expect(pasteboard.writeCount == 0)
+    }
+}
+
+private struct RefusingPasteboard: UttrflowInput.Pasteboard {
+    private final class WriteCount: Sendable {
+        private let count = Mutex(0)
+        var value: Int { count.withLock { $0 } }
+        func record() { count.withLock { $0 += 1 } }
+    }
+
+    private let count = WriteCount()
+    var writeCount: Int { count.value }
+    func text() -> String? { nil }
+    func setText(_ text: String) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setText(_ text: String, richText: String?) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setConcealedText(_ text: String) -> PasteboardWriteResult {
+        count.record()
+        return .refused
+    }
+    func setImage(_ data: Data) -> PasteboardWriteResult {
+        count.record()
+        return .refused
     }
 }
 

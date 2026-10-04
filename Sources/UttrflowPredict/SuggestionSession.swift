@@ -1,4 +1,5 @@
-public import struct Foundation.Date
+public import Foundation
+import UttrflowCore
 
 /// What the store must answer before a turn can be finished.
 public struct SuggestionQuery: Sendable, Equatable {
@@ -131,7 +132,7 @@ public struct SuggestionSession: Sendable, Equatable {
     /// The line as of the last read, which is what an accepted suggestion continues.
     public private(set) var typed = ""
 
-    /// Lines taken and then undone in this field, in lower case, never offered again until the line ends or the field changes.
+    /// Keys for lines taken and then undone in this field, never offered again until the line ends or the field changes.
     public private(set) var undoneHere: Set<String> = []
 
     /// Whether ⎋ has left only the dot in this field.
@@ -230,7 +231,7 @@ public struct SuggestionSession: Sendable, Equatable {
             return settled(because: .lineTooLong, rejected: rejected)
         }
         // A line in another script is one a suggestion may neither continue in that script nor glue Latin onto.
-        guard LatinScript.writes(context.typed) else {
+        guard LatinScript.writesOnlyLatin(context.typed) else {
             return settled(because: .nonLatinLine, rejected: rejected)
         }
 
@@ -258,8 +259,8 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         // A candidate the user has already finished typing adds nothing, and one in another script is never written.
         let offerable = candidates.filter {
-            $0.text != pending.typed && LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text)
-                && isOfferable($0.text)
+            $0.text != pending.typed && LatinScript.writesOnlyLatin($0.text)
+                && SuggestionTextSafety.allows($0.text) && isOfferable($0.text)
         }
         let decided = PredictionEngine.ranked(from: offerable, in: pending, now: now)
         // A turn with nothing on offer has nothing to be wrong about, so the gates are never troubled.
@@ -286,7 +287,8 @@ public struct SuggestionSession: Sendable, Equatable {
         }
         let decided = PredictionEngine.decision(
             from: verified.filter {
-                LatinScript.writes($0.text) && SuggestionTextSafety.allows($0.text) && isOfferable($0.text)
+                LatinScript.writesOnlyLatin($0.text) && SuggestionTextSafety.allows($0.text)
+                    && isOfferable($0.text)
             }, in: pending,
             now: now)
         return settle(decided.suggestion, silence: decided.silence)
@@ -372,25 +374,28 @@ public struct SuggestionSession: Sendable, Equatable {
 
     /// Whether a line may be offered here, which one the person took and undid in this field may not.
     private func isOfferable(_ line: String) -> Bool {
-        !undoneHere.contains(line.lowercased())
+        !undoneHere.contains(TextMatching.caseFoldedKey(line))
     }
 
     /// The model's lines that can be drawn over what is typed: each extending it in the Latin alphabet, none repeated in any case, in the model's order.
     private static func drawable(_ lines: [String], past typed: String) -> [String] {
         var seen: Set<String> = []
-        let lowered = typed.lowercased()
+        let matchingKey = TextMatching.caseFoldedKey(typed)
         return lines.filter {
-            let lower = $0.lowercased()
-            return lower != lowered && lower.hasScalarPrefix(lowered) && LatinScript.writes($0)
+            let key = TextMatching.caseFoldedKey($0)
+            return key != matchingKey && key.hasPrefix(matchingKey)
+                && LatinScript.writesOnlyLatin($0)
                 && SuggestionTextSafety.allows($0)
-                && seen.insert(lower).inserted
+                && seen.insert(key).inserted
         }
     }
 
     /// The line with its opening characters spelled as the user typed them, so a ghost only adds and never re-cases what is on the line.
     private static func keepingTypedCase(_ line: String, typed: String) -> String {
         guard line.count > typed.count,
-            zip(line, typed).allSatisfy({ String($0).lowercased() == String($1).lowercased() })
+            zip(line, typed).allSatisfy({
+                TextMatching.caseFoldedKey(String($0)) == TextMatching.caseFoldedKey(String($1))
+            })
         else { return line }
         return typed + line.dropFirst(typed.count)
     }
@@ -455,19 +460,21 @@ public struct SuggestionSession: Sendable, Equatable {
             rejectionsHere = 0
             isMinimised = false
         }
-        let lowered = typing.lowercased()
-        // Case and a scalar typed ahead of its own combining mark are not typing past, since the store matched regardless.
-        guard let offered = suggestion.accepting, !offered.lowercased().hasScalarPrefix(lowered)
+        let folded = typing.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let offeredKey = suggestion.accepting.map(TextMatching.caseFoldedKey)
+        let earlier = TextMatching.caseFoldedKey(typed)
+        guard let offered = suggestion.accepting, let offeredKey,
+            !offeredKey.hasScalarPrefix(folded)
         else { return nil }
         // Finishing the suggestion by hand and typing on is taking it, not typing past it.
-        guard !lowered.hasScalarPrefix(offered.lowercased()) else { return nil }
+        guard !folded.hasScalarPrefix(offeredKey) else { return nil }
         // Whitespace alone typed past a suggestion is a pause or a slip of the space bar, not a refusal.
-        let earlier = typed.lowercased()
         guard
-            !(lowered.hasScalarPrefix(earlier) && lowered.dropFirst(earlier.count).allSatisfy(\.isWhitespace))
+            !(folded.hasScalarPrefix(earlier)
+                && folded.dropFirst(earlier.count).allSatisfy(\.isWhitespace))
         else { return nil }
         // Only an offer that completed the line can be typed past; leaving a fuzzy or corrected one, or shortening the line, says nothing.
-        guard offered.lowercased().hasScalarPrefix(typed.lowercased()) else { return nil }
+        guard offeredKey.hasScalarPrefix(earlier) else { return nil }
         rejectionsHere += 1
         // A guess the model invented counts toward quieting the field, but the store is never told to blame it.
         return shownIsGenerated ? nil : offered
@@ -476,16 +483,16 @@ public struct SuggestionSession: Sendable, Equatable {
     /// Ends the watch on the last line taken once the line moves, marking it undone when the line went back inside it or to what it was taken over.
     private mutating func watchTaken(typing: String) {
         guard let taken else { return }
-        let line = typing.lowercased()
-        let whole = taken.line.lowercased()
+        let line = TextMatching.caseFoldedKey(typing)
+        let whole = TextMatching.caseFoldedKey(taken.line)
         // The read that shows the taken line in place is still inside the watch.
         guard line != whole else { return }
         self.taken = nil
         // A field emptied after a take was sent by a button or shortcut the tap never sees, which is not an undo.
         guard !line.isEmpty else { return }
         // A fuzzy line rewrote what was typed, so its undo lands on the typo rather than inside the line.
-        if whole.hasScalarPrefix(line) || taken.over.lowercased().hasScalarPrefix(line) {
-            undoneHere.insert(whole)
+        if whole.hasScalarPrefix(line) || TextMatching.caseFoldedKey(taken.over).hasScalarPrefix(line) {
+            undoneHere.insert(TextMatching.caseFoldedKey(taken.line))
         }
     }
 

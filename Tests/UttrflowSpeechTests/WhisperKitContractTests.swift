@@ -1,4 +1,5 @@
 // Asserts the upstream facts the prompt is sized from, since prose cannot fail a build.
+import CoreML
 import Testing
 import WhisperKit
 
@@ -82,5 +83,19 @@ struct WhisperKitContractTests {
             promptTokens: nil, specialTokenBegin: 50_257, isMultilingual: true)
 
         #expect(prefill.count == 4)
+    }
+
+    /// The compute units the app names, and the package defaults they copy, so drift on either side fails.
+    @Test("the speech model runs on the compute units Docs/speech-engines.md records")
+    func computeUnitsArePinned() {
+        let pinned = WhisperKitBackend.computeOptions
+        let upstream = ModelComputeOptions()
+
+        #expect(pinned.melCompute == .cpuAndGPU)
+        #expect(pinned.audioEncoderCompute == .cpuAndNeuralEngine)
+        #expect(pinned.textDecoderCompute == .cpuAndNeuralEngine)
+        #expect(upstream.melCompute == pinned.melCompute)
+        #expect(upstream.audioEncoderCompute == pinned.audioEncoderCompute)
+        #expect(upstream.textDecoderCompute == pinned.textDecoderCompute)
     }
 }

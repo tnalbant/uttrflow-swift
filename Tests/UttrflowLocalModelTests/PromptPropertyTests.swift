@@ -3,6 +3,7 @@ import Testing
 import UttrflowPredict
 
 @testable import UttrflowLocalModel
+import UttrflowTestSupport
 
 /// Words the screen, the person and the field might hold, none of them a heading of the prompt's own.
 private let words = [
@@ -235,9 +236,6 @@ struct PromptPropertyTests {
         if tail.count < text.count, allowance > 0 {
             #expect(PromptBuilder.estimatedTokens(String(text.suffix(tail.count + 1))) > allowance)
         }
-        let head = PromptBuilder.head(text, within: allowance)
-        #expect(text.hasPrefix(head))
-        #expect(head.count == min(text.count, max(allowance, 0)))
         let lines = (0..<Int.random(in: 0...10, using: &random)).map { _ in
             (0..<Int.random(in: 1...6, using: &random)).map { _ in random.pick(words) }.joined(separator: " ")
         }

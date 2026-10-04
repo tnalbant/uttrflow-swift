@@ -14,20 +14,21 @@ final class QuickPanel: NSPanel {
     /// Whether the footer offers ⌘Z to put a deleted clip back, kept current by the controller's draw.
     var offersRestore = false
 
-    /// Set while a row chord is sent through the window, so the send cannot come back here.
-    private var isSendingChord = false
+    /// Applies a row chord before the application menu can claim it.
+    var onRowChord: ((PanelChord) -> Void)?
 
-    /// Sends a row chord to the panel's own key handler before the main menu can swallow it, as Minimise does ⌘M.
+    /// Restores a deleted row after the offer claims ⌘Z.
+    var onUndo: (() -> Void)?
+
+    /// Handles a panel chord before the main menu can swallow it, as Minimise does ⌘M.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let claimed =
-            Self.isRowChord(event)
-            || Self.claimsUndo(event, offersRestore: offersRestore, fieldCanUndo: fieldCanUndo)
-        guard !isSendingChord, claimed else {
-            return super.performKeyEquivalent(with: event)
+        if let chord = Self.rowChord(event) {
+            onRowChord?(chord)
+            return true
         }
-        isSendingChord = true
-        defer { isSendingChord = false }
-        sendEvent(event)
+        guard Self.claimsUndo(event, offersRestore: offersRestore, fieldCanUndo: fieldCanUndo)
+        else { return super.performKeyEquivalent(with: event) }
+        onUndo?()
         return true
     }
 
@@ -41,18 +42,23 @@ final class QuickPanel: NSPanel {
         guard event.type == .keyDown, offersRestore || !fieldCanUndo else { return false }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         return modifiers.subtracting(.capsLock) == .command
-            && event.charactersIgnoringModifiers?.lowercased() == "z"
+            && event.keyCode == PanelChord("z").keyCode
     }
 
     /// Whether `event` is ⌘, with or without ⇧, on a key some row action is bound to.
     static func isRowChord(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return false }
+        rowChord(event) != nil
+    }
+
+    /// The row action bound to this physical key and modifier combination, independent of its produced character.
+    static func rowChord(_ event: NSEvent) -> PanelChord? {
+        guard event.type == .keyDown else { return nil }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers.contains(.command), modifiers.isDisjoint(with: [.option, .control]),
-            let character = event.charactersIgnoringModifiers?.lowercased().first
-        else { return false }
-        let chord = PanelChord(character, shifted: modifiers.contains(.shift))
-        return PanelRowAction.allCases.contains { $0.chord == chord }
+        guard modifiers.contains(.command), modifiers.isDisjoint(with: [.option, .control])
+        else { return nil }
+        return PanelRowAction.allCases.first {
+            $0.chord.keyCode == event.keyCode && $0.chord.isShifted == modifiers.contains(.shift)
+        }?.chord
     }
 }
 
@@ -372,6 +378,16 @@ final class QuickPanelController: NSObject, NSWindowDelegate {
     /// Applied whole, because every line follows from the one rule: never activate.
     private func configurePanel() {
         panel.delegate = self
+        panel.onRowChord = { [weak self] chord in
+            guard let self, self.presentation.sheet?.takesTyping != true,
+                let intent = self.presentation.intent(for: chord)
+            else { return }
+            self.intentRelay(intent)
+        }
+        panel.onUndo = { [weak self] in
+            guard let self, self.presentation.sheet?.takesTyping != true else { return }
+            self.intentRelay(.undoDelete)
+        }
         panel.isFloatingPanel = true
         // False, where the dock leaves it true: the search field must be typeable at once.
         panel.becomesKeyOnlyIfNeeded = false

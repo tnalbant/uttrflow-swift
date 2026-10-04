@@ -90,4 +90,31 @@ struct DestinationFormatterTests {
         let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
         #expect(formatter.layout == .singleLine)
     }
+
+    @Test("owes formatting only where its first-word or stop policy would still change the text")
+    func owesFormattingFollowsPolicy() {
+        let text = "average handling time in minutes"
+        for destination in Destination.allCases {
+            let formatter = DestinationFormatter.standard(for: destination)
+            let expected = formatter.firstWord != .asSpoken && formatter.terminalStop != .never
+            #expect(formatter.owesFormatting(text) == expected, "\(destination)")
+            #expect(!formatter.owesFormatting("Average handling time in minutes"), "\(destination)")
+            #expect(!formatter.owesFormatting("average handling time, in minutes"), "\(destination)")
+        }
+    }
+
+    @Test("a one-line field of no known purpose withholds the stop from one sentence only")
+    func oneLineFieldStop() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        #expect(formatter.terminalStop == .offForShortMessages(sentences: 1))
+        #expect(DestinationFormatter.standard(for: .plain).terminalStop == .always)
+    }
+
+    @Test("a one-line field keeps a stricter destination policy")
+    func oneLineFieldKeepsNever() {
+        let app = AppContext(isMultiline: false)
+        let situation = Situation(app: app, insertion: .unknown, destination: .spreadsheet)
+        #expect(DestinationFormatter.standard(for: situation).terminalStop == .never)
+    }
 }

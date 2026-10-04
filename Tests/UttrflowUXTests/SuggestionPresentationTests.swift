@@ -144,7 +144,7 @@ struct SuggestionPresentationTests {
         let presentation = SuggestionPresentation(.certain("Sydney"))
         #expect(SuggestionPresentation.listPrefix == "↳")
         #expect(presentation.footer == "⇥ take   ⌥↓ next   ⎋ dismiss")
-        #expect(SuggestionPresentation.unselectedListOpacity > 0)
+        #expect(presentation.unselectedListOpacity > 0)
     }
 
     @Test("A field that names its face is drawn in it; one that names nothing gets the monospaced default")
@@ -532,7 +532,7 @@ struct SuggestionPresentationTests {
         let presentation = SuggestionPresentation(
             .choice(leader: "Sydney", others: ["Sydenham"]),
             selection: SuggestionSelection(index: 1, hasMoved: true))
-        let selected = try #require(presentation.list.first(where: \.isSelected))
+        let selected = try #require(presentation.list.first(where: { $0.isSelected }))
         let unselected = try #require(presentation.list.first(where: { !$0.isSelected }))
         #expect(selected.isSelected)
         #expect(!unselected.isSelected)

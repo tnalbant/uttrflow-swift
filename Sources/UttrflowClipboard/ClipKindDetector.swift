@@ -1,6 +1,7 @@
 // What a copied string is: link, colour, path, code or text.
 
 import Foundation
+public import UttrflowCore
 
 /// Works out what a copied string is; secret is asked first because it is the only costly miss.
 public enum ClipKindDetector {
@@ -24,7 +25,7 @@ public enum ClipKindDetector {
         return ClipClassification(kind: kind, language: kind == .code ? CodeLanguage.detect(text) : nil)
     }
 
-    /// What this text is, defaulting to `.text`, the answer that costs nothing when wrong. See `Docs/performance.md`.
+    /// What this text is, defaulting to `.text`, the answer that costs nothing when wrong. See `Docs/performance-idle.md`.
     public static func kind(of text: String) -> ClipKind {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .text }

@@ -10,6 +10,8 @@ public enum MainIntent: Sendable, Equatable {
     case go(Destination)
     /// Another page of this window; separate from ``go(_:)`` only because ``MainTab`` cannot name every page.
     case show(MainTab)
+    /// Read the current page's list in the order this identifier names.
+    case sort(String)
     /// Put this text on the clipboard.
     case copy(String)
     /// Put this text back into whatever the user is typing in.
@@ -35,8 +37,6 @@ public enum MainIntent: Sendable, Equatable {
 
     /// Put a changed word back to what was heard.
     case undoCorrection(UUID)
-    /// Remove a word just inferred from a correction.
-    case undoLearnedWord(UUID)
 
     /// Open the inline word editor; the word arrives on ``saveWord(word:pronunciation:)``.
     case addWord
@@ -48,6 +48,10 @@ public enum MainIntent: Sendable, Equatable {
     case forgetWord(UUID)
     /// Trust a word that retired itself, and let it start earning its place again.
     case restoreWord(UUID)
+    /// Respell an existing word as typed in the editor, keeping its counters.
+    case replaceWord(UUID, word: String, pronunciation: String)
+    /// Fold the second spelling of one word into the first, summing their counters.
+    case mergeWords(keeping: UUID, absorbing: UUID)
 
     /// Open the inline snippet editor empty.
     case addSnippet
@@ -441,7 +445,16 @@ public enum MainFormatting {
         if let week = calendar.date(byAdding: .day, value: -6, to: now), date > week {
             return date.formatted(.dateTime.weekday(.wide).locale(locale))
         }
-        return date.formatted(.dateTime.day().month(.abbreviated).locale(locale))
+        return Self.date(date, now: now, calendar: calendar, locale: locale)
+    }
+
+    /// "12 Aug", with the year once the date is not in the current one, so last year never reads as this.
+    public static func date(
+        _ date: Date, now: Date, calendar: Calendar, locale: Locale
+    ) -> String {
+        let style = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(locale)
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) { return date.formatted(style) }
+        return date.formatted(style.year())
     }
 
     /// "Today" or "Yesterday" for a date that near to `now`, and `nil` for anything older.

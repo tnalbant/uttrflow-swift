@@ -126,5 +126,9 @@ jobs:
       # honest thing to scan — Package.swift only says what range is acceptable.
       # `osv-scanner.toml` records anything knowingly accepted, with a date it must be
       # looked at again.
-      - name: Scan Package.resolved
-        run: ./osv-scanner scan source --lockfile=Package.resolved
+      - name: Scan Package.resolved and any Scripts/ Python lock
+        run: |
+          set -euo pipefail
+          lockfiles=(--lockfile=Package.resolved)
+          if [ -f Scripts/requirements.lock ]; then lockfiles+=(--lockfile=requirements.txt:Scripts/requirements.lock); fi
+          ./osv-scanner scan source "${lockfiles[@]}"

@@ -40,7 +40,7 @@ public actor DictationHistoryStore {
 
     /// Where the history lives, versioned in the name; only a test passes a `directory`.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("history.v1.json", in: directory)
+        LocalStoreEntry.dictationHistory.location(in: directory)
     }
 
     // MARK: - Reading

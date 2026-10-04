@@ -36,6 +36,8 @@ ALLOWED = {
     "UttrflowCore/Support/PrivateFile.swift": (
         None, "is the helper every other path goes through"),
     "UttrflowEval/": (None, "the evaluation harness, which never ships and writes no user data"),
+    "UttrflowTestSupport/": (
+        None, "reads and rewrites golden fixtures beside tests, never user data"),
     "uttrflow-bakeoff/": (None, "a developer tool, run from a terminal against a corpus"),
     "uttrflow-dev/": (None, "a developer tool, run from a terminal"),
     "uttrflow-eval/": (None, "a developer tool, run from a terminal"),
@@ -45,6 +47,8 @@ ALLOWED = {
         None, "writes a downloaded tokenizer, which is public"),
     "UttrflowCore/Support/SingleInstanceLock.swift": (
         {"open(O_CREAT)"}, "opens its lock 0600, and needs the descriptor to flock it"),
+    "UttrflowSpeech/ModelDirectoryUseLease.swift": (
+        {"open(O_CREAT)"}, "opens a model folder's use lock 0600, and needs the descriptor to flock it"),
     "UttrflowAudio/RecordingWriter.swift": (
         {"open(O_CREAT)"}, "opens each recording 0600, and writes through the descriptor"),
 }

@@ -29,6 +29,11 @@ public enum NumberWords {
         units[key] ?? teens[key] ?? tens[key] ?? scales[key]
     }
 
+    /// The digit a word stands for when digits are read one at a time, where "oh" is zero.
+    public static func spokenDigit(_ key: String) -> Int? {
+        key == "oh" ? 0 : units[key]
+    }
+
     /// Whether a word is a number, spoken or already in digits.
     public static func isNumber(_ key: String) -> Bool {
         value(of: key) != nil || digits(key) != nil
@@ -99,6 +104,14 @@ public enum NumberWords {
         }
         guard consumed > 0 else { return nil }
         return (total + group, consumed)
+    }
+
+    /// A hundreds digit said before a number from ten to ninety-nine, as in "one twenty seven" for 127.
+    public static func colloquialHundred(_ keys: ArraySlice<String>) -> (value: Int, count: Int)? {
+        guard let first = keys.first, let digit = units[first], digit > 0,
+            let rest = cardinal(keys.dropFirst()), (10...99).contains(rest.value)
+        else { return nil }
+        return (digit * 100 + rest.value, rest.count + 1)
     }
 
     /// Digits grouped in threes with commas, applied only from ten thousand up.

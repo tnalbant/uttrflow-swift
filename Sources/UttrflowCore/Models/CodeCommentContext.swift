@@ -2,78 +2,68 @@ import Foundation
 
 /// Whether the caret sits inside a prose comment rather than executable code. See `Docs/cleanup-design.md`.
 public enum CodeCommentContext {
-    /// Whether the caret's own line opens a line comment, or an earlier block/doc comment is still unclosed.
+    /// Whether the caret, scanning the text before it as code, ends inside a line comment, block comment or docstring.
     public static func isComment(precedingText: String?, documentName: String?) -> Bool {
         guard let precedingText, let markers = markers(for: documentName) else { return false }
-        return isOnCommentLine(precedingText, linePrefixes: markers.line)
-            || isInsideOpenBlockComment(precedingText, linePrefixes: markers.line, block: markers.block)
+        return endsInsideComment(precedingText, markers: markers)
     }
 
     private struct Markers {
         let line: [String]
         let block: (open: String, close: String)?
+        var docstrings: [QuoteStyle] = []
     }
 
-    /// The caret's own line, leading whitespace dropped, opens with a line-comment marker for this language.
-    private static func isOnCommentLine(_ precedingText: String, linePrefixes: [String]) -> Bool {
-        let line =
-            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        let trimmed = line.drop(while: \.isWhitespace)
-        return linePrefixes.contains { trimmed.hasPrefix($0) }
+    /// Python string delimiters that, left open, hold a docstring rather than a value.
+    private static let pythonDocstrings: [QuoteStyle] = ["\"\"\"", "'''"].map {
+        QuoteStyle(open: $0, close: $0, literal: .backslash, escapes: [:])
     }
 
-    /// Block-comment markers count only in code, outside strings and line comments.
-    private static func isInsideOpenBlockComment(
-        _ precedingText: String, linePrefixes: [String], block: (open: String, close: String)?
-    ) -> Bool {
-        guard let block else { return false }
+    /// Comment markers count only in code, outside strings, so a marker after code on the caret's line opens a comment.
+    private static func endsInsideComment(_ text: String, markers: Markers) -> Bool {
         var depth = 0
-        var quote: String?
-        var escaped = false
-        var index = precedingText.startIndex
-        while index < precedingText.endIndex {
-            if let currentQuote = quote {
-                if escaped {
-                    escaped = false
-                    index = precedingText.index(after: index)
-                } else if precedingText[index] == "\\" {
-                    escaped = true
-                    index = precedingText.index(after: index)
-                } else if precedingText[index...].hasPrefix(currentQuote) {
-                    index = precedingText.index(index, offsetBy: currentQuote.count)
-                    quote = nil
+        var index = text.startIndex
+        while index < text.endIndex {
+            if depth > 0, let block = markers.block {
+                if text[index...].hasPrefix(block.close) {
+                    depth -= 1
+                    index = text.index(index, offsetBy: block.close.count)
+                } else if text[index...].hasPrefix(block.open) {
+                    depth += 1
+                    index = text.index(index, offsetBy: block.open.count)
                 } else {
-                    index = precedingText.index(after: index)
+                    index = text.index(after: index)
                 }
                 continue
             }
-            if precedingText[index].isNewline {
-                index = precedingText.index(after: index)
+            if markers.line.contains(where: { text[index...].hasPrefix($0) }) {
+                guard let newline = text[index...].firstIndex(where: \.isNewline) else { return true }
+                index = text.index(after: newline)
                 continue
             }
-            if linePrefixes.contains(where: { precedingText[index...].hasPrefix($0) }) {
-                guard let newline = precedingText[index...].firstIndex(where: \.isNewline) else { break }
-                index = precedingText.index(newline, offsetBy: 1)
+            switch Quoting.opening(in: text, at: index, styles: markers.docstrings) {
+            case .closed(let end):
+                index = end
                 continue
+            case .unclosed:
+                return true
+            case .none:
+                break
             }
-            if precedingText[index...].hasPrefix("\"\"\"") {
-                quote = "\"\"\""
-                index = precedingText.index(index, offsetBy: 3)
+            switch Quoting.opening(in: text, at: index, styles: QuoteStyle.sourceStrings) {
+            case .closed(let end):
+                index = end
                 continue
+            case .unclosed:
+                return false
+            case .none:
+                break
             }
-            if precedingText[index] == "\"" || precedingText[index] == "'" || precedingText[index] == "`" {
-                quote = String(precedingText[index])
-                index = precedingText.index(after: index)
-                continue
-            }
-            if precedingText[index...].hasPrefix(block.open) {
+            if let block = markers.block, text[index...].hasPrefix(block.open) {
                 depth += 1
-                index = precedingText.index(index, offsetBy: block.open.count)
-            } else if depth > 0, precedingText[index...].hasPrefix(block.close) {
-                depth -= 1
-                index = precedingText.index(index, offsetBy: block.close.count)
+                index = text.index(index, offsetBy: block.open.count)
             } else {
-                index = precedingText.index(after: index)
+                index = text.index(after: index)
             }
         }
         return depth > 0
@@ -86,7 +76,9 @@ public enum CodeCommentContext {
         case "swift", "js", "jsx", "mjs", "cjs", "ts", "tsx", "java", "kt", "kts",
             "c", "h", "cc", "cpp", "cxx", "hpp", "m", "mm", "go", "rs", "cs", "php", "scala", "dart":
             return Markers(line: ["//"], block: ("/*", "*/"))
-        case "py", "rb", "sh", "bash", "zsh", "fish", "yaml", "yml", "pl", "r":
+        case "py":
+            return Markers(line: ["#"], block: nil, docstrings: pythonDocstrings)
+        case "rb", "sh", "bash", "zsh", "fish", "yaml", "yml", "pl", "r":
             return Markers(line: ["#"], block: nil)
         case "sql":
             return Markers(line: ["--"], block: ("/*", "*/"))

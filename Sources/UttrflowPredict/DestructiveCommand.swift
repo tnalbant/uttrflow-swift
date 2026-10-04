@@ -71,6 +71,8 @@ public enum DestructiveCommand {
     private struct Wrapper {
         let valued: Set<String>
         var operands = 0
+        /// Flags whose appearance anywhere in the wrapper's body means the rest of the line is the carried command.
+        var carryFlags: Set<String>? = nil
     }
 
     /// Words that run the command after them, each read past before the command is judged.
@@ -89,11 +91,78 @@ public enum DestructiveCommand {
         "taskpolicy": Wrapper(valued: ["-c", "-d", "-g", "-t", "-l"]), "arch": Wrapper(valued: ["-arch"]),
         "flock": Wrapper(valued: ["-w", "--timeout", "-E", "--conflict-exit-code"], operands: 1),
         "chroot": Wrapper(valued: ["-u", "-g", "-G"], operands: 1), "pkexec": Wrapper(valued: ["--user"]),
+        "setsid": Wrapper(valued: []),
+        "parallel": Wrapper(valued: [
+            "-j", "--jobs", "--max-procs",
+            "-N", "--max-args",
+            "-n", "--number-of-args",
+            "-a", "--arg-file",
+            "-S", "--sshlogin",
+            "--colsep",
+            "--header",
+            "--tagstring",
+            "--joblog",
+            "--retries",
+            "--timeout",
+            "--files",
+            "--results",
+            "--tmpdir",
+            "--workdir",
+            "--basefile",
+            "--bar",
+            "--load",
+            "--noswap",
+            "--memfree",
+            "--memsuspend",
+            "--block",
+            "--link",
+            "--linkinputsource",
+            "--filter",
+            "--rpl",
+            "--shellquote",
+            "--trc",
+            "--cleanup",
+            "--env",
+            "--eta",
+        ]),
+        "ssh": Wrapper(
+            valued: [
+                "-i", "-p", "-l", "-o", "-E", "-F", "-L", "-R", "-D", "-W", "-J", "-c", "-m", "-S",
+                "-O", "-Q", "-b", "-B", "-I",
+            ],
+            operands: 1,
+        ),
+        "mosh": Wrapper(
+            valued: [
+                "--client", "--server", "--predict", "--port", "-p", "--ssh", "--family",
+            ],
+            operands: 1,
+        ),
+        "fd": Wrapper(
+            valued: [
+                "-e", "--extension", "-t", "--type", "-l", "--max-depth", "-d", "--min-depth",
+                "-E", "--exclude", "-S", "--size", "--changed-within", "--changed-before",
+                "-o", "--owner", "-c", "--color", "-j", "--threads", "--search-path",
+                "--max-results", "--ignore-file", "--base-directory",
+            ],
+            operands: 0,
+            carryFlags: ["-x", "-X", "--exec", "--exec-batch", "--run"],
+        ),
     ]
 
     /// Shell reserved words that stand in front of the command a clause runs, as a loop's `do` and an `if`'s `then` do.
     private static let reservedWords: Set<String> = [
         "do", "then", "else", "elif", "if", "while", "until", "!",
+    ]
+
+    /// Commands with their own argument semantics, which the carrier failsafe must not reinterpret.
+    private static let judgedCommands: Set<String> = [
+        "chmod", "chown", "chgrp", "git", "hg", "svn", "find", "diskutil",
+        "terraform", "tofu", "redis-cli", "valkey-cli", "keydb-cli", "mongo", "mongosh",
+        "crontab", "sh", "bash", "zsh", "dash", "ksh", "fish", "su", "runuser",
+        "eval", "mv", "cp", "killall", "pkill", "kill", "rsync", "tee",
+        "echo", "man", "which", "tldr", "type", "help", "info", "whatis", "apropos",
+        "printf", "command",
     ]
 
     /// Programs that destroy whatever they are pointed at.
@@ -122,6 +191,11 @@ public enum DestructiveCommand {
                 rest.removeFirst()
                 continue
             }
+            // `command -v` and `command -V` inspect a name; they do not run the name as a command.
+            let commandOptions = rest.dropFirst().prefix(while: { $0.text.hasPrefix("-") })
+            if name == "command", commandOptions.contains(where: { $0.text == "-v" || $0.text == "-V" }) {
+                return .named(name, Array(rest.dropFirst().map(\.text)))
+            }
             guard let wrapper = wrappers[name], rest.count > 1 else {
                 return .named(name, Array(rest.dropFirst().map(\.text)))
             }
@@ -134,6 +208,25 @@ public enum DestructiveCommand {
             rest = rest.dropFirst(wrapper.operands)
         }
         return .none
+    }
+
+    /// Whether the line begins with a carrier whose trigger appears anywhere in its body, and the carried command destroys.
+    private static func carriesDestructive(_ tokens: [ShellWord]) -> Bool? {
+        guard let first = tokens.first, tokens.count > 1 else { return nil }
+        let name = programName(first.text)
+        guard let wrapper = wrappers[name], let carryFlags = wrapper.carryFlags else { return nil }
+        for (index, candidate) in tokens.enumerated().dropFirst() {
+            guard candidate.text.count > 1, candidate.text.hasPrefix("-"), !candidate.isUnresolved else {
+                continue
+            }
+            if carryFlags.contains(candidate.text) {
+                let carried = Array(tokens.dropFirst(index + 1))
+                let text = carried.map(\.text).joined(separator: " ")
+                guard let clauses = ShellWords.commands(in: text, home: "") else { return false }
+                return clauses.contains { destroys($0.words, failClosedOnUnresolved: false) }
+            }
+        }
+        return nil
     }
 
     /// A tool whose verbs follow its option flags: the flags that take a value, and which verbs delete for good.
@@ -349,8 +442,94 @@ public enum DestructiveCommand {
         (word.split(separator: "/").last.map(String.init) ?? word).lowercased()
     }
 
+    /// The flags a `docker exec` / `docker run` line takes within its subcommand, whose values the parser must skip.
+    private static let containerSubcommandValued: Set<String> = [
+        "-u", "--user", "-w", "--workdir", "-e", "--env", "--env-file",
+        "--cap-add", "--cap-drop", "--cgroup-parent", "--device", "--device-cgroup-rule",
+        "--dns", "--dns-opt", "--dns-search", "--domainname", "--entrypoint",
+        "--expose", "--group-add", "--health-cmd", "--health-interval", "--health-retries",
+        "--health-start-period", "--health-timeout", "--hostname", "--init-path", "--ip", "--ip6",
+        "--label", "--label-file", "--link", "--link-local-addr", "--log-driver", "--log-opt",
+        "--mac-address", "--memory", "--memory-reservation", "--memory-swap", "--memory-swappiness",
+        "--mount", "--name", "--network", "--network-alias", "--pid", "--pids-limit",
+        "--platform", "--publish", "--restart", "--runtime", "--shm-size", "--stop-signal",
+        "--stop-timeout", "--storage-opt", "--sysctl", "--tmpfs", "--ulimit", "--userns",
+        "--volume", "--volume-driver", "--volumes-from", "--add-host", "--security-opt",
+    ]
+
+    /// The flags `kubectl exec` takes within its subcommand, whose values the parser must skip.
+    private static let kubectlExecValued: Set<String> = [
+        "-c", "--container", "-p", "--pod", "--filename",
+    ]
+
+    /// The text of the command `docker exec [opts] container [cmd]`, `docker run [opts] image [cmd]` or `kubectl exec [opts] pod -- cmd` runs, or nil.
+    private static func verbToolSubcommandCarrier(command: String, arguments: [String]) -> String? {
+        let subcommands: Set<String>
+        let valued: Set<String>
+        let globalValued: Set<String>
+        let operands: Int
+        let terminator: String?
+        switch command {
+        case "docker", "podman":
+            subcommands = ["exec", "run"]
+            valued = containerSubcommandValued
+            globalValued = containerGlobalFlags
+            operands = 1
+            terminator = nil
+        case "kubectl":
+            subcommands = ["exec"]
+            valued = kubectlExecValued
+            globalValued = kubectlGlobalFlags
+            operands = 1
+            terminator = "--"
+        default:
+            return nil
+        }
+        var rest = arguments
+        // Skip the tool's global flags that can appear in front of the subcommand.
+        while let head = rest.first, head.hasPrefix("-"), head.count > 1, head != "--" {
+            rest.removeFirst()
+            if globalValued.contains(head), !rest.isEmpty { rest.removeFirst() }
+        }
+        guard rest.count >= operands + 1, subcommands.contains(rest[0]) else { return nil }
+        rest.removeFirst()
+        // Skip the subcommand's valued flags and their values.
+        while let head = rest.first, head.hasPrefix("-"), head.count > 1, head != "--" {
+            rest.removeFirst()
+            if valued.contains(head), !rest.isEmpty { rest.removeFirst() }
+        }
+        // Skip the required operand (container, image, or pod).
+        guard rest.count >= operands else { return nil }
+        rest.removeFirst(operands)
+        if let term = terminator {
+            // The carried command begins after the `--` terminator.
+            guard let termIndex = rest.firstIndex(of: term) else { return nil }
+            rest = Array(rest.dropFirst(termIndex + 1))
+            return rest.isEmpty ? nil : rest.joined(separator: " ")
+        }
+        return rest.isEmpty ? nil : rest.joined(separator: " ")
+    }
+
+    /// The global flags docker and podman take before any subcommand, with their values, lowercased.
+    private static let containerGlobalFlags: Set<String> = [
+        "-h", "--host", "-c", "--context", "--config", "-l", "--log-level",
+        "--tlscacert", "--tlscert", "--tlskey", "--url", "--connection",
+        "--root", "--runroot", "--storage-driver", "--identity",
+    ]
+
+    /// The global flags kubectl takes before its subcommand, with their values, lowercased.
+    private static let kubectlGlobalFlags: Set<String> = [
+        "-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user",
+        "-s", "--server", "--token", "--as", "--as-group", "--as-uid",
+        "--request-timeout", "-v", "--cache-dir", "--certificate-authority",
+        "--client-certificate", "--client-key", "--tls-server-name",
+        "--password", "--username", "--profile", "--profile-output",
+        "--log-file", "--vmodule",
+    ]
+
     /// Whether one clause destroys data or the machine.
     private static func destroys(_ tokens: [ShellWord], failClosedOnUnresolved: Bool) -> Bool {
+        if let carrier = carriesDestructive(tokens) { return carrier }
         let parsed = command(in: tokens)
         if case .unresolved = parsed { return failClosedOnUnresolved }
         guard case .named(let command, let arguments) = parsed else { return false }
@@ -362,6 +541,9 @@ public enum DestructiveCommand {
         {
             let pipArguments = Array(lowered.dropFirst(module + 2))
             if pipUninstall(positionals(pipArguments, valued: pipValued), pipArguments) { return true }
+        }
+        if let carrier = verbToolSubcommandCarrier(command: command, arguments: lowered) {
+            if matches(carrier, failClosedOnUnresolved: failClosedOnUnresolved) { return true }
         }
         if let tool = verbTools[command], tool.destroys(positionals(lowered, valued: tool.valued), lowered) {
             return true
@@ -418,6 +600,20 @@ public enum DestructiveCommand {
             {
                 return true
             }
+        case "su", "runuser":
+            if let script = shellScript(arguments),
+                matches(script, failClosedOnUnresolved: failClosedOnUnresolved)
+            {
+                return true
+            }
+        case "eval":
+            // The arguments are joined into the line the shell re-parses, so a destroyer in any of them is judged as one.
+            let script = arguments.joined(separator: " ")
+            if !script.isEmpty,
+                matches(script, failClosedOnUnresolved: failClosedOnUnresolved)
+            {
+                return true
+            }
         case "mv":
             if lowered.last == "/dev/null" { return true }
         case "cp":
@@ -446,7 +642,18 @@ public enum DestructiveCommand {
             break
         }
 
-        guard sqlVerbs.contains(command) || sqlClients.contains(command) else { return false }
+        guard sqlVerbs.contains(command) || sqlClients.contains(command) else {
+            // An unrecognised carrier word followed by a plain destroyer fails closed, after every known command has judged its own arguments.
+            if judgedCommands.contains(command) || destroyers.contains(command) || verbTools[command] != nil {
+                return false
+            }
+            // Only the first non-flag argument names the command the carrier runs, so `echo "rm -rf /"` is not destructive.
+            for argument in lowered {
+                guard !argument.hasPrefix("-") else { continue }
+                return destroyers.contains(argument)
+            }
+            return false
+        }
         // SQL that drops or empties a table, wherever the verb sits in the statement.
         let sequence = ([command] + lowered).flatMap {
             $0.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "_" }).map(String.init)
@@ -495,8 +702,10 @@ public enum DestructiveCommand {
         }
         if let flags = flags(after: "push"),
             flags.contains(where: {
-                $0.hasPrefix("--force") || $0 == "-f" || $0 == "--delete" || $0 == "-d" || $0.hasPrefix("+")
-                    || ($0.hasPrefix(":") && $0.count > 1) || $0 == "--mirror" || $0 == "--prune"
+                $0.hasPrefix("--force") || shortFlags($0, include: "f", valuesAfter: pushValueTaking)
+                    || $0 == "--delete" || shortFlags($0, include: "d", valuesAfter: pushValueTaking)
+                    || $0.hasPrefix("+") || ($0.hasPrefix(":") && $0.count > 1)
+                    || $0 == "--mirror" || $0 == "--prune"
             })
         {
             return true
@@ -565,6 +774,9 @@ public enum DestructiveCommand {
 
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
     private static let historyDestroyers: Set<String> = ["filter-branch", "filter-repo", "prune"]
+
+    /// Short flags in `git push` that take a value when they appear in a cluster, so anything after them is not another flag.
+    private static let pushValueTaking: Set<Character> = ["o", "F"]
 
     /// Whether a Mercurial command removes history or discards working-copy changes.
     private static func matchesDestructiveMercurial(_ arguments: [String]) -> Bool {

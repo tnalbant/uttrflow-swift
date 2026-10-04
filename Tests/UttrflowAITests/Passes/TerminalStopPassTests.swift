@@ -65,6 +65,7 @@ struct TerminalStopPassTests {
                 "hey quick question, do we support ios sixteen or only seventeen and above?"
             ),
             ("papa did the shopping", "papa did the shopping."),
+            ("ravi is the owner of the account", "ravi is the owner of the account."),
             (
                 "papa did the shopping. where is my bag",
                 "papa did the shopping. where is my bag?"
@@ -102,6 +103,36 @@ struct TerminalStopPassTests {
         ])
     func addsQuestionMark(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "sets off a review label said first with a colon and judges the clause after it alone",
+        arguments: [
+            ("nit spelling mistake hai yahan", "nit: spelling mistake hai yahan."),
+            (
+                "minor mujhe lagta hai we should log the error here",
+                "minor: mujhe lagta hai we should log the error here."
+            ),
+            ("minor we should log the error here", "minor: we should log the error here."),
+            ("suggestion rename this to user id", "suggestion: rename this to user id."),
+            ("question why is this async", "question: why is this async?"),
+            ("question is this needed", "question: is this needed?"),
+            ("optional you could inline this", "optional: you could inline this."),
+            ("minor changes only", "minor changes only."),
+            ("optional parameters are fine", "optional parameters are fine."),
+            ("question is whether we ship today", "question is whether we ship today."),
+            ("suggestion for the team is to wait", "suggestion for the team is to wait."),
+            ("nit: missing a blank line", "nit: missing a blank line."),
+            ("we have a minor issue", "we have a minor issue."),
+        ])
+    func setsOffReviewTag(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("sets off a review label in a short chat message without adding a stop")
+    func reviewTagInChat() {
+        #expect(cleaned("nit missing a blank line", by: short) == "nit: missing a blank line")
+        #expect(cleaned("question why is this async", by: short) == "question: why is this async?")
     }
 
     @Test("leaves right as a command or confirmation instead of a question tag")
@@ -264,13 +295,14 @@ struct TerminalStopPassTests {
         #expect(sut.apply(items).text == "- the tent and the stove\n- the first aid kit here")
     }
 
-    @Test("collapses every line break to a space under a single-line layout")
+    @Test("joins every line under a single-line layout with the list separator, per #4102")
     func singleLine() {
         let cell = TerminalStopPass(policy: .never, layout: .singleLine)
-        #expect(cell.apply(Draft(keepingLineBreaks: "line one\nline two.")).text == "line one line two")
-        #expect(cell.apply(Draft(keepingLineBreaks: "a\n\n- b\n- c")).text == "a b c")
+        #expect(cell.apply(Draft(keepingLineBreaks: "line one\nline two.")).text == "line one, line two")
+        #expect(cell.apply(Draft(keepingLineBreaks: "a\n\n- b\n- c")).text == "a, b, c")
+        #expect(cell.apply(Draft(keepingLineBreaks: "one.\n\ntwo")).text == "one. two")
         let stopped = TerminalStopPass(policy: .always, layout: .singleLine)
-        #expect(stopped.apply(Draft(keepingLineBreaks: "line one\nline two")).text == "line one line two.")
+        #expect(stopped.apply(Draft(keepingLineBreaks: "line one\nline two")).text == "line one, line two.")
     }
 
     @Test("adds no paragraph stop when the policy is never, and lays out paragraphs by default")
@@ -344,5 +376,16 @@ struct TerminalStopPassTests {
         #expect(
             never.apply(Draft(text: "on my way.")).words[2].state
                 == .replaced(by: TerminalStopPass.id, from: "way."))
+    }
+    @Test("a one-line field drops the stop from one sentence and keeps all three of three")
+    func oneLineFieldEntry() {
+        let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
+        let formatter = DestinationFormatter.standard(for: SituationResolver.resolve(from: app))
+        let pass = TerminalStopPass(policy: formatter.terminalStop, layout: formatter.layout)
+        #expect(cleaned("Project plan", by: pass) == "Project plan")
+        #expect(cleaned("Is it ready?", by: pass) == "Is it ready?")
+        #expect(
+            cleaned("Call Sam. Book the room. Send notes", by: pass) == "Call Sam. Book the room. Send notes."
+        )
     }
 }

@@ -1,6 +1,7 @@
 // The WhisperKit recogniser, and the decoding rules a conditioning prompt would otherwise cost it.
 public import Foundation
 public import UttrflowCore
+import CoreML
 import OSLog
 import WhisperKit
 
@@ -10,19 +11,44 @@ public actor WhisperKitBackend: TranscriptionBackend {
     private let modelFolder: URL
     /// On: only prewarm holds the first compile's peak down, and that peak is still unread (#481).
     private let prewarm: Bool
+    private let compute: SpeechComputePlan
     private var kit: LoadedKit?
     private var modelUseLease: ModelDirectoryUseLease?
 
-    public init(model: SpeechModel, modelFolder: URL, prewarm: Bool = true) {
+    public init(
+        model: SpeechModel, modelFolder: URL, prewarm: Bool = true, compute: SpeechComputePlan = .shipping
+    ) {
         self.model = model
         self.modelFolder = modelFolder
         self.prewarm = prewarm
+        self.compute = compute
     }
 
     /// One frame past the end-of-clip window it is driven with, since a clip no longer than that decodes to nothing.
     static let shortestClip = Duration.seconds(Double(VocabularyPrompt.windowClipTime)) + .milliseconds(20)
 
     public nonisolated var minimumDuration: Duration { Self.shortestClip }
+
+    /// Where each Core ML stage runs, named so a package upgrade cannot move the model to other hardware.
+    static let computeOptions = options(for: .shipping)
+
+    /// The Core ML units each stage of a plan runs on.
+    static func options(for plan: SpeechComputePlan) -> ModelComputeOptions {
+        switch plan {
+        case .shipping:
+            ModelComputeOptions(
+                melCompute: .cpuAndGPU, audioEncoderCompute: .cpuAndNeuralEngine,
+                textDecoderCompute: .cpuAndNeuralEngine)
+        case .gpu: uniform(.cpuAndGPU)
+        case .neuralEngine: uniform(.cpuAndNeuralEngine)
+        case .all: uniform(.all)
+        case .cpu: uniform(.cpuOnly)
+        }
+    }
+
+    private static func uniform(_ units: MLComputeUnits) -> ModelComputeOptions {
+        ModelComputeOptions(melCompute: units, audioEncoderCompute: units, textDecoderCompute: units)
+    }
 
     /// Where the load's own measurements go; `Docs/startup.md` is the only record of what this costs.
     private static let log = Logger(subsystem: "com.uttrflow.Uttrflow", category: "speech")
@@ -53,6 +79,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
                     modelFolder: modelFolder.path,
                     // Tokenizer search stays in the model's directory, never the Hugging Face cache.
                     tokenizerFolder: modelFolder,
+                    computeOptions: Self.options(for: compute),
                     verbose: false,
                     logLevel: .error,
                     prewarm: prewarm,
@@ -66,7 +93,8 @@ public actor WhisperKitBackend: TranscriptionBackend {
             kit = LoadedKit(whisper)
         } catch {
             modelUseLease = nil
-            throw .modelLoadFailed(description: error.localizedDescription)
+            throw WeightsAssets.loadFailure(
+                of: model, in: modelFolder, description: error.localizedDescription)
         }
         report(started.duration(to: ContinuousClock.now))
     }
@@ -150,7 +178,11 @@ fileprivate func rawTranscript(
                                     text: $0.word, start: Double($0.start), end: Double($0.end),
                                     probability: Double($0.probability))
                             }
-                        })
+                        },
+                        reliability: SegmentReliability(
+                            temperature: Double($0.temperature), averageLogProbability: Double($0.avgLogprob),
+                            noSpeechProbability: Double($0.noSpeechProb),
+                            compressionRatio: Double($0.compressionRatio)))
                 },
                 effort: effort(of: [result]),
                 tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
