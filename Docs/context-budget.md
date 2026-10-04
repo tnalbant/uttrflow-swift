@@ -74,6 +74,24 @@ how long it keeps a thread, and a serial queue would make every read behind it w
 before starting its own. Concurrent reads share no state, since each targets a different element
 with its own messaging timeout.
 
+## What each consumer needs
+
+`ContextNeed` (`Sources/UttrflowContext/ContextNeed.swift`) is the slice one consumer reads: which
+parts, and a UTF-16 cap before the caret, after the selection and on the selection.
+`FocusedFieldRead.text` takes the union of the needs it serves and asks the field for no more.
+Every call site reads `ContextNeed.turn` today, so nothing has narrowed yet.
+
+| Consumer | Needs | Cap |
+|---|---|---|
+| Leading and trailing space padding | caret edges | 2 units each side |
+| Sentence state, list item | line before | `ValueWindow.unitsBefore` |
+| Recogniser prompt | sentence before | `ValueWindow.unitsBefore` |
+| Prompt describer | selection | 120 characters (`AppContextDescriber.selectionLimit`) |
+| `MacContextEngine` selection | selection | 512 characters (`selectedTextLimit`) |
+
+`FocusedFieldReadTests.caretEdgesNeedCopiesNoMoreThanSixteenUnits` holds the caret-edges need to
+ranged reads of at most 16 units. A new consumer adds its row in the same pull request.
+
 ## 512 characters of selection
 
 The selection rides into the prompt beside the transcript, and "select all, then dictate the

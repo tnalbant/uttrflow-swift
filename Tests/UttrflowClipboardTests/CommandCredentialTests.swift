@@ -34,6 +34,8 @@ struct CommandCredentialTests {
             "MYSQL_PWD=sunshine mysql -u root",
             "curl -H \"Authorization: Basic YWxpY2U6czNjcjN0\" https://api.example.com",
             "curl -H \"Authorization: Bearer 8fK2pQ7xLm4Rt9vW3nB6cY1zH5jD0sAe\"",
+            "curl -H\"Authorization: Bearer sunshine\" https://api.example.com",
+            "curl -H'Authorization: Bearer sunshine' https://api.example.com",
             "curl -H 'Proxy-Authorization: Digest sunshine' https://api.example.com",
             "curl -H 'X-Api-Key: sunshine' https://api.example.com",
             "Authorization: token sunshine",

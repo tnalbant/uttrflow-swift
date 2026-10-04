@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 public import Foundation
 public import UttrflowCore
+private import UttrflowContext
 public import UttrflowPredict
 
 private import Carbon
@@ -35,6 +36,12 @@ public struct SystemPasteboard: Pasteboard {
 
     public func changeCount() -> Int? {
         NSPasteboard.general.changeCount
+    }
+
+    public func discardContents(ifUnchangedSince changeCount: Int) -> Bool {
+        guard NSPasteboard.general.changeCount == changeCount else { return false }
+        clearForThisMacOnly()
+        return true
     }
 
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
@@ -299,7 +306,7 @@ public struct CGEventTypist: KeystrokeTyping {
         }
         try buildThenPost(
             Array(0..<count),
-            build: { _ in
+            build: { _ throws(TextInsertionError) in
                 // Flags cleared so a modifier the user is still holding cannot widen the delete.
                 try makeTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
             }, post: postTaggedKeyPairs)
@@ -313,7 +320,7 @@ public struct CGEventTypist: KeystrokeTyping {
         let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
         try buildThenPost(
             keypresses,
-            build: { keypress in
+            build: { keypress throws(TextInsertionError) in
                 switch keypress {
                 case .key(let character, let stroke):
                     try makeTaggedKeyPair(from: source, keyCode: stroke.code) { event in
@@ -379,16 +386,7 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
     /// Asks the focused element's role and names first, reading the start of its value only when none of them says secure.
     public func focusedFieldIsSecure() -> Bool {
         guard let element = focusedElement() else { return false }
-        return SecureField.isSecure(
-            role: stringAttribute(kAXRoleAttribute, of: element),
-            subrole: stringAttribute(kAXSubroleAttribute, of: element),
-            identifier: stringAttribute(kAXIdentifierAttribute, of: element),
-            placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
-            description: stringAttribute(kAXDescriptionAttribute, of: element),
-            value: {
-                CaretWindow.prefix(
-                    length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
-            })
+        return isSecureField(element)
     }
 
     /// The focused field and a bare caret, refusing a secure field and a selection that a write would have collapsed.
@@ -612,29 +610,16 @@ private func attributeIsSettable(_ attribute: CFString, on element: AXUIElement)
         && settable.boolValue
 }
 
-/// The element's value, or `nil` for a secure field, whose value is never asked for.
+/// The element's value through the shared field reader, or `nil` for a secure field, whose value is never asked for.
 private func readableValue(of element: AXUIElement) -> String? {
-    SecureField.readableValue(
-        role: stringAttribute(kAXRoleAttribute, of: element),
-        subrole: stringAttribute(kAXSubroleAttribute, of: element),
-        identifier: stringAttribute(kAXIdentifierAttribute, of: element),
-        placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
-        description: stringAttribute(kAXDescriptionAttribute, of: element),
-        value: { stringAttribute(kAXValueAttribute, of: element) })
+    SurfaceProbe.readableValue(of: element)
 }
 
-/// Checks security metadata first; only checks masked text when metadata is inconclusive.
+/// The shared secure-check order: the field's names first, a bounded prefix of its value only when they clear it.
 private func isSecureField(_ element: AXUIElement) -> Bool {
-    SecureField.isSecure(
-        role: stringAttribute(kAXRoleAttribute, of: element),
-        subrole: stringAttribute(kAXSubroleAttribute, of: element),
-        identifier: stringAttribute(kAXIdentifierAttribute, of: element),
-        placeholder: stringAttribute(kAXPlaceholderValueAttribute, of: element),
-        description: stringAttribute(kAXDescriptionAttribute, of: element),
-        value: {
-            CaretWindow.prefix(
-                length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
-        })
+    SurfaceProbe.names(of: element).isSecure(value: {
+        CaretWindow.prefix(length: characterCount(of: element), ranged: { stringForRange($0, of: element) })
+    })
 }
 
 /// The string an Accessibility attribute holds, or `nil` when the element will not say.

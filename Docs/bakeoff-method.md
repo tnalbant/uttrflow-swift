@@ -27,6 +27,15 @@ stored file is keyed by size as well, and the report prints the size.
 | `--results-path` | where results are kept (default `.bakeoff`) |
 | `--against <file>` | compares each measured candidate with a saved result and fails on a regression; output goes to a `-compared` sibling |
 
+## Comparing against a saved result
+
+Every saved result carries a fingerprint of each case it scored (spoken and expected text, the
+must-keep, must-not-add, must-begin and must-end lists, doubtful runs, language, destination and
+context) and of the corpus as a whole. Origin, split, issue, category and classes are labels and
+stay out, so relabelling a case does not change it. `--against` prints a changed corpus first,
+lists added, removed and changed cases, and judges only cases whose fingerprint matches; a
+result stored before fingerprints is judged case by case as before.
+
 ## `--ignore-context`
 
 Context is a claim. Running the corpus with it withheld is the only way to find out whether it

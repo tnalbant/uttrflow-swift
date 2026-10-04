@@ -241,6 +241,36 @@ What is deliberately not done matters as much as what is:
   call that noise. Growth that wobbles is "suspect" and needs a longer run; two readings are
   "undetermined", which is not a pass. Readings are in [`performance-leaks.md`](performance-leaks.md).
 
+## How far the corpus is from spontaneous speech
+
+- `uttrflow-bakeoff speech-shape` prints, per 100 words, the words the standard passes remove by
+  grant (sound, repetition, retraction), marks by kind, mean words per sentence and the share of
+  lines with a repetition or retraction. With no option it reads the English cases' `spoken`;
+  `--reference <file>` reads a local file of one utterance per line. The passes are the
+  instrument on both sides, so a gap is a difference in the text, not in two definitions.
+- The margin, fixed before any reference is measured: a figure differs when the two columns are
+  more than 25% of the reference value apart, or more than 0.5 per 100 words where the reference
+  is under 2. A class outside the margin gets cases added to the matrix, or a filed gap with case
+  counts.
+- A reference is a public spontaneous-speech transcript set whose licence permits use of its
+  transcripts. Only the printed numbers and the set's name, version and licence are committed,
+  never its text. Until one is measured the reference column is empty.
+
+| Figure | Corpus (English `spoken`) | Reference |
+|---|---|---|
+| Words removed as sounds /100w | 0.90 | not measured |
+| Words removed as repetitions /100w | 0.83 | not measured |
+| Words removed as retractions /100w | 1.99 | not measured |
+| `.` /100w | 2.13 | not measured |
+| `,` /100w | 0.63 | not measured |
+| `?` /100w | 0.07 | not measured |
+| `!` /100w | 0.07 | not measured |
+| Other marks /100w | 1.46 | not measured |
+| Words per sentence | 6.81 | not measured |
+| Lines with a restart | 7.07% | not measured |
+
+The corpus column is 410 English cases, 3,011 words.
+
 ## The contamination audit
 
 - `ContaminationAudit` is the one check that no tuned-on text carries a corpus passage. It reads
@@ -255,3 +285,20 @@ What is deliberately not done matters as much as what is:
   across every `.txt` and `.json` file under `Sources/*/Resources`, so 0 false positives today
   (`swift test --filter ContaminationAuditTests`).
 - Bundled assets are found by walking `Sources/*/Resources` until the data manifest lists them.
+
+## The transcription split
+
+- `TranscriptionSplit.assignment` puts each transcription passage on one side: `fit` (a fitted
+  layer may learn from it), `calibration` (a threshold is chosen on it) or `test` (read only to
+  judge a release). The unit is the passage, never the recording, because every recording of a
+  passage carries the same words and names. The table is written by hand, so a new passage never
+  moves an old one.
+- Each language has 2 passages per side: 6 fit, 6 calibration and 6 test across the 18. Test holds
+  the proper-noun and digit passages of each language, the two stressors a fitted layer is most
+  likely to memorise.
+- `SplitLeakAudit` fails when a passage has no side, when the table names a passage the corpus
+  lacks, when a passage outside `test` shares a run of 8 words with a test passage in any form
+  (the contamination audit's run length), or when a language has fewer than 2 test passages.
+  It reports passage counts per side and language (`swift test --filter TranscriptionSplitTests`).
+- The corpus has one reader, so passage and speaker group coincide today; a second reader of a
+  passage takes the passage's side.

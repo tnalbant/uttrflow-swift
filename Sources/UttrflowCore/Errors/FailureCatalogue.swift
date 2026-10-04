@@ -94,7 +94,8 @@ extension DictionaryStoreError: CataloguedFailure {
         case .couldNotReadSeedRecord: .wordIsEmpty
         case .wordIsEmpty: .wordAlreadyKnown
         case .wordAlreadyKnown: .entryHasTooManyWords(maximum: 3)
-        case .entryHasTooManyWords: nil
+        case .entryHasTooManyWords: .entryIsTooLong(maximum: 80)
+        case .entryIsTooLong: nil
         }
     }
 }
@@ -136,7 +137,8 @@ extension TextInsertionError: CataloguedFailure {
         case .insertionUnconfirmed: .insertionTargetChanged
         case .insertionTargetChanged: .insertionNeedsCopy(description: "")
         case .insertionNeedsCopy: .insertionInterrupted(typed: 0, total: 0)
-        case .insertionInterrupted: nil
+        case .insertionInterrupted: .insertionCancelled
+        case .insertionCancelled: nil
         }
     }
 }

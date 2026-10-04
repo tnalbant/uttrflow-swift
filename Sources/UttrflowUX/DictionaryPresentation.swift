@@ -567,9 +567,8 @@ public enum DictionaryPresenter {
         // An editor that opens complaining is telling somebody off for doing nothing yet.
         if draft.isUntouched { return nil }
         if word.isEmpty { return "A word needs a spelling." }
-        guard PhoneticIndex.supports(word: word, pronunciation: draft.pronunciation) else {
-            return
-                "The spelling and pronunciation can each have at most \(PhoneticIndex.maximumWordsPerEntry) words."
+        if let refusal = PhoneticIndex.refusal(word: word, pronunciation: draft.pronunciation) {
+            return refusal.userMessage
         }
         if let reading = PronunciationReading.of(pronunciation: draft.pronunciation, for: word),
             reading.refusesSaving

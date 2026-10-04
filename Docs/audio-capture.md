@@ -37,9 +37,9 @@ comments. [`microphone.md`](microphone.md) covers the hardware moving under the 
   `ConversionInput` is `@unchecked Sendable`.
 - The 2048-frame slice and the conversion output are each one buffer, allocated once at
   `AudioResampler.init` and reused for every callback, on the path a buffer already in the
-  resampler's own format takes — which is the only path the tap ever exercises. What still
-  allocates on that path is the `[Float]` the sink is handed, since that is the callback's
-  public contract; a buffer in a different format (never produced by the tap; only a misuse
+  resampler's own format takes — which is the only path the tap ever exercises, together with
+  the object that hands the slice to the converter. The tap reads each converted chunk straight
+  out of that output buffer (`resample(_:into:)`), so it builds no array; a buffer in a different format (never produced by the tap; only a misuse
   test constructs one) still allocates its own scratch rather than corrupt the reused pair.
 
 ## Resampler fidelity
@@ -98,12 +98,36 @@ The guard covers the reopen after a hardware change as well as the first open, b
 the guard fires first, and either way the message without it is wrong: silence reads as
 `nothingHeard`, and an empty recording as `audioTooShort`.
 
+## What the tap thread does
+
+The tap callback converts its buffer and copies the result into `TapHandoff`, and nothing else.
+`TapHandoff` is a single-producer, single-consumer ring of floats allocated once per engine: the
+tap writes a block behind a length marker, publishes it with one atomic store and signals a
+semaphore. A consumer thread of its own delivers each block, in order and one call per callback,
+to the sink; the sink check under the device lock, the accumulator, the recording writer's stream
+and the drain count all run there, never on the tap thread.
+
+- The ring holds two seconds of canonical audio. A block that does not fit is dropped whole and
+  counted in `droppedSamples`; nothing is queued beyond the ring and nothing is reordered.
+- The only lock left on the tap thread is the resampler's, which no other thread takes while the
+  tap runs, so it is never contended.
+- Closing the engine removes the tap, then `finish()` delivers whatever is already in the ring and
+  joins the consumer, so a drained stop still receives the block the hardware was filling.
+
+`TapHandoffTests` checks order across the ring's wrap, one delivery per callback, the bounded drop
+when full, and that a callback carried through the handoff equals the same buffer resampled whole.
+The ring's storage is allocated once in `init` and the producer path holds no array, by
+construction. **Not measured:** an allocation count on the real tap thread, callback duration, and
+late blocks during a real microphone recording; those need Instruments against a live microphone.
+`AVAudioConverter` and the Swift-to-Objective-C bridging of its input block may still allocate
+internally, which this code cannot remove.
+
 ## The level meter
 
-- A microphone tap runs on a real-time thread that must never wait on an actor, so
-  `SampleAccumulator` is a lock-guarded box. One producer, one consumer, and every critical
-  section is short and allocation-free; the block storage below is what keeps the producer's
-  section short while it is read as it writes. `momentaryLevel` is `nonisolated` on the capture
+- A microphone tap runs on a real-time thread that must never wait on an actor, so samples reach
+  `SampleAccumulator` through the handoff above, on its consumer thread. The accumulator is a
+  lock-guarded box with one producer and one consumer; sealing a block allocates the next one, which
+  is why that work stays off the tap thread. `momentaryLevel` is `nonisolated` on the capture
   engine for the same reason: a meter on the main actor reads it twenty times a second and must
   not queue behind a `stop()` that is converting a recording.
 - The momentary level is root mean square, not the block's peak: a meter driven by peaks reads

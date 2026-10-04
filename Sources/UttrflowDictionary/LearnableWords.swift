@@ -85,7 +85,11 @@ enum LearnableWords {
             sound.sounds(like: DoubleMetaphone.code(for: romanisedSelected)),
             ReadingRestraint.opensAlike(romanisedReplacement, heard: romanisedSelected)
         else { return nil }
-        guard after.allSatisfy(GeneralVocabulary.isWorthLearning) else { return nil }
+        // A known word is learnt only as the user's spelling of the listed Hindi word it replaced, word for word.
+        let isPreference =
+            before.count == after.count
+            && zip(after, before).allSatisfy { GeneralVocabulary.isHindiSpellingPreference($0, over: $1) }
+        guard isPreference || after.allSatisfy(GeneralVocabulary.isWorthLearning) else { return nil }
         return replacement
     }
 
