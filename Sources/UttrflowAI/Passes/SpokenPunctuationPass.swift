@@ -148,7 +148,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         return position
     }
 
-    /// Turns a long option marker said before a word into the option, including one at the start of a command.
+    /// Turns a long option marker said in a command into the option; a doubled dash names no single mark, so "add" cannot make it a mention.
     private func replaceLongFlag(
         at position: Int, literal: Set<Int>, in live: inout [Int], of draft: inout Draft
     ) -> Bool {
@@ -158,11 +158,6 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 return length > 1 && position + length < live.count
                     && literal.contains(live[position + length - 1])
                     && draft.spells(row.words, at: position, in: live)
-                    && (position..<(position + length)).allSatisfy {
-                        !MentionGuard.isMentioned(
-                            at: $0, spanning: 1, in: live, of: draft,
-                            reach: MentionGuard.phraseReach, kind: .joining)
-                    }
             })
         else { return false }
         let length = row.words.count

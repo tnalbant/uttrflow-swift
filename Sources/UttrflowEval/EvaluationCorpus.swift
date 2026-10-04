@@ -2308,12 +2308,11 @@ public enum EvaluationCorpus {
             mustBeginWith: "npm",
             mustEndWith: "build"
         ),
-        // Contested: "dash" is kept here while other terminal cases write `-`; the terminal adapter decides.
         .init(
             id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
             spoken: "uh ls dash la",
-            expected: "ls dash la",
-            mustKeep: ["dash", "la"],
+            expected: "ls -la",
+            mustKeep: ["-la"],
             context: AppContext(
                 applicationName: "iTerm",
                 bundleIdentifier: DestinationRules.iTerm
@@ -2322,6 +2321,19 @@ public enum EvaluationCorpus {
             destination: .terminal,
             mustBeginWith: "ls",
             mustEndWith: "la"
+        ),
+        .init(
+            id: "terminal-command-writes-double-dash-flag", category: .contextual,
+            spoken: "git push double dash force",
+            expected: "git push --force",
+            mustKeep: ["--force"],
+            context: AppContext(
+                applicationName: "Terminal",
+                bundleIdentifier: DestinationRules.terminal
+            ),
+            destination: .terminal,
+            mustBeginWith: "git",
+            mustEndWith: "--force"
         ),
         .init(
             id: "terminal-command-keeps-no-stop", category: .contextual,
