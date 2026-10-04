@@ -167,6 +167,30 @@ What the table supports, and what it does not:
   samples text, top-k at that temperature. The allowed sampler ignores the temperature, so one
   window cannot change its language between retries.
 
+## Short Hindi replies under an English and Hindi profile
+
+Measured with `uttrflow-dev bench` (release build, `rt`, shipping cleaner, shipping model,
+languages `en,hi`) on 20 clips of 0.29 to 1.06 s made with `say`: eight Hindi replies (`haan`,
+`theek`, `theek hai`, `nahi` by `Rishi`; `हाँ`, `ठीक`, `ठीक है`, `अच्छा` by `Lekha`) and twelve
+English ones (`ok`, `yes`, and five phrases each by `Rishi` and `Samantha`). Host: Apple M5 Pro,
+48 GB, under heavy load, so wall times are not comparable and the cost is counted in decodes.
+
+- **Detection cannot tell them apart.** The Hindi log-probability among the allowed tokens was
+  -5.2 to -9.4 on seven Hindi clips, and -5.6 to -16.2 on the English clips; only `ठीक है` was
+  detected as Hindi (-0.40). No threshold on the detector's answer flips the Hindi clips without
+  flipping `call me later` and `sounds good` spoken by `Rishi`.
+- **Decoding both languages and keeping the higher mean log-probability** costs two decodes per
+  short piece and changed the kept transcript on one Hindi clip (`nahi`, `Naheen.` to `नहीन`).
+  English kept every English clip.
+- **The Hindi decode itself misses most of them.** Forced to Hindi, the clips read `हाँ.`, `टीख`,
+  `TK`, `हाग?`, `ठीक है.`, nothing, `नहीन`, `अच्चा.`: four of eight carry the reply, so even a
+  perfect choice between the two decodes reaches four, against seven asked for. Forcing Hindi also
+  turns English clips into Devanagari (`send it` to `संद इख`).
+
+No choice between detection and decoding reaches seven of eight on this model; the ceiling is
+the Hindi decode of sub-second audio. The clips are synthetic, and `Rishi` reads romanised
+Hindi with an English voice, so `theek` heard as `Teak.` is partly the clip.
+
 ## The compression ratio a Hindi decode is judged by
 
 - WhisperKit retries a window warmer when its token ids compress better than 2.4 under zlib, the
