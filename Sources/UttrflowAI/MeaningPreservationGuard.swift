@@ -181,7 +181,9 @@ public struct MeaningPreservationGuard: Sendable {
         var taken: [Reading] = []
         guard !doubtful.isEmpty else { return (.accepted, excused, taken) }
         for span in doubtful {
-            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated() {
+            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard))
+                .enumerated()
+            {
                 let touched = alignment.changes.filter { $0.kept.overlaps(place) }
                 // A run the rewrite left where it stood is the run as it was heard, and needs no reading.
                 guard let first = touched.first, let last = touched.last else { continue }
@@ -206,7 +208,8 @@ public struct MeaningPreservationGuard: Sendable {
                     else {
                         return (
                             .rejected(
-                                reason: "the rewrite read '\(span.heard)' as a reading offered for another mention",
+                                reason:
+                                    "the rewrite read '\(span.heard)' as a reading offered for another mention",
                                 kind: .unofferedReading),
                             excused, taken
                         )

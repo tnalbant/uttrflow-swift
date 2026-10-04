@@ -22,6 +22,7 @@ extension DictationPipeline {
         _ transcription: Transcription, seeing appContext: AppContext,
         recording metrics: any MetricsRecording
     ) async -> CorrectedTranscript {
+        let corrector = runningCorrector
         do {
             let proposed =
                 try await metrics.measuringInTime(.correction, clock: clock) {

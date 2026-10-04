@@ -99,7 +99,8 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// Whether one trailing character does not change the sentence end before it.
     private static func isTrailingSentenceDecoration(_ character: Character) -> Bool {
-        character.isWhitespace || closingSentenceCharacters.contains(character) || CaretJoin.isEmoji(character)
+        character.isWhitespace || closingSentenceCharacters.contains(character)
+            || CaretJoin.isEmoji(character)
     }
 
     /// Closing quotes and brackets may follow a sentence end without changing it.

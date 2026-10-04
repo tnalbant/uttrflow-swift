@@ -8,6 +8,13 @@ public enum SpokenMarkKind: String, Decodable, Sendable, Equatable {
     case opening
     /// Closes one, so it goes on the word before it as a trailing mark does.
     case closing
+    /// Stands as a word of its own between the words on both sides of it: an ampersand.
+    case standalone
+    /// Goes on the word after it without opening a quotation: an at sign, a hash sign.
+    case leading
+
+    /// Whether the mark goes on the word after its name rather than on the one before.
+    public var attachesAfter: Bool { self == .opening || self == .leading }
 }
 
 /// One phrase said as an instruction rather than as words, and what it writes.
@@ -24,6 +31,10 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case casing
         /// An option marker written before the word after it at a command line; `destinations` are where every dash is one.
         case flag
+        /// A lead-in kept as spoken, with `text` written onto its last word when the clause goes on after it.
+        case leadIn
+        /// An edit said under the editing key: the words up to `until` are found in the last insertion and replaced by the rest.
+        case replace
     }
 
     /// How many of the following words a casing command covers.
@@ -96,6 +107,11 @@ public enum SpokenCommands {
     public static let casings = rows(.casing)
     /// Option markers said by name, longest first.
     public static let flags = rows(.flag).sorted { $0.words.count > $1.words.count }
+    /// Phrases that introduce what follows them, such as a list.
+    public static let leadIns = rows(.leadIn)
+    /// Edits that replace words in the last insertion, said only under the editing key.
+    public static let replacements = rows(.replace)
+
     /// Whether `text` is a single bracket, opening or closing.
     public static func isBracket(_ text: String) -> Bool {
         guard text.count == 1, let character = text.first else { return false }

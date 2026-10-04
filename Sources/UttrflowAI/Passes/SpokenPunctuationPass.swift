@@ -25,6 +25,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
+        markLeadIns(in: &draft)
         var live = draft.presentIndices
         let repeated = repeatedNames(in: live, of: draft)
         var names: Set<Int> = []
@@ -98,7 +99,26 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         return switch found.placement {
         case .opening: open.last == "\"" && found.text == "\"" ? "'" : found.text
         case .closing: open.last ?? found.text
-        case .trailing, .joining: nil
+        case .trailing, .joining, .standalone, .leading: nil
+        }
+    }
+
+    /// Writes a lead-in row's mark onto its last word when more of the same clause follows it.
+    private func markLeadIns(in draft: inout Draft) {
+        let live = draft.presentIndices
+        for row in SpokenCommands.leadIns where row.isEnabled(in: destination) {
+            for position in live.indices where position + row.words.count < live.count {
+                let last = live[position + row.words.count - 1]
+                guard draft.spells(row.words, at: position, in: live),
+                    !draft.shape(at: last).endsClause,
+                    !draft.words[live[position + row.words.count]].isLayoutMark,
+                    !MentionGuard.isMentioned(
+                        at: position, spanning: row.words.count, in: live, of: draft,
+                        reach: MentionGuard.phraseReach)
+                else { continue }
+                let marked = WordShape.marked(draft.words[last].text, with: row.text)
+                draft.replace(at: last, with: marked, by: Self.id)
+            }
         }
     }
 
@@ -376,9 +396,17 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         in live: inout [Int], of draft: inout Draft
     ) -> Bool {
         let after = position + length
-        // An opening mark needs the word it goes on to stand after it; every other mark needs the one before.
-        guard kind == .opening ? after < live.count : position > 0 else { return false }
-        if kind == .opening {
+        // An opening or leading mark needs the word it goes on after it, a standalone one a word on each side, every other the one before.
+        let needsBefore = !kind.attachesAfter
+        let needsAfter = kind.attachesAfter || kind == .standalone
+        guard !needsBefore || position > 0, !needsAfter || after < live.count else { return false }
+        if kind == .standalone {
+            draft.replace(at: live[position], with: mark, by: Self.id)
+            for index in live[(position + 1)..<after] { draft.remove(at: index, by: Self.id) }
+            live.removeSubrange((position + 1)..<after)
+            return true
+        }
+        if kind.attachesAfter {
             let following = draft.words[live[after]].text
             let balanced =
                 mark == "\"" && following.hasSuffix("'")

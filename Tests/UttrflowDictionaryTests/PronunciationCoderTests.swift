@@ -76,7 +76,9 @@ struct PronunciationCoderTests {
         "keys a digit and its spoken word alike",
         arguments: [("S 3", "s three"), ("o auth 2", "o auth two"), ("R2D2", "R two D two")])
     func keysDigitsAsSpoken(written: String, spoken: String) {
-        #expect(!Set(PronunciationCoder.keys(for: written)).isDisjoint(with: PronunciationCoder.keys(for: spoken)))
+        #expect(
+            !Set(PronunciationCoder.keys(for: written)).isDisjoint(with: PronunciationCoder.keys(for: spoken))
+        )
     }
 
     /// A spelling with digits keeps the keys it had as written, and a number alone keeps its spelling key.
@@ -84,12 +86,14 @@ struct PronunciationCoderTests {
     func digitsKeepTheirWrittenKeys() {
         #expect(
             Set(PronunciationCoder.keys(for: "R2D2"))
-                == Set(DoubleMetaphone.code(for: "R2D2").keys + DoubleMetaphone.code(for: "R two D two ").keys))
+                == Set(
+                    DoubleMetaphone.code(for: "R2D2").keys + DoubleMetaphone.code(for: "R two D two ").keys))
         #expect(PronunciationCoder.digitsSpoken(in: "R2D2") == "R two D two ")
         #expect(
             Set(PronunciationCoder.keys(for: "2024"))
-                == Set([PronunciationCoder.spellingKey(for: "2024")]
-                    + DoubleMetaphone.code(for: " two  zero  two  four ").keys))
+                == Set(
+                    [PronunciationCoder.spellingKey(for: "2024")]
+                        + DoubleMetaphone.code(for: " two  zero  two  four ").keys))
         #expect(PronunciationCoder.digitsSpoken(in: "Nikhil") == nil)
     }
 }

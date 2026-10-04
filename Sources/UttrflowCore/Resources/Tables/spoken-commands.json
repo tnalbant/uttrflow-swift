@@ -20,8 +20,14 @@
         {"id": "mark.period", "words": ["period"], "action": "mark", "text": ".", "placement": "trailing"},
         {"id": "mark.colon", "words": ["colon"], "action": "mark", "text": ":", "placement": "trailing"},
         {"id": "mark.semicolon", "words": ["semicolon"], "action": "mark", "text": ";", "placement": "trailing"},
+        {"id": "lead-in.as-follows", "words": ["as", "follows"], "action": "leadIn", "text": ":"},
         {"id": "mark.hyphen", "words": ["hyphen"], "action": "mark", "text": "-", "placement": "joining"},
         {"id": "mark.dash", "words": ["dash"], "action": "mark", "text": "—", "placement": "joining"},
+        {"id": "mark.ellipsis", "words": ["dot", "dot", "dot"], "action": "mark", "text": "…", "placement": "trailing"},
+        {"id": "mark.percent-sign", "words": ["percent", "sign"], "action": "mark", "text": "%", "placement": "trailing"},
+        {"id": "mark.at-sign", "words": ["at", "sign"], "action": "mark", "text": "@", "placement": "leading"},
+        {"id": "mark.hash-sign", "words": ["hash", "sign"], "action": "mark", "text": "#", "placement": "leading"},
+        {"id": "mark.ampersand", "words": ["ampersand"], "action": "mark", "text": "&", "placement": "standalone"},
         {"id": "flag.long", "words": ["dash", "dash"], "action": "flag", "text": "--", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
         {"id": "flag.long-double", "words": ["double", "dash"], "action": "flag", "text": "--", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
         {"id": "flag.short", "words": ["dash"], "action": "flag", "text": "-", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
@@ -44,6 +50,7 @@
         {"id": "case.kebab", "words": ["kebab", "case"], "action": "casing", "text": "kebab", "destinations": ["codeEditor"]},
         {"id": "case.upper", "words": ["all", "caps"], "action": "casing", "text": "upper", "destinations": ["codeEditor"]},
         {"id": "case.upper-span", "words": ["all", "caps", "on"], "action": "casing", "text": "upper", "reach": "span", "until": ["all", "caps", "off"], "destinations": ["document", "email", "messaging", "plain"]},
-        {"id": "case.upper-word", "words": ["all", "caps"], "action": "casing", "text": "upper", "reach": "word", "destinations": ["document", "email", "messaging", "plain"]}
+        {"id": "case.upper-word", "words": ["all", "caps"], "action": "casing", "text": "upper", "reach": "word", "destinations": ["document", "email", "messaging", "plain"]},
+        {"id": "edit.replace", "words": ["replace"], "action": "replace", "text": "", "reach": "span", "until": ["with"]}
     ]
 }

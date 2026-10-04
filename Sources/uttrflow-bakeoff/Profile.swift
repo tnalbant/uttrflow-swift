@@ -109,7 +109,8 @@ struct Profile: AsyncParsableCommand {
         ).emit()
         try BudgetVerdict.enforce(
             ResourceBudget.readings(of: report.timeline),
-            disk: ResourceBudget.diskReadings(of: LocalStoreInventory.usage(in: .applicationSupportDirectory)))
+            disk: ResourceBudget.diskReadings(of: LocalStoreInventory.usage(in: .applicationSupportDirectory))
+        )
     }
 
     // MARK: Progress

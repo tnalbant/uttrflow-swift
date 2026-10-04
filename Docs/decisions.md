@@ -20,6 +20,7 @@ it links is updated with the new result.
 | The dictation start cue is not trimmed from the front of the recording | A fixed trim turns a probabilistic bleed into certain word loss for users who press and speak; the sweep found no word errors at the loudest leak | [audio-capture.md](audio-capture.md) | A sweep with the current shaped cue, not the earlier one, finds word errors from the bleed |
 | Voice processing (echo cancellation) is not enabled on the input | Cut the cue bleed most, but changed the input to nine channels, and imposes gain control and noise suppression the recogniser was never tuned against | [audio-capture.md](audio-capture.md) | The bake-off is re-run with voice processing on and the recogniser scores no worse |
 | Calling the audio converter again is not a way to recover dropped frames | It reports `inputRanDry` after about 4000 frames; only re-supplying input in slices recovers the output | [audio-capture.md](audio-capture.md) | A macOS release changes `AVAudioConverter`'s pull behaviour |
+| No language-specific punctuation marks (inverted marks, French spacing, guillemets) | Only English and Hindi are transcribed, and romanised Hindi is typed with English marks; there is no language for such rules to serve | [adding-a-language.md](adding-a-language.md#punctuation-conventions) | A Latin-script language is added to `LanguageCode.transcribed` |
 
 ## Clean-up and the language model
 

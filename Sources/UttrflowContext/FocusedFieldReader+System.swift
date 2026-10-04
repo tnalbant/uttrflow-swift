@@ -385,7 +385,7 @@ public enum FocusedFieldReader {
     }
 
     /// The system window containing this field, which distinguishes same-app windows with identical AX fields.
-    private static func windowNumber(of field: AXUIElement) -> UInt32? {
+    static func windowNumber(of field: AXUIElement) -> UInt32? {
         var number: CGWindowID = 0
         guard axUIElementGetWindow(field, &number) == .success else { return nil }
         return number

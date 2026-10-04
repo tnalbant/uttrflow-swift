@@ -39,7 +39,8 @@ public struct InterpolatedLanguageModel: Sendable {
     }
 
     /// The summed log10 probability of `span` after `left`, then of each word of `right` after it.
-    public func log10Probability(ofSpan span: [String], between left: [String], and right: [String]) -> Float {
+    public func log10Probability(ofSpan span: [String], between left: [String], and right: [String]) -> Float
+    {
         var context = Array(left.suffix(max(order - 1, 0)))
         var total: Float = 0
         for word in span + right.prefix(max(order - 1, 0)) {
@@ -74,7 +75,9 @@ public struct ContextScorer: Sendable {
     }
 
     /// The candidate the context prefers by at least the margin, or `.undecided` when none leads by that much.
-    public func verdict(on candidates: [[String]], between left: [String], and right: [String]) -> ContextVerdict {
+    public func verdict(
+        on candidates: [[String]], between left: [String], and right: [String]
+    ) -> ContextVerdict {
         let scores = candidates.map { model.log10Probability(ofSpan: $0, between: left, and: right) }
         guard let best = scores.indices.max(by: { scores[$0] < scores[$1] }) else { return .undecided }
         let runnerUp = scores.indices.filter { $0 != best }.map { scores[$0] }.max()

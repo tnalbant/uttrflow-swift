@@ -86,11 +86,11 @@ public enum MentionGuard {
         corroboratedByLayout: Bool = false
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
-        guard position > 0 else { return kind != .opening }
+        guard position > 0 else { return !kind.attachesAfter }
         if kind == .closing, isOpenQuotation(before: position, in: live, of: draft) { return false }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
-            finalMark: kind == .trailing && position + length == live.count, opening: kind == .opening,
+            finalMark: kind == .trailing && position + length == live.count, opening: kind.attachesAfter,
             corroboratedByLayout: corroboratedByLayout
         ) {
             return true
@@ -157,7 +157,9 @@ public enum MentionGuard {
         let lexicalClass = LexicalClass.tag(at: wordRange.lowerBound, in: phrase)
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
-        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }
+        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) {
+            return true
+        }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
         if head == "period" && finalMark {

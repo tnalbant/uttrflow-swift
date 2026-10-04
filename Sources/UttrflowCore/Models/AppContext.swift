@@ -22,6 +22,8 @@ public struct AppContext: Sendable, Equatable {
     public let isMultiline: Bool?
     /// What the focused field calls itself, one line without control characters; never read from a secure field nor kept in history.
     public let fieldLabel: String?
+    /// The focused field itself, so a write can refuse a field the user moved away from; `nil` when unreadable.
+    public let field: FieldIdentity?
 
     /// A context; anything not supplied is unknown.
     public init(
@@ -34,7 +36,8 @@ public struct AppContext: Sendable, Equatable {
         isSecure: Bool = false,
         accessibilityRole: String? = nil,
         isMultiline: Bool? = nil,
-        fieldLabel: String? = nil
+        fieldLabel: String? = nil,
+        field: FieldIdentity? = nil
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
@@ -46,6 +49,7 @@ public struct AppContext: Sendable, Equatable {
         self.accessibilityRole = accessibilityRole
         self.isMultiline = isMultiline
         self.fieldLabel = isSecure ? nil : fieldLabel.flatMap(Self.fieldLabel)
+        self.field = field
     }
 
     /// The most label characters carried; a longer one is a sentence of help text, not a name.

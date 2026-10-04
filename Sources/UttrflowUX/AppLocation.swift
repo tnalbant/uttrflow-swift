@@ -1,7 +1,7 @@
 // The one vocabulary for places in the app: a destination, and the tabs it can name.
 
 /// Somewhere in the app the user can be sent, named the same way by every surface that sends them.
-public enum Destination: Sendable, Equatable, Hashable {
+public enum AppLocation: Sendable, Equatable, Hashable {
     case onboarding
     case settings(SettingsTab)
     case main(MainTab)

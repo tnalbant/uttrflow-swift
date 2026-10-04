@@ -30,6 +30,11 @@ struct SettingsDiagnosticsView: View {
                     rows(presentation.speechModelLoads)
                 }
             }
+            if !presentation.arrivals.isEmpty {
+                section("Where dictations arrived") {
+                    rows(presentation.arrivals)
+                }
+            }
             if !presentation.decoding.isEmpty {
                 section("Recognition effort") {
                     rows(presentation.decoding)

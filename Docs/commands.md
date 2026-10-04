@@ -2,8 +2,8 @@
 
 "delete that", "scratch that" and "new line" are also words people dictate. An edit command
 that destroys text needs a separation stronger than the neighbouring-word evidence
-`MentionGuard` uses for inline marks. This page measures the candidate rules; the choice is
-open until the owner decides between the two that pass the budget.
+`MentionGuard` uses for inline marks. This page measures the candidate rules and records the
+one chosen.
 
 ## Rules measured
 
@@ -49,7 +49,17 @@ Host: Apple M5 Pro, 48 GB. Command: `python3 Scripts/command_rule_probe.py`, exi
 - key is zero on both by construction; its cost is the second gesture, which this text
   probe cannot measure.
 
-## Needs owner
+## Decision: the held command key
 
-key and prefix both meet the budget. Choosing between them trades a second shortcut against
-a spoken prefix word and the run-on misses; no measurement here decides it.
+A command is spoken while a second shortcut is held; there is no spoken prefix word. Line
+breaks and self-corrections inside ordinary dictation stay inferred from the words.
+
+| Piece | Where |
+|---|---|
+| The key | `ShortcutAction.editCommand`, default ⌃⇧ held (`HotkeyBinding.controlShiftHold`), watched by its own `ActivationMonitor` |
+| The route | `DictationController` tags each press with `UtteranceRoute`; `DictationPipeline.route(next:)` sends that one recording to the commands |
+| The commands | `EditCommandRegistry` asks each `EditCommand` in order; the first that accepts the words runs on the selection read at key-up |
+
+A command-key utterance is never typed. Words no command accepts end in a notice that keeps
+them; a click always dictates. While one key's hold is under way, the other key is ignored.
+`Tests/UttrflowPipelineTests/EditCommandRoutingTests.swift` pins all of this.

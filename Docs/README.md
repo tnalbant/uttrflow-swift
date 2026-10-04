@@ -62,6 +62,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [adding-a-pass.md](adding-a-pass.md) | Adding a cleaning pass, step by step |
 | [adding-a-destination.md](adding-a-destination.md) | Adding a destination, step by step |
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
+| [lexicon.md](lexicon.md) | Adding a technical term: the entry, what is rejected, the check |
 | [data-manifest.md](data-manifest.md) | Origin, licence and digest of every bundled resource file, and the check |
 | [data-asset-delivery.md](data-asset-delivery.md) | Bundled or downloaded data assets: sizes, load time and update path |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
@@ -185,6 +186,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [ui-tests.md](ui-tests.md) | Driving the real app |
 | [packaging.md](packaging.md) | Packaging Uttrflow.app |
 | [releasing.md](releasing.md) | Releasing Uttrflow |
+| [rollback.md](rollback.md) | Rolling back a release |
 | [operator-runbook.md](operator-runbook.md) | Operator runbook |
 | [definition-of-done.md](definition-of-done.md) | Definition of done |
 | [preferences-suites.md](preferences-suites.md) | Temporary `UserDefaults` suites in tests |

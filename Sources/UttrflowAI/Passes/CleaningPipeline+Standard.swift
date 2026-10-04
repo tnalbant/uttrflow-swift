@@ -47,6 +47,8 @@ extension CleaningPipeline {
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
+            // Last, so a pause inside a number or a removed filler is read on the words left standing.
+            PauseStopPass(destination: destination),
         ]
         let inCode =
             destination == .codeEditor
@@ -76,7 +78,7 @@ extension CleaningPipeline {
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
-    public static func afterModelPiece(
+    static func afterModelPiece(
         digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [

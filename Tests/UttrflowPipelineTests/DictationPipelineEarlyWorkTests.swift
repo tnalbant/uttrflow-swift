@@ -462,7 +462,7 @@ struct DictationPipelineEarlyWorkTests {
         #expect(pieces.joined().elementsEqual(Take.threePieces.samples))
     }
 
-    /// The first screen read warms the tidier; each piece gets another read for correction evidence.
+    /// The first screen read warms the tidier; each piece gets another read for correction evidence, and insertion one more.
     @Test(
         "the tidier is warmed for where the screen says the words are going, and for plain text when it says nothing"
     )
@@ -486,7 +486,9 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.finishRecording()
 
             #expect(!cleaner.warmed.isEmpty && cleaner.warmed.allSatisfy { $0 == destination })
-            #expect(await engine.calls.count == 4, "one warm-up read and one correction read per piece")
+            #expect(
+                await engine.calls.count == 5,
+                "one warm-up read, one correction read per piece and one read at insertion")
         }
     }
 
@@ -503,7 +505,9 @@ struct DictationPipelineEarlyWorkTests {
         await pipeline.finishRecording()
 
         #expect(await pipeline.currentState.outcome?.insertedInto == "Notes")
-        #expect(await context.calls.count == 4, "one initial read and one correction read per piece")
+        #expect(
+            await context.calls.count == 5,
+            "one initial read, one correction read per piece and one read at insertion")
     }
 
     @Test("later pieces use the screen they were spoken against for correction evidence")
@@ -550,7 +554,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.received == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x. w2 x"], "a text editor ends the first piece as a sentence")
     }
 
     @Test("a different frontmost app makes the insertion caret unknown")
@@ -575,7 +579,7 @@ struct DictationPipelineEarlyWorkTests {
         await cleaner.release()
         await pipeline.finishRecording()
 
-        #expect(inserter.received == ["W1 x.w2 x"])
+        #expect(inserter.received == ["W1 x w2 x"], "joined for the terminal it began in, which adds no stop")
     }
 
     @Test("pieces cut from audio the stop did not return are thrown away, not joined")
@@ -868,7 +872,7 @@ struct DictationPipelineEarlyWorkTests {
     func allSilentIsRefused() async {
         let speech = NumberingSpeechEngine(silentCalls: [1])
         let pipeline = makePipeline(
-            capture: FakeAudioCaptureEngine(stopOutcome: .success(AudioSamples.canonical(Take.silence(3)))),
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.roomTone(seconds: 3))),
             speech: speech)
 
         await pipeline.startRecording()
@@ -882,7 +886,7 @@ struct DictationPipelineEarlyWorkTests {
         let speech = NumberingSpeechEngine(blankCalls: [1])
         let pipeline = makePipeline(
             capture: FakeAudioCaptureEngine(
-                stopOutcome: .success(AudioSamples.canonical(Take.silence(3)))),
+                stopOutcome: .success(.roomTone(seconds: 3))),
             speech: speech)
 
         await pipeline.startRecording()

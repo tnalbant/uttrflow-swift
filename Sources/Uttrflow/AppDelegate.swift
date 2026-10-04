@@ -1302,6 +1302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller = DictationController(
             pipeline: pipeline,
             monitor: ActivationMonitor(),
+            commandMonitor: ActivationMonitor(),
             cue: cue,
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
@@ -1428,6 +1429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         let binding = settings.hotkey
+        let commandBinding = settings.shortcuts.first(for: .editCommand)
         let arming = shortcutArming
         // Kept as its own state on the menu bar and floating button, never shown as a failed dictation.
         Task {
@@ -1438,6 +1440,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if let failure = arming.failure {
                 let reason = SuggestionLog.failure(failure)
                 Self.log.error("the dictation shortcut is not armed: \(reason, privacy: .public)")
+            }
+            guard attempt == self.shortcutArmingAttempt, arming.failure == nil else { return }
+            do throws(HotkeyError) {
+                try await controller.start(commandBinding: commandBinding)
+            } catch {
+                let reason = error.userMessage
+                Self.log.error("the edit-command shortcut is not armed: \(reason, privacy: .public)")
             }
         }
     }
@@ -1705,8 +1714,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             await pasteLastTranscript()
         case .copyLastTranscript:
             await copyLastTranscript()
-        // Watched through the tap rather than registered, so it never arrives here.
-        case .dictate:
+        // Watched through the tap rather than registered, so they never arrive here.
+        case .dictate, .editCommand:
             break
         }
     }
@@ -2612,7 +2621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: Windows
 
     /// Opens whichever surface was asked for, so nothing else knows which class owns a window.
-    private func show(_ destination: UttrflowUX.Destination) {
+    private func show(_ destination: UttrflowUX.AppLocation) {
         // The one gate every window passes: with no session, whatever was asked for, sign-in opens.
         let routed = SessionGate.route(destination, isSignedIn: isSignedIn)
         lastOpened = routed
@@ -2638,7 +2647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Where the last request to open a surface went after the gate; internal so a test can read it.
-    private(set) var lastOpened: UttrflowUX.Destination?
+    private(set) var lastOpened: UttrflowUX.AppLocation?
     /// Whether surfaces are put on screen; a test turns this off to read the gate without a window.
     var drawsWindows = true
 
@@ -2789,6 +2798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             knownRecordings = await recordings.waiting(now: Date())
             recents = RecentDictations(showing: kept)
             knownWords = await dictionary.allEntries()
+            knownRefusals = await dictionary.refusedWords()
             knownSnippets = await snippets.snippets()
             let suggestionCounts: SuggestionCounts?
             if settings.suggestions.isEnabled, let completions {
@@ -2896,7 +2906,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
-                    machine: MachineDescription.current)),
+                    machine: MachineDescription.current, arrivals: entries.map(\.arrival))),
             account: accountPage(at: now),
             shortcutKeycaps: SettingsShortcut.keycaps(for: settings.hotkey))
     }
@@ -2908,7 +2918,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 entries: knownWords, draft: wordDraft, refusal: wordRefusal,
                 query: query(for: .dictionary), filter: scope(for: .dictionary),
                 sort: sorts[.dictionary] ?? "", corrections: corrections, now: now,
-                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt))
+                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt,
+                refused: knownRefusals))
     }
 
     /// The Snippets page as the last reading of the snippets draws it.
@@ -2987,6 +2998,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// What the two stores held at the last refresh, cached because a page is built synchronously.
     private var knownWords: [DictionaryEntry] = []
+    /// The spellings the dictionary refuses to learn, newest first, from the latest reading.
+    private var knownRefusals: [String] = []
     private var knownSnippets: [Snippet] = []
     private var knownEntitlement: Entitlement?
     /// When the signed-in account was created, from the unsigned profile beside the entitlement.
@@ -3141,6 +3154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             redrawPages([page])
         case .addWord:
             editWord(DictionaryDraft())
+        case .fixWord(let written):
+            // The wrong spelling is the recogniser's reading of the sound, so it fills "Say it like"; the editor focuses "Write it as".
+            actionNotice = nil
+            mainWindow?.show(.dictionary)
+            editWord(DictionaryDraft(pronunciation: written))
         case .cancelWordEdit:
             editWord(nil)
         case .saveWord(let word, let pronunciation):
@@ -3153,6 +3171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             replaceWord(id, with: word, pronunciation: pronunciation)
         case .mergeWords(let kept, let absorbed):
             act { try await self.dictionary.merge(keeping: kept, absorbing: absorbed) }
+        case .allowWord(let word):
+            act { try await self.dictionary.allowAgain(word) }
 
         case .addSnippet:
             editSnippet(SnippetDraft())
@@ -3366,6 +3386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     message = "A snippet is longer than the import limit. Nothing was imported."
                 case .dictionaryWordTooLong:
                     message = "A dictionary word is longer than the import limit. Nothing was imported."
+                case .tooManyDictionaryEntries:
+                    message = "The archive exceeds the dictionary word limit. Nothing was imported."
                 case .unsupportedVersion, .invalidContents:
                     message = "The selected archive is not valid. Nothing was imported."
                 }
@@ -3505,7 +3527,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         applyLaunchAtLogin()
 
         // Acted on here, or the shortcut relabels itself and the old key keeps working.
-        if updated.hotkey != previous.hotkey || updated.dictationEnabled != previous.dictationEnabled {
+        if updated.hotkey != previous.hotkey || updated.dictationEnabled != previous.dictationEnabled
+            || updated.shortcuts.first(for: .editCommand) != previous.shortcuts.first(for: .editCommand)
+        {
             startWatchingForTheShortcut()
         }
         // Every registered key is re-armed together, or a changed one keeps firing the old binding.
@@ -3738,9 +3762,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             show(.main(.history))
             Task { await pipeline?.acknowledge() }
         case .retryFromRecording:
-            // The audio sits in today's list on History with its own Retry.
-            show(.main(.history))
-            Task { await pipeline?.acknowledge() }
+            // History's Retry, run from the notice, so the words reach the clipboard in one press.
+            if case .failed(let failure) = lastDictationState, let id = failure.keptRecording {
+                carryOut(MainIntent.retryRecording(id))
+            } else {
+                show(.main(.history))
+                Task { await pipeline?.acknowledge() }
+            }
         }
     }
 
@@ -3774,7 +3802,7 @@ private struct StoredSnippets: SnippetExpanding {
             snippets: expansion.applied.map {
                 SnippetUse(
                     snippetID: $0.snippetID, matched: $0.matched, expansion: $0.expansion)
-            })
+            }, caret: expansion.caret)
     }
 }
 
@@ -3806,9 +3834,11 @@ private struct StoreCounters: DictationLearning {
     let dictionary: PersonalDictionaryStore
     let snippets: SnippetStore
 
-    func recordUse(ofEntries ids: [UUID]) async throws(DictationChangeError) {
+    func recordUse(ofEntries ids: [UUID], writtenIn text: String) async throws(DictationChangeError) {
+        let used = DictionaryAppearances.used(await dictionary.allEntries(), applied: ids, writtenIn: text)
+        guard !used.isEmpty else { return }
         do {
-            _ = try await dictionary.recordUse(of: ids)
+            _ = try await dictionary.recordUse(of: used)
         } catch {
             throw .storeRefused
         }

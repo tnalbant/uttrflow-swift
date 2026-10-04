@@ -5,7 +5,7 @@ import UttrflowAI
 
 /// The correction engine over the user's dictionary: mapping only, deciding none of it.
 public struct DictionaryCorrections: WordCorrecting {
-    /// The dictionary arranged by sound, read afresh for every transcript.
+    /// The dictionary arranged by sound, read when a dictation fixes it.
     public typealias Indexing = @Sendable () async -> PhoneticIndex
 
     private let index: Indexing
@@ -13,6 +13,12 @@ public struct DictionaryCorrections: WordCorrecting {
 
     public init(index: @escaping Indexing) {
         self.index = index
+    }
+
+    /// The dictionary as it stands now; a word added or learnt meanwhile reaches the next dictation.
+    public func fixed() async -> any WordCorrecting {
+        let held = await index()
+        return DictionaryCorrections { held }
     }
 
     public func corrections(

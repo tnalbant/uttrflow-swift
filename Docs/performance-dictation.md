@@ -158,6 +158,23 @@ alphabet, spoken punctuation, self-corrections, the `TranscriptionCorpus` passag
 (`hi-reply`), mixed-language clips (`code-switch`), and ten clips again with brown noise at 20 and
 10 dB SNR, 24 dB quieter and 12 dB hotter (clipping). No recording of a person is involved.
 
+**Developer speech** (`devspeech`) is invented sentences with commands, flags, file names,
+acronyms and made-up project names, read by all three English voices, by Samantha at 130 and 240
+words a minute (`devspeech-slow`, `devspeech-fast`), and two of them with the noise and level
+variants above. The whole corpus is rebuilt from `Scripts/dictation_bench.py`; no audio is
+committed.
+
+**Voices and their licence.** Every voice is a macOS system voice (Samantha, Daniel, Rishi,
+Lekha), used under the macOS software licence agreement that ships them. `corpus` refuses a voice
+missing from `VOICE_SOURCES`, so a new voice is added there with its source before it is used.
+
+**What synthetic speech hides.** `say` reads every word at an even pace, with no hesitations,
+restarts, mumbled endings, breathing, room echo or microphone colour, and the same text in the
+same voice gives the same samples every time. Real dictation has all of these, so word error
+rates here are a floor: they rank changes against each other and do not predict what a person
+will see. A recorded set of real speakers is personal data and is not part of this corpus
+(`make audio-audit`).
+
 **Two word error rates.** *Raw* is the recogniser's pieces joined, against what was said; *final*
 is the inserted text, against what should be typed. Both lower-case, drop punctuation, spell
 numerals, and split identifiers and addresses into words, so "3.5%" and "three point five percent"

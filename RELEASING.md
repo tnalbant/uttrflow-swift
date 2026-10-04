@@ -84,6 +84,9 @@ moment it lands.
 If the candidate does not hold up, fix it on `main` through a pull request and tag
 `-rc.2`. Candidates are cheap; that is the point of them.
 
+If a full release turns out to carry a regression, follow
+[`Docs/rollback.md`](Docs/rollback.md): the way back is a higher patch release, never a downgrade.
+
 ## What the tag actually does
 
 `.github/workflows/release.yml`, in order:

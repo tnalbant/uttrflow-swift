@@ -240,6 +240,10 @@ fmt-list-bullet-command	\n- Call the plumber\n- Pay the rent
 fmt-list-count-not-list	I have two cats and three dogs.
 fmt-list-first-second-third	First book the hall second send invites third order food.
 fmt-list-inline-series	Pack socks shirts and a towel.
+fmt-list-lead-in-chat	The plan is as follows: lunch at noon
+fmt-list-lead-in-document	The steps are as follows: back up the files.
+fmt-list-lead-in-email	The agenda is as follows: the budget review.
+fmt-list-no-lead-in-no-colon	The steps are first and second.
 fmt-list-numbered-spoken	One milk two eggs three bread.
 fmt-number-count	We need 12 chairs.
 fmt-number-money	The ticket costs 40 dollars.
@@ -378,6 +382,12 @@ participle-have-wrote	I have wrote the summary already.
 participle-should-have-ate	I should have ate before the call.
 participle-was-broke	The window was broke during transit.
 participle-was-wrote	It was wrote in the notes.
+paused-after-article-runs-on	We need to finish the report by Friday.
+paused-after-preposition-runs-on	She put the keys on the shelf by the door.
+paused-before-because-runs-on	I stayed home because it was raining.
+paused-question-after-statement	The room is booked. Do you need anything else?
+paused-three-statements	The kettle boiled. The tea is ready. Come and get it.
+paused-two-statements	The meeting moved to Thursday. Please update your calendar.
 percentage	Conversion dropped by 5% after the redesign.
 period-after-new-line	First line\nSecond line.
 period-as-a-word	The trial period ended last week.
@@ -589,6 +599,8 @@ spelled-asap	We need it ASAP.
 spelled-eg	Bring snacks e.g. chips.
 spoken-absolute-path	The path is /users/sam/notes.
 spoken-ampersand	Salt & pepper on the side.
+spoken-ampersand-between-names	We hired smith & jones.
+spoken-at-sign-before-a-handle	Ping me @sam on the thread.
 spoken-code-digit-run	The code is 1234.
 spoken-colon-at-the-end	The steps are as follows:
 spoken-colon-before-a-clause	The reason is simple: we ran out of time.
@@ -609,17 +621,20 @@ spoken-date-without-the	21st of March.
 spoken-decade	The 1990s were fun.
 spoken-domain-api-path	The docs live at docs.example.com/api/v two.
 spoken-dot-env-filename	Edit the .env file.
+spoken-ellipsis-mid-sentence	Well… maybe not.
 spoken-email-address	Forward the logs to support@example.com.
 spoken-email-address-ending-the-sentence	Email me at sam@example.com.
 spoken-email-address-with-a-name	Please send the contract to priya.shah@example.com by tonight.
 spoken-email-addresses-in-a-list	Write to info@example.com and billing@example.net.
 spoken-emergency-digit-run	Call 911.
 spoken-handle-and-underscore	My handle is at sam_dev.
+spoken-hash-sign-before-a-tag	Tag it #launch day.
 spoken-identifier-underscore	The variable is user_id.
 spoken-international-phone-digit-run	Dial +919876543210.
 spoken-leading-oh-digit-run	The passcode is 050.
 spoken-oh-and-zero-digit-run	The passcode is 005.
 spoken-package-filename	Open package dot json.
+spoken-percent-sign-after-a-number	Sales grew by 40% this year.
 spoken-period	Ship it.
 spoken-phone-digit-run	Call me on 9876543210.
 spoken-scheme-address	Go to https://example.com.

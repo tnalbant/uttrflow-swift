@@ -949,4 +949,12 @@ struct SeamSnippetInputTests {
         let expanded = ExpandedTranscript(text: "W1 X W2 X W3 Y", snippets: [])
         #expect(input.restoringUnconsumedStops(in: expanded).text == "W1 X. W2 X. W3 Y")
     }
+
+    @Test("a snippet's caret moves with the stops restored before it")
+    func caretFollowsRestoredStops() {
+        let expanded = ExpandedTranscript(text: "W1 X W2 X W3 Y", snippets: [], caret: 6)
+        let restored = input.restoringUnconsumedStops(in: expanded)
+        #expect(restored.text == "W1 X. W2 X. W3 Y")
+        #expect(restored.caret == "W1 X. W".utf16.count)
+    }
 }

@@ -90,10 +90,17 @@ public actor DictationPipeline {
         var listening: ListeningLanguages
         let vocabulary: [String]
         let profile: UserProfile
+        let corrector: any WordCorrecting
     }
 
     /// What the clean-up steps did to each piece of the dictation under way, reported as one when it ends.
     private var cleaningRecords: [CleaningRecord] = []
+    /// Runs what is said while the command key is held, in place of inserting it.
+    private let commands: EditCommandRegistry
+    /// Where the next recording goes, set by the key that opens it and spent when it opens.
+    private var nextRoute: UtteranceRoute = .dictation
+    /// Where the recording under way goes.
+    private var recordingRoute: UtteranceRoute = .dictation
 
     public init(
         capture: any AudioCaptureEngine,
@@ -116,7 +123,8 @@ public actor DictationPipeline {
         windowing: SpeechWindowing = .standard,
         earlyPoll: Duration = .seconds(1),
         pollClock: any Clock<Duration> = ContinuousClock(),
-        speechLoadLimit: Duration = StageTimeout.speechModelLoad
+        speechLoadLimit: Duration = StageTimeout.speechModelLoad,
+        commands: EditCommandRegistry = EditCommandRegistry()
     ) {
         self.capture = capture
         self.speech = speech
@@ -139,6 +147,12 @@ public actor DictationPipeline {
         self.earlyPoll = earlyPoll
         self.pollClock = pollClock
         self.speechLoadLimit = speechLoadLimit
+        self.commands = commands
+    }
+
+    /// Sends the next recording to `route`; every recording after it goes back to dictation.
+    public func route(next route: UtteranceRoute) {
+        nextRoute = route
     }
 
     /// Takes the user's clean-up choices as they stand now, for every dictation after this one.
@@ -165,6 +179,9 @@ public actor DictationPipeline {
 
     /// The languages this dictation is being listened for and tidied in, for the same reason.
     var runningProfile: UserProfile { inUse?.profile ?? profile }
+
+    /// The dictionary held at the start of this dictation; a word added meanwhile waits for the next.
+    var runningCorrector: any WordCorrecting { dictationContext?.corrector ?? corrector }
 
     /// Which recogniser the next dictation is transcribed by.
     public var speechKind: SpeechEngineKind { speech.kind }
@@ -311,6 +328,8 @@ public actor DictationPipeline {
             await capture.cancel()
             return
         }
+        recordingRoute = nextRoute
+        nextRoute = .dictation
         stopwatch = UttrflowCore.stopwatch(from: clock)
         takeSettings()
         spokenFor = nil
@@ -368,7 +387,8 @@ public actor DictationPipeline {
         guard !wasCancelled(mine) else { return nil }
         // Moved on before returning, so a gesture handled next sees the microphone closed and the pipeline busy.
         transition(to: .transcribing)
-        return Task { await process(audio, mine, delivery: .insert) }
+        let delivery: Delivery = recordingRoute == .command ? .command : .insert
+        return Task { await process(audio, mine, delivery: delivery) }
     }
 
     /// Runs a kept recording through the same stages to the clipboard; false when it never ran or was abandoned.
@@ -422,16 +442,17 @@ public actor DictationPipeline {
         missedPieces = 0
     }
 
-    /// Abandons the dictation at any stage: nothing is transcribed and nothing is inserted.
+    /// Abandons the dictation at any stage, inserting nothing; audio already claimed is kept so the speech can be retried.
     public func cancel() async {
         early.pendingCapture?.cancel()
         early.pendingCapture = nil
         early.pendingCaptureElapsed = nil
+        nextRoute = .dictation
         cancelledGeneration = generation
         early.cancel()
         show(heard: nil)
         await capture.cancel()
-        await settleRecording(wordsLost: false)
+        await settleRecording(wordsLost: true)
         transition(to: .idle)
     }
 
@@ -473,10 +494,11 @@ public actor DictationPipeline {
                 Situation(app: app, insertion: app.insertionPoint, destination: $0)
             } ?? SituationResolver.resolve(from: app, overrides: overrides)
         let words = await speechWords(app)
+        let fixedCorrector = await corrector.fixed()
         dictationWords = words
         dictationContext = DictationContext(
             app: app, situation: situation, listening: ListeningLanguages(profile: runningProfile),
-            vocabulary: words, profile: runningProfile)
+            vocabulary: words, profile: runningProfile, corrector: fixedCorrector)
         await cleaner.warm(for: situation)
         await cleaner.reserveFinalPiece(situation)
     }
@@ -713,6 +735,8 @@ public actor DictationPipeline {
     private enum Delivery {
         case insert
         case copy
+        /// Run by the edit commands against the selection; never inserted.
+        case command
     }
 
     private func process(_ audio: AudioSamples, _ mine: Int, delivery: Delivery) async {
@@ -745,7 +769,7 @@ public actor DictationPipeline {
 
         var remainder = windowing.windows(
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
-            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil,
+            joiningPreviousWindowFrom: delivery != .copy ? previousWindowStart : nil,
             boundaries: audio.discontinuities)
         if let first = remainder.first, first.lowerBound < cut {
             if !spans.isEmpty { spans.removeLast() }
@@ -802,7 +826,7 @@ public actor DictationPipeline {
                         biasedTowards: await vocabulary(mine, seeing: earlyContext ?? AppContext()),
                         recording: tally, skippingAMiss: true, for: mine)
                 } catch {
-                    failure = DictationFailure(error, speechEngineKind: speech.kind)
+                    failure = Self.failure(error, in: audio, speechEngineKind: speech.kind)
                     tidying.cancelAll()
                     return
                 }
@@ -838,15 +862,13 @@ public actor DictationPipeline {
         guard !abandoned, !wasCancelled(mine) else { return }
         await tally.report(to: metrics)
         // Only when something was tidied, so silence cannot blank the last account; never for a secure field.
-        if !cleaningRecords.isEmpty, !destinationIsSecure {
+        if !cleaningRecords.isEmpty, !destinationIsSecure, delivery != .command {
             await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords))
         }
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            let silence: SpeechEngineError =
-                missedPieces > 0 ? .speechWithoutWords : audio.carriesNoSignal ? .noSignal : .nothingHeard
-            await fail(DictationFailure(silence))
+            await fail(Self.silence(missedPieces > 0 ? .speechWithoutWords : .nothingHeard, in: audio))
             return
         }
         // Every piece is done while recording, and the screen it is read against still applies.
@@ -856,18 +878,22 @@ public actor DictationPipeline {
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         // Inserting a blank would delete the user's selection, so it is refused like silence.
-        guard
-            let joined = await join(
-                pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
-        else {
+        let joinedPieces = await join(
+            pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
+        guard !wasCancelled(mine) else { return }
+        guard let joined = joinedPieces else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
         let (whole, joiningFormatter, expanded) = (joined.whole, joined.formatter, joined.expanded)
-        guard !wasCancelled(mine) else { return }
         var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
+            return
+        }
+
+        if delivery == .command {
+            await runCommand(whole.heard.text, seeing: appContext, generation: mine)
             return
         }
 
@@ -901,7 +927,8 @@ public actor DictationPipeline {
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let destination = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides).destination
+        let destination = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides)
+            .destination
         let toWrite = insertionContext.insertionPoint.paddedBoundary(
             for: OutputSafety.checked(output).text, in: destination)
 
@@ -919,7 +946,7 @@ public actor DictationPipeline {
                 unavailableEngines: whole.cleaned.cleaning?.unavailableEngines ?? [],
                 destination: InsertionDestination(
                     applicationName: appContext?.applicationName,
-                    bundleIdentifier: appContext?.bundleIdentifier))
+                    bundleIdentifier: appContext?.bundleIdentifier, field: appContext?.field))
         else { return }
         // Read before the next await, since the next dictation may start once these words are on screen.
         let wasSecure = destinationIsSecure
@@ -929,10 +956,11 @@ public actor DictationPipeline {
             early.pendingInsertion = toWrite
             return
         }
+        // A secret is not a word to learn or count, by the same gate that keeps it out of History.
+        let kept = KeptWords.of(toWrite, intoSecureField: wasSecure)
         // Both run after the words are on screen, and neither can fail the dictation. §19.
-        await count(changes)
-        // A secret is not a word to learn, by the same gate that keeps it out of History.
-        guard KeptWords.of(toWrite, intoSecureField: wasSecure) != nil else { return }
+        await count(changes, writtenIn: kept ?? "")
+        guard kept != nil else { return }
         // A destination reported by the inserter wins over a screen read made before the switch.
         if let landedID = landedIn(attempt)?.bundleIdentifier,
             let readID = appContext?.bundleIdentifier, landedID != readID
@@ -945,7 +973,7 @@ public actor DictationPipeline {
     /// The screen to tidy against, which for a retry is Uttrflow's own window and says nothing.
     private func contextFor(_ delivery: Delivery) async -> AppContext {
         switch delivery {
-        case .insert:
+        case .insert, .command:
             let read = await readContext()
             // Kept from this read: by insertion time the user has often switched away.
             insertedInto = read.applicationName
@@ -970,7 +998,7 @@ public actor DictationPipeline {
     /// Reads correction evidence at each piece, unless the dictation only goes to the clipboard.
     private func correctionContext(for delivery: Delivery) async -> AppContext {
         switch delivery {
-        case .insert: await readContext()
+        case .insert, .command: await readContext()
         case .copy: recordingDestination ?? AppContext()
         }
     }
@@ -1044,6 +1072,22 @@ public actor DictationPipeline {
         return heard
     }
 
+    /// A recognition failure, where silence a refusal names reads the same as silence found in blank windows.
+    private static func failure(
+        _ error: any Error, in audio: AudioSamples, speechEngineKind kind: SpeechEngineKind
+    ) -> DictationFailure {
+        switch error as? SpeechEngineError {
+        case .nothingHeard?: silence(.nothingHeard, in: audio)
+        case .speechWithoutWords?: silence(.speechWithoutWords, in: audio)
+        default: DictationFailure(error, speechEngineKind: kind)
+        }
+    }
+
+    /// Silence is not a recogniser fault, so it names no engine; a recording of digital zeros is a muted input.
+    private static func silence(_ heard: SpeechEngineError, in audio: AudioSamples) -> DictationFailure {
+        DictationFailure(heard == .nothingHeard && audio.carriesNoSignal ? SpeechEngineError.noSignal : heard)
+    }
+
     /// What the recogniser made of one window.
     private enum Heard: Sendable {
         case words(Transcription)
@@ -1100,6 +1144,22 @@ public actor DictationPipeline {
         }
     }
 
+    /// Runs a command-key utterance on the selection as it stands now; the words are never typed.
+    private func runCommand(_ heard: String, seeing appContext: AppContext?, generation mine: Int) async {
+        let target = await insertionContextForWrite(matching: appContext)
+        guard !wasCancelled(mine) else { return }
+        do {
+            let outcome = try await commands.run(heard, on: target)
+            guard !wasCancelled(mine) else { return }
+            guard outcome == .ran else { return await fail(.commandNotUnderstood(heard)) }
+            await settleRecording(wordsLost: false)
+            transition(to: .idle)
+        } catch {
+            guard !wasCancelled(mine) else { return }
+            await fail(DictationFailure(error, transcript: heard))
+        }
+    }
+
     /// Where the words actually went, which is the insertion's to say; the recording's read is the fallback.
     private func landedIn(_ attempt: InsertionAttempt) -> InsertionDestination? {
         guard let destination = attempt.destination, destination.isKnown else { return nil }
@@ -1110,9 +1170,10 @@ public actor DictationPipeline {
     private func fail(_ failure: DictationFailure) async {
         var failure = failure.markingSecure(destinationIsSecure)
         let wordsLost = failure.transcript == nil && failure.severity != .informational
+        let recording = openRecording
         let kept = await settleRecording(wordsLost: wordsLost)
-        if kept, failure.recovery == nil || failure.recovery == .retry {
-            failure = failure.offering(.retryFromRecording)
+        if kept, let recording, failure.recovery == nil || failure.recovery == .retry {
+            failure = failure.offeringRetry(of: recording)
         }
         transition(to: .failed(failure))
     }
@@ -1150,14 +1211,14 @@ public actor DictationPipeline {
     }
 
     /// Tells the stores what this dictation used, once the words are safely on screen.
-    private func count(_ changes: AppliedChanges) async {
-        guard !changes.isEmpty else { return }
-
-        // Once per entry and in one batch: the store counts dictations an entry was applied to, not words, by either path.
+    private func count(_ changes: AppliedChanges, writtenIn text: String) async {
+        // Once per entry and in one batch: the store counts dictations an entry appeared in, not words, by any path.
         var counted: Set<UUID> = []
         let entries = (changes.corrections.map(\.entryID) + changes.entriesTaken)
             .filter { counted.insert($0).inserted }
-        if !entries.isEmpty { try? await learner.recordUse(ofEntries: entries) }
+        if !entries.isEmpty || !text.isEmpty {
+            try? await learner.recordUse(ofEntries: entries, writtenIn: text)
+        }
 
         guard !changes.snippets.isEmpty else { return }
         // One batch, duplicates left in, because the store counts firings not dictations.
