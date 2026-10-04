@@ -1460,7 +1460,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Whatever was copied while the switch was off stays unrecorded.
             await clipboardWatcher.passOver(upTo: baseline)
             await clipboardWatcher.setExcludedApplications(excludedApplications)
-            await clipboardWatcher.run(handing: arrived)
+            await clipboardWatcher.run(
+                handing: arrived,
+                whenCaptureDegrades: { [weak self] in await self?.reportClipboardCaptureDegraded() })
         }
     }
 
@@ -1583,6 +1585,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let message = "A damaged clipboard index was preserved at \(locations)."
         let notice = MainNotice(
             message: message, symbolName: "externaldrive", tone: .warning)
+        actionNotice = notice
+        panel?.notice = PanelNotice(symbolName: notice.symbolName, message: message)
+        if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
+        announce(message, urgently: false)
+        refreshMainWindow()
+    }
+
+    /// Tells the user once when a clipboard writer takes longer than the read limit.
+    private func reportClipboardCaptureDegraded() {
+        let message = "A clipboard copy took too long to read. Capture will retry automatically."
+        let notice = MainNotice(message: message, symbolName: "doc.on.clipboard", tone: .warning)
         actionNotice = notice
         panel?.notice = PanelNotice(symbolName: notice.symbolName, message: message)
         if let snapshot = panel { quickPanel.update(PanelPresenter.present(snapshot)) }
