@@ -406,6 +406,42 @@ public enum EvaluationCorpus {
             expected: "The build passed. Everything looks good. Ship it."
         ),
         .init(
+            id: "paused-three-statements", category: .everyday,
+            spoken: "the kettle boiled the tea is ready come and get it",
+            expected: "The kettle boiled. The tea is ready. Come and get it.",
+            classes: [.sentenceBoundaries], pausedAfter: [2, 6], addedFor: 2199
+        ),
+        .init(
+            id: "paused-two-statements", category: .everyday,
+            spoken: "the meeting moved to thursday please update your calendar",
+            expected: "The meeting moved to Thursday. Please update your calendar.",
+            classes: [.sentenceBoundaries], pausedAfter: [4], addedFor: 2199
+        ),
+        .init(
+            id: "paused-question-after-statement", category: .everyday,
+            spoken: "the room is booked do you need anything else",
+            expected: "The room is booked. Do you need anything else?",
+            classes: [.sentenceBoundaries], pausedAfter: [3], addedFor: 2199
+        ),
+        .init(
+            id: "paused-after-article-runs-on", category: .everyday,
+            spoken: "we need to finish the report by friday",
+            expected: "We need to finish the report by Friday.",
+            classes: [.sentenceBoundaries], pausedAfter: [4], addedFor: 2199
+        ),
+        .init(
+            id: "paused-before-because-runs-on", category: .everyday,
+            spoken: "i stayed home because it was raining",
+            expected: "I stayed home because it was raining.",
+            classes: [.sentenceBoundaries], pausedAfter: [2], addedFor: 2199
+        ),
+        .init(
+            id: "paused-after-preposition-runs-on", category: .everyday,
+            spoken: "she put the keys on the shelf by the door",
+            expected: "She put the keys on the shelf by the door.",
+            classes: [.sentenceBoundaries], pausedAfter: [5], addedFor: 2199
+        ),
+        .init(
             id: "pronoun-i", category: .everyday,
             spoken: "i think i'll take the earlier train",
             expected: "I think I'll take the earlier train."
@@ -758,6 +794,36 @@ public enum EvaluationCorpus {
             spoken: "we left early dash it was raining",
             expected: "We left early \u{2014} it was raining.",
             mustKeep: ["left early", "raining"], mustNotAdd: ["dash"]
+        ),
+        .init(
+            id: "spoken-ellipsis-mid-sentence", category: .everyday,
+            spoken: "well dot dot dot maybe not",
+            expected: "Well\u{2026} maybe not.",
+            mustKeep: ["maybe not"], mustNotAdd: ["dot"]
+        ),
+        .init(
+            id: "spoken-percent-sign-after-a-number", category: .everyday,
+            spoken: "sales grew by forty percent sign this year",
+            expected: "Sales grew by 40% this year.",
+            mustKeep: ["this year"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-at-sign-before-a-handle", category: .everyday,
+            spoken: "ping me at sign sam on the thread",
+            expected: "Ping me @sam on the thread.",
+            mustKeep: ["on the thread"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-hash-sign-before-a-tag", category: .everyday,
+            spoken: "tag it hash sign launch day",
+            expected: "Tag it #launch day.",
+            mustKeep: ["launch"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-ampersand-between-names", category: .everyday,
+            spoken: "we hired smith ampersand jones",
+            expected: "We hired smith & jones.",
+            mustKeep: ["jones"], mustNotAdd: ["ampersand"]
         ),
         .init(
             id: "hinglish-spoken-comma-before-aur", category: .everyday,

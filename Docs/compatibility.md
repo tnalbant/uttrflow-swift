@@ -38,6 +38,23 @@ menu bar or main window takes. Dictation and an accepted suggestion take Accessi
 keys ([insertion.md](insertion.md), "Which route each insertion takes"); `--via typed` forces
 the typed strategy those two fall back to.
 
+### Typed substitutions
+
+Typed keys reach a text view's own substitutions, which an Accessibility write bypasses. Run each
+string with `uttrflow-dev insert --via typed "<string>"` in a field with the system's defaults and
+compare the `read back:` line with the input; `changed by the field: true` names a substitution.
+
+| String | What it reaches |
+|---|---|
+| `"quoted" and 'single'` | smart quotes |
+| `one -- two` | smart dashes |
+| `omw` | text replacement, with the system's default entry present |
+| `first. second` | automatic capitalisation |
+| `Uttrflow teh` | automatic spelling correction |
+
+The read-back takes as many characters before the caret as were typed, so a substitution that
+changes the length shows a shifted window rather than the whole string.
+
 ### Reading an `Undo` run
 
 `--then-undo` reads the focused field through Accessibility, inserts, waits half a second, reads

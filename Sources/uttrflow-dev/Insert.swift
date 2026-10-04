@@ -50,6 +50,16 @@ struct Insert: AsyncParsableCommand {
         }
     }
 
+    /// Reads back the text left of the caret, so any edit the field makes to typed keys shows.
+    static func readBack(_ text: String, from focus: some AccessibilityFocus) {
+        guard let found = focus.precedingText(text.count) else {
+            print("  read back: the field will not say what it holds")
+            return
+        }
+        print("  read back: \(found.debugDescription)")
+        print("  changed by the field: \(found != text)")
+    }
+
     func validate() throws {
         guard !text.isEmpty else { throw ValidationError("Nothing to insert.") }
         guard (0...60).contains(delay) else { throw ValidationError("--delay must be 0 to 60.") }
@@ -76,8 +86,9 @@ struct Insert: AsyncParsableCommand {
 
         // The app's own factory, so a forced strategy still reads the secure field; typing is built only when forced.
         let method = Self.method(named: via)
+        let focus = AXAccessibilityFocus()
         let coordinator = TextInsertion.coordinator(
-            reporting: Self.report, clipboardFallback: method != .typed, only: method)
+            focus: focus, reporting: Self.report, clipboardFallback: method != .typed, only: method)
         if thenUndo {
             await MainActor.run { CGEventKeystrokeSender.startObservingLayout() }
             try await measureUndo(coordinator)
@@ -93,6 +104,7 @@ struct Insert: AsyncParsableCommand {
             print("  destination: \(name)")
             print("  secure: \(attempt.intoSecureField)")
             print("  took \(String(format: "%.2f", start.duration(to: clock.now).inSeconds))s in all")
+            if attempt.method == .typed { Self.readBack(text, from: focus) }
         } catch {
             print(error.userMessage)
             throw ExitCode.failure

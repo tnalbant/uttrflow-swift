@@ -78,8 +78,11 @@ decoded to no words twice (`DictationOutcome.missedPieces` above zero) keeps it,
 Retry for the missing words; one with no missed piece discards it. A failure that carries a transcript (insertion failed, and the words are
 in History) discards it. An informational failure, such as nothing heard, discards it. A
 dictation into a secure field discards it, since its words are a secret. Everything else keeps it
-and, when the failure's own recovery was `retry` or none, offers `retryFromRecording` instead, so
-the floating button's Retry opens the History page rather than starting a new dictation. A failure
+and, when the failure's own recovery was `retry` or none, offers `retryFromRecording` instead, with
+the recording's id in `DictationFailure.keptRecording`. The floating button's Retry runs History's
+own retry on that recording, so the words reach the clipboard in one press instead of two and the
+person stays in the app they were writing in (`noticeRetryTakesOnePress` in
+`DictationPipelineRecordingTests`). A failure
 with a different fix, such as a missing speech model, keeps that fix and the recording both.
 
 `cancel()` after the key is released discards the recording. `retry(_:)` reads the audio through
