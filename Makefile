@@ -239,7 +239,7 @@ idle-wakeups: ## Fail when the built app, idle in the menu bar, wakes or compute
 
 # Needs the speech model and the suggestion model on disk, so it runs on a Mac rather than in CI.
 .PHONY: perf-budget-models
-perf-budget-models: ## Fail when the model harness reads memory over the budget. Needs both models installed.
+perf-budget-models: ## Fail when the model harness reads memory, or the support folder reads disk, over the budget. Needs both models installed.
 	$(MAKE) bakeoff ARGS="gpu-memory --passes 12 --release"
 	$(MAKE) bakeoff ARGS="profile --dictations 10"
 
