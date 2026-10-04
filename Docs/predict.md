@@ -159,6 +159,9 @@ has taught anything. Importing a shell's history (`ShellHistory`) asks the same 
 terminal it seeds: an application not yet allowed, or declined, gets nothing, and the one-time
 import stays unspent until it is allowed.
 
+The importer reads history from the end in 64 KiB chunks, keeps the newest 5,000 distinct
+commands in chronological order, and skips Bash's epoch timestamp lines.
+
 Both sides file an application under `ApplicationKey`, its bundle identifier lowercased, because
 macOS is not consistent about case and the switch and the field reading see the identifier from
 different places. A consent file holding both spellings of one application is read as the refusal,
