@@ -172,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var clipboardPreferences = ClipboardPreferences()
     private var clipboardPauseTask: Task<Void, Never>?
     private var clipboardPauseUntil: Date?
+    private var retentionSweepTask: Task<Void, Never>?
 
     /// Tab-to-complete, built only where the user has asked for it. See `Docs/predict.md`.
     private var completions: SuggestionCoordinator?
@@ -430,6 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         migrateDictionarySpellings()
         seedTheDictionary()
         sweepExpired()
+        startPeriodicRetentionSweep()
         probeTransformers()
         probeSpeechModel()
         probeAppleSpeechAssets()
@@ -474,14 +476,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         telemetry = usage
     }
 
-    /// Deletes recordings and transcripts past their retention, with or without a window. See `Docs/recordings.md`.
+    /// Deletes recordings, transcripts and clipboard clips past their retention, with or without a window.
     func sweepExpired(now: Date = Date()) {
         let retention = Retention(days: settings.transcriptRetentionDays, now: now)
+        let clipboardRetention = ClipRetention(
+            days: settings.clipboardRetentionDays, now: now,
+            dictationDays: settings.transcriptRetentionDays)
         let previous = sweeping
-        sweeping = Task(priority: .utility) { [recordings, history] in
+        sweeping = Task(priority: .utility) { [recordings, history, clipboard] in
             await previous?.value
             _ = await recordings.waiting(now: now)
             _ = await history.records(keeping: retention)
+            _ = await clipboard.clips(keeping: clipboardRetention)
+        }
+    }
+
+    /// Catches clips that age out while Uttrflow is idle, without doing store I/O on the main thread.
+    private func startPeriodicRetentionSweep() {
+        guard retentionSweepTask == nil else { return }
+        retentionSweepTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(3_600)) } catch { return }
+                guard let self else { return }
+                sweepExpired()
+            }
         }
     }
 
@@ -3386,6 +3404,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func settingsChanged(to updated: Settings) {
         let previous = settings
         settings = updated
+        if updated.clipboardRetentionDays != previous.clipboardRetentionDays
+            || updated.transcriptRetentionDays != previous.transcriptRetentionDays
+        {
+            sweepExpired()
+        }
         settingsPage.synchronize(settings: updated)
         recordingSounds?.apply(updated)
         applyAppearance()
