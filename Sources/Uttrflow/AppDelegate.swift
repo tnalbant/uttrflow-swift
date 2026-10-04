@@ -2382,27 +2382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
-        if case .inserted(let outcome) = state {
-            lastCleanedBy = outcome.cleanedBy
-            if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
-                actionNotice = notice
-                announce(notice.message, urgently: false)
-            }
-            if !appleIntelligenceFallbackNoticeShown,
-                outcome.cleanedBy == .rules,
-                let unavailable = outcome.unavailableEngines.first(where: {
-                    $0.engine == TransformerKind.foundationModels.rawValue
-                })
-            {
-                appleIntelligenceFallbackNoticeShown = true
-                let notice = MainNotice.appleIntelligenceUnavailable(unavailable.reason)
-                actionNotice = notice
-                announce(notice.message, urgently: false)
-            }
-            if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
-                probeTransformers()
-            }
-        }
+        if case .inserted(let outcome) = state { noteCleanUp(outcome) }
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
@@ -2446,6 +2426,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
         if state.hasEnded { sweepExpired() }
 
+        relay(state)
+    }
+
+    /// Says when clean-up fell back, and probes the engines when the preferred one did not run.
+    private func noteCleanUp(_ outcome: UttrflowPipeline.DictationOutcome) {
+        lastCleanedBy = outcome.cleanedBy
+        if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
+            actionNotice = notice
+            announce(notice.message, urgently: false)
+        }
+        if !appleIntelligenceFallbackNoticeShown,
+            outcome.cleanedBy == .rules,
+            let unavailable = outcome.unavailableEngines.first(where: {
+                $0.engine == TransformerKind.foundationModels.rawValue
+            })
+        {
+            appleIntelligenceFallbackNoticeShown = true
+            let notice = MainNotice.appleIntelligenceUnavailable(unavailable.reason)
+            actionNotice = notice
+            announce(notice.message, urgently: false)
+        }
+        if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
+            probeTransformers()
+        }
+    }
+
+    /// Updates every surface that shows the dictation state, then schedules dismissal.
+    private func relay(_ state: DictationState) {
         // Kept here, where every change already arrives, so the updater need not ask the pipeline.
         lastDictationState = state
         updates.refresh()
