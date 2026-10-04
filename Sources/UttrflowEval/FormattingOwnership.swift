@@ -27,15 +27,20 @@ extension FormattingClass {
         case .sentenceBoundaries:
             FormattingOwnership(
                 owner: .both, passes: ["sentenceBoundary", .firstWord, .terminalStop],
-                reason: "The model places a boundary from the speech; the rules take back a run-on stop and cap and end it.")
+                reason:
+                    "The model places a boundary from the speech; the rules take back a run-on stop and cap and end it."
+            )
         case .commas:
             FormattingOwnership(
                 owner: .both, passes: [.spokenPunctuation],
-                reason: "A spoken comma is a rule; a comma read from a pause or a conjunction is the model's.")
+                reason: "A spoken comma is a rule; a comma read from a pause or a conjunction is the model's."
+            )
         case .questions:
             FormattingOwnership(
                 owner: .both, passes: [.spokenPunctuation, .terminalStop],
-                reason: "The rules end a sentence whose word order asks; a question with no such shape is the model's.")
+                reason:
+                    "The rules end a sentence whose word order asks; a question with no such shape is the model's."
+            )
         case .quotesAndBrackets:
             FormattingOwnership(
                 owner: .rules, passes: [.spokenPunctuation, "caretCloser"],
@@ -47,7 +52,9 @@ extension FormattingClass {
         case .capitalisationAndTokens:
             FormattingOwnership(
                 owner: .both, passes: [.spelledInitialism, .firstWord],
-                reason: "The rules join spelled letters and case the first word; a brand or address spelling is the model's.")
+                reason:
+                    "The rules join spelled letters and case the first word; a brand or address spelling is the model's."
+            )
         case .numbers:
             FormattingOwnership(
                 owner: .rules, passes: [.numberForms, "digitGrouping"],
@@ -67,11 +74,15 @@ extension FormattingClass {
         case .perDestination:
             FormattingOwnership(
                 owner: .both, passes: [.firstWord, .terminalStop],
-                reason: "The formatter's case and stop policies are rules; the place's style block is the model's.")
+                reason:
+                    "The formatter's case and stop policies are rules; the place's style block is the model's."
+            )
         case .codeAndMarkdown:
             FormattingOwnership(
                 owner: .both, passes: [.codeEditorCommands, .spacing],
-                reason: "Spoken casing and symbol commands are rules; an identifier read off the screen is the model's.")
+                reason:
+                    "Spoken casing and symbol commands are rules; an identifier read off the screen is the model's."
+            )
         case .hinglish:
             FormattingOwnership(
                 owner: .model, passes: [],
