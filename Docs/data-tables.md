@@ -60,6 +60,18 @@ the app with every other resource bundle. Nothing is fetched at run time.
 | `function-words.json` | `FunctionWords` | a small word and the lists it belongs to: `function`, `leadsOn`, `meaningBearing` |
 | `number-words.json` | `NumberWords` | a number word, its value and its rank: `unit`, `teen`, `ten`, `scale` |
 | `spoken-commands.json` | `SpokenCommands` | a phrase said as a command, its `action` (`mark`, `layout`, `codeSymbol`), the text it writes, and optionally its `placement`, `requiresLists` and `destinations`; no two rows of one action share a phrase in one destination |
+| `technical-lexicon.json` | `TechnicalLexicon` | a technical term's written form and casing, its `spoken` forms, its `category` (`acronym`, `language`, `command`, `tool`, `concept`, `fileFormat`), and optionally `pronunciations` and `destinations` |
+
+## The technical lexicon
+
+Every row is written for this repository and copied from no published list; its licence and
+digest are in [data-manifest.md](data-manifest.md). It holds generic technical vocabulary and
+the names of widely used open tools and languages, and no person, address or product of a
+single vendor. A spoken form is lower-case Latin words separated by single spaces. A term
+written or said as an ordinary word (`GeneralVocabulary.isOrdinary`) carries `destinations`,
+so it is never offered in prose. `TechnicalLexicon.problems` states these rules, and
+`TechnicalLexiconTests` and `TechnicalLexiconOrdinaryTests` fail on any shipped row that
+breaks one.
 
 ## Testing
 
