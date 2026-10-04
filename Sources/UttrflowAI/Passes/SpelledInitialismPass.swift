@@ -45,7 +45,8 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             let closing = draft.shape(at: live[end - 1]).suffix
             let cased = Self.casedOutput(output, first: draft.words[first].text)
             draft.replace(
-                at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id)
+                at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id
+            )
             for index in live[(position + 1)..<end] { draft.remove(at: index, by: Self.id) }
             live.removeSubrange((position + 1)..<end)
             position += 1
