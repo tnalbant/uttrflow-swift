@@ -70,6 +70,8 @@ the migration and two projections, and checks them against `DictionaryEntry` its
 ## Still open
 
 The file version, newer-file and downgrade rules for the ledger's own file belong to the store
-compatibility contract, which is not yet decided; this page does not choose a file name or a
-`schemaVersion` until it is. The decay curve and compaction horizon need measurement on real
+compatibility contract, which is not yet decided. `EvidenceLedgerStore` holds the rows in one
+`EncryptedStore` file with `schemaVersion` 1, takes its file from the caller rather than a
+`LocalStoreEntry`, and leaves a newer file unread and unwritten; this page does not choose a
+file name or a downgrade rule until the contract does. The decay curve and compaction horizon need measurement on real
 use before a number is written here.
