@@ -6,6 +6,10 @@ from collections import Counter, defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUT = os.path.join(ROOT, ".build", "bench")
 ENGLISH = ["Samantha", "Daniel", "Rishi"]  # US, UK and Indian English
+# Every voice the corpus may use, and where it comes from; Docs/performance-dictation.md states the licence.
+VOICE_SOURCES = {voice: "macOS system voice" for voice in ENGLISH + ["Lekha"]}
+# Words per minute for the speed variants; `say` reads at about 175 by default.
+RATES = {"slow": 130, "fast": 240}
 PAUSE = " [[slnc 900]] "
 
 POOL = [
@@ -93,6 +97,22 @@ CODE = [
     ("Run npm install, then open source slash app dot tsx and check the use effect hook.",
      "Run npm install, then open src/app.tsx and check the useEffect hook."),
 ]
+# Invented developer speech: commands, flags, file names, acronyms and project names, none of them real.
+DEVSPEECH = [
+    ("Run git rebase dash dash continue, then push the branch to origin.",
+     "Run git rebase --continue, then push the branch to origin."),
+    ("Open config slash settings dot yaml and set the log level to debug.",
+     "Open config/settings.yaml and set the log level to debug."),
+    ("The CI job fails because the API returns a four oh four for the JSON endpoint.",
+     "The CI job fails because the API returns a 404 for the JSON endpoint."),
+    ("Ask the Brindlecove team to bump Quorvex to version two point three.",
+     "Ask the Brindlecove team to bump Quorvex to version 2.3."),
+    ("Run make lint with dash v and paste the output into the PR description.",
+     "Run make lint with -v and paste the output into the PR description."),
+    ("Add a test for the SQL migration in the tests folder and rerun swift test.",
+     "Add a test for the SQL migration in the tests folder and rerun swift test."),
+]
+DEVSPEECH_VOCABULARY = ["Brindlecove", "Quorvex"]
 NOUNS = [
     ("Zorvane Kelthmar will meet Pravix and Quennel at the Velbrook office on Friday.",
      ["Zorvane", "Kelthmar", "Pravix", "Quennel", "Velbrook"]),
@@ -128,7 +148,7 @@ WRITTEN_EDITS = {"en-restarts": [("and, um, nobody", "and nobody")]}
 # Spellings that are equally right, offered as alternative references instead of editing a reference.
 SPELLING_VARIANTS = [("card stock", "cardstock")]
 VARIANT_BASES = ["d15-samantha", "d15-daniel", "d15-rishi", "d30-samantha", "reply1-daniel", "reply4-daniel",
-                 "numbers1-daniel", "code0-samantha", "tc-en-people-rishi", "tc-hi-everyday-lekha"]
+                 "numbers1-daniel", "code0-samantha", "devspeech0-rishi", "devspeech2-daniel", "tc-en-people-rishi", "tc-hi-everyday-lekha"]
 
 
 def passage(seconds, start, paused):
@@ -170,11 +190,12 @@ def clips():
     out = []
 
     def add(cid, category, language, voice, say, written, spoken=None, vocabulary=(), devanagari=None,
-            languages=None, parts=None):
+            languages=None, parts=None, rate=None):
         clip = dict(id=cid, category=category, language=language, voice=voice, say=say, spoken=spoken or say,
                     written=written, vocabulary=list(vocabulary), variant="clean", devanagari=devanagari)
         if languages is not None: clip["languages"] = languages
         if parts is not None: clip["parts"] = parts
+        if rate is not None: clip["rate"] = rate
         out.append(clip)
 
     for i, (said, written) in enumerate(REPLIES):
@@ -194,6 +215,13 @@ def clips():
         for i, row in enumerate(rows):
             said, written = (row, row) if isinstance(row, str) else row
             add(f"{name}{i}-{ENGLISH[i % 3].lower()}", name, "english", ENGLISH[i % 3], said, written)
+    for i, (said, written) in enumerate(DEVSPEECH):
+        for voice in ENGLISH:
+            add(f"devspeech{i}-{voice.lower()}", "devspeech", "english", voice, said, written,
+                vocabulary=DEVSPEECH_VOCABULARY)
+        for name, rate in RATES.items():
+            add(f"devspeech{i}-samantha-{name}", f"devspeech-{name}", "english", "Samantha", said, written,
+                vocabulary=DEVSPEECH_VOCABULARY, rate=rate)
     for i, (said, words) in enumerate(NOUNS):
         for voice in ENGLISH:
             add(f"nouns{i}-{voice.lower()}", "nouns", "english", voice, said, said)
@@ -234,7 +262,8 @@ def write_wav(path, samples):
 
 def render_clip(clip):
     if not clip.get("parts"):
-        subprocess.run(["say", "-v", clip["voice"], "-o", clip["wav"], "--file-format=WAVE",
+        rate = ["-r", str(clip["rate"])] if clip.get("rate") else []
+        subprocess.run(["say", "-v", clip["voice"], *rate, "-o", clip["wav"], "--file-format=WAVE",
                         "--data-format=LEI16@16000", clip["say"]], check=True)
         return
     joined = array.array("h")
@@ -283,9 +312,13 @@ def gain(db):
 def corpus(args):
     audio = os.path.join(args.out, "audio"); os.makedirs(audio, exist_ok=True)
     made = clips()
+    unlisted = sorted({v for c in made for v in c["voice"].split("+")} - VOICE_SOURCES.keys())
+    if unlisted:
+        sys.exit(f"voices without a recorded source and licence: {', '.join(unlisted)}")
     for c in made:
-        # Named by what was spoken and by whom, so a changed passage or voice is spoken again rather than reused.
-        spoken = hashlib.sha256(f"{c['voice']}\n{c['say']}\nLEI16@16000".encode()).hexdigest()[:12]
+        # Named by what was spoken, by whom and how fast, so a changed passage, voice or rate is spoken again.
+        rate = f"\n{c['rate']}" if c.get("rate") else ""
+        spoken = hashlib.sha256(f"{c['voice']}\n{c['say']}\nLEI16@16000{rate}".encode()).hexdigest()[:12]
         c["wav"] = os.path.join(audio, f"{c['id']}-{spoken}.wav")
         if not os.path.exists(c["wav"]):
             render_clip(c)
