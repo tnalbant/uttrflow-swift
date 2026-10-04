@@ -53,6 +53,16 @@ A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insert
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
+## Dictating over a selection
+
+A dictation started with text selected replaces that text, on every route: the Accessibility
+route writes over `kAXSelectedTextAttribute`, and the typed and paste routes send only the words,
+so the field's own typing or paste replaces the selection. No route collapses or moves the
+selection first. This is the platform convention, and the same replacement is what re-dictating
+over a selection relies on; the replaced text is taken back by the field's own undo, measured per
+application in [compatibility.md](compatibility.md). Collapsing to the end of the selection and
+appending is not built. `DictationOverSelectionTests` asserts the behaviour per route.
+
 ## What every insertion may contain
 
 `OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
