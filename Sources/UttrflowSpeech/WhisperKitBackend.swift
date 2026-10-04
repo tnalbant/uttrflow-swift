@@ -178,7 +178,11 @@ fileprivate func rawTranscript(
                                     text: $0.word, start: Double($0.start), end: Double($0.end),
                                     probability: Double($0.probability))
                             }
-                        })
+                        },
+                        reliability: SegmentReliability(
+                            temperature: Double($0.temperature), averageLogProbability: Double($0.avgLogprob),
+                            noSpeechProbability: Double($0.noSpeechProb),
+                            compressionRatio: Double($0.compressionRatio)))
                 },
                 effort: effort(of: [result]),
                 tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
@@ -191,7 +195,17 @@ fileprivate func effort(of results: [TranscriptionResult]) -> DecodeEffort {
     DecodeEffort(
         fallbacks: results.reduce(0) { $0 + Int($1.timings.totalDecodingFallbacks) },
         fallbackSeconds: results.reduce(0) { $0 + $1.timings.decodingFallback },
-        encoderRuns: results.reduce(0) { $0 + Int($1.timings.totalEncodingRuns) })
+        encoderRuns: results.reduce(0) { $0 + Int($1.timings.totalEncodingRuns) },
+        timings: results.reduce(.zero) { $0.adding(recognitionTimings(of: $1.timings)) })
+}
+
+/// WhisperKit's per-result timings in the sub-stages ``RecognitionTimings`` names.
+fileprivate func recognitionTimings(of timings: TranscriptionTimings) -> RecognitionTimings {
+    RecognitionTimings(
+        melSeconds: timings.logmels, encodeSeconds: timings.encoding,
+        decoderSetupSeconds: timings.decodingInit, decodeSteps: Int(timings.totalDecodingLoops),
+        decodeSeconds: timings.decodingPredictions, wordTimingRuns: Int(timings.totalTimestampAlignmentRuns),
+        wordTimingSeconds: timings.decodingWordTimestamps, recognitionSeconds: timings.fullPipeline)
 }
 
 /// Adapts ``LoadedKit`` to ``TranscriptionBackend`` so ``CappedDecodeRetry`` can call it without knowing about WhisperKit.

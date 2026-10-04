@@ -242,11 +242,30 @@ What mitigates it, in descending order of effect:
 Deliberately not a mitigation: waiting for the start cue to finish before opening the
 microphone. It buys silence at the cost of half a second before the user may speak.
 
-**Trimming a lead-in is also deliberately not a mitigation, by measured decision.** A synthetic
-sweep with `Tink` through `BackedSpeechEngine` found no word errors at the loudest measured
-real leak (−11.5 dBFS); a fixed-window trim would convert a probabilistic bleed into
-deterministic word loss for users who press and speak, so the cue stays in the buffer. That sweep
-used an unshaped `Tink` start cue, not the shaped one.
+**Trimming a lead-in is also deliberately not a mitigation, by measured decision.** A fixed-window
+trim would convert a probabilistic bleed into deterministic word loss for users who press and
+speak, so the cue stays in the buffer. `uttrflow-eval cue-bleed` measures what the bleed costs: it
+renders the shipping start cue (`Pop`, −3 semitones, 3000 Hz low-pass; 1.94 s, source peak
+−14.1 dBFS) with `CueShaping`, scales it to a leak level, mixes it into the head of the 32 `say`
+clips the `tail` probe uses, with the speech starting 0, 700 or 1200 ms in so it lands inside the
+cue's tail, and compares the words from `BackedSpeechEngine` against the same clip with no cue.
+Measured on an Apple M5 Pro with the shipping Whisper model, word edits over 244 reference words:
+
+| Speech starts | No cue | −20.0 dBFS | −11.5 dBFS | −8.8 dBFS |
+|---|---|---|---|---|
+| 0 ms | 4 | 5 | 5 | 5 |
+| 700 ms | 1 | 1 | 1 | 1 |
+| 1200 ms | 1 | 1 | 1 | 1 |
+
+−11.5 dBFS is the loudest measured real leak and −8.8 dBFS is 2.7 dB above it, the margin by
+which the shaped cue's source peak exceeds the unshaped `Tink` it replaced. Speech inside the tail
+loses nothing at any level. Speech from the first sample costs one word in one clip, the same at
+every level, so it follows the cue's onset under the first word rather than its loudness.
+
+```bash
+swift build --disable-sandbox --product uttrflow-eval
+.build/debug/uttrflow-eval cue-bleed --model-folder <installed model folder>
+```
 
 ## Changing the cue sounds
 

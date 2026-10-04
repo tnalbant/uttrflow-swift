@@ -16,6 +16,8 @@ For changes to `Sources/UttrflowAI/PromptBuilder.swift` or the rules, include th
 `make bakeoff ARGS="--against <saved-result.json>"` comparison output, or explain why a
 corpus comparison could not be run. `Docs/measure-a-change.md` says which command a change needs.
 
+For a fix to a wrong dictation: corpus case added (fails before, passes after): <!-- case id, or why none can exist -->
+
 ---
 
 - [ ] `make verify` passes locally (lint, PII audit, build, tests, coverage floor, offline audit)

@@ -58,13 +58,14 @@ struct ReloadLeaksTests {
         let results = [
             FixtureResult(
                 name: "chat/right", category: "chat", typed: "hello", hit: true, judged: true,
-                conforms: true, elapsedMs: 10, first: "hello", raw: nil, invented: false),
+                conforms: true, elapsedMs: 10, first: "hello", drawn: ["hello"], raw: nil, invented: false),
             FixtureResult(
                 name: "chat/wrong", category: "chat", typed: "world", hit: false, judged: true,
-                conforms: true, elapsedMs: 12, first: "wrong", raw: nil, invented: false),
+                conforms: true, elapsedMs: 12, first: "wrong", drawn: ["wrong"], raw: nil, invented: false),
             FixtureResult(
                 name: "chat/unjudged", category: "chat", typed: "continuation", hit: true, judged: false,
-                conforms: true, elapsedMs: 14, first: "continuation", raw: nil, invented: false),
+                conforms: true, elapsedMs: 14, first: "continuation", drawn: ["continuation"], raw: nil,
+                invented: false),
         ]
         let report = FixtureReport(results: results)
         let category = try #require(report.summary.categories.first)
@@ -91,6 +92,25 @@ struct ReloadLeaksTests {
             text.contains(
                 "chat       n=   3 hit  67 %  register 100 %  p50   12  precision   50.0%  wrong   1")
         )
+    }
+
+    @Test("no-candidate rows are not shown whether silence was expected or not")
+    func noCandidateRowsAreNotShown() throws {
+        let results = [
+            FixtureResult(
+                name: "search/silence", category: "search", typed: "inv", hit: true, judged: true,
+                conforms: true, elapsedMs: 10, first: "invoice", drawn: [], raw: nil, invented: false),
+            FixtureResult(
+                name: "chat/miss", category: "chat", typed: "hello", hit: false, judged: true,
+                conforms: false, elapsedMs: 12, first: "world", drawn: [], raw: nil, invented: false),
+        ]
+        let report = FixtureReport(results: results)
+        let search = try #require(report.summary.categories.first { $0.name == "search" })
+        let chat = try #require(report.summary.categories.first { $0.name == "chat" })
+        #expect(search.shown == 0)
+        #expect(search.right == 0)
+        #expect(chat.shown == 0)
+        #expect(chat.right == 0)
     }
 
     @Test("stored bake-off results retain surface metrics and old files still decode")

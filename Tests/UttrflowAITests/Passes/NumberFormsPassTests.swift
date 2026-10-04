@@ -46,6 +46,24 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes every part of a spoken amount in one form",
+        arguments: [
+            ("three dollars and five cents", "3 dollars and 5 cents"),
+            ("nine dollars and nine cents", "9 dollars and 9 cents"),
+            ("it costs five euros and five cents", "it costs 5 euros and 5 cents"),
+            ("two dollars fifty", "2 dollars 50"),
+            ("five pounds and fifty pence", "5 pounds and 50 pence"),
+            ("twelve dollars and fifty cents", "12 dollars and 50 cents"),
+            ("a dollar and five cents", "a dollar and five cents"),
+            ("five dollars. five cents", "5 dollars. five cents"),
+            ("it is my two cents", "it is my two cents"),
+        ]
+    )
+    func amounts(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "joins spoken percentile ranks",
         arguments: [
             ("p fifty", "p50"), ("p ninety", "p90"), ("p ninety five", "p95"),
@@ -70,6 +88,24 @@ struct NumberFormsPassTests {
     )
     func everyNumberAsANumeral(input: String, expected: String) {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
+        "a small amount in another currency or unit is a numeral in prose",
+        arguments: [
+            ("it costs five yen", "it costs 5 yen"),
+            ("we walked three kilometres", "we walked 3 kilometres"),
+            ("wait two minutes", "wait 2 minutes"),
+            ("one of them", "one of them"),
+            ("I lost a pound", "I lost a pound"),
+            ("I lost one pound", "I lost one pound"),
+            ("give me a second", "give me a second"),
+            ("two seconds", "two seconds"),
+            ("six feet", "six feet"),
+        ]
+    )
+    func smallAmountsAreNumerals(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == expected)
     }
 
     @Test("the place a dictation lands in decides how many of its numbers are numerals")
@@ -217,6 +253,12 @@ struct NumberFormsPassTests {
             ("ten am", "10 am"),
             ("ten a.m.", "10 a.m."),
             ("two oh five pm", "2:05 pm"),
+            ("at eight oh five", "at 8:05"),
+            ("at eight oh five am", "at 8:05 am"),
+            ("eight oh five am", "8:05 am"),
+            ("at twelve o five", "at 12:05"),
+            ("call at eight oh five five five", "call at 80555"),
+            ("the code eight oh five", "the code 805"),
             ("five o'clock", "5 o'clock"),
             ("at four thirty", "at 4:30"),
             ("by two thirty", "by 2:30"),
@@ -224,7 +266,12 @@ struct NumberFormsPassTests {
             ("from two thirty", "from 2:30"),
             ("twelve fifteen pm", "12:15 pm"),
             ("2 thirty pm", "2:30 pm"),
-            ("one thirty", "one 30"),
+            ("one thirty", "1:30"),
+            ("five thirty.", "5:30."),
+            ("let us meet around five thirty", "let us meet around 5:30"),
+            ("five forty five", "5:45"),
+            ("leave before six fifteen", "leave before 6:15"),
+            ("after two thirty we eat", "after 2:30 we eat"),
             ("two forty five pm", "2:45 pm"),
         ]
     )
@@ -266,6 +313,23 @@ struct NumberFormsPassTests {
         ]
     )
     func colloquialHundreds(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "keeps a house number apart from an ordinal street name",
+        arguments: [
+            ("nine hundred fifth avenue", "900 fifth avenue"),
+            ("the shop is at nine hundred fifth avenue", "the shop is at 900 fifth avenue"),
+            ("he lives at four hundred second street", "he lives at 400 second street"),
+            ("we live at twelve hundred fourth avenue", "we live at 1200 fourth avenue"),
+            ("two thousand third road", "2000 third road"),
+            ("forty two oak street", "42 oak street"),
+            ("the store is on fifth avenue", "the store is on fifth avenue"),
+            ("the nine hundred fifth visitor", "the 905th visitor"),
+        ]
+    )
+    func houseNumberBeforeOrdinalStreet(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 
