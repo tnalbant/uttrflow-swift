@@ -136,7 +136,7 @@ extension MacContextEngine {
         let range: CFRange? = if case .range(let range) = resolvedSelection { range } else { nil }
         let text = SurfaceProbe.text(of: field, names: names, at: range)
         if text.isSecure { return FocusedWindow(title: title, isSecure: true) }
-        let selected = SurfaceProbe.string(field, kAXSelectedTextAttribute)
+        let selected = SurfaceProbe.selectedText(of: field, at: range)
         guard isWanted() else { return FocusedWindow(title: title, selectedText: selected) }
         let selection = text.selection.flatMap {
             AccessibilityRange.selection(location: $0.location, length: $0.length)
