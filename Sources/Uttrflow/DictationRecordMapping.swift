@@ -4,10 +4,14 @@ import UttrflowHistory
 import UttrflowPipeline
 
 enum DictationRecordMapping {
-    static func record(for state: DictationState, when: Date, id: UUID) -> DictationRecord? {
+    static func record(
+        for state: DictationState, when: Date, id: UUID, keeping: HistoryKeeping = .everything
+    ) -> DictationRecord? {
         switch state {
         case .inserted(let outcome):
-            guard let text = outcome.wordsToKeep else { return nil }
+            guard let text = outcome.wordsToKeep,
+                keeping.keeps(applicationIdentifier: outcome.insertedIntoIdentifier)
+            else { return nil }
             return DictationRecord(
                 id: id, text: text, when: when, applicationName: outcome.insertedInto,
                 applicationIdentifier: outcome.insertedIntoIdentifier, spokenFor: outcome.spokenFor,
@@ -27,7 +31,8 @@ enum DictationRecordMapping {
                     spokenWords: outcome.changes.spokenWords),
                 cleanedBy: outcome.cleanedBy)
         case .failed(let failure):
-            guard let text = failure.wordsToKeep else { return nil }
+            guard let text = failure.wordsToKeep, keeping.keeps(applicationIdentifier: nil)
+            else { return nil }
             return DictationRecord(id: id, text: text, when: when)
         case .idle, .recording, .transcribing, .tidying, .inserting:
             return nil

@@ -109,4 +109,19 @@ struct DictationRecordMappingTests {
             #expect(state.hasEnded == expected, "Unexpected ended status for \(state)")
         }
     }
+
+    @Test("a dictation into a listed app writes no history record")
+    func listedAppWritesNoRecord() {
+        let outcome = DictationOutcome(
+            text: "Private note", method: .pasteboard, cleanedBy: .rules,
+            insertedInto: "Records", insertedIntoIdentifier: "com.example.records")
+        let keeping = HistoryKeeping(excludedApplications: ["com.example.records"])
+
+        #expect(
+            DictationRecordMapping.record(
+                for: .inserted(outcome), when: Date(), id: UUID(), keeping: keeping) == nil)
+        #expect(
+            DictationRecordMapping.record(
+                for: .inserted(outcome), when: Date(), id: UUID(), keeping: .everything) != nil)
+    }
 }
