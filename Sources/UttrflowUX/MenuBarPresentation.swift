@@ -529,8 +529,8 @@ public enum MenuBarPresenter {
     static func statusLine(for state: MenuBarState) -> String {
         if let failure = state.failure { return failure.headline }
 
-        // Above the model and the activity, below a failure: it takes the app away, but is not a fault.
-        if let updating = updateLine(for: state.updateProgress) { return updating }
+        // Above the model and a resting activity, below a failure and a live dictation, which it waits for.
+        if !isBusy(state.activity), let updating = updateLine(for: state.updateProgress) { return updating }
 
         switch state.speechModel {
         case .downloading(let fraction):

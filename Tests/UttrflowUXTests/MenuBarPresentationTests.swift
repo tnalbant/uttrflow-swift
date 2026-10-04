@@ -845,6 +845,19 @@ struct MenuBarUpdateTests {
         #expect(line(.idle) == "Ready")
     }
 
+    /// An open microphone is the one thing a VoiceOver user must hear, so an update waits behind it.
+    @Test("a live dictation outranks an update, which returns when it ends")
+    func dictationOutranksUpdate() {
+        let listening = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, updateProgress: .readyToInstall))
+        #expect(listening.statusLine == "Listening…")
+        #expect(listening.accessibilityLabel == "Uttrflow. Listening.")
+        let working = MenuBarState(activity: .working, updateProgress: .downloading(fraction: 0.4))
+        #expect(MenuBarPresenter.present(working).statusLine == "Tidying up…")
+        let rested = MenuBarState(activity: .inserted, updateProgress: .readyToInstall)
+        #expect(MenuBarPresenter.present(rested).statusLine == "Update ready — installing when you pause")
+    }
+
     @Test("says when the update feed is being checked")
     func checking() {
         #expect(line(.checking) == "Checking for updates…")
@@ -860,10 +873,10 @@ struct MenuBarUpdateTests {
         #expect(MenuBarPresenter.present(state).statusLine == "Something went wrong")
     }
 
-    /// Below a failure and above the rest: an update is about to take the app away.
-    @Test("an update outranks the ordinary activity line")
+    /// Below a failure and a live dictation, above the rest: an update is about to take the app away.
+    @Test("an update outranks a resting activity line")
     func updateOutranksActivity() {
-        let state = MenuBarState(activity: .listening, updateProgress: .installing)
+        let state = MenuBarState(activity: .inserted, updateProgress: .installing)
         #expect(MenuBarPresenter.present(state).statusLine == "Updating…")
     }
 
