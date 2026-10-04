@@ -2,9 +2,9 @@ import Foundation
 
 /// The focused field's names and bounded value, decided over any `ElementTree` so every refusal is testable.
 enum FocusedFieldRead {
-    /// The five names the secure check reads, in the order a batched read answers them.
+    /// The names the secure check and the field label read, in the order a batched read answers them.
     static let nameAttributes = [
-        "AXRole", "AXSubrole", "AXIdentifier", "AXPlaceholderValue", "AXDescription",
+        "AXRole", "AXSubrole", "AXIdentifier", "AXPlaceholderValue", "AXDescription", "AXTitle",
     ]
 
     /// The field's names, asked in one message where the tree batches them.
@@ -15,7 +15,7 @@ enum FocusedFieldRead {
         }
         return FieldNames(
             role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
-            description: named[4])
+            description: named[4], title: named[5])
     }
 
     /// The field's text around the caret with the selection moved into it, never read from a declared secure field.
