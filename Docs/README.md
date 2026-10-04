@@ -141,6 +141,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [accuracy-targets.md](accuracy-targets.md) | Accuracy targets, the error taxonomy and the release gate |
+| [segments.md](segments.md) | What each kind of speaker needs, and which corpus slice measures it |
 | [measure-a-change.md](measure-a-change.md) | Measuring a change |
 | [ci-tiers.md](ci-tiers.md) | Which gate runs per pull request, nightly and before a release |
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
