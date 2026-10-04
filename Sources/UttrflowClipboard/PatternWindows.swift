@@ -84,7 +84,7 @@ struct ClipBytes {
     }
 }
 
-/// Runs the vendor-key pattern only on windows that open at one of its literal prefixes.
+/// Runs the vendor-key pattern on bounded windows around literal prefixes.
 enum VendorKeyWindows {
     /// Characters read from each prefix; the longest shortest match, `dop_v1_` and forty hex digits, is 47.
     static let width = 128
@@ -103,7 +103,9 @@ enum VendorKeyWindows {
                 guard offset >= coveredAll, let prefix = prefix(bytes, at: offset) else { continue }
                 let isSendGrid = prefix == .sendGrid
                 guard isSendGrid || offset >= coveredShort else { continue }
-                let start = clip.character(atOrBefore: offset)
+                // The window carries one preceding character for the regex boundary check.
+                let contextOffset = offset == 0 ? 0 : offset - 1
+                let start = clip.character(atOrBefore: contextOffset)
                 let end: String.Index
                 if isSendGrid {
                     // Its first segment has no longest length, so the window runs to the end of the token.
@@ -231,12 +233,26 @@ enum CardNumberRuns {
     }
 }
 
-/// Whether a clip has an assignment separator and an initial used by a named-secret keyword.
+/// Whether a clip has an assignment separator and a named-secret keyword stem.
 enum NamedSecretStems {
+    /// The first three letters of every keyword, packed so the scan needs no substring allocation.
+    private static let prefixes: Set<UInt32> = Set(
+        NamedSecretScan.keywords.compactMap { keyword in
+            guard keyword.count >= 3 else { return nil }
+            return (UInt32(lowered(keyword[0])) << 16) | (UInt32(lowered(keyword[1])) << 8)
+                | UInt32(lowered(keyword[2]))
+        })
+
     static func present(in text: String) -> Bool {
         ClipBytes.read(text) { _, bytes in
             guard ClipBytes.contains(bytes, ":") || ClipBytes.contains(bytes, "=") else { return false }
-            return bytes.contains { NamedSecretScan.initials.contains(lowered($0)) }
+            guard bytes.count >= 3 else { return false }
+            return (0...(bytes.count - 3)).contains { offset in
+                let prefix =
+                    (UInt32(lowered(bytes[offset])) << 16)
+                    | (UInt32(lowered(bytes[offset + 1])) << 8) | UInt32(lowered(bytes[offset + 2]))
+                return prefixes.contains(prefix)
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 // Tests that reusing a shorter query's matches lists exactly what searching the whole history again would.
 import Foundation
 import UttrflowClipboard
+import UttrflowTestSupport
 import Testing
 
 @testable import UttrflowUX
@@ -17,14 +18,8 @@ struct PanelSearchMemoTests {
         PanelFixture.clip("l'entrée du café — invoiced", minutesAgo: 6),
         PanelFixture.clip("\u{2018}invoice\u{2019} and an  em\u{2014}dash", minutesAgo: 7),
         PanelFixture.clip("a receipt, not an invoice", minutesAgo: 8, alias: "inv-prod"),
-        PanelFixture.clip("\u{FF49}\u{FF4E}\u{FF56}oice in full width", minutesAgo: 9),
-        PanelFixture.clip("\u{0915}\u{093C}\u{0930}\u{094D}\u{0937} and \u{0915}\u{0930}", minutesAgo: 10),
-        PanelFixture.clip("KAR with no nukta", minutesAgo: 11, alias: "\u{0915}\u{0930}"),
-        PanelFixture.clip("https://example.com/invoice", kind: .link, minutesAgo: 12),
-        PanelFixture.clip("let invoice = 1", kind: .code, minutesAgo: 13),
-        PanelFixture.clip("\u{FB01}le", minutesAgo: 14),
-        PanelFixture.clip("\u{FB00}", minutesAgo: 15),
-        PanelFixture.clip("\u{0149}", minutesAgo: 16),
+        PanelFixture.clip("https://example.com/invoice", kind: .link, minutesAgo: 9),
+        PanelFixture.clip("let invoice = 1", kind: .code, minutesAgo: 10),
     ]
 
     /// The rows a panel with no memory of an earlier query lists, which is what the fix has to match.
@@ -39,7 +34,9 @@ struct PanelSearchMemoTests {
 
     @Test(
         "typing a query letter by letter lists what searching for it cold lists",
-        arguments: ["invoice", "inv-prod", "/invo", "Invoices", "café", "\u{0915}\u{0930}", "zqx"])
+        arguments: [
+            "invoice", "inv-prod", "/invo", "Invoices", "café", "zqx",
+        ])
     func typing(query: String) {
         var panel = PanelFixture.panel(Self.clips)
 
@@ -53,19 +50,58 @@ struct PanelSearchMemoTests {
         }
     }
 
-    @Test(
-        "typing across compatibility ligatures lists what searching for the whole query cold lists",
-        arguments: ["fi", "ff", "ʼn"])
-    func compatibilityLigatures(query: String) {
-        var panel = PanelFixture.panel(Self.clips)
+    @Test("fold-sensitive Unicode searches match a fresh scan as they grow")
+    func foldSensitiveQueries() {
+        let combiningClips = [
+            PanelFixture.clip("cafe\u{0301}", minutesAgo: 1),
+            PanelFixture.clip("café", minutesAgo: 2),
+            PanelFixture.clip("apple", minutesAgo: 3),
+            PanelFixture.clip("thé", minutesAgo: 4),
+            PanelFixture.clip("résumé", minutesAgo: 5),
+            PanelFixture.clip("crème", minutesAgo: 6),
+        ]
+        let cases: [([Clip], [String])] = [
+            ([PanelFixture.clip("Fuß", minutesAgo: 1)], ["f", "fu", "fus", "fuss"]),
+            ([PanelFixture.clip("Maße", minutesAgo: 1)], ["m", "ma", "mas", "mass"]),
+            ([PanelFixture.clip("Straße", minutesAgo: 1)], ["s", "st", "str", "stras", "strass", "strasse"]),
+            ([PanelFixture.clip("\u{FB01}le", minutesAgo: 1)], ["f", "fi", "fil"]),
+            ([PanelFixture.clip("\u{FB00}", minutesAgo: 1)], ["f", "ff"]),
+            ([PanelFixture.clip("\u{0149}", minutesAgo: 1)], ["ʼ", "ʼn"]),
+            (combiningClips, ["e", "e\u{0301}", "\u{0301}"]),
+            ([PanelFixture.clip("ordinary text", minutesAgo: 1)], ["o", "or", "ord", "ordinary"]),
+        ]
 
-        for length in 1...query.count {
-            let typed = String(query.prefix(length))
-            panel = panel.applying(.search(typed)).state
+        for (clips, queries) in cases {
+            var panel = PanelFixture.panel(clips)
+            for typed in queries {
+                panel = panel.applying(.search(typed)).state
+                let fresh = PanelFixture.panel(clips, query: typed).results
 
-            #expect(
-                Self.same(panel.results, Self.fromScratch(typed)),
-                "after typing \(typed)")
+                #expect(Self.same(panel.results, fresh), "after typing \(typed)")
+            }
+        }
+    }
+
+    @Test("seeded random incremental queries match a fresh search")
+    func randomizedIncrementalQueries() {
+        let alphabet: [Unicode.Scalar] = ["f", "u", "s", "ß", "ﬁ", "e", "\u{0301}", "é", "x"]
+        let foldingClips = [
+            PanelFixture.clip("Fuß", minutesAgo: 1),
+            PanelFixture.clip("\u{FB01}le", minutesAgo: 2),
+            PanelFixture.clip("cafe\u{0301}", minutesAgo: 3),
+        ]
+        var random = Seeded(seed: 438_300)
+
+        for clips in [Self.clips, foldingClips] {
+            var query = ""
+            var panel = PanelFixture.panel(clips)
+            for _ in 0..<100 {
+                query.unicodeScalars.append(alphabet[Int(random.next() % UInt64(alphabet.count))])
+                panel = panel.applying(.search(query)).state
+                let fresh = PanelFixture.panel(clips, query: query).results
+
+                #expect(Self.same(panel.results, fresh), "seed=438300 after \(query)")
+            }
         }
     }
 

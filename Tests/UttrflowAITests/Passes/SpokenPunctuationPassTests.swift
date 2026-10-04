@@ -60,6 +60,14 @@ struct SpokenPunctuationPassTests {
             ("the following period", "the following period"),
             ("one hundred day period", "one hundred day period"),
             ("call the office period", "call the office."),
+            ("have a nice day period", "have a nice day."),
+            ("it was a long day period", "it was a long day."),
+            ("that is all for this week period", "that is all for this week."),
+            ("i will be away for a year period", "i will be away for a year."),
+            ("the project took a week period", "the project took a week."),
+            ("we are done for the day period", "we are done for the day."),
+            ("turn the light off period", "turn the light off."),
+            ("i took the day off period", "i took the day off."),
         ]
     )
     func finalPeriodCompounds(input: String, expected: String) {
@@ -186,6 +194,12 @@ struct SpokenPunctuationPassTests {
             "this period was hard",
             "these comma separated values are easy to read",
             "those question mark icons are confusing",
+            "which comma should I use here",
+            "whose comma is this",
+            "both commas are wrong here",
+            "either comma works",
+            "neither comma belongs here",
+            "all commas look the same",
             "insert a colon",
             "say open quote",
             "a well hyphen",

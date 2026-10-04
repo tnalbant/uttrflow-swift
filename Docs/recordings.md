@@ -73,7 +73,7 @@ recording exists only as a one-day retry buffer, so backup tools that honour the
 
 `DictationPipeline.fail` decides, and the rule is one sentence: **the audio is kept exactly when
 the words were lost.** A failure that carries a transcript (insertion failed, and the words are
-under Recent) discards it. An informational failure, such as nothing heard, discards it. A
+in History) discards it. An informational failure, such as nothing heard, discards it. A
 dictation into a secure field discards it, since its words are a secret. Everything else keeps it
 and, when the failure's own recovery was `retry` or none, offers `retryFromRecording` instead, so
 the floating button's Retry opens the History page rather than starting a new dictation. A failure
@@ -102,12 +102,12 @@ sizes fit `RecordingStore.defaultByteLimit` together, and deletes the older ones
 The newest recording is always kept, since it is the retry a failed dictation just offered.
 A 240-second recording is about 7.7 MB as 16-bit WAV, so the limit holds about 33 of the longest.
 
-`AppDelegate.sweepExpired` does the deleting, at launch and after every dictation that finishes or
-fails, whether or not a window is open. The same sweep drops transcripts past the History retention
-setting. Opening the main window reads the list too, and deletes as it reads. There is no timer:
-launch plus each dictation bounds a stale file to one day and one dictation, at no idle cost
-([performance.md](performance.md)). A file in the folder that is not a recording is deleted once
-it is outside the same window.
+`AppDelegate.sweepExpired` does the deleting at launch, after every dictation that finishes or
+fails, when a retention setting changes, and hourly while the app is open, whether or not a window
+is open. The same sweep drops transcripts past the History retention setting and clipboard clips
+past their retention windows, including their picture files. Opening the main window reads each
+list too and deletes as it reads. A file in the recordings folder that is not a recording is deleted
+once it is outside the same window.
 
 The window is `RetentionWindow`, the rule the history and the clipboard are held to as well, so a
 recording dated ahead of the clock counts as due rather than as not yet made, and a clock that

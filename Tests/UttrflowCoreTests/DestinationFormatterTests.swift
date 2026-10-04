@@ -84,6 +84,28 @@ struct DestinationFormatterTests {
         #expect(formatter.layout == .singleLine)
     }
 
+    @Test("declares what each place does with the text, so a field that runs it is not treated like one that keeps it")
+    func consequences() {
+        let expected: [Destination: Consequence] = [
+            .document: .stores, .spreadsheet: .stores, .sqlEditor: .stores, .codeEditor: .stores,
+            .terminal: .executes, .messaging: .sends, .email: .stores, .plain: .stores,
+        ]
+        #expect(expected.count == Destination.allCases.count)
+        for (destination, consequence) in expected {
+            #expect(DestinationFormatter.standard(for: destination).consequence == consequence, "\(destination)")
+        }
+        let search = AppContext(accessibilityRole: "AXSearchField", isMultiline: false)
+        #expect(DestinationFormatter.standard(for: SituationResolver.resolve(from: search)).consequence == .navigates)
+    }
+
+    @Test("never lays out paragraphs or lists where Return runs the text")
+    func executingPlacesAddNoLayout() {
+        for formatter in DestinationFormatter.registry.values where formatter.consequence == .executes {
+            #expect(!formatter.layout.contains(.paragraphs), "\(formatter.destination)")
+            #expect(!formatter.layout.contains(.lists), "\(formatter.destination)")
+        }
+    }
+
     @Test("AX text fields stay on one line")
     func textField() {
         let app = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
@@ -116,5 +138,28 @@ struct DestinationFormatterTests {
         let app = AppContext(isMultiline: false)
         let situation = Situation(app: app, insertion: .unknown, destination: .spreadsheet)
         #expect(DestinationFormatter.standard(for: situation).terminalStop == .never)
+    }
+
+    private static func codeEditor(document: String, before: String) -> DestinationFormatter {
+        let app = AppContext(documentName: document)
+        let insertion = InsertionPoint(precedingText: before)
+        return DestinationFormatter.standard(
+            for: Situation(app: app, insertion: insertion, destination: .codeEditor))
+    }
+
+    @Test("a README paragraph in a code editor takes a document's stop and lists")
+    func markdownParagraph() {
+        let formatter = Self.codeEditor(document: "README.md", before: "# Setup\n\n")
+        #expect(formatter.terminalStop == .always)
+        #expect(formatter.layout == [.paragraphs, .lists])
+        #expect(Self.codeEditor(document: "notes.txt", before: "").terminalStop == .always)
+    }
+
+    @Test("a Markdown heading and a commit subject stay stopless")
+    func headingAndCommitSubject() {
+        #expect(Self.codeEditor(document: "README.md", before: "Intro\n\n## ").terminalStop == .never)
+        let subject = Self.codeEditor(document: "COMMIT_EDITMSG", before: "")
+        #expect(subject.terminalStop == .never)
+        #expect(subject.layout == .preserveNewlines)
     }
 }

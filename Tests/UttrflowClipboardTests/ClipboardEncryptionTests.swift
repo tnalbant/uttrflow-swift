@@ -92,6 +92,7 @@ struct ClipboardEncryptionTests {
 
         let store = ClipboardStore(file: file, encryptedStore: encryptedStore())
         let migrated = try #require(await store.clips(keeping: folder.retention).first)
+        await store.waitForLegacyPictureMigration()
         #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
         #expect(await store.imageData(for: try #require(migrated.image)) == original)
         #expect(EncryptedStore.isSealed(try Data(contentsOf: images.appending(path: name))))
@@ -115,6 +116,7 @@ struct ClipboardEncryptionTests {
         let crypto = encryptedStore()
         let store = ClipboardStore(file: file, encryptedStore: crypto)
         _ = await store.clips(keeping: folder.retention)
+        await store.waitForLegacyPictureMigration()
 
         let sealed = try Data(contentsOf: images.appending(path: name))
         #expect(EncryptedStore.isSealed(sealed))
@@ -137,11 +139,37 @@ struct ClipboardEncryptionTests {
         let crypto = encryptedStore()
         let store = ClipboardStore(file: file, encryptedStore: crypto)
         _ = await store.clips(keeping: folder.retention)
+        await store.waitForLegacyPictureMigration()
 
         let sealed = try Data(contentsOf: images.appending(path: name))
         #expect(EncryptedStore.isSealed(sealed))
         #expect(try crypto.open(sealed, for: name) == original)
         #expect(try setAsideIndex(in: folder.url) == damagedIndex)
+    }
+
+    @Test("zero-length, short and truncated plaintext indexes are preserved and recover")
+    func damagedPlaintextIndexesRecover() async throws {
+        let damagedIndexes = [Data(), Data([0x7b, 0x22, 0x76]), Data("[{\"id\":".utf8)]
+        for damagedIndex in damagedIndexes {
+            let folder = try TemporaryFolder()
+            let file = folder.url.appending(path: "clipboard.json")
+            try damagedIndex.write(to: file)
+            let crypto = encryptedStore()
+            let store = ClipboardStore(file: file, encryptedStore: crypto)
+
+            #expect(await store.clips(keeping: folder.retention).isEmpty)
+            let copies = await store.takeUnreadableIndexSetAsides()
+            #expect(copies.count == 1)
+            let copy = try #require(copies.first)
+            #expect(try Data(contentsOf: copy) == damagedIndex)
+            #expect(await store.takeUnreadableIndexSetAsides().isEmpty)
+
+            let later = Clip(text: "a later copy", kind: .text, copiedAt: Date())
+            try await store.record(later, keeping: folder.retention)
+            let reopened = ClipboardStore(file: file, encryptedStore: crypto)
+            #expect(await reopened.clips(keeping: folder.retention).map(\.text) == [later.text])
+            #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
+        }
     }
 
     @Test("a failed picture migration preserves plaintext and retries on the next launch")
@@ -161,13 +189,16 @@ struct ClipboardEncryptionTests {
         try original.write(to: imageURL)
 
         let unavailable = EncryptedStore(keys: UnavailableKeys())
-        _ = await ClipboardStore(file: file, encryptedStore: unavailable).clips(
-            keeping: folder.retention)
+        let unavailableStore = ClipboardStore(file: file, encryptedStore: unavailable)
+        _ = await unavailableStore.clips(keeping: folder.retention)
+        await unavailableStore.waitForLegacyPictureMigration()
         #expect(try Data(contentsOf: file) == index)
         #expect(try Data(contentsOf: imageURL) == original)
 
         let crypto = encryptedStore()
-        _ = await ClipboardStore(file: file, encryptedStore: crypto).clips(keeping: folder.retention)
+        let availableStore = ClipboardStore(file: file, encryptedStore: crypto)
+        _ = await availableStore.clips(keeping: folder.retention)
+        await availableStore.waitForLegacyPictureMigration()
         let sealed = try Data(contentsOf: imageURL)
         #expect(EncryptedStore.isSealed(try Data(contentsOf: file)))
         #expect(EncryptedStore.isSealed(sealed))

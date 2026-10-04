@@ -178,6 +178,12 @@ struct PieceJoinerListTests {
             joined(["First place went to Sam.", "Second place went to Priya."], .document)
                 == "First place went to Sam.\n\nSecond place went to Priya.")
         #expect(
+            joined(["I came first. Second place is fine."], .document)
+                == "I came first. Second place is fine.")
+        #expect(
+            joined(["I came first. Third time is fine."], .document)
+                == "I came first. Third time is fine.")
+        #expect(
             joined(["Point one seconds of lag is fine.", "Point two seconds is not."], .document)
                 == "Point one seconds of lag is fine. Point two seconds is not.")
     }
@@ -194,6 +200,13 @@ struct PieceJoinerListTests {
         #expect(
             joined(["One bug is still open.", "Two tests are still red."], .document)
                 == "One bug is still open. Two tests are still red.")
+    }
+
+    @Test("continues an ordered list when a later ordinal has no spoken mark")
+    func unmarkedLaterOrdinalContinuesList() {
+        #expect(
+            joined(["First, buy milk.", "second call mom."], .document)
+                == "- Buy milk\n- Call mom")
     }
 
     @Test("an announcing word says an item as plainly as the mark does")
@@ -236,6 +249,18 @@ struct PieceJoinerParagraphTests {
                 == "Guide.\nCheck the build.")
     }
 
+    @Test("breaks a line in a place that runs the text only where the speaker asked for one")
+    func executingPlaceGetsOnlySpokenLines() {
+        let topics = ["List the files.", "Then we can talk about lunch plans tomorrow."]
+        for destination in Destination.allCases {
+            let consequence = DestinationFormatter.standard(for: destination).consequence
+            guard consequence == .executes else { continue }
+            let unasked = joined(topics, destination)
+            #expect(!unasked.contains("\n"), "\(destination)")
+            #expect(joined(["ls new line", "pwd"], destination) == "ls\npwd", "\(destination)")
+        }
+    }
+
     @Test("does not capitalize the next piece when a layout command ends its piece")
     func layoutCommandWithoutBodyInItsPiece() {
         #expect(
@@ -244,6 +269,19 @@ struct PieceJoinerParagraphTests {
         #expect(
             joined(["First item new line", "second item"], .document)
                 == "First item\nsecond item.")
+    }
+
+    @Test("keeps a named new line at the end of a piece as words")
+    func mentionedLineCommandAtPieceEnd() {
+        #expect(
+            joined(["Please add a new line.", "Of products to the catalogue."], .document)
+                == "Please add a new line of products to the catalogue.")
+        #expect(
+            joined(["We launched a new line.", "Of shoes last spring."], .document)
+                == "We launched a new line of shoes last spring.")
+        #expect(
+            joined(["The product line.", "Is growing fast."], .document)
+                == "The product line is growing fast.")
     }
 
     @Test("opens a paragraph where the next piece opens a topic")
@@ -535,6 +573,16 @@ struct PieceJoinerSeamTests {
         #expect(whole.cleaned.text == "the word full stop")
     }
 
+    @Test(
+        "keeps a spoken mark name after any determiner across a piece boundary",
+        arguments: ["the", "which", "whose", "both", "all", "his", "her", "its", "some", "any"])
+    func keepsSpokenMarkNameAfterDeterminer(determiner: String) {
+        let whole = PieceJoiner.join(
+            [piece("tell me \(determiner)"), piece("comma")], under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text.hasSuffix(" comma") && !whole.cleaned.text.contains("\(determiner),"))
+    }
+
     @Test("keeps a question mark at a seam rather than adding a stop after it")
     func keepsAQuestionMarkAtASeam() {
         let whole = PieceJoiner.join(
@@ -609,6 +657,15 @@ struct PieceJoinerSeamTests {
             [piece(first), piece(next)], under: .standard(for: .document))
 
         #expect(whole.cleaned.text == expected)
+    }
+
+    @Test("judges a seam against the next piece with words when a piece between was tidied to nothing")
+    func judgesSeamPastAnEmptyPiece() {
+        let whole = PieceJoiner.join(
+            [piece("We moved the review."), piece("", heard: "um"), piece("To the Thursday slot.")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "We moved the review to the Thursday slot.")
     }
 
     @Test("preserves a name whether or not the recognizer inserted a seam stop")
