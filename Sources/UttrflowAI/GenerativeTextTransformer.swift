@@ -75,18 +75,19 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
 
         // Models echo the shape of the worked examples, so the answer is unwrapped before it is judged.
         let unwrapped = ResponseUnwrapper.unwrap(rewritten, spoken: spoken)
-        // A model that hands the input back unchanged did no work and leaves the rules engine to format it.
-        if Self.isUnchangedAnswer(unwrapped, spoken: spoken) {
+        // An unchanged answer did no work only when the destination still owes the text formatting.
+        if Self.isUnchangedAnswer(unwrapped, spoken: spoken, formatter: formatter) {
             throw .outputRejected(
                 reason: "the model returned the input unchanged", kind: .unchangedAnswer)
         }
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                situation: request.situation, heard: request.transcription.text, spoken: spoken)
+                digits: formatter.digits, situation: request.situation,
+                heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
                 for: formatter, situation: request.situation, heard: request.transcription.text,
-                spoken: spoken, steps: steps)
+                spoken: spoken, steps: steps, vocabulary: request.vocabulary)
         let polished = finishing.run(Draft(keepingLineBreaks: TextTidy.collapseSpacing(unwrapped)))
         let finished = polished.text
 
@@ -117,17 +118,14 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
             .joined(separator: " ")
     }
 
-    /// Whether the model's answer, once unwrapped, is byte-identical to what the speaker said and the input still needs formatting.
-    private static func isUnchangedAnswer(_ rewritten: String, spoken: String) -> Bool {
-        let collapsed = TextTidy.collapseSpacing(rewritten)
+    /// Whether the model's answer is what the speaker said while the destination still owes it formatting.
+    private static func isUnchangedAnswer(
+        _ rewritten: String, spoken: String, formatter: DestinationFormatter
+    ) -> Bool {
         let spokenCollapsed = TextTidy.collapseSpacing(spoken)
-        guard collapsed == spokenCollapsed else { return false }
-        // A short reply or one that already carries a capital and a mark needs no rule formatting on top.
-        let wordCount = spokenCollapsed.split(whereSeparator: \.isWhitespace).count
-        guard wordCount > 3 else { return false }
-        let first = spokenCollapsed.first.map(String.init) ?? ""
-        let startsCapital = first != first.lowercased() && first == first.uppercased()
-        let hasMark = spokenCollapsed.contains(where: { ".!?;,".contains($0) })
-        return !startsCapital && !hasMark
+        guard TextTidy.collapseSpacing(rewritten) == spokenCollapsed else { return false }
+        // A short reply is accepted as it stands; a fragment is too little to judge.
+        guard spokenCollapsed.split(whereSeparator: \.isWhitespace).count > 3 else { return false }
+        return formatter.owesFormatting(spokenCollapsed)
     }
 }

@@ -14,8 +14,7 @@ public enum PanelComposition {
         }
     }
 
-    /// Whether the panel may act on a resolved key press while the field editor composes text.
-    /// Command chords resolve to intents, so they use the same ownership rule as panel keys.
+    /// Whether the panel may act on a resolved key or command chord while the field editor composes text.
     public static func panelMayTake(_ decision: PanelKeyDecision, whileComposing isComposing: Bool) -> Bool {
         guard isComposing else { return true }
         switch decision {

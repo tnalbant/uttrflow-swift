@@ -15,7 +15,8 @@ struct ProbeLogRowTests {
     }
 
     private func row(
-        issue: Int? = 3751, machine: MachineDescription, load: HostLoad = HostLoad(oneMinute: 1.25, cores: 18),
+        issue: Int? = 3751, machine: MachineDescription,
+        load: HostLoad = HostLoad(oneMinute: 1.25, cores: 18),
         result: String = "range scan 4.7 µs"
     ) -> ProbeLogRow {
         ProbeLogRow(
@@ -37,10 +38,12 @@ struct ProbeLogRowTests {
 
     @Test("an 8 GB base chip is minimum-spec and base chip")
     func minimumSpecBaseChip() {
-        #expect(row(machine: machine("Apple M1", gigabytes: 8)).hostClasses == [.minimumSpec, .baseChip, .quiet])
+        #expect(
+            row(machine: machine("Apple M1", gigabytes: 8)).hostClasses == [.minimumSpec, .baseChip, .quiet])
     }
 
-    @Test("a tiered chip with 16 GB is neither", arguments: ["Apple M3 Pro", "Apple M2 Max", "Apple M1 Ultra"])
+    @Test(
+        "a tiered chip with 16 GB is neither", arguments: ["Apple M3 Pro", "Apple M2 Max", "Apple M1 Ultra"])
     func tieredChip(chip: String) {
         #expect(row(machine: machine(chip, gigabytes: 16)).hostClasses == [.quiet])
     }
@@ -52,10 +55,12 @@ struct ProbeLogRowTests {
 
     @Test("a run queue as long as the cores is not quiet, and an unread load is never quiet")
     func loadDecidesQuiet() {
-        let busy = row(machine: machine("Apple M5 Pro", gigabytes: 48), load: HostLoad(oneMinute: 18, cores: 18))
+        let busy = row(
+            machine: machine("Apple M5 Pro", gigabytes: 48), load: HostLoad(oneMinute: 18, cores: 18))
         #expect(busy.hostClasses.isEmpty)
         #expect(busy.markdown(in: .gmt).contains("| load 18.0 on 18 cores |"))
-        let unread = row(machine: machine("Apple M5 Pro", gigabytes: 48), load: HostLoad(oneMinute: nil, cores: 18))
+        let unread = row(
+            machine: machine("Apple M5 Pro", gigabytes: 48), load: HostLoad(oneMinute: nil, cores: 18))
         #expect(unread.hostClasses.isEmpty)
         #expect(unread.markdown(in: .gmt).contains("| load unread |"))
     }
@@ -85,7 +90,8 @@ struct ProbeLogRowTests {
 
     @Test("the build names a commit inside a checkout and says so outside one")
     func buildIdentity() throws {
-        let inside = BuildIdentity.current(in: URL(fileURLWithPath: #filePath).deletingLastPathComponent().path)
+        let inside = BuildIdentity.current(
+            in: URL(fileURLWithPath: #filePath).deletingLastPathComponent().path)
         #expect(inside.hasPrefix(BuildIdentity.configuration + " "))
         #expect(!inside.contains("unknown"))
         let outside = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

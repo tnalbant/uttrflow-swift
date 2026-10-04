@@ -19,6 +19,17 @@ struct TerminalCredentialPromptTests {
             "Security token: hidden-reply",
             "Password for admin: hidden-reply",
             "Token: hidden-reply",
+            "Enter password: hidden-reply",
+            "Enter passphrase (empty for no passphrase): hidden-reply",
+            "Enter passphrase for /Users/example/.ssh/id_ed25519: hidden-reply",
+            "Verification code: hidden-reply",
+            "One-time code: hidden-reply",
+            "OTP: hidden-reply",
+            "Enter PIN: hidden-reply",
+            "Passwort: hidden-reply",
+            "Enter password： hidden-reply",
+            "Passwort： hidden-reply",
+            "पासवर्ड: hidden-reply",
         ]
         var preferences = CapturePreferences()
         preferences.record(.allowed, for: "com.apple.Terminal")
@@ -44,13 +55,18 @@ struct TerminalCredentialPromptTests {
 
     @Test("A shell command mentioning a password remains readable")
     func commandRemainsOrdinary() {
-        let command = "echo 'Password: example'"
-        let value = "dev@host:~/dir$ \(command)"
-        let snapshot = FocusedFieldSnapshot(
-            bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
-            value: value, selection: NSRange(location: value.utf16.count, length: 0))
+        let commands = [
+            "echo 'Password: example'", "printf 'Verification code: %s' value", "sudo password:",
+        ]
 
-        #expect(!snapshot.isSecure)
-        #expect(snapshot.currentLine == command)
+        for command in commands {
+            let value = "dev@host:~/dir$ \(command)"
+            let snapshot = FocusedFieldSnapshot(
+                bundleIdentifier: "com.apple.Terminal", applicationName: "Terminal", role: "AXTextArea",
+                value: value, selection: NSRange(location: value.utf16.count, length: 0))
+
+            #expect(!snapshot.isSecure)
+            #expect(snapshot.currentLine == command)
+        }
     }
 }

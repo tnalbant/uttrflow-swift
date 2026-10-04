@@ -381,7 +381,7 @@ struct LayoutWordsPassTests {
     @Test(
         "does not turn spoken layout phrases into marks when the destination has no list layout",
         arguments: [
-            LayoutPolicy.singleLine, LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
+            LayoutPolicy.preserveNewlines, LayoutPolicy.paragraphs,
         ]
     )
     func respectsLayoutPolicy(layout: LayoutPolicy) {
@@ -407,5 +407,62 @@ struct LayoutWordsPassTests {
         #expect(draft.words[2].state == .removed(by: LayoutWordsPass.id))
         #expect(draft.words[3].state == .removed(by: LayoutWordsPass.id))
         #expect(draft.words[1].isLayoutMark && draft.words[1].isListMark)
+    }
+
+    private static let oneLine = LayoutWordsPass(layout: .singleLine)
+
+    @Test(
+        "writes a spoken list in a one-line field as one line kept apart by the list separator",
+        arguments: [
+            ("bullet point red bullet point green", "red, green"),
+            ("bullet point red bullet point green bullet point blue", "red, green, blue"),
+            ("number one milk number two eggs", "milk, eggs"),
+            ("tags new line draft new line review", "tags, draft, review"),
+            ("draft new paragraph review", "draft, review"),
+            ("urgent blank line later", "urgent, later"),
+            ("bullet point red next point green", "red, green"),
+            ("we need bullet point milk bullet point eggs", "we need, milk, eggs"),
+            ("bullet point paris, france bullet point rome", "paris, france; rome"),
+            ("first. new line second", "first. second"),
+        ]
+    )
+    func oneLineList(input: String, expected: String) {
+        #expect(cleaned(input, by: Self.oneLine) == expected)
+    }
+
+    @Test(
+        "leaves the list words alone in a one-line field when they are not a list",
+        arguments: [
+            "the bullet point was too long", "number one is broken", "red",
+            "she drew a new line on the map", "my number one priority", "the next point matters",
+        ]
+    )
+    func oneLineNonList(input: String) {
+        #expect(cleaned(input, by: Self.oneLine) == input)
+    }
+    @Test(
+        "writes a numbered list after a heading through the shipped pipeline",
+        arguments: [
+            (
+                "the agenda number one budget number two hiring number three travel",
+                "The agenda\n1. Budget\n2. Hiring\n3. Travel"
+            ),
+            (
+                "agenda new line number one budget new line number two hiring",
+                "Agenda\n\n1. Budget\n\n2. Hiring"
+            ),
+            (
+                "steps new line number one open the app new line number two tap settings"
+                    + " new line number three sign out",
+                "Steps\n\n1. Open the app\n\n2. Tap settings\n\n3. Sign out"
+            ),
+            (
+                "agenda colon new line number one budget review new line number two hiring plan",
+                "Agenda:\n\n1. Budget review\n\n2. Hiring plan"
+            ),
+        ]
+    )
+    func listsAfterHeadingThroughPipeline(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 }

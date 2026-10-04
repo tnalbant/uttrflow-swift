@@ -3,11 +3,11 @@
 import Dispatch
 import Foundation
 import Testing
-import UttrflowPredict
 import UttrflowSettings
 import UttrflowTestSupport
 
 @testable import Uttrflow
+@testable import UttrflowPredict
 @testable import UttrflowUX
 
 /// Every load and release in the order they ran.

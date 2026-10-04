@@ -30,6 +30,7 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         let selectionBefore = field.selectedRange()
         let window = window(around: selectionBefore)
         let before = snapshot(window)
+        let alreadyHeld = selectedText(selectionBefore) == text
 
         let result = field.setSelectedText(text)
         guard result == .success else {
@@ -37,12 +38,16 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         }
 
         guard !text.isEmpty else { return }
-        guard let selectionBefore, let after = field.selectedRange(), after.length == 0,
-            after.location == selectionBefore.location + text.utf16.count
+        guard let selectionBefore else { throw .insertionUnconfirmed }
+        let (expectedLocation, overflow) = selectionBefore.location.addingReportingOverflow(
+            text.utf16.count)
+        guard !overflow,
+            let after = field.selectedRange(), after.length == 0,
+            after.location == expectedLocation
         else { throw .insertionUnconfirmed }
 
-        // A success that changed nothing is the failure this catches. See `Docs/insertion.md`.
-        if let before, let after = snapshot(window), before == after, !text.isEmpty {
+        // A success that changed nothing is the failure this catches, unless the selection already held the text. See `Docs/insertion.md`.
+        if !alreadyHeld, let before, let after = snapshot(window), before == after {
             throw .insertionRejected(
                 description: "the field accepted the text and did not change")
         }
@@ -79,9 +84,17 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         guard BackwardSelection.confirms(replaced, in: text, endingAt: caret) else {
             throw .insertionRejected(description: "the text before the caret is not what would be replaced")
         }
-        let selected = min(max(selection.length, 0), max(length - selection.location, 0))
-        try select(
-            CFRange(location: selection.location - preceding.count, length: preceding.count + selected))
+        let (remaining, remainingOverflow) = length.subtractingReportingOverflow(selection.location)
+        let (location, locationOverflow) = selection.location.subtractingReportingOverflow(preceding.count)
+        guard !remainingOverflow, !locationOverflow else {
+            throw .insertionRejected(description: "the field reported an invalid selection")
+        }
+        let selected = min(max(selection.length, 0), max(remaining, 0))
+        let (selectionLength, lengthOverflow) = preceding.count.addingReportingOverflow(selected)
+        guard !lengthOverflow else {
+            throw .insertionRejected(description: "the field reported an invalid selection")
+        }
+        try select(CFRange(location: location, length: selectionLength))
         return selection
     }
 
@@ -95,16 +108,30 @@ struct SelectionWriter<Field: SelectionAttributes>: FocusedTextField {
         return field.value().map { ($0, caret, $0.utf16.count) }
     }
 
+    /// The text the selection covers before the write, when the field will say.
+    private func selectedText(_ selection: CFRange?) -> String? {
+        guard let selection, selection.length > 0 else { return nil }
+        let range = selection.location..<(selection.location + selection.length)
+        if let text = field.text(in: range) { return text }
+        guard let value = field.value(), range.upperBound <= value.utf16.count else { return nil }
+        let units = Array(value.utf16)[range]
+        return String(decoding: units, as: UTF16.self)
+    }
+
     /// Units either side of the selection the no-change check compares.
     static var margin: Int { 64 }
 
     /// The stretch around the selection the no-change check reads, or `nil` where only the whole value will do.
     private func window(around selection: CFRange?) -> Range<Int>? {
-        guard let selection, let length = field.length(), (0...length).contains(selection.location)
+        guard let selection, let length = field.length(), length >= 0,
+            selection.length >= 0, (0...length).contains(selection.location)
         else { return nil }
+        let (end, endOverflow) = selection.location.addingReportingOverflow(selection.length)
+        guard !endOverflow, end <= length else { return nil }
+        let (upper, marginOverflow) = end.addingReportingOverflow(Self.margin)
+        guard !marginOverflow else { return nil }
         let lower = max(0, selection.location - Self.margin)
-        let upper = min(length, selection.location + max(selection.length, 0) + Self.margin)
-        return lower..<upper
+        return lower..<min(length, upper)
     }
 
     /// The field's length and the text in `window`, or its whole value where no window can be read.

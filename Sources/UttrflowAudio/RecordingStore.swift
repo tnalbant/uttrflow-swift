@@ -4,23 +4,22 @@ public import UttrflowCore
 
 /// The private facts carried beside a recording, with support for the earlier app-only sidecar.
 private struct RecordedDestination: Sendable, Codable {
-    let app: AppContext
+    let app: AppIdentity
     let fieldKind: Destination?
 
-    init(app: AppContext, fieldKind: Destination?) {
-        self.app = AppContext(
-            applicationName: app.applicationName, bundleIdentifier: app.bundleIdentifier)
+    init(app: AppIdentity, fieldKind: Destination?) {
+        self.app = app
         self.fieldKind = fieldKind
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let app = try container.decodeIfPresent(AppContext.self, forKey: .app) {
+        if let app = try container.decodeIfPresent(AppIdentity.self, forKey: .app) {
             self.init(
                 app: app, fieldKind: try container.decodeIfPresent(Destination.self, forKey: .fieldKind))
         } else {
-            // Before field kinds were saved, the sidecar itself was an AppContext plist.
-            self.init(app: try AppContext(from: decoder), fieldKind: nil)
+            // Before field kinds were saved, the sidecar itself was the app's name and bundle.
+            self.init(app: try AppIdentity(from: decoder), fieldKind: nil)
         }
     }
 
@@ -33,9 +32,12 @@ private struct RecordedDestination: Sendable, Codable {
 public actor RecordingStore: RecordingKeeper {
     /// How long a recording that could not become text waits for a retry.
     public static let defaultRetention: Duration = .seconds(24 * 60 * 60)
+    /// The most bytes waiting recordings may hold on disk together, so retries bound the folder as well as age does.
+    public static let defaultByteLimit = 256 * 1_048_576
 
     private let directory: URL
     private let retention: Duration
+    private let byteLimit: Int
     private let encryptedStore: EncryptedStore?
     /// The writer of the recording under way, whose file is not yet a recording to list.
     private var open: RecordingWriter?
@@ -49,10 +51,12 @@ public actor RecordingStore: RecordingKeeper {
     public init(
         directory: URL = RecordingStore.defaultDirectory(),
         retention: Duration = RecordingStore.defaultRetention,
+        byteLimit: Int = RecordingStore.defaultByteLimit,
         encryptedStore: EncryptedStore? = nil
     ) {
         self.directory = directory
         self.retention = retention
+        self.byteLimit = byteLimit
         self.encryptedStore = encryptedStore
     }
 
@@ -61,7 +65,7 @@ public actor RecordingStore: RecordingKeeper {
         in container: URL = .applicationSupportDirectory,
         for identifier: String? = Bundle.main.bundleIdentifier
     ) -> URL {
-        LocalStore.directory("recordings", in: container, for: identifier)
+        LocalStoreEntry.recordings.location(in: container, for: identifier)
     }
 
     // MARK: - Writing
@@ -123,10 +127,10 @@ public actor RecordingStore: RecordingKeeper {
 
     public func setDestination(_ destination: AppContext, fieldKind: Destination, for id: UUID) {
         guard last?.id == id || FileManager.default.fileExists(atPath: url(of: id).path) else { return }
-        let recorded = RecordedDestination(app: destination, fieldKind: fieldKind)
+        let recorded = RecordedDestination(app: destination.identity, fieldKind: fieldKind)
         destinations[id] = recorded
         if let data = try? PropertyListEncoder().encode(recorded) {
-            try? data.write(to: destinationURL(of: id), options: .atomic)
+            try? PrivateFile.write(data, to: destinationURL(of: id))
         }
         if last?.id == id, let last {
             self.last = KeptRecording(
@@ -156,7 +160,7 @@ public actor RecordingStore: RecordingKeeper {
             ?? []
         // The promise as the rule the three stores share states it; the clock is the caller's.
         let window = RetentionWindow(span: retention.inSeconds, now: now)
-        var kept: [KeptRecording] = []
+        var kept: [(recording: KeptRecording, bytes: Int)] = []
         for file in files {
             if file.standardizedFileURL == open?.url.standardizedFileURL { continue }
             guard file.pathExtension == "wav",
@@ -186,12 +190,32 @@ public actor RecordingStore: RecordingKeeper {
                 continue
             }
             kept.append(
-                KeptRecording(
-                    id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames),
-                    destination: destination(for: id)?.app,
-                    fieldKind: destination(for: id)?.fieldKind))
+                (
+                    KeptRecording(
+                        id: id, when: when, duration: RecordingWriter.duration(ofFrames: frames),
+                        destination: destination(for: id)?.app,
+                        fieldKind: destination(for: id)?.fieldKind),
+                    values?.fileSize ?? 0
+                ))
         }
-        return kept.sorted { $0.when > $1.when }
+        return await withinByteLimit(kept.sorted { $0.recording.when > $1.recording.when })
+    }
+
+    /// Keeps the newest recordings whose stored sizes fit the byte limit, always the newest one, and deletes the rest.
+    private func withinByteLimit(
+        _ newestFirst: [(recording: KeptRecording, bytes: Int)]
+    ) async -> [KeptRecording] {
+        var total = 0
+        var kept: [KeptRecording] = []
+        for (recording, bytes) in newestFirst {
+            total += bytes
+            if kept.isEmpty || total <= byteLimit {
+                kept.append(recording)
+            } else {
+                await discard(recording.id)
+            }
+        }
+        return kept
     }
 
     /// Removes an unrecognized regular file once its age is outside this store's retention window.

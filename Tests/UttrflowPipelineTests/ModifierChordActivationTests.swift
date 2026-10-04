@@ -123,7 +123,7 @@ private final class Rig {
     let clock: ManualClock
     let metrics: RecordingMetricsRecorder
     let speech: FakeSpeechEngine
-    private var lastAudio: AudioSamples = .empty
+    var lastAudio: AudioSamples = .empty
     private var recogniser: HotkeyRecogniser
     let hands = Hands()
 
@@ -180,9 +180,8 @@ private final class Rig {
         await controller.drained()
     }
 
-    /// Holds on past the settle, so a press that is waiting counts.
+    /// Holds on past the settle, so a press that is waiting counts; a settle sleep installed later finds its deadline passed.
     func waitOutTheSettle() async {
-        while await capture.state != .recording { await Task.yield() }
         clock.advance(by: DictationController<ManualClock>.modifierSettle)
         await controller.settling()
         await controller.drained()

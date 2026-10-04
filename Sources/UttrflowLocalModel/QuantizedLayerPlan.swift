@@ -3,7 +3,7 @@ import Foundation
 import MLX
 import MLXLMCommon
 
-/// The quantized layers a snapshot holds, read from its safetensors headers. See `Docs/performance.md`.
+/// The quantized layers a snapshot holds, read from its safetensors headers. See `Docs/performance-suggestions.md`.
 struct QuantizedLayerPlan: Sendable, Equatable {
     /// The prefix a vision-language conversion puts before the language model's weights.
     static let languageModelPrefix = "language_model."

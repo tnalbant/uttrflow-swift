@@ -24,8 +24,9 @@ public enum SettingsTidyingLevel: String, Sendable, Equatable, CaseIterable {
     public static let rowLabel = "How much Uttrflow tidies"
     /// What the row says underneath on both screens that draw it.
     public static let rowExplanation = """
-        Both levels remove filler words and stammers. Standard also rewrites grammar and \
-        word choice when an on-device model is available.
+        Both levels remove filler sounds and stammers and add punctuation. Standard also \
+        repairs grammar slips with an on-device model, which adds a moment to each dictation. \
+        Neither level changes, reorders or drops the words you meant.
         """
 }
 

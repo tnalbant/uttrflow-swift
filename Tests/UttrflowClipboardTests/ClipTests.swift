@@ -51,7 +51,9 @@ struct ClipTests {
     @Test("bounds the complete preview and marks truncation")
     func previewCap() {
         let text = String(repeating: "x", count: Clip.previewCharacterLimit + 1)
-        #expect(clip(text).preview == String(repeating: "x", count: Clip.previewCharacterLimit) + "\n… preview truncated")
+        #expect(
+            clip(text).preview == String(repeating: "x", count: Clip.previewCharacterLimit)
+                + "\n… preview truncated")
     }
 
     @Test("trims leading and trailing whitespace from the first line")

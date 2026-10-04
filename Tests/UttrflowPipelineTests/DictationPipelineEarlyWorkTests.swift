@@ -640,7 +640,8 @@ struct DictationPipelineEarlyWorkTests {
         let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
         await capture.setCaptured(Take.threePieces)
         let before = HeldSwapSpeechEngine()
-        let after = faster()
+        let after = FakeSpeechEngine(
+            kind: .appleSpeech, transcribeOutcome: .success(.fixture(text: "faster")))
         let pipeline = makePipeline(capture: capture, speech: before, earlyPoll: .milliseconds(2))
 
         await pipeline.startRecording()
@@ -843,8 +844,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
+                        SpeechEngineError.speechWithoutWords)))
         #expect(inserter.received.isEmpty)
     }
 
@@ -902,8 +902,7 @@ struct DictationPipelineEarlyWorkTests {
             await pipeline.currentState
                 == .failed(
                     DictationFailure(
-                        SpeechEngineError.transcriptionFailed(
-                            description: "speech in a recording piece produced no words"))))
+                        SpeechEngineError.speechWithoutWords)))
     }
 
     @Test("corrections keep pointing at their words after the pieces are joined")

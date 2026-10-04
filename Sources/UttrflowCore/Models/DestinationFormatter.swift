@@ -14,6 +14,11 @@ public enum TerminalStopPolicy: Sendable, Equatable, Codable {
     case never
     /// Withheld when the text holds this many sentences or fewer.
     case offForShortMessages(sentences: Int)
+
+    /// The policy in a one-line field of no known purpose, which holds a value: one sentence there gets no stop.
+    var inOneLineField: TerminalStopPolicy {
+        self == .always ? .offForShortMessages(sentences: 1) : self
+    }
 }
 
 /// How a numeral's digits are grouped, which is a separate question from which numbers become numerals.
@@ -97,11 +102,13 @@ public struct DestinationFormatter: Sendable, Equatable {
     public let digits: DigitGrouping
     /// The style rules and worked examples the model is shown for this place.
     public let promptBlock: PromptBlockID
+    /// What this place does with the text once it lands.
+    public let consequence: Consequence
 
     public init(
         destination: Destination, firstWord: FirstWordPolicy, terminalStop: TerminalStopPolicy,
         layout: LayoutPolicy, grammar: GrammarPolicy, numbers: NumberPolicy = .fromTen,
-        digits: DigitGrouping = .thousands, promptBlock: PromptBlockID
+        digits: DigitGrouping = .thousands, promptBlock: PromptBlockID, consequence: Consequence = .stores
     ) {
         self.destination = destination
         self.firstWord = firstWord
@@ -111,6 +118,7 @@ public struct DestinationFormatter: Sendable, Equatable {
         self.numbers = numbers
         self.digits = digits
         self.promptBlock = promptBlock
+        self.consequence = consequence
     }
 
     /// The shipped value for every destination; code stays `.never` until comments are told apart.
@@ -133,11 +141,11 @@ public struct DestinationFormatter: Sendable, Equatable {
         .terminal: DestinationFormatter(
             destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
             layout: .preserveNewlines, grammar: .asSpoken, numbers: .always, digits: .none,
-            promptBlock: "terminal"),
+            promptBlock: "terminal", consequence: .executes),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,
             terminalStop: .offForShortMessages(sentences: 2), layout: .paragraphs,
-            grammar: .asSpoken, numbers: .fromTen, promptBlock: "messaging"),
+            grammar: .asSpoken, numbers: .fromTen, promptBlock: "messaging", consequence: .sends),
         .email: DestinationFormatter(
             destination: .email, firstWord: .fromInsertionPoint, terminalStop: .always,
             layout: [.paragraphs, .lists], grammar: .repair, numbers: .fromTen,
@@ -146,6 +154,14 @@ public struct DestinationFormatter: Sendable, Equatable {
             destination: .plain, firstWord: .fromInsertionPoint, terminalStop: .always,
             layout: [.paragraphs, .lists], grammar: .repair, numbers: .fromTen, promptBlock: "plain"),
     ]
+
+    /// Whether this place's first-word or stop policy would still change `text`, so an answer returning it unchanged did no work.
+    public func owesFormatting(_ text: String) -> Bool {
+        let first = text.first.map(String.init) ?? ""
+        let owesCapital = firstWord != .asSpoken && first != first.uppercased()
+        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        return owesCapital && owesStop
+    }
 
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
     public static func standard(for destination: Destination) -> DestinationFormatter {
@@ -159,6 +175,12 @@ public struct DestinationFormatter: Sendable, Equatable {
     /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
     public static func standard(for situation: Situation) -> DestinationFormatter {
         let base = standard(for: situation.destination)
+        if situation.destination == .codeEditor,
+            CodeCommentContext.isDocumentProse(
+                precedingText: situation.insertion.precedingText, documentName: situation.app.documentName)
+        {
+            return proseInCodeEditor(base)
+        }
         let ruleStop: TerminalStopPolicy? = {
             guard let rule = DestinationClassifier.rule(for: situation.app),
                 rule.destination == situation.destination
@@ -172,9 +194,19 @@ public struct DestinationFormatter: Sendable, Equatable {
         return DestinationFormatter(
             destination: base.destination,
             firstWord: isSearch ? .asSpoken : base.firstWord,
-            terminalStop: isSearch ? .never : (ruleStop ?? base.terminalStop),
+            terminalStop: isSearch
+                ? .never
+                : (ruleStop ?? (isSingleLine ? base.terminalStop.inOneLineField : base.terminalStop)),
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
-            promptBlock: base.promptBlock)
+            promptBlock: base.promptBlock, consequence: isSearch ? .navigates : base.consequence)
+    }
+
+    /// A code editor's formatter with a document's stops and lists, for prose in a Markdown or text file.
+    private static func proseInCodeEditor(_ base: DestinationFormatter) -> DestinationFormatter {
+        DestinationFormatter(
+            destination: base.destination, firstWord: base.firstWord, terminalStop: .always,
+            layout: [.paragraphs, .lists], grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock, consequence: base.consequence)
     }
 }

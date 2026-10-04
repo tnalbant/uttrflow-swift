@@ -44,7 +44,7 @@ public actor DictationPipeline {
     private let observers = StateObservers()
 
     /// Counts dictations, so a cancel can name the one it abandoned.
-    private var generation = 0
+    private(set) var generation = 0
     private var cancelledGeneration: Int?
 
     /// Held across every await before the state shows a dictation's next step, so no second entry slips in.
@@ -85,7 +85,7 @@ public actor DictationPipeline {
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     var earlyReadsSettled: Int { early.readsSettled }
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
-    private var dictationWords: [String]?
+    private(set) var dictationWords: [String]?
     /// Pieces of this dictation that held speech and decoded to no words twice, left out of what is inserted.
     private var missedPieces = 0
 
@@ -167,7 +167,7 @@ public actor DictationPipeline {
     var runningCleaner: any TranscriptCleaning { inUse?.cleaner ?? cleaner }
 
     /// The overrides this dictation is being run with, for the same reason.
-    private var runningOverrides: DestinationOverrides { inUse?.overrides ?? destinationOverrides }
+    var runningOverrides: DestinationOverrides { inUse?.overrides ?? destinationOverrides }
 
     /// The languages this dictation is being listened for and tidied in, for the same reason.
     var runningProfile: UserProfile { inUse?.profile ?? profile }
@@ -436,7 +436,7 @@ public actor DictationPipeline {
         takeSettings()
         spokenFor = audio.duration
         let kept = (await recordings.waiting(now: Date())).first(where: { $0.id == recording })
-        recordingDestination = kept?.destination
+        recordingDestination = kept?.destination.map(AppContext.init(identity:))
         recordingFieldKind = kept?.fieldKind
         insertedInto = recordingDestination?.applicationName
         insertedIntoIdentifier = recordingDestination?.bundleIdentifier
@@ -873,8 +873,8 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            await fail(
-                DictationFailure(missedPieces > 0 ? Self.untranscribed : SpeechEngineError.nothingHeard))
+            let silence: SpeechEngineError = missedPieces > 0 ? .speechWithoutWords : .nothingHeard
+            await fail(DictationFailure(silence))
             return
         }
         // Every piece is done while recording, and the screen it is read against still applies.
@@ -883,28 +883,15 @@ public actor DictationPipeline {
             dictationContext?.situation
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
-        let joiningFormatter = DestinationFormatter.standard(for: joining)
-        let joined = PieceJoiner.join(
-            pieces, under: joiningFormatter, steps: runningCleaner.cleaningSteps)
-        let correctedAtSeams = await correctAcrossSeams(
-            pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
-        let whole = await finishMessage(
-            correctedAtSeams, going: joining, seeing: appContext ?? AppContext())
-        // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
-        let written = LatinScript.enforced(whole.cleaned.text)
-
         // Inserting a blank would delete the user's selection, so it is refused like silence.
-        guard written.hasRecognisableContent else {
+        guard
+            let joined = await join(
+                pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
+        else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
-
-        // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
-        let snippetInput = PieceJoiner.snippetInput(
-            pieces, under: joiningFormatter, using: written)
-        let layout = joiningFormatter.layout
-        let expanded = await expand(
-            written, matching: snippetInput, laidOut: layout)
+        let (whole, joiningFormatter, expanded) = (joined.whole, joined.formatter, joined.expanded)
         guard !wasCancelled(mine) else { return }
         var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
@@ -918,23 +905,31 @@ public actor DictationPipeline {
             guard !wasCancelled(mine) else { return }
             let situation = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides)
             let formatter = DestinationFormatter.standard(for: situation)
-            output =
-                FirstWordPass(
-                    policy: formatter.firstWord, state: insertionContext.insertionPoint.sentenceState,
-                    onScreen: [
-                        insertionContext.documentName, insertionContext.selectedText,
-                        insertionContext.precedingText, insertionContext.followingText,
-                    ].compactMap { $0 }, heard: whole.heard.text,
-                    capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                        && formatter.destination != .codeEditor
-                )
-                .apply(Draft(keepingLineBreaks: output)).text
+            // Re-casing is owed only for tidied words whose caret or destination moved since they were cased.
+            let casedFor = appContext ?? AppContext()
+            let caretMoved =
+                insertionContext.insertionPoint.sentenceState != casedFor.insertionPoint.sentenceState
+                || formatter.firstWord != joiningFormatter.firstWord
+                || formatter.destination != joiningFormatter.destination
+            if whole.cleaned.producedBy != .untidied, caretMoved {
+                output =
+                    FirstWordPass(
+                        policy: formatter.firstWord, state: insertionContext.insertionPoint.sentenceState,
+                        onScreen: [
+                            insertionContext.documentName, insertionContext.selectedText,
+                            insertionContext.precedingText, insertionContext.followingText,
+                        ].compactMap { $0 }, heard: whole.heard.text,
+                        capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
+                            && formatter.destination != .codeEditor
+                    )
+                    .apply(Draft(keepingLineBreaks: output)).text
+            }
         } else {
             insertionContext = appContext ?? .unknown
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: output)
+        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: OutputSafety.checked(output).text)
 
         let changes = AppliedChanges(
             corrections: DictationCorrection.locating(
@@ -1031,7 +1026,7 @@ public actor DictationPipeline {
             return nil
         case .missed:
             // Alone, or while recording where the end decodes it again, a miss fails; otherwise the rest still go in.
-            guard skips, !whole else { throw Self.untranscribed }
+            guard skips, !whole else { throw SpeechEngineError.speechWithoutWords }
             missedPieces += 1
             return nil
         }
@@ -1069,15 +1064,11 @@ public actor DictationPipeline {
         }
         // Busy for ever is what refuses every later dictation. See `Docs/stuck-recording.md`.
         guard let heard else {
-            throw SpeechEngineError.transcriptionFailed(description: "the recogniser did not answer")
+            throw SpeechEngineError.recogniserTimedOut
         }
         isReady = true
         return heard
     }
-
-    /// Speech the recogniser produced no words for, which must not pass for silence.
-    private static let untranscribed = SpeechEngineError.transcriptionFailed(
-        description: "speech in a recording piece produced no words")
 
     /// What the recogniser made of one window.
     private enum Heard: Sendable {

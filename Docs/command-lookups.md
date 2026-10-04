@@ -1,7 +1,8 @@
 # Command lookups in a terminal
 
-Tab-to-complete checks the verbs a model offers for a command (`docker compose`, `cargo build`)
-against what the program on this Mac says it accepts. That answer comes from running the
+AI suggestions (tab-to-complete) check the verbs a model offers for a command (`docker compose`,
+`cargo build`) against what the program on this Mac says it accepts
+([predict-agent.md](predict-agent.md)). That answer comes from running the
 program once and reading its help. This page is where and how that run happens.
 `Sources/UttrflowPredict/ProgramLauncher.swift` and `Sources/UttrflowPredict/CommandLookup.swift`
 hold the rules; `Sources/UttrflowPredict/EnvironmentReading+System.swift` asks for them.
@@ -24,8 +25,10 @@ caller cannot choose one.
   lies inside that folder. Nothing a project ships is run.
 - **git**: from its fixed install locations only. The verb list runs without a repository.
   Aliases read `git -C <folder> config --get-regexp`, which reads configuration and runs nothing.
-- **Makefile targets and `package.json` scripts** are read as files; neither `make` nor a package
-  manager runs.
+- **Makefile targets, `justfile` recipes and `package.json` scripts** are read as files; neither
+  `make`, `just` nor a package manager runs.
+
+A help page that lists fewer than `fewestListedVerbs` (3) names is treated as no answer.
 
 ## The environment
 
@@ -37,7 +40,8 @@ output pipe is closed in the child.
 ## Bounds
 
 The program starts as the leader of a new process group. Its output is read as it arrives,
-against a deadline that starts at launch: 0.5 s for git, 2 s for help. At the deadline, or past
-1 MiB of output, the whole group is killed, and the lookup has no answer. When the program exits
+against a deadline that starts at launch: `timeoutInSeconds` (0.5 s) for git and
+`helpTimeoutInSeconds` (2 s) for help. At the deadline, or past
+`ProgramLauncher.defaultOutputLimit` (1 MiB) of output, the whole group is killed, and the lookup has no answer. When the program exits
 while something it started still holds the pipe, what it wrote is kept and the group is killed.
 A lookup with no answer leaves the words it would have checked unverified, never refused.

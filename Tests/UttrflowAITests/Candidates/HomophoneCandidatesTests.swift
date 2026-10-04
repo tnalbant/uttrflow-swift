@@ -12,7 +12,9 @@ struct HomophoneCandidatesTests {
         #expect(offered.map(\.spelling) == ["their", "they're"])
     }
 
-    @Test("Offers each word's partners in table order, never capped below the group", arguments: Homophones.groups)
+    @Test(
+        "Offers each word's partners in table order, never capped below the group",
+        arguments: Homophones.groups)
     func offersWholeGroup(group: [String]) async {
         let source = HomophoneCandidates()
         for word in group {

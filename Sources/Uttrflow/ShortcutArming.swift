@@ -1,3 +1,4 @@
+import ApplicationServices
 import UttrflowCore
 import UttrflowInput
 
@@ -31,7 +32,7 @@ final class ShortcutArming {
     }
 
     /// Arms through `start`, keeping a failure as this state rather than reporting it as a dictation.
-    func arm(_ start: @MainActor () async throws(HotkeyError) -> Void) async {
+    func arm(_ start: @escaping @MainActor () async throws(HotkeyError) -> Void) async {
         do {
             try await start()
             failure = nil

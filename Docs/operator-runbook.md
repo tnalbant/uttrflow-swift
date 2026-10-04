@@ -1,151 +1,100 @@
 # Operator runbook
 
-Four things V2 needs that no amount of code can supply: credentials, a bucket, a voice,
-and a signing identity. Everything around each of them is built and tested — each is a
-configuration step, not a development one.
+What an operator configures, rather than develops, for this repository's tooling: the
+entitlement key the app trusts, the accuracy recordings, notarisation, and the provider marks.
+Each is independent, and the app builds and runs locally without any of them: an app built
+without the backend address and key falls back to the in-process development backend
+(`OnboardingAccountLayer.forThisBuild()`, see `Docs/development-build.md`), and every other
+item here only gates a measurement or a distribution step.
 
-They are independent. Do them in whatever order suits you, or none of them: the app runs
-locally today without any of it, because every provider falls back to a development stub
-that walks the identical path.
+## The entitlement key
 
----
+`Ed25519EntitlementVerifier.releasePublicKeyBase64` in
+`Sources/UttrflowAccount/EntitlementSignature.swift` holds the account backend's entitlement
+public key, base64; `releasePublicKeyBytes` decodes it and `isConfigured` is true when it is a
+key. `ReleaseVerifierTests` holds it to 32 bytes that refuse anything the backend did not sign.
 
-## 1 · Sign-in credentials
+**Rotating the backend's signing key is release-blocking.** Generate the new pair on the backend
+side, replace `releasePublicKeyBase64` with the new public half, and ship both together: an app
+built against the old key rejects every entitlement a rotated backend signs, failing closed.
+The backend address is the other half of the pair; `Docs/releasing.md`, "Pointing a build at
+the backend", has why both or neither.
 
-**Blocks:** signing in with a real account. **Not blocked:** everything else — an
-unconfigured provider is replaced by a development stub, and `/v1/health` reports
-`signInIsStubbed: true` so you can never mistake one for the other.
+**Never fill the key with zeroes.** An all-zero Ed25519 key is a small-order point that
+CryptoKit verifies without the cofactor, so it accepts a blank all-zero signature for about one
+message in four (491 of 2,000 when measured). Anyone could grant themselves Pro.
+`ReleaseVerifierTests.rejectsTheDegenerateKeyThatWouldAcceptAForgery` asserts the trap over 64
+forgeries and that the release key is not all zeroes, so nobody "fixes" the constant that way.
+`Docs/entitlements.md` has the signed payload.
 
-You need six values, three of them optional if you drop Apple:
+## Accuracy recordings
 
-| Variable | Where it comes from |
-|---|---|
-| `GOOGLE_CLIENT_ID` / `_SECRET` | Cloud Console → APIs & Services → Credentials → OAuth client ID → **Web application** |
-| `GITHUB_CLIENT_ID` / `_SECRET` | GitHub → Settings → Developer settings → OAuth Apps |
-| `APPLE_CLIENT_ID` | A **Services ID**, not the bundle identifier |
-| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Apple Developer → Keys. The private key is the base64 of the `.p8` |
+Blocks any accuracy number, and therefore the correction feature's regression gate. Nothing
+else: the evaluation harness, `UttrflowEval`, is never linked into the app, and `bundle.sh`
+check 10 refuses a build that carries it.
 
-Each provider needs `${PUBLIC_BASE_URL}/v1/auth/<provider>/callback` registered as an
-authorised redirect URI, matching exactly.
-
-Run `npm run keygen` in `uttrflow-backend` for the three it generates rather than
-obtains — `ENTITLEMENT_SIGNING_KEY`, `SESSION_SIGNING_KEY`, `ADMIN_TOKEN`. It prints them
-and writes nothing.
-
-**One thing in the app is already configured, and a deliberate change to it is
-release-blocking:** `Ed25519EntitlementVerifier.releasePublicKeyBase64` holds the
-backend's public key, base64, and `releasePublicKeyBytes` decodes it — `isConfigured` is
-`true` today, proven by `ReleaseVerifierTests`. Rotating the backend's signing key means
-generating a new one with `npm run keygen`, replacing `releasePublicKeyBase64` with the
-new public half, and shipping both sides together: an app built against the old key
-rejects entitlements a rotated backend signs, failing closed rather than open. **Never
-fill it with zeroes.** An all-zero Ed25519 key is a small-order point that CryptoKit
-verifies without the cofactor: measured here, an all-zero signature verified against it
-for 491 of 2000 messages. Anyone could grant themselves Pro. A test asserts the trap is
-real so nobody "fixes" the constant that way.
-
----
-
-## 2 · The corpus bucket
-
-**Blocks:** pulling and uploading evaluation samples. **Not blocked:** the app, at all —
-the harness is not linked into it and cannot be.
-
-Set `CORPUS_BUCKET` and `AWS_REGION`. The IAM grant needs `s3:GetObject` **and**
-`s3:PutObject` — the upload path is new. Without them the backend still runs: download
-URLs point at an endpoint returning 501 that names what is missing, rather than a broken
-URL.
-
----
-
-## 3 · The recordings
-
-**Blocks:** any accuracy number, and therefore the correction feature's regression gate.
-Nothing else.
-
-> **Two different jobs, and conflating them has kept both at zero.** The thousand samples
-> below buy an accuracy *number* — many voices, many rooms, enough power to say how well
-> the product hears people in general. **Catching a regression needs far less**: the same
-> voice reading the same 18 passages before and after a change, which the repository already
-> computes at **14.7 minutes**. If the question is "did this engine change break anything?",
-> read [`measuring-accuracy.md`](measuring-accuracy.md) and stop here.
-
-About a thousand samples, roughly sixteen hours. Read them in sittings, uploading each
-take as it is accepted:
+Two jobs need recordings, and they need different amounts. **A regression check** needs one
+voice reading the same 18 passages before and after a change, about 14.7 minutes of reading;
+[`measuring-accuracy.md`](measuring-accuracy.md) is that procedure. **An accuracy number** for
+people in general needs many voices and rooms, recorded in sittings with `uttrflow-eval`:
 
 ```bash
 uttrflow-eval record --backend <url> --cohort <reader>-quiet --upload
 ```
 
-It is resumable, so stopping after twenty passages leaves the rest. **The local write is
-the commit** — audio is saved to disk before it is offered to the backend, so a crash or
-dead Wi-Fi costs an upload and never a take. If a sitting ends with uploads still owed —
-the backend was unreachable, say — retry them on their own with `--sync`, which sends
-whatever is outstanding and records nothing new:
+`--backend` has no default, so the tool cannot point at production by accident, and the
+operator token comes from `UTTRFLOW_OPERATOR_TOKEN` (or `--operator-token`) so it stays out of
+shell history. The cohort and every passage's upload name are validated before anything is
+recorded: two to sixty-four lowercase letters, digits and hyphens. Recording is resumable,
+and **the local write is the commit**: a take is saved to disk before it is offered to the
+backend, so a crash or a dropped connection costs an upload, never a take. Uploads still owed
+at the end of a sitting are sent on their own, recording nothing new:
 
 ```bash
 uttrflow-eval record --backend <url> --sync
 ```
 
-Slug validity is checked before you speak, because a name Postgres refuses discovered
-after forty passages is discovered too late.
-
-Then, unattended, against the backend's catalogue — `--from-catalogue` measures only
-what is already cached locally, so pull first:
+Then measure against the backend's catalogue. `--from-catalogue` measures only samples cached
+on this Mac and refuses when any are missing, so pull first:
 
 ```bash
 uttrflow-eval pull --backend <url>
 uttrflow-eval transcribe --from-catalogue --backend <url> --baseline ./baseline.json --save-baseline
 ```
 
-Results are never pooled into one number: by language, by stressor, by cohort. Any slice
-going backwards counts as a regression even when the headline improves — an engine that
-gets better at English and worse at Hinglish has not got better.
+Results are never pooled into one number: each sample is kept with its language, stresses and
+cohort (`AccuracyBaseline`), and any slice going backwards counts as a regression even when the
+headline improves. `Docs/eval-methodology.md` has the scoring.
 
----
+## Notarisation
 
-## 4 · Notarisation
+Blocks giving the app to anyone else. Running it yourself is not blocked.
 
-**Blocks:** giving the app to anyone else. **Not blocked:** running it yourself,
-indefinitely, with the permissions you have already granted.
-
-Needs the Apple Developer Programme, $99/year. Then:
+Needs an Apple Developer Program membership and a Developer ID Application certificate. Store
+the notarytool keychain profile once (`Docs/packaging.md`, "Notarisation credentials"), then:
 
 ```bash
-xcrun notarytool store-credentials uttrflow-notary --apple-id you@example.com --team-id TEAMID --password APP-SPECIFIC-PASSWORD
 make app-dist IDENTITY="Developer ID Application: NAME (TEAMID)"
 make notarise
 ```
 
-`make notarise-check` runs every preflight today, with no account, so you find out now
-rather than after enrolling.
+`make notarise-check` runs every preflight with no account. `Docs/releasing.md` has the full
+release order.
 
----
+## Provider marks
 
-## Also outstanding, and smaller
-
-**Provider brand marks.** Fetched, never committed — they are other people's trademarks
-and this repository is public:
+Fetched, never committed: they are other companies' trademarks and this repository is public.
 
 ```bash
 ./Scripts/fetch-provider-marks.sh
 ```
 
 That places Google's four-colour G at `Sources/Uttrflow/Resources/GoogleG.png`, which
-`.gitignore` keeps out of the repository. Shipping the mark inside an app that implements
-Google Sign-In is what Google publishes it for; redistributing it in public source is a
-different act, and not one the asset terms clearly allow.
-
-Both providers forbid redrawing their mark, so nothing is approximated and no `Path`
-version exists. A build that skips the script is fine and is what CI-less contributors
-get: `ProviderMark` renders nothing, and the button carries its wording alone, which is
-what the GitHub button does in every build. GitHub's Invertocat is not fetched
-automatically — its pack is a designed set rather than a predictable archive.
-
-`Scripts/bundle.sh` needs no change; `.process("Resources")` already seals whatever is
-there into `Contents/Resources`.
-
-**Settled.** Onboarding puts welcome *before* sign-in: `OnboardingStep.position` gives
-`.welcome` position 1 and `.signIn` position 2, so the app says what it is for before it
-asks who the user is. Pitching before charging won out over "the first thing anyone
-sees" literally being the sign-in step.
+`.gitignore` keeps out of the repository; `make app` and `make app-dist` run it first.
+Shipping the mark inside an app that implements Google Sign-In is what Google publishes it
+for; redistributing it in public source is a different act. Marks are never redrawn, so a
+build without the file shows a generic person symbol in the mark's place
+(`OnboardingProviderMark`), and Apple's mark is the system `apple.logo` symbol. The script does
+not fetch GitHub's mark; only Google is offered as a sign-in provider
+(`SignInProvider.offered`). `bundle.sh` needs no change for the mark: the target's resources are
+already sealed into `Contents/Resources`.

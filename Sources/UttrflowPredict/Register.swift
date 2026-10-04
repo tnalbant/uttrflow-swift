@@ -38,7 +38,7 @@ public struct Register: Sendable, Equatable {
     /// Above this share of symbols the text reads as commands, code or queries: shell lines sit near 0.14, prose under 0.06.
     public static let symbolicShare = 0.10
 
-    /// The fewest visible characters needed before symbol share can describe the register.
+    /// The fewest visible characters needed unless flags or paths already mark command syntax.
     static let minimumSymbolSampleCharacters = 8
 
     /// A screen needs at least this many lines before it reads as a conversation.
@@ -295,18 +295,43 @@ public struct Register: Sendable, Equatable {
         character.unicodeScalars.contains { $0.properties.isEmojiPresentation || $0.value == 0xFE0F }
     }
 
-    /// The share of visible characters that are neither letters, digits nor sentence punctuation; emoji and whitespace are left out, and short samples provide no symbol evidence.
+    /// The share of visible characters that are neither letters, digits nor prose punctuation; emoji and whitespace are left out.
     static func symbolShare(of texts: [String]) -> Double {
         var visible = 0
         var symbols = 0
-        for character in texts.joined() where !character.isWhitespace && !isPictograph(character) {
-            visible += 1
-            if !character.isLetter, !character.isNumber, !isSentencePunctuation(character) {
-                symbols += 1
+        var hasCommandSyntax = false
+        for text in texts {
+            for line in text.split(whereSeparator: \.isNewline) {
+                let commandShaped = isCommandShaped(line)
+                hasCommandSyntax = hasCommandSyntax || commandShaped
+                for character in line where !character.isWhitespace && !isPictograph(character) {
+                    visible += 1
+                    let commandPunctuation = commandShaped && isCommandPunctuation(character)
+                    if !character.isLetter, !character.isNumber,
+                        (!isSentencePunctuation(character) || commandPunctuation)
+                    {
+                        symbols += 1
+                    }
+                }
             }
         }
-        guard visible >= minimumSymbolSampleCharacters else { return 0 }
+        guard visible >= minimumSymbolSampleCharacters || hasCommandSyntax else { return 0 }
         return Double(symbols) / Double(visible)
+    }
+
+    /// Quotes and dots distinguish shell arguments and paths when flags or path separators anchor the line.
+    private static func isCommandPunctuation(_ character: Character) -> Bool {
+        ".'\"‘’“”".contains(character)
+    }
+
+    /// A flag or path separator is enough structure to trust a short line as command or code evidence.
+    private static func isCommandShaped(_ line: Substring) -> Bool {
+        if line.contains(where: { "/\\|$`=<>;".contains($0) }) { return true }
+        return line.split(whereSeparator: \.isWhitespace).contains { token in
+            guard token.first == "-" else { return false }
+            let flag = token.drop(while: { $0 == "-" })
+            return flag.first?.isLetter == true
+        }
     }
 
     /// Sentence punctuation finishes prose and should not make a short reply look like code.

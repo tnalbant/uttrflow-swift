@@ -111,13 +111,17 @@ public struct TextInsertionCoordinator: TextInserting {
                 attempt.method, arrival: attempt.arrival, destination: attempt.destination,
                 intoSecureField: true)
         case .exhausted(let errors):
+            // Lost trust hides every field and refuses every keystroke, so it outranks whatever each strategy reported.
+            let trusted = await AccessibilityThread.run(orElse: true) { focus?.isTrusted() ?? true }
+            guard trusted else { throw .accessibilityDenied }
             // The last strategy's reason is the most specific; the earlier refusals are expected.
             let failure = errors.compactMap { $0 as? TextInsertionError }.last ?? .clipboardUnavailable
             let keepsClipboard = strategies.contains { $0.method == .clipboard }
             let canType = strategies.contains { $0.method == .typed }
             if canType, !keepsClipboard {
                 switch failure {
-                case .clipboardChanged, .insertionUnconfirmed, .insertionTargetChanged: throw failure
+                case .clipboardChanged, .insertionUnconfirmed, .insertionTargetChanged, .insertionInterrupted:
+                    throw failure
                 default: throw .insertionNeedsCopy(description: failure.userMessage)
                 }
             }

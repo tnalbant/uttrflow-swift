@@ -14,11 +14,13 @@ on-device. This file is for everyone who works on it, by hand or with an agent. 
 |---|---|
 | writing or changing code, tests or comments | [Docs/agents/code-quality.md](Docs/agents/code-quality.md) |
 | changing what dictation, AI suggestions, the clipboard or the data stores do | [Docs/agents/product.md](Docs/agents/product.md) |
+| changing how accurately dictation recognises, corrects or formats words | [Docs/dictation-quality.md](Docs/dictation-quality.md) |
 | branching, committing or opening a pull request | [Docs/agents/workflow.md](Docs/agents/workflow.md) |
 | writing any text that will be committed or posted | [Docs/agents/public-boundary.md](Docs/agents/public-boundary.md) |
 | hitting a tooling failure | [Docs/tooling-traps.md](Docs/tooling-traps.md) |
 
 4. [`Docs/README.md`](Docs/README.md), then the page for the module you change.
+5. [`Docs/decisions.md`](Docs/decisions.md) before proposing an approach: what was rejected, and what reopens it.
 
 ## Commands
 
@@ -69,6 +71,7 @@ Each gate fails its command. Thresholds and the full list are in
 | 0 force unwraps, `try!`, implicitly unwrapped optionals | `make lint` |
 | 0 compiler warnings | `make build` |
 | Spelling matches decided by shape never rise | `make match-audit` |
+| Logic-module UI imports and platform dependencies never rise | `make layering-audit` |
 | 0 real personal data in fixtures | `make pii-audit` |
 | 0 connections on the dictation path | `make offline-audit` |
 | 0 conversation or reference material in tracked text | `make disclosure-audit` |

@@ -53,7 +53,10 @@ struct DictationPipelineLatinOutputTests {
 
     @Test("romanises Devanagari that no tidier romanised, whether the tidy failed or handed the words back")
     func romanisesUntidiedDevanagari() async {
-        for cleaner: any TranscriptCleaning in [FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.noCapableTransformer))), FakeTranscriptCleaner(producedBy: .foundationModels)] {
+        for cleaner: any TranscriptCleaning in [
+            FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.noCapableTransformer))),
+            FakeTranscriptCleaner(producedBy: .foundationModels),
+        ] {
             let inserted = await dictate("हाँ ठीक है।", cleaner: cleaner)
             #expect(inserted.count == 1)
             #expect(inserted.allSatisfy { !Romaniser.containsDevanagari($0) && LatinScript.isLatin($0) })
@@ -66,7 +69,8 @@ struct DictationPipelineLatinOutputTests {
         let snippet = Snippet(
             trigger: "greeting", expansion: "हाँ ठीक है", created: Date(timeIntervalSince1970: 0))
         let inserted = await dictate(
-            "greeting", cleaner: FakeTranscriptCleaner(producedBy: .foundationModels), snippets: StoredSnippetExpander(snippet: snippet))
+            "greeting", cleaner: FakeTranscriptCleaner(producedBy: .foundationModels),
+            snippets: StoredSnippetExpander(snippet: snippet))
 
         #expect(inserted == ["Haan thik hai"])
         #expect(inserted.allSatisfy { !Romaniser.containsDevanagari($0) && LatinScript.isLatin($0) })

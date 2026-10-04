@@ -17,7 +17,8 @@ private func reading(_ lines: [String]) -> FakeSpeechEngine {
 
 /// A tidier that finishes each piece the way the real one does — a capital at the front, a full stop at the end.
 private func finishing() -> FakeTranscriptCleaner {
-    FakeTranscriptCleaner(tidying: { WordShape.finished(WordShape.capitalised($0)) }, producedBy: .foundationModels)
+    FakeTranscriptCleaner(
+        tidying: { WordShape.finished(WordShape.capitalised($0)) }, producedBy: .foundationModels)
 }
 
 /// A recording with a clear pause between each of its three phrases.

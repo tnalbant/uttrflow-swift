@@ -1,126 +1,132 @@
 # Encrypting local user stores
 
-## Status
+The stores that hold a person's words, pictures and voice are encrypted at rest with one
+installation key kept in the macOS Keychain. `EncryptedStore` in
+`Sources/UttrflowCore/Support/EncryptedStore.swift` holds the envelope format, the Keychain key
+provider (`KeychainStoreKeyProvider`), legacy-plaintext migration and key revocation; each store
+takes an optional `EncryptedStore`, and the app passes one built on the Keychain provider
+(`Sources/Uttrflow/UttrflowApp.swift`). Encryption sits on top of the owner-only file modes and
+backup exclusion in [local-store-permissions.md](local-store-permissions.md); it does not
+replace them.
 
-This page records the scheme chosen for issue #3152 and its reset contract. History,
-dictionary and snippets use encrypted JSON envelopes; clipboard indexes and images, retry
-recordings, and the suggestion corpus use encrypted storage through their own migration
-paths. The corpus seals complete SQLite snapshots and keeps its working database in memory.
+## What is encrypted
 
-## Decision
+| Store | File(s) | How |
+|---|---|---|
+| Dictation history | `history.v1.json` | Whole JSON file sealed by `EncryptedStore.write`, read by `EncryptedStore.read` |
+| Personal dictionary | `dictionary.v1.json` | As above |
+| Snippets | `snippets.v1.json` | As above |
+| Clipboard index | `clipboard.v1.json`, `saved.v1.json` | As above |
+| Clipboard pictures | one PNG per picture | Each file sealed with `seal(_:for:)` under its file name |
+| Recordings waiting for a retry | one file per recording | A chunked format (`EncryptedRecordingFile`, magic `UTTRWAV1`); each chunk is an envelope bound to `<file>#chunk-<i>#frames-<n>` ([recordings.md](recordings.md)) |
+| Suggestion corpus | `predict.v1.sqlite` | The working database lives in memory; after each change the whole database is serialised and sealed, so no plaintext `-wal` or `-shm` file reaches the disk |
 
-Use CryptoKit `AES.GCM` with a 256-bit random symmetric key. Generate a fresh 96-bit nonce
-for every file write, and authenticate the file's stable logical filename as additional
-data. AES-GCM provides confidentiality and authentication; a wrong key, changed filename
-or modified ciphertext must fail to open. CryptoKit creates a random nonce when sealing
-without an explicit nonce and authenticates the additional data on both seal and open
-([`AES.GCM`](https://developer.apple.com/documentation/cryptokit/aes/gcm),
-[`AES.GCM.SealedBox`](https://developer.apple.com/documentation/cryptokit/aes/gcm/sealedbox)).
+Preference files (`clipboard-preferences.v1.json`, `predict-consent.v1.json`) are not
+encrypted.
 
-Store the key as a non-synchronizable generic-password item in the macOS Keychain, under a
-stable, versioned Uttrflow service name and the current Unix user as account. Use
-`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: the key is unavailable after a restart
-until the user unlocks once, then remains available to background work for that session;
-it does not migrate to another Mac in a backup
-([Apple Keychain accessibility](https://developer.apple.com/documentation/security/ksecattraccessibleafterfirstunlockthisdeviceonly)).
-That supports launch-at-login and background capture while keeping a copied store folder
-from being useful on another Mac. A restored or replacement Mac starts with an empty local
-store unless the matching key is deliberately transferred through a future, separately
-reviewed recovery flow.
+## The key
 
-The service identity must remain stable across product upgrades. Do not key it by a build
-hash: losing the item would make existing ciphertext unreadable. Development builds and
-tests must use an injected key provider or isolated test service. When the data-protection
-Keychain returns `errSecMissingEntitlement`, the provider stores the same 32-byte key in
-`Application Support/Uttrflow/local-store-encryption-key.v1` using `PrivateFile` (owner-only
-directory and file permissions, excluded from backup). This path is stable across ad-hoc
-updates and app code identities. The fallback applies only to that entitlement error;
-locked Keychain and other Keychain failures remain errors. A malformed key file also fails
-closed. Neither route falls back to plaintext or creates a new key to open an encrypted
-file.
+| Property | Value |
+|---|---|
+| Algorithm | CryptoKit `AES.GCM`, 256-bit `SymmetricKey` |
+| Keychain item | Generic password, service `KeychainStoreKeyProvider.service` = `com.uttrflow.local-store.encryption.v1`, account = the current Unix user name |
+| Keychain options | Data-protection keychain, not synchronizable, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` |
 
-The fallback key file has the same local-device protection boundary as the owner account:
-processes running as that user can read it. A restored store folder on another Mac cannot
-be opened unless the key file is also transferred. The signed release and ad-hoc paths
-still require an integration check against the exact packaged artifact before rollout.
+`AfterFirstUnlockThisDeviceOnly` makes the key unavailable after a restart until the user
+unlocks once, then available to background work for that session, which is what
+launch-at-login and background capture need. It does not migrate to another Mac in a backup,
+so a store folder copied to another Mac cannot be opened there; a restored or replacement Mac
+starts with an empty local store
+([Apple: Keychain accessibility](https://developer.apple.com/documentation/security/ksecattraccessibleafterfirstunlockthisdeviceonly)).
+
+When the data-protection Keychain returns `errSecMissingEntitlement`, as an ad-hoc build does,
+the provider keeps the same 32-byte key in `local-store-encryption-key.v1` under Application
+Support, written through `PrivateFile` (owner-only permissions, excluded from backup). The path
+is stable across ad-hoc updates and code identities. Only that error takes the file route: a
+locked Keychain and every other Keychain failure stay errors, a malformed key file fails closed,
+and neither route falls back to plaintext or creates a new key to open an encrypted file. The
+key file has the owner account's protection boundary, so any process running as that user can
+read it, and a store folder restored on another Mac opens only if the key file travels with it.
+
+The service name is versioned and stays the same across product upgrades. It is not derived
+from a build: losing the item would make every existing envelope unreadable.
 
 ## File envelope
 
-Every encrypted file starts with this byte sequence:
+Every sealed file or chunk is this byte sequence:
 
 | Part | Size | Meaning |
 |---|---:|---|
 | Magic | 8 bytes | `UTTFLOWE` |
 | Version | 1 byte | `1` |
-| Nonce | 12 bytes | Fresh AES-GCM nonce for this write |
-| Ciphertext | Variable | Encrypted file payload |
+| Nonce | 12 bytes | Fresh AES-GCM nonce for this write, generated by CryptoKit |
+| Ciphertext | variable | The encrypted payload |
 | Tag | 16 bytes | AES-GCM authentication tag |
 
-The complete envelope is authenticated with the UTF-8 bytes of the file's stable logical
-filename, such as `history.v1.json`, as AAD. Bind the logical filename rather than the
-absolute path so a store can move with its Application Support folder, while swapping two
-store files still fails authentication. Keep the existing JSON encoding as the plaintext
-payload; the envelope is the only on-disk wrapper.
-
-JSON stores seal the complete encoded file on every write through the `PrivateFile` seam.
-The writer continues to use its atomic replacement, owner-only mode and backup exclusion,
-but writes only the envelope. The suggestion corpus seals serialized in-memory SQLite
-snapshots with the same envelope, keeping plaintext WAL and SHM files off disk. Clipboard
-images and retry recordings use the shared seal/open operations for their binary formats.
+The additional authenticated data is the UTF-8 bytes of the file's logical name (its last path
+component, such as `history.v1.json`), not its absolute path. A store can therefore move with
+its Application Support folder, while swapping two store files still fails authentication. A
+wrong key, a changed name or modified ciphertext fails to open
+([Apple: `AES.GCM`](https://developer.apple.com/documentation/cryptokit/aes/gcm)). The plaintext
+payload of a JSON store is the same JSON a plaintext store writes; the envelope is the only
+wrapper. Writes still go through `PrivateFile.write`, so they stay atomic, owner-only and
+excluded from backup.
 
 ## Reading, migration and failure
 
-The store reader checks the magic before decoding. A matching magic must have a supported
-version, enough bytes for the nonce and tag, and a valid authentication tag before any
-plaintext is returned. Unknown versions, truncated envelopes, wrong keys and modified
-data are unreadable stores, never empty stores.
+`EncryptedStore.read` checks for the magic first.
 
-For a legacy JSON file without the magic, decode the old shape first. Only after decoding
-succeeds, retrieve or create the installation key, seal the same payload and atomically
-replace the plaintext file. If reading, key access or writing fails, preserve the original
-file and refuse the write; never replace the only readable copy with an empty default.
-Creation of a new key is allowed for a genuinely new store or a successfully decoded
-legacy file. It is never allowed as a response to a missing key for an encrypted envelope.
+| What is on disk | Result |
+|---|---|
+| No file | `.missing`, an honest empty store |
+| An envelope that opens and decodes | `.read(value)` |
+| An envelope whose key is definitely missing (`errSecItemNotFound`) | `.unreadable`, file set aside with `LocalStore.setAside` |
+| An envelope whose key is otherwise unavailable, such as a locked Keychain | `.unreadable`, file left in place, since the key may become available after the next unlock |
+| An envelope with an unsupported version, too short for nonce and tag, or failing authentication or decoding | `.unreadable`, file set aside |
+| Plaintext JSON that decodes (a legacy store) | Sealed in place: the key is fetched or created, the same payload is sealed and atomically written over the plaintext, then `.read(value)` |
+| Plaintext JSON that decodes but cannot be sealed or written | `.unreadable`, file left in place |
+| Plaintext that does not decode | `.unreadable`, file set aside, without asking for a key |
 
-An encrypted file whose Keychain item is definitely missing is quarantined with
-`StoredList.setAside`; the store reports it as unavailable and refuses writes. Do not
-create a replacement key while set-aside encrypted files remain, since that would turn a
-missing-key failure into silent data loss. A key that is temporarily unavailable, such as
-while the Keychain is locked, leaves the file at its original path and the store read-only;
-do not quarantine it because the key may become available after the next unlock. A
-malformed or unauthenticated envelope is also quarantined with `StoredList.setAside`. If
-quarantine fails, refuse all writes so the original bytes cannot be replaced. In no case
-may a read pretend the store is empty.
+An unreadable file is set aside before a new empty store is written, preserving the original
+bytes. If the file cannot be set aside, it stays in place and every write is refused (for the
+history, see [history-store-file.md](history-store-file.md)).
 
-## Deletion and limits
+`EncryptedStore.write` creates a key only when there is no file at the path. When a file is
+there, it must already be an envelope that opens with the current key, or the write throws
+(`StoreKeyError.legacyFileNeedsMigration` for plaintext) and nothing is written.
+`seal(_:for:)`, used for pictures and recording chunks, fetches the key and creates one if none
+exists.
 
-This scheme encrypts each store file under one installation key. Deleting one record rewrites
-or unlinks ciphertext; it is not per-record cryptographic erasure. This design accepts that
-boundary instead of keeping a separate key for every record or picture. Resetting all local
-personalisation deletes the Keychain item only after every reset target succeeds, so retained
-copies of encrypted files cannot be opened by a fresh key. If any target or Keychain deletion
-fails, reset must report failure rather than claim the data is revoked.
+## Reset and revocation
 
-Atomic replacement and unlink do not reliably overwrite old APFS or flash-storage blocks.
-This scheme leaves those old blocks as ciphertext, but while the same Keychain key exists
-they are not cryptographically revoked. It cannot remove plaintext already present in old
-backups, snapshots or copies made before migration. FileVault, owner-only permissions and
-backup exclusions remain useful layers and are not replaced by this design.
+"Reset personalisation" (`FilePersonalisationStore.carryOut(_:)` in
+`Sources/UttrflowUX/SettingsReset.swift`) deletes every target of the everything level, then
+deletes the Keychain item through `EncryptedStore.revokeKey()`, only if every target succeeded,
+so copies of encrypted files left anywhere cannot be opened by a fresh key. If any target or the
+Keychain deletion fails, the reset reports failure rather than claiming the data is revoked.
+Deleting an item that is already absent counts as success.
 
-Encryption protects files copied away from the Mac and data at rest. It does not protect
-plaintext in memory while Uttrflow is using it, or an active user session from a process
-that can obtain the Keychain key. The user must unlock once after restart before encrypted
-stores are available to background work.
+## What this does not protect
 
-## Required tests and rollout
+- Each store file is encrypted under the one installation key. Deleting a record rewrites or
+  unlinks ciphertext; it is not per-record cryptographic erasure, and a separate key per record
+  or picture is not used.
+- Atomic replacement and unlink do not reliably overwrite old APFS or flash-storage blocks. Old
+  blocks hold ciphertext, but while the same key exists they are not cryptographically revoked.
+- Plaintext already present in backups, snapshots or copies made before a store was migrated
+  stays readable.
+- Plaintext in memory while Uttrflow is using it, and an active user session, are not protected
+  from a process that can obtain the Keychain key.
 
-The shared crypto layer needs an injected in-memory key provider and tests for round-trip,
-wrong key, wrong filename AAD, modified and truncated envelopes, unknown versions, and
-missing-key refusal without overwriting. Migration tests must prove that valid legacy JSON
-is replaced by an envelope, while malformed JSON and failed writes preserve the source.
-Store-level tests must show that a Keychain failure is visible and does not produce an
-empty successful read.
+FileVault, owner-only permissions and backup exclusion remain separate layers.
 
-The shared envelope, history/dictionary/snippet migration, clipboard index and picture
-encryption, retry-recording encryption, reset-key revocation, and encrypted prediction
-snapshots are in place. Each store retains its own legacy reader and deletion behavior.
+## Tests
+
+The crypto layer is tested with an injected in-memory `StoreKeyProviding`, never the real
+Keychain. `Tests/UttrflowCoreTests/EncryptedStoreTests.swift` covers the round trip, a wrong
+key, a renamed file (the name is authenticated), legacy JSON migration, malformed legacy JSON
+left in place, a temporarily locked Keychain, a definitely missing key (quarantine, and no
+overwrite), revocation, and unsupported, truncated and modified envelopes. Store-level suites
+cover the rest: `Tests/UttrflowClipboardTests/ClipboardEncryptionTests.swift`,
+`Tests/UttrflowAudioTests/EncryptedRecordingTests.swift` and
+`Tests/UttrflowPredictStoreTests/PredictStoreTests.swift`.

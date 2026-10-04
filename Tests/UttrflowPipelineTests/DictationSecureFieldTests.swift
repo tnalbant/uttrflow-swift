@@ -41,7 +41,8 @@ private struct AccountingCleaner: TranscriptCleaning {
 private func hearingOnlyTheFirstPiece() -> FakeSpeechEngine {
     FakeSpeechEngine(
         transcribing: .successes(
-            [Transcription(text: "open")], afterwards: .failure(.transcriptionFailed(description: "scripted"))))
+            [Transcription(text: "open")], afterwards: .failure(.transcriptionFailed(description: "scripted"))
+        ))
 }
 
 private let passphrase = "correct horse battery staple"
@@ -91,7 +92,9 @@ struct DictationSecureFieldTests {
     @Test("a field found secure just before the write is marked though the screen read was not")
     func secureAtInsertionIsMarked() async throws {
         let state = await dictate(
-            with: makePipeline(context: .fixture(), inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true)))))
+            with: makePipeline(
+                context: .fixture(),
+                inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true)))))
 
         guard case .inserted(let outcome) = state else {
             Issue.record("expected an insertion, got \(state)")
@@ -126,7 +129,9 @@ struct DictationSecureFieldTests {
         let vocabulary = RememberingVocabulary()
         _ = await dictate(
             with: makePipeline(
-                context: .fixture(), inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true))), vocabulary: vocabulary))
+                context: .fixture(),
+                inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true))),
+                vocabulary: vocabulary))
 
         #expect(vocabulary.offered.isEmpty)
     }
@@ -157,7 +162,8 @@ struct DictationSecureFieldTests {
 
     @Test("a refused insertion into a secure field salvages nothing a history may keep")
     func failedInsertionKeepsNothing() async throws {
-        let state = await dictate(with: makePipeline(inserter: FakeTextInserter(.failure(.clipboardUnavailable))))
+        let state = await dictate(
+            with: makePipeline(inserter: FakeTextInserter(.failure(.clipboardUnavailable))))
 
         guard case .failed(let failure) = state else {
             Issue.record("expected a failure, got \(state)")
@@ -170,7 +176,8 @@ struct DictationSecureFieldTests {
     @Test("a refused insertion into an ordinary field still salvages the words")
     func failedOrdinaryInsertionKeepsWords() async throws {
         let state = await dictate(
-            with: makePipeline(context: .fixture(), inserter: FakeTextInserter(.failure(.clipboardUnavailable))))
+            with: makePipeline(
+                context: .fixture(), inserter: FakeTextInserter(.failure(.clipboardUnavailable))))
 
         guard case .failed(let failure) = state else {
             Issue.record("expected a failure, got \(state)")
@@ -192,7 +199,8 @@ struct DictationSecureFieldTests {
         await capture.setCaptured(take)
         let pipeline = DictationPipeline(
             capture: capture, speech: hearingOnlyTheFirstPiece(), cleaner: AccountingCleaner(),
-            context: FakeContextEngine(context: secureScreen), inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard))),
+            context: FakeContextEngine(context: secureScreen),
+            inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard))),
             recordings: recordings, clock: ManualClock(),
             windowing: SpeechWindowing(
                 minimumLength: 1, sentencePause: 0.3, comfortableLength: 2, anyPause: 0.2,

@@ -1,7 +1,10 @@
+import CryptoKit
 import Foundation
 import UttrflowClipboard
 import UttrflowCore
 import UttrflowInput
+import UttrflowPipeline
+import UttrflowTestSupport
 import Testing
 
 @testable import Uttrflow
@@ -9,6 +12,11 @@ import Testing
 @MainActor
 @Suite("Menu bar clipboard snapshot refresh")
 struct MenuBarClipRefreshTests {
+    private struct Keys: StoreKeyProviding {
+        let value = SymmetricKey(size: .bits256)
+        func key(createIfMissing: Bool) throws -> SymmetricKey { value }
+    }
+
     private actor InsertionRecorder: TextInserting {
         private(set) var inserted: [String] = []
 
@@ -24,8 +32,8 @@ struct MenuBarClipRefreshTests {
         let app = AppDelegate(container: sandbox.root, account: HeldSession(signedIn: true).layer)
         let store = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = ClipRetention(days: 30, now: .now)
-        let selected = try await store.record(
-            Clip(text: "The clip the user chose", kind: .text, copiedAt: .now), keeping: retention)
+        let selected = Clip(text: "The clip the user chose", kind: .text, copiedAt: .now)
+        _ = try await store.record(selected, keeping: retention)
 
         await app.readMenuClips()
         let captured = try #require(app.menuBarPresentation.clips.first?.insert.intent)
@@ -71,16 +79,38 @@ struct MenuBarClipRefreshTests {
         let app = AppDelegate(container: sandbox.root)
         let store = ClipboardStore(file: ClipboardStore.defaultFile(in: sandbox.root))
         let retention = ClipRetention(days: 30, now: .now)
-        let clip = try await store.record(
+        let recorded = try await store.record(
             Clip(text: "before edit", kind: .text, copiedAt: .now), keeping: retention)
+        let clip = try #require(recorded.first { $0.text == "before edit" })
 
         await app.readMenuClips()
-        #expect(app.menuBarPresentation.clips.first?.text == "before edit")
+        #expect(app.menuBarPresentation.clips.first?.title == "before edit")
 
         try await store.setText("after edit", of: clip.id, keeping: retention)
         #expect(await store.clips(keeping: retention).first?.text == "after edit")
         await app.readMenuClips()
 
-        #expect(app.menuBarPresentation.clips.first?.text == "after edit")
+        #expect(app.menuBarPresentation.clips.first?.title == "after edit")
+    }
+
+    @Test("a damaged clipboard index is announced once with its preserved location")
+    func damagedIndexNotice() async throws {
+        let sandbox = Sandbox()
+        let file = ClipboardStore.defaultFile(in: sandbox.root)
+        try FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: file)
+        let app = AppDelegate(
+            container: sandbox.root,
+            account: HeldSession(signedIn: true).layer,
+            encryptedStore: EncryptedStore(keys: Keys()))
+
+        await app.readMenuClips()
+        let notice = try #require(app.actionNotice)
+        #expect(notice.message.contains("clipboard.v1.json.unreadable-"))
+        #expect(notice.message.contains(file.deletingLastPathComponent().path))
+
+        await app.readMenuClips()
+        #expect(app.actionNotice == notice)
     }
 }

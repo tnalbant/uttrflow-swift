@@ -72,8 +72,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
     /// Whether the suggestions key tap is starting or why it stopped.
     public var suggestionRuntime: SuggestionRuntimeStatus
 
-    /// Shortcuts the app could not claim, so a row never shows a key that does nothing.
-    public var unarmedShortcuts: Set<ShortcutAction>
+    /// Shortcuts the app could not claim, each with the refusal, so a row says why its key does nothing.
+    public var unarmedShortcuts: [ShortcutAction: HotkeyError]
 
     /// Whether clipboard capture is within its temporary pause window.
     public var clipboardCapturePaused: Bool
@@ -93,7 +93,7 @@ public struct SettingsCapabilities: Sendable, Equatable {
         transformerAvailability: [TransformerKind: TransformerAvailability] = [:],
         suggestionModel: SuggestionModelReadiness = .notAsked,
         suggestionRuntime: SuggestionRuntimeStatus = .idle,
-        unarmedShortcuts: Set<ShortcutAction> = [],
+        unarmedShortcuts: [ShortcutAction: HotkeyError] = [:],
         clipboardCapturePaused: Bool = false,
         globeKeyAction: GlobeKeyAction = .doNothing
     ) {
@@ -139,6 +139,8 @@ public struct SettingsCapabilities: Sendable, Equatable {
 public enum SuggestionRuntimeStatus: Sendable, Equatable {
     case idle
     case starting
+    case tapResting
+    case restarting
     case running
     case secureInputBlocked
     case tapFailed

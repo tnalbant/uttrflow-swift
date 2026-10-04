@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 """Fails when the Insights artboard generator disagrees with InsightsPresentation.
 
-#1144 found the Insights artboards inventing a "Languages you spoke" card with no source,
-restoring the removed Accuracy baseline meter, and drawing a selectable-looking scope popup
-where production shows a plain "Last N days" label. Nothing tied `Design/_gen_app.py`'s
-Insights section to `Sources/UttrflowUX/InsightsPresentation.swift`, so a controlled
-regeneration reproduced every mismatch byte-for-byte.
+The Insights artboards once drew a contract production never had: a popup scope, a restored
+Baseline meter and a "Languages you spoke" card with no measured source. Later production
+was redesigned as a calendar with a range switch and the generator was not. Both drifts had
+the same cause: nothing tied `Design/_gen_app.py`'s Insights section to
+`Sources/UttrflowUX/InsightsPresentation.swift`.
 
-This reads both sides — the generator source and the presenter it is meant to draw — and
-fails on any of the five things #1144 asked for:
+This reads both sides and fails unless the generator draws what the presenter builds:
 
-1. The scope is a non-selectable label ("Last N days"), never a `pop()` popup, and its
-   day count is the same `RETENTION_DAYS` the bars are sized from, not a separate literal.
-2. The Accuracy tile uses `DictationPresenter.accuracyTitle` / `accuracyCaption` verbatim,
-   with a single "Now" meter and no "Baseline" row.
-3. No "Languages you spoke" card, or any language-breakdown vocabulary.
-4. The chart draws an average line/label (`.avgline`, "N a day").
-5. Each place row shows both a word count and a percentage.
+1. The range switch offers exactly `InsightsRange`'s titles, and the empty screen draws none.
+2. The calendar's legend steps through `InsightsCalendar.legend`, its tiles snap at
+   `inkCeiling` and `deepInkFloor`, and the day fixture covers the range it claims.
+3. The four dictation figures and five suggestion figures carry the presenter's captions, in order.
+4. The empty state spells the presenter's title and message.
+5. No retired claim returns: a popup scope, an Accuracy or Baseline meter, an average line,
+   a per-app breakdown or a language card.
 
 Needs no build: it is a source-level check, like `design_contrast_audit.py`.
 """
@@ -30,23 +29,31 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 GEN_APP_SOURCE = os.path.join(REPO_ROOT, "Design", "_gen_app.py")
-DICTATION_PRESENTER_SOURCE = os.path.join(
-    REPO_ROOT, "Sources", "UttrflowUX", "MainDictationPresentation.swift"
-)
 INSIGHTS_PRESENTER_SOURCE = os.path.join(
     REPO_ROOT, "Sources", "UttrflowUX", "InsightsPresentation.swift"
 )
+INSIGHTS_RANGE_SOURCE = os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "InsightsRange.swift")
+INSIGHTS_DAY_SOURCE = os.path.join(REPO_ROOT, "Sources", "UttrflowUX", "InsightsCalendarDay.swift")
 
 SECTION_START = "# Insights — only what the app already measures."
 
+# What production no longer draws, each with the wording that would bring it back.
+RETIRED = (
+    (re.compile(r"pop\(\s*[\"']"), "a popup scope"),
+    (re.compile(r"Baseline"), "a Baseline meter"),
+    (re.compile(r"Left as dictated|Accuracy"), "an Accuracy tile"),
+    (re.compile(r"avgline"), "an average line over bars"),
+    (re.compile(r"Where you dictate|PLACES\s*="), "a per-app breakdown"),
+    (re.compile(r"Languages you spoke|Hinglish|LANGS\s*="), "a language card"),
+)
+
 
 def insights_section(text):
-    """The generator's Insights block, so a Dictation-only string (#1139) is not caught here."""
+    """The generator's Insights block, so a string from another page is not caught here."""
     start = text.find(SECTION_START)
     if start == -1:
         raise SystemExit(f"insights contract audit: no {SECTION_START!r} marker in {GEN_APP_SOURCE}")
-    # The title line is itself framed by a rule above and below, as every section header is —
-    # skip past that closing rule before looking for the *next* section's opening one.
+    # The title line is framed by a rule above and below; skip the closing rule first.
     body_start = text.find("\n", start + len(SECTION_START))
     body_start = text.find("\n", body_start + 1)
     end = text.find("\n# =====", body_start)
@@ -55,172 +62,194 @@ def insights_section(text):
     return text[start:end]
 
 
-def swift_string_constant(text, name):
-    # A `static let name = "..."` or a triple-quoted `static let name = ...` block.
-    triple = re.search(
-        rf'static let {re.escape(name)}\s*=\s*"""\s*(?P<body>.*?)\s*"""', text, re.DOTALL
-    )
-    if triple:
-        # Swift's `\` line-continuation joins wrapped lines back into one sentence.
-        return re.sub(r"\s*\\\s*\n\s*", " ", triple.group("body")).replace("\n", " ").strip()
-    single = re.search(rf'static let {re.escape(name)}\s*=\s*"(?P<body>[^"]*)"', text)
-    if single:
-        return single.group("body")
-    raise SystemExit(f"insights contract audit: no `{name}` constant found in {DICTATION_PRESENTER_SOURCE}")
+def presenter_contract(swift, range_swift, day_swift):
+    """The ranges, legend, ink thresholds, figure captions and empty wording the presenter builds."""
+    ranges = [int(days) for days in re.findall(r"case \w+ = \"(\d+)\"", range_swift)]
+    title = re.search(r'public var title: String \{ "\\\(days\) days" \}', range_swift)
+    legend = re.search(r"static let legend: \[Double\] = \[([^\]]*)\]", swift)
+    ceiling = re.search(r"static let inkCeiling = ([0-9.]+)", day_swift)
+    floor = re.search(r"static let deepInkFloor = ([0-9.]+)", day_swift)
+    figures = swift[swift.find("static func figures(") : swift.find("static func dailyAverage(")]
+    captions = re.findall(r'caption: "([^"]+)"\)', figures)
+    suggestion_start = swift.find("private static func suggestionFigures(")
+    suggestion_end = swift.find("// MARK: - The range", suggestion_start)
+    suggestion_figures = swift[suggestion_start:suggestion_end]
+    suggestion_captions = re.findall(r'caption: "([^"]+)"\)', suggestion_figures)
+    empty_title = re.search(r'title: "(Not enough[^"]*)"', swift)
+    empty_message = re.search(r"Dictate on \\\(daysBeforeCharting\) ([^\\]*)\\", swift)
+    before = re.search(r"static let daysBeforeCharting = (\d+)", swift)
+    missing = [
+        name for name, found in (
+            ("InsightsRange.title", title), ("InsightsCalendar.legend", legend),
+            ("inkCeiling", ceiling), ("deepInkFloor", floor), ("the empty title", empty_title),
+            ("the empty message", empty_message), ("daysBeforeCharting", before),
+        ) if not found
+    ]
+    if missing or not ranges or len(captions) != 4 or len(suggestion_captions) != 5:
+        raise SystemExit(
+            "insights contract audit: InsightsPresentation.swift no longer has the shape this "
+            f"audit reads ({', '.join(missing) or 'ranges or figure captions'}); "
+            "update this audit to the new contract, not just the artboard")
+    return {
+        "ranges": [f"{days} days" for days in ranges],
+        "legend": [float(value) for value in legend.group(1).split(",")],
+        "ink_ceiling": float(ceiling.group(1)),
+        "deep_ink_floor": float(floor.group(1)),
+        "captions": captions,
+        "suggestion_captions": suggestion_captions,
+        "empty_title": empty_title.group(1),
+        "empty_message": f"Dictate on {before.group(1)} {empty_message.group(1).strip()}",
+        "days_before_charting": int(before.group(1)),
+    }
 
 
-def to_html_entities(text):
-    """The design source writes curly quotes and dashes as HTML entities, not literal glyphs."""
-    return (
-        text.replace("“", "&ldquo;")
-        .replace("”", "&rdquo;")
-        .replace("—", "&mdash;")
-    )
+def python_list(section, name):
+    match = re.search(rf"^{name} = \[([^\]]*)\]", section, re.M)
+    return None if match is None else [item.strip() for item in match.group(1).split(",") if item.strip()]
 
 
-def collapse_whitespace(text):
-    return re.sub(r"\s+", " ", text).strip()
+def audit_failures(section, screens, contract):
+    failures = []
+
+    # ---- 1. The range switch. -------------------------------------------------------------
+    ranges = python_list(section, "RANGES")
+    if ranges is None or [f"{days} days" for days in ranges] != contract["ranges"]:
+        failures.append(
+            f"RANGES is {ranges!r}; InsightsRange offers {contract['ranges']!r}")
+    if 'RANGE_TITLES = [f"{days} days" for days in RANGES]' not in section:
+        failures.append('RANGE_TITLES is not built as "N days" from RANGES, as InsightsRange.title is')
+    if "seg(RANGE_TITLES, SELECTED_TITLE)" not in screens.get("Main-Insights", ""):
+        failures.append("Main-Insights does not draw the range switch from RANGE_TITLES")
+    if screens.get("Main-Insights-Empty", "").split(",")[0].strip() != '""':
+        failures.append("Main-Insights-Empty draws a scope; the presenter offers no range before the calendar")
+
+    # ---- 2. The calendar. -----------------------------------------------------------------
+    legend = python_list(section, "LEGEND")
+    if legend is None or [float(value) for value in legend] != contract["legend"]:
+        failures.append(f"LEGEND is {legend!r}; InsightsCalendar.legend is {contract['legend']!r}")
+    for name, key, swift_name in (
+        ("INK_CEILING", "ink_ceiling", "inkCeiling"), ("DEEP_INK_FLOOR", "deep_ink_floor", "deepInkFloor"),
+    ):
+        match = re.search(rf"^{name} = ([0-9.]+)", section, re.M)
+        if match is None or float(match.group(1)) != contract[key]:
+            failures.append(f"{name} does not match InsightsCalendarDay.{swift_name}")
+    if "assert len(DAYS) == SELECTED_RANGE" not in section:
+        failures.append("the DAYS fixture is not asserted against SELECTED_RANGE, so the calendar can claim one range and draw another")
+    if "less {legend_swatches} more" not in section:
+        failures.append('the legend does not run from "less" to "more"')
+
+    # ---- 3. The four figures. -------------------------------------------------------------
+    captions = python_list(section, "FIGURE_CAPTIONS")
+    if captions is None or [caption.strip("\"'") for caption in captions] != contract["captions"]:
+        failures.append(
+            f"FIGURE_CAPTIONS is {captions!r}; InsightsPresenter.figures captions "
+            f"{contract['captions']!r}")
+    suggestion_captions = python_list(section, "SUGGESTION_CAPTIONS")
+    if suggestion_captions is None or [caption.strip("\"'") for caption in suggestion_captions] != contract[
+        "suggestion_captions"
+    ]:
+        failures.append(
+            f"SUGGESTION_CAPTIONS is {suggestion_captions!r}; presenter captions "
+            f"{contract['suggestion_captions']!r}")
+    if "{suggestion_insights}" not in section:
+        failures.append("the filled Insights artboard does not include the suggestion counts group")
+    for wording in ("Suggestions</div>", "Stored corpus totals on this Mac."):
+        if wording not in section:
+            failures.append(f"the suggestion group does not include {wording!r}")
+    empty_generator = section[section.find("insights_empty =") :]
+    if "{suggestion_insights}" not in empty_generator:
+        failures.append("the empty Insights artboard does not include the suggestion counts group")
+
+    # ---- 4. The empty state. --------------------------------------------------------------
+    if f'EMPTY_TITLE = "{contract["empty_title"]}"' not in section:
+        failures.append(f"the empty state does not say {contract['empty_title']!r}")
+    message = re.sub(r"\s+", " ", contract["empty_message"])
+    drawn = re.sub(r"\s+", " ", section).replace(
+        "{DAYS_BEFORE_CHARTING}", str(contract["days_before_charting"]))
+    if message not in drawn:
+        failures.append(f"the empty state's message does not say {message!r}")
+
+    # ---- 5. Nothing retired comes back. ---------------------------------------------------
+    for pattern, description in RETIRED:
+        if pattern.search(section):
+            failures.append(f"the Insights section still draws {description}")
+
+    return failures
 
 
-def self_test():
-    ok = True
-    section = insights_section(open(GEN_APP_SOURCE).read())
-    if "Last {RETENTION_DAYS} days" not in section:
-        print(
-            "  ✗ self-test: RETENTION_DAYS no longer feeds the scope title — "
-            "either the fixture changed shape or this audit's marker is stale",
-            file=sys.stderr,
-        )
-        ok = False
-    if "assert len(DAYS) == RETENTION_DAYS" not in section:
-        print(
-            "  ✗ self-test: the DAYS/RETENTION_DAYS assertion is missing — "
-            "the bars could silently stop matching the declared window",
-            file=sys.stderr,
-        )
-        ok = False
-    return ok
+def screens_rows(text):
+    """Each Insights SCREENS row's text after its caption, keyed by artboard name."""
+    rows = {}
+    for match in re.finditer(r'\("(Main-Insights(?:-Empty)?)", "Insights", INSIGHTS_CAPTION,\s*([^\n]*)', text):
+        rows[match.group(1)] = match.group(2)
+    return rows
 
 
 def audit():
-    findings = []
-
-    app_source = open(GEN_APP_SOURCE).read()
-    section = insights_section(app_source)
-    dictation_source = open(DICTATION_PRESENTER_SOURCE).read()
-    insights_source = open(INSIGHTS_PRESENTER_SOURCE).read()
-
-    # ---- 1. A non-selectable scope, sized from the one retention window. -----------------
-    if re.search(r'pop\(\s*["\']', section):
-        findings.append(
-            "the Insights toolbar still builds a `pop()` popup; production's scope has no "
-            "chevron or menu — see InsightsPresentation.swift:167-168 and "
-            "InsightsPresentationTests.swift:82-87 (`isSelectable == false`)"
-        )
-    if "scopelabel(SCOPE_TITLE)" not in app_source:
-        findings.append(
-            "the Insights screens no longer pass a single `SCOPE_TITLE` to `scopelabel()` — "
-            "the populated and empty variants must show the same non-selectable window"
-        )
-    if not re.search(r"RETENTION_DAYS\s*=\s*\d+", section):
-        findings.append(
-            "no single `RETENTION_DAYS` constant in the Insights section — #1144 was the bars "
-            "and the scope label each hard-coding the window separately"
-        )
-    if "assert len(DAYS) == RETENTION_DAYS" not in section:
-        findings.append(
-            "the day-bar fixture (`DAYS`) is not asserted against `RETENTION_DAYS`, so the "
-            "bars drawn and the scope's day count can silently diverge again"
-        )
-
-    # ---- 2. Left as dictated, one Now meter, no Baseline. ---------------------------------
-    accuracy_title = swift_string_constant(dictation_source, "accuracyTitle")
-    accuracy_caption = swift_string_constant(dictation_source, "accuracyCaption")
-    if accuracy_title not in section:
-        findings.append(
-            f"the Accuracy tile does not say {accuracy_title!r} "
-            "(DictationPresenter.accuracyTitle, shared with Insights at "
-            "InsightsPresentation.swift:262)"
-        )
-    if to_html_entities(accuracy_caption) not in collapse_whitespace(section):
-        findings.append(
-            "the Accuracy tile's explanation does not match DictationPresenter.accuracyCaption "
-            "verbatim (InsightsPresentation.swift:264)"
-        )
-    if re.search(r"Baseline", section):
-        findings.append(
-            'a "Baseline" row remains in the Insights section — production shows a single '
-            '"Now" meter and no baseline comparison (InsightsPresentationTests.swift:126-140)'
-        )
-    if "Accuracy</div>" in section:
-        findings.append(
-            'the Accuracy tile is still titled "Accuracy" rather than the shared '
-            '"Left as dictated" wording'
-        )
-
-    # ---- 3. No invented language breakdown. -----------------------------------------------
-    for banned in ("Languages you spoke", "Hinglish", "LANGS ="):
-        if banned in section:
-            findings.append(
-                f"{banned!r} still appears in the Insights section — no language measurement "
-                "exists and the contract omits the card entirely "
-                "(InsightsPresentation.swift:144-145; InsightsPresentationTests.swift:100-108)"
-            )
-
-    # ---- 4. The average line and its label. -----------------------------------------------
-    if "avgline" not in section:
-        findings.append(
-            "no `.avgline` element in the Insights section — production draws a dashed "
-            "average line and label over the bars (InsightsPageView.swift:113-133; "
-            "InsightsPresentationTests.swift:233-274)"
-        )
-    if "a day" not in section:
-        findings.append('no "N a day" average label in the Insights section')
-
-    # ---- 5. Word counts alongside each place's percentage. --------------------------------
-    if not re.search(r"for i,\s*\(n,\s*p,\s*w\)\s*in enumerate\(PLACES\)", section):
-        findings.append(
-            "PLACES rows no longer carry a word count alongside the share — production shows "
-            "both (InsightsPageView.swift:60-68; InsightsPresentationTests.swift:282-292)"
-        )
-
-    # ---- Cross-check the scope wording against the presenter itself. ----------------------
-    if not re.search(r'title:\s*"Last\s*\\?\(', insights_source):
-        findings.append(
-            "InsightsPresentation.swift no longer builds its scope title as \"Last N days\" — "
-            "update this audit's expectations to match the new contract, not just the artboard"
-        )
-
+    text = open(GEN_APP_SOURCE).read()
+    contract = presenter_contract(
+        open(INSIGHTS_PRESENTER_SOURCE).read(), open(INSIGHTS_RANGE_SOURCE).read(),
+        open(INSIGHTS_DAY_SOURCE).read())
+    failures = audit_failures(insights_section(text), screens_rows(text), contract)
     print("Insights artboard vs InsightsPresentation contract")
-    if findings:
-        print(f"\n  ✗ {len(findings)} mismatch(es):", file=sys.stderr)
-        for finding in findings:
-            print(f"    - {finding}", file=sys.stderr)
+    if failures:
+        print(f"\n  ✗ {len(failures)} mismatch(es):", file=sys.stderr)
+        for failure in failures:
+            print(f"    - {failure}", file=sys.stderr)
         return 1
-
-    print("  ✓ scope, Accuracy tile, language card, average line and place rows all match\n")
-    print(
-        "insights contract audit: Design/_gen_app.py's Insights section matches "
-        "InsightsPresentation and InsightsPresentationTests.\n"
-    )
+    print("  ✓ range switch, calendar, figures and empty state match; nothing retired returns\n")
+    print("insights contract audit: Design/_gen_app.py's Insights section matches InsightsPresentation.\n")
     return 0
+
+
+def self_test():
+    """The real generator passes, and each injected drift is caught."""
+    text = open(GEN_APP_SOURCE).read()
+    contract = presenter_contract(
+        open(INSIGHTS_PRESENTER_SOURCE).read(), open(INSIGHTS_RANGE_SOURCE).read(),
+        open(INSIGHTS_DAY_SOURCE).read())
+    section, screens = insights_section(text), screens_rows(text)
+    if audit_failures(section, screens, contract):
+        print("  ✗ self-test: the generator as it stands does not pass; run the audit itself", file=sys.stderr)
+        return False
+    injections = (
+        ("RANGES = [7, 30, 90]", "RANGES = [7, 14, 30]", None),
+        ("LEGEND = [0.15, 0.4, 0.72, 0.9]", "LEGEND = [0.2, 0.4, 0.6, 0.8]", None),
+        ('"words / min"', '"words per minute"', None),
+        ('"Self-sourced"]', '"Self-sourced entries"]', None),
+        ("assert len(DAYS) == SELECTED_RANGE", "", None),
+        (f'EMPTY_TITLE = "{contract["empty_title"]}"', 'EMPTY_TITLE = "Nothing yet"', None),
+        ("insights = f\"\"\"", "PLACES = []\ninsights = f\"\"\"", None),
+        (None, None, ("Main-Insights", 'pop("Last 30 days"), "", "", insights, RECENT, TAILS),')),
+        (None, None, ("Main-Insights-Empty", 'seg(RANGE_TITLES, SELECTED_TITLE), "", "", insights_empty,')),
+    )
+    ok = True
+    for find, replace, screen in injections:
+        if screen:
+            broken_screens = dict(screens)
+            broken_screens[screen[0]] = screen[1]
+            broken_section = section
+        else:
+            if find not in section:
+                print(f"  ✗ self-test: the injection site {find!r} is gone; update the self-test", file=sys.stderr)
+                ok = False
+                continue
+            broken_section, broken_screens = section.replace(find, replace, 1), screens
+        if not audit_failures(broken_section, broken_screens, contract):
+            print(f"  ✗ self-test: an injected drift was not caught ({find or screen[0]!r})", file=sys.stderr)
+            ok = False
+    return ok
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--self-test",
-        action="store_true",
-        help="prove the section-extraction and RETENTION_DAYS checks still fire",
-    )
+        "--self-test", action="store_true", help="prove the audit passes the generator and catches each drift")
     options = parser.parse_args()
 
     if options.self_test:
         if not self_test():
-            print(
-                "\ninsights contract audit: self-test failed; the section markers are stale.\n",
-                file=sys.stderr,
-            )
+            print("\ninsights contract audit: self-test failed.\n", file=sys.stderr)
             return 1
         return 0
 

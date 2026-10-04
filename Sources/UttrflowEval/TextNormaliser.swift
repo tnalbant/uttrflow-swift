@@ -7,10 +7,8 @@ public enum Script: String, Sendable, Equatable, CaseIterable, Codable {
     case latin
     case devanagari
 
-    private static let devanagariRange: ClosedRange<UInt32> = 0x0900...0x097F
-
     public static func of(_ text: String) -> Script {
-        text.unicodeScalars.contains { devanagariRange.contains($0.value) } ? .devanagari : .latin
+        Romaniser.containsDevanagari(text) ? .devanagari : .latin
     }
 }
 

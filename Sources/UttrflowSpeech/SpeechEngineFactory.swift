@@ -9,7 +9,8 @@ public enum SpeechEngineFactory {
         kind: SpeechEngineKind,
         model: SpeechModel = .default,
         modelFolder: URL,
-        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance.md.
+        prewarm: Bool = true,  // Only a measurement harness passes false; see Docs/performance-dictation.md.
+        compute: SpeechComputePlan = .shipping,  // Only a measurement harness passes another plan.
         idleAfter: Duration? = nil,
         didRelease: (@Sendable () -> Void)? = nil,
         didLoad: (@Sendable () -> Void)? = nil,
@@ -19,7 +20,8 @@ public enum SpeechEngineFactory {
         case .whisperKit:
             BackedSpeechEngine(
                 kind: .whisperKit,
-                backend: WhisperKitBackend(model: model, modelFolder: modelFolder, prewarm: prewarm),
+                backend: WhisperKitBackend(
+                    model: model, modelFolder: modelFolder, prewarm: prewarm, compute: compute),
                 idleAfter: idleAfter,
                 didRelease: didRelease,
                 didLoad: didLoad,

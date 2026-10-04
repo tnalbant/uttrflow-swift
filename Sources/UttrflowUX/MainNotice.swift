@@ -1,5 +1,4 @@
 // What the main window says when a change it was asked to make was refused.
-public import struct Foundation.UUID
 public import UttrflowCore
 
 /// A refused change, said where the user pressed; the window carries the latest one only.
@@ -37,14 +36,6 @@ extension MainNotice {
         message: "Could not copy to the clipboard. Please try again.",
         symbolName: "exclamationmark.triangle", tone: .warning)
 
-    /// Announces the word a correction just added and offers to remove that inferred entry.
-    public static func learnedCorrection(_ word: String, id: UUID) -> MainNotice {
-        MainNotice(
-            message: "Learned “\(word)” from that correction.",
-            symbolName: "character.book.closed.fill", tone: .neutral,
-            action: MainAction(title: "Undo", intent: .undoLearnedWord(id)))
-    }
-
     /// Explains a first rules-only dictation caused by Apple Intelligence readiness.
     public static func appleIntelligenceUnavailable(_ reason: TransformerUnavailableReason) -> MainNotice {
         let message: String
@@ -71,6 +62,16 @@ extension MainNotice {
         let drawing = Self.drawing(for: .degraded)
         return MainNotice(
             message: message, symbolName: drawing.symbolName, tone: drawing.tone, action: action)
+    }
+
+    /// Says that the last dictation went in as heard because no clean-up finished, or nil when one did.
+    public static func cleanUpSkipped(by cleanedBy: TransformerKind) -> MainNotice? {
+        guard cleanedBy == .untidied else { return nil }
+        let drawing = Self.drawing(for: .degraded)
+        return MainNotice(
+            message:
+                "Inserted without clean-up. Tidying did not finish, so your words went in exactly as heard.",
+            symbolName: drawing.symbolName, tone: drawing.tone)
     }
 
     /// The notice for a refused change, from the failure's own sentence and what it cost the user.

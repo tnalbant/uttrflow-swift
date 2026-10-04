@@ -31,6 +31,23 @@ private final class FakeFocusedFieldValueObserver: FocusedFieldValueObserving {
 @MainActor
 @Suite("AX value changes withdraw stale suggestion offers", .serialized)
 struct FocusedFieldValueObserverTests {
+    @Test("a late field value change schedules a turn when no offer is armed")
+    func aLateValueChangeWakesWithoutAGhost() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let key = now.addingTimeInterval(-0.05)
+
+        #expect(
+            SuggestionCoordinator.accessibilityValueChangeAction(
+                hasArmedOffer: false, lastKeystroke: key, at: now) == .wake)
+        #expect(
+            SuggestionCoordinator.accessibilityValueChangeAction(
+                hasArmedOffer: true, lastKeystroke: key, at: now) == .ignore)
+        #expect(
+            SuggestionCoordinator.accessibilityValueChangeAction(
+                hasArmedOffer: true, lastKeystroke: key, at: now.addingTimeInterval(0.2))
+                == .withdrawAndWake)
+    }
+
     @Test("an unsupported close notification removes its matching open subscription")
     func menuNotificationRegistrationRequiresAPair() {
         var operations: [String] = []
@@ -90,7 +107,8 @@ struct FocusedFieldValueObserverTests {
         #expect(!state.isOpen)
 
         state.menuOpened()
-        #expect(state.reset())
+        let wasOpen = state.reset()
+        #expect(wasOpen)
         #expect(!state.isOpen)
         #expect(state.focusedElement == nil)
     }

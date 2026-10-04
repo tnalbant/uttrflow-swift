@@ -1232,31 +1232,29 @@ fi
 # 7e. The Insights artboards match InsightsPresentation, not an invented contract.
 # ---------------------------------------------------------------------------
 #
-# #1144: the Insights artboards drew a selectable-looking scope popup, an Accuracy tile
-# with a restored Baseline meter, and an entire "Languages you spoke" card with no
-# measured source, while the average line and each place's word count were missing. A
-# controlled `_gen_app.py` run reproduced every mismatch byte-for-byte, so nothing was
-# tying the generator to `InsightsPresentation.swift` or its tests.
+# The Insights artboards have twice drawn a contract production did not have: first an
+# invented scope, meter and language card, then the bar chart production had replaced with
+# a calendar and range switch. Nothing tied the generator to `InsightsPresentation.swift`.
 printf '\nInsights artboard contract\n'
 
 if [[ ! -x "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" ]]; then
     fail "Scripts/insights_contract_audit.py is missing or not executable" \
         "The audit pins the Insights artboards to InsightsPresentation.swift; without it the" \
-        "generator can drift back to an invented scope, meter or language card unnoticed."
+        "generator can drift away from the range switch, calendar and figures unnoticed."
 else
     if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" --self-test; then
         if "$PACKAGE_ROOT/Scripts/insights_contract_audit.py" >&2; then
             pass "the Insights artboards match InsightsPresentation and its tests"
         else
             fail "the Insights artboard generator disagrees with InsightsPresentation" \
-                "The audit prints every mismatch: scope, Accuracy wording, the language card," \
-                "the average line, or the place rows' word counts. Fix Design/_gen_app.py," \
+                "The audit prints every mismatch: the range switch, the calendar, the figures," \
+                "the empty state, or a retired claim. Fix Design/_gen_app.py," \
                 "then regenerate every Insights artboard."
         fi
     else
         fail "Scripts/insights_contract_audit.py --self-test failed" \
-            "The audit's own self-test could not find its section markers in" \
-            "Design/_gen_app.py, so the extraction is broken. Fix the audit, not the artboard."
+            "The audit's own self-test either fails the generator as it stands or misses" \
+            "an injected drift. Fix the audit, not the artboard."
     fi
 fi
 
@@ -1459,17 +1457,18 @@ else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
 import re
 
-SOURCE = "Sources/UttrflowEval/EvaluationCorpus.swift"
+SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
 DOC = "Docs/bakeoff.md"
 
 real = {}
-for match in re.finditer(r"category: \.([A-Za-z]+),", open(SOURCE, errors="ignore").read()):
-    real[match.group(1)] = real.get(match.group(1), 0) + 1
+for source in SOURCES:
+    for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
+        real[match.group(1)] = real.get(match.group(1), 0) + 1
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:
@@ -1599,6 +1598,24 @@ else
             "The audit's self-test must catch provider and title drift before it checks" \
             "the committed artboards. Fix the audit before relying on it."
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7g. Every insertion scenario has an entry for every application class.
+# ---------------------------------------------------------------------------
+printf '\nInsertion test matrix\n'
+
+if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py"; then
+        pass "every insertion scenario names its test and an entry per class"
+    else
+        fail "Docs/insertion-test-matrix.md has a scenario without an entry" \
+            "Each scenario needs an existing test and, per class, a harness, a manual" \
+            "procedure with its own section, or 'not applicable'."
+    fi
+else
+    fail "Scripts/insertion_matrix_audit.py --self-test failed" \
+        "The audit must catch an empty cell before it checks the matrix."
 fi
 
 # ---------------------------------------------------------------------------

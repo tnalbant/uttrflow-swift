@@ -14,6 +14,21 @@ enum LayoutKeyCode {
         let flags: CGEventFlags
     }
 
+    /// One posted key event: a layout key for its character, or a bare Unicode string the layout has no key for.
+    enum Keypress: Equatable {
+        case key(UniChar, Stroke)
+        case text([UniChar])
+    }
+
+    /// Plans `text` as keypresses, keying what the layout can type and sending every other scalar as its string.
+    static func keypresses(for text: String, stroke: (UniChar) -> Stroke?) -> [Keypress] {
+        text.unicodeScalars.map { scalar in
+            let units = Array(String(scalar).utf16)
+            if units.count == 1, let found = stroke(units[0]) { return .key(units[0], found) }
+            return .text(units)
+        }
+    }
+
     /// Finds a physical key and modifiers that produce exactly one UTF-16 unit.
     static func stroke(for character: UniChar, in layoutData: Data) -> Stroke? {
         let combinations: [(UInt32, CGEventFlags)] = [

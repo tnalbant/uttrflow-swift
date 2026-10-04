@@ -1,6 +1,7 @@
 // The real clipboard.
 
 public import struct Foundation.Data
+public import struct UttrflowCore.PasteboardMarkers
 import AppKit
 private import os
 

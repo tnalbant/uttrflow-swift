@@ -4,7 +4,7 @@ import UttrflowEval
 import UttrflowLocalModel
 import UttrflowPredict
 
-/// Releases and reloads the suggestion model many times in one process and runs `leaks` on it between batches. See `Docs/performance.md`.
+/// Releases and reloads the suggestion model many times in one process and runs `leaks` on it between batches. See `Docs/performance-leaks.md`.
 struct ReloadLeaks: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "reload-leaks",

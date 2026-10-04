@@ -55,7 +55,7 @@ struct ShortcutArmingTests {
             onChange: {}, accessibilityIsGranted: { permission.granted },
             retryInterval: .milliseconds(10))
 
-        await arming.arm {
+        await arming.arm { () throws(HotkeyError) in
             attempts.count += 1
             throw .observationNotPermitted
         }
@@ -77,7 +77,7 @@ struct ShortcutArmingTests {
         let arming = ShortcutArming(
             onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
 
-        await arming.arm {
+        await arming.arm { () throws(HotkeyError) in
             attempts.count += 1
             throw .shortcutUnavailable
         }
@@ -94,7 +94,7 @@ struct ShortcutArmingTests {
         let arming = ShortcutArming(
             onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
 
-        await arming.arm {
+        await arming.arm { () throws(HotkeyError) in
             attempts.count += 1
             throw .accessibilityNeedsRefresh
         }
@@ -111,7 +111,7 @@ struct ShortcutArmingTests {
         let arming = ShortcutArming(
             onChange: {}, accessibilityIsGranted: { true }, retryInterval: .milliseconds(10))
 
-        await arming.arm {
+        await arming.arm { () throws(HotkeyError) in
             attempts.count += 1
             throw .observationNotPermitted
         }

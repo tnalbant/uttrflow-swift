@@ -444,7 +444,7 @@ struct OnboardingPresenterTests {
                     title: "Skip to dashboard", intent: .finish, isProminent: false, countdown: nil,
                     caption: nil))
         #expect(trying.link == nil)
-        #expect(trying.hint == nil)
+        #expect(trying.hint == "Open the Clipboard panel with ⇧⌘V to browse and paste recent copies.")
 
         let pressed = page(
             OnboardingState(step: .ready, detail: .finishing(.ready)), activation: .pressToToggle)
@@ -554,7 +554,7 @@ struct OnboardingPresenterTests {
             pressed.subtitle
                 == "Click a text field in another app, then press control and option, say anything, then press again."
         )
-        #expect(!pressed.subtitle.contains("let go"))
+        #expect(pressed.subtitle?.contains("let go") == false)
     }
 
     @Test("offers the way to put right an ending that cannot be tried")

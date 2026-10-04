@@ -224,7 +224,7 @@ struct DictationPipelineRecordingTests {
             applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode",
             documentName: "private.swift", precedingText: "secret text")
         let recording = KeptRecording(
-            id: UUID(), when: Date(), duration: .seconds(2), destination: destination,
+            id: UUID(), when: Date(), duration: .seconds(2), destination: destination.identity,
             fieldKind: .codeEditor)
         let recordings = FakeRecordingKeeper(waiting: [recording])
         let cleaner = FakeTranscriptCleaner()

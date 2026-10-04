@@ -74,8 +74,10 @@ struct DictationPipelineRecoveryTests {
     private func makePipeline(
         speech: FakeSpeechEngine = FakeSpeechEngine(
             transcribeOutcome: .success(.fixture(text: spokenWords))),
-        cleaner: FakeTranscriptCleaner = FakeTranscriptCleaner(answering: ScriptedSequence(.success(
-                TransformationResult(text: tidiedWords, producedBy: .foundationModels)))),
+        cleaner: FakeTranscriptCleaner = FakeTranscriptCleaner(
+            answering: ScriptedSequence(
+                .success(
+                    TransformationResult(text: tidiedWords, producedBy: .foundationModels)))),
         context: FakeContextEngine = FakeContextEngine(context: .fixture()),
         inserter: FakeTextInserter = FakeTextInserter(),
         corrector: any WordCorrecting = NoTextChanges(),
@@ -127,7 +129,9 @@ struct DictationPipelineRecoveryTests {
     @Test("a transcript that could not be tidied is attributed to no engine at all")
     func tidyingFailureIsAttributedToNoEngine() async throws {
         let pipeline = makePipeline(
-            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.transformFailed(kind: .foundationModels, description: "model died"))))
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .failure(.transformFailed(kind: .foundationModels, description: "model died"))))
         )
 
         let state = await dictate(pipeline)
@@ -150,7 +154,7 @@ struct DictationPipelineRecoveryTests {
         let transcript = try #require(
             failure.transcript, "losing the words at the final step is the worst outcome of all")
         #expect(transcript == tidiedWords)
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
     }
 
     @Test("when tidying succeeds it is the cleaned text that is inserted, not the raw one")
@@ -220,7 +224,10 @@ struct DictationPipelineRecoveryTests {
         let recorder = RecordingMetricsRecorder()
         let clock = ManualClock()
         let pipeline = makePipeline(
-            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.success(TransformationResult(text: tidiedWords, producedBy: .foundationModels))), takes: .charged(.milliseconds(120), to: clock)),
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .success(TransformationResult(text: tidiedWords, producedBy: .foundationModels))),
+                takes: .charged(.milliseconds(120), to: clock)),
             inserter: FakeTextInserter(takes: .charged(.milliseconds(30), to: clock)),
             corrector: RecoveryFakeCorrector(clock: clock, takes: .milliseconds(4)),
             snippets: RecoveryFakeExpander(clock: clock, takes: .milliseconds(2)),
@@ -294,9 +301,11 @@ struct DictationPipelineRecoveryTests {
         let pipeline = makePipeline(
             speech: FakeSpeechEngine(
                 transcribeOutcome: .success(.fixture(text: "email me the payment sheet kr"))),
-            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.success(
-                    TransformationResult(
-                        text: "Email me the PaymentSheet kr.", producedBy: .foundationModels)))),
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .success(
+                        TransformationResult(
+                            text: "Email me the PaymentSheet kr.", producedBy: .foundationModels)))),
             corrector: RecoveryFakeCorrector(proposals: [
                 DictationCorrection(
                     heard: "payment sheet", wrote: "PaymentSheet", wordRange: 3..<5,
@@ -360,7 +369,10 @@ struct DictationPipelineRecoveryTests {
         let recorder = RecordingMetricsRecorder()
         let clock = ManualClock()
         let pipeline = makePipeline(
-            cleaner: FakeTranscriptCleaner(answering: ScriptedSequence(.failure(.outputRejected(reason: "meaning changed", kind: .lostWord))), takes: .charged(.milliseconds(75), to: clock)),
+            cleaner: FakeTranscriptCleaner(
+                answering: ScriptedSequence(
+                    .failure(.outputRejected(reason: "meaning changed", kind: .lostWord))),
+                takes: .charged(.milliseconds(75), to: clock)),
             inserter: FakeTextInserter(takes: .charged(.milliseconds(10), to: clock)),
             metrics: recorder,
             clock: clock

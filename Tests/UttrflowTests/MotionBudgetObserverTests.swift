@@ -2,6 +2,7 @@
 
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 import UttrflowCore
 

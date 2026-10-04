@@ -2,6 +2,7 @@
 
 import Foundation
 import Testing
+import UttrflowCore
 
 @testable import UttrflowClipboard
 

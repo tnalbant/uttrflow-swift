@@ -1,32 +1,81 @@
 # Putting the words on screen, and the traps in doing it
 
-Dictation tries an Accessibility write, then typed keystrokes. It never borrows or
-replaces the clipboard; if both routes refuse, the transcript stays in Recent and the
-floating button offers an explicit Copy action. Clipboard-panel pastes retain a separate
-pasteboard route followed by typing, so a selected text clip never replaces the user's
-clipboard. A typed route can refuse characters the active keyboard layout cannot type;
-the panel reports that outcome and leaves the clip in Recent for its explicit Copy action.
-Pictures still need the clipboard for ⌘V and remain there after the paste is posted, since
-the panel path does not confirm arrival and restoring an unconfirmed paste could erase a
-picture that landed late. Clipboard-only recovery of an existing recording also remains
-an explicit copy operation.
+Insertion puts finished text into whatever field another application has focused. The code is
+in `Sources/UttrflowInput/`: `TextInsertion.swift` is the one place that names each route,
+`TextInsertionCoordinator` tries a route's strategies in order, and the strategies are
+`AccessibilityTextInsertionEngine`, `PasteboardTextInsertionEngine`, `TypedTextInsertionEngine`,
+`ClipboardTextInsertionEngine` and `PasteboardImageInsertionEngine`. The platform adapters —
+`SystemPasteboard`, `CGEventKeystrokeSender`, `CGEventTypist` and `AXAccessibilityFocus` — are in
+`SystemInput.swift`. **Dictation never writes the clipboard**: it tries an Accessibility write,
+then typed keystrokes, and if both refuse the transcript stays in History with
+an explicit Copy.
 
-Which applications do which of these is collected in [compatibility.md](compatibility.md); this
-page feeds its `AX write`, `Paste`, `Confirmed` and `Full route` columns, and the secure-field
-row, and keeps the reasoning behind each.
+Per-application results are collected in [compatibility.md](compatibility.md); this page feeds
+its `AX write`, `Paste`, `Confirmed` and `Full route` columns and the secure-field row.
+
+## Which route each insertion takes
+
+| What is inserted | Built by | Strategies, in order | Clipboard |
+|---|---|---|---|
+| A dictation | `TextInsertion.dictation()` | Accessibility, typed | Never written. When both refuse, the failure is `insertionNeedsCopy` and the recovery is Copy |
+| An accepted suggestion | `TextInsertion.completion()` (`CompletionRoute`) | Accessibility, typed | Never written; see [predict-accept.md](predict-accept.md) |
+| A clip pasted from the clipboard panel | `TextInsertion.coordinator(…, confirmsArrival: false, clipboardFallback: false)` | Accessibility, paste, typed | Written by the paste and left there; arrival is not checked |
+| A clip or recent dictation inserted from the menu bar or main window | `TextInsertion.coordinator(…)` | Accessibility, paste, clipboard | Written by the paste, or by the clipboard floor when everything else refuses; a paste's arrival is checked |
+| The Paste last transcript shortcut | `TextInsertion.dictation()` | Accessibility, typed | Never written; if both strategies refuse, the transcript stays available for explicit Copy |
+| A secret clip | either clip route over `ConcealingPasteboard` | as above | Every text write carries `org.nspasteboard.ConcealedType` |
+| A picture clip | `PasteboardImageInsertionEngine` | paste | The picture stays on the clipboard, since a paste whose arrival is not confirmed cannot be safely undone |
+| A retry of a kept recording | `ClipboardTextInsertionEngine` alone | clipboard | Written; see [recordings.md](recordings.md) |
+
+A clip with a formatted (HTML) flavour skips the Accessibility strategy, which would write the
+plain text and drop the formatting. The typed strategy refuses the whole text when any character
+has no single key on the current layout; see
+[input-synthetic-keystrokes.md](input-synthetic-keystrokes.md).
+
+Every strategy that sends words makes the same two checks immediately before it does:
+`TextInsertion.requireLive()` refuses once the waiting stage has given up, and
+`TextInsertion.requireTarget(_:focus:)` refuses with `insertionTargetChanged` when the captured
+destination is no longer the frontmost application. The typed strategy makes both, so a switch to
+an app with no readable field is refused rather than typed into.
+
+The typed strategy also refuses, with `noFocusedTextField`, when a focused element is published
+and its role is not a text-entry role (`FocusedElementKind.control`): in a page body, a list or a
+file browser, letters are commands. It still types when the application publishes no focused
+element at all (`FocusedElementKind.unpublished`), which is how a bundled-browser composer takes
+dictation. The check is made in `canInsert()`, before the first chunk and before every later one.
+
+The typed strategy posts its text `TypedTextInsertionEngine.chunkLength` characters at a time,
+yields between chunks and makes the same checks again before each chunk after the first, against
+the captured destination or, without one, the application in front at the first chunk. A check
+or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
+posted characters cannot be taken back.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+`clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
+clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
+
+## What every insertion may contain
+
+`OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
+pipeline, before any route writes it, so no destination relies on its own layout flag for this:
+
+1. No control character except tab and line feed; any other becomes a space.
+2. No trailing line break, which a shell or chat field would read as Return.
+3. No escape sequence; an ANSI sequence is removed whole.
+
+Whether a line break inside the text may reach a destination whose Return sends or runs it is
+decided per route by the line-break probe, and is not yet part of this check.
 
 ## The Accessibility write that changes nothing
 
-Electron applications (Claude's own desktop app among them) publish a focused text
-field, accept a write to its selected text, answer `.success`, and do nothing at all.
-
-Believing the return value meant the coordinator stopped there, so the words never
-reached the paste below and never reached the clipboard either — the user saw the
-dictation happen and had nothing to paste. A successful write is therefore checked by
-the collapsed caret at the expected UTF-16 endpoint. A missing or unexpected selection
-leaves its placement uncertain, so the result stops the fallback chain and asks the user
-to check the field before retrying; another strategy could duplicate a write that already
-landed.
+Some applications built on a bundled browser engine publish a focused text field, accept a write
+to its selected text, answer `.success`, and change nothing. `SelectionWriter.replaceSelection(with:)`
+therefore reads the selection back after every write and requires it to be a collapsed caret at
+the old start plus the text's UTF-16 length. A missing or different selection throws
+`insertionUnconfirmed`, which stops the route and asks the user to check the field before
+retrying. A write that moves the caret but leaves the surrounding text unchanged throws
+`insertionRejected` ("the field accepted the text and did not change"), and the next strategy runs.
+A selection that already held the same text is the exception: replacing it changes nothing by
+definition, so the moved caret alone confirms the write and no fallback writes the words again.
 
 ## A web field's own state
 
@@ -59,7 +108,7 @@ ships), macOS 26.5.1:
 engines answer an `AXSelectedText` write with `.success` and change nothing at all, shown
 or held, and `SelectionWriter`'s caret check reports it. The Chrome input, re-run with its
 window in front, behaved the same. That unconfirmed answer stops the dictation before the
-typed route runs, although nothing landed; #4603 is the fix.
+typed route runs, although nothing landed.
 
 **`AXValue` is not a fix to reach for.** It is the write that produces exactly that defect:
 in a Chrome `contenteditable` the text appears, the page never hears of it, and a model
@@ -69,264 +118,219 @@ write also replaces the field rather than the selection.
 
 ## Which application the record names
 
-The layout decisions are made against the screen as it was when each piece was cut — that is
-what working ahead requires, and `Docs/early-transcription.md` measures what it buys. The
-*record* is a different question: the user may switch windows while the sentence is being
-transcribed, and the words land wherever the caret is by then. So `TextInsertionCoordinator`
-reads the destination immediately after a strategy succeeds and reports it on the
-`InsertionAttempt`, and the pipeline files the dictation under that rather than under the name
-it read at the start. A reader that cannot say leaves the recording's own reading as the best
-answer there is.
+The user may switch windows while a dictation is transcribed, and the words land wherever the
+caret is by then. `TextInsertionCoordinator` takes the destination from the strategy
+(`destinationAtLanding()`, which the paste strategy reads as it posts ⌘V) or reads it right after
+the write, and reports it on the `InsertionAttempt`; the pipeline files the dictation under that.
 
-The destination is the process that owns the focused element, not the frontmost application.
-A launcher, a password-manager quick panel or a floating note can take keyboard focus as a
+The destination is the process that owns the focused element, not the frontmost application. A
+launcher, a password-manager quick panel or a floating note can take keyboard focus as a
 non-activating panel while the application underneath stays frontmost; the words land in the
 panel, so the panel's owner is what the context names, what the target-changed check compares
 and what the record files. `FocusedElementPreference.destination` is the one statement of that
 rule: the owner of the element `choose` keeps, and the frontmost application only when
-Accessibility names no owner. `AccessibilityFocus.focusedApplication()` and
-`MacContextEngine`'s focus-owner read both go through it. The probe is in
-[compatibility.md](compatibility.md).
-
-Nothing here can refuse or degrade an insertion: the destination is read after the words are
-written, and is only ever a label on what already happened.
+Accessibility names no owner. `AccessibilityFocus.focusedApplication()` and `MacContextEngine`'s
+focus-owner read both go through it. The probe is in [compatibility.md](compatibility.md). Reading the destination can never refuse or delay
+an insertion: it happens after the words are written. [early-transcription.md](early-transcription.md)
+covers the layout decisions made against the screen as it was when each piece was cut.
 
 ## The paste that is posted and never arrives
 
-`.hidSystemState` with `.cghidEventTap` is the pair that reaches another application.
-A combined-session source posted to `.cgAnnotatedSessionEventTap` creates a perfectly
-valid event the target never sees, and **nothing reports an error** — `post` returns no
-status. The paste then "succeeded", the borrowed clipboard was put back over the
-dictation 250 ms later, and the words were in the document, the clipboard, and nowhere
-else. Exactly what a user calls "it just does not work". This was the dictation route;
-dictation now avoids that risk by typing after Accessibility refuses. Clipboard-panel
-pastes still use the pasteboard path and are never restored without confirmation.
+`.hidSystemState` with `.cghidEventTap` is the source-and-tap pair that reaches another
+application, and every posted event uses it (`postTaggedKeyPair`). A combined-session source
+posted to `.cgAnnotatedSessionEventTap` creates a valid event the target never sees, and
+`CGEvent.post` returns no status, so nothing reports the failure.
 
 ## The paste that is posted and never confirmed
 
-Posting the keystroke is where the paste route used to end: `setText`, `sendPaste`, return.
-That return was read as success all the way up, so the dictation reached
-``DictationState/inserted`` — the state that draws a tick and files the history row —
-while the receiving application had not yet taken the clipboard, let alone drawn anything.
-It is the same defect as the Accessibility write above, one level up: a strategy reporting
-a success it never checked.
+Posting ⌘V proves nothing about arrival, so on the routes that check, `PasteConfirmation` reads
+the text behind the caret until the end of what was pasted appears there.
 
-The clipboard-panel paste is now read back the way that write is. `PasteConfirmation` compares the last
-24 characters of what was pasted, whitespace collapsed, against the text behind the caret,
-every 40 ms for up to 1.6 s. Whitespace is collapsed because an application may rewrap what
-it was given; the tail is compared rather than the whole because the caret sits at the end
-of it.
+| Constant | Value | Meaning |
+|---|---|---|
+| `PasteConfirmation.budget` | 1,600 ms | Longest wait, measured by the clock from entry |
+| `PasteConfirmation.interval` | 40 ms | Sleep between reads |
+| `PasteConfirmation.tailLength` | 24 characters | End of the pasted text that must sit behind the caret, whitespace collapsed |
+| `PasteConfirmation.readLength` | 96 characters | Text read behind the caret on each poll |
 
-**The 1.6 s is elapsed time, taken from the clock on entry, not a tally of forty sleeps.**
-The two are not the same figure, and the difference is the thing being budgeted: every read
-between the sleeps is a `focusedElement()` plus a whole-field value copy plus a selected-range
-copy, and in a large document that costs more than the 40 ms it follows. A budget counted in
-sleeps charges none of it, so the wait ran for 1.6 s of sleeping plus however long the reads
-took — and the dictation sits in ``DictationState/inserting`` for all of it. Only the read
-already in flight when the deadline passes can now overshoot it.
+Whitespace is collapsed because an application may rewrap what it is given; only the tail is
+compared because the caret sits at its end. The tail is read once before the paste is posted, so a
+caret that already ended in the same text does not count as a landing until it has changed. The
+budget is elapsed time rather than a count of sleeps because each read — a focused-element lookup
+plus a range read — can cost more than the 40 ms it follows; only the read already in flight when
+the deadline passes can overshoot it.
 
-Four answers, and only one of them is a fact:
+The wait has four answers, and only the first is a fact:
 
-- **Landed** — the words are behind the caret, and how long that took is the only measurement
-  of this gap that exists.
-- **Not reported** — the field will not say what it holds. Nothing is proved either way, and
-  nothing is waited for, since a field that will not answer now will not answer in a second.
-- **Gave up** — the budget was spent with no sign of them.
-- **Cancelled** — the task waiting was cancelled, which is what a stage timeout does. It stops
-  at once, between reads or in the middle of a wait, without reading the field again, and is
-  reported upwards as unconfirmed, never as landed.
+- **Landed** — the words are behind the caret, and the elapsed time is reported with it.
+- **Not reported** — the field will not say what it holds. Nothing is waited for, since a field
+  that will not answer now will not answer in a second.
+- **Gave up** — the budget was spent with no sign of the words.
+- **Cancelled** — the waiting task was cancelled, as a stage timeout does. It stops at once,
+  without reading the field again, and is reported as unconfirmed, never as landed.
 
-If the insertion stage itself times out, no strategy is known to have reached the clipboard.
-The failure therefore points to the saved transcript under Recent, not to a manual paste that
-could insert an older clipboard item. A completed clipboard fallback still reports its own
-delivery and can offer manual paste.
+`InsertionArrival(_:)` maps these to `.confirmed`, `.notReported` and `.unconfirmed`. Arrival is
+part of what every strategy returns from `TextInsertionEngine/insert(_:)`, carried on the
+`InsertionAttempt` and the `DictationOutcome`, so the floating button draws "Inserted — not
+confirmed" against a plain "Inserted". The `reporting:` closure only observes an answer that is
+reached whether or not anyone is listening; `uttrflow-dev insert` uses it to print the timing.
 
-The dictation sits in ``DictationState/inserting`` throughout, which the floating button draws
-as work in progress. That state exists so that the tick is a claim about the words rather than
-about the clock: a paste into a busy application takes as long as it takes, and saying so is
-better than a tick over an empty caret.
+**A doubtful paste is not a failed one.** An application that rewrites quotes, dashes or
+capitalisation as it takes a paste never matches the tail, and treating that as a failure would
+demote a large class of successful pastes. The words are on the clipboard either way, so
+"not confirmed" is said and nothing retries or re-pastes. A strategy that cannot check answers
+**not reported**, which draws the plain tick: the Accessibility write verifies itself inside the
+field, and typing reads nothing back.
 
-## The answer is the return value, not a log line
+If cancellation arrives before the paste key is posted, the engine discards its clipboard
+generation only if it still owns that generation. It never restores the previous clipboard or
+clears a newer copy. Once the key is posted, arrival can be uncertain, so the clipboard stays as
+written.
 
-Confirmation was first added as an observer beside the insertion, and both halves of that were
-wrong. The answer reached one optional closure and nowhere else, so a paste into a surface that
-will not take it — a read-only page, a list, a field behind a modal — still ended in a tick,
-'Inserted' and a history row over an empty caret. And because a call optional-chained through
-that closure never evaluates its argument, **attaching the logger was what switched the check
-on**: the route built with one verified its pastes and the route built without one did not.
+The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
+arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
+is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
+could insert an older clipboard item.
 
-So arrival is part of what an insertion strategy returns. ``TextInsertionEngine/insert(_:)``
-answers an ``InsertionArrival``, the coordinator carries it beside the method as an
-``InsertionAttempt``, and ``DictationOutcome`` holds it, which is what lets the floating button
-draw 'Inserted — not confirmed' against a plain 'Inserted'. The reporter is still there and is
-now only a reporter: it observes an answer that was reached whether or not anybody is listening.
+## Every clipboard write stays on this Mac
 
-**A doubtful paste is not a failed one, and must not be treated as one.** `collapsed` normalises
-whitespace and nothing else, so any application that rewrites quotes, dashes or capitalisation
-as it takes the paste will never match the tail — and throwing on that answer would demote a
-large class of *successful* pastes to 'Copied — press ⌘V'. The words are on the clipboard
-either way, so the honest response to "not confirmed" is to say so and leave the recovery to
-the one person who can see the screen. Nothing retries, nothing re-pastes, and the history row
-is filed exactly as before.
+The default pasteboard offers everything written to it to every Apple device signed into the same
+account. `SystemPasteboard` calls `prepareForNewContents(with: .currentHostOnly)` before every
+write (`clearForThisMacOnly()`), which keeps clipboard writes off Universal Clipboard.
 
-A strategy that cannot check answers **not reported**, and that is most of them: the
-Accessibility write verifies itself inside the field and does not report whether it could,
-and typing reads nothing back. Not reported draws the plain tick, because treating
-"unknown" as "doubtful" would put a warning on a successful insertion.
+Each write also carries the marker a clipboard history needs to treat it properly:
 
-## `clearContents()` sends your words to your iPhone
+| Write | Marker |
+|---|---|
+| A paste (`writeTransientText`) | `org.nspasteboard.TransientType` |
+| The clipboard floor (`writeAutoGeneratedText`) | `org.nspasteboard.AutoGeneratedType` |
+| The clipboard floor for a transcript the clipboard panel's secret classifier recognises | `org.nspasteboard.ConcealedType` |
+| Anything into a secure field, or a secret clip (`writeConcealedText`) | `org.nspasteboard.ConcealedType` |
+| An explicit Copy (`writeText`) | none: it is an ordinary user copy |
 
-The default pasteboard behaviour offers everything written to it to every Apple device
-signed into the same account. A product whose entire claim is that your words do not
-leave this Mac was, on the paste path, sending finished transcripts to the user's phone.
-`.currentHostOnly` is the one line that stops it, and the paste path is not an edge case
-— it is how a large share of dictations reach the caret, because the Accessibility route
-cannot write into most Electron and web apps.
-
-Dictation no longer writes the pasteboard during insertion, so it needs no transient or
-auto-generated marker. Explicit Copy remains an ordinary user copy and carries neither
-marker. Secure-field clipboard-panel pastes keep their stronger `ConcealedType` marker.
-The text and formatted flavours stay on the same item; only marker metadata is added.
+The text and HTML flavours stay on the same item; only the marker type is added.
 
 ## Finding the focused element takes two questions
 
-`AXUIElementCreateSystemWide()` is the canonical answer and works across the widest
-range of applications, but returns nothing when the caller has no application context —
-which is why a command-line probe reports "nothing focused" whatever is on screen. That
-measurement is misleading, and chasing it once left only the per-application query, which
-is the weaker of the two: several applications answer `kAXFocusedUIElementAttribute` on
-the system-wide element and not on their own. Both are asked, system-wide first; the
-fallback costs one extra round trip in a case that was already failing.
+`AXUIElementCreateSystemWide()` works across the widest range of applications but returns nothing
+when the caller has no application context, which is why a command-line probe can report "nothing
+focused" whatever is on screen. Several applications also answer `kAXFocusedUIElementAttribute` on
+the system-wide element and not on their own application element. Both are asked, system-wide
+first; the fallback costs one extra round trip in a case that was already failing.
+
+Answering is not the same as answering with the right element. While a browser's own editor is
+typed into, the system-wide element can name the word under the caret rather than the editor.
+`FocusedElementPreference.choose` keeps the system-wide answer if its role is one text is entered
+into, else the application's if that is, else whichever answered at all. Insertion
+(`AXAccessibilityFocus`) and the context and suggestion readers (`SurfaceProbe`) all call it rather
+than keeping their own copy.
+
+A field is offered to the Accessibility strategy only when its role is a text-entry role, its
+selected text is readable and settable, and it reports a single selection: a field with several
+carets is refused rather than written at one of them.
 
 ## Reading a field by range, not whole
 
-Every question insertion and the screen read ask about the focused field — what is before the
-caret, whether it is masked, whether a write changed anything — prefers a bounded stretch read
-with `kAXStringForRangeParameterizedAttribute`. `kAXValueAttribute` returns the whole document
-and is built on the target app's main thread, so it is used only when a field cannot answer by
-range and the field reports at most 1,024 UTF-16 units. `CaretWindow`
-chooses the range: four UTF-16 units per character wanted plus sixteen, with the first
-character of a window that does not start at the field's start thrown away because the range
-may have cut it in half. The mask check reads the first 64 units. A failed range read falls
-back to the whole value only when Accessibility reports at most 1,024 UTF-16 units; a range
-that returns malformed or too-short text stays unreadable.
+Every question insertion asks about the focused field — what is before the caret, whether it is
+masked, whether a write changed anything — prefers a bounded read with
+`kAXStringForRangeParameterizedAttribute`. `kAXValueAttribute` returns the whole document and is
+built on the target application's main thread.
 
-Measured on a 1,008,000-unit document with the caret at the end, one paste-confirmation poll
-copied 1,008,000 units and spent 1.28 ms walking them locally; by range it copies 400 units and
-spends 0.004 ms. The poll runs up to 41 times per dictation, and the cross-process copy, not
-measured here, scales with the units.
+| Constant | Value | Meaning |
+|---|---|---|
+| `CaretWindow.unitsPerCharacter` | 4 | UTF-16 units requested per character wanted |
+| `CaretWindow.slack` | 16 | Extra units requested; the first character of a window that does not start at the field's start is dropped, since the range may have cut it in half |
+| `CaretWindow.maskPrefixUnits` | 64 | Units read to decide whether a field shows only mask characters |
+| `AXAccessibilityFocus.smallValueFallbackLimit` | 1,024 | Largest field, in UTF-16 units, whose whole value is read when it cannot answer by range |
 
-Answering is not the same as answering the right field. While a browser's own editor is
-typed into, the system-wide element can name the word under the caret rather than the
-editor — a text-entry role check decides which answer to keep: the system-wide element's
-if its role is one text is entered into, else the application's if that is, else whichever
-answered at all. `FocusedElementPreference.choose` is the one place this is decided, and
-every reader of the focused element — the field reader, the suggestion reader, the context
-engine and dictation insertion — calls through it rather than keeping its own copy.
+A range read that fails falls back to the whole value only under that limit; a range read that
+returns malformed or short text stays unreadable. A confirmation poll therefore copies
+96 × 4 + 16 = 400 units however long the document is, where a whole-value read would copy all of
+it on each of up to 41 polls.
 
-## Accessibility calls must be bounded
+## Accessibility calls are bounded
 
-They are synchronous and run on the pipeline's own thread, so a focused app that has
-quit, beachballed or gone to sleep holds the pipeline in `.tidying` for the system
-default — `isBusy` the whole time, so no further dictation can start either. The budget
-here is generous next to the context engine's 100 ms, because this read *is* the
-dictation rather than a nicety alongside it.
+They are synchronous and block the sending thread until the target answers, so a focused
+application that has quit, hung or gone to sleep would otherwise hold a dictation in progress for
+the system default, and `isBusy` with it.
 
-The ordinary 2 s is set on the focused element itself, never on the system-wide element. A timeout set
-on the system-wide element is process-wide and read when each message is sent, so an AI
-suggestion read on another queue setting its own 100 ms would cut the insertion's write short
-mid-dictation (#887). The system-wide focus query itself runs under the system default.
+| Constant | Value | Applies to |
+|---|---|---|
+| `AXAccessibilityFocus.messagingTimeout` | 2 s | Every message to the focused element and its application, for insertion and paste confirmation |
+| `AXAccessibilityFocus.acceptanceMessagingTimeout` | 0.1 s | Reading the caret when a suggestion is accepted, well inside `KeyHold`'s one-second limit |
 
-Suggestion acceptance sets the focused element to 100 ms before reading the caret and its
-bounded text. This keeps the blocking field read well inside `KeyHold`'s one-second limit.
+The timeout is set on the focused element and the application element, never on the system-wide
+element: a timeout set there is process-wide and read when each message is sent, so a suggestion
+read setting 0.1 s on another queue would cut an insertion's write short. The system-wide focus
+query itself runs under the system default. The context read has its own, shorter budget; see
+[context-budget.md](context-budget.md).
 
-Every one of those calls blocks the thread that sends it for as long as the target takes to
-answer. Swift's cooperative pool has about one thread per core, so a call made from `async`
-code would hold a pool thread for up to 2 s per message while every other actor in the
-process waited for one. Insertion, paste confirmation, suggestion acceptance and the typed route's check therefore
-send them through `AccessibilityThread`, a concurrent dispatch queue of their own, and the
-awaiting task resumes when the answer comes back. A task cancelled before its message leaves
-the queue sends nothing and takes a safe fallback — "secure" for the concealment question,
-"unreadable" for a caret read. A message already sent cannot be recalled; the 2 s cap is
-what bounds it.
+Swift's cooperative pool has about one thread per core, so a blocking call made from `async` code
+would hold a pool thread for up to 2 s per message. Insertion, paste confirmation, suggestion
+acceptance and the typed route's checks send their messages through `AccessibilityThread`, a
+concurrent dispatch queue of their own, and the awaiting task resumes when the answer comes back.
+A task cancelled before its message leaves the queue sends nothing and takes a safe fallback —
+"secure" for the concealment question, "unreadable" for a caret read. A message already sent
+cannot be recalled; the timeout is what bounds it.
+
+## Never into Uttrflow itself
+
+Uttrflow's own windows are where the user chooses a shortcut or reads clip history, so no strategy
+writes while Uttrflow is frontmost. Every strategy that writes into the focused field asks
+`isSelfFrontmost()` in `canInsert()` and again immediately before the write, because the two are
+separate `await`s and the user can switch to Uttrflow between them. A strategy that finds Uttrflow
+in front throws `noFocusedTextField` before touching the clipboard or the field. See
+[input-paste-eligibility.md](input-paste-eligibility.md) for why that is the paste strategy's only
+refusal.
+
+The History page's rows therefore offer **Copy** and **Copy to Paste Elsewhere**, both
+`.copy(text)`, and the page shows "Copied — click where you want it, then press ⌘V" through
+`MainNotice` and VoiceOver. An insert action from the main window could only ever reach
+Uttrflow's own window. Re-activating the original application and inserting into it is not done,
+because when to switch belongs to the user, not the page.
 
 ## Announcing Uttrflow's own writes
 
-Pasting a clip puts it on the clipboard and never takes it back, so the clipboard
-watcher would see a change it cannot attribute and file the clip a second time, moving
-it to the top of the panel every time it is used.
+A pasted clip stays on the clipboard, so the clipboard watcher would otherwise see a change it
+cannot attribute and file the clip again, moving it to the top of the panel every time it is used.
+`SystemPasteboard` reserves an announcement through `PasteboardWatcher.ignoreNextWrite(of:)` with
+the text, or `ignoreNextPicture(_:)` with the PNG bytes, **immediately before** clearing the
+pasteboard, because clearing is itself what moves the change count. After a successful write it
+reports the exact resulting change count from `writeText` or `setImage`.
 
-`PasteboardWatcher.ignoreNextWrite(of:)` is called **immediately before** the write, and
-before `clearContents()` — clearing is itself what moves the change count, so an
-announcement made after it describes a change that has already happened.
-
-The announcement **names what it is about to write** — the text, or for a picture the PNG
-bytes. Matching on the count alone meant any later change was claimed: a user copying
-something within the same poll as an Uttrflow paste had their copy silently
-swallowed, which is the one thing a clipboard manager may not do. The picture path had
-exactly that hole until it was given bytes to name, since it had no text. An announcement
-whose own write has not arrived is kept rather than spent, and lapses after two seconds so
-a paste that threw cannot sit armed. If a write is refused or its text cannot be read back,
-its announcement is withdrawn. If the watcher gives up on a bounded clipboard read, it
-withdraws announcements that could have named that unread change, so the next same-text
-copy is recorded normally.
+The watcher matches the announced contents at that exact generation. A newer observed generation
+retires an older announcement, so a same-text copy made by the user remains visible and a delayed
+poll cannot turn Uttrflow's own write into a history row. If a write is refused or its text cannot
+be read back, its reservation is withdrawn. If the watcher gives up on a bounded clipboard read,
+it withdraws announcements that could have named that unread change.
 
 ## Dictating into a field that hides what is typed
 
-A password or PIN field gets the words like any other field, and nothing else does.
-`SecureField` answers whether a field is secure from its role, subrole and names, and
-reads the value only when none of those says so, to catch a field that shows mask
-characters without declaring itself. The question is asked twice: by the context read
-when the dictation's screen is read, which then carries none of the field's text, and by
-`TextInsertionCoordinator` before the fallback chain starts and again once the winning
-strategy has written, so a switch into a secure field while an earlier strategy fails still
-counts.
+A password or PIN field gets the words like any other field, and nothing else does. `SecureField`
+decides from the field's role, subrole, identifier, placeholder and description, and reads the
+first `CaretWindow.maskPrefixUnits` of the value only when none of those says secure, to catch a
+field that shows mask characters without declaring itself. The question is asked by the context
+read at the start of the dictation, which then carries none of the field's text, and by
+`TextInsertionCoordinator` before the route starts and again after the winning strategy has
+written, so a switch into a secure field during the route still counts.
 
-Either answer marks the outcome `intoSecureField`. The words then reach no store: no
-history row (not even a length), no Uttrflow clip, no last transcript, no dictionary
-lesson and no clean-up account, and the floating button neither draws nor reads them
-aloud. A clipboard-panel paste writes them with `org.nspasteboard.ConcealedType` beside
-the text, so a clipboard history that honours the convention leaves them out. Dictation
-types without writing the clipboard. If
-the words are lost before insertion, the audio is not kept for a retry.
+Either answer marks the outcome `intoSecureField`, and its `wordsToKeep` is `nil`. The words reach
+no store: no history row (not even a length), no Uttrflow clip, no last transcript, no dictionary
+lesson and no clean-up record, and the floating button neither draws nor reads them aloud. A paste
+or clipboard write into a secure field carries `org.nspasteboard.ConcealedType`, so a clipboard
+history that honours the convention leaves it out. If the words are lost before insertion, the
+audio is not kept for a retry.
 
 ## One writer, one reader, and a gate that says so
 
-Every rule above — announce first, clear `.currentHostOnly`, name the write — lives in
-`SystemPasteboard`, and a call site that reaches `NSPasteboard` itself gets none of them.
-Two did: the panel's Copy, the menu's Copy of a recent dictation and `copyAndSay` went
-through `AppDelegate.putOnClipboard`, which cleared the clipboard the ordinary way and so
-offered finished transcripts to every device on the account; and the picture paste wrote
-bytes with a text-less announcement. Both now go through the `Pasteboard` port, which
-gained `setImage`. `Scripts/pasteboard_audit.sh`, in `make verify`, holds it there: only the
-writer (`SystemInput.swift`) and the reader (`ClipboardSource+System.swift`) may name
-`NSPasteboard`, which is the same argument `Docs/offline.md` makes for one module owning the
-network.
-
-## What "Insert Again" does on the Dictation page
-
-The row on the Dictation page used to offer an "Insert Again" button that handed the text to
-`TextInsertion.coordinator()`. From the main window, Uttrflow itself is in front, so the route
-never reached another application: the Accessibility engine aimed at whatever was focused
-(including Uttrflow's own search field), the paste engine refused, and the clipboard floor
-took over silently. Nothing told the user the words were on the clipboard, or that the
-button had not done what its label promised.
-
-The product call was the rename: the row now offers **Copy** and **Copy to Paste Elsewhere**
-in that order, both `.copy(text)` intents, and the page shows the panel's
-`uttrflowInFront` notice — "Copied — click where you want it, then press ⌘V" — through
-`MainNotice` and VoiceOver. Re-launching the original destination application and waiting for
-it to come to front was rejected because the timing belongs to the user, not the page.
-
-The Accessibility engine now also refuses when Uttrflow is in front
-(`AccessibilityTextInsertionEngine.canInsert()` checks `!focus.isSelfFrontmost()`), so a
-focused Uttrflow field is never the destination through any code path — the rename is the
-honest label, the engine change is the structural guarantee that no caller can fall back into
-Uttrflow's own text fields.
-
-The retry's clipboard floor receives the clipboard panel's shared secret classifier from the app
-composition root. A secret transcript is written with `org.nspasteboard.ConcealedType`; other
-transcripts use the generated marker.
+Every rule above — announce first, keep it on this Mac, mark the write — lives in
+`SystemPasteboard`, and a call site that reaches `NSPasteboard` itself gets none of them. Every
+write in the app, including the main window's and the menu's Copy (`AppDelegate.putOnClipboard`)
+and pictures (`Pasteboard.setImage`), goes through the `Pasteboard` port. `make pasteboard-audit`
+(`Scripts/pasteboard_audit.sh`, part of `make verify`) fails when any file other than the writer
+(`Sources/UttrflowInput/SystemInput.swift`) and the reader
+(`Sources/UttrflowClipboard/ClipboardSource+System.swift`) names `NSPasteboard`.
+[offline.md](offline.md) makes the same argument for one module owning the network.
 
 ## Remembering where the last dictation landed
 
@@ -345,3 +349,20 @@ the element itself, so asking from any other field empties it as well. It keeps
 Offsets go stale the moment the user types, so a record is never trusted on its own:
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
+
+## The insertion fixture
+
+`uttrflow-insertion-fixture` is a test-only window with a text field, a multi-line view and a
+secure field, each of which takes its edits through one fault mode named on its command line.
+`Scripts/e2e_insertion.sh` launches it once per mode, runs `uttrflow-dev insert` into the focused
+field, and asserts the exit status, the line `insert` prints and what the field holds after. It
+waits until nobody has touched the Mac for 30 s, and needs Accessibility granted to the shell.
+`Scripts/bundle.sh` fails a bundle that contains any of it.
+
+| Mode | Field, route | What the field does | Expected |
+|---|---|---|---|
+| `faithful` | text, Accessibility | takes every edit | written, field holds the words |
+| `changes-nothing` | text, Accessibility | answers the write with success and changes nothing | `insertionUnconfirmed`, field empty |
+| `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
+| `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
+| `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |

@@ -76,7 +76,7 @@ let package = Package(
     ],
     targets: [
         // Platform-free domain layer: protocols, models, errors. Imports nothing but the stdlib.
-        .target(name: "UttrflowCore", swiftSettings: sharedSwiftSettings),
+        .target(name: "UttrflowCore", resources: [.process("Resources")], swiftSettings: sharedSwiftSettings),
 
         // Microphone capture. Everything that can be reasoned about without hardware —
         // resampling, accumulation, encoding — lives outside the AVAudioEngine boundary.
@@ -274,6 +274,12 @@ let package = Package(
             swiftSettings: sharedSwiftSettings
         ),
 
+        // Test-only window whose fields misbehave on purpose; never a dependency of the app.
+        .executableTarget(
+            name: "uttrflow-insertion-fixture",
+            swiftSettings: sharedSwiftSettings
+        ),
+
         // Phase 8's harness. Separate from uttrflow-dev because it records real speech
         // and writes a corpus, which is a different job from poking at one stage.
         .executableTarget(
@@ -361,7 +367,7 @@ let package = Package(
         ),
         .testTarget(
             name: "UttrflowTests",
-            dependencies: ["Uttrflow", "UttrflowTestSupport"],
+            dependencies: ["Uttrflow", "UttrflowPredict", "UttrflowTestSupport"],
             swiftSettings: sharedSwiftSettings
         ),
         .testTarget(

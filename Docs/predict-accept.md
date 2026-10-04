@@ -1,34 +1,32 @@
 # Accepting a suggestion
 
-What happens between the user pressing a key and the completion appearing in their
-document. The deciding is `KeyRouting` in `UttrflowPredict`, which is pure; the tap is
-`KeyInterceptor` in `UttrflowInput`, which is not and is excluded from the coverage gate
-for it.
+What happens between the user pressing a key and an AI suggestion (tab-to-complete) appearing in
+their document. The deciding is `KeyRouting` in `Sources/UttrflowPredict/KeyRouting.swift`, which
+is pure; the tap is `KeyInterceptor` in `Sources/UttrflowInput/KeyInterceptor.swift`, which is not
+and is excluded from the coverage gate for it; the insertion is `TextInsertion.completion` and
+`SuggestionAcceptor` in `Sources/UttrflowInput`. The loop that arms the keys is described in
+[predict.md](predict.md).
 
 ## Which key accepts
 
 Tab by default. The right arrow in terminals, because Tab there is the shell's own
 completion and taking it would break the thing the user is actually trying to do.
-Option-Tab in editors and spreadsheets, because Tab there is indentation, native
+Option-Tab in editors, spreadsheets and notes apps, because Tab there is indentation, native
 completion, text navigation, or cell navigation. This includes code editors, query editors,
-document editors such as Word, Pages, and TextEdit, Numbers or Excel, and browser-based
-Google Sheets when its window title identifies it. The user can override any application,
-and the override wins over the kind.
+document editors such as Word, Pages, and TextEdit, notes apps such as Notes, Notion, Obsidian and
+Bear, Numbers or Excel, and browser-based Google Sheets, Docs and Excel when the window title
+identifies them. The user can override any application
+(Settings → AI suggestions → **Accept with**), and the override wins over the kind.
 
-`AcceptKeys` recognises editors from bundle-identifier prefixes and spreadsheets through the
-destination table, which can identify Google Sheets from its window title. Terminals are
-recognised by `TerminalApplications`, which two callers read: `AcceptKeys`, to hand a shell
-the right arrow, and `FocusedFieldSnapshot` in `UttrflowContext`, to keep a shell's
-`AXTextArea` out of the prose rule and to strip its prompt from the line. Until recently
-those were two
-tables — a prefix list in `UttrflowPredict` and an exact-match set in `UttrflowContext` —
-and they disagreed: the prefix list knew Hyper and Tabby, the set did not, and Warp matched
-under one and not the other. There is one table now: the terminal, code editor and query editor rows of
-`DestinationRules.standard` in `UttrflowCore`, the same rows that decide how a dictation
-into those applications is laid out. `TerminalApplications` (in `UttrflowCore`) and the editor list in
-`AcceptKeys` are read from those rows, lowercased and matched by prefix, so dictation and
-suggestions name the one type directly. An application added to a row is a
-terminal or an editor to dictation and to AI suggestions at once.
+There is one table of application kinds: the terminal, code editor, query editor, document editor,
+spreadsheet and notes rows of `DestinationRules.standard` in `UttrflowCore`, the same rows that
+decide how a dictation into those applications is laid out. `AcceptKeys` reads that table to
+choose Tab or Option-Tab, and `TerminalApplications` reads its terminal row to choose the right
+arrow. Browser-based Google Sheets, Docs and Excel are identified by their window titles.
+`TerminalApplications` has two readers: `AcceptKeys`, to hand a shell the right arrow, and
+`FocusedFieldSnapshot`, to keep a shell's `AXTextArea` out of the prose rule and to strip its
+prompt from the line. An application added to a row is a terminal or an editor to dictation and
+to AI suggestions at once; two lists would drift apart.
 
 ## Return is the dangerous key
 
@@ -80,7 +78,7 @@ disagree in time: an accept after a keystroke the offer never saw, or a key arme
 suggestion since replaced. The session answers those with `.giveBack`, and the coordinator
 posts the same key with the same modifiers, tagged so the tap lets it through.
 
-A swallowed keystroke is written into a fixed ring buffer of 64 entries and a dispatch
+A swallowed keystroke is written into a fixed ring buffer of `TapState.capacity` (64) entries and a dispatch
 source is signalled; the decision runs on that source's queue. The ring is what keeps two
 quick presses of ⌥↓ from coalescing into one, which a source's own OR-ed data would do.
 
@@ -99,14 +97,14 @@ sleep and wake do not add up to a fault. A tap that has to be revived repeatedly
 that is costing the user keystrokes.
 
 Left off is not dead. `SuggestionCoordinator.restTap` disarms and stops the tap, rests it
-for 90 s — past the window in which disables count against it — and starts it again, since
+for `tapRestSeconds` (90 s) — past the window in which disables count against it — and starts it again, since
 a disable is usually the system's doing and the feature need not die of it. The log says
 when the tap stopped and when it is back.
 
 ## The clipboard is not on the insertion route
 
-Dictation's route ends in the clipboard, because §19 says a user must never lose words
-they spoke. A completion is the opposite case: the user did not produce this text, they
+Dictation's route ends in the clipboard, because a user must never lose words they spoke
+([insertion.md](insertion.md)). A completion is the opposite case: the user did not produce this text, they
 merely declined to type it, and losing it costs them one keypress.
 
 Meanwhile putting it on the clipboard costs them their actual clipboard **and** files a
@@ -126,9 +124,9 @@ suggestion's suffix from there. The delete count and the preview therefore use t
 whole-character boundary, while a scalar prefix that ends at a whole typed character stays
 untouched. `git com` → `git commit` shares all seven typed characters, so nothing is replaced
 and `mit` is typed. `gti c` → `git commit -m` shares only `g`, so four characters go and
-`it commit -m` arrives. Two features produce exactly that second shape and both used to draw
-a suggestion and then do nothing when Tab was pressed: the store's fuzzy fallback, and
-verification's correction of what was typed.
+`it commit -m` arrives. Two features produce that second shape: the store's fuzzy fallback,
+and verification's correction of what was typed. An append-only edit would draw them and then
+do nothing when Tab is pressed.
 
 What is replaced is always a suffix of what the user typed — it is cut from that string
 and no other — so the count cannot exceed what they have entered, and the edit can never
@@ -146,6 +144,14 @@ when the field answers with something other than what would be replaced, throws
 `.insertionRejected` and types nothing. A direct typed write makes its own `precedingText`
 read. A field that will not say what precedes the caret is not held up by the check: the
 deletions go ahead, since a Tab that does nothing is the worse failure.
+
+If the first typed chunk fails after Delete, the typed route tries to type the replaced suffix back
+only while the application captured before Delete is still in front. It reports
+`.insertionUnconfirmed` either way, so the user is told to check the field before retrying. If the
+application identity was unavailable, or focus changed, it leaves recovery to the user rather than
+typing into an unverified field. Cancellation stops the completion but does not block this guarded
+recovery attempt. Later chunk failures remain `.insertionInterrupted`, because part of the
+completion may already be there.
 
 The Accessibility route checks too. Before it widens the selection, `AXTextField` compares
 the characters that selection would cover with what the edit replaces
@@ -174,7 +180,7 @@ differ, so the group is broken between them. AppKit therefore charges roughly on
 per character replaced plus one for the typing; Chromium and Electron coalesce
 same-kind edits within a time window and so charge about two. Undo grouping belongs to the
 target's own undo manager and there is no cross-process API that opens a group in it, so
-this is a property of the route rather than a defect to be fixed later.
+this is a property of the route.
 
 This is the whole argument for preferring Accessibility, and it is why a field that
 refuses to select backwards falls through to keystrokes rather than the replacement being
@@ -189,6 +195,10 @@ its rows holds the `Acceptance.Edit` for that candidate — the very value
 `git com` draws `mit` at `caret.maxX` and the line reads `git commit` rather than
 `git comgit commit`. A row that has nothing left to offer is dropped, so a suggestion the
 user has finished typing takes the surface away instead of drawing an empty one.
+
+When an editor has already inserted closing punctuation after the caret, a suggestion drops
+the matching trailing closers from its insertion before drawing and accepting it. The existing
+punctuation remains in the field, so the completed line has one copy of each closer.
 
 `Edit.applied(to:)` is what makes the agreement checkable: what is drawn on top of what is
 typed equals the candidate, and a test asserts it over both shapes.
@@ -209,8 +219,8 @@ what goes, not a mark on it.
 **The ghost line carries no key glyph.** Grey text after the caret is already understood
 as a completion; a symbol beside it is clutter. Where a key is named — the `take` entry of
 the list's footer and the VoiceOver label — it is built from the field's `AcceptKey`, so a
-terminal reads `→` and an editor `⌥⇥`. A `⇥` once drawn in a terminal sent the user to
-press the shell's own completion key and conclude accepting was broken.
+terminal reads `→` and an editor `⌥⇥`. A `⇥` drawn in a terminal would send the user to the
+shell's own completion key.
 
 **A choice is one line until ⌥↓ is pressed.** A `.choice` draws only the leader's
 continuation on the caret's line, exactly like a `.certain`. The first ⌥↓ opens the list
@@ -225,14 +235,9 @@ measures from the caret to the field's right edge — `FocusedFieldSnapshot.fiel
 only when it is wider than a caret and holds it — or to the screen's `visibleFrame` edge,
 whichever is nearer. `SuggestionPresentation.maximumWidth` carries that to the view, which
 sets every line on one line and ends what does not fit in an ellipsis. With less than
-`SuggestionGeometry.minimumWidth` of room nothing is drawn, rather than pulling the panel
+`SuggestionGeometry.minimumWidth` (24 pt) of room nothing is drawn, rather than pulling the panel
 back over the characters already typed.
 
 **Tab still takes the whole suggestion.** What is cut is the drawing, not the offer: the
 gates judged a whole line and the acceptance applies that line, and VoiceOver reads it in
 full. Taking only what is visible would cut a word wherever the field happens to end.
-
-## Not settled here
-
-- **Whether the strike should overlay the user's own characters rather than echo them.**
-  That needs the field's text metrics, which `SuggestionGeometry` does not have.

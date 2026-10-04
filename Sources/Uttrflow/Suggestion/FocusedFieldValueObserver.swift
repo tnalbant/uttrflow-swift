@@ -150,7 +150,7 @@ final class FocusedFieldValueObserver: FocusedFieldValueObserving {
     }
 
     private func updateFocusedElement() {
-        guard let observer, let application else { return }
+        guard observer != nil, let application else { return }
         var value: CFTypeRef?
         guard
             AXUIElementCopyAttributeValue(

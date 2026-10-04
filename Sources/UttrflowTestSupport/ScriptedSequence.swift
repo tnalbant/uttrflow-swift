@@ -15,7 +15,8 @@ public struct ScriptedSequence<Success: Sendable, Failure: Error>: Sendable {
     public static func successes(
         _ values: [Success], afterwards: ScriptedOutcome<Success, Failure>? = nil
     ) -> Self {
-        let outcomes = values.map { ScriptedOutcome<Success, Failure>.success($0) } + (afterwards.map { [$0] } ?? [])
+        let outcomes =
+            values.map { ScriptedOutcome<Success, Failure>.success($0) } + (afterwards.map { [$0] } ?? [])
         guard let first = outcomes.first else { preconditionFailure("a sequence answers at least one call") }
         return Self(first, then: Array(outcomes.dropFirst()))
     }

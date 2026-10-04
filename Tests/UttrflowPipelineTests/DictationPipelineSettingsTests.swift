@@ -115,7 +115,8 @@ struct DictationPipelineSettingsTests {
 
     /// A recogniser that hands back `texts` in order, repeating the last.
     private func pieces(_ texts: [String]) -> FakeSpeechEngine {
-        FakeSpeechEngine(transcribing: .successes(texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }))
+        FakeSpeechEngine(
+            transcribing: .successes(texts.map { Transcription(text: $0, audioDuration: .seconds(1)) }))
     }
 
     /// A long dictation is laid out when its pieces are joined, and that is where the override was missing.

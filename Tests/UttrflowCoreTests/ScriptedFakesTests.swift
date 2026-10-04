@@ -9,7 +9,8 @@ import Testing
 struct ScriptedFakesTests {
     @Test("a sequence answers in order and repeats its last outcome once spent")
     func sequenceRepeatsItsLast() throws {
-        var outcomes = ScriptedSequence<Int, SpeechEngineError>.successes([1, 2], afterwards: .failure(.nothingHeard))
+        var outcomes = ScriptedSequence<Int, SpeechEngineError>.successes(
+            [1, 2], afterwards: .failure(.nothingHeard))
 
         #expect(try outcomes.next().resolve() == 1)
         #expect(try outcomes.next().resolve() == 2)
@@ -60,7 +61,9 @@ struct ScriptedFakesTests {
                 then: [.failure(.noCapableTransformer)]))
 
         #expect(try await cleaner.clean(.fixture()).text == "Tidied.")
-        await #expect(throws: TransformationError.noCapableTransformer) { try await cleaner.clean(.fixture()) }
+        await #expect(throws: TransformationError.noCapableTransformer) {
+            try await cleaner.clean(.fixture())
+        }
         #expect(cleaner.requests.count == 2)
     }
 
@@ -78,6 +81,7 @@ struct ScriptedFakesTests {
         try await clock.sleep(for: .milliseconds(40))
         try await clock.sleep(until: ManualClock.Instant(offset: .milliseconds(10)), tolerance: nil)
 
-        #expect(clock.now.offset == .milliseconds(40), "a deadline already passed leaves the clock where it is")
+        #expect(
+            clock.now.offset == .milliseconds(40), "a deadline already passed leaves the clock where it is")
     }
 }
