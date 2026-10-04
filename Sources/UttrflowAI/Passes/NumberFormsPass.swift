@@ -18,6 +18,8 @@ public struct NumberFormsPass: PieceCleaningPass {
     ]
     static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
+    /// The words a speaker uses for the leading zero of a clock minute.
+    static let clockZeros: Set<String> = ["oh", "o", "zero"]
     static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
@@ -136,6 +138,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
+        if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -270,6 +273,20 @@ public struct NumberFormsPass: PieceCleaningPass {
         let after = position + hundred.count
         return joined(after, shapes) && keys[after] == "over" && joined(after + 1, shapes)
             && NumberWords.isNumber(keys[after + 1])
+    }
+
+    /// A cued time whose minutes open with a spoken zero, read before the same words can join as a digit string.
+    private static func cuedClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let hour = NumberWords.cardinal(keys[position...position])?.value,
+            position + 1 < keys.count, clockZeros.contains(keys[position + 1]),
+            let time = time(hour: hour, at: position + 1, keys: keys, shapes: shapes), time.count == 2
+        else { return nil }
+        let end = position + 1 + time.count
+        guard !(joined(end, shapes) && singleDigit(keys[end]) != nil),
+            timeAcceptable(
+                position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes)
+        else { return nil }
+        return Phrase(text: time.text, count: end - position)
     }
 
     /// Requires temporal evidence when the hour and minute form one phrase.
@@ -429,7 +446,7 @@ public struct NumberFormsPass: PieceCleaningPass {
     }
 
     private static func minutes(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        if keys[start] == "oh" || keys[start] == "zero", joined(start + 1, shapes),
+        if clockZeros.contains(keys[start]), joined(start + 1, shapes),
             let digit = NumberWords.units[keys[start + 1]], digit > 0
         {
             return Phrase(text: "0\(digit)", count: 2)
