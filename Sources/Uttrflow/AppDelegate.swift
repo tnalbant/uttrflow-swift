@@ -1646,11 +1646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Puts the last dictation back at the caret by the route a dictation takes, never the clipboard.
     private func pasteLastTranscript() async {
         guard let text = lastTranscript, !text.isEmpty else {
-            Self.log.notice("paste last transcript: nothing dictated yet")
-            let message = "There is no transcript to paste yet."
-            actionNotice = MainNotice(
-                message: message, symbolName: "info.circle", tone: .neutral)
-            announce(message, urgently: false)
+            sayNoLastTranscript(to: "paste")
             return
         }
         do {
@@ -1660,10 +1656,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    /// Shown and spoken, so a shortcut with nothing to act on never looks broken.
+    private func sayNoLastTranscript(to verb: String) {
+        Self.log.notice("\(verb, privacy: .public) last transcript: nothing dictated yet")
+        let message = "There is no transcript to \(verb) yet."
+        actionNotice = MainNotice(message: message, symbolName: "info.circle", tone: .neutral)
+        announce(message, urgently: false)
+    }
+
     /// Writes the clipboard on purpose, which is the one shortcut whose whole job that is.
     private func copyLastTranscript() {
         guard let text = lastTranscript, !text.isEmpty else {
-            Self.log.notice("copy last transcript: nothing dictated yet")
+            sayNoLastTranscript(to: "copy")
             return
         }
         guard announcingPasteboard.setText(text).didWrite else {
