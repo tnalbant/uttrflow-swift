@@ -186,8 +186,8 @@ Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
 
 The recogniser's own errors (a dropped letter in 2, "8 8" heard as letters in 11) are
 recognition, not cleaning, and are out of reach of any rule here. Synthetic voices spell more
-evenly than people do, so a recorded human set may still change these shapes.
-
+<<<<<<< HEAD
+>>>>>>> origin/dq/issue-3846
 ## Dictation that reads like a request
 
 Dictation that sounds addressed to the model is still dictation, and its expected text is the
