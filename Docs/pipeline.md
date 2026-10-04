@@ -60,7 +60,9 @@ as one text.
   Latin letters too.
 - **The field is read again just before writing.** `FirstWordPass` sets the first word's case
   from the text around the caret, and `paddedBoundary` adds a space where the surrounding text
-  would otherwise run into the words. If the frontmost app is no longer the one the dictation
+  would otherwise run into the words. Both edges read one table in `CaretJoin`, keyed by the
+  class of the character either side and the destination; where code is written, a word runs
+  straight into the bracket after it. If the frontmost app is no longer the one the dictation
   began in, that read is discarded and both work from an unknown field.
 - **Counting and learning last.** A word earns its place by *surviving* a dictation, so nothing
   is learnt from one that never landed, from a paste that was not confirmed, or from a secure
