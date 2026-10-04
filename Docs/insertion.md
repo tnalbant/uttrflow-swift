@@ -7,7 +7,7 @@ in `Sources/UttrflowInput/`: `TextInsertion.swift` is the one place that names e
 `ClipboardTextInsertionEngine` and `PasteboardImageInsertionEngine`. The platform adapters —
 `SystemPasteboard`, `CGEventKeystrokeSender`, `CGEventTypist` and `AXAccessibilityFocus` — are in
 `SystemInput.swift`. **Dictation never writes the clipboard**: it tries an Accessibility write,
-then typed keystrokes, and if both refuse the transcript stays under Recent in the menu bar with
+then typed keystrokes, and if both refuse the transcript stays in History with
 an explicit Copy.
 
 Per-application results are collected in [compatibility.md](compatibility.md); this page feeds
@@ -36,8 +36,20 @@ Every strategy that sends words makes the same two checks immediately before it 
 destination is no longer the frontmost application. The typed strategy makes both, so a switch to
 an app with no readable field is refused rather than typed into.
 
-A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged` or `clipboardChanged`
-stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
+The typed strategy also refuses, with `noFocusedTextField`, when a focused element is published
+and its role is not a text-entry role (`FocusedElementKind.control`): in a page body, a list or a
+file browser, letters are commands. It still types when the application publishes no focused
+element at all (`FocusedElementKind.unpublished`), which is how a bundled-browser composer takes
+dictation. The check is made in `canInsert()`, before the first chunk and before every later one.
+
+The typed strategy posts its text `TypedTextInsertionEngine.chunkLength` characters at a time,
+yields between chunks and makes the same checks again before each chunk after the first, against
+the captured destination or, without one, the application in front at the first chunk. A check
+or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
+posted characters cannot be taken back.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+`clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
 ## The Accessibility write that changes nothing
@@ -159,7 +171,7 @@ field, and typing reads nothing back.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
 arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
-is `insertionTimedOut` and points to the transcript under Recent, never to a manual paste that
+is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
 ## Every clipboard write stays on this Mac

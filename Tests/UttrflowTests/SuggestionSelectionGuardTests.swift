@@ -57,7 +57,10 @@ struct SuggestionSelectionGuardTests {
                 let (expected, overflow) = location.addingReportingOverflow(text.utf16.count)
                 guardrail.typedThrough(text)
                 #expect(guardrail.expectedRange == (overflow ? nil : NSRange(location: expected, length: 0)))
-                if overflow { #expect(guardrail.observe(nil)) }
+                if overflow {
+                    let observed = guardrail.observe(nil)
+                    #expect(observed)
+                }
             }
         }
     }

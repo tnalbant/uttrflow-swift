@@ -23,10 +23,9 @@ private func reach(of intent: MenuBarIntent) -> Reach {
     case .open(let destination): .opens(destination)
     // A fresh app has no speech model, and only onboarding downloads one.
     case .recover(.downloadSpeechModel): .opens(.onboarding)
-    case .recover(.retryFromRecording): .opens(.main(.history))
+    case .recover(.retryFromRecording), .recover(.showHistory): .opens(.main(.history))
     case .recover(.openSystemSettings), .recover(.retry), .recover(.pasteManually),
-        .recover(.copyTranscript),
-        .recover(.showRecentDictations):
+        .recover(.copyTranscript):
         .system
     case .insertRecent, .copyRecent, .insertClip, .copyClip, .undoLearnedWord: .nothing
     case .startDictation, .stopDictation, .openClipboard, .setFeature, .checkForUpdates, .quit: .system
@@ -68,7 +67,7 @@ private let samples: [MenuBarIntent] =
     + everyDestination.map { .open($0) }
     + [
         .recover(.openSystemSettings(.microphone)), .recover(.retry), .recover(.downloadSpeechModel),
-        .recover(.pasteManually), .recover(.showRecentDictations), .recover(.retryFromRecording),
+        .recover(.pasteManually), .recover(.showHistory), .recover(.retryFromRecording),
         .recover(.copyTranscript),
     ]
     + [UUID(), UUID()].flatMap { id -> [MenuBarIntent] in

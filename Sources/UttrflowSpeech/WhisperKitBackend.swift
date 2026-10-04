@@ -178,7 +178,11 @@ fileprivate func rawTranscript(
                                     text: $0.word, start: Double($0.start), end: Double($0.end),
                                     probability: Double($0.probability))
                             }
-                        })
+                        },
+                        reliability: SegmentReliability(
+                            temperature: Double($0.temperature), averageLogProbability: Double($0.avgLogprob),
+                            noSpeechProbability: Double($0.noSpeechProb),
+                            compressionRatio: Double($0.compressionRatio)))
                 },
                 effort: effort(of: [result]),
                 tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },

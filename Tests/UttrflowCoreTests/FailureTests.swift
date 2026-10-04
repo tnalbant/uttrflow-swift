@@ -114,10 +114,10 @@ struct FailurePresentationTests {
         #expect(SpeechEngineError.audioTooShort.recovery == nil)
         #expect(SpeechEngineError.transcriptionFailed(description: "x").recovery == .retry)
 
-        #expect(TextInsertionError.noFocusedTextField.recovery == .showRecentDictations)
+        #expect(TextInsertionError.noFocusedTextField.recovery == .showHistory)
         #expect(TextInsertionError.noFocusedTextField.userMessage.contains("Recent"))
         #expect(TextInsertionError.accessibilityDenied.recovery == .openSystemSettings(.accessibility))
-        #expect(TextInsertionError.insertionTimedOut.recovery == .showRecentDictations)
+        #expect(TextInsertionError.insertionTimedOut.recovery == .showHistory)
         #expect(TextInsertionError.insertionRejected(description: "x").recovery == .pasteManually)
 
         #expect(HotkeyError.observationNotPermitted.recovery == .openSystemSettings(.accessibility))
@@ -136,7 +136,7 @@ struct FailurePresentationTests {
     @Test("never sends the user to the clipboard when the clipboard is what failed")
     func clipboardFailureDoesNotOfferAPaste() {
         let failure = TextInsertionError.clipboardUnavailable
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
         #expect(!failure.userMessage.lowercased().contains("paste"))
         #expect(failure.userMessage.contains("Recent"))
     }
@@ -144,11 +144,11 @@ struct FailurePresentationTests {
     @Test("an unconfirmed insertion offers the saved transcript, not an assumed clipboard copy")
     func insertionTimeoutDoesNotOfferAPaste() {
         let failure = TextInsertionError.insertionTimedOut
-        #expect(failure.recovery == .showRecentDictations)
+        #expect(failure.recovery == .showHistory)
         #expect(failure.userMessage.contains("Recent"))
         #expect(
             failure.userMessage
-                == "Your dictation didn't arrive in time. It's saved under Recent in the menu bar.")
+                == "Your dictation didn't arrive in time. It's saved in History.")
         #expect(!failure.userMessage.contains("copied"))
         #expect(!failure.userMessage.contains("⌘V"))
     }

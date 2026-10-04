@@ -17,11 +17,23 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     ]
     static let letterNamesForCasing = Set(letterNames.keys)
 
-    /// Letter names that are also everyday words; a run made only of these is speech, not spelling.
-    static let everydayWords: Set<String> = [
-        "a", "i", "be", "bee", "see", "are", "you", "why", "oh", "eye", "cue", "queue", "tee",
-        "pee", "gee", "jay", "kay", "ex", "em", "en", "el",
+    /// Spoken letter names that are also common English words, so a spelled run cannot
+    /// admit one unless the run's own evidence (a single-letter name on each side) says
+    /// it is the letter. "are" reads overwhelmingly as the verb; "you" reads as the
+    /// pronoun (#3312); "why", "oh", "be" and "see" follow for the same reason.
+    private static let ambiguousLetterNames: Set<String> = [
+        "are", "you", "why", "oh", "be", "see",
     ]
+
+    /// True when `key` is an ambiguous letter name (one of the words in `ambiguousLetterNames`).
+    private static func isAmbiguousLetterName(_ key: String) -> Bool {
+        ambiguousLetterNames.contains(key)
+    }
+
+    /// True when `key` is the spoken form of a single letter — the unambiguous atoms of a run.
+    private static func isSingleLetterName(_ key: String) -> Bool {
+        letterNames[key] != nil && key.count == 1
+    }
 
     private static let dottedPairs: Set<String> = ["eg", "ie"]
 
@@ -37,14 +49,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 continue
             }
             let letters = live[position..<end].compactMap { Self.letterName(draft.shape(at: $0)) }
-            guard letters.count == end - position else {
-                position += 1
-                continue
-            }
-            let hasBareLetter = live[position..<end].contains {
-                !Self.everydayWords.contains(draft.shape(at: $0).key)
-            }
-            guard hasBareLetter else {
+            guard letters.count == end - position, Self.isSpelled(live[position..<end], in: draft) else {
                 position += 1
                 continue
             }
@@ -54,8 +59,12 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 ? letters.map { $0.lowercased() }.joined(separator: ".") + "."
                 : value
             let first = live[position]
+            // The run keeps the mark its last letter carried, so a spoken stop or comma survives the join.
+            let closing = draft.shape(at: live[end - 1]).suffix
+            let cased = Self.casedOutput(output, first: draft.words[first].text)
             draft.replace(
-                at: first, with: Self.casedOutput(output, first: draft.words[first].text), by: Self.id)
+                at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id
+            )
             for index in live[(position + 1)..<end] { draft.remove(at: index, by: Self.id) }
             live.removeSubrange((position + 1)..<end)
             position += 1
@@ -86,13 +95,27 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             guard candidateEnd - position >= 3 || Self.dottedPairs.contains(value) else { return nil }
         }
         let initialismStart = position
+        // An ambiguous letter name (a common English word like "are") cannot start a run on its own:
+        // "the letters are a b c d" reads "are" as the verb, not the letter R, so the run begins on the
+        // first single-letter name that follows.
+        guard !Self.isAmbiguousLetterName(draft.shape(at: live[initialismStart]).key) else {
+            return nil
+        }
         var end = position + 1
         while end < live.count, !draft.shape(at: live[end - 1]).endsClause,
             live[end] == live[end - 1] + 1,
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil,
+            // An ambiguous letter name in the middle of a run still needs a single-letter name on each
+            // side; otherwise the spoken word is meant as itself.
+            !Self.isAmbiguousLetterName(draft.shape(at: live[end]).key)
+                || (Self.isSingleLetterName(draft.shape(at: live[end - 1]).key)
+                    && (end + 1 == live.count
+                        || Self.isSingleLetterName(draft.shape(at: live[end + 1]).key))),
+            // A letter a closing a clause cannot be an article, so it ends the initialism.
             (draft.shape(at: live[end]).key != "a" || end == initialismStart
+                || end + 1 == live.count || draft.shape(at: live[end]).endsClause
                 || end + 1 < live.count
                     && Self.letterName(draft.shape(at: live[end + 1])) != nil
                     && draft.shape(at: live[end + 1]).key != "a")
@@ -118,7 +141,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
 
     private func candidateRunEnd(from position: Int, in live: [Int], draft: Draft) -> Int {
         var end = position
-        while end < live.count, !draft.shape(at: live[end]).endsClause,
+        while end < live.count, end == position || !draft.shape(at: live[end - 1]).endsClause,
             end == position || live[end] == live[end - 1] + 1,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil
@@ -131,6 +154,11 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     /// The letter a word names, where a cut-off is an unfinished word and names no letter.
     private static func letterName(_ shape: WordShape) -> String? {
         shape.isCutOff ? nil : letterNames[shape.key]
+    }
+
+    /// Whether a run is evidence of spelling: three or more letter names, or a pair of bare single letters.
+    private static func isSpelled(_ run: ArraySlice<Int>, in draft: Draft) -> Bool {
+        run.count >= 3 || run.allSatisfy { draft.shape(at: $0).key.count == 1 }
     }
 
     private static func casedOutput(_ output: String, first: String) -> String {

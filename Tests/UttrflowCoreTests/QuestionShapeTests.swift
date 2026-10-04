@@ -10,6 +10,16 @@ private func shapes(_ text: String) -> [WordShape] {
 @Suite("QuestionShape")
 struct QuestionShapeTests {
     @Test(
+        "reads an inversion around a quantifier as a question",
+        arguments: [
+            "are both builds green", "is every test passing", "are all checks done", "is each step clear",
+            "is either option fine", "is neither branch merged",
+        ])
+    func asksAroundAQuantifier(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
         "reads a direct question from its word order",
         arguments: [
             "where did you put the keys", "which branch should I merge into",
@@ -182,5 +192,27 @@ struct QuestionShapeTests {
         ] {
             #expect(!QuestionShape.asks(shapes(text)), "Expected a statement: \(text)")
         }
+    }
+}
+
+@Suite("ReviewTag")
+struct ReviewTagTests {
+    @Test(
+        "reads a review label said first only where it heads a clause",
+        arguments: [
+            ("nit spelling mistake here", true), ("minor we should log it", true),
+            ("question is this needed", true), ("question is that needed", false),
+            ("minor changes only", false), ("question is whether we ship", false),
+            ("question for you all", false), ("nit: done here", false), ("nit done", false),
+            ("we have one nit", false),
+        ])
+    func leads(text: String, expected: Bool) {
+        #expect(ReviewTag.leads(shapes(text)) == expected)
+    }
+
+    @Test("judges the clause after a colon on its own")
+    func clauseAfterColon() {
+        #expect(QuestionShape.asks(shapes("question: why is this async")))
+        #expect(!QuestionShape.asks(shapes("note: we ship today")))
     }
 }

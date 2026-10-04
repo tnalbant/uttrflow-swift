@@ -76,7 +76,7 @@ let package = Package(
     ],
     targets: [
         // Platform-free domain layer: protocols, models, errors. Imports nothing but the stdlib.
-        .target(name: "UttrflowCore", swiftSettings: sharedSwiftSettings),
+        .target(name: "UttrflowCore", resources: [.process("Resources")], swiftSettings: sharedSwiftSettings),
 
         // Microphone capture. Everything that can be reasoned about without hardware —
         // resampling, accumulation, encoding — lives outside the AVAudioEngine boundary.

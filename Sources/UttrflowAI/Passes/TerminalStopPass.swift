@@ -25,6 +25,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if layout.contains(.paragraphs), policy != .never {
             Self.stopParagraphs(&draft, destination: destination)
         }
+        Self.separateLeadingReviewTag(&draft, layout: layout)
         Self.separateLeadingQuestionOpener(&draft, layout: layout)
         Self.separateTrailingRequest(&draft, layout: layout)
         Self.separateTrailingRightTag(&draft, layout: layout)
@@ -60,6 +61,16 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         else { return }
         let index = live[start - 1]
         draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
+    }
+
+    /// Sets off a review label said first, "nit spelling" → "Nit: spelling", with a colon.
+    private static func separateLeadingReviewTag(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices.filter { !draft.shape(at: $0).key.isEmpty }
+        guard let first = live.first, !draft.words[first].isLayoutMark,
+            ReviewTag.leads(live.prefix(3).map { draft.shape(at: $0) })
+        else { return }
+        draft.replace(at: first, with: WordShape.marked(draft.words[first].text, with: ":"), by: id)
     }
 
     /// Sets off the address or multiword lead-in before a direct question.

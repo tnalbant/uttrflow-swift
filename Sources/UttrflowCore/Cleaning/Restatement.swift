@@ -2,9 +2,10 @@
 public enum Restatement {
     /// Phrases that announce a correction, longest first so "no sorry" is one trigger rather than two.
     public static let triggers: [[String]] = [
-        ["no", "sorry"], ["no", "wait"], ["wait", "sorry"], ["scratch", "that"], ["never", "mind"],
-        ["i", "mean"], ["nahi", "nahi"], ["mera", "matlab"],
-        ["no"], ["sorry"], ["actually"],
+        ["actually", "make", "it"],
+        ["no", "sorry"], ["no", "wait"], ["wait", "sorry"], ["scratch", "that"], ["strike", "that"],
+        ["never", "mind"], ["or", "rather"], ["i", "mean"], ["nahi", "nahi"], ["mera", "matlab"],
+        ["no"], ["sorry"], ["actually"], ["correction"],
     ]
 
     /// How many words back number corrections may reach.
