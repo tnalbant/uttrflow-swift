@@ -183,4 +183,13 @@ extension Draft {
         }
         return end == position + count
     }
+
+    /// Whether the live words from `position` are the phrase `words`, inside one sentence unless `acrossSentences`.
+    public func spells(
+        _ words: [String], at position: Int, in live: [Int], acrossSentences: Bool = false
+    ) -> Bool {
+        position + words.count <= live.count
+            && (acrossSentences || sentenceContains(words.count, from: position, in: live))
+            && zip(words, live[position..<position + words.count]).allSatisfy { $0 == shape(at: $1).key }
+    }
 }

@@ -38,7 +38,7 @@ struct SentenceLocalityTests {
     /// A mark said by name is written onto the word before it even across a stop, the recogniser's boundary being a guess and the spoken mark an instruction.
     static func attachesBackwards(_ body: String) -> Bool {
         let opening = body.split(separator: " ").map { WordShape(String($0)).key }
-        return SpokenPunctuationPass.marks.contains { opening.starts(with: $0.words) }
+        return SpokenCommands.marks.contains { opening.starts(with: $0.words) }
     }
 
     @Test("a preceding sentence changes nothing about how the sentence after it is cleaned")

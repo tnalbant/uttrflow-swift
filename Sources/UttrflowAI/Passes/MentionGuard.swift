@@ -50,7 +50,7 @@ public enum MentionGuard {
 
     /// The spoken names of marks and layout, which close the phrase an opener began rather than heading it.
     static let markNames: Set<String> = Set(
-        SpokenPunctuationPass.marks.flatMap(\.words) + LayoutWordsPass.marks.flatMap(\.words))
+        SpokenCommands.marks.flatMap(\.words) + SpokenCommands.layout.flatMap(\.words))
 
     /// Whether the mark word at `position` is mentioned; `reach` is how far the phrase's own opener may stand.
     static func isMentioned(
