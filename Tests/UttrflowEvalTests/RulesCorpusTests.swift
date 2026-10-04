@@ -57,7 +57,7 @@ struct RulesCorpusTests {
         // Grammar cases name a destination too, but repairs are the model's alone; the floor is below.
         let named = Set(
             EvaluationCorpus.all.filter { $0.destination != .plain && $0.category != .grammar }.map(\.id))
-        #expect(named.count == 56)
+        #expect(named.count == 64)
         #expect(named.subtracting(Self.modelOnly).isSubset(of: Self.rulesMustPass))
         #expect(Self.modelOnly.isSubset(of: named))
         #expect(Self.modelOnly.isDisjoint(with: Self.rulesMustPass))

@@ -31,7 +31,10 @@ public enum DestinationRules {
             kind: .notes
         ),
         DestinationRule(
-            bundlePrefixes: ["com.apple.reminders", "com.apple.ical"],
+            bundlePrefixes: [
+                "com.apple.reminders", "com.apple.ical", "com.culturedcode.ThingsMac",
+                "com.omnigroup.OmniFocus3", "com.flexibits.fantastical2.mac", "com.todoist.mac.Todoist",
+            ],
             destination: .document, terminalStop: .never
         ),
         DestinationRule(
