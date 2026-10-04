@@ -38,7 +38,7 @@ struct Dictate: AsyncParsableCommand {
         let inserter = PrintingInserter()
         let pipeline = DictationPipeline(
             capture: playback, speech: speech, cleaner: TextTransformers.router(),
-            context: NoScreen(), inserter: inserter,
+            context: FixedScreen(), inserter: inserter,
             windowing: allAtOnce ? .onePiece : .standard)
 
         print("Loading the recogniser…")
@@ -160,8 +160,10 @@ actor PlaybackCaptureEngine: AudioCaptureEngine {
 }
 
 /// Nothing on screen, which is what the command line has.
-struct NoScreen: ContextEngine {
-    func currentContext() async -> AppContext { AppContext() }
+struct FixedScreen: ContextEngine {
+    var context = AppContext()
+
+    func currentContext() async -> AppContext { context }
 }
 
 /// Puts the words on standard output rather than into another app.

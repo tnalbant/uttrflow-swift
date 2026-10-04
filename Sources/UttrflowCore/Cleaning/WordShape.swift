@@ -24,6 +24,9 @@ public struct WordShape: Equatable, Sendable {
     /// Whether the word closes a clause or a sentence.
     public var endsClause: Bool { suffix.contains(where: { ",.;:!?".contains($0) }) }
 
+    /// Whether the word is a spoken cut-off: letters left hanging on a bare hyphen.
+    public var isCutOff: Bool { suffix == "-" && !core.isEmpty }
+
     /// Whether the word closes a sentence.
     public var endsSentence: Bool { suffix.contains(where: { ".!?।॥".contains($0) }) }
 
@@ -44,7 +47,7 @@ public struct WordShape: Equatable, Sendable {
     /// Uppercases the first letter; a leading digit counts as the start and stays as it is.
     public static func capitalised(_ text: String) -> String {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }) else { return text }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(text) else { return text }
         return String(text[..<start]) + text[start].uppercased() + String(text[text.index(after: start)...])
     }
 
@@ -53,8 +56,13 @@ public struct WordShape: Equatable, Sendable {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }), text[start].isLetter else {
             return text
         }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(text) else { return text }
         return String(text[..<start]) + text[start].lowercased() + String(text[text.index(after: start)...])
+    }
+
+    /// Whether a word is cased as written: an internal capital, or a technical token such as a path or URL.
+    public static func keepsWrittenCase(_ text: String) -> Bool {
+        hasInternalCapital(text) || TechnicalToken.classify(text) != nil
     }
 
     /// Whether a word carries an uppercase letter after its first letter.
@@ -124,9 +132,7 @@ public struct WordShape: Equatable, Sendable {
     public static func marked(_ text: String, with mark: String) -> String {
         if mark == "\u{2014}" { return text + " " + mark }
         if let last = text.last, ",.;:!?".contains(last), ",.;:!?".contains(mark) {
-            if last == ".",
-                InsertionPoint.sentenceAbbreviations.contains(WordShape(text).core.lowercased())
-            {
+            if last == ".", Abbreviations.ownsStop(WordShape(text).core) {
                 return mark == "." ? text : text + mark
             }
             return String(text.dropLast()) + mark
@@ -179,5 +185,14 @@ extension Draft {
             return index + 1 == end
         }
         return end == position + count
+    }
+
+    /// Whether the live words from `position` are the phrase `words`, inside one sentence unless `acrossSentences`.
+    public func spells(
+        _ words: [String], at position: Int, in live: [Int], acrossSentences: Bool = false
+    ) -> Bool {
+        position + words.count <= live.count
+            && (acrossSentences || sentenceContains(words.count, from: position, in: live))
+            && zip(words, live[position..<position + words.count]).allSatisfy { $0 == shape(at: $1).key }
     }
 }

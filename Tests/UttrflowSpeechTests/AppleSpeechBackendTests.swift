@@ -34,6 +34,14 @@ struct AppleSpeechBackendTests {
         #expect(changed.remaining == nil)
     }
 
+    @Test("a cancelled transcription keeps the cached assets; a real fault drops them")
+    func cancellationKeepsCache() {
+        let fault = SpeechEngineError.transcriptionFailed(description: "fault")
+        #expect(AppleSpeechBackend.invalidatesCache(fault, cancelled: false))
+        #expect(!AppleSpeechBackend.invalidatesCache(fault, cancelled: true))
+        #expect(!AppleSpeechBackend.invalidatesCache(CancellationError(), cancelled: false))
+    }
+
     @Test("requests the genuine confidence and audio-time attributes")
     func requestsWordAttributes() {
         let options = AppleSpeechBackend.transcriptionPreset().attributeOptions
@@ -56,6 +64,7 @@ struct AppleSpeechBackendTests {
                 RawWord(text: "pool", start: 0.1, end: 0.25, probability: 0.9),
                 RawWord(text: "request", start: 0.3, end: 0.7, probability: 0.2),
             ])
+        #expect(segment.reliability == nil)
 
         let raw = RawTranscript(text: "pool request", segments: [segment])
         let transcript = raw.transcription(audioDuration: .seconds(1))

@@ -7,7 +7,7 @@ extension EvaluationCorpus {
     static let formatting: [EvaluationCase] =
         boundaryCases + commaCases + questionCases + quoteCases + ellipsisCases + tokenCases
         + numberCases + listCases + paragraphCases + correctionCases + destinationCases + codeCases
-        + hinglishCases
+        + hinglishCases + probeCases
 
     static let boundaryCases: [EvaluationCase] = [
         .init(
@@ -198,6 +198,24 @@ extension EvaluationCorpus {
             spoken: "the page is at docs dot example dot com slash setup",
             expected: "The page is at docs.example.com/setup.",
             mustKeep: ["docs.example.com/setup"], classes: [.capitalisationAndTokens]
+        ),
+        .init(
+            id: "fmt-token-web-path-stopped", category: .technical,
+            spoken: "Visit example dot com slash pricing.",
+            expected: "Visit example.com/pricing.",
+            mustKeep: ["example.com/pricing"], classes: [.capitalisationAndTokens]
+        ),
+        .init(
+            id: "fmt-token-web-deep-path-stopped", category: .technical,
+            spoken: "The site is example dot org slash docs slash intro.",
+            expected: "The site is example.org/docs/intro.",
+            mustKeep: ["example.org/docs/intro"], classes: [.capitalisationAndTokens]
+        ),
+        .init(
+            id: "fmt-token-url-path-stopped", category: .technical,
+            spoken: "The url is https colon slash slash example dot com slash docs.",
+            expected: "The url is https://example.com/docs.",
+            mustKeep: ["https://example.com/docs"], classes: [.capitalisationAndTokens]
         ),
         .init(
             id: "fmt-token-acronym-kept", category: .technical,

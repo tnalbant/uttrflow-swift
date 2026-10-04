@@ -66,6 +66,11 @@ struct SpokenAddressTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("leaves a piece ending on www dot alone, with no host after it to read")
+    func wwwDotAtTheEnd() {
+        #expect(cleaned("the site is www dot", by: sut) == "the site is www dot")
+    }
+
     @Test(
         "leaves an ordinary at alone",
         arguments: [
@@ -116,6 +121,10 @@ struct SpokenAddressTests {
             ("visit example dot com slash docs", "visit example.com/docs"),
             ("the site is www dot example dot com", "the site is www.example.com"),
             ("go to https colon slash slash example dot com", "go to https://example.com"),
+            ("go to w w w dot example dot org", "go to www.example.org"),
+            ("visit w w w dot example dot com slash pricing", "visit www.example.com/pricing"),
+            ("the url is h t t p s colon slash slash example dot com", "the url is https://example.com"),
+            ("the url is http colon slash slash example dot com", "the url is http://example.com"),
             (
                 "the docs live at docs dot example dot com slash api slash v two",
                 "the docs live at docs.example.com/api/v2"
@@ -127,6 +136,13 @@ struct SpokenAddressTests {
             ("my handle is sam at discord", "my handle is sam@discord"),
             ("my handle is sam at example dot com", "my handle is sam@example.com"),
             ("the variable is user underscore id", "the variable is user_id"),
+            ("Visit example dot com slash pricing.", "Visit example.com/pricing."),
+            ("The site is example dot org slash docs slash intro.", "The site is example.org/docs/intro."),
+            (
+                "The url is https colon slash slash example dot com slash docs.",
+                "The url is https://example.com/docs."
+            ),
+            ("The path is slash users slash sam slash notes.", "The path is /users/sam/notes."),
         ]
     )
     func writesSpokenAddresses(input: String, expected: String) {

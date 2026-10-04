@@ -166,7 +166,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         try await monitor.start(binding: binding)
     }
 
-    public func stop() {
+    /// Stops watching for the shortcut, first finishing any dictation under way so no microphone outlives it.
+    public func stop() async {
+        await endForSessionEnding()
         forgetUnsettledPress()
         stopWatchingTheLimit()
         // Stopped last, so the release it owes for a hold still reaches the forwarder.
@@ -257,7 +259,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         answer(handled, with: ())
     }
 
-    private func answer<Outcome: Sendable>(_ handled: CheckedContinuation<Outcome, Never>, with outcome: Outcome) {
+    private func answer<Outcome: Sendable>(
+        _ handled: CheckedContinuation<Outcome, Never>, with outcome: Outcome
+    ) {
         guard let processing else { return handled.resume(returning: outcome) }
         Task {
             await processing.value
@@ -366,7 +370,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             pressOpenedTheMicrophone = await pipeline.currentState.isListening
         case .pressToToggle:
             let wasListening = await pipeline.currentState.isListening
-            await toggleListening()
+            _ = await perform(.toggle)
             let isListening = await pipeline.currentState.isListening
             pressOpenedTheMicrophone = !wasListening && isListening
         }
