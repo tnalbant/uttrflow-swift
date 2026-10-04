@@ -44,6 +44,16 @@ struct HotkeyRecogniserTests {
         #expect(!r.isDown)
     }
 
+    @Test("F13 alone: down presses, auto-repeat is ignored, up releases once")
+    func textlessKeyHold() {
+        var r = HotkeyRecogniser(binding: HotkeyBinding(keyCode: 105, modifiers: []))
+        #expect(r.receive(down(105, [])) == .pressed)
+        #expect(r.receive(down(105, [])) == nil)
+        #expect(r.receive(down(105, [])) == nil)
+        #expect(r.receive(KeyStroke(keyCode: 105, modifiers: [], phase: .up)) == .released)
+        #expect(r.receive(KeyStroke(keyCode: 105, modifiers: [], phase: .up)) == nil)
+    }
+
     @Test("one modifier held on its own")
     func singleModifierHold() {
         var r = HotkeyRecogniser(binding: HotkeyBinding(keyCode: 55, modifiers: []))

@@ -648,6 +648,19 @@ struct DiagnosticsReportTests {
         #expect(report.contains("Empty-result retries: 1 retry"))
     }
 
+    @Test("the recognition split is the mean per timed piece, and untimed pieces are left out")
+    func reportsRecognitionSplit() {
+        let timings = RecognitionTimings(
+            melSeconds: 0.02, encodeSeconds: 0.3, decodeSeconds: 0.4, wordTimingSeconds: 0.06,
+            recognitionSeconds: 0.8)
+        let rows = DiagnosticsPresenter.decodingRows(
+            for: [DecodeEffort(timings: timings), DecodeEffort(timings: timings.adding(timings)), .none],
+            locale: DiagnosticsFixture.locale)
+        #expect(
+            rows.last?.detail == "mel 0.03s, encode 0.45s, decode 0.60s, word timing 0.09s of 1.20s")
+        #expect(DiagnosticsPresenter.decodingRows(for: [.none]).count == 2)
+    }
+
     /// What is copied must not say something different from what was on screen.
     @Test("the report carries the same numbers the page shows")
     func reportMatchesThePage() {

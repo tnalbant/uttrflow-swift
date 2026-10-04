@@ -67,8 +67,9 @@ relative path is refused while absolute and `~` paths are still checked. A `cd` 
 the directory for the commands after it when they surely follow it (`&&`, `;`); after `||`, `|` or
 `&` the directory is unknown. `..` is folded lexically, as `cd` does.
 
-**Branches.** `GitRepository` finds `.git` by walking up from the directory, follows a worktree's
-`gitdir:` and `commondir`, and looks a ref up as a loose file under `refs/` or a line of
+**Branches.** `GitRepository` finds `.git` by walking up from the directory, follows a linked
+worktree's `gitdir:` and `commondir` only when the common `.git` directory contains its admin
+directory and the reciprocal `gitdir` points back to the worktree, then looks a ref up as a loose file under `refs/` or a line of
 `packed-refs`. A repository whose refs live in a reftable, or whose `packed-refs` is over 8 MB
 (`GitRepository.packedRefsLimit`), is not read, and its branch lines are refused. A commit hash
 is refused too, since telling one from a typo means reading the object store.
@@ -120,7 +121,8 @@ filesystem cannot be inferred from the outer terminal's Accessibility document.
 ## What it never does
 
 It never runs a program. Everything it knows comes through `FileSystemProbing`: a `stat`, an
-`access(X_OK)`, a bounded read and a bounded listing. The test double records every question, and
+`access(X_OK)`, a bounded read and a lazy directory walk that stops at its result limit or when the
+turn is cancelled. The test double records every question and visited name, and
 the tests hold that a line the check refuses reaches the machine index only for the shell's
 aliases, which are read from its configuration as text. The machine index's branch list is read
 from the same refs, so no `git` process is started for branches either. A line the check lets

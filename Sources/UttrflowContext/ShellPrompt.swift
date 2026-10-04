@@ -202,10 +202,7 @@ public enum ShellPrompt {
 
     /// Whether a terminal line is asking for a credential rather than a shell command.
     static func isCredentialPrompt(in line: String) -> Bool {
-        let prefix = line.prefix(searchLimit)
-        guard let colon = prefix.firstIndex(where: credentialColons.contains) else { return false }
-        let label = String(prefix[..<colon]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return introducesCredential(label)
+        CredentialPrompt.matches(line)
     }
 
     /// The marks an arrow prompt draws after the branch when the tree has changes, or has none.

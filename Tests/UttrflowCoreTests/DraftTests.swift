@@ -22,6 +22,12 @@ struct DraftTests {
         #expect(draft.text == "Ah the um the invoice is ah overdue")
     }
 
+    @Test("keeps a Unicode ellipsis as written, splitting only one that sits between two words")
+    func keepsUnicodeEllipsis() {
+        #expect(Draft(text: "wait\u{2026} we should\u{2026} move").words.map(\.text) == ["wait\u{2026}", "we", "should\u{2026}", "move"])
+        #expect(Draft(text: "the\u{2026}the end\u{2026}").words.map(\.text) == ["the", "the", "end\u{2026}"])
+    }
+
     @Test("keeps abbreviations and URLs intact while splitting a pause")
     func keepsAbbreviationsAndURLs() {
         let draft = Draft(text: "e.g. https://example.com/a...b hello...world")

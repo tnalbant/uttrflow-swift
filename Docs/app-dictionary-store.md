@@ -53,9 +53,10 @@ forget to throw away.
 
 ## Adding
 
-`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word,
-case-insensitively: "Kubectl" and "kubectl" are one word to the user and two rows in a settings
-list is a bug they can see. The newcomer's spelling wins, since it is the one they just asked for.
+`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word.
+Spelling identity ignores case and spaces but retains `+`, `#`, `&`, `.`, `/` and `-`, so "Open AI"
+and "OpenAI" are one entry while "C++", "C#" and "C" remain distinct. The newcomer's spelling
+wins, since it is the one they just asked for.
 
 `add(word:pronunciation:at:)` is where the editor's input is turned into an entry, so the trimming,
 the empty-pronunciation rule and the origin are decided once. A blank pronunciation is stored as

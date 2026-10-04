@@ -19,7 +19,8 @@ extension CleaningPipeline {
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
     public static func standard(
-        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
+        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default,
+        vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
@@ -27,7 +28,7 @@ extension CleaningPipeline {
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
                 documentName: situation.app.documentName, steps: steps
             ).passes
-                + message(for: formatter, situation: situation, steps: steps).passes)
+                + message(for: formatter, situation: situation, steps: steps, vocabulary: vocabulary).passes)
     }
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
@@ -57,16 +58,20 @@ extension CleaningPipeline {
     /// The passes that finish a model's answer to a whole message: the caret's echo taken back, then the message's.
     public static func afterModel(
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
-        spoken: String? = nil, steps: CleaningSteps = .default
+        spoken: String? = nil, steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
-                + message(for: formatter, situation: situation, heard: heard, steps: steps).passes)
+            passes: afterModelPiece(
+                digits: formatter.digits, situation: situation, heard: heard, spoken: spoken
+            ).passes
+                + message(
+                    for: formatter, situation: situation, heard: heard, steps: steps, vocabulary: vocabulary
+                ).passes)
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
     public static func afterModelPiece(
-        situation: Situation, heard: String? = nil, spoken: String? = nil
+        digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [
             SpokenPunctuationPass(destination: situation.destination),
@@ -74,13 +79,14 @@ extension CleaningPipeline {
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
                 spokenText: heard),
             CaretCloserPass(precedingText: situation.insertion.precedingText, spokenText: spoken),
+            DigitGroupingPass(digits: digits, spokenText: spoken),
         ])
     }
 
     /// The passes asked once of a whole message, spelled letters to the final stop; `heard` is what `.asSpoken` copies.
     public static func message(
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
-        steps: CleaningSteps = .default
+        steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
             wholeText: initialisms(steps: steps) + [
@@ -89,7 +95,8 @@ extension CleaningPipeline {
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
                     onScreen: situation.app.textOnScreen, heard: heard,
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                        && formatter.destination != .codeEditor),
+                        && formatter.destination != .codeEditor,
+                    vocabulary: vocabulary),
                 TerminalStopPass(
                     policy: terminalStop(formatter, in: situation), layout: formatter.layout,
                     insertionPoint: situation.insertion, destination: formatter.destination),

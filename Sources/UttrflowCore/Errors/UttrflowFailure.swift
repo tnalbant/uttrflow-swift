@@ -22,8 +22,8 @@ public enum RecoveryAction: Sendable, Equatable {
     case downloadSpeechModel
     /// The text is safe in the clipboard for the user to paste with ⌘V; the button only dismisses the notice.
     case pasteManually
-    /// The text never reached the clipboard but is listed under Recent, so the user is shown where it went.
-    case showRecentDictations
+    /// The text never reached the clipboard but is listed in History, so the user is shown where it went.
+    case showHistory
     /// The text is retained as the latest transcript and can be copied with an explicit user action.
     case copyTranscript
     /// The words were lost but the audio was not: the Dictation page lists it with a Retry.

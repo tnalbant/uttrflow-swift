@@ -8,11 +8,7 @@ struct SpokenAddress: Equatable {
     let text: String
 
     /// The endings that make a spoken domain a domain; an unknown one is left as words rather than guessed at.
-    static let topLevels: Set<String> = [
-        "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz",
-        "io", "co", "ai", "dev", "app", "me", "sh", "xyz", "tech", "online", "site", "store", "cloud",
-        "in", "uk", "us", "ca", "au", "de", "fr", "nl", "es", "it", "jp", "cn", "br", "ru", "ie", "nz",
-    ]
+    static let topLevels = TechnicalToken.topLevels
 
     /// The web schemes a spoken "colon slash slash" may follow.
     static let schemes: Set<String> = ["http", "https"]
@@ -28,10 +24,7 @@ struct SpokenAddress: Equatable {
     static let introducerReach = 2
 
     /// File endings that are common enough to write when a filename is announced.
-    static let fileExtensions: Set<String> = [
-        "json", "txt", "md", "swift", "py", "js", "ts", "html", "css", "xml", "csv", "pdf",
-        "yaml", "yml", "toml", "sh", "rb", "go", "rs", "kt", "java", "png", "jpg", "zip",
-    ]
+    static let fileExtensions = TechnicalToken.fileExtensions
 
     /// Words that announce a path or filename rather than a spoken ordinary noun.
     static let fileIntroducers: Set<String> = [
@@ -66,9 +59,13 @@ struct SpokenAddress: Equatable {
     /// The joiners a spoken joiner alone does not make an address of, because prose says them too.
     private static let proseJoiners: Set<Character> = ["-", "+"]
 
-    /// The address spoken from `position`, or nil where the words are not one.
-    static func read(at position: Int, in live: [Int], of draft: Draft) -> SpokenAddress? {
-        let run = position..<draft.sentenceEnd(from: position, in: live)
+    /// The address spoken from `position` to no further than `sentenceEnd`, or nil where the words are not one.
+    static func read(
+        at position: Int, before sentenceEnd: Int, in live: [Int], of draft: Draft
+    ) -> SpokenAddress? {
+        // A determiner opens a noun phrase, so the symbol name after it is a word: "the dot com bubble".
+        guard !MentionGuard.phraseOpeners.contains(draft.shape(at: live[position]).key) else { return nil }
+        let run = position..<sentenceEnd
         if let url = readExplicitURL(at: position, within: run, in: live, of: draft) { return url }
         if let address = readWebAddress(at: position, within: run, in: live, of: draft) { return address }
         if let path = readAbsolutePath(at: position, within: run, in: live, of: draft) { return path }

@@ -7,7 +7,7 @@ in `Sources/UttrflowInput/`: `TextInsertion.swift` is the one place that names e
 `ClipboardTextInsertionEngine` and `PasteboardImageInsertionEngine`. The platform adapters —
 `SystemPasteboard`, `CGEventKeystrokeSender`, `CGEventTypist` and `AXAccessibilityFocus` — are in
 `SystemInput.swift`. **Dictation never writes the clipboard**: it tries an Accessibility write,
-then typed keystrokes, and if both refuse the transcript stays under Recent in the menu bar with
+then typed keystrokes, and if both refuse the transcript stays in History with
 an explicit Copy.
 
 Per-application results are collected in [compatibility.md](compatibility.md); this page feeds
@@ -20,7 +20,8 @@ its `AX write`, `Paste`, `Confirmed` and `Full route` columns and the secure-fie
 | A dictation | `TextInsertion.dictation()` | Accessibility, typed | Never written. When both refuse, the failure is `insertionNeedsCopy` and the recovery is Copy |
 | An accepted suggestion | `TextInsertion.completion()` (`CompletionRoute`) | Accessibility, typed | Never written; see [predict-accept.md](predict-accept.md) |
 | A clip pasted from the clipboard panel | `TextInsertion.coordinator(…, confirmsArrival: false, clipboardFallback: false)` | Accessibility, paste, typed | Written by the paste and left there; arrival is not checked |
-| A clip or recent dictation inserted from the menu bar or main window, and the Paste last transcript shortcut | `TextInsertion.coordinator(…)` | Accessibility, paste, clipboard | Written by the paste, or by the clipboard floor when everything else refuses; a paste's arrival is checked |
+| A clip or recent dictation inserted from the menu bar or main window | `TextInsertion.coordinator(…)` | Accessibility, paste, clipboard | Written by the paste, or by the clipboard floor when everything else refuses; a paste's arrival is checked |
+| The Paste last transcript shortcut | `TextInsertion.dictation()` | Accessibility, typed | Never written; if both strategies refuse, the transcript stays available for explicit Copy |
 | A secret clip | either clip route over `ConcealingPasteboard` | as above | Every text write carries `org.nspasteboard.ConcealedType` |
 | A picture clip | `PasteboardImageInsertionEngine` | paste | The picture stays on the clipboard, since a paste whose arrival is not confirmed cannot be safely undone |
 | A retry of a kept recording | `ClipboardTextInsertionEngine` alone | clipboard | Written; see [recordings.md](recordings.md) |
@@ -36,9 +37,33 @@ Every strategy that sends words makes the same two checks immediately before it 
 destination is no longer the frontmost application. The typed strategy makes both, so a switch to
 an app with no readable field is refused rather than typed into.
 
-A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged` or `clipboardChanged`
-stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
+The typed strategy also refuses, with `noFocusedTextField`, when a focused element is published
+and its role is not a text-entry role (`FocusedElementKind.control`): in a page body, a list or a
+file browser, letters are commands. It still types when the application publishes no focused
+element at all (`FocusedElementKind.unpublished`), which is how a bundled-browser composer takes
+dictation. The check is made in `canInsert()`, before the first chunk and before every later one.
+
+The typed strategy posts its text `TypedTextInsertionEngine.chunkLength` characters at a time,
+yields between chunks and makes the same checks again before each chunk after the first, against
+the captured destination or, without one, the application in front at the first chunk. A check
+or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
+posted characters cannot be taken back.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+`clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
+
+## What every insertion may contain
+
+`OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
+pipeline, before any route writes it, so no destination relies on its own layout flag for this:
+
+1. No control character except tab and line feed; any other becomes a space.
+2. No trailing line break, which a shell or chat field would read as Return.
+3. No escape sequence; an ANSI sequence is removed whole.
+
+Whether a line break inside the text may reach a destination whose Return sends or runs it is
+decided per route by the line-break probe, and is not yet part of this check.
 
 ## The Accessibility write that changes nothing
 
@@ -157,9 +182,14 @@ demote a large class of successful pastes. The words are on the clipboard either
 **not reported**, which draws the plain tick: the Accessibility write verifies itself inside the
 field, and typing reads nothing back.
 
+If cancellation arrives before the paste key is posted, the engine discards its clipboard
+generation only if it still owns that generation. It never restores the previous clipboard or
+clears a newer copy. Once the key is posted, arrival can be uncertain, so the clipboard stays as
+written.
+
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
 arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
-is `insertionTimedOut` and points to the transcript under Recent, never to a manual paste that
+is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
 ## Every clipboard write stays on this Mac
@@ -319,3 +349,20 @@ the element itself, so asking from any other field empties it as well. It keeps
 Offsets go stale the moment the user types, so a record is never trusted on its own:
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
+
+## The insertion fixture
+
+`uttrflow-insertion-fixture` is a test-only window with a text field, a multi-line view and a
+secure field, each of which takes its edits through one fault mode named on its command line.
+`Scripts/e2e_insertion.sh` launches it once per mode, runs `uttrflow-dev insert` into the focused
+field, and asserts the exit status, the line `insert` prints and what the field holds after. It
+waits until nobody has touched the Mac for 30 s, and needs Accessibility granted to the shell.
+`Scripts/bundle.sh` fails a bundle that contains any of it.
+
+| Mode | Field, route | What the field does | Expected |
+|---|---|---|---|
+| `faithful` | text, Accessibility | takes every edit | written, field holds the words |
+| `changes-nothing` | text, Accessibility | answers the write with success and changes nothing | `insertionUnconfirmed`, field empty |
+| `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
+| `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
+| `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |

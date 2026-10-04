@@ -30,19 +30,19 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Derived from the preceding text, never read from the field.
     public var sentenceState: SentenceState { Self.sentenceState(before: precedingText) }
 
+    /// What the caret stands inside, or `nil` when the field will not report its value.
+    public var structure: CaretStructure? { precedingText.map(CaretStructure.init(precedingText:)) }
+
     /// Whether the caret's line opens with a list marker, so added text stays an unfinished list item.
     public var isOnListItemLine: Bool {
         guard let precedingText else { return false }
-        let line =
-            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        return Self.listItemRemainder(in: line) != nil
+        return Self.listItemRemainder(in: CaretStructure.caretLine(of: precedingText)) != nil
     }
 
     /// Reads the sentence state off the line the caret sits on, since a list marker is not a word.
     public static func sentenceState(before text: String?) -> SentenceState {
         guard let text else { return .unknown }
-        // Any line break ends the line, and a CRLF pair is one `Character`, so it is one break.
-        let line = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let line = CaretStructure.caretLine(of: text)
         let body = withoutOpeningMarker(line)
         guard body.contains(where: { !$0.isWhitespace }) else {
             // Only a marker, a blank line or an empty field stands here; a line break still opened a line.
@@ -61,8 +61,7 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
                     .drop(while: { "\"'“(".contains($0) })
             )
             let isKnownAbbreviation =
-                sentenceAbbreviations.contains(normalizedWord)
-                || normalizedWord.split(separator: ".").count > 1
+                terminal == "." && !Abbreviations.endsSentence(normalizedWord + ".", followedBy: nil)
             if !word.isEmpty, !isKnownAbbreviation {
                 return .startOfSentence
             }
@@ -75,8 +74,8 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         if let list = listItemRemainder(in: line) { return list }
         let body = line.drop(while: \.isWhitespace)
         if let marker = openingMarkers.first(where: { body.hasPrefix($0) }) {
-            // A run of the same mark is one marker: "## " is a heading, ">>" a quotation inside a quotation.
-            return body.drop { String($0) == marker }
+            // A run of the marker's marks is one marker: "## " is a heading, "///" and "/**" open a comment.
+            return body.drop { marker.contains($0) }
         }
         return body
     }
@@ -93,9 +92,10 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
         return closingMark.dropFirst()
     }
 
-    /// What a line may open with that is a marker rather than words: a list item, a quotation, a heading.
+    /// What a line may open with that is a marker, not words: a list item, quotation, heading or comment.
     private static let openingMarkers: [String] =
-        Draft.bulletTokens.sorted() + ["#", ">", "\"", "'", "\u{201C}", "\u{2018}", "(", "[", "{"]
+        ["/*", "/"] + Draft.bulletTokens.sorted()
+        + ["#", ">", "\"", "'", "\u{201C}", "\u{2018}", "(", "[", "{"]
 
     /// Whether one trailing character does not change the sentence end before it.
     private static func isTrailingSentenceDecoration(_ character: Character) -> Bool {
@@ -107,9 +107,6 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// Closing quotes and brackets may follow a sentence end without changing it.
     private static let closingSentenceCharacters: Set<Character> = ["\"", "'", "”", "’", ")", "]", "}"]
-
-    /// Dotted forms that keep the current sentence open, shared with first-word casing.
-    public static let sentenceAbbreviations: Set<String> = ["e.g", "i.e", "vs", "etc", "p.m", "a.m"]
 
     /// Pads `text` with a space at each caret edge where it would otherwise join a neighbouring word.
     public func paddedBoundary(for text: String) -> String {

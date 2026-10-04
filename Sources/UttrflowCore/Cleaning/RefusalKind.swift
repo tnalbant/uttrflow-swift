@@ -46,6 +46,8 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
     case translated
     /// The answer the model gave back was byte-identical to the input it was handed, so the rules engine should take over.
     case unchangedAnswer
+    /// The rewrite of a long text ends no sentence at all.
+    case unpunctuated
 
     /// What a pasted report calls this, which names the kind and never the words.
     public var summary: String {
@@ -72,6 +74,7 @@ public enum RefusalKind: String, Sendable, Equatable, CaseIterable, Codable {
         case .echoedExample: "the answer repeated a worked example"
         case .translated: "the answer was translated rather than romanised"
         case .unchangedAnswer: "the answer was identical to what was said"
+        case .unpunctuated: "the answer to a long text ended no sentence"
         }
     }
 }
