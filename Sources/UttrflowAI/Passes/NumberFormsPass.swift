@@ -16,7 +16,9 @@ public struct NumberFormsPass: PieceCleaningPass {
         "port", "version", "extension", "page", "chapter", "step", "number", "line", "section", "figure",
         "table", "level", "room", "floor", "route", "flight", "interstate", "highway", "bus", "gate",
     ]
-    static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
+    static let currencies: Set<String> = [
+        "rupee", "rupees", "dollar", "dollars", "euro", "euros", "pound", "pounds",
+    ]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
     /// The words a speaker uses for the leading zero of a clock minute.
     static let clockZeros: Set<String> = ["oh", "o", "zero"]
@@ -271,8 +273,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
-            let beforeAmount =
-                joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+            let beforeAmount = joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+                || completesAmount(at: position, keys: keys, shapes: shapes)
             guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
             text = NumberWords.render(value, grouped: digits == .thousands && !inContext)
@@ -310,6 +312,17 @@ public struct NumberFormsPass: PieceCleaningPass {
     static let timeCues: Set<String> = [
         "at", "by", "until", "till", "from", "around", "about", "before", "after", "since",
     ]
+
+    /// Whether the number here is the smaller part of an amount, after a number and its currency.
+    private static func completesAmount(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        var currency = position - 1
+        if currency > 0, keys[currency] == "and", joined(currency + 1, shapes) { currency -= 1 }
+        guard currency > 0, currencies.contains(keys[currency]), joined(currency + 1, shapes),
+            joined(currency, shapes)
+        else { return false }
+        let major = currency - 1
+        return NumberWords.digits(keys[major]) != nil || NumberWords.cardinal(keys[major..<currency]) != nil
+    }
 
     /// Requires a time cue, or a sentence end after the minute, when the hour and minute form one phrase.
     private static func timeAcceptable(
