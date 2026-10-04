@@ -52,6 +52,8 @@ public actor ClipboardStore {
     private var hasSwept = false
     /// Whether this process has tried sealing every legacy picture, including pictures of unreadable indexes.
     private var hasMigratedLegacyImages = false
+    /// Holds the background task that checks picture headers and seals plaintext files.
+    private var legacyImageMigration: Task<Void, Never>?
     /// Whether stored clips have been checked once with the detector shipped by this build.
     private var reclassifiedFiles: Set<URL> = []
     /// Pictures of deleted clips an undo can still bring back, left on disk until ``forgetHeldPictures()``.
@@ -769,27 +771,40 @@ public actor ClipboardStore {
         }
         lastUsedOrder = UInt64(normalized.count)
         wholeList = normalized
-        migrateLegacyImagesOnce()
         sweepOnce()
+        migrateLegacyImagesOnce()
         return normalized
     }
 
-    /// Seals plaintext pictures on the actor executor without relying on a readable clip index.
+    /// Starts the picture pass off the clipboard actor so sealed files do not slow down ⇧⌘V.
     private func migrateLegacyImagesOnce() {
         guard !hasMigratedLegacyImages else { return }
         hasMigratedLegacyImages = true
-        guard encryptedStore != nil,
-            let files = try? FileManager.default.contentsOfDirectory(
-                at: imagesFolder, includingPropertiesForKeys: [.isRegularFileKey])
-        else { return }
-
-        for url in files where url.pathExtension.lowercased() == "png" {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
-                let data = try? Data(contentsOf: url), !EncryptedStore.isSealed(data)
-            else { continue }
-            // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
-            try? writeImage(data, named: url.lastPathComponent)
+        guard encryptedStore != nil else { return }
+        let folder = imagesFolder
+        legacyImageMigration = Task.detached(priority: .utility) { [weak self] in
+            await LegacyPictureMigration().run(in: folder) { [weak self] data, name in
+                await self?.sealLegacyPicture(data, named: name)
+            }
         }
+    }
+
+    /// Waits for the background migration in tests that inspect the migrated files.
+    func waitForLegacyPictureMigration() async {
+        await legacyImageMigration?.value
+    }
+
+    /// Seals a plaintext image after confirming the migration has not raced with another store write.
+    private func sealLegacyPicture(_ data: Data, named name: String) {
+        let url = imagesFolder.appending(path: name, directoryHint: .notDirectory)
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
+            let header = try? FileHandle(forReadingFrom: url),
+            let prefix = try? header.read(upToCount: EncryptedStore.sealedHeaderLength)
+        else { return }
+        try? header.close()
+        guard !EncryptedStore.isSealed(prefix) else { return }
+        // The atomic replacement leaves the plaintext source in place when sealing or writing fails.
+        try? writeImage(data, named: name)
     }
 
     /// Rechecks each readable index once so a corrected detector can mask clips it previously missed.

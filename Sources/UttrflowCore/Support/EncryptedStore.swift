@@ -27,6 +27,9 @@ public struct EncryptedStore: Sendable {
     private static let tagLength = 16
     private let keys: StoreKeyCache
 
+    /// Returns the number of leading bytes in this store's sealed-file header.
+    public static let sealedHeaderLength = magic.count
+
     /// Uses the production Keychain provider unless a test supplies an isolated provider.
     public init(keys: (any StoreKeyProviding)? = nil) {
         self.keys = StoreKeyCache(keys ?? KeychainStoreKeyProvider())
