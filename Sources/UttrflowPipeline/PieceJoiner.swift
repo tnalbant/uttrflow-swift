@@ -565,7 +565,8 @@ enum PieceJoiner {
         draft.replace(at: head, with: WordShape.capitalised(draft.words[head].text), by: id)
         draft.replace(at: tail, with: WordShape.withoutTrailingStop(draft.words[tail].text), by: id)
         // A stop at a seam the item's next words continue in lower case is the pause's, not the speaker's.
-        for (word, next) in zip(body, body.dropFirst()) where word != tail && starts.contains(next)
+        for (word, next) in zip(body, body.dropFirst())
+        where word != tail && starts.contains(next)
             && draft.shape(at: word).endsSentence && draft.shape(at: next).core.first?.isLowercase == true
         {
             draft.replace(at: word, with: WordShape.withoutTrailingStop(draft.words[word].text), by: id)
@@ -622,12 +623,13 @@ enum PieceJoiner {
         {
             return true
         }
-        return afterPause && Self.topics.contains { phrase in
-            position + phrase.count <= live.count
-                && zip(phrase, live[position..<position + phrase.count]).allSatisfy {
-                    $0 == draft.shape(at: $1).key
-                }
-        }
+        return afterPause
+            && Self.topics.contains { phrase in
+                position + phrase.count <= live.count
+                    && zip(phrase, live[position..<position + phrase.count]).allSatisfy {
+                        $0 == draft.shape(at: $1).key
+                    }
+            }
     }
 
     // MARK: The words this reads

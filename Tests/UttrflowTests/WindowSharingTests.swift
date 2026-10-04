@@ -27,7 +27,7 @@ struct WindowSharingTests {
         let app = AppDelegate(container: sandbox.root)
         let controller = app.makeMainWindow()
         controller.show(.home)
-        defer { controller.hide() }
+        defer { controller.close() }
         let window = try #require(stored("window", of: controller, as: NSWindow.self))
 
         #expect(window.sharingType == .none)
