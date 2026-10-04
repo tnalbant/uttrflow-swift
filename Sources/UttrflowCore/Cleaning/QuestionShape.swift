@@ -388,10 +388,9 @@ public enum QuestionShape {
         newSubjects.flatMap { subject in ["'m", "'s", "'re", "'ll", "'ve", "'d"].map { subject + $0 } })
 
     /// Words that open a noun phrase a question can invert around: "is the build", "can your team".
-    static let determiners: Set<String> = [
-        "the", "a", "an", "my", "your", "our", "his", "her", "their", "its", "this", "that", "these", "those",
-        "any",
-        "some",
+    public static let determiners: Set<String> = [
+        "the", "a", "an", "my", "your", "our", "his", "her", "their", "its", "whose", "which", "this", "that",
+        "these", "those", "any", "some", "both", "all", "every", "each", "either", "neither",
     ]
 
     /// Romanised Hindi question words that ask from anywhere in the main clause.

@@ -10,6 +10,16 @@ private func shapes(_ text: String) -> [WordShape] {
 @Suite("QuestionShape")
 struct QuestionShapeTests {
     @Test(
+        "reads an inversion around a quantifier as a question",
+        arguments: [
+            "are both builds green", "is every test passing", "are all checks done", "is each step clear",
+            "is either option fine", "is neither branch merged",
+        ])
+    func asksAroundAQuantifier(text: String) {
+        #expect(QuestionShape.asks(shapes(text)))
+    }
+
+    @Test(
         "reads a direct question from its word order",
         arguments: [
             "where did you put the keys", "which branch should I merge into",

@@ -136,11 +136,7 @@ enum PieceJoiner {
             $0.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
         }
         guard let previous = prior.last else { return false }
-        if ["the", "a", "an", "this", "that", "these", "those", "my", "your", "our", "their"].contains(
-            previous)
-        {
-            return true
-        }
+        if QuestionShape.determiners.contains(previous) { return true }
         if let lastSentenceEnd = prior.lastIndex(where: { [".", "?", "!"].contains($0) }) {
             return lastSentenceEnd == prior.index(before: prior.endIndex)
         }
