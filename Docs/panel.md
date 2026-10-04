@@ -19,6 +19,10 @@ One search field matches text and aliases. An alias is reduced the same way when
 and when it is matched, in `PanelAlias.handle` (no leading slash, no whitespace, case, accents
 and width folded), so two spellings of one name cannot drift apart.
 
+Content search bounds a clip containing a grapheme longer than 32 Unicode scalars to its first
+1,000 Unicode scalars. This keeps a single combining-mark cluster from making each keystroke
+work over an unbounded grapheme.
+
 ## Chips, and the way out of a collection
 
 The kind filters (`PanelFilter`: All, Text, Links, Code, Images) and the collections share one
