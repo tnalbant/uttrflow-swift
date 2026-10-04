@@ -432,6 +432,38 @@ the guard with the rewrite that takes the offered swap; the model step is assume
 At or above the threshold every offered swap is refused (80 of 80), so the class-only doubt never repairs
 a word and a model that takes it costs the whole rewrite. Which rule stays is not yet decided.
 
+## How the number grammar chooses between readings
+
+`NumberFormsPass.phrase` tries its readers in a fixed order and the first that matches wins:
+a `plus`-led digit run, a numeric date, a cued clock, a 24-hour clock, a spoken digit run, a
+decade, a signed number, a month and its day, an ordinal, then a cardinal that may grow into a
+decimal, a percentage, a year, a clock time, a colloquial hundred or a context-word digit group.
+The semiotic classes it reads are cardinal, ordinal, decimal, percentage, money, measure, date,
+time, telephone or code digits, and plain words. Each known ambiguity, and what settles it today:
+
+| Ambiguity | Example | Settled by |
+|---|---|---|
+| Clock time against a three-digit number | "two thirty" | order: `time` is tried before `colloquialHundred`, which `readsAsOneQuantity` then guards |
+| Year against clock time | "nineteen thirty" | order: `year` is tried before `time` |
+| Cued clock against digit run | "an alarm for seven oh five" | order: `cuedClock` is tried before `spokenDigitRun` |
+| Digit run against one cardinal | "one two three four" | order: `spokenDigitRun` is tried before the cardinal |
+| Decade against year | "nineteen nineties" | order: `decade` is tried before `year` |
+| Sign against subtraction | "ten minus three" | order: the sign reader runs on any joined `minus`, so it is a sign |
+| Price against time against hundred | "two ninety nine" | order, as for "two thirty"; no price reading exists |
+| Fraction against ordinal | "two thirds", "a third" | no fraction reading; the ordinal reader decides |
+| Ordinal against unit of time | "give me a second" | context: `second` is left out of `measures`; one-word ordinals stay words |
+| Pronoun "one" against numeral | "no one", "which one" | not settled: `.always` writes the digit |
+| "a hundred" against 100 | "about a hundred users" | context: `finishesAScale` keeps a scale it cannot read whole |
+| Product or version number against count | "python three" | context: the closed `contextWords` set |
+| Month against verb | "may fifth" | context: `monthIsDated` needs a capital or a dating clause |
+| Spoken year shapes | "twenty oh five", "two thousand and five" | not settled: no reader matches |
+| Spoken "dot", "double", magnitude letters | "three dot one", "double oh seven", "fifty k" | not settled: no reader matches |
+
+Seven of the fifteen are settled by order alone, four by a context word, and four not at all.
+Whether readings that compete by weight remove the order-dependence without changing a current
+output is not yet measured: it needs the per-class exact-match scorer, and until it lands the
+structure stays as it is.
+
 ## Related pages
 
 - `Docs/formatting-matrix.md` — which formatting case classes the corpus covers, generated from its tags.
