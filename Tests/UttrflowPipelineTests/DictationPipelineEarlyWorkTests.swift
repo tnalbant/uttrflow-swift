@@ -828,6 +828,62 @@ struct DictationPipelineEarlyWorkTests {
         #expect(inserter.received == ["W1 X. W4 X"])
     }
 
+    @Test("a dictation that missed a piece keeps its recording, and one that missed none deletes it")
+    func missedPieceKeepsTheRecording() async {
+        for missed in [false, true] {
+            let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+            let recordings = FakeRecordingKeeper(current: recording)
+            let pipeline = makePipeline(
+                capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+                speech: NumberingSpeechEngine(blankCalls: missed ? [2, 3] : []),
+                recordings: recordings, earlyPoll: .seconds(60))
+
+            await pipeline.startRecording()
+            await pipeline.finishRecording()
+
+            #expect(await pipeline.currentState.outcome?.missedPieces == (missed ? 1 : 0))
+            #expect(await recordings.discarded == (missed ? [] : [recording.id]))
+        }
+    }
+
+    @Test("a secure-field dictation that missed a piece keeps no audio")
+    func secureMissedPieceKeepsNoAudio() async {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(current: recording)
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: NumberingSpeechEngine(blankCalls: [2, 3]),
+            inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true))),
+            recordings: recordings, earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.missedPieces == 1)
+        #expect(await recordings.discarded == [recording.id])
+    }
+
+    @Test("retrying the recording kept for a missed piece produces the missing words")
+    func retryRecoversTheMissedPiece() async {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(
+            current: recording, audioOutcome: .success(Take.threePieces))
+        let speech = NumberingSpeechEngine(blankCalls: [2, 3])
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: speech, recordings: recordings, earlyPoll: .seconds(60))
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+        #expect(await recordings.discarded.isEmpty)
+
+        await pipeline.retry(recording.id)
+
+        let outcome = await pipeline.currentState.outcome
+        #expect(outcome?.text == "W5 X. W6 X. W7 X")
+        #expect(outcome?.missedPieces == 0)
+        #expect(await recordings.discarded == [recording.id])
+    }
+
     @Test(
         "a recording whose every speech-bearing piece decodes to no words fails as untranscribed, not silent")
     func everyPieceMissedFails() async {
