@@ -62,6 +62,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let doubtful: [String]
     /// The formatting case classes this case exercises, which is what the coverage matrix counts.
     public let classes: [FormattingClass]
+    /// The code-mixing cell the case fills, when it is one of the grid's cases.
+    public let codeMix: CodeMixCell?
 
     public init(
         id: String,
@@ -78,6 +80,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         expectedExact: String? = nil,
         doubtful: [String] = [],
         classes: [FormattingClass] = [],
+        codeMix: CodeMixCell? = nil,
         origin: Origin = .authored,
         addedFor: Int? = nil
     ) {
@@ -97,6 +100,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.expectedExact = expectedExact
         self.doubtful = doubtful
         self.classes = classes
+        self.codeMix = codeMix
     }
 
     /// Below the correction engine's threshold, which is the line a doubtful word has to fall under.
