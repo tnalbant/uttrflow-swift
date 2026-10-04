@@ -136,11 +136,19 @@ under `preserveNewlines` a text holding a newline gets none.
 
 ## Hindi on Apple's model
 
-`SystemLanguageModel.supportedLanguages` does not list Hindi, yet the model reads Devanagari
-and writes Hinglish accurately against the evaluation corpus (see `Docs/bakeoff.md`).
-`AppleFoundationCleanupModel.verifiedBeyondApplesList` therefore includes `.hindi`, which
-saves a Hindi speaker a 3 GB download and 4 GB of memory. Nothing goes in that list without a
-corpus measurement; a bad rewrite still has the meaning guard and the router beneath it.
+Apple's model is never asked to tidy Hindi. `SystemLanguageModel.supportedLanguages` does not
+list it, and on the pipeline the model refuses most Hindi dictations as an unsupported
+language while still answering `available`, so each refusal cost about two seconds before the
+rules tidied the words anyway. `AppleModelLanguages.withheld` holds `.hindi`, and
+`AppleFoundationCleanupModel.availability(for:)` answers `unsupportedLanguage` for it, so the
+router moves straight to the next engine: the local model where a build assembles one, the
+rules otherwise. Both write Latin script (`Docs/latin-output.md`).
+
+Measured on an Apple M5 Pro, macOS 26, with `swift test --filter HindiRoutingLiveModelTests`,
+which sends the 15 Hindi and Hinglish cases of `EvaluationCorpus.multilingual` through the
+shipping router as Hindi: before, Apple's model was asked and refused every one, and the run
+took 4.5 s; after, it is never asked, the rules tidy all 15 in Latin script, and the run takes
+0.09 s.
 
 **What the guard can and cannot read there.** Its tokeniser reads Latin script only, so a
 Devanagari draft is left to the base checks — emptiness, a preamble, the growth ratio,
