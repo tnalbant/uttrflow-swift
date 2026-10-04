@@ -248,13 +248,18 @@ public actor PasteboardWatcher {
         // Before the conversion, which costs in proportion to the HTML however the bound would judge it.
         guard fitsTheBound(copied ?? "", html) else { return nil }
         // E1 — the plain form is derived only here, where the alternative is no clip at all.
+        let conversion =
+            copied == nil && rtfText == nil
+            ? html.map { RichTextPlainForm.conversion(fromHTML: $0, maximumOutputBytes: budget.largestClip) }
+            : nil
         guard
-            let text = copied ?? rtfText ?? html.map(RichTextPlainForm.plainText(fromHTML:)),
+            let text = copied ?? rtfText ?? conversion?.text,
             ClipContent.isWorthKeeping(text)
         else { return nil }
 
+        let retainedHTML = conversion?.wasTruncated == true ? nil : html
         // Before the classifier, which reads the whole string: the store would refuse this anyway.
-        guard fitsTheBound(text, html) else { return nil }
+        guard fitsTheBound(text, retainedHTML) else { return nil }
 
         // A concealed copy is a password to its writer, whatever its shape. See Docs/clipboard-secrets.md.
         let classified =
@@ -267,7 +272,7 @@ public actor PasteboardWatcher {
                 // Only of a clip already judged to be code, so prose never pays for the detector.
                 language: classified.language,
                 // E — kept beside the plain form, never instead of it.
-                richText: html),
+                richText: retainedHTML),
             picture: picture)
     }
 
