@@ -422,7 +422,7 @@ public actor DictationPipeline {
         missedPieces = 0
     }
 
-    /// Abandons the dictation at any stage: nothing is transcribed and nothing is inserted.
+    /// Abandons the dictation at any stage, inserting nothing; audio already claimed is kept so the speech can be retried.
     public func cancel() async {
         early.pendingCapture?.cancel()
         early.pendingCapture = nil
@@ -431,7 +431,7 @@ public actor DictationPipeline {
         early.cancel()
         show(heard: nil)
         await capture.cancel()
-        await settleRecording(wordsLost: false)
+        await settleRecording(wordsLost: true)
         transition(to: .idle)
     }
 
@@ -856,15 +856,14 @@ public actor DictationPipeline {
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         // Inserting a blank would delete the user's selection, so it is refused like silence.
-        guard
-            let joined = await join(
-                pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
-        else {
+        let joinedPieces = await join(
+            pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
+        guard !wasCancelled(mine) else { return }
+        guard let joined = joinedPieces else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
         let (whole, joiningFormatter, expanded) = (joined.whole, joined.formatter, joined.expanded)
-        guard !wasCancelled(mine) else { return }
         var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
