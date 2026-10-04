@@ -340,6 +340,14 @@ struct MeaningPreservationGuardTests {
                 == "150000, 12000, 1,2, 1,2345")
     }
 
+    @Test("accepts a space added after a list comma between numbers")
+    func listCommaSpacing() {
+        accepted("scores were 10,20,30", "Scores were 10, 20, 30.")
+        accepted("the pin is at 40.7128,-74.0060", "The pin is at 40.7128, -74.0060.")
+        accepted("sides 3,4,5", "Sides 3, 4, 5.")
+        rejected("scores were 10,20,30", "Scores were 102030.")
+    }
+
     @Test(
         "refuses rewrites that add, drop or change a numeric sign",
         arguments: [

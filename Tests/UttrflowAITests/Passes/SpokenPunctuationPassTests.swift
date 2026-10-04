@@ -138,6 +138,46 @@ struct SpokenPunctuationPassTests {
         #expect(cleaned("he said open quote hello there close quote", by: sut) == "he said \"hello there\"")
     }
 
+    /// A quotation inside a quotation takes the other quote, and each close goes with the quote still open.
+    @Test(
+        "wraps single and nested quotations to depth two",
+        arguments: [
+            ("he said open single quote hello close single quote", "he said 'hello'"),
+            (
+                "she said open quote he told me open quote ship it close quote today close quote",
+                "she said \"he told me 'ship it' today\""
+            ),
+            (
+                "she said open quote he wrote open single quote done close single quote close quote",
+                "she said \"he wrote 'done'\""
+            ),
+            (
+                "she said open quote he said open quote ship it period close quote close quote",
+                "she said \"he said 'ship it.'\""
+            ),
+            (
+                "open quote one close quote and open quote two close quote",
+                "\"one\" and \"two\""
+            ),
+        ]
+    )
+    func nestedQuotations(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    /// The first word inside a quotation keeps the case it was heard in; the pass never recases it.
+    @Test(
+        "keeps the case of the first quoted word",
+        arguments: [
+            ("he said open quote hello there close quote", "he said \"hello there\""),
+            ("he said open quote Hello there close quote", "he said \"Hello there\""),
+            ("she said open single quote iPhone close single quote", "she said 'iPhone'"),
+        ]
+    )
+    func quotedCase(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("joins the words around a hyphen, and spaces a dash")
     func hyphenAndDash() {
         #expect(cleaned("a well hyphen known bug", by: sut) == "a well-known bug")

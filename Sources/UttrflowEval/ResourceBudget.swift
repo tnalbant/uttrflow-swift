@@ -92,7 +92,7 @@ public enum DiskPart: String, Sendable, Equatable, CaseIterable {
     case history
     /// The clipboard's list, its saved clips, its preferences and its pictures.
     case clipboard
-    /// What the app keeps only to explain itself, such as the speech model's load times.
+    /// What the app keeps only to explain itself: the speech model's load times and the network ledger.
     case diagnostics
     /// Every other store: the dictionary, snippets, predictions, consent, the key and the lock.
     case otherStores
@@ -119,7 +119,7 @@ public enum DiskPart: String, Sendable, Equatable, CaseIterable {
         case .recordings: self = .recordings
         case .dictationHistory: self = .history
         case .clipboard, .clipboardPreferences, .clipboardImages, .savedClips: self = .clipboard
-        case .speechModelLoads: self = .diagnostics
+        case .speechModelLoads, .networkActivity: self = .diagnostics
         case .personalDictionary, .snippets, .predict, .predictConsent, .encryptionKey, .instanceLock:
             self = .otherStores
         }

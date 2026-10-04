@@ -43,6 +43,7 @@ extension MeaningPreservationGuard {
     /// The digit runs and comma separators as they appear, kept in text order.
     private static func numericSpellings(in text: String) -> [String] {
         let characters = Array(text)
+        let separators = Quantities.groupingCommas(in: characters)
         var spellings: [String] = []
         var index = 0
         while index < characters.count {
@@ -52,16 +53,8 @@ extension MeaningPreservationGuard {
             }
             let start = index
             index += 1
-            while index < characters.count {
-                if characters[index].isNumber {
-                    index += 1
-                } else if characters[index] == ",", index + 1 < characters.count,
-                    characters[index + 1].isNumber
-                {
-                    index += 1
-                } else {
-                    break
-                }
+            while index < characters.count, characters[index].isNumber || separators.contains(index) {
+                index += 1
             }
             spellings.append(String(characters[start..<index]))
         }
@@ -107,18 +100,11 @@ extension MeaningPreservationGuard {
         return found
     }
 
-    /// Drops a comma that groups digits, so "12,000" and "1,50,000" read as the numbers they are.
+    /// Drops a comma that groups digits, so "12,000" and "1,50,000" read as the numbers they are and "10,20" as two.
     static func withoutThousandsSeparators(_ text: String) -> String {
         let characters = Array(text)
-        var result = ""
-        for (index, character) in characters.enumerated() {
-            if character == ",", index > 0, characters[index - 1].isNumber {
-                let run = characters[(index + 1)...].prefix(while: \.isNumber).count
-                if run == 2 || run == 3 { continue }
-            }
-            result.append(character)
-        }
-        return result
+        let separators = Quantities.groupingCommas(in: characters)
+        return String(characters.indices.filter { !separators.contains($0) }.map { characters[$0] })
     }
 
     /// Digits people dictate as words, in English and Hindi; traps on first use if the tables share a word.

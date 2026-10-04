@@ -146,6 +146,23 @@ struct FirstWordPassTests {
         #expect(cleaned("sat and sun are short", by: sut) == "Sat and sun are short")
     }
 
+    @Test(
+        "capitalises May and March only where the clause dates them",
+        arguments: [
+            ("the third of march", "The third of March"),
+            ("we leave on the third of may", "We leave on the third of May"),
+            ("we meet march fifth", "We meet March fifth"),
+            ("it is may twelfth", "It is May twelfth"),
+            ("we march on friday", "We march on Friday"),
+            ("you may go", "You may go"),
+            ("we may first ask", "We may first ask"),
+            ("the second march was long", "The second march was long"),
+        ]
+    )
+    func capitalisesDatedMonths(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
     @Test("capitalises unambiguous place, language and nationality names")
     func capitalisesProperNames() {
         #expect(cleaned("we went to london and tokyo", by: sut) == "We went to London and Tokyo")

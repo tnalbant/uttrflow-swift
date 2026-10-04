@@ -43,6 +43,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
         var isFirst = true
         var afterPause = false
         let present = draft.presentIndices
+        let datedMonths = NumberFormsPass.datedMonths(in: present.map { draft.shape(at: $0) })
         for (order, index) in present.enumerated() {
             let word = draft.words[index]
             guard !word.isLayoutMark else {
@@ -80,6 +81,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
                 !Self.looksLikeName(cased, in: [Self.otherText(excluding: index, in: draft)] + onScreen)
             {
                 cased = WordShape.lowercased(cased)
+            } else if capitaliseCalendarWords, datedMonths.contains(order) {
+                cased = WordShape(cased).replacingCore(with: WordShape.capitalised(WordShape(cased).core))
             } else if capitaliseCalendarWords {
                 cased = Self.properNameCapitalised(
                     Self.calendarWordCapitalised(afterPause ? cased : strayCapitalLowered(cased, in: text)),

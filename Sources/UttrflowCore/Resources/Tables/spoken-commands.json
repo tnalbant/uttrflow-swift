@@ -8,6 +8,8 @@
         {"id": "mark.semi-colon", "words": ["semi", "colon"], "action": "mark", "text": ";", "placement": "trailing"},
         {"id": "mark.open-quote", "words": ["open", "quote"], "action": "mark", "text": "\"", "placement": "opening"},
         {"id": "mark.close-quote", "words": ["close", "quote"], "action": "mark", "text": "\"", "placement": "closing"},
+        {"id": "mark.open-single-quote", "words": ["open", "single", "quote"], "action": "mark", "text": "'", "placement": "opening"},
+        {"id": "mark.close-single-quote", "words": ["close", "single", "quote"], "action": "mark", "text": "'", "placement": "closing"},
         {"id": "mark.comma", "words": ["comma"], "action": "mark", "text": ",", "placement": "trailing"},
         {"id": "mark.period", "words": ["period"], "action": "mark", "text": ".", "placement": "trailing"},
         {"id": "mark.colon", "words": ["colon"], "action": "mark", "text": ":", "placement": "trailing"},

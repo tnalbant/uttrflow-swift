@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
@@ -181,9 +182,10 @@ public struct NumberFormsPass: PieceCleaningPass {
         if let limit = monthDays[keys[position]], joined(position + 1, shapes),
             let ordinal = parseOrdinal(at: position + 1, keys: keys, shapes: shapes),
             ordinal.value <= limit, policy == .always || ordinal.value >= 10,
-            bareMonthIsValid(at: position, keys: keys, shapes: shapes)
+            monthIsDated(at: position, keys: keys, shapes: shapes)
         {
-            let day = Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+            let day = Phrase(
+                text: "\(WordShape.capitalised(keys[position])) \(ordinal.value)", count: ordinal.count + 1)
             return withYear(day, at: position, order: .monthFirst, keys: keys, shapes: shapes)
         }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
@@ -200,7 +202,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             guard joined(end, shapes), let limit = monthDays[keys[end]], ordinal.value <= limit else {
                 return nil
             }
-            if !hasOf, !bareMonthIsValid(at: end, keys: keys, shapes: shapes) {
+            if !hasOf, !monthIsDated(at: end, keys: keys, shapes: shapes) {
                 return nil
             }
             guard policy == .always || ordinal.value >= 10 else { return nil }
@@ -435,10 +437,38 @@ public struct NumberFormsPass: PieceCleaningPass {
         index < shapes.count && shapes[index - 1].suffix.isEmpty && shapes[index].prefix.isEmpty
     }
 
-    /// Whether a bare month is capitalized when its name could also be an ordinary word.
-    private static func bareMonthIsValid(at index: Int, keys: [String], shapes: [WordShape]) -> Bool {
-        guard keys[index] == "may" || keys[index] == "march" else { return true }
-        return shapes[index].core == WordShape.capitalised(keys[index])
+    /// Whether a month word reads as a date; one that is also a verb or modal needs a heard capital or a dating clause.
+    static func monthIsDated(at index: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard keys[index] == "may" || keys[index] == "march" else { return monthDays[keys[index]] != nil }
+        if shapes[index].core == WordShape.capitalised(keys[index]) { return true }
+        return dayOfMonthPrecedes(index, keys: keys, shapes: shapes)
+            || dayFollows(index, keys: keys, shapes: shapes)
+    }
+
+    /// The positions of the month words in `shapes` that `monthIsDated` reads as dates.
+    static func datedMonths(in shapes: [WordShape]) -> Set<Int> {
+        let keys = shapes.map(\.key)
+        return Set(keys.indices.filter { monthIsDated(at: $0, keys: keys, shapes: shapes) })
+    }
+
+    /// "the third of march": an ordinal day that fits the month, then "of", straight before it.
+    private static func dayOfMonthPrecedes(_ index: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard index >= 2, keys[index - 1] == "of", joined(index, shapes), joined(index - 1, shapes),
+            let limit = monthDays[keys[index]]
+        else { return false }
+        return (max(0, index - 4)..<(index - 1)).contains { start in
+            guard let ordinal = parseOrdinal(at: start, keys: keys, shapes: shapes) else { return false }
+            return start + ordinal.count == index - 1 && ordinal.value <= limit
+        }
+    }
+
+    /// "march fifth": an ordinal day that fits the month straight after it, unless a pronoun subject makes the word a verb.
+    private static func dayFollows(_ index: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard joined(index + 1, shapes), let limit = monthDays[keys[index]],
+            let ordinal = parseOrdinal(at: index + 1, keys: keys, shapes: shapes), ordinal.value <= limit
+        else { return false }
+        guard index > 0, !startsASentence(index, shapes) else { return true }
+        return LexicalClass.tag(ofWordAt: index - 1, in: keys) != .pronoun
     }
 
     /// The keys from `start` up to the first word that carries punctuation.

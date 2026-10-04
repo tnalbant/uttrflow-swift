@@ -29,6 +29,22 @@ public enum LexicalClass {
         return tagger.tag(at: start, unit: .word, scheme: .lemma).0?.rawValue
     }
 
+    /// The class of every word in `words`, read as one sentence with one tagger.
+    public static func tags(ofWords words: [String]) -> [NLTag?] {
+        let text = words.joined(separator: " ")
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        var position = text.startIndex
+        return words.map { word in
+            defer {
+                let next = text.index(position, offsetBy: word.count + 1, limitedBy: text.endIndex)
+                position = next ?? text.endIndex
+            }
+            guard position < text.endIndex else { return nil }
+            return tagger.tag(at: position, unit: .word, scheme: .lexicalClass).0
+        }
+    }
+
     /// Every word of `text` with its class, in order, skipping whitespace and punctuation.
     public static func tags(in text: String) -> [(word: String, tag: NLTag)] {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
