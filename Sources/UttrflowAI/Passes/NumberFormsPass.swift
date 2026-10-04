@@ -126,11 +126,11 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Set(clocks.map { shapes[$0].core })
     }
 
-    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue.
+    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue; only a cue reads past 12.
     private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> String? {
         let parts = keys[position].split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 2, shapes[position].prefix.isEmpty,
-            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (0...23).contains(hour),
             parts[1].count == 2, parts[1].allSatisfy(\.isNumber), let minute = Int(parts[1]),
             (0...59).contains(minute)
         else { return nil }
@@ -140,7 +140,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         let hasCue =
             position > 0 && !startsASentence(position, shapes)
             && ["at", "by"].contains(keys[position - 1])
-        guard hasMeridiem || hasCue else { return nil }
+        guard hasCue || (hasMeridiem && (1...12).contains(hour)) else { return nil }
         return "\(hour):\(parts[1])"
     }
 
@@ -155,6 +155,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
+        if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -308,6 +309,47 @@ public struct NumberFormsPass: PieceCleaningPass {
                 position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes)
         else { return nil }
         return Phrase(text: time.text, count: end - position)
+    }
+
+    /// "fourteen thirty" after a time cue as `14:30`, and "oh nine hundred" before "hours" as `0900`.
+    private static func twentyFourHourClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase?
+    {
+        let zeroLed = clockZeros.contains(keys[position])
+        let hourStart = zeroLed ? position + 1 : position
+        guard !zeroLed || joined(hourStart, shapes), hourStart < keys.count else { return nil }
+        let hour: (value: Int, count: Int)
+        if zeroLed {
+            guard let unit = NumberWords.units[keys[hourStart]] else { return nil }
+            hour = (unit, 1)
+        } else {
+            let words = unbroken(from: hourStart, keys: keys, shapes: shapes).prefix { $0 != "hundred" }
+            guard let parsed = NumberWords.cardinal(words),
+                parsed.count <= 2, (10...23).contains(parsed.value)
+            else { return nil }
+            hour = parsed
+        }
+        let minuteStart = hourStart + hour.count
+        guard joined(minuteStart, shapes) else { return nil }
+        let minutes: Phrase
+        if keys[minuteStart] == "hundred" {
+            minutes = Phrase(text: "00", count: 1)
+        } else if zeroLed || hour.value >= 13,
+            let spoken = self.minutes(at: minuteStart, keys: keys, shapes: shapes)
+        {
+            minutes = spoken
+        } else {
+            return nil
+        }
+        let end = minuteStart + minutes.count
+        guard !(joined(end, shapes) && NumberWords.isNumber(keys[end])) else { return nil }
+        let hourText = hour.value < 10 ? "0\(hour.value)" : String(hour.value)
+        if joined(end, shapes), keys[end] == "hours" {
+            return Phrase(text: hourText + minutes.text, count: end - position)
+        }
+        let hasBeforeCue =
+            position > 0 && !startsASentence(position, shapes) && timeCues.contains(keys[position - 1])
+        guard hasBeforeCue, keys[minuteStart] != "hundred" else { return nil }
+        return Phrase(text: "\(hourText):\(minutes.text)", count: end - position)
     }
 
     /// Words before an hour-and-minute phrase that mark it as a time of day.

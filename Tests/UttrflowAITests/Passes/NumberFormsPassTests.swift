@@ -280,6 +280,26 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes a 24-hour time only with a cue",
+        arguments: [
+            ("the train leaves at thirteen oh five", "the train leaves at 13:05"),
+            ("meet at fourteen thirty", "meet at 14:30"),
+            ("open until twenty three fifty nine", "open until 23:59"),
+            ("report at oh nine thirty", "report at 09:30"),
+            ("we move at oh nine hundred hours", "we move at 0900 hours"),
+            ("briefing is at eighteen hundred hours", "briefing is at 1800 hours"),
+            ("fourteen thirty hours", "1430 hours"),
+            ("fourteen thirty people came", "14 30 people came"),
+            ("twenty one thirty", "21 30"),
+            ("nineteen hundred", "1900"),
+            ("we live at twelve hundred fourth avenue", "we live at 1200 fourth avenue"),
+        ]
+    )
+    func twentyFourHourTimes(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "writes compound ordinals outside dates",
         arguments: [
             ("it is the forty second floor", "it is the 42nd floor"),
@@ -340,6 +360,8 @@ struct NumberFormsPassTests {
         #expect(cleaned("version 2.4.1", by: sut) == "version 2.4.1")
         #expect(cleaned("12.5% and $3.50", by: sut) == "12.5% and $3.50")
         #expect(cleaned("the ratio is 7.15", by: sut) == "the ratio is 7.15")
+        #expect(cleaned("lands at 14.30 today", by: sut) == "lands at 14:30 today")
+        #expect(cleaned("14.30 pm", by: sut) == "14.30 pm")
     }
 
     /// A run of three or more single digits is a digit string, never a clock time; a clock time needs a cue or a non-digit-run minute.
