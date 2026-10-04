@@ -122,7 +122,9 @@ it is gitignored. A new worktree lacks the main checkout's untracked and ignored
 from a worktree with `cat "$(git rev-parse --git-common-dir)/../AGENTS.local.md"`. A missing file
 is normal.
 
-- It adds and tightens; it never loosens a rule here. Where the two disagree, this file wins.
+- It adds and tightens; it never loosens a rule here. One exception: the maintainer's own file
+  may move `make verify` from every push to before each release tag. Where the two disagree, this
+  file wins.
 - Nothing from it is quoted, summarised or paraphrased into a tracked file, a commit message, a
   pull request, an issue or a comment.
 
