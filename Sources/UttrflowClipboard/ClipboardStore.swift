@@ -6,6 +6,17 @@ import CryptoKit
 import Security
 private import Synchronization
 
+/// The settled clipboard after undo and whether the restored alias conflicts.
+public struct ClipboardRestoreResult: Sendable, Equatable {
+    public let clips: [Clip]
+    public let aliasWasAlreadyInUse: Bool
+
+    package init(clips: [Clip], aliasWasAlreadyInUse: Bool) {
+        self.clips = clips
+        self.aliasWasAlreadyInUse = aliasWasAlreadyInUse
+    }
+}
+
 /// Counts the files a store writes while this is bound to `ClipboardStore.writes`.
 package final class StoreWriteTally: Sendable {
     private let files = Mutex(0)
@@ -155,16 +166,34 @@ public actor ClipboardStore {
     public func restore(
         _ clip: Clip, keeping retention: ClipRetention
     ) throws(ClipboardStoreError) -> [Clip] {
+        try restoreReportingAliasConflict(clip, keeping: retention).clips
+    }
+
+    /// Restores a deleted clip and reports whether its former name was already in use.
+    public func restoreReportingAliasConflict(
+        _ clip: Clip, keeping retention: ClipRetention
+    ) throws(ClipboardStoreError) -> ClipboardRestoreResult {
         let existing = loaded()
         guard !existing.contains(where: { $0.id == clip.id }) else {
-            return retained(existing, keeping: retention)
+            return ClipboardRestoreResult(
+                clips: retained(existing, keeping: retention), aliasWasAlreadyInUse: false)
         }
-        guard let matching = Self.previous(for: clip, in: existing) else {
-            return try settled([clip] + existing, keeping: retention)
+        let matching = Self.previous(for: clip, in: existing)
+        let aliasConflict =
+            clip.alias.map { alias in
+                existing.contains { $0.id != matching?.id && $0.alias == alias }
+            } ?? false
+        var deleted = clip
+        if aliasConflict { deleted.alias = nil }
+
+        guard let matching else {
+            let clips = try settled([deleted] + existing, keeping: retention)
+            return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
         }
-        let restored = restoring(clip, over: matching)
+        let restored = restoring(deleted, over: matching)
         let updated = existing.map { $0.id == matching.id ? restored : $0 }
-        return try settled(updated, keeping: retention)
+        let clips = try settled(updated, keeping: retention)
+        return ClipboardRestoreResult(clips: clips, aliasWasAlreadyInUse: aliasConflict)
     }
 
     /// Moves a used clip to the top of its history or saved pool; the disk hears of it with the next write.

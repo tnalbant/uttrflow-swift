@@ -1,6 +1,6 @@
 // Whether the panel can place a clip at the caret, and what it says when it can only copy.
 public import struct Foundation.UUID
-import UttrflowClipboard
+public import struct UttrflowClipboard.ClipboardRestoreResult
 
 /// Why the panel cannot put a clip at the caret, knowable before Return so the panel can say so.
 public enum PanelInsertionObstacle: Sendable, Equatable, CaseIterable {
@@ -57,6 +57,18 @@ extension PanelNotice {
     /// The disk refused the change, said rather than swallowed, so a failed write looks unlike a success.
     public static func writeFailed(_ why: String) -> PanelNotice {
         PanelNotice(symbolName: "exclamationmark.triangle", message: why, action: nil)
+    }
+
+    /// A restored clip has no alias when another clip retains its name.
+    public static var restoreWithoutAlias: PanelNotice {
+        PanelNotice(
+            symbolName: "arrow.uturn.backward",
+            message: "Restored without its name because another clip is using it.")
+    }
+
+    /// Builds an undo notice when another clip retains the deleted alias.
+    public static func restoreNotice(for result: ClipboardRestoreResult) -> PanelNotice? {
+        result.aliasWasAlreadyInUse ? .restoreWithoutAlias : nil
     }
 }
 

@@ -355,8 +355,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         pasteboard: ConcealingPasteboard(announcingPasteboard), confirmsArrival: false,
         clipboardFallback: false)
 
-    /// The panel's state while it is open, held here because a window has no memory.
-    private var panel: PanelSnapshot?
+    /// The panel's state while it is open, held here so tests can inspect the notice it produces.
+    private(set) var panel: PanelSnapshot?
     private var panelTarget: InsertionDestination?
     /// Counts Format presses, so only the latest run's result may open its sheet.
     private var formatterRuns = 0
@@ -1953,12 +1953,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return notice
     }
 
-    /// Carries out a change and redraws from what the store hands back, never from what was asked.
-    private func apply(_ change: PanelChange) {
+    /// Carries out a panel change and redraws from the state returned by the store.
+    func apply(_ change: PanelChange) {
         let owner = PanelLateRequest(opens: quickPanel.opens, sheet: panel?.sheet)
         Task {
             do {
-                try await carryOut(change)
+                try await carryOut(change, owner: owner)
             } catch let failure as ClipboardStoreError {
                 // F10 — stays open holding the failure, which must look different from a success.
                 Self.log.error(
@@ -1972,7 +1972,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// The write itself, with every refusal allowed to reach the caller.
-    private func carryOut(_ change: PanelChange) async throws(ClipboardStoreError) {
+    private func carryOut(
+        _ change: PanelChange, owner: PanelLateRequest
+    ) async throws(ClipboardStoreError) {
         switch change {
         case .setAlias(let id, let alias):
             _ = try await clipboard.setAlias(alias, of: id, keeping: retention)
@@ -2043,9 +2045,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     throw error
                 }
             }
-            _ = try await clipboard.restore(clip, keeping: retention)
+            let result = try await clipboard.restoreReportingAliasConflict(
+                clip, keeping: retention)
+            if owner.isSameOpen(panel, opens: quickPanel.opens) {
+                panel?.notice = PanelNotice.restoreNotice(for: result)
+                panel?.canUndoDelete = false
+            }
             await clipboard.forgetHeldPictures()
-            panel?.canUndoDelete = false
         }
     }
 
@@ -2100,15 +2106,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .undoDelete:
             Self.log.info("undo requested: have=\(self.undoOffer.clip != nil, privacy: .public)")
             guard let claim = undoOffer.claimForRestore() else { return }
+            let owner = PanelLateRequest(opens: quickPanel.opens, sheet: panel?.sheet)
             undoTask?.cancel()
             panel?.canUndoDelete = false
             intentWork = Task { [weak self] in
                 guard let self else { return }
                 do throws(ClipboardStoreError) {
                     try await claim.waitForDelete()
-                    try await self.carryOut(.restore(claim.clip))
+                    try await self.carryOut(.restore(claim.clip), owner: owner)
                 } catch {
-                    self.panel?.notice = .writeFailed(error.userMessage)
+                    if owner.isSameOpen(self.panel, opens: self.quickPanel.opens) {
+                        self.panel?.notice = .writeFailed(error.userMessage)
+                    }
                 }
                 await self.refreshPanelIfOpen()
             }
