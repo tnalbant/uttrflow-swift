@@ -172,8 +172,8 @@ struct DictationStageTimeoutTests {
         _ limit: Duration, at stage: DictationState, of pipeline: DictationPipeline,
         on clock: ManualClock
     ) async {
-        while !Task.isCancelled, await pipeline.currentState != stage { await Task.yield() }
-        while !Task.isCancelled, await pipeline.currentState == stage {
+        while !Task.isCancelled, !(await pipeline.currentState).isStage(of: stage) { await Task.yield() }
+        while !Task.isCancelled, (await pipeline.currentState).isStage(of: stage) {
             if clock.advanceIfSomethingIsWaiting(exactly: limit) { return }
             await Task.yield()
         }
@@ -313,7 +313,7 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
-        await expire(StageTimeout.quick, at: .inserting, of: pipeline, on: clock)
+        await expire(StageTimeout.quick, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -352,7 +352,7 @@ struct DictationStageTimeoutTests {
             clock: clock)
 
         let retrying = Task { await pipeline.retry(recording.id) }
-        await expire(.seconds(2), at: .inserting, of: pipeline, on: clock)
+        await expire(.seconds(2), at: .inserting(into: nil), of: pipeline, on: clock)
         _ = await retrying.value
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -379,7 +379,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await expire(StageTimeout.transformation, at: .tidying, of: pipeline, on: clock)
-        await expire(StageTimeout.quick, at: .inserting, of: pipeline, on: clock)
+        await expire(StageTimeout.quick, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -511,5 +511,13 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         #expect(await pipeline.currentState == .recording)
+    }
+}
+
+extension DictationState {
+    /// The same stage, whichever app an insertion names.
+    func isStage(of other: DictationState) -> Bool {
+        if case .inserting = self, case .inserting = other { return true }
+        return self == other
     }
 }
