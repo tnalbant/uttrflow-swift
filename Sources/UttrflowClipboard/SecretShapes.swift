@@ -132,6 +132,90 @@ public enum SecretShapes {
     /// Bits per character above which a token counts as generated; measured. See Docs/clipboard-secrets.md.
     private static let entropyFloor = 3.8
 
+    /// Data payloads and package integrity digests are encoded content, not credentials.
+    private static func isNonCredentialEntropyValue(_ token: String) -> Bool {
+        if isBase64DataURIValue(token) { return true }
+        let value = token.trimmingCharacters(in: CharacterSet(charactersIn: "\"',"))
+        guard value.hasPrefix("sha"), let separator = value.firstIndex(of: "-") else { return false }
+        let algorithm = value[..<separator]
+        guard let bits = Int(algorithm.dropFirst(3)), [256, 384, 512].contains(bits),
+            let digest = Data(base64Encoded: String(value[value.index(after: separator)...]))
+        else { return false }
+        return digest.count == bits / 8
+    }
+
+    /// Recognises a complete data URI, including common HTML and CSS wrappers copied with one word.
+    private static func isBase64DataURIValue(_ token: String) -> Bool {
+        if token.prefix(5).lowercased() == "data:" {
+            return isValidBase64DataURI(token[...])
+        }
+
+        if token.lowercased().hasPrefix("src=") {
+            var value = String(token.dropFirst(4))
+            if value.hasSuffix(">") {
+                value.removeLast()
+                if value.hasSuffix("/") { value.removeLast() }
+            }
+            if let quote = value.first, quote == "\"" || quote == "'" {
+                guard value.last == quote else { return false }
+                value.removeFirst()
+                value.removeLast()
+            }
+            return isValidBase64DataURI(value[...])
+        }
+
+        guard let url = token.range(of: "url(", options: .caseInsensitive) else { return false }
+        let property = token[..<url.lowerBound]
+        guard property.isEmpty || property.hasSuffix(":") else { return false }
+
+        var contents = String(token[url.upperBound...])
+        if contents.hasSuffix("}") { contents.removeLast() }
+        if contents.hasSuffix(";") { contents.removeLast() }
+        guard contents.hasSuffix(")") else { return false }
+        contents.removeLast()
+        if let quote = contents.first, quote == "\"" || quote == "'" {
+            guard contents.last == quote else { return false }
+            contents.removeFirst()
+            contents.removeLast()
+        }
+        return isValidBase64DataURI(contents[...])
+    }
+
+    /// Requires a MIME type, the base64 marker and a decodable payload before exempting entropy.
+    private static func isValidBase64DataURI(_ uri: Substring) -> Bool {
+        guard uri.prefix(5).lowercased() == "data:", let comma = uri.firstIndex(of: ",") else { return false }
+        let metadataStart = uri.index(uri.startIndex, offsetBy: 5)
+        let metadata = uri[metadataStart..<comma]
+        guard metadata.lowercased().hasSuffix(";base64") else { return false }
+        let fields = metadata.dropLast(";base64".count).split(
+            separator: ";", omittingEmptySubsequences: false)
+        let parameters: ArraySlice<Substring>
+        if let first = fields.first, !first.isEmpty {
+            let mime = first.split(separator: "/", omittingEmptySubsequences: false)
+            guard mime.count == 2, mime.allSatisfy(isMIMEComponent) else { return false }
+            parameters = fields.dropFirst()
+        } else {
+            parameters = fields.dropFirst()
+        }
+        guard parameters.allSatisfy(isMIMEParameter) else { return false }
+        return Data(base64Encoded: String(uri[uri.index(after: comma)...])) != nil
+    }
+
+    /// Checks one MIME type component or parameter against the ASCII token characters.
+    private static func isMIMEComponent(_ value: Substring) -> Bool {
+        let punctuation = "!#$%&'*+-.^_`|~"
+        return !value.isEmpty
+            && value.allSatisfy {
+                $0.isASCII && ($0.isLetter || $0.isNumber || punctuation.contains($0))
+            }
+    }
+
+    /// Requires each media-type parameter to have a nonempty token name and value.
+    private static func isMIMEParameter(_ value: Substring) -> Bool {
+        let pair = value.split(separator: "=", omittingEmptySubsequences: false)
+        return pair.count == 2 && pair.allSatisfy(isMIMEComponent)
+    }
+
     /// Whether any word on a one-line clip looks generated; multi-line clips are documents, left alone.
     static func hasHighEntropyToken(_ text: String) -> Bool {
         ClipBytes.read(text) { _, bytes in asciiHighEntropyToken(bytes) }
@@ -142,7 +226,9 @@ public enum SecretShapes {
     static func hasHighEntropyTokenByCharacter(_ text: String) -> Bool {
         guard !text.contains(where: \.isNewline) else { return false }
         return text.split(whereSeparator: \.isWhitespace).contains { word in
-            quotedPieces(of: Array(word)).contains { looksGenerated(String($0)) }
+            let value = String(word)
+            return quotedPieces(of: Array(word)).contains { looksGenerated(String($0)) }
+                && !isNonCredentialEntropyValue(value)
         }
     }
 
@@ -169,8 +255,13 @@ public enum SecretShapes {
         var start = 0
         for offset in 0...bytes.count
         where offset == bytes.count || bytes[offset] == 0x20 || bytes[offset] == 0x09 {
-            if offset > start, asciiWordLooksGenerated(UnsafeBufferPointer(rebasing: bytes[start..<offset])) {
-                return true
+            if offset > start {
+                let token = UnsafeBufferPointer(rebasing: bytes[start..<offset])
+                if asciiWordLooksGenerated(token),
+                    !isNonCredentialEntropyValue(String(decoding: token, as: UTF8.self))
+                {
+                    return true
+                }
             }
             start = offset + 1
         }

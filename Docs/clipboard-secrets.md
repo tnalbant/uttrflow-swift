@@ -184,6 +184,11 @@ piece mixes case and digits, so across three thousand random base64 and base64ur
 knowingly: a long camelCase identifier with a digit, and a deep source path that does not open
 like one.
 
+Complete base64 data URIs are embedded content, including when they appear in an image tag or CSS
+`url()`. The MIME type, base64 marker and payload must be valid; a malformed URI or credential
+appended outside it still reaches the entropy rule. Valid SHA-256, SHA-384 and SHA-512 integrity
+digests are package checksums. The other credential shapes still scan the surrounding text.
+
 ## Card numbers
 
 `CardNumberShape` accepts 13 to 19 digits, written unbroken or in the groups cards are printed in

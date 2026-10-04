@@ -681,6 +681,49 @@ struct SecretDetectionTests {
         #expect(ClipKindDetector.kind(of: text) == .secret)
     }
 
+    @Test("leaves embedded data and package integrity hashes readable")
+    func encodedContentAndIntegrityHashes() {
+        let payload = Data((0..<64).map(UInt8.init)).base64EncodedString()
+        let dataUris = [
+            "data:image/png;base64,\(payload)",
+            "DATA:image/png;base64,\(payload)",
+            "data:text/plain;charset=utf-8;base64,\(payload)",
+            "data:;base64,\(payload)",
+            "<img src=\"data:image/png;base64,\(payload)\">",
+            "<img alt=\"icon\" src='data:image/png;base64,\(payload)'>",
+            "body { background: url(data:image/svg+xml;base64,\(payload)); }",
+            "background:url(\"data:image/svg+xml;base64,\(payload)\")",
+            "background:url('data:image/svg+xml;base64,\(payload)')",
+        ]
+
+        for text in dataUris {
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(text))
+            #expect(ClipKindDetector.kind(of: text) != .secret)
+        }
+
+        let malformedData = [
+            "data:K9x$Qz7Tr2Bn8LmVa",
+            "data:image/png;base64,not!base64-K9x$Qz7Tr2Bn8LmVa",
+        ]
+        for text in malformedData {
+            #expect(SecretShapes.hasHighEntropyTokenByCharacter(text))
+            #expect(ClipKindDetector.kind(of: text) == .secret)
+        }
+
+        let appendedCredential = "src=\"data:image/png;base64,\(payload)\">K9x$Qz7Tr2Bn8LmVa"
+        #expect(SecretShapes.hasHighEntropyTokenByCharacter(appendedCredential))
+        #expect(ClipKindDetector.kind(of: appendedCredential) == .secret)
+
+        for (bits, byteCount) in [(256, 32), (384, 48), (512, 64)] {
+            let digest = Data((0..<byteCount).map(UInt8.init)).base64EncodedString()
+            let lockEntry = "\"integrity\": \"sha\(bits)-\(digest)\""
+            #expect(!SecretShapes.hasHighEntropyTokenByCharacter(lockEntry))
+            #expect(ClipKindDetector.kind(of: lockEntry) != .secret)
+        }
+
+        #expect(ClipKindDetector.kind(of: "K9x$Qz7Tr2Bn8LmVa") == .secret)
+    }
+
     @Test("masks standalone generated passwords with symbols from twelve characters")
     func standaloneGeneratedPasswords() {
         for password in ["q7#Vx!2mR$9kLp@4Wz&n", "Tr0ub4dor&3xK!9z", "q7hVxd2mRt9kLpe4Wzbn"] {
