@@ -16,6 +16,7 @@ press after that is [`pipeline-gestures.md`](pipeline-gestures.md).
 | Clipboard | ⇧⌘V | claimed through Carbon |
 | Paste last transcript | ⌃⌘V | claimed through Carbon |
 | Copy last transcript | ⌃⌘C | claimed through Carbon |
+| Edit command | ⌃⇧ held (`HotkeyBinding.controlShiftHold`) | observed through a second tap; see [`commands.md`](commands.md) |
 
 The defaults are `ShortcutSet.default`. An **observed** shortcut is watched through the one event
 tap, which sees Fn and leaves the key doing what it did. A **claimed** shortcut is registered as a

@@ -94,6 +94,12 @@ public actor DictationPipeline {
 
     /// What the clean-up steps did to each piece of the dictation under way, reported as one when it ends.
     private var cleaningRecords: [CleaningRecord] = []
+    /// Runs what is said while the command key is held, in place of inserting it.
+    private let commands: EditCommandRegistry
+    /// Where the next recording goes, set by the key that opens it and spent when it opens.
+    private var nextRoute: UtteranceRoute = .dictation
+    /// Where the recording under way goes.
+    private var recordingRoute: UtteranceRoute = .dictation
 
     public init(
         capture: any AudioCaptureEngine,
@@ -116,7 +122,8 @@ public actor DictationPipeline {
         windowing: SpeechWindowing = .standard,
         earlyPoll: Duration = .seconds(1),
         pollClock: any Clock<Duration> = ContinuousClock(),
-        speechLoadLimit: Duration = StageTimeout.speechModelLoad
+        speechLoadLimit: Duration = StageTimeout.speechModelLoad,
+        commands: EditCommandRegistry = EditCommandRegistry()
     ) {
         self.capture = capture
         self.speech = speech
@@ -139,6 +146,12 @@ public actor DictationPipeline {
         self.earlyPoll = earlyPoll
         self.pollClock = pollClock
         self.speechLoadLimit = speechLoadLimit
+        self.commands = commands
+    }
+
+    /// Sends the next recording to `route`; every recording after it goes back to dictation.
+    public func route(next route: UtteranceRoute) {
+        nextRoute = route
     }
 
     /// Takes the user's clean-up choices as they stand now, for every dictation after this one.
@@ -311,6 +324,8 @@ public actor DictationPipeline {
             await capture.cancel()
             return
         }
+        recordingRoute = nextRoute
+        nextRoute = .dictation
         stopwatch = UttrflowCore.stopwatch(from: clock)
         takeSettings()
         spokenFor = nil
@@ -368,7 +383,8 @@ public actor DictationPipeline {
         guard !wasCancelled(mine) else { return nil }
         // Moved on before returning, so a gesture handled next sees the microphone closed and the pipeline busy.
         transition(to: .transcribing)
-        return Task { await process(audio, mine, delivery: .insert) }
+        let delivery: Delivery = recordingRoute == .command ? .command : .insert
+        return Task { await process(audio, mine, delivery: delivery) }
     }
 
     /// Runs a kept recording through the same stages to the clipboard; false when it never ran or was abandoned.
@@ -427,6 +443,7 @@ public actor DictationPipeline {
         early.pendingCapture?.cancel()
         early.pendingCapture = nil
         early.pendingCaptureElapsed = nil
+        nextRoute = .dictation
         cancelledGeneration = generation
         early.cancel()
         show(heard: nil)
@@ -713,6 +730,8 @@ public actor DictationPipeline {
     private enum Delivery {
         case insert
         case copy
+        /// Run by the edit commands against the selection; never inserted.
+        case command
     }
 
     private func process(_ audio: AudioSamples, _ mine: Int, delivery: Delivery) async {
@@ -745,7 +764,7 @@ public actor DictationPipeline {
 
         var remainder = windowing.windows(
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
-            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil,
+            joiningPreviousWindowFrom: delivery != .copy ? previousWindowStart : nil,
             boundaries: audio.discontinuities)
         if let first = remainder.first, first.lowerBound < cut {
             if !spans.isEmpty { spans.removeLast() }
@@ -838,7 +857,7 @@ public actor DictationPipeline {
         guard !abandoned, !wasCancelled(mine) else { return }
         await tally.report(to: metrics)
         // Only when something was tidied, so silence cannot blank the last account; never for a secure field.
-        if !cleaningRecords.isEmpty, !destinationIsSecure {
+        if !cleaningRecords.isEmpty, !destinationIsSecure, delivery != .command {
             await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords))
         }
 
@@ -868,6 +887,11 @@ public actor DictationPipeline {
         var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
+            return
+        }
+
+        if delivery == .command {
+            await runCommand(whole.heard.text, seeing: appContext, generation: mine)
             return
         }
 
@@ -945,7 +969,7 @@ public actor DictationPipeline {
     /// The screen to tidy against, which for a retry is Uttrflow's own window and says nothing.
     private func contextFor(_ delivery: Delivery) async -> AppContext {
         switch delivery {
-        case .insert:
+        case .insert, .command:
             let read = await readContext()
             // Kept from this read: by insertion time the user has often switched away.
             insertedInto = read.applicationName
@@ -970,7 +994,7 @@ public actor DictationPipeline {
     /// Reads correction evidence at each piece, unless the dictation only goes to the clipboard.
     private func correctionContext(for delivery: Delivery) async -> AppContext {
         switch delivery {
-        case .insert: await readContext()
+        case .insert, .command: await readContext()
         case .copy: recordingDestination ?? AppContext()
         }
     }
@@ -1097,6 +1121,22 @@ public actor DictationPipeline {
             // The words survive the failure: the interface can still offer them.
             await fail(DictationFailure(error, transcript: text))
             return nil
+        }
+    }
+
+    /// Runs a command-key utterance on the selection as it stands now; the words are never typed.
+    private func runCommand(_ heard: String, seeing appContext: AppContext?, generation mine: Int) async {
+        let target = await insertionContextForWrite(matching: appContext)
+        guard !wasCancelled(mine) else { return }
+        do {
+            let outcome = try await commands.run(heard, on: target)
+            guard !wasCancelled(mine) else { return }
+            guard outcome == .ran else { return await fail(.commandNotUnderstood(heard)) }
+            await settleRecording(wordsLost: false)
+            transition(to: .idle)
+        } catch {
+            guard !wasCancelled(mine) else { return }
+            await fail(DictationFailure(error, transcript: heard))
         }
     }
 

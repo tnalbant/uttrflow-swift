@@ -1302,6 +1302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller = DictationController(
             pipeline: pipeline,
             monitor: ActivationMonitor(),
+            commandMonitor: ActivationMonitor(),
             cue: cue,
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
@@ -1428,6 +1429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         let binding = settings.hotkey
+        let commandBinding = settings.shortcuts.first(for: .editCommand)
         let arming = shortcutArming
         // Kept as its own state on the menu bar and floating button, never shown as a failed dictation.
         Task {
@@ -1438,6 +1440,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if let failure = arming.failure {
                 let reason = SuggestionLog.failure(failure)
                 Self.log.error("the dictation shortcut is not armed: \(reason, privacy: .public)")
+            }
+            guard attempt == self.shortcutArmingAttempt, arming.failure == nil else { return }
+            do throws(HotkeyError) {
+                try await controller.start(commandBinding: commandBinding)
+            } catch {
+                let reason = error.userMessage
+                Self.log.error("the edit-command shortcut is not armed: \(reason, privacy: .public)")
             }
         }
     }
@@ -1705,8 +1714,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             await pasteLastTranscript()
         case .copyLastTranscript:
             await copyLastTranscript()
-        // Watched through the tap rather than registered, so it never arrives here.
-        case .dictate:
+        // Watched through the tap rather than registered, so they never arrive here.
+        case .dictate, .editCommand:
             break
         }
     }
@@ -3505,7 +3514,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         applyLaunchAtLogin()
 
         // Acted on here, or the shortcut relabels itself and the old key keeps working.
-        if updated.hotkey != previous.hotkey || updated.dictationEnabled != previous.dictationEnabled {
+        if updated.hotkey != previous.hotkey || updated.dictationEnabled != previous.dictationEnabled
+            || updated.shortcuts.first(for: .editCommand) != previous.shortcuts.first(for: .editCommand)
+        {
             startWatchingForTheShortcut()
         }
         // Every registered key is re-armed together, or a changed one keeps firing the old binding.
