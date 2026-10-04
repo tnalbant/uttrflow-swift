@@ -36,8 +36,14 @@ Every strategy that sends words makes the same two checks immediately before it 
 destination is no longer the frontmost application. The typed strategy makes both, so a switch to
 an app with no readable field is refused rather than typed into.
 
-A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged` or `clipboardChanged`
-stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
+The typed strategy posts its text `TypedTextInsertionEngine.chunkLength` characters at a time,
+yields between chunks and makes the same checks again before each chunk after the first, against
+the captured destination or, without one, the application in front at the first chunk. A check
+or typist failure after the first chunk throws `insertionInterrupted(typed:total:)`, since the
+posted characters cannot be taken back.
+
+A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insertionInterrupted` or
+`clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
 ## The Accessibility write that changes nothing

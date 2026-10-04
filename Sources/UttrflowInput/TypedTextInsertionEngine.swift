@@ -39,21 +39,21 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
 
     /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival {
-        try insert(text, targeting: nil)
+        try await insert(text, targeting: nil)
     }
 
     /// Types only while the captured application is still in front and the dictation still wants the words.
     public func insert(
         _ text: String, targeting destination: InsertionDestination
     ) async throws(TextInsertionError) -> InsertionArrival {
-        try insert(text, targeting: Optional(destination))
+        try await insert(text, targeting: Optional(destination))
     }
 
     private func insert(
         _ text: String, targeting destination: InsertionDestination?
-    ) throws(TextInsertionError) -> InsertionArrival {
+    ) async throws(TextInsertionError) -> InsertionArrival {
         try refuseIfStale(destination)
-        try typist.type(text)
+        try await typeInChunks(text, targeting: destination)
         return .notReported
     }
 
@@ -102,7 +102,7 @@ extension TypedTextInsertionEngine: CompletionWriting {
         } else {
             try refuseIfSelfFrontmost()
         }
-        try typist.type(text)
+        try await typeInChunks(text, targeting: nil)
     }
 }
 
@@ -153,5 +153,37 @@ extension TypedTextInsertionEngine {
     /// Re-checked at the write rather than trusted from `canInsert()`, whose answer can go stale by now.
     private func refuseIfSelfFrontmost() throws(TextInsertionError) {
         guard !focus.isSelfFrontmost() else { throw .noFocusedTextField }
+    }
+
+    /// Characters posted between checks, small enough that a stop lands within a few milliseconds of typing.
+    static let chunkLength = 64
+
+    /// Types `text` a chunk at a time, making the pre-write check again before every chunk after the first.
+    private func typeInChunks(
+        _ text: String, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) {
+        let total = text.count
+        let focus = focus
+        // Without a captured destination, the app in front at the first chunk is the one typing must stay in.
+        let current = await AccessibilityThread.run(orElse: nil) { focus.focusedApplication() }
+        let target = destination ?? current.flatMap { $0.isKnown ? $0 : nil }
+        var typed = 0
+        var start = text.startIndex
+        while start < text.endIndex {
+            let end = text.index(start, offsetBy: Self.chunkLength, limitedBy: text.endIndex) ?? text.endIndex
+            do {
+                if typed > 0 {
+                    await Task.yield()
+                    try refuseIfStale(target)
+                }
+                try typist.type(String(text[start..<end]))
+            } catch {
+                // Characters already posted cannot be taken back, so any later stop is a partial insertion.
+                guard typed == 0 else { throw .insertionInterrupted(typed: typed, total: total) }
+                throw error
+            }
+            typed += text.distance(from: start, to: end)
+            start = end
+        }
     }
 }

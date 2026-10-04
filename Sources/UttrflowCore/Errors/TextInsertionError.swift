@@ -18,6 +18,8 @@ public enum TextInsertionError: UttrflowFailure {
     case insertionTargetChanged
     /// Clipboard-free insertion refused, so the user may copy the retained transcript explicitly.
     case insertionNeedsCopy(description: String)
+    /// Typing stopped partway, so only the first `typed` of `total` characters reached the field.
+    case insertionInterrupted(typed: Int, total: Int)
 
     /// A plain sentence per case, saying where the words are.
     public var userMessage: String {
@@ -40,6 +42,8 @@ public enum TextInsertionError: UttrflowFailure {
             "The app in front changed. Focus the intended field and try again."
         case .insertionNeedsCopy:
             "The text couldn't be inserted. Your clipboard is unchanged."
+        case .insertionInterrupted(let typed, let total):
+            "Typing stopped after \(typed) of \(total) characters. Your dictation is saved under Recent in the menu bar."
         }
     }
 
@@ -56,6 +60,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .insertionRejected: .pasteManually
         case .insertionUnconfirmed: .showRecentDictations
         case .insertionNeedsCopy: .copyTranscript
+        case .insertionInterrupted: .showRecentDictations
         }
     }
 
@@ -67,7 +72,7 @@ public enum TextInsertionError: UttrflowFailure {
         // The words exist and the user can reach them; they only missed where they were aimed.
         case .accessibilityDenied, .clipboardUnavailable, .clipboardChanged, .insertionTimedOut,
             .insertionRejected,
-            .insertionUnconfirmed, .insertionTargetChanged, .insertionNeedsCopy:
+            .insertionUnconfirmed, .insertionTargetChanged, .insertionNeedsCopy, .insertionInterrupted:
             .degraded
         }
     }
@@ -75,7 +80,8 @@ public enum TextInsertionError: UttrflowFailure {
     /// Whether another route must not attempt the same insertion.
     public var stopsFallback: Bool {
         switch self {
-        case .insertionUnconfirmed, .insertionTargetChanged, .clipboardChanged: true
+        // Part of the text is already in the field, so another route would type it twice.
+        case .insertionUnconfirmed, .insertionTargetChanged, .clipboardChanged, .insertionInterrupted: true
         default: false
         }
     }
