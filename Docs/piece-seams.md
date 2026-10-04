@@ -35,6 +35,7 @@ Rules engine, Apple M5 Pro, debug build:
 | Cuts | Differing | In cases | words | punctuation | case | Run time |
 |---|---|---|---|---|---|---|
 | 2,717 two-piece | 1,902 | 399 | 498 | 1,401 | 3 | 687 s |
+| 12,199 two- and three-piece | 9,181 | 400 | 3,320 | 5,825 | 36 | 5,083 s |
 
 Most differences are a stop the joiner adds at the seam, which the whole never has
 ("We need. The final version"), or a capital after that stop.
