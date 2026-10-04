@@ -37,6 +37,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
+| [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
 | [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
 | [context-budget.md](context-budget.md) | The context read's budget |
