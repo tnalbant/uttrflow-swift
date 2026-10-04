@@ -2798,6 +2798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             knownRecordings = await recordings.waiting(now: Date())
             recents = RecentDictations(showing: kept)
             knownWords = await dictionary.allEntries()
+            knownRefusals = await dictionary.refusedWords()
             knownSnippets = await snippets.snippets()
             let suggestionCounts: SuggestionCounts?
             if settings.suggestions.isEnabled, let completions {
@@ -2917,7 +2918,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 entries: knownWords, draft: wordDraft, refusal: wordRefusal,
                 query: query(for: .dictionary), filter: scope(for: .dictionary),
                 sort: sorts[.dictionary] ?? "", corrections: corrections, now: now,
-                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt))
+                packed: lastVocabularyPrompt.isEmpty ? nil : lastVocabularyPrompt,
+                refused: knownRefusals))
     }
 
     /// The Snippets page as the last reading of the snippets draws it.
@@ -2996,6 +2998,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// What the two stores held at the last refresh, cached because a page is built synchronously.
     private var knownWords: [DictionaryEntry] = []
+    /// The spellings the dictionary refuses to learn, newest first, from the latest reading.
+    private var knownRefusals: [String] = []
     private var knownSnippets: [Snippet] = []
     private var knownEntitlement: Entitlement?
     /// When the signed-in account was created, from the unsigned profile beside the entitlement.
@@ -3162,6 +3166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             replaceWord(id, with: word, pronunciation: pronunciation)
         case .mergeWords(let kept, let absorbed):
             act { try await self.dictionary.merge(keeping: kept, absorbing: absorbed) }
+        case .allowWord(let word):
+            act { try await self.dictionary.allowAgain(word) }
 
         case .addSnippet:
             editSnippet(SnippetDraft())

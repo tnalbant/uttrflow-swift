@@ -52,6 +52,8 @@ public enum MainIntent: Sendable, Equatable {
     case replaceWord(UUID, word: String, pronunciation: String)
     /// Fold the second spelling of one word into the first, summing their counters.
     case mergeWords(keeping: UUID, absorbing: UUID)
+    /// Let a deleted spelling be learned again.
+    case allowWord(String)
 
     /// Open the inline snippet editor empty.
     case addSnippet

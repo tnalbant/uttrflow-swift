@@ -103,6 +103,11 @@ and capped at the ledger's 512 (`SightingLedger.maximumRefused`), so a relaunch 
 deleted before it. They are words the user already had in the dictionary and chose to remove, not
 terms read off the screen. `removeEverything()` deletes the record; `removeLearned()` keeps it.
 
+**Not learning.** The record is not hidden: `refusedWords()` lists it newest first, in the
+user's own spelling, and the Dictionary page shows it under a "Not learning" disclosure with
+Allow again on each row. `allowAgain(_:)` is the inverse of a deletion: it lifts the refusal from
+the ledger and rewrites the record, after which three sightings teach the word as before.
+
 **Several words.** `remove(_:)` also takes a set of identifiers and is the one removal path: one
 word is a set of one. Every word in the set is refused, and the refusals and the dictionary are
 each written once. Past the 512 cap the oldest refusals lapse first, so a batch larger than the cap
