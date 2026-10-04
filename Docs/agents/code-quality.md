@@ -14,6 +14,7 @@ rule, and the measure shown is what the reviewer counts.
 | Line coverage per module | percent | at least 95 | `make coverage` |
 | Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
+| Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
 | Line length and indentation | characters, spaces | 110, 4 | `make lint` |
 | Force unwraps, `try!`, implicitly unwrapped optionals, leading underscores, non-`///` doc comments | count | 0 | `make lint` |
 | Compiler warnings | count | 0 | `make build` |
@@ -257,6 +258,18 @@ python3 Scripts/loose_match_audit.py --update --after-merge  # only when main mo
 A baselined match is legitimate when the shape is the question rather than a stand-in for one;
 `CaretEchoPass` asks which completion targets begin with what the user typed. The author says why
 a given match is right.
+
+## Closed word lists
+
+A literal collection of four or more words in code is a rule keyed to the words someone said, and
+each one makes the next defect a patch. Decide by the property the words share, or move the list
+into a data file; the count per file never rises.
+
+```bash
+make closed-list-report                                      # every list left, with the line
+python3 Scripts/closed_list_audit.py --update                # record a fall
+python3 Scripts/closed_list_audit.py --update --after-merge  # only when main moved under you
+```
 
 ## Measurements and thresholds
 
