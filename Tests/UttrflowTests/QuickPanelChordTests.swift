@@ -114,7 +114,7 @@ struct QuickPanelChordTests {
             let event = try key("я", flags, keyCode: code)
             #expect(QuickPanel.rowChord(event) == action.chord, Comment(rawValue: action.chord.label))
         }
-        let undo = try key("я", .command, keyCode: try #require(PanelChord("z").keyCode))
+        let undo = try key("я", .command, keyCode: PanelChord("z").keyCode)
         #expect(QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false))
     }
 
@@ -216,6 +216,8 @@ struct QuickPanelChordTests {
             #expect(QuickPanel.rowChord(event) == action.chord, "\(layout): \(action.chord.label)")
         }
         let undo = try layoutKey(PanelChord("z"), in: layout)
-        #expect(QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false), layout)
+        #expect(
+            QuickPanel.claimsUndo(undo, offersRestore: true, fieldCanUndo: false),
+            "\(layout): undo")
     }
 }
