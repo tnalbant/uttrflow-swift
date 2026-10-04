@@ -393,3 +393,7 @@ waits until nobody has touched the Mac for 30 s, and needs Accessibility granted
 | `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
 | `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
 | `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |
+| `late-write` | text, Accessibility | answers the write with success and applies it 150 ms later | `insertionUnconfirmed`, field holds the words once the write lands |
+| `steals-focus` | text, paste | moves focus to the multi-line view the first time its selection is read | pasted, and the words land in the multi-line view, not the text field |
+| `closes-window` | text, paste | closes its window the first time its selection is read | pasted, field empty |
+| `marks-text` | text, Accessibility | opens with an input method composition, `ni`, in progress at the caret | written, the composition is committed and the words follow it |
