@@ -101,7 +101,8 @@ struct DataTableTests {
         #expect(decoded > 0)
     }
 
-    @Test("Every truncation and every single-bit flip of a valid table is refused or decodes within the rules.")
+    @Test(
+        "Every truncation and every single-bit flip of a valid table is refused or decodes within the rules.")
     func exhaustiveDamage() {
         let valid = Array(
             #"{"schema": 1, "rows": [{"id": "a", "weight": 1}, {"id": "b", "weight": 2}]}"#.utf8)

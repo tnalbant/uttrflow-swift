@@ -208,7 +208,8 @@ public enum Romaniser {
             // A conjunct after it keeps the vowel: "ananya", not "annya".
             guard !before.vowel.isEmpty, !before.isNasal, !after.vowel.isEmpty,
                 after.consonants.count == 1,
-                after.consonants != [Consonant(base: ha, hasNukta: false)]  // "p" then "h" would read "ph": दोपहर is "dopahar"
+                // "p" then "h" would read "ph": दोपहर is "dopahar"
+                after.consonants != [Consonant(base: ha, hasNukta: false)]
             else { continue }
             syllables[index].vowel = ""
         }

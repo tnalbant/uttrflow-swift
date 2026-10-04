@@ -61,7 +61,8 @@ public enum TechnicalTermProblem: Equatable, Sendable {
 /// The shipped technical vocabulary, read from `technical-lexicon.json`; a new term is a row there.
 public enum TechnicalLexicon {
     /// The bundled rows; with none loaded every word stays as spoken.
-    static let table = DataTable<TechnicalTerm>.load("technical-lexicon", schema: 1, from: .module, fallback: [])
+    static let table = DataTable<TechnicalTerm>.load(
+        "technical-lexicon", schema: 1, from: .module, fallback: [])
 
     /// Every term, in file order.
     public static var terms: [TechnicalTerm] { table.rows }
@@ -76,7 +77,9 @@ public enum TechnicalLexicon {
         terms.flatMap { problems(of: $0, isOrdinary: isOrdinary) }
     }
 
-    private static func problems(of term: TechnicalTerm, isOrdinary: (String) -> Bool) -> [TechnicalTermProblem] {
+    private static func problems(
+        of term: TechnicalTerm, isOrdinary: (String) -> Bool
+    ) -> [TechnicalTermProblem] {
         var found: [TechnicalTermProblem] = []
         if term.spoken.isEmpty { found.append(.unspoken(id: term.id)) }
         for phrase in term.spoken where !isWellFormed(phrase) {
@@ -92,7 +95,8 @@ public enum TechnicalLexicon {
         let words = phrase.split(separator: " ", omittingEmptySubsequences: false)
         return !words.isEmpty
             && words.allSatisfy { word in
-                !word.isEmpty && word.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
+                !word.isEmpty
+                    && word.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) }
             }
     }
 }

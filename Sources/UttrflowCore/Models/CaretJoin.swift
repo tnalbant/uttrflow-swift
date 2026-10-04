@@ -22,10 +22,14 @@ enum CaretJoin {
     static let codeDestinations: Set<Destination> = [.codeEditor, .terminal, .sqlEditor]
 
     /// The classes a space may follow: what ends a run of words.
-    static let separatesAfter: Set<CharacterClass> = [.word, .closingBracket, .closingQuote, .mark, .symbol, .emoji]
+    static let separatesAfter: Set<CharacterClass> = [
+        .word, .closingBracket, .closingQuote, .mark, .symbol, .emoji,
+    ]
 
     /// The classes a space may precede: what starts a run of words.
-    static let separatesBefore: Set<CharacterClass> = [.word, .openingBracket, .openingQuote, .sign, .symbol, .emoji]
+    static let separatesBefore: Set<CharacterClass> = [
+        .word, .openingBracket, .openingQuote, .sign, .symbol, .emoji,
+    ]
 
     /// The pairs that join without a space where code is written, as a call or a subscript does.
     static let joinedInCode: Set<Pair> = [Pair(before: .word, after: .openingBracket)]
@@ -37,11 +41,15 @@ enum CaretJoin {
     }
 
     /// Whether a space belongs between a character of class `before` and one of class `after` in `destination`.
-    static func needsSpace(between before: CharacterClass, and after: CharacterClass, in destination: Destination)
+    static func needsSpace(
+        between before: CharacterClass, and after: CharacterClass, in destination: Destination
+    )
         -> Bool
     {
         guard separatesAfter.contains(before), separatesBefore.contains(after) else { return false }
-        return !(codeDestinations.contains(destination) && joinedInCode.contains(Pair(before: before, after: after)))
+        return
+            !(codeDestinations.contains(destination)
+            && joinedInCode.contains(Pair(before: before, after: after)))
     }
 
     /// Classifies `character`; a straight quote opens only at the start or after a space or an opener.
@@ -50,7 +58,10 @@ enum CaretJoin {
         if character.isWhitespace { return .space }
         if character.isLetter || character.isNumber || character == "_" { return .word }
         if character == "\"" || character == "'" {
-            let opens = previous.map { [.space, .newline, .openingBracket, .openingQuote].contains(classify($0, after: nil)) } ?? true
+            let opens =
+                previous.map {
+                    [.space, .newline, .openingBracket, .openingQuote].contains(classify($0, after: nil))
+                } ?? true
             return opens ? .openingQuote : .closingQuote
         }
         if openingQuotes.contains(character) { return .openingQuote }
@@ -75,7 +86,9 @@ enum CaretJoin {
     private static let closingQuotes: Set<Character> = ["\u{201D}", "\u{2019}", "\u{00BB}", "\u{203A}"]
 
     /// Clause marks that attach to the text before them, besides every script's sentence end.
-    private static let marks: Set<Character> = [",", ";", ":", "%", SentenceMarks.ellipsis, "\u{060C}", "\u{3001}", "\u{FF0C}"]
+    private static let marks: Set<Character> = [
+        ",", ";", ":", "%", SentenceMarks.ellipsis, "\u{060C}", "\u{3001}", "\u{FF0C}",
+    ]
 
     /// Whether `character` draws as a pictograph rather than as a digit or a symbol.
     static func isEmoji(_ character: Character) -> Bool {

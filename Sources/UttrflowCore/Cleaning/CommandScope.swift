@@ -52,7 +52,10 @@ public enum CommandScope: String, Decodable, Sendable, CaseIterable {
     static func words(_ tokens: [Range<String.Index>], in text: String) -> [(text: String, opensLine: Bool)] {
         tokens.indices.map { index in
             let gapStart = index == 0 ? text.startIndex : tokens[index - 1].upperBound
-            return (String(text[tokens[index]]), text[gapStart..<tokens[index].lowerBound].contains(where: \.isNewline))
+            return (
+                String(text[tokens[index]]),
+                text[gapStart..<tokens[index].lowerBound].contains(where: \.isNewline)
+            )
         }
     }
 
