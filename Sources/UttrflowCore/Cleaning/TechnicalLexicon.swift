@@ -56,6 +56,10 @@ public enum TechnicalTermProblem: Equatable, Sendable {
     case ordinaryWithoutDestination(id: String)
     /// The entry lists an empty set of destinations, so it applies nowhere.
     case appliesNowhere(id: String)
+    /// The written form is not printable Latin-script characters without spaces.
+    case malformedWritten(id: String)
+    /// An earlier entry of the same category says the same phrase in a destination this one shares.
+    case duplicateSpoken(id: String, spoken: String, earlier: String)
 }
 
 /// The shipped technical vocabulary, read from `technical-lexicon.json`; a new term is a row there.
@@ -73,11 +77,34 @@ public enum TechnicalLexicon {
     public static func problems(
         in terms: [TechnicalTerm], isOrdinary: (String) -> Bool
     ) -> [TechnicalTermProblem] {
-        terms.flatMap { problems(of: $0, isOrdinary: isOrdinary) }
+        terms.flatMap { problems(of: $0, isOrdinary: isOrdinary) } + collisions(in: terms)
+    }
+
+    private static func collisions(in terms: [TechnicalTerm]) -> [TechnicalTermProblem] {
+        var found: [TechnicalTermProblem] = []
+        for (index, term) in terms.enumerated() {
+            let earlier = terms[..<index]
+            for phrase in term.spoken {
+                let clash = earlier.first { other in
+                    other.category == term.category && other.spoken.contains(phrase)
+                        && sharesDestination(other, term)
+                }
+                if let clash {
+                    found.append(.duplicateSpoken(id: term.id, spoken: phrase, earlier: clash.id))
+                }
+            }
+        }
+        return found
+    }
+
+    private static func sharesDestination(_ first: TechnicalTerm, _ second: TechnicalTerm) -> Bool {
+        guard let one = first.destinations, let two = second.destinations else { return true }
+        return !one.isDisjoint(with: two)
     }
 
     private static func problems(of term: TechnicalTerm, isOrdinary: (String) -> Bool) -> [TechnicalTermProblem] {
         var found: [TechnicalTermProblem] = []
+        if !isWellFormedWritten(term.id) { found.append(.malformedWritten(id: term.id)) }
         if term.spoken.isEmpty { found.append(.unspoken(id: term.id)) }
         for phrase in term.spoken where !isWellFormed(phrase) {
             found.append(.malformedSpoken(id: term.id, spoken: phrase))
@@ -86,6 +113,10 @@ public enum TechnicalLexicon {
         let ordinary = isOrdinary(term.id) || term.spoken.contains(where: isOrdinary)
         if ordinary && term.destinations == nil { found.append(.ordinaryWithoutDestination(id: term.id)) }
         return found
+    }
+
+    private static func isWellFormedWritten(_ id: String) -> Bool {
+        !id.isEmpty && id.unicodeScalars.allSatisfy { ("!"..."~").contains($0) }
     }
 
     private static func isWellFormed(_ phrase: String) -> Bool {
