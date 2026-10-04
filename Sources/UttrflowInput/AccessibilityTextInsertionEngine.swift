@@ -62,10 +62,13 @@ extension AccessibilityTextInsertionEngine: CompletionWriting {
     public func write(_ text: String, replacing replaced: String) async throws(TextInsertionError) {
         try refuseIfSelfFrontmost()
         let focus = focus
+        try TextInsertion.requireTarget(nil, focus: focus)
         guard let field = await AccessibilityThread.run(orElse: nil, { focus.focusedTextField() })
         else { throw .noFocusedTextField }
+        try TextInsertion.requireLive()
         try refuseIfSelfFrontmost()
         try await AccessibilityThread.run { () throws(TextInsertionError) in
+            try TextInsertion.requireTarget(nil, focus: focus)
             try field.replaceSelection(replacing: replaced, with: text)
         }
     }

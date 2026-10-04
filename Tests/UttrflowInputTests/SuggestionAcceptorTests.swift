@@ -88,6 +88,25 @@ private final class PausingTypist: KeystrokeTyping, @unchecked Sendable {
     func allowTyping() { resumeTyping.signal() }
 }
 
+private final class SequencedCompletionFocus: AccessibilityFocus, @unchecked Sendable {
+    private let applications: [InsertionDestination]
+    private let reads = Mutex(0)
+
+    init(_ applications: [InsertionDestination]) { self.applications = applications }
+
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func focusedApplication() -> InsertionDestination? {
+        reads.withLock { reads in
+            let application = applications[min(reads, applications.count - 1)]
+            reads += 1
+            return application
+        }
+    }
+    func focusedFieldIsSecure() -> Bool { false }
+}
+
 @Suite("Typing a completion in")
 struct TypedTextInsertionEngineTests {
     @Test("The text goes to the typist exactly as it was given.")
@@ -129,6 +148,36 @@ struct TypedTextInsertionEngineTests {
             try await engine.write("mit", replacing: "")
         }
         #expect(typist.deletions.isEmpty)
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A completion refuses when its target changes after the initial field read.")
+    func writeRefusesWhenDestinationChanges() async {
+        let first = InsertionDestination(applicationName: "Notes", bundleIdentifier: "com.example.notes")
+        let second = InsertionDestination(applicationName: "Chat", bundleIdentifier: "com.example.chat")
+        let focus = SequencedCompletionFocus([first, second])
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: focus, typist: typist)
+
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            try await engine.write("completion", replacing: "")
+        }
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A cancelled completion refuses before writing.")
+    func writeRefusesWhenCancelled() async {
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(), typist: typist)
+        let error = await Task { () -> TextInsertionError? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            do throws(TextInsertionError) {
+                try await engine.write("completion", replacing: "")
+                return nil
+            } catch { return error }
+        }.value
+
+        #expect(error == .insertionRejected(description: TextInsertion.dictationEnded))
         #expect(typist.text.isEmpty)
     }
 
@@ -183,7 +232,8 @@ struct TypedTextInsertionEngineTests {
             return try await engine.insert("late words")
         }
 
-        await #expect(throws: TextInsertionError.insertionRejected(description: TextInsertion.dictationEnded)) {
+        await #expect(throws: TextInsertionError.insertionRejected(description: TextInsertion.dictationEnded))
+        {
             _ = try await task.value
         }
         #expect(typist.text.isEmpty)

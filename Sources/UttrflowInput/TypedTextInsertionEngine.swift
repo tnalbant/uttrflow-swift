@@ -87,6 +87,10 @@ extension TypedTextInsertionEngine: CompletionWriting {
             throw .insertionRejected(description: "the application is terminating")
         }
         defer { writeState.end(write) }
+        let focus = focus
+        let current = await AccessibilityThread.run(orElse: nil) { focus.focusedApplication() }
+        let target = current.flatMap { $0.isKnown ? $0 : nil }
+        try refuseIfStale(target)
         let count = replaced.count
         if count > 0 {
             // A blind backspace could eat a shell prompt, so what is there is checked when the field will say.
@@ -101,12 +105,12 @@ extension TypedTextInsertionEngine: CompletionWriting {
                 throw .insertionRejected(
                     description: "the text before the caret is not what would be replaced")
             }
-            try refuseIfNotTypable()
+            try refuseIfStale(target)
             try typist.deleteBackwards(count)
         } else {
-            try refuseIfNotTypable()
+            try refuseIfStale(target)
         }
-        try await typeInChunks(text, targeting: nil)
+        try await typeInChunks(text, targeting: target)
     }
 }
 
