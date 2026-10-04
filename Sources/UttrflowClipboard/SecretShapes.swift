@@ -90,6 +90,7 @@ public enum SecretShapes {
     /// Keys whose issuers gave them a prefix, each with a minimum length so prose about `sk-` is not one.
     nonisolated(unsafe) static let vendorKey =
         #/
+        \b(?:
         sk-(?:ant-)?[A-Za-z0-9_\-]{16,}          # OpenAI, Anthropic
         | (?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}   # Stripe
         | gh[pousr]_[A-Za-z0-9]{16,}             # GitHub, short form
@@ -110,6 +111,7 @@ public enum SecretShapes {
         | dop_v1_[a-f0-9]{40,}                   # DigitalOcean
         | shpat_[a-fA-F0-9]{32}                  # Shopify
         | SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}  # SendGrid
+        )
         /#
 
     // MARK: - A secret because of what it is called

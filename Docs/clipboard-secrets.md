@@ -85,7 +85,8 @@ by few of them.
 7. Vendor prefixes with a minimum length each (`SecretShapes.vendorKey`): OpenAI, Anthropic,
    Stripe (keys and webhook secrets), GitHub, GitLab, Slack, Hugging Face, PyPI, Docker Hub,
    Linear, Supabase, HashiCorp Vault, AWS, Google, npm, DigitalOcean, Shopify and SendGrid, so
-   prose about `sk-` keys is not itself one.
+   prose about `sk-` keys is not itself one. A prefix starts at a token boundary: the start of the
+   clip or after a non-word character.
 8. A named secret per line (`API_KEY=…`, `password: …`, `passphrase: …`, `client_secret = …`)
    whose value is quoted, or has a digit, or is at least 12 characters, so `var password: String`
    does not count. The name may carry a prefix: a keyword starts at a word boundary, after `_`, or
