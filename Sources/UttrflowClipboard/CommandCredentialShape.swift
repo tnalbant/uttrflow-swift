@@ -327,7 +327,8 @@ enum CommandCredentialShape {
         let name = word[..<colon].trimmingSuffix(while: \.isWhitespace)
         let lowered = name.lowercased()
         // The header name is the last run of name characters before the colon, as `{Authorization` or `Proxy-Authorization` holds.
-        let header = String(lowered.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
+        let headerWord = lowered.hasPrefix("-h") ? lowered.dropFirst(2) : lowered[...]
+        let header = String(headerWord.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
         if header == "cookie" || header == "set-cookie" {
             let rest = word[word.index(after: colon)...]
             let value = ([String(rest)] + following).joined(separator: " ")

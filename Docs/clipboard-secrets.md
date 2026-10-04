@@ -135,9 +135,10 @@ words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognis
   `--db-pass`, `--api-key`), with its value joined by `=` or in the next word. `--no-…`,
   `--password-stdin` and `--token-file` do not pass one.
 - An uppercase variable assignment whose name ends in one (`PGPASSWORD=…`, `MYSQL_PWD=…`).
-- An `Authorization:` or `Proxy-Authorization:` header in any scheme, or a header whose name ends
-  in a secret's name (`X-Api-Key:`), quoted or not, with the value in the same word or the next
-  two. A scheme alone (`Authorization: Bearer`) sends nothing.
+- An `Authorization:` or `Proxy-Authorization:` header in any scheme, including a `curl -H` value
+  attached to its flag, or a header whose name ends in a secret's name (`X-Api-Key:`), quoted or
+  not, with the value in the same word or the next two. A scheme alone (`Authorization: Bearer`)
+  sends nothing.
 
 A value that is a variable, a substitution or a placeholder (`$TOKEN`, `${token}`, `{token}`,
 `<token>`) is left alone, since it names where the credential is rather than being it.
