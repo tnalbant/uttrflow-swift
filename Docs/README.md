@@ -37,6 +37,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-synthetic-keystrokes.md](input-synthetic-keystrokes.md) | The key events this app posts, and what the system does with them |
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
+| [chat-mail-probe.md](chat-mail-probe.md) | What the dictation read gets from a chat composer or a mail body |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
