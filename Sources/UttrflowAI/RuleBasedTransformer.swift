@@ -64,7 +64,7 @@ public struct RuleBasedTransformer: TextTransformationEngine {
                 for: formatter, situation: request.situation, steps: steps, vocabulary: request.vocabulary)
         case .piece:
             .piece(
-                numbers: formatter.numbers, digits: formatter.digits,
+                numbers: formatter.numbers, digits: request.situation.digits(for: formatter),
                 layout: formatter.layout, destination: formatter.destination,
                 precedingText: request.situation.insertion.precedingText,
                 documentName: request.situation.app.documentName, steps: steps)

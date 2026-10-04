@@ -259,7 +259,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             if joined(end, shapes), keys[end] == "of",
                 let following = NumberWords.cardinal(unbroken(from: end + 1, keys: keys, shapes: shapes))
             {
-                text += " of " + NumberWords.render(following.value, grouped: false)
+                text += " of " + NumberWords.render(following.value, grouping: .none)
                 end += following.count + 1
                 isPhrase = true
             } else {
@@ -277,7 +277,7 @@ public struct NumberFormsPass: PieceCleaningPass {
                 || completesAmount(at: position, keys: keys, shapes: shapes)
             guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
-            text = NumberWords.render(value, grouped: digits == .thousands && !inContext)
+            text = NumberWords.render(value, grouping: inContext ? .none : digits)
         } else if !isPhrase {
             return nil
         }

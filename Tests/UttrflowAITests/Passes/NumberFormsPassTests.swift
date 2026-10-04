@@ -570,10 +570,45 @@ struct NumberWordsTests {
 
     @Test("groups thousands with commas only from ten thousand")
     func grouping() {
-        #expect(NumberWords.render(9999, grouped: true) == "9999")
-        #expect(NumberWords.render(10_000, grouped: true) == "10,000")
-        #expect(NumberWords.render(1_234_567, grouped: true) == "1,234,567")
-        #expect(NumberWords.render(1_234_567, grouped: false) == "1234567")
+        #expect(NumberWords.render(9999, grouping: .thousands) == "9999")
+        #expect(NumberWords.render(10_000, grouping: .thousands) == "10,000")
+        #expect(NumberWords.render(1_234_567, grouping: .thousands) == "1,234,567")
+        #expect(NumberWords.render(1_234_567, grouping: .none) == "1234567")
+    }
+
+    @Test("groups by lakh and crore when the number style says Indian")
+    func indianGrouping() {
+        #expect(NumberWords.render(10_000, grouping: .indian) == "10,000")
+        #expect(NumberWords.render(150_000, grouping: .indian) == "1,50,000")
+        #expect(NumberWords.render(12_345_678, grouping: .indian) == "1,23,45,678")
+    }
+
+    @Test("one pipeline writes each number style from the situation alone")
+    func numberStyleFromSituation() {
+        let formatter = DestinationFormatter.standard(for: .plain)
+        let cases: [(DigitGrouping, String)] = [(.thousands, "150,000"), (.indian, "1,50,000")]
+        for (grouping, expected) in cases {
+            let situation = Situation(
+                app: .unknown, insertion: .unknown, destination: .plain,
+                numberStyle: NumberStyle(grouping: grouping))
+            let pass = NumberFormsPass(policy: formatter.numbers, digits: situation.digits(for: formatter))
+            #expect(pass.apply(Draft(text: "we paid one hundred fifty thousand rupees")).text.contains(expected))
+        }
+    }
+
+    @Test("a place that parses its digits overrides the person's grouping")
+    func parsedPlaceOverridesStyle() {
+        let situation = Situation(
+            app: .unknown, insertion: .unknown, destination: .codeEditor,
+            numberStyle: NumberStyle(grouping: .indian))
+        #expect(situation.digits(for: .standard(for: .codeEditor)) == .none)
+    }
+
+    @Test("a grouping recognises only its own spellings")
+    func groupingMatches() {
+        #expect(DigitGrouping.indian.matches("1,50,000") && !DigitGrouping.thousands.matches("1,50,000"))
+        #expect(DigitGrouping.thousands.matches("150,000") && !DigitGrouping.indian.matches("150,000"))
+        #expect(!DigitGrouping.indian.matches("1,2,000") && DigitGrouping.none.matches("150000"))
     }
 
     // MARK: - How the digits are grouped

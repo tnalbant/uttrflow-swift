@@ -83,7 +83,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let finishing =
             request.scope == .piece
             ? CleaningPipeline.afterModelPiece(
-                digits: formatter.digits, situation: request.situation,
+                digits: request.situation.digits(for: formatter), situation: request.situation,
                 heard: request.transcription.text, spoken: spoken)
             : CleaningPipeline.afterModel(
                 for: formatter, situation: request.situation, heard: request.transcription.text,

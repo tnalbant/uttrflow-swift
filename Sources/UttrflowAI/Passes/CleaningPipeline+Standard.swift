@@ -10,7 +10,8 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
-                numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
+                numbers: formatter.numbers, digits: situation.digits(for: formatter),
+                layout: formatter.layout,
                 insertionPoint: situation.insertion, destination: formatter.destination,
                 precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
                 steps: steps
@@ -24,7 +25,8 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
-                numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
+                numbers: formatter.numbers, digits: situation.digits(for: formatter),
+                insertionPoint: situation.insertion,
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
                 documentName: situation.app.documentName, steps: steps
             ).passes
@@ -62,7 +64,7 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: afterModelPiece(
-                digits: formatter.digits, situation: situation, heard: heard, spoken: spoken
+                digits: situation.digits(for: formatter), situation: situation, heard: heard, spoken: spoken
             ).passes
                 + message(
                     for: formatter, situation: situation, heard: heard, steps: steps, vocabulary: vocabulary
