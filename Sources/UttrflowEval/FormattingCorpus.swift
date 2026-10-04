@@ -373,32 +373,32 @@ extension EvaluationCorpus {
             id: "fmt-number-count", category: .everyday,
             spoken: "we need twelve chairs",
             expected: "We need 12 chairs.",
-            mustKeep: ["12", "chairs"], classes: [.numbers]
+            mustKeep: ["12", "chairs"], classes: [.numbers], semiotic: .cardinal
         ),
         .init(
             id: "fmt-number-percent", category: .everyday,
             spoken: "sales grew by fifteen percent",
             expected: "Sales grew by 15%.",
-            mustKeep: ["15%"], classes: [.numbers]
+            mustKeep: ["15%"], classes: [.numbers], semiotic: .measure
         ),
         .init(
             id: "fmt-number-time", category: .everyday,
             spoken: "the call is at four thirty",
             expected: "The call is at 4:30.",
-            mustKeep: ["call"], classes: [.numbers]
+            mustKeep: ["call"], classes: [.numbers], semiotic: .time
         ),
         .init(
             id: "fmt-number-money", category: .everyday,
             spoken: "the ticket costs forty dollars",
             expected: "The ticket costs 40 dollars.",
-            mustKeep: ["ticket", "40"], classes: [.numbers]
+            mustKeep: ["ticket", "40"], classes: [.numbers], semiotic: .money
         ),
         // Adversarial: "one" as a pronoun is a word, not a numeral.
         .init(
             id: "fmt-number-one-as-pronoun", category: .everyday,
             spoken: "this one is better",
             expected: "This one is better.",
-            mustKeep: ["one", "better"], mustNotAdd: ["1"], classes: [.numbers]
+            mustKeep: ["one", "better"], mustNotAdd: ["1"], classes: [.numbers], semiotic: .staysWords
         ),
     ]
 

@@ -66,6 +66,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let classes: [FormattingClass]
     /// The code-mixing cell the case fills, when it is one of the grid's cases.
     public let codeMix: CodeMixCell?
+    /// The kind of number the case is about, which the number grammar report counts.
+    public let semiotic: SemioticClass?
     /// The positions of the spoken words a sentence-length pause follows, which times every word when non-empty.
     public let pausedAfter: [Int]
 
@@ -85,6 +87,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         doubtful: [String] = [],
         classes: [FormattingClass] = [],
         codeMix: CodeMixCell? = nil,
+        semiotic: SemioticClass? = nil,
         pausedAfter: [Int] = [],
         origin: Origin = .authored,
         addedFor: Int? = nil
@@ -106,6 +109,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.doubtful = doubtful
         self.classes = classes
         self.codeMix = codeMix
+        self.semiotic = semiotic
         self.pausedAfter = pausedAfter
     }
 
