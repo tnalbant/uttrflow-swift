@@ -44,8 +44,9 @@ comments. [`microphone.md`](microphone.md) covers the hardware moving under the 
 
 ## Resampler fidelity
 
-`AudioResampler` leaves the converter's sample-rate quality and prime method at their
-defaults. `AudioResamplerFidelityTests` measures what that does to a signal: a 0.5 amplitude
+`AudioResampler` sets the converter's sample-rate quality to `AVAudioQuality.max` and leaves
+the prime method at its default. `AudioResamplerFidelityTests` measures what each quality does
+to a signal: a 0.5 amplitude
 sine on channel 0 of a one-second buffer, passband tones at 100 Hz, 1, 4 and 7 kHz, and
 stopband tones at 9, 10, 12, 16 and 20 kHz (each only where the input rate can carry it).
 Gain and alias are the RMS of the middle half of the output, relative to the input's RMS.
@@ -71,9 +72,10 @@ Measured on an Apple M5 Pro, macOS 26.5; the converter fed in the same 2048-fram
 - CPU, 60 s of 48 kHz mono in 4096-frame blocks: about 1.5 ms per audio second at the default
   and 3.5 ms at the highest quality.
 
-The default is kept. Changing it requires the corpus WER (`make bakeoff`) at both settings,
-which needs the quality to be selectable on the production path, and an audio-thread budget to
-compare the CPU cost with; neither exists yet.
+The highest quality is used: it removes the -20 dB alias at the rates microphones deliver for
+about 2 ms more CPU per audio second, 0.35% of one core. `AudioResamplerFidelityTests` holds
+the production path to the highest-quality alias figures per rate, so a fall back to the
+default fails.
 
 ## Microphone access is read before the engine
 
