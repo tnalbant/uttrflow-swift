@@ -9,6 +9,32 @@ against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
 [`measuring-accuracy.md`](measuring-accuracy.md); the edit distance is in
 [`core-word-error-rate.md`](core-word-error-rate.md).
 
+## Capitalisation by class
+
+`CaseScore.caseAccuracy` is the share of aligned words whose case matches the reference. Most
+reference words are lower case, so that share starts high for an output that changes nothing. The
+bake-off therefore also counts each aligned word under one `CapitalisationClass`, read from the
+reference by the rule in `CapitalisationScore.swift` (the pronoun "I", acronym, inner capital,
+sentence start, capitalised inside a sentence, lower case, uncased), and prints each class beside
+two floors: the reference written all lower case, and the recogniser's own text. `caseAccuracy` is
+the total of that tally, so its meaning is unchanged for stored results.
+
+Floors over the clean-up corpus, from `swift test --filter CapitalisationScoreTests`:
+
+| Class | Words | All lower case | Recogniser |
+|---|---|---|---|
+| I | 87 | 0% | 52% |
+| acronym | 67 | 0% | 11% |
+| inner capital | 17 | 0% | 100% |
+| sentence start | 826 | 9% | 13% |
+| capitalised | 129 | 0% | 18% |
+| lower case | 4198 | 100% | 100% |
+| uncased | 222 | 100% | 100% |
+| all | 5546 | 81% | 83% |
+
+An all-lower-case output already scores 81% on the old mean, so a mean is read against this floor
+and the class that moved, never alone.
+
 ## The baseline gate
 
 - A run is compared against a stored baseline, and the gate says *better* or *worse*. "The

@@ -397,6 +397,8 @@ struct Bakeoff: AsyncParsableCommand {
             report.passRate(for: Destination(rawValue: destination) ?? .plain)
         }
 
+        printCapitalisation(of: byMultilingual)
+
         if verbose {
             for measurement in measurements {
                 // The stored verdict, not one rebuilt from it, so a file older than a reason still lists the case.
@@ -410,6 +412,43 @@ struct Bakeoff: AsyncParsableCommand {
                     print("  \(result.caseID.padded(to: 26)) \(percent(result.similarity))\(result.reasons)")
                 }
             }
+        }
+    }
+
+    /// Case accuracy per capitalisation class beside the do-nothing and recogniser floors, so a mean is read against them.
+    private func printCapitalisation(of measurements: [Measurement]) {
+        let header =
+            "candidate".padded(to: 17) + "params".padded(to: 8) + "class".padded(to: 16)
+            + "words".padded(to: 8) + "case".padded(to: 8) + "lower".padded(to: 8) + "spoken"
+        print(
+            "\nCapitalisation by class — accuracy over aligned words,"
+                + " beside all-lower-case and recogniser output\n")
+        print(header)
+        print(String(repeating: "─", count: header.count + 4))
+        for measurement in measurements {
+            let report = measurement.report
+            guard let tally = report.capitalisation, let lower = report.lowerCaseBaseline,
+                let spoken = report.spokenBaseline
+            else {
+                print(measurement.description.name.padded(to: 17) + "(stored before classes were counted)")
+                continue
+            }
+            for wordClass in CapitalisationClass.allCases {
+                guard let count = tally.matched[wordClass] else { continue }
+                print(
+                    measurement.description.name.padded(to: 17)
+                        + measurement.description.parameters.padded(to: 8)
+                        + wordClass.rawValue.padded(to: 16) + "\(count)".padded(to: 8)
+                        + (tally.accuracy(of: wordClass).map(percent) ?? "n/a").padded(to: 8)
+                        + (lower.accuracy(of: wordClass).map(percent) ?? "n/a").padded(to: 8)
+                        + (spoken.accuracy(of: wordClass).map(percent) ?? "n/a"))
+            }
+            let below = tally.mostDegraded(comparedWith: spoken).map(\.rawValue) ?? "none"
+            print(
+                measurement.description.name.padded(to: 17) + measurement.description.parameters.padded(to: 8)
+                    + "all".padded(to: 16) + "".padded(to: 8) + percent(tally.accuracy).padded(to: 8)
+                    + percent(lower.accuracy).padded(to: 8) + percent(spoken.accuracy)
+                    + "  furthest below the recogniser: \(below)")
         }
     }
 
@@ -524,6 +563,12 @@ struct StoredReport: Codable, Sendable {
     let meanMarkAccuracy: Double?
     /// Absent from result files written before surface metrics were recorded.
     let meanCaseAccuracy: Double?
+    /// Case agreement per capitalisation class; `nil` in a result file older than the classes.
+    let capitalisation: CapitalisationTally?
+    /// What an all-lower-case output scores on the same cases; `nil` like `capitalisation`.
+    let lowerCaseBaseline: CapitalisationTally?
+    /// What the recogniser's own case scores on the same cases; `nil` like `capitalisation`.
+    let spokenBaseline: CapitalisationTally?
     let medianSeconds: Double
     let slowestSeconds: Double
     let declinedCount: Int
@@ -588,6 +633,9 @@ struct StoredReport: Codable, Sendable {
         meanSimilarity = report.meanSimilarity
         meanMarkAccuracy = report.meanMarkAccuracy
         meanCaseAccuracy = report.meanCaseAccuracy
+        capitalisation = report.capitalisation
+        lowerCaseBaseline = report.lowerCaseBaseline
+        spokenBaseline = report.spokenBaseline
         medianSeconds = Self.seconds(report.medianDuration)
         slowestSeconds = Self.seconds(report.slowestDuration)
         declinedCount = report.declinedCount
