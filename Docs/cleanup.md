@@ -147,6 +147,47 @@ and that list, not this page, is the record of what the floor covers. Spellings 
 to decide are the model's alone. A gap gets a corpus case before it gets a prompt line, because
 a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
 
+## Words spelled letter by letter
+
+A speaker spells a name, a code or a file name so that it is written exactly as spelled. The
+recogniser already writes a spelled word as upper-case letters joined by hyphens, and that is
+the intended output: cleaning leaves it as written.
+
+| Shape spoken | Intended output | Why |
+|---|---|---|
+| Spelled name or word ("T A V I S H") | left as the recogniser wrote it, `T-A-V-I-S-H` | Joining needs the word's case, which the letters do not carry; the name is usually said beside it |
+| Spelled code with digits ("K 7 Q 2 9 X") | upper-case code, `K7Q29X` | The recogniser writes it joined; nothing to do |
+| Doubled letters ("double L", "double R") | the letter twice, as the recogniser writes it | Already expanded before cleaning |
+| Phonetic alphabet ("M as in Mike", "Bravo Echo") | left as spoken | Not consistent enough to read: "as in" survives, and bare code words come back as separate sentences |
+| Spelled file name ("R E A D M E dot t x t") | left as the recogniser wrote it, `readme.txt` | Already joined |
+
+No rule is added: no shape is both left wrong by the recogniser and consistent enough to read.
+One cleaning regression was measured: in "A as in Alpha" the spelled letter loses its capital
+("a as in Alpha"), because the article "a" and the letter name are one spelling.
+
+Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
+`uttrflow-dev transcribe --raw -l en` (the shipping WhisperKit model) and
+`uttrflow-dev clean -e rules`:
+
+| # | Spoken | Recogniser | After cleaning |
+|---|---|---|---|
+| 1 | my name is Tavish, that's T A V I S H | My name is Tavish. That's T-A-V-I-S-H. | unchanged |
+| 2 | her surname is spelled M-O-R-L-A-N-D | Her surname is spelled M-O-R-L-N-D. | unchanged |
+| 3 | the code is B as in boy, seven four | The code is B as in boy. 7-4. | unchanged |
+| 4 | the file is called R E A D M E dot txt | The file is called readme.txt. | unchanged |
+| 5 | the booking reference is K 7 Q 2 9 X | Booking references K7Q29X. | unchanged |
+| 6 | it's M as in Mike, A as in Alpha, R as in Romeo, A as in Alpha | It's M as in Mike, A as in Alpha, R as in Romeo, A as in Alpha. | It's M as in Mike, a as in Alpha, R as in Romeo, a as in Alpha. |
+| 7 | spell it Bravo Echo Lima Tango | Spell it. Bravo. Echo Lima. Tango. | unchanged |
+| 8 | that's Callum with a C, C A double L U M | That's Callum with a C, C-A-L-L-U-M. | unchanged |
+| 9 | the street is spelled O, double R, I, N | The street is spelled O-R-R-I-N. | unchanged |
+| 10 | the ticket is J R A dash four one two | Ticket is JRA-412. | unchanged |
+| 11 | my username is Z O R I N 8 8 | My username is Z-O-R-I-N-A-D-A-T. | unchanged |
+| 12 | the city is spelled E L D R A V I A | The city is spelled E-L-D-R-A-V-I-A. | unchanged |
+
+The recogniser's own errors (a dropped letter in 2, "8 8" heard as letters in 11) are
+recognition, not cleaning, and are out of reach of any rule here. Synthetic voices spell more
+evenly than people do, so a recorded human set may still change these shapes.
+
 ## Where the words are going
 
 Two of the Tier 2 cleanings depend on the place rather than the speech, and
