@@ -133,7 +133,7 @@ extension MeaningPreservationGuard {
     }
 
     /// Spoken punctuation names whose written marks join the words on either side.
-    private static let symbolNames: [String: String] = [
+    static let symbolNames: [String: String] = [
         "dot": ".", "period": ".", "underscore": "_", "slash": "/", "backslash": "\\",
         "at": "@", "hyphen": "-", "dash": "-", "plus": "+", "hash": "#",
     ]
