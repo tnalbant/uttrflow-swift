@@ -118,6 +118,11 @@ public enum Scorer {
         var broken: [String] = []
         if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append(head) }
         if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append(tail) }
+        // Words joined by a closed sentence are one more sentence, so the ends counted plus one is the total.
+        if let fewest = reference.minimumSentences {
+            let closed = tokens(rewritten, keepingSentenceEnds: true).count(where: { $0 == sentenceEnd }) + 1
+            if closed < fewest { broken.append("\(fewest) sentences") }
+        }
         return broken
     }
 

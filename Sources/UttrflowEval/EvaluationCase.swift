@@ -18,6 +18,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case grammar
         /// An entry into a one-line field of no known purpose, which is a value and takes no stop alone.
         case oneLineField
+        /// A dictation of three hundred words or more, where sentence ends are what a tidier drops first.
+        case longInput
     }
 
     public let id: String
@@ -40,6 +42,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let mustBeginWith: String?
     /// Exactly how the output must end, for a case about its final mark.
     public let mustEndWith: String?
+    /// The fewest sentences the output must close, for a long case one run-on sentence must fail.
+    public let minimumSentences: Int?
     /// The spoken runs the recogniser was unsure of, which is what makes a case about a doubtful reading fire.
     public let doubtful: [String]
     /// The formatting case classes this case exercises, which is what the coverage matrix counts.
@@ -57,6 +61,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         destination: Destination = .plain,
         mustBeginWith: String? = nil,
         mustEndWith: String? = nil,
+        minimumSentences: Int? = nil,
         doubtful: [String] = [],
         classes: [FormattingClass] = []
     ) {
@@ -71,6 +76,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.destination = destination
         self.mustBeginWith = mustBeginWith
         self.mustEndWith = mustEndWith
+        self.minimumSentences = minimumSentences
         self.doubtful = doubtful
         self.classes = classes
     }
