@@ -41,8 +41,11 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 ? letters.map { $0.lowercased() }.joined(separator: ".") + "."
                 : value
             let first = live[position]
+            // The run keeps the mark its last letter carried, so a spoken stop or comma survives the join.
+            let closing = draft.shape(at: live[end - 1]).suffix
+            let cased = Self.casedOutput(output, first: draft.words[first].text)
             draft.replace(
-                at: first, with: Self.casedOutput(output, first: draft.words[first].text), by: Self.id)
+                at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id)
             for index in live[(position + 1)..<end] { draft.remove(at: index, by: Self.id) }
             live.removeSubrange((position + 1)..<end)
             position += 1
@@ -79,7 +82,9 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil,
+            // A letter a closing a clause cannot be an article, so it ends the initialism.
             (draft.shape(at: live[end]).key != "a" || end == initialismStart
+                || end + 1 == live.count || draft.shape(at: live[end]).endsClause
                 || end + 1 < live.count
                     && Self.letterName(draft.shape(at: live[end + 1])) != nil
                     && draft.shape(at: live[end + 1]).key != "a")
@@ -105,7 +110,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
 
     private func candidateRunEnd(from position: Int, in live: [Int], draft: Draft) -> Int {
         var end = position
-        while end < live.count, !draft.shape(at: live[end]).endsClause,
+        while end < live.count, end == position || !draft.shape(at: live[end - 1]).endsClause,
             end == position || live[end] == live[end - 1] + 1,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil
