@@ -225,6 +225,7 @@ no build, no model and no window, and reads the source for the ways a budget can
 | cache | a model pass (`perform`, `generate`, `TokenIterator`, `ChatSession`) sits in no function that caps MLX's cache and clears it on exit, a `release()` does not clear it, or the cap is over 256 MB |
 | counters | `ResourceBudget`'s limits differ from the memory or disk budget table |
 | suggestions | the key-path limits above differ from what `SuggestionCoordinator` and `SuggestionPanelController` do |
+| latency | the table under "The latency target" has no rows, or a row whose p50 is not above 0 and at most its p95 |
 
 `--self-test` injects one violation per check into the tree as read and fails unless the audit
 catches it, so a rule that has stopped matching the code is found rather than trusted. A known
@@ -250,6 +251,37 @@ and each exits non-zero when a reading is over its line: every settled moment of
 the idle line, its peak against a dictation's, each pass's peak and settled footprint against the
 suggestion lines, and the footprint a second after a release against the idle line. The profile
 also reads the support folder against the disk budget. `ResourceBudget` is the one judge both use.
+
+## The latency target
+
+The wait is key release to the words being ready, as `uttrflow-dev bench` reports it: the shipping
+tidier, clean audio, played at speaking pace (`rt`) so early transcription works while the key is
+held. Insertion is not in it. A row is judged on at least 3 clips, by the same `percentile` that
+`Scripts/dictation_bench.py score` prints.
+
+**These numbers are placeholders, not decided targets.** They are one run on an Apple M5 Pro
+(48 GB), Release, at a load average of 250–310 from other builds, so they record what a saturated
+Mac did rather than what a dictation should cost, and run several times over the quiet-Mac waits in
+[`performance-dictation.md`](performance-dictation.md#the-wait); they are to be replaced once per-stage budgets are set.
+
+| category | mode | wait p50 s | wait p95 s |
+|---|---|---|---|
+| `dur5` | `rt` | 6.31 | 7.19 |
+| `dur30` | `rt` | 20.79 | 84.76 |
+| `dur120` | `rt` | 6.29 | 6.68 |
+
+The source audit only checks that the rows exist and are coherent. Timing needs the models and a
+quiet Mac, so it is not in `make verify` or CI; a release candidate runs it:
+
+```
+python3 Scripts/dictation_bench.py jobs --mode rt --clean-only --cleaners shipping \
+    --categories dur5,dur30,dur120 > .build/bench/jobs-rt.tsv
+.build/release/uttrflow-dev bench .build/bench/jobs-rt.tsv > .build/bench/run.out
+make perf-budget-latency RUN=.build/bench/run.out
+```
+
+It exits 1 when any row's p50 or p95 is over its target or has fewer than 3 clips. `--self-test`
+proves a run on target passes and the same run 50% slower fails every row.
 
 ## Processor
 
