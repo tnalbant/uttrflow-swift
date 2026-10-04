@@ -130,6 +130,24 @@ against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
 - Baseline entries store error and reference-word counts, never a rate. A stored rate cannot be
   re-aggregated, and storing both is how the two come to disagree.
 
+### Run-to-run and machine-to-machine spread
+
+- The 0.5-point default is not yet measured. A recogniser running through CoreML can give
+  different words on different chip generations and OS builds, and hosted CI runners have no
+  Neural Engine, so a baseline from one machine and a gate run on another can disagree for
+  reasons that are not the code.
+- `RunToRunSpread` (`Sources/UttrflowEval/RunToRunSpread.swift`) turns repeated runs of one
+  configuration over the same audio into the numbers the tolerance must sit above: per passage,
+  the identical-text rate (transcripts compared character for character) and the rate spread; over
+  the corpus, the share of passages every run agreed on and the headline spread between runs.
+- The tolerance is set at or above the measured spread, and the baseline records chip and OS
+  build. Until a second machine reproduces the table, the gate runs only on the machine that
+  recorded the baseline.
+
+  | chip | OS build | runs | identical passages | headline spread (points) | differing passages |
+  |---|---|---|---|---|---|
+  | not yet measured | | 8 | | | |
+
 ## The upload outbox
 
 - There is no queue file. The outbox is derived state: every recording on disk with no settled
@@ -252,3 +270,18 @@ What is deliberately not done matters as much as what is:
 | Lines with a restart | 7.07% | not measured |
 
 The corpus column is 410 English cases, 3,011 words.
+
+## The contamination audit
+
+- `ContaminationAudit` is the one check that no tuned-on text carries a corpus passage. It reads
+  every clean-up case's spoken and expected text and every transcription passage in each form it
+  is written in, and reports the case id, the asset and the shared words.
+- An asset fails on a run of 8 or more consecutive words shared with a passage
+  (`ContaminationAudit.sharedRunWords`), or on a phrase of 4 or more words that sits whole inside
+  one (`ContaminationAudit.wholePhraseWords`). Function words are exempt by these lengths, not by
+  a word list: any two English texts share runs of two or three of them.
+- The prompt check passes 3 as the shortest phrase, because rules quote slips that short.
+- Measured on Apple M5 Pro: 0 findings across the prompt contract, rules and worked examples, and
+  across every `.txt` and `.json` file under `Sources/*/Resources`, so 0 false positives today
+  (`swift test --filter ContaminationAuditTests`).
+- Bundled assets are found by walking `Sources/*/Resources` until the data manifest lists them.
