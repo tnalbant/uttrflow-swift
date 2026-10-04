@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Takes back the text before a mid-sentence caret when a model repeats it at the head of its answer.
-public struct CaretEchoPass: CleaningPass {
+public struct CaretEchoPass: PieceCleaningPass {
     public static let id: PassID = .caretEcho
 
     public let state: InsertionPoint.SentenceState
@@ -60,7 +60,7 @@ public struct CaretEchoPass: CleaningPass {
     }
 
     /// Splits folded text into comparable word tokens.
-    private static func words(_ text: String) -> [Substring] {
+    static func words(_ text: String) -> [Substring] {
         text.split { $0 == " " || $0.isPunctuation }
     }
 

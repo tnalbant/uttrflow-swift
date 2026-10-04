@@ -104,6 +104,19 @@ struct PromptBuilderTests {
         }
     }
 
+    /// A worked example must never show the model repairing a form the dialect rule keeps.
+    @Test("names the dialect verb forms it keeps and shows no example repairing one")
+    func dialectVerbFormsStay() {
+        for destination in Destination.allCases
+        where DestinationFormatter.standard(for: destination).grammar == .repair {
+            let rules = builder.block(for: destination).rules
+            for form in ["\"we was\"", "\"I seen\"", "\"I done\"", "\"he come\"", "\"she don't\""] {
+                #expect(rules.contains(form), "\(destination) \(form)")
+            }
+            #expect(!builder.workedExamples(for: destination).contains("she have went"), "\(destination)")
+        }
+    }
+
     @Test("shows every destination the shared examples: English, Hindi, the screen, and the caret")
     func sharedExamplesAreEverywhere() {
         for destination in Destination.allCases {

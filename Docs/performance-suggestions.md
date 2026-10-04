@@ -179,8 +179,7 @@ against a whole prefill after the warm instructions:
 
 ## Low Power Mode and thermal pressure
 
-A model pass is the most expensive thing tab-to-complete does (0.17 processor-seconds here, about
-0.3 on an M1), and it is discretionary: the corpus still offers what it remembers without it. So
+A model pass is the most expensive thing tab-to-complete does (0.17 processor-seconds here), and it is discretionary: the corpus still offers what it remembers without it. So
 the app hands `SuggestionCoordinator` its model wrapped in `DiscretionaryGenerator`, which:
 
 - runs every pass in a utility task, resumed through a continuation so the awaiting turn does not

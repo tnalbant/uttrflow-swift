@@ -20,12 +20,15 @@ public struct DictationRecord: Sendable, Equatable, Identifiable, Codable {
     public var changes: RecordedChanges?
     /// Whether the user has said this came out wrong; the one judgement here Uttrflow does not make.
     public var isFlagged: Bool
+    /// What a flag names as wrong; `nil` on a flagged record is an unlabelled flag.
+    public var flagReason: FlagReason?
 
     /// Builds a record; every field after `text` and `when` defaults to unknown or unflagged.
     public init(
         id: UUID = UUID(), text: String, when: Date, applicationName: String? = nil,
         applicationIdentifier: String? = nil, spokenFor: Duration? = nil,
-        changes: RecordedChanges? = nil, isFlagged: Bool = false
+        changes: RecordedChanges? = nil, isFlagged: Bool = false,
+        flagReason: FlagReason? = nil
     ) {
         self.id = id
         self.text = text
@@ -35,9 +38,10 @@ public struct DictationRecord: Sendable, Equatable, Identifiable, Codable {
         self.spokenFor = spokenFor
         self.changes = changes
         self.isFlagged = isFlagged
+        self.flagReason = flagReason
     }
 
-    /// Reads ``isFlagged`` as `false` when absent, since the store discards a file it cannot decode.
+    /// Reads ``isFlagged`` as `false` and ``flagReason`` as unlabelled when absent, since the store discards a file it cannot decode.
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -49,6 +53,7 @@ public struct DictationRecord: Sendable, Equatable, Identifiable, Codable {
         spokenFor = try values.decodeIfPresent(Duration.self, forKey: .spokenFor)
         changes = try values.decodeIfPresent(RecordedChanges.self, forKey: .changes)
         isFlagged = try values.decodeIfPresent(Bool.self, forKey: .isFlagged) ?? false
+        flagReason = try values.decodeIfPresent(FlagReason.self, forKey: .flagReason)
     }
 
     /// Whether this is still within `days` of `now`; the one place "deleted after N days" is decided.

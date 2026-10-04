@@ -39,7 +39,8 @@ over 300 `begin()` calls against a temporary folder on a quiet Mac:
 | file work inline (not used) | 225–340 µs | 314–513 µs | 540–652 µs | 2.8–4.9 ms |
 
 `uttrflow-dev latency --opens N` opens the real microphone N times through the shipping
-`AVAudioCaptureEngine`, times each `start()` through the same `measuring(.microphoneOpen)` the
+`AVAudioCaptureEngine` (`--device UID` picks an input from `--list-devices`; `--idle S` keeps it
+closed S seconds before each opening, for the cold case), times each `start()` through the same `measuring(.microphoneOpen)` the
 pipeline uses, polls every millisecond for the first sample, and summarises with `StageLatency`.
 One run of 20 opens, debug build, built-in microphone, on a heavily loaded Mac (load average
 339–387), so these are loaded-machine figures; re-run on a quiet Mac before a decision rests on
@@ -291,6 +292,7 @@ asset query alone at 5–130 ms per call, largest when the system had been idle.
 ```
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 swift build -c release --product uttrflow-dev
+swift build -c release --product uttrflow-eval                             # the scorer's word normalisation
 python3 Scripts/dictation_bench.py corpus                                  # .build/bench, about a minute
 python3 Scripts/dictation_bench.py jobs --cleaners shipping,rules > .build/bench/jobs-fast.tsv
 python3 Scripts/dictation_bench.py jobs --mode rt --clean-only \
@@ -299,6 +301,10 @@ cat .build/bench/jobs-fast.tsv .build/bench/jobs-rt.tsv > .build/bench/jobs.tsv
 .build/release/uttrflow-dev bench .build/bench/jobs.tsv > .build/bench/run.out
 python3 Scripts/dictation_bench.py score .build/bench/run.out
 ```
+
+`score` counts words through `uttrflow-eval normalise`, the same `TextNormaliser.standard` the
+Swift scorers use, and prints the rules in force first; a run printed under other rules is not
+comparable. `Tests/UttrflowEvalTests/Golden/normalisation.tsv` pins both entry points to one table.
 
 `--categories hi-reply` selects the Hindi replies, whose jobs use the `hi` Languages profile.
 `--categories code-switch` selects an English passage followed by a Hindi one and a Hindi sentence
