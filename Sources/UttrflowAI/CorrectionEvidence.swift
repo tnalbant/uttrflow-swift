@@ -17,8 +17,8 @@ struct CorrectionEvidence: Sendable {
     /// The contiguous certain runs of the utterance; uncertain words keep runs from joining.
     private let saidClearly: Haystack
 
-    /// Reads both haystacks once per utterance; only words at or above `certainAt` may corroborate.
-    init(utterance: Utterance, seeing context: AppContext, certainAt threshold: Double) {
+    /// Reads both haystacks once per utterance; only words `DoubtPolicy` calls heard surely may corroborate.
+    init(utterance: Utterance, seeing context: AppContext) {
         Self.screensRead?.record()
         // The title and the selection split by letters, never the app's own name; `LearnableWords` agrees.
         onScreen = Haystack(
@@ -30,7 +30,7 @@ struct CorrectionEvidence: Sendable {
         var certainRuns: [[String]] = []
         var current: [String] = []
         for word in utterance.words {
-            guard word.confidence >= threshold else {
+            guard DoubtPolicy.isHeardSurely(word.confidence) else {
                 if !current.isEmpty { certainRuns.append(current); current = [] }
                 continue
             }

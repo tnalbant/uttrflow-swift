@@ -117,7 +117,7 @@ public struct MeaningPreservationGuard: Sendable {
         for change in aligned.changes {
             for index in change.kept where index < heard.count {
                 let token = aligned.kept[index]
-                guard heard[index].confidence >= WordCorrectionEngine.certaintyThreshold else { continue }
+                guard DoubtPolicy.isHeardSurely(heard[index].confidence) else { continue }
                 if change.rewritten.contains(where: {
                     Homophones.share(token.matching, aligned.rewritten[$0].matching)
                 }) {

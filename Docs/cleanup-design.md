@@ -265,7 +265,7 @@ whether the repair helped or overreached.
 ## 5. Doubtful words — the "Apple or apples" problem
 
 The recogniser reports a probability for every word (`wordTimestamps: true`), and the
-correction engine acts only on words under `WordCorrectionEngine.certaintyThreshold` (0.5).
+correction engine acts only on words under `DoubtPolicy.certaintyThreshold` (0.5).
 The doubtful-word design generalises that into candidates and a chooser:
 
 ```swift

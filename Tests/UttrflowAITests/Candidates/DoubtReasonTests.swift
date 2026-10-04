@@ -43,7 +43,7 @@ struct DoubtReasonTests {
     @Test("a run with any low-scored word is a low-score run measured at its weakest word")
     func mixedRunIsLowScore() {
         let runs = UncertainSpan.spans(
-            in: [("the", 0.3), ("principal", 0.9)], below: WordCorrectionEngine.certaintyThreshold)
+            in: [("the", 0.3), ("principal", 0.9)])
         let both = runs.first { $0.text == "the principal" }
         #expect(both?.reason == .lowScore)
         #expect(both?.confidence == 0.3)
