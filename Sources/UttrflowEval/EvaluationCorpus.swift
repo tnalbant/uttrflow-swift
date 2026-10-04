@@ -28,6 +28,7 @@ public enum EvaluationCorpus {
             spoken: "My manager. Wants the slides by noon",
             expected: "My manager wants the slides by noon."
         ),
+        // Contested: the spoken stop is kept as a fragment because dictation is a transcript, not a rewrite.
         .init(
             id: "sub4", category: .everyday,
             spoken: "the server. crashed twice last night",
@@ -948,6 +949,7 @@ public enum EvaluationCorpus {
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
         ),
+        // Contested: words are kept above one hundred until the numeral policy decides compound ordinals.
         .init(
             id: "compound-ordinal-above-one-hundred", category: .everyday,
             spoken: "one hundred and twenty first",
@@ -1383,7 +1385,7 @@ public enum EvaluationCorpus {
     // MARK: Context pairs, identical words under two windows. See Docs/eval-context-cases.md.
 
     static let contextual: [EvaluationCase] = [
-        // Pair one: prose against SQL; no direction or LIMIT was spoken, so none is owed.
+        // Pair one: prose against SQL from editor context alone (contested); no direction or LIMIT was spoken.
         .init(
             id: "sql-editor-totals", category: .contextual,
             spoken: "add up the invoices grouped by currency and sort by the total",
@@ -2299,6 +2301,7 @@ public enum EvaluationCorpus {
             mustBeginWith: "npm",
             mustEndWith: "build"
         ),
+        // Contested: "dash" is kept here while other terminal cases write `-`; the terminal adapter decides.
         .init(
             id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
             spoken: "uh ls dash la",
