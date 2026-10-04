@@ -104,7 +104,7 @@ public enum FocusedFieldReader {
             bundleIdentifier != Bundle.main.bundleIdentifier
         else { return nil }
         // Some applications pad their name with control and direction marks, which would reach the model verbatim.
-        let name = Surroundings.cleaned(app.localizedName ?? bundleIdentifier)
+        let name = SurroundingsText.cleaned(app.localizedName ?? bundleIdentifier)
             .trimmingCharacters(in: .whitespaces)
         return FrontmostApp(
             processIdentifier: app.processIdentifier, bundleIdentifier: bundleIdentifier,
