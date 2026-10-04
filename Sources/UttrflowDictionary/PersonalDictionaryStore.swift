@@ -76,8 +76,8 @@ public actor PersonalDictionaryStore {
     @discardableResult
     public func add(_ entry: DictionaryEntry) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let entry = entry.inLatinScript
-        guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+        if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+            throw refusal
         }
         let spelling = entry.spellingKey
         let kept =
@@ -94,8 +94,8 @@ public actor PersonalDictionaryStore {
         let derived = merge(load())
         let entries = derived.entries.map(\.inLatinScript)
         for entry in entries {
-            guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-                throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+            if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+                throw refusal
             }
         }
         let kept = Self.boundedEntries(entries)
@@ -113,9 +113,7 @@ public actor PersonalDictionaryStore {
         guard !typed.isEmpty else { throw .wordIsEmpty }
         let spelling = Romaniser.romanised(typed)
         let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PhoneticIndex.supports(word: spelling, pronunciation: sound) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
-        }
+        if let refusal = PhoneticIndex.refusal(word: spelling, pronunciation: sound) { throw refusal }
         let key = DictionaryEntry.spellingKey(for: spelling)
         guard !load().contains(where: { $0.spellingKey == key }) else {
             throw .wordAlreadyKnown

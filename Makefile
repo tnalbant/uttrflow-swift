@@ -170,6 +170,17 @@ uitest-arguments: ## Prove the UI harness refuses a rounds count it cannot run. 
 eval-arguments: build ## Prove transcribe refuses negative report limits before measuring.
 	@python3 Scripts/eval_arguments_test.py
 
+ACCURACY_CORPUS := .build/accuracy-corpus
+ACCURACY_BASELINE := Scripts/accuracy_baseline.json
+
+.PHONY: accuracy-gate
+accuracy-gate: ## Fail when the shipping recogniser got worse on the synthesised passages. Needs the installed model.
+	$(SWIFT) build -c release --product uttrflow-eval $(SWIFT_BUILD_FLAGS)
+	rm -rf $(ACCURACY_CORPUS) .build/accuracy-results
+	./.build/release/uttrflow-eval synthesise --corpus-path $(ACCURACY_CORPUS)
+	./.build/release/uttrflow-eval transcribe --corpus-path $(ACCURACY_CORPUS) \
+		--results-path .build/accuracy-results --baseline $(ACCURACY_BASELINE) --fail-on-regression
+
 .PHONY: uitest-result-path
 uitest-result-path: ## Prove a second `make uitest` moves the prior result bundle aside. Needs no screen.
 	@python3 Scripts/uitest_result_path_test.py

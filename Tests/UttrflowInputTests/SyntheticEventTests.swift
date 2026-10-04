@@ -36,7 +36,7 @@ struct SyntheticEventTests {
         #expect(throws: TextInsertionError.accessibilityDenied) {
             try buildThenPost(
                 [1, 2, 3],
-                build: { value in
+                build: { (value: Int) throws(TextInsertionError) -> Int in
                     built.append(value)
                     if value == 2 { throw .accessibilityDenied }
                     return value

@@ -241,10 +241,8 @@ public struct LayoutWordsPass: PieceCleaningPass {
         guard !["and", "or"].contains(previous.key) else { return false }
         if ["need", "are", "check"].contains(previous.key) { return true }
         let context = live[..<marker].map { draft.words[$0].text }.joined(separator: " ")
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = context
         guard let range = context.range(of: previous.core, options: .backwards) else { return false }
-        return tagger.tag(at: range.lowerBound, unit: .word, scheme: .lexicalClass).0 != .verb
+        return LexicalClass.tag(at: range.lowerBound, in: context) != .verb
     }
 
     /// The number of the item "number" opens at `position`, or nil where no item opens.

@@ -210,6 +210,11 @@ final class SuggestionCoordinator {
     private var isInserting = false
     /// Holds the pending wake and stopped state, so stop discards work a turn had queued.
     private var wakeState = SuggestionWakeState()
+    private var runningTurn: Int?
+    var isActiveForUpdate: Bool {
+        !wakeState.isStopped
+            && (ticking.isRunning || armedOffer != nil || generating != nil || runningTurn != nil)
+    }
     /// Set while a dictation is under way, when no turn may start.
     private var isDictating = DictationInProgress.shared.isDictating
     /// Whether the last field read reported marked text, so a Return next confirms a conversion rather than ending the line.
@@ -419,6 +424,7 @@ final class SuggestionCoordinator {
         processActivity.end()
         wakeState.stop()
         turns.abandon()
+        runningTurn = nil
         nativeMenuIsOpen = false
         onSecureInputBlockingChanged?(false)
         tapRest.cancel()
@@ -857,6 +863,7 @@ final class SuggestionCoordinator {
 
     /// Runs the turn the gate admitted and reports its end under the same number.
     private func start(_ turn: Int, because reason: SuggestionReason) {
+        runningTurn = turn
         running = Task { [weak self] in
             await self?.turn(turn, because: reason)
             self?.finished(turn)
@@ -865,6 +872,7 @@ final class SuggestionCoordinator {
 
     /// Runs whatever arrived while the turn was in flight, unless the turn had already been left behind.
     private func finished(_ turn: Int) {
+        if runningTurn == turn { runningTurn = nil }
         guard !wakeState.isStopped, turns.end(turn), let next = wakeState.takeAfterTurn() else {
             return
         }

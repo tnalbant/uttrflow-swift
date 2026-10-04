@@ -1,6 +1,6 @@
 // Per-application clipboard capture choices, kept separately from general UI settings.
 public import Foundation
-import UttrflowCore
+public import UttrflowCore
 
 /// Applications whose clipboard contents should never enter Uttrflow's history.
 public struct ClipboardPreferences: Sendable, Equatable, Codable {

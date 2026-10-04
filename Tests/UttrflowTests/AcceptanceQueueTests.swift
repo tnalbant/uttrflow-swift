@@ -65,12 +65,14 @@ struct AcceptanceQueueTests {
             await Task.yield()
         }
         #expect(fenceStarted, "forget must close admission before waiting for the blocked write")
-        #expect(!queue.enqueue({}), "an acceptance must not be queued after forgetting begins")
+        let queuedWhileForgetting = queue.enqueue({})
+        #expect(!queuedWhileForgetting, "an acceptance must not be queued after forgetting begins")
 
         open.yield()
         await forgetting.value
         queue.finishForgetting()
-        #expect(queue.enqueue({}), "admission resumes once forgetting has finished")
+        let queuedAfterForgetting = queue.enqueue({})
+        #expect(queuedAfterForgetting, "admission resumes once forgetting has finished")
         await queue.drained()
     }
 }

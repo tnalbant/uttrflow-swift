@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 import Testing
+import UttrflowPipeline
 import UttrflowPredict
 
 @testable import Uttrflow
@@ -38,7 +39,7 @@ struct SuggestionSessionEndTests {
         let workspaceCenter = NotificationCenter()
         let screenLockCenter = NotificationCenter()
         let panel = ClipboardPanelSessionStub()
-        let controller: DictationController? = nil
+        let controller: DictationController<ContinuousClock>? = nil
         let (ended, continuation) = AsyncStream.makeStream(of: Void.self)
         var ends = ended.makeAsyncIterator()
         let onEnd: @Sendable () -> Void = {

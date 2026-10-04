@@ -2125,7 +2125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Closed first: Settings activates the app, and the panel would belong to nothing.
             closeQuickPanel()
             show(.settings(.general))
-        case .insert, .reveal, .alias, .move, .delete, .renameCategory, .deleteCategory,
+        case .insert, .insertCleaned, .reveal, .alias, .move, .delete, .renameCategory, .deleteCategory,
             .reindent, .makeNote, .scope:
             // Answered above, by `intent.key`.
             break
@@ -2382,27 +2382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
-        if case .inserted(let outcome) = state {
-            lastCleanedBy = outcome.cleanedBy
-            if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
-                actionNotice = notice
-                announce(notice.message, urgently: false)
-            }
-            if !appleIntelligenceFallbackNoticeShown,
-                outcome.cleanedBy == .rules,
-                let unavailable = outcome.unavailableEngines.first(where: {
-                    $0.engine == TransformerKind.foundationModels.rawValue
-                })
-            {
-                appleIntelligenceFallbackNoticeShown = true
-                let notice = MainNotice.appleIntelligenceUnavailable(unavailable.reason)
-                actionNotice = notice
-                announce(notice.message, urgently: false)
-            }
-            if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
-                probeTransformers()
-            }
-        }
+        if case .inserted(let outcome) = state { noteCleanUp(outcome) }
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
@@ -2446,6 +2426,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // After each dictation, since a menu-bar-only user may never open the window that lists them.
         if state.hasEnded { sweepExpired() }
 
+        relay(state)
+    }
+
+    /// Says when clean-up fell back, and probes the engines when the preferred one did not run.
+    private func noteCleanUp(_ outcome: UttrflowPipeline.DictationOutcome) {
+        lastCleanedBy = outcome.cleanedBy
+        if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
+            actionNotice = notice
+            announce(notice.message, urgently: false)
+        }
+        if !appleIntelligenceFallbackNoticeShown,
+            outcome.cleanedBy == .rules,
+            let unavailable = outcome.unavailableEngines.first(where: {
+                $0.engine == TransformerKind.foundationModels.rawValue
+            })
+        {
+            appleIntelligenceFallbackNoticeShown = true
+            let notice = MainNotice.appleIntelligenceUnavailable(unavailable.reason)
+            actionNotice = notice
+            announce(notice.message, urgently: false)
+        }
+        if settings.engines.resolvedTransformerPreference.first != outcome.cleanedBy {
+            probeTransformers()
+        }
+    }
+
+    /// Updates every surface that shows the dictation state, then schedules dismissal.
+    private func relay(_ state: DictationState) {
         // Kept here, where every change already arrives, so the updater need not ask the pipeline.
         lastDictationState = state
         updates.refresh()
@@ -2691,7 +2699,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             isDictating: lastDictationState.isBusy,
             isPanelOpen: quickPanel.isVisible,
             isEditing: snippetEditorIsOpen || wordEditorIsOpen,
-            isOnboarding: onboarding != nil)
+            isOnboarding: onboarding != nil,
+            isSuggesting: completions?.isActiveForUpdate == true)
     }
 
     private func redrawMainWindow() {
@@ -3357,7 +3366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         intentWork = Task { [weak self, dictionary, snippets] in
             do {
                 let merged = try await PersonalDataTransfer.importArchive(
-                    Data(contentsOf: source), into: dictionary, and: snippets)
+                    from: source, into: dictionary, and: snippets)
                 let duplicateCount = merged.duplicateWords + merged.duplicateSnippets
                 var message =
                     duplicateCount == 0
@@ -3368,6 +3377,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                         " Kept the \(PersonalDictionaryStore.maximumInferredEntries) strongest learned words and skipped \(merged.skippedInferredWords)."
                 }
                 self?.showPersonalDataNotice(title: "Import complete", message: message)
+            } catch let error as PersonalDataArchiveError {
+                let message: String
+                switch error {
+                case .archiveTooLarge:
+                    message = "The archive exceeds the 5 MB import limit. Nothing was imported."
+                case .tooManySnippets:
+                    message = "The archive exceeds the snippet limit. Nothing was imported."
+                case .snippetTooLong:
+                    message = "A snippet is longer than the import limit. Nothing was imported."
+                case .dictionaryWordTooLong:
+                    message = "A dictionary word is longer than the import limit. Nothing was imported."
+                case .unsupportedVersion, .invalidContents:
+                    message = "The selected archive is not valid. Nothing was imported."
+                }
+                self?.showPersonalDataNotice(title: "Import could not be completed", message: message)
             } catch {
                 self?.showPersonalDataNotice(
                     title: "Import could not be completed",

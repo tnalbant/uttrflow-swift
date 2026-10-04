@@ -7,7 +7,7 @@ extension EvaluationCorpus {
     static let formatting: [EvaluationCase] =
         boundaryCases + commaCases + questionCases + quoteCases + ellipsisCases + tokenCases
         + numberCases + listCases + paragraphCases + correctionCases + destinationCases + codeCases
-        + hinglishCases + probeCases
+        + hinglishCases + probeCases + followingTextCases
 
     static let boundaryCases: [EvaluationCase] = [
         .init(

@@ -1,5 +1,6 @@
 // The one search rule every list page uses: trimmed, case-, accent- and width-insensitive, blank keeps all.
 import Foundation
+import UttrflowClipboard
 
 extension StringProtocol {
     /// Whether `needle` occurs here ignoring case, accents, width, curly quotes, dash kinds and whitespace runs.
@@ -104,6 +105,10 @@ enum SearchFolding {
         var needsFolding = false
         var previousWasSpace = false
         for scalar in text.unicodeScalars {
+            if ClipTextSafety.isDisplayHazard(scalar) && !isWhitespace(scalar) {
+                needsFolding = true
+                break
+            }
             let isSpace = isWhitespace(scalar)
             if isRewritten(scalar) || (isSpace && (scalar != " " || previousWasSpace)) {
                 needsFolding = true
@@ -115,6 +120,7 @@ enum SearchFolding {
         var out = String.UnicodeScalarView()
         previousWasSpace = false
         for scalar in text.unicodeScalars {
+            if ClipTextSafety.isDisplayHazard(scalar) && !isWhitespace(scalar) { continue }
             if isWhitespace(scalar) {
                 if !previousWasSpace { out.append(" ") }
                 previousWasSpace = true
@@ -138,6 +144,16 @@ enum SearchFolding {
         return String(out)
     }
 
+    /// Removes display hazards while keeping control whitespace in the existing search-as-space rule.
+    static func withoutDisplayHazards<S: StringProtocol>(_ text: S) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars
+        where !ClipTextSafety.isDisplayHazard(scalar) || isWhitespace(scalar) {
+            out.append(scalar)
+        }
+        return String(out)
+    }
+
     /// The folded text with, per folded scalar, where it starts in `text`, plus the end; `nil` if unchanged.
     static func foldedWithOrigins<S: StringProtocol>(
         _ text: S
@@ -150,7 +166,9 @@ enum SearchFolding {
         var index = scalars.startIndex
         while index < scalars.endIndex {
             let scalar = scalars[index]
-            if isWhitespace(scalar) {
+            if ClipTextSafety.isDisplayHazard(scalar) && !isWhitespace(scalar) {
+                // A removed scalar has no folded position; the next visible scalar owns the match.
+            } else if isWhitespace(scalar) {
                 if !previousWasSpace {
                     out.append(" ")
                     origins.append(index)
@@ -181,7 +199,7 @@ enum SearchFolding {
 enum SearchQuery {
     /// The query as it is matched, with surrounding whitespace dropped.
     static func needle(in query: String) -> String {
-        query.trimmingCharacters(in: .whitespacesAndNewlines)
+        SearchFolding.withoutDisplayHazards(query).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The items whose named fields mention the query; all of them when nothing was typed.

@@ -100,6 +100,7 @@ struct SuggestionModelBannerTests {
             #expect(!shown.message.localizedCaseInsensitiveContains("corpus"))
             #expect(!shown.title.localizedCaseInsensitiveContains("weights"))
             #expect(!shown.message.localizedCaseInsensitiveContains("weights"))
+        }
     }
 
     @Test("secure input does not report suggestions running with a ready model")

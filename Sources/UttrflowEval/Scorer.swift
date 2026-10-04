@@ -2,7 +2,9 @@ import UttrflowCore
 
 /// Scores one rewrite against a reference by word overlap, since several phrasings are correct.
 public enum Scorer {
-    public static func score(_ rewritten: String, against reference: EvaluationCase) -> CaseScore {
+    /// Scores the text as the field shows it, padded at the caret exactly as the pipeline pads it.
+    public static func score(_ output: String, against reference: EvaluationCase) -> CaseScore {
+        let rewritten = reference.context.insertionPoint.paddedBoundary(for: output)
         let produced = tokens(rewritten)
         let wanted = tokens(reference.expected)
         let producedSurface = surfaceWords(rewritten)

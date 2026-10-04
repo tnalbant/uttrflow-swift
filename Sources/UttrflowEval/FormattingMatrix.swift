@@ -15,6 +15,7 @@ public enum FormattingClass: String, Sendable, Equatable, CaseIterable, Codable 
     case perDestination = "per-destination"
     case codeAndMarkdown = "code-and-markdown"
     case hinglish
+    case textAfterCaret = "text-after-caret"
     /// Prose in a technical app whose notation words must stay words.
     case abstention
 }
@@ -58,7 +59,7 @@ public struct FormattingMatrix: Sendable, Equatable {
         var lines = [
             "# Formatting coverage matrix",
             "",
-            "Generated from the `classes` tags in `EvaluationCorpus`; do not edit by hand.",
+            "Generated from the `classes` tags in `EvaluationCorpus.all` and `EvaluationCorpus.abstention`; do not edit by hand.",
             "Regenerate with `UTTRFLOW_UPDATE_GOLDEN=1 swift test --filter FormattingMatrixTests`.",
             "A class is covered at \(Self.coveredFloor) tagged cases, partial below that, uncovered at none.",
             "",

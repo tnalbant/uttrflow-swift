@@ -47,7 +47,7 @@ extension CleaningPipeline {
             ContractionsPass(), SpacingPass(),
         ]
         if destination == .codeEditor,
-            !CodeCommentContext.isComment(precedingText: precedingText, documentName: documentName),
+            CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode,
             let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
         {
             cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
@@ -113,9 +113,9 @@ extension CleaningPipeline {
         _ formatter: DestinationFormatter, in situation: Situation
     ) -> TerminalStopPolicy {
         guard formatter.destination == .codeEditor else { return formatter.terminalStop }
-        let inComment = CodeCommentContext.isComment(
+        let region = CaretStructure.region(
             precedingText: situation.insertion.precedingText, documentName: situation.app.documentName)
-        return inComment ? .always : formatter.terminalStop
+        return region == .comment ? .always : formatter.terminalStop
     }
 }
 

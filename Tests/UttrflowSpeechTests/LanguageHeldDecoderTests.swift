@@ -248,6 +248,20 @@ struct LanguageHeldDecoderTests {
         #expect(result.fallback == nil)
     }
 
+    @Test("reports the fallback temperature of the greedy sampler it wraps for evidence")
+    func temperatureSurvivesTheWrap() async throws {
+        let inner = FakeTextDecoder(logits: try Self.urduFirst(), tokenizer: nil)
+        let decoder = LanguageHeldDecoder(wrapping: inner, languages: LanguageCode.transcribed)
+        let options = VocabularyPrompt.decodingOptions(languageHint: .english)
+
+        let result = try await decoder.decodeText(
+            from: try Self.urduFirst(), using: FakeDecodingInputs(),
+            sampler: GreedyTokenSampler(temperature: 0.4, eotToken: 0, decodingOptions: options),
+            options: options, callback: nil)
+
+        #expect(result.temperature == 0.4)
+    }
+
     // MARK: What is asked for
 
     @Test("transcribes, never translates, whether the language is detected or hinted")
