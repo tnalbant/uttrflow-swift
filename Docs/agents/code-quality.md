@@ -21,6 +21,7 @@ rule, and the measure shown is what the reviewer counts.
 | Compiler warnings | count | 0 | `make build` |
 | Swift language mode | version | 6, strict concurrency | `make build` |
 | Real email or postal addresses in fixtures | count | 0 | `make pii-audit` |
+| Audio files outside `Tests/Fixtures/SyntheticAudio/`, by extension or header | count | 0 | `make audio-audit` |
 | Connections opened on the dictation path | count | 0 | `make offline-audit` |
 | Pasteboard access outside the clipboard adapters | count | 0 | `make pasteboard-audit` |
 | Local-store writes outside `PrivateFile` | count | 0 | `make store-permissions` |

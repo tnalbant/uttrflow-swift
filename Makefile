@@ -123,6 +123,10 @@ test-name-audit: ## Refuse a test file named after an issue number. Needs no bui
 issue-template-audit: ## Refuse a public issue template that prompts for content the disclosure rule forbids. Needs no build.
 	@python3 Scripts/issue_template_audit.py
 
+.PHONY: audio-audit
+audio-audit: ## Refuse audio outside the synthetic fixture directory: a recording is personal data. Needs no build.
+	@python3 Scripts/audio_audit.py --self-test
+
 .PHONY: root-audit
 root-audit: ## Refuse any file or directory at the repository root that is not on the allowlist. Needs no build.
 	@python3 Scripts/root_layout_audit.py --self-test
@@ -283,7 +287,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
