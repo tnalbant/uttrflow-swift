@@ -213,7 +213,7 @@ final class SuggestionCoordinator {
     private var runningTurn: Int?
     var isActiveForUpdate: Bool {
         !wakeState.isStopped
-            && (ticking.isRunning || armedOffer != nil || generating != nil || runningTurn != nil)
+            && (ticking.isRunning || armedOffer != nil || generating.turn != nil || runningTurn != nil)
     }
     /// Set while a dictation is under way, when no turn may start.
     private var isDictating = DictationInProgress.shared.isDictating

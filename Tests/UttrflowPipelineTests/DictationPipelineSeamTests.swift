@@ -49,7 +49,7 @@ private struct SentenceModel: CleanupModel {
         _ text: String, instructions: String, kind: TransformerKind
     ) async throws(TransformationError) -> String {
         guard let answer = answers.first(where: { text.contains($0.key) })?.value else {
-            throw .transformFailed(kind: kind, description: "no scripted answer")
+            throw .transformFailed(kind: kind, failure: .other)
         }
         return answer
     }

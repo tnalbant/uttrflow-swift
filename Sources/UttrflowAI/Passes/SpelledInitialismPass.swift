@@ -17,10 +17,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     ]
     static let letterNamesForCasing = Set(letterNames.keys)
 
-    /// Spoken letter names that are also common English words, so a spelled run cannot
-    /// admit one unless the run's own evidence (a single-letter name on each side) says
-    /// it is the letter. "are" reads overwhelmingly as the verb; "you" reads as the
-    /// pronoun (#3312); "why", "oh", "be" and "see" follow for the same reason.
+    /// Letter names that are also common English words, admitted only between single-letter names.
     private static let ambiguousLetterNames: Set<String> = [
         "are", "you", "why", "oh", "be", "see",
     ]
@@ -95,9 +92,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             guard candidateEnd - position >= 3 || Self.dottedPairs.contains(value) else { return nil }
         }
         let initialismStart = position
-        // An ambiguous letter name (a common English word like "are") cannot start a run on its own:
-        // "the letters are a b c d" reads "are" as the verb, not the letter R, so the run begins on the
-        // first single-letter name that follows.
+        // An ambiguous letter name never starts a run; the run begins on the next single letter.
         guard !Self.isAmbiguousLetterName(draft.shape(at: live[initialismStart]).key) else {
             return nil
         }
@@ -107,8 +102,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil,
-            // An ambiguous letter name in the middle of a run still needs a single-letter name on each
-            // side; otherwise the spoken word is meant as itself.
+            // Mid-run, an ambiguous letter name needs a single-letter name on each side.
             !Self.isAmbiguousLetterName(draft.shape(at: live[end]).key)
                 || (Self.isSingleLetterName(draft.shape(at: live[end - 1]).key)
                     && (end + 1 == live.count

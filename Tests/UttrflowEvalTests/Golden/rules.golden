@@ -104,6 +104,9 @@ dash-cam-as-words	We checked dash cam footage from the night.
 dash-drills-as-words	Our team runs dash drills before every match.
 dash-training-as-words	Sprint dash training starts on Monday.
 dates	The 25th of March.
+deictic-opening-here-are-files	Here are the files: a and b.
+deictic-opening-here-is-list	Here is the list: apples and pears.
+deictic-opening-there-is-list	There is a list: apples and pears.
 demonstrative-opening-that-was-good-point	That was a good point.
 demonstrative-opening-this-is-good-idea	This is a really good idea for us.
 demonstrative-subject-spoken-period	That is it.
@@ -376,11 +379,13 @@ probe-topic-shifts	So about the offsite I think we should book the venue by the 
 probe-version-bump	Bump the client from 1.4.2 to 1.5.0 and pin node to 22
 probe-yaml-keys	Set replicas: 3 and image: registry.example.com/api: 1.4.2
 pronoun-i	I think I'll take the earlier train.
+pronoun-opening-everything-is	Everything is the way it should be.
 pronoun-opening-i-am-sure	I am a hundred percent sure.
 pronoun-opening-it-is-good-control	It is good.
 pronoun-opening-it-is-good-idea	It is a good idea.
 pronoun-opening-it-is-my-two-cents	It is my two cents.
 pronoun-opening-it-is-not-idea-control	It is not a good idea.
+pronoun-opening-nothing-is	Nothing is the same as before.
 pronoun-opening-she-is-nurse-control	She is a nurse.
 pronoun-opening-that-is-it	That is it.
 prose-keeps-spoken-camel-case	Camel case user id.

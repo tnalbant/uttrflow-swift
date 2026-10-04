@@ -20,6 +20,8 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case layout
         /// A symbol written in place of its name in executable code.
         case codeSymbol
+        /// A case style, named by `text`, applied to the words that follow in executable code.
+        case casing
     }
 
     /// The row's stable name.
@@ -64,12 +66,16 @@ public enum SpokenCommands {
     static let table = DataTable<SpokenCommand>.load(
         "spoken-commands", schema: 1, from: .module, fallback: [])
 
+    /// Every row, in file order.
+    public static var all: [SpokenCommand] { table.rows }
     /// Punctuation said by name, in file order so a longer name is tried before a shorter one.
     public static let marks = rows(.mark)
     /// Layout said by name.
     public static let layout = rows(.layout)
     /// Symbols said by name in code.
     public static let codeSymbols = rows(.codeSymbol)
+    /// Case styles said by name in code.
+    public static let casings = rows(.casing)
     /// The marks that open a quotation.
     public static let openings = marks.filter { $0.placement == .opening }
     /// The marks that close a quotation.

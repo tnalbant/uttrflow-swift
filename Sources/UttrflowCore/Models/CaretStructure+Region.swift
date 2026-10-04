@@ -1,24 +1,32 @@
 import Foundation
 
-/// Whether the caret sits inside a prose comment rather than executable code. See `Docs/cleanup-design.md`.
-public enum CodeCommentContext {
-    /// Whether the caret, scanning the text before it as code, ends inside a line comment, block comment or docstring.
-    public static func isComment(precedingText: String?, documentName: String?) -> Bool {
-        guard let precedingText, let markers = markers(for: documentName) else { return false }
-        return endsInsideComment(precedingText, markers: markers)
+extension CaretStructure {
+    /// What kind of text the caret stands in, read from the document's language. See `Docs/cleanup-design.md`.
+    public enum Region: Sendable, Equatable {
+        /// Executable source of a recognised language.
+        case code
+        /// An unclosed string literal in executable source.
+        case string
+        /// A line comment, block comment or docstring.
+        case comment
+        /// Body prose of a Markdown or plain-text document: any line but a `#` heading.
+        case prose
+        /// An unrecognised or untitled document, or a Markdown heading.
+        case unrecognised
+
+        /// Whether the caret sits in executable source, inside a string literal or not.
+        public var isCode: Bool { self == .code || self == .string }
     }
 
-    /// Whether the caret sits in executable source: a recognised language, outside any comment.
-    public static func isCode(precedingText: String?, documentName: String?) -> Bool {
-        guard let markers = markers(for: documentName) else { return false }
-        return !(precedingText.map { endsInsideComment($0, markers: markers) } ?? false)
-    }
-
-    /// Whether the caret sits in the body prose of a Markdown or plain-text document: any line but a `#` heading.
-    public static func isDocumentProse(precedingText: String?, documentName: String?) -> Bool {
-        guard let ext = fileExtension(from: documentName), proseExtensions.contains(ext) else { return false }
-        let caretLine = precedingText?.split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
-        return !caretLine.drop(while: { $0 == " " }).hasPrefix("#")
+    /// Classifies the caret by scanning the text before it in the document's language.
+    public static func region(precedingText: String?, documentName: String?) -> Region {
+        guard let ext = fileExtension(from: documentName) else { return .unrecognised }
+        if proseExtensions.contains(ext) {
+            return caretLine(of: precedingText ?? "").drop(while: { $0 == " " }).hasPrefix("#")
+                ? .unrecognised : .prose
+        }
+        guard let markers = markers(forExtension: ext) else { return .unrecognised }
+        return precedingText.map { scan($0, markers: markers) } ?? .code
     }
 
     private static let proseExtensions: Set<String> = ["md", "markdown", "txt"]
@@ -35,7 +43,7 @@ public enum CodeCommentContext {
     }
 
     /// Comment markers count only in code, outside strings, so a marker after code on the caret's line opens a comment.
-    private static func endsInsideComment(_ text: String, markers: Markers) -> Bool {
+    private static func scan(_ text: String, markers: Markers) -> Region {
         var depth = 0
         var index = text.startIndex
         while index < text.endIndex {
@@ -52,7 +60,7 @@ public enum CodeCommentContext {
                 continue
             }
             if markers.line.contains(where: { text[index...].hasPrefix($0) }) {
-                guard let newline = text[index...].firstIndex(where: \.isNewline) else { return true }
+                guard let newline = text[index...].firstIndex(where: \.isNewline) else { return .comment }
                 index = text.index(after: newline)
                 continue
             }
@@ -61,7 +69,7 @@ public enum CodeCommentContext {
                 index = end
                 continue
             case .unclosed:
-                return true
+                return .comment
             case .none:
                 break
             }
@@ -70,7 +78,7 @@ public enum CodeCommentContext {
                 index = end
                 continue
             case .unclosed:
-                return false
+                return .string
             case .none:
                 break
             }
@@ -81,12 +89,11 @@ public enum CodeCommentContext {
                 index = text.index(after: index)
             }
         }
-        return depth > 0
+        return depth > 0 ? .comment : .code
     }
 
-    /// The comment markers for a document's language, or `nil` for an unrecognised or untitled document.
-    private static func markers(for documentName: String?) -> Markers? {
-        guard let ext = fileExtension(from: documentName) else { return nil }
+    /// The comment markers for a file extension's language, or `nil` for an unrecognised one.
+    private static func markers(forExtension ext: String) -> Markers? {
         switch ext {
         case "swift", "js", "jsx", "mjs", "cjs", "ts", "tsx", "java", "kt", "kts",
             "c", "h", "cc", "cpp", "cxx", "hpp", "m", "mm", "go", "rs", "cs", "php", "scala", "dart":

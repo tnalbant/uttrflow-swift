@@ -209,7 +209,7 @@ struct FailurePresentationTests {
     func transformationFailuresPreserveTheTranscript() {
         let failures: [TransformationError] = [
             .noCapableTransformer,
-            .transformFailed(kind: .localModel, description: "x"),
+            .transformFailed(kind: .localModel, failure: .other),
             .outputRejected(reason: "x", kind: .lostWord),
         ]
         for failure in failures {
@@ -223,7 +223,7 @@ struct FailurePresentationTests {
         let failures: [any UttrflowFailure] = [
             TextInsertionError.insertionRejected(description: "x"),
             TransformationError.noCapableTransformer,
-            TransformationError.transformFailed(kind: .localModel, description: "x"),
+            TransformationError.transformFailed(kind: .localModel, failure: .other),
             TransformationError.outputRejected(reason: "x", kind: .lostWord),
         ]
         for failure in failures {
@@ -243,8 +243,8 @@ struct FailurePresentationTests {
     func equatable() {
         #expect(AudioCaptureError.engineFailed(description: "a") != .engineFailed(description: "b"))
         #expect(
-            TransformationError.transformFailed(kind: .rules, description: "a")
-                != .transformFailed(kind: .localModel, description: "a")
+            TransformationError.transformFailed(kind: .rules, failure: .other)
+                != .transformFailed(kind: .localModel, failure: .other)
         )
         #expect(SpeechEngineError.modelNotInstalled == .modelNotInstalled)
     }

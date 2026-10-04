@@ -1,4 +1,5 @@
 import UttrflowAI
+import UttrflowCore
 import UttrflowPredict
 
 /// What one pass asks the model for: the one line the person waits for, or the others behind it.
@@ -44,7 +45,7 @@ enum Ask: Equatable, Sendable {
 }
 
 /// Lays one moment out for the model under a fixed token budget for its context, the line itself never touched. See `Docs/predict-context.md`.
-enum PromptBuilder {
+enum CompletionPromptBuilder {
     /// The most tokens the context around the line may take, headings included; prefilling it is the bulk of a pass, so this is the lever.
     static let contextBudgetInTokens = 160
 
@@ -60,11 +61,6 @@ enum PromptBuilder {
     /// What a heading and the blank lines around it add to a part of the context, in tokens.
     static let headingCost = 16
 
-    /// What the model is told when the context holds another script: the line is written in English, or romanised Hinglish, in the Latin alphabet. See `Docs/predict.md`.
-    static let scriptInstruction =
-        "Write only English in the Latin alphabet, or romanised Hinglish where the person writes Hindi in Latin "
-        + "letters. Never write Devanagari or any other script, and never translate."
-
     /// The whole message: where the caret is, the register, what is around it, how this person writes here, the line.
     static func message(
         typed: String, in situation: GenerationSituation, register: Register, asking ask: Ask = .one
@@ -79,7 +75,7 @@ enum PromptBuilder {
         }
         var opening = "In \(located).\nHints: \(register.hints.joined(separator: "; "))."
         // Adds the script instruction only when the context shows another script. See `Docs/predict.md`.
-        if !situation.readsOnlyLatin { opening += "\n\(scriptInstruction)" }
+        if !situation.readsOnlyLatin { opening += "\n\(LatinOnlyInstruction.text)" }
         // The machine's own values are the only right next words, so the model is told them and chooses rather than invents.
         if ask == .one, !situation.choices.isEmpty {
             opening +=

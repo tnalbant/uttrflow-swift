@@ -13,6 +13,7 @@ struct SpokenCommandsTests {
         #expect(SpokenCommands.marks.count == 13)
         #expect(SpokenCommands.layout.count == 5)
         #expect(SpokenCommands.codeSymbols.count == 15)
+        #expect(SpokenCommands.casings.count == 4)
         #expect(SpokenCommands.openings.map(\.words) == [["open", "quote"]])
         #expect(SpokenCommands.closings.map(\.words) == [["close", "quote"]])
     }

@@ -87,6 +87,10 @@ extension FormattingClass {
             FormattingOwnership(
                 owner: .model, passes: [],
                 reason: "Romanising Hindi needs the sentence, which no pass reads.")
+        case .abstention:
+            FormattingOwnership(
+                owner: .model, passes: [],
+                reason: "Technical words used as ordinary speech need the sentence, which no pass reads.")
         case .textAfterCaret:
             FormattingOwnership(
                 owner: .rules, passes: [.firstWord, .caretEcho, "caretCloser", .terminalStop],

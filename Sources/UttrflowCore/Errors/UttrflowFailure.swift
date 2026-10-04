@@ -10,6 +10,8 @@ public enum SystemSettingsPane: Sendable, Equatable, CaseIterable {
     case appleIntelligence
     /// Keyboard.
     case keyboard
+    /// Sound, where the input device and its level are set.
+    case soundInput
 }
 
 /// What the user can do about a failure; the UI renders every failure from this one value.

@@ -213,7 +213,7 @@ enum PieceJoiner {
             else { continue }
             let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
             guard !overflow else { continue }
-            let replacement = amount.symbol + NumberWords.render(sum, grouped: true)
+            let replacement = amount.symbol + NumberWords.render(sum, grouping: .thousands)
             let prefix = String(joined[index].dropLast(last.count))
             joined[index] = prefix + replacement
             joined[index + 1] = ""
@@ -501,7 +501,9 @@ enum PieceJoiner {
         var candidates: [BoundaryCandidate] = []
         for opening in sentenceOpenings(in: draft, starts: starts) {
             guard let found = sequence(draft, live, at: opening, starts: starts),
-                let position = live.firstIndex(of: opening)
+                let position = live.firstIndex(of: opening),
+                // A pause inside "number one" makes "one" an opening, but it is the marker already read.
+                candidates.last.map({ position >= $0.position + $0.length }) ?? true
             else { continue }
             candidates.append(
                 BoundaryCandidate(

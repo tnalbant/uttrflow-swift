@@ -67,7 +67,7 @@ public struct AppleFoundationCleanupModel: CleanupModel {
         let session =
             await Self.warmed.take(for: instructions) ?? LanguageModelSession(instructions: instructions)
         guard await Self.fitsContext(text, instructions: instructions) else {
-            throw .transformFailed(kind: kind, description: "request exceeds the model context window")
+            throw .transformFailed(kind: kind, failure: .contextTooLarge)
         }
         do {
             let response = try await session.respond(
@@ -75,7 +75,7 @@ public struct AppleFoundationCleanupModel: CleanupModel {
             )
             return response.content.text
         } catch {
-            throw .transformFailed(kind: kind, description: error.localizedDescription)
+            throw .transformFailed(kind: kind, failure: .ofSystemModel(error))
         }
     }
 

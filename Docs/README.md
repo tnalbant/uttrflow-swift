@@ -37,6 +37,8 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-synthetic-keystrokes.md](input-synthetic-keystrokes.md) | The key events this app posts, and what the system does with them |
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
+| [chat-mail-probe.md](chat-mail-probe.md) | What the dictation read gets from a chat composer or a mail body |
+| [web-field-probe.md](web-field-probe.md) | What the dictation read gets from a web field |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
@@ -53,6 +55,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
+| [piece-seams.md](piece-seams.md) | Cleaning pieces then joining them, measured against cleaning the whole |
 | [adapters.md](adapters.md) | Format adapters: one registry that grows out of the destination formatter |
 | [latin-output.md](latin-output.md) | Latin letters only |
 | [adding-a-language.md](adding-a-language.md) | What adding a language requires, and where each language is keyed |

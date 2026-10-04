@@ -40,7 +40,9 @@ struct FormattingOwnershipTests {
     func everyClassHasReasonAndCase(formattingClass: FormattingClass) {
         #expect(!formattingClass.ownership.reason.isEmpty)
         #expect(
-            EvaluationCorpus.all.contains { $0.classes.contains(formattingClass) },
+            (EvaluationCorpus.all + EvaluationCorpus.abstention).contains {
+                $0.classes.contains(formattingClass)
+            },
             "\(formattingClass.rawValue)")
     }
 

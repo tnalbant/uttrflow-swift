@@ -132,7 +132,7 @@ Greek, Han, kana and the digits of those scripts do.
 | `SuggestionSession.turn` | A line containing another script gets no turn: it settles as `Quieting.Reason.nonLatinLine`, and neither the store nor the model is asked |
 | `SuggestionSession.resolve` | A remembered or machine candidate containing another script is never ranked or drawn, though capture keeps it |
 | `CompletionText.finished`, `SuggestionSession.drawable` | A generated line containing another script is dropped where the reply is parsed, so the bake-off sees it too, and again before anything is drawn |
-| `PromptBuilder.scriptInstruction`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
+| `LatinOnlyInstruction.text`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
 
 **A non-Latin line is silent, not completed in Latin.** A completion in that script breaks the
 rule, and a Latin one glues a romanised tail onto a Devanagari word, which is text nobody types.
@@ -229,8 +229,8 @@ Accessibility read on a queue of its own, the event tap, the panel and the corpu
 | `Verification.budgetInMilliseconds` | 7,000 ms | The model's share of one keystroke's verification |
 | `TurnGate.stallSeconds` | 10 s | A turn left behind so the next one can run |
 | `FocusedFieldReader.elementTimeoutInSeconds` | 50 ms | One Accessibility message |
-| `FieldReadBudget.allowanceInNanoseconds` | 40 ms | One whole field read |
-| `SlowFields.firstRestInNanoseconds` … `longestRestInNanoseconds` | 10 s doubling to 5 min | How long a field that overran is left alone |
+| `FieldReadBudget.allowance` | 40 ms | One whole field read |
+| `SlowFields.firstRest` … `longestRest` | 10 s doubling to 5 min | How long a field that overran is left alone |
 | `CommitDetector.idleInterval` | 8 s | Idle time that commits a line |
 
 Return, focus changes and other non-typing wakes read the field at once. A delayed wake is checked
