@@ -36,11 +36,13 @@ public struct FocusedWindow: Sendable, Equatable {
     public let accessibilityRole: String?
     /// Whether Accessibility says the field accepts multiple lines.
     public let isMultiline: Bool?
+    /// What the focused field calls itself, never read from a secure field.
+    public let fieldLabel: String?
 
     public init(
         title: String? = nil, selectedText: String? = nil, precedingText: String? = nil,
         followingText: String? = nil, isSecure: Bool = false,
-        accessibilityRole: String? = nil, isMultiline: Bool? = nil
+        accessibilityRole: String? = nil, isMultiline: Bool? = nil, fieldLabel: String? = nil
     ) {
         self.title = title
         self.selectedText = selectedText
@@ -49,6 +51,7 @@ public struct FocusedWindow: Sendable, Equatable {
         self.isSecure = isSecure
         self.accessibilityRole = accessibilityRole
         self.isMultiline = isMultiline
+        self.fieldLabel = fieldLabel
     }
 }
 
@@ -167,7 +170,8 @@ public final class MacContextEngine: ContextEngine, Sendable {
             precedingText: gathered.window?.precedingText,
             followingText: gathered.window?.followingText,
             accessibilityRole: gathered.window?.accessibilityRole,
-            isMultiline: gathered.window?.isMultiline
+            isMultiline: gathered.window?.isMultiline,
+            fieldLabel: gathered.window?.fieldLabel
         )
     }
 

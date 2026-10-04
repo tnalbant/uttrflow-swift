@@ -1349,6 +1349,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 12. Every number marked `<!-- count:Type.member -->` or `<!-- value:Type.member -->` matches the code.
+# ---------------------------------------------------------------------------
+printf '\nMarked numbers\n'
+
+if python3 "$PACKAGE_ROOT/Scripts/docs_values_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/docs_values_audit.py"; then
+        pass "every marked count and default agrees with Sources/"
+    else
+        fail "a marked number disagrees with the code" \
+            "Each line above names the document, line, stated number and the real one." \
+            "Correct the prose; mark any new number read from code the same way."
+    fi
+else
+    fail "Scripts/docs_values_audit.py --self-test failed" \
+        "The audit must name an off-by-one table before it checks the documents."
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n'
 if [[ "$failures" -gt 0 ]]; then
     printf 'docs audit: %s check(s) failed. The documentation contradicts the tree.\n\n' "$failures" >&2

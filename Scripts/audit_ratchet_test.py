@@ -114,6 +114,18 @@ class RatchetTests(unittest.TestCase):
                 self.assertEqual(workspace.baseline()["files"], {"Sources/Example/New.swift": 1})
                 self.assertEqual(workspace.run(), 0)
 
+    def test_a_new_past_tense_comment_is_refused(self):
+        workspace = Workspace("comment_audit.py", "comment_baseline.json")
+        self.addCleanup(workspace.close)
+        workspace.write("Old.swift", "// Reads the file.\nstruct Old {}\n")
+        workspace.record({})
+        self.assertEqual(workspace.run("--update"), 0)
+        self.assertEqual(workspace.baseline()["past_tense"], 0)
+        workspace.write("Old.swift", "// This used to read the file.\nstruct Old {}\n")
+        self.assertEqual(workspace.run(), 1)
+        self.assertEqual(workspace.run("--update"), 1)
+        self.assertEqual(workspace.baseline()["past_tense"], 0)
+
     def test_first_recording_takes_what_is_there(self):
         for script, workspace, violation in self.each():
             with self.subTest(script=script):
@@ -194,6 +206,11 @@ class DisclosureRangeTests(unittest.TestCase):
 
     def test_a_forbidden_commit_message_is_still_refused(self):
         self.commit("Another line.\n", f"Chase {self.FORBIDDEN} this quarter")
+        head = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(self.audit("--range", f"{head} --not --remotes=origin").returncode, 1)
+
+    def test_a_co_author_trailer_is_refused(self):
+        self.commit("Another line.\n", "Add a line\n\nCo-Authored-By: Someone <someone@example.invalid>")
         head = self.git("rev-parse", "HEAD").stdout.strip()
         self.assertEqual(self.audit("--range", f"{head} --not --remotes=origin").returncode, 1)
 

@@ -11,7 +11,6 @@ import Testing
 private let barestMac = SettingsCapabilities(
     launchAtLogin: .unavailable,
     canPlayRecordingSound: false,
-    readySpeechEngines: [],
     readyTransformers: [SettingsEngines.floor])
 
 /// Applies a change and throws on a refusal, for changes that are setting-up rather than subject.
@@ -371,14 +370,6 @@ struct SettingsCapabilityTests {
         #expect(SettingsCapabilities.everything.canTidyBeyondTheFloor)
     }
 
-    @Test("refuses a transcription quality whose engine is not downloaded")
-    func refusesUnreadySpeechEngine() {
-        var capabilities = SettingsCapabilities.everything
-        capabilities.readySpeechEngines = [.appleSpeech]
-        #expect(refusal(.transcription(.mostAccurate), given: capabilities) != nil)
-        #expect(refusal(.transcription(.faster), given: capabilities) == nil)
-    }
-
     @Test("will not let the grip be configured while there is no button to grip")
     func gripDependsOnTheButton() {
         var settings = Settings.default
@@ -407,19 +398,10 @@ struct SettingsChangeTests {
         }
     }
 
-    @Test("writes the activation, the anchor and the transcription quality")
+    @Test("writes the activation and the anchor")
     func writesTheSimpleFields() throws {
         #expect(try applied(.activation(.pressToToggle)).hotkeyActivation == .pressToToggle)
         #expect(try applied(.anchor(.rightEdge)).floatingButtonAnchor == .rightEdge)
-        #expect(try applied(.transcription(.faster)).engines.speech == .appleSpeech)
-    }
-
-    @Test("maps each quality to an engine and back")
-    func qualityRoundTrips() {
-        for quality in SettingsTranscriptionQuality.allCases {
-            #expect(SettingsTranscriptionQuality(engine: quality.engine) == quality)
-            #expect(!quality.title.isEmpty)
-        }
     }
 
     @Test("adds a language, and ignores adding one already there")

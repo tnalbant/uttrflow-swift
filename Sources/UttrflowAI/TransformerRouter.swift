@@ -171,21 +171,21 @@ public struct TransformerRouter: TranscriptCleaning {
     private static func engineFailures(in errors: [any Error]) -> [CleaningRecord.EngineFailure] {
         errors.compactMap { error in
             let engine: String
-            let reason: String
+            let failureClass: ModelFailureClass
             if let failure = error as? RouterAttemptFailure,
                 case .timedOut(let kind) = failure
             {
                 engine = kind.rawValue
-                reason = "Timed out"
+                failureClass = .timedOut
             } else if let failure = error as? TransformationError,
-                case .transformFailed(let kind, _) = failure
+                case .transformFailed(let kind, let reason) = failure
             {
                 engine = kind.rawValue
-                reason = "Failed"
+                failureClass = reason
             } else {
                 return nil
             }
-            return CleaningRecord.EngineFailure(engine: engine, reason: reason)
+            return CleaningRecord.EngineFailure(engine: engine, failureClass: failureClass)
         }
     }
 }

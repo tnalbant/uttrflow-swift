@@ -131,7 +131,7 @@ struct DictationPipelineRecoveryTests {
         let pipeline = makePipeline(
             cleaner: FakeTranscriptCleaner(
                 answering: ScriptedSequence(
-                    .failure(.transformFailed(kind: .foundationModels, description: "model died"))))
+                    .failure(.transformFailed(kind: .foundationModels, failure: .other))))
         )
 
         let state = await dictate(pipeline)

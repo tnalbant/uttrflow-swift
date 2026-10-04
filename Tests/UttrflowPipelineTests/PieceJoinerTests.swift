@@ -50,6 +50,13 @@ struct PieceJoinerListTests {
                 == "- Fix the build\n- Review the PR")
     }
 
+    @Test("reads a marker split by a pause once, as the one marker it is")
+    func markerSplitAcrossPieces() {
+        #expect(
+            joined(["Number", "one, fix the build.", "Number two, review the PR."], .document)
+                == "- Fix the build\n- Review the PR")
+    }
+
     @Test("keeps an item body across pieces and ends the list before a closing sentence")
     func sequenceWordOnItsOwnPiece() {
         let text = joined(
@@ -923,5 +930,23 @@ struct PieceJoinerSeamTests {
         }
 
         #expect(kept.isEmpty)
+    }
+}
+
+@Suite("Seam stops around a snippet expansion")
+struct SeamSnippetInputTests {
+    private let input = SeamSnippetInput(
+        text: "W1 X. W2 X. W3 X", removableStops: [4, 10], source: "W1 X. W2 X. W3 X")
+
+    @Test("an expansion that changed nothing leaves the seam stops where they were")
+    func unchangedExpansionKeepsStops() {
+        let unchanged = ExpandedTranscript.unchanged(input.removingSeamStops())
+        #expect(input.restoringUnconsumedStops(in: unchanged).text == "W1 X. W2 X. W3 X")
+    }
+
+    @Test("a stop whose seam is still a gap after the expansion comes back in place")
+    func gapKeepsItsStop() {
+        let expanded = ExpandedTranscript(text: "W1 X W2 X W3 Y", snippets: [])
+        #expect(input.restoringUnconsumedStops(in: expanded).text == "W1 X. W2 X. W3 Y")
     }
 }

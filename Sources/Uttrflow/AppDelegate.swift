@@ -113,7 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Crash and hang reports, sent only while the user has them switched on.
     private let crashReports = CrashReporter(
-        info: Bundle.main.infoDictionary ?? [:], sdk: LiveCrashReportingSDK())
+        info: Bundle.main.infoDictionary ?? [:], sdk: LiveCrashReportingSDK(),
+        onSend: { NetworkActivityLedger.shared.record(.crashReport) })
     /// Keeps the pipeline's stage timings for the session, which is what the diagnostics page reports on.
     private let diagnostics = DiagnosticsRecorder()
     /// Counts and timings, sent hourly unless Settings says not to. See `Docs/account-telemetry.md`.
@@ -169,6 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let container: URL
     private let onboardingRecordStore: any OnboardingRecordStore
     private let clipboardPreferencesFile: ClipboardPreferencesFile
+    /// The speech model's last loads, kept across launches for the Diagnostics page.
+    private let speechModelLoadLog: SpeechModelLoadLog
     private var clipboardPreferences = ClipboardPreferences()
     private var clipboardPreferencesUnreadable = false
     private var clipboardPreferencesSetAside: URL?
@@ -215,10 +218,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var lastCleanedBy: TransformerKind?
     /// What the store last said about the speech model on disk; internal so a test can read it.
     private(set) var speechModelPresence: DiagnosticsModelPresence?
-    /// The built-in recogniser's locale asset inventory answer.
-    private(set) var appleSpeechStatus: DiagnosticsAppleSpeechStatus?
-    /// The built-in recogniser's last typed model-load failure.
-    private(set) var appleSpeechLoadFailure: SpeechEngineError?
 
     /// How far along that fetch is; internal so a test can read back what it did.
     private(set) var suggestionModel: SuggestionModelReadiness = .notAsked {
@@ -257,6 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.encryptedStore = encryptedStore
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
+        speechModelLoadLog = SpeechModelLoadLog(file: SpeechModelLoadLog.defaultFile(in: container))
         switch clipboardPreferencesFile.load() {
         case .missing:
             clipboardPreferences = ClipboardPreferences()
@@ -455,7 +455,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         startPeriodicRetentionSweep()
         probeTransformers()
         probeSpeechModel()
-        probeAppleSpeechAssets()
         refreshAccount()
         // Configured last, from the setting; the automatic check itself waits for `modelLoadingSettled()`.
         updates.onProgressChanged = { [weak self] in self?.refreshMenuBar() }
@@ -732,23 +731,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }.value
             guard let self else { return }
             speechModelPresence = presence
-            refreshMainWindow()
-        }
-    }
-
-    /// Reads the system recogniser's asset inventory for the locale its backend loads.
-    @discardableResult
-    func probeAppleSpeechAssets() -> Task<Void, Never> {
-        Task(priority: .utility) { [weak self] in
-            let status = await AppleSpeechBackend.assetStatus()
-            guard let self else { return }
-            appleSpeechStatus =
-                switch status {
-                case .installed: .installed
-                case .needsDownload: .needsDownload
-                case .downloading: .downloading
-                case .unsupported: .unsupported
-                }
             refreshMainWindow()
         }
     }
@@ -1210,6 +1192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let model = SpeechModel.default
         let engine = SpeechEngineFactory.make(
             kind: kind, model: model, modelFolder: modelStore.location(of: model),
+            loadLog: speechModelLoadLog,
             didRelease: { [weak self] in
                 Task { @MainActor [weak self] in self?.speechModelWasReleased() }
             },
@@ -1257,22 +1240,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
         }
         refreshSpeechModelSurfaces()
-    }
-
-    /// Hands the pipeline the recogniser just chosen, which it takes up once no dictation is under way.
-    private func switchSpeechEngine(to kind: SpeechEngineKind) {
-        let speech = makeSpeechEngine(kind)
-        guard modelStore.isInstalled(.default) else {
-            // Nothing to load until the download ends, which loads whichever recogniser is chosen by then.
-            Task { [weak self] in
-                guard let pipeline = self?.pipeline else { return }
-                await pipeline.adopt(speech: speech, loading: false)
-                self?.speechInUse = await pipeline.speechKind
-                self?.refreshMainWindow()
-            }
-            return
-        }
-        loadSpeechModel { await $0.adopt(speech: speech) }
     }
 
     private func buildPipeline() {
@@ -2386,9 +2353,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Recorded before the menu is drawn, and kept even when insertion failed. §19.
         switch state {
         case .inserted(let outcome):
-            if speechInUse == .appleSpeech {
-                appleSpeechLoadFailure = nil
-            }
             Self.log.notice(
                 """
                 dictation finished: method=\(outcome.method.rawValue, privacy: .public) \
@@ -2403,11 +2367,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             else { break }
             keep(record)
         case .failed(let notice):
-            if notice.speechEngineKind == .appleSpeech,
-                case .modelLoadFailed? = notice.speechEngineError
-            {
-                appleSpeechLoadFailure = notice.speechEngineError
-            }
             Self.log.error(
                 """
                 dictation failed: \(notice.message, privacy: .public) \
@@ -2803,6 +2762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let decoding = await diagnostics.decoding
             lastMeasurements = measurements
             lastDecoding = decoding
+            lastSpeechModelLoads = speechModelLoadLog.history().records
             lastCleaning = await diagnostics.lastCleaning
             lastVocabularyPrompt = await diagnostics.vocabularyPrompt
             let kept = await history.records(
@@ -2909,14 +2869,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     engines: settings.engines, speechInUse: speechInUse,
                     transformerAvailability: transformerAvailability,
                     speechModel: speechModelPresence, speechReadiness: speechReadiness,
-                    appleSpeechStatus: appleSpeechStatus,
-                    appleSpeechLoadFailure: appleSpeechLoadFailure,
                     permissions: knownPermissions,
                     dictationShortcutArmed: surfaces.listensForDictation
                         && shortcutArming.failure == nil,
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, vocabularyPrompt: lastVocabularyPrompt,
                     decoding: lastDecoding,
+                    speechModelLoads: lastSpeechModelLoads,
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
@@ -3021,6 +2980,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastMeasurements: [StageMeasurement] = []
     /// The decode effort last read, so a keystroke redraw uses the same bounded session window.
     private var lastDecoding: [DecodeEffort] = []
+    /// The speech model loads last read from their log.
+    private var lastSpeechModelLoads: [SpeechModelLoadRecord] = []
     /// Whether the main window's pages were last skipped because it was out of sight.
     private var mainWindowIsBehind = false
     /// Everything the store keeps, which is not ``recents`` — that is the menu's five.
@@ -3577,10 +3538,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 await self?.pipeline?.adopt(cleaner: tidier, destinationOverrides: overrides)
             }
         }
-        // The recogniser is swapped between dictations, never under one, and loaded as at launch.
-        if updated.engines.speech != previous.engines.speech {
-            switchSpeechEngine(to: updated.engines.speech)
-        }
         // The languages the user speaks steer recognition from the next dictation on.
         if updated.profile != previous.profile {
             let profile = updated.profile
@@ -3781,8 +3738,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             _ = await MicrophonePermissionGate().requestOrOpenSettings()
         case .appleIntelligence:
             SystemSettingsOpener().open(.appleIntelligence)
-        case .keyboard:
-            SystemSettingsOpener().open(.keyboard)
+        case .keyboard, .soundInput:
+            SystemSettingsOpener().open(pane)
         }
     }
 }

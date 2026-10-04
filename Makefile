@@ -50,6 +50,10 @@ comment-audit: ## Prove no file gained a multi-line comment. Needs no build.
 comment-report: ## List the multi-line comments left, worst file first.
 	@python3 Scripts/comment_audit.py --report
 
+.PHONY: seam-audit
+seam-audit: ## Prove no corpus cut gained a difference between cleaning its pieces and cleaning the whole.
+	$(SWIFT) run uttrflow-dev seams --check Scripts/seam_baseline.json
+
 .PHONY: match-audit
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
@@ -229,6 +233,10 @@ data-manifest: ## Prove every bundled resource file is in Resources/DataManifest
 	@python3 Scripts/data_manifest_test.py
 	@python3 Scripts/data_manifest.py
 
+.PHONY: claims-audit
+claims-audit: ## Refuse a privacy, accuracy or speed claim in user-facing text that Docs/claims.json does not back. Needs no build.
+	@python3 Scripts/claims_audit.py --self-test
+
 .PHONY: pii-audit
 pii-audit: ## Prove no personal data is in the tree. Needs no build.
 	./Scripts/pii_audit.sh
@@ -241,6 +249,11 @@ log-audit: ## Prove no log message carries text a person typed, read or said. Ne
 perf-budget: ## Prove the source keeps to the energy and memory budget, and that each check still bites. No build.
 	@python3 Scripts/perf_budget_audit.py --self-test
 
+# Needs a `uttrflow-dev bench` run, so it runs on a Mac rather than in CI.
+.PHONY: perf-budget-latency
+perf-budget-latency: ## Fail when a bench run's p95 for any stage is over its budget. RUN=path to the run.
+	@python3 Scripts/perf_budget_audit.py --latency "$(RUN)"
+
 .PHONY: size-budget
 size-budget: ## Prove the size budget check bites, and that the resolved Swift packages fit their count. No build.
 	@python3 Scripts/size_budget.py --self-test
@@ -251,7 +264,7 @@ idle-wakeups: ## Fail when the built app, idle in the menu bar, wakes or compute
 
 # Needs the speech model and the suggestion model on disk, so it runs on a Mac rather than in CI.
 .PHONY: perf-budget-models
-perf-budget-models: ## Fail when the model harness reads memory over the budget. Needs both models installed.
+perf-budget-models: ## Fail when the model harness reads memory, or the support folder reads disk, over the budget. Needs both models installed.
 	$(MAKE) bakeoff ARGS="gpu-memory --passes 12 --release"
 	$(MAKE) bakeoff ARGS="profile --dictations 10"
 

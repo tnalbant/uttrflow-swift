@@ -22,6 +22,8 @@ struct Node: Equatable {
 /// Which attributes a read asked, in order, so a test can count the messages one read sends.
 final class MessageLog {
     var asked: [String] = []
+    /// The range of every ranged read, so a test can bound how much text one read copies.
+    var ranges: [NSRange] = []
 }
 
 /// A deadline an hour after the read starts, so only the caps decide what a test's read comes to.
@@ -71,6 +73,7 @@ struct FakeTree: ElementTree {
     /// A ranged read cuts the node's `AXValue` answer, or refuses as the node says for `AXStringForRange`.
     func attribute(_ name: String, of element: Node, range: NSRange) -> FieldAnswer {
         messages?.asked.append(name)
+        messages?.ranges.append(range)
         if let refusal = element.answers[name] { return refusal }
         guard let whole = element.answers["AXValue"]?.string,
             let cut = Range(range, in: whole)

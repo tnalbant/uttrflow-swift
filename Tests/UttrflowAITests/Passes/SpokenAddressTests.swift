@@ -11,6 +11,8 @@ struct SpokenAddressTests {
         "writes the address where the words spell one",
         arguments: [
             ("forward the logs to support at example.com", "forward the logs to support@example.com"),
+            ("write to Sam dot Jones at Example dot com", "write to Sam.Jones@example.com"),
+            ("visit Example dot com slash Docs", "visit example.com/Docs"),
             (
                 "forward the logs to support at example dot com",
                 "forward the logs to support@example.com"
@@ -131,6 +133,10 @@ struct SpokenAddressTests {
             ),
             ("open package dot json", "open package.json"),
             ("edit the dot env file", "edit the .env file"),
+            ("update the readme dot md first", "update the readme.md first"),
+            ("bump the version in package dot json", "bump the version in package.json"),
+            ("the settings live in config dot yaml", "the settings live in config.yaml"),
+            ("open main dot swift", "open main.swift"),
             ("the path is slash users slash sam slash notes", "the path is /users/sam/notes"),
             ("my handle is at sam underscore dev", "my handle is @sam_dev"),
             ("my handle is sam at discord", "my handle is sam@discord"),
@@ -209,6 +215,10 @@ struct SpokenAddressTests {
             "a dot on the map",
             "a slash in prices",
             "put a dot on the map",
+            "the dot md files",
+            "a dot json",
+            "learn swift dot go",
+            "type main dot swift",
             "there is a slash in prices",
         ]
     )

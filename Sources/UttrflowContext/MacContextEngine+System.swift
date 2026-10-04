@@ -155,6 +155,6 @@ extension MacContextEngine {
         return FocusedWindow(
             title: title, selectedText: selected,
             precedingText: caret?.preceding, followingText: caret?.following,
-            accessibilityRole: role, isMultiline: multiline)
+            accessibilityRole: role, isMultiline: multiline, fieldLabel: names.label)
     }
 }

@@ -2,14 +2,15 @@
 
 Every dictation's audio is written to disk **while the key is held**, beside the buffer the
 recogniser reads, and deleted the moment the words land. If the words are lost — the recogniser
-throws or never answers, the app quits mid-dictation — the file stays for a day, and the History
+throws or never answers, a piece of speech decodes to no words, the app quits mid-dictation — the
+file stays for a day, and the History
 page lists it with a Retry. Nothing leaves the Mac. The code is in `Sources/UttrflowAudio/`:
 `RecordingStore` owns the folder, `RecordingWriter` writes one recording, and
 `EncryptedRecordingFile` is the on-disk format. `DictationPipeline` decides what is kept.
 
 The promise the user reads is `SettingsPresenter.recordingsPromise`, one wording that Settings and
 onboarding both repeat: "Audio is deleted the moment it becomes text, and kept on this Mac for a
-day only if it couldn't be, so you can retry." `SettingsPrivacyCopyTests` checks that every
+day only if some of it couldn't be, so you can retry." `SettingsPrivacyCopyTests` checks that every
 sentence about audio names this Mac and says when the audio goes.
 
 ## The write is the commit
@@ -59,8 +60,8 @@ it can be read.
 |---|---|---|
 | Recording | `RecordingStore`'s open writer | Growing. Not listed: it is not a recording yet |
 | Current | the store's last finished recording, read through `current()` | The key was released; the pipeline claims its id once |
-| Waiting | any `<uuid>.wav` in the folder | Words were lost. Listed on the History page |
-| Gone | — | Words landed, nothing was heard, cancelled, retried, or older than a day |
+| Waiting | any `<uuid>.wav` in the folder | Some words were lost. Listed on the History page |
+| Gone | — | Every word landed, nothing was heard, cancelled, retried, or older than a day |
 
 The folder is `recordings/` in the app's Application Support folder (`Uttrflow/` for the shipped
 build; another build's identifier gives it its own folder, `LocalStore.directory`). Each take is
@@ -71,8 +72,10 @@ recording exists only as a one-day retry buffer, so backup tools that honour the
 
 ## When the pipeline keeps it
 
-`DictationPipeline.fail` decides, and the rule is one sentence: **the audio is kept exactly when
-the words were lost.** A failure that carries a transcript (insertion failed, and the words are
+`DictationPipeline.settleRecording` decides, and the rule is one sentence: **the audio is kept
+exactly when words were lost.** A dictation whose words landed but left out a piece of speech that
+decoded to no words twice (`DictationOutcome.missedPieces` above zero) keeps it, so History offers
+Retry for the missing words; one with no missed piece discards it. A failure that carries a transcript (insertion failed, and the words are
 in History) discards it. An informational failure, such as nothing heard, discards it. A
 dictation into a secure field discards it, since its words are a secret. Everything else keeps it
 and, when the failure's own recovery was `retry` or none, offers `retryFromRecording` instead, so
@@ -124,5 +127,5 @@ time. A retry or a delete stops the playback first.
 ## What it does not do
 
 - It does not re-transcribe a dictation that came out wrong: the audio behind a finished
-  transcript is deleted, so there is nothing to replay.
+  transcript with no missed piece is deleted, so there is nothing to replay.
 - It cannot be turned off. The write is what makes retry possible at all.

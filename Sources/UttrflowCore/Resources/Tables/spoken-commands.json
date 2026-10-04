@@ -14,6 +14,9 @@
         {"id": "mark.semicolon", "words": ["semicolon"], "action": "mark", "text": ";", "placement": "trailing"},
         {"id": "mark.hyphen", "words": ["hyphen"], "action": "mark", "text": "-", "placement": "joining"},
         {"id": "mark.dash", "words": ["dash"], "action": "mark", "text": "—", "placement": "joining"},
+        {"id": "flag.long", "words": ["dash", "dash"], "action": "flag", "text": "--", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
+        {"id": "flag.long-double", "words": ["double", "dash"], "action": "flag", "text": "--", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
+        {"id": "flag.short", "words": ["dash"], "action": "flag", "text": "-", "destinations": ["terminal", "codeEditor", "sqlEditor"]},
         {"id": "layout.new-line", "words": ["new", "line"], "action": "layout", "text": "\n", "requiresLists": false},
         {"id": "layout.new-paragraph", "words": ["new", "paragraph"], "action": "layout", "text": "\n\n", "requiresLists": false},
         {"id": "layout.blank-line", "words": ["blank", "line"], "action": "layout", "text": "\n\n", "requiresLists": false},
@@ -33,6 +36,12 @@
         {"id": "code.underscore", "words": ["underscore"], "action": "codeSymbol", "text": "_", "destinations": ["codeEditor"]},
         {"id": "code.colon", "words": ["colon"], "action": "codeSymbol", "text": ":", "destinations": ["codeEditor"]},
         {"id": "code.semicolon", "words": ["semicolon"], "action": "codeSymbol", "text": ";", "destinations": ["codeEditor"]},
-        {"id": "code.comma", "words": ["comma"], "action": "codeSymbol", "text": ",", "destinations": ["codeEditor"]}
+        {"id": "code.comma", "words": ["comma"], "action": "codeSymbol", "text": ",", "destinations": ["codeEditor"]},
+        {"id": "case.camel", "words": ["camel", "case"], "action": "casing", "text": "camel", "destinations": ["codeEditor"]},
+        {"id": "case.snake", "words": ["snake", "case"], "action": "casing", "text": "snake", "destinations": ["codeEditor"]},
+        {"id": "case.kebab", "words": ["kebab", "case"], "action": "casing", "text": "kebab", "destinations": ["codeEditor"]},
+        {"id": "case.upper", "words": ["all", "caps"], "action": "casing", "text": "upper", "destinations": ["codeEditor"]},
+        {"id": "case.upper-span", "words": ["all", "caps", "on"], "action": "casing", "text": "upper", "reach": "span", "until": ["all", "caps", "off"], "destinations": ["document", "email", "messaging", "plain"]},
+        {"id": "case.upper-word", "words": ["all", "caps"], "action": "casing", "text": "upper", "reach": "word", "destinations": ["document", "email", "messaging", "plain"]}
     ]
 }

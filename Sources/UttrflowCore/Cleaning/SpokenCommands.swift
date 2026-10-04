@@ -20,6 +20,20 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case layout
         /// A symbol written in place of its name in executable code.
         case codeSymbol
+        /// A case style, named by `text`, applied to the words the row's reach covers.
+        case casing
+        /// An option marker written before the word after it at a command line; `destinations` are where every dash is one.
+        case flag
+    }
+
+    /// How many of the following words a casing command covers.
+    public enum Reach: String, Decodable, Sendable {
+        /// Every word up to a spoken clause mark or the end of the clause: an identifier.
+        case clause
+        /// The one word after the command.
+        case word
+        /// Every word up to the row's closing phrase, which is said and dropped.
+        case span
     }
 
     /// The row's stable name.
@@ -36,6 +50,10 @@ public struct SpokenCommand: DataTableRow, Equatable {
     public let requiresLists: Bool
     /// The destinations it is enabled in; nil means every destination.
     public let destinations: Set<Destination>?
+    /// The words a casing command covers; a clause when the row does not say.
+    public let reach: Reach
+    /// The phrase that ends a span, as lower-cased word keys; empty for any other reach.
+    public let until: [String]
 
     /// Whether the command is enabled where the words are going.
     public func isEnabled(in destination: Destination) -> Bool {
@@ -51,10 +69,12 @@ public struct SpokenCommand: DataTableRow, Equatable {
         placement = try container.decodeIfPresent(SpokenMarkKind.self, forKey: .placement) ?? .trailing
         requiresLists = try container.decodeIfPresent(Bool.self, forKey: .requiresLists) ?? false
         destinations = try container.decodeIfPresent(Set<Destination>.self, forKey: .destinations)
+        reach = try container.decodeIfPresent(Reach.self, forKey: .reach) ?? .clause
+        until = try container.decodeIfPresent([String].self, forKey: .until) ?? []
     }
 
     private enum Key: String, CodingKey {
-        case id, words, action, text, placement, requiresLists, destinations
+        case id, words, action, text, placement, requiresLists, destinations, reach, until
     }
 }
 
@@ -64,12 +84,18 @@ public enum SpokenCommands {
     static let table = DataTable<SpokenCommand>.load(
         "spoken-commands", schema: 1, from: .module, fallback: [])
 
+    /// Every row, in file order.
+    public static var all: [SpokenCommand] { table.rows }
     /// Punctuation said by name, in file order so a longer name is tried before a shorter one.
     public static let marks = rows(.mark)
     /// Layout said by name.
     public static let layout = rows(.layout)
     /// Symbols said by name in code.
     public static let codeSymbols = rows(.codeSymbol)
+    /// Case styles said by name, in file order so a longer phrase is tried before a shorter one.
+    public static let casings = rows(.casing)
+    /// Option markers said by name, longest first.
+    public static let flags = rows(.flag).sorted { $0.words.count > $1.words.count }
     /// The marks that open a quotation.
     public static let openings = marks.filter { $0.placement == .opening }
     /// The marks that close a quotation.

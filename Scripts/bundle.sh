@@ -296,8 +296,8 @@ missing_resource_bundles() {
 # Text files that are intentional app resources. Paths are relative to the app bundle,
 # so a file with an allowed name in an unexpected location is still rejected.
 ALLOWED_TEXT_RESOURCES=(
-    "Contents/Resources/Uttrflow_UttrflowClipboard.bundle/Contents/Resources/LICENSE-bip39.txt"
-    "Contents/Resources/Uttrflow_UttrflowClipboard.bundle/Contents/Resources/bip39-english.txt"
+    "Contents/Resources/Uttrflow_UttrflowCore.bundle/Contents/Resources/LICENSE-bip39.txt"
+    "Contents/Resources/Uttrflow_UttrflowCore.bundle/Contents/Resources/bip39-english.txt"
     "Contents/Resources/Uttrflow_UttrflowUX.bundle/Contents/Resources/PropertyValueAliases.txt"
     "Contents/Resources/Uttrflow_UttrflowUX.bundle/Contents/Resources/ScriptExtensions.txt"
     "Contents/Resources/Uttrflow_UttrflowUX.bundle/Contents/Resources/Scripts.txt"

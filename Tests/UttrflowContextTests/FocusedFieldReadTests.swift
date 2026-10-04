@@ -75,6 +75,25 @@ struct FocusedFieldReadTests {
         #expect(text.selection == NSRange(location: ValueWindow.unitsBefore, length: 0))
     }
 
+    @Test func caretEdgesNeedCopiesNoMoreThanSixteenUnits() {
+        let long = String(repeating: "a", count: 4000)
+        let log = MessageLog()
+        let node = Self.field(["AXNumberOfCharacters": .value(4000), "AXValue": .value(long)])
+        let text = FocusedFieldRead.text(
+            of: node, in: FakeTree(root: node, messages: log), names: Self.plain,
+            at: NSRange(location: 2000, length: 400), need: .caretEdges)
+        #expect(log.asked == ["AXNumberOfCharacters", "AXStringForRange"])
+        #expect(log.ranges.allSatisfy { $0.length <= 16 })
+        #expect(text.value?.utf16.count == 16)
+        #expect(text.selection == NSRange(location: 2, length: 12))
+    }
+
+    @Test func turnNeedIsTheUnionOfItsConsumers() {
+        let union = ContextNeed.caretEdges.union(.turn)
+        #expect(union == .turn)
+        #expect(ContextNeed.caretEdges.union(.caretEdges) == .caretEdges)
+    }
+
     @Test func namesAreAskedTogetherAndReadInOrder() {
         let node = Self.field([
             "AXRole": .value("AXTextField"), "AXPlaceholderValue": .value("Password"),

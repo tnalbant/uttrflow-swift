@@ -84,6 +84,21 @@ context is empty, and that is the answer. Three ways of getting the text anyway 
 `Scripts/context_reach_audit.py` (`make context-reach-audit`, run by `make verify`) fails when a
 context module names the clipboard, posts a key event, or uses screen capture or text recognition.
 
+## What a field calls itself
+
+A mail subject, a recipient list, a search box and an address bar are all one-line fields; only
+their names tell them apart. The focused-field read asks `AXTitle` in the same batched message as
+the names the secure check already reads (`AXRole`, `AXSubrole`, `AXIdentifier`,
+`AXPlaceholderValue`, `AXDescription`), so the label adds no message. `AppContext.fieldLabel` is the
+title, else the placeholder, else the description, as one line with control characters removed and
+cut to `AppContext.fieldLabelLimit` characters. A secure field carries no label. `FieldRole` maps
+`AXSearchField`, then whole label words, then the line count, to search, address bar, recipient,
+subject, message or one-line field.
+
+The label of an `AXTitleUIElement` link is not read: following it costs a second element and a
+second message. Which of these attributes each application fills for each field, and whether the
+link is needed, is not yet measured on this page.
+
 ## Core Foundation casts
 
 Every element and value that comes back from Accessibility is checked by type ID and then

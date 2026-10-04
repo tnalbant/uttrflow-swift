@@ -104,6 +104,30 @@ recording, decoded whole and decoded trimmed:
 The silence was 30% of the recording and 41% of the transcription time. A trimmed recording costs
 what the same speech costs with no padding at all.
 
+## Recording conditions the loudness measure does not separate
+
+The measure is plain RMS over the whole spectrum, and the floor is one 10th percentile for the
+whole recording. Probed with `VoiceActivityConditionTests` (`swift test --filter
+VoiceActivityConditionTests`, which prints one `TRIMGRID` line per cell): ten seconds of room noise
+at −65 dBFS, two 2-second phrases (a 180 Hz tone with a 3 Hz swell) at 2–4 s and 6–8 s, and one
+added condition each. "Clip" is speech cut off; "over" is audio kept beyond speech plus `margin`.
+
+| Speech level | clean | DC offset 0.01 | 60 Hz rumble at −30 dBFS | noise up 15 dB at 5 s |
+|---|---|---|---|---|
+| −25 dBFS | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | over 1800 ms |
+| −40 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
+| −55 dBFS | 0 / 0 ms | **rejected** | **rejected** | over 1800 ms |
+
+A DC offset or rumble lifts every frame, so the 95th percentile no longer stands three times above
+the 10th and the whole dictation is refused as nothing heard. A floor that steps up mid-recording
+keeps the louder second half's noise as speech to the end of the recording.
+
+The same grid run through a first- or second-order high-pass at 100 Hz before the measure fixes
+DC offset at −40 dBFS but not rumble at either level, and loses −55 dBFS speech that passes
+unfiltered (660 ms clipped at first order, rejected at second), because the probe's voice sits at
+180 Hz, inside the filter's skirt. Neither filter touches the stepped floor. The measure is
+unchanged until a real-speech grid decides between the two candidate changes.
+
 ## The bracketed markers
 
 Recognisers also write what they heard instead of speech, in brackets: `[BLANK_AUDIO]`,
@@ -150,3 +174,30 @@ doubtful-word repair for that piece. One representation cannot disagree with its
 
 With only markers left, the mapped transcript is blank, so the pipeline treats it as nothing heard
 and refuses insertion ([`pipeline.md`](pipeline.md)).
+
+## Measuring what still gets through
+
+`uttrflow-eval nonspeech` (`Sources/uttrflow-eval/NonSpeechProbe.swift`) runs a generated
+non-speech corpus through `BackedSpeechEngine`, the same voice-activity check, trim and loop repair
+a dictation goes through, so it reports the residual rather than raw decoder behaviour. Every clip
+is synthetic and repeatable from its seed (`NonSpeechKind`, `Sources/UttrflowEval/NonSpeech.swift`):
+
+| Kind | Signal, 5 s |
+|---|---|
+| `silence` | digital zero |
+| `roomTone` | low-passed noise at −60 dBFS RMS |
+| `hiss` | white noise at −30 dBFS RMS |
+| `keyboard` | 15 ms decaying bursts, jittered round one every 0.18 s |
+| `breath` | low-passed noise near −40 dBFS rising and falling every 2.5 s |
+| `music` | a three-note chord changing every 0.5 s, at −20 dBFS RMS |
+
+Each kind is also appended, `--tail-seconds` long (default 4), after each `SpokenClips` sentence
+read by `say`, which is the trailing pause after real speech.
+
+| Rate | Counted per clip | Rule |
+|---|---|---|
+| insertion rate | the transcript holds words after the last spoken word that were not said; for a clip with no speech, any word | `NonSpeechScore.insertedWords` |
+| repetition-loop rate | one phrase of at least 3 words follows itself at least 3 times | `NonSpeechScore.looped` |
+
+Both are gated: the command exits non-zero when either rate is above `--max-insertion-rate` or
+`--max-loop-rate`, both 0 by default. `nothingHeard` counts as nothing typed.

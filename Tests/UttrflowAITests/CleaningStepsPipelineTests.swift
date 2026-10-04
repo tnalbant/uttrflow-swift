@@ -14,7 +14,7 @@ struct CleaningStepsPipelineTests {
         #expect(
             built == [
                 .fillers, .repeatedPhrase, .stammers, .selfCorrection, .spokenPunctuation,
-                .layoutWords, .numberForms, .contractions, .spacing, .spelledInitialism,
+                .spokenCasing, .layoutWords, .numberForms, .contractions, .spacing, .spelledInitialism,
                 SentenceBoundaryPass.id, .firstWord, .terminalStop,
             ])
     }
@@ -38,7 +38,10 @@ struct CleaningStepsPipelineTests {
     func policyPassesStay() {
         let steps = CleaningSteps(switchedOff: Set(CleaningSteps.offered.map(\.id)))
         let pipeline = CleaningPipeline.standard(for: formatter, situation: .unknown, steps: steps)
-        #expect(pipeline.ids == [.spelledInitialism, SentenceBoundaryPass.id, .firstWord, .terminalStop])
+        #expect(
+            pipeline.ids == [
+                .spokenCasing, .spelledInitialism, SentenceBoundaryPass.id, .firstWord, .terminalStop,
+            ])
     }
 
     @Test("the passes handed to a model drop the same step and keep the finishing two out")

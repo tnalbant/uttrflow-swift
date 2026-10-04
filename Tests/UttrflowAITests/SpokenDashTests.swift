@@ -51,3 +51,29 @@ struct SpokenDashTests {
         }
     }
 }
+
+@Suite("Command-line flags read from the spoken command table")
+struct CommandLineFlagTests {
+    @Test("a dash at a shell prompt is an option marker, said short, long or double")
+    func writesFlagsAtAPrompt() {
+        for (spoken, expected) in [
+            ("docker run dash d nginx", "docker run -d nginx"),
+            ("git push double dash force", "git push --force"),
+            ("cargo build dash dash release", "cargo build --release"),
+        ] {
+            #expect(SpokenPunctuationPass(destination: .terminal).apply(Draft(text: spoken)).text == expected)
+        }
+    }
+
+    @Test("a program the lexicon knows makes the dashes after it options in prose")
+    func readsCommandsFromTheLexicon() {
+        let draft = Draft(text: "run brew install dash dash cask firefox")
+        #expect(SpokenPunctuationPass().apply(draft).text == "run brew install --cask firefox")
+    }
+
+    @Test("yarn, a program the lexicon knows, still makes its dashes options in prose")
+    func keepsYarnAsACommand() {
+        let draft = Draft(text: "yarn add dash dash dev")
+        #expect(SpokenPunctuationPass().apply(draft).text == "yarn add --dev")
+    }
+}

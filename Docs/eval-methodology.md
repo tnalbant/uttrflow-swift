@@ -285,3 +285,20 @@ The corpus column is 410 English cases, 3,011 words.
   across every `.txt` and `.json` file under `Sources/*/Resources`, so 0 false positives today
   (`swift test --filter ContaminationAuditTests`).
 - Bundled assets are found by walking `Sources/*/Resources` until the data manifest lists them.
+
+## The transcription split
+
+- `TranscriptionSplit.assignment` puts each transcription passage on one side: `fit` (a fitted
+  layer may learn from it), `calibration` (a threshold is chosen on it) or `test` (read only to
+  judge a release). The unit is the passage, never the recording, because every recording of a
+  passage carries the same words and names. The table is written by hand, so a new passage never
+  moves an old one.
+- Each language has 2 passages per side: 6 fit, 6 calibration and 6 test across the 18. Test holds
+  the proper-noun and digit passages of each language, the two stressors a fitted layer is most
+  likely to memorise.
+- `SplitLeakAudit` fails when a passage has no side, when the table names a passage the corpus
+  lacks, when a passage outside `test` shares a run of 8 words with a test passage in any form
+  (the contamination audit's run length), or when a language has fewer than 2 test passages.
+  It reports passage counts per side and language (`swift test --filter TranscriptionSplitTests`).
+- The corpus has one reader, so passage and speaker group coincide today; a second reader of a
+  passage takes the passage's side.

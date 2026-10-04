@@ -7,8 +7,7 @@ public import struct Foundation.UUID
 /// Speak, and the words appear where you were typing. See `Docs/pipeline.md`.
 public actor DictationPipeline {
     private let capture: any AudioCaptureEngine
-    /// A `var` so a recogniser chosen in Settings is taken up between dictations rather than at the next launch.
-    private var speech: any SpeechEngine
+    private let speech: any SpeechEngine
     /// A `var` so a clean-up step switched off takes effect on the next dictation rather than the next launch.
     private var cleaner: any TranscriptCleaning
     private let context: any ContextEngine
@@ -48,16 +47,8 @@ public actor DictationPipeline {
     private var cancelledGeneration: Int?
 
     /// Held across every await before the state shows a dictation's next step, so no second entry slips in.
-    private var hasTurn = false {
-        didSet { if !hasTurn { wakeWhatWaitsForRest() } }
-    }
+    private var hasTurn = false
 
-    /// Recogniser changes waiting for the dictation under way to end, so none is swapped under it.
-    private var waitingForRest: [CheckedContinuation<Void, Never>] = []
-    /// Counts recognisers chosen, so one replaced while it waited is never loaded.
-    private var speechChoices = 0
-    /// Counts recognisers taken up, so a load of one since replaced says nothing about its successor.
-    private var speechSwaps = 0
     /// How long `prepare()` waits for the speech model before calling the load failed.
     private let speechLoadLimit: Duration
     /// How many loads are running, since a switch can begin one before the last has ended.
@@ -175,35 +166,6 @@ public actor DictationPipeline {
     /// Which recogniser the next dictation is transcribed by.
     public var speechKind: SpeechEngineKind { speech.kind }
 
-    /// Takes the recogniser the user chose once no dictation is under way, then loads it unless `loading` is false.
-    public func adopt(speech next: any SpeechEngine, loading: Bool = true) async {
-        speechChoices += 1
-        let mine = speechChoices
-        while isBusy { await untilAtRest() }
-        guard mine == speechChoices else { return }
-        // Replaced, not kept beside it, so two recognisers are never held at once.
-        speech = next
-        speechSwaps += 1
-        isReady = false
-        if loading { await prepare() }
-    }
-
-    /// How many recogniser changes are waiting for the dictation under way to end.
-    var speechChangesWaiting: Int { waitingForRest.count }
-
-    /// Suspends until no dictation is under way.
-    private func untilAtRest() async {
-        await withCheckedContinuation { waitingForRest.append($0) }
-    }
-
-    /// Lets every waiting recogniser change look again, once the pipeline is free.
-    private func wakeWhatWaitsForRest() {
-        guard !isBusy, !waitingForRest.isEmpty else { return }
-        let waiting = waitingForRest
-        waitingForRest = []
-        for continuation in waiting { continuation.resume() }
-    }
-
     /// Fixes all three for the dictation about to begin.
     private func takeSettings() {
         inUse = (cleaner, destinationOverrides, profile)
@@ -237,14 +199,12 @@ public actor DictationPipeline {
         loadsUnderWay += 1
         defer { loadsUnderWay -= 1 }
         let engine = speech
-        let swap = speechSwaps
         do {
             // Stops waiting at the limit rather than awaiting a cancel, since a blocked load ignores one. See `Docs/startup.md`.
             let loaded = try await withStageTimeout(speechLoadLimit, clock: clock) {
                 try await engine.prepare()
                 return true
             }
-            guard swap == speechSwaps else { return }
             guard loaded == true else {
                 throw SpeechEngineError.modelLoadFailed(
                     description: "the load did not finish within \(speechLoadLimit)")
@@ -253,7 +213,6 @@ public actor DictationPipeline {
             // A retry that works clears the notice the failed attempt left behind.
             if case .failed = state, !isBusy { transition(to: .idle) }
         } catch {
-            guard swap == speechSwaps else { return }
             isReady = false
             // Never over a dictation in progress: loading can run while the user speaks.
             if !isBusy {
@@ -463,7 +422,7 @@ public actor DictationPipeline {
         cancelledGeneration = generation
         early.cancel()
         await capture.cancel()
-        await discardOpenRecording()
+        await settleRecording(wordsLost: false)
         transition(to: .idle)
     }
 
@@ -552,7 +511,6 @@ public actor DictationPipeline {
                     recording: NoOpMetricsRecorder(), skippingAMiss: false, for: mine)
             } catch {
                 early.decodesInFlight -= 1
-                wakeWhatWaitsForRest()
                 guard generation == mine, !wasCancelled(mine) else { return }
                 // A failed piece is left for the end, where it is reported; the rest still work ahead.
                 early.spans.append(.pending(early.cut..<end))
@@ -562,7 +520,6 @@ public actor DictationPipeline {
                 continue
             }
             early.decodesInFlight -= 1
-            wakeWhatWaitsForRest()
             guard generation == mine, !wasCancelled(mine) else { return }
             // Cut here, before the tidy, so a key-up mid-tidy still knows what audio is left to recognise.
             early.cut = end
@@ -873,7 +830,8 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            let silence: SpeechEngineError = missedPieces > 0 ? .speechWithoutWords : .nothingHeard
+            let silence: SpeechEngineError =
+                missedPieces > 0 ? .speechWithoutWords : audio.carriesNoSignal ? .noSignal : .nothingHeard
             await fail(DictationFailure(silence))
             return
         }
@@ -957,8 +915,8 @@ public actor DictationPipeline {
         }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
-        // A secret is not a word to learn.
-        guard !wasSecure else { return }
+        // A secret is not a word to learn, by the same gate that keeps it out of History.
+        guard KeptWords.of(toWrite, intoSecureField: wasSecure) != nil else { return }
         // A destination reported by the inserter wins over a screen read made before the switch.
         if let landedID = landedIn(attempt)?.bundleIdentifier,
             let readID = appContext?.bundleIdentifier, landedID != readID
@@ -1105,8 +1063,7 @@ public actor DictationPipeline {
             }
             // A field found secure at the write counts from here on, before anything is learnt from it.
             if attempt.intoSecureField { destinationIsSecure = true }
-            // The words landed, so the audio has done its job.
-            await discardOpenRecording()
+            await settleRecording(wordsLost: MissedSpeech.isMissing(missedPieces))
             transition(
                 to: .inserted(
                     DictationOutcome(
@@ -1136,17 +1093,25 @@ public actor DictationPipeline {
     /// Ends the dictation in failure, keeping the audio exactly when the words were lost. See `Docs/recordings.md`.
     private func fail(_ failure: DictationFailure) async {
         var failure = failure.markingSecure(destinationIsSecure)
-        if let openRecording {
-            self.openRecording = nil
-            let wordsLost = failure.transcript == nil && failure.severity != .informational
-            // A secure field's audio is not kept for a retry, since its words are a secret.
-            if !wordsLost || destinationIsSecure {
-                await recordings.discard(openRecording)
-            } else if failure.recovery == nil || failure.recovery == .retry {
-                failure = failure.offering(.retryFromRecording)
-            }
+        let wordsLost = failure.transcript == nil && failure.severity != .informational
+        let kept = await settleRecording(wordsLost: wordsLost)
+        if kept, failure.recovery == nil || failure.recovery == .retry {
+            failure = failure.offering(.retryFromRecording)
         }
         transition(to: .failed(failure))
+    }
+
+    /// Keeps the open recording exactly when words were lost and the field is not secure, else deletes it.
+    @discardableResult
+    private func settleRecording(wordsLost: Bool) async -> Bool {
+        guard let openRecording else { return false }
+        self.openRecording = nil
+        // A secure field's audio is not kept for a retry, since its words are a secret.
+        guard wordsLost, !destinationIsSecure else {
+            await recordings.discard(openRecording)
+            return false
+        }
+        return true
     }
 
     /// Takes the recording written while the key was held as this dictation's, or deletes a cancelled one.
@@ -1166,13 +1131,6 @@ public actor DictationPipeline {
                 ?? SituationResolver.resolve(from: destination, overrides: runningOverrides).destination
             await recordings.setDestination(destination, fieldKind: fieldKind, for: id)
         }
-    }
-
-    /// Deletes the kept audio of the dictation under way, if there is one.
-    private func discardOpenRecording() async {
-        guard let openRecording else { return }
-        self.openRecording = nil
-        await recordings.discard(openRecording)
     }
 
     /// Tells the stores what this dictation used, once the words are safely on screen.
@@ -1199,7 +1157,6 @@ public actor DictationPipeline {
     private func transition(to next: DictationState) {
         state = next
         observers.send(next)
-        wakeWhatWaitsForRest()
     }
 }
 

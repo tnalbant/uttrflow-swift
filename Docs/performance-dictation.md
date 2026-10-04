@@ -273,20 +273,6 @@ over 528 decodes of the same corpus:
 - **A shorter vocabulary prompt.** The per-token cost above is real and so is the accuracy it buys;
   trading one for the other needs vocabularies of the size people keep.
 
-## The system recogniser, per piece
-
-`AppleSpeechBackend` settles the asset check, the format query and the transcriber and analyser in
-`load()`, and prepares the next pair once a piece answers, rather than doing all of it inside every
-call. Debug, called directly on one 5.3-second clip, fifteen pieces 300 ms apart, two runs each:
-
-| | median per piece |
-|---|---|
-| settled in `load()`, next pair prepared (shipped) | 101, 93 ms |
-| everything inside every call (not used) | 121, 124 ms |
-
-About 25 ms a piece leaves the wait after key release. A standalone probe of the framework put the
-asset query alone at 5–130 ms per call, largest when the system had been idle.
-
 ## Re-running the bench
 
 ```

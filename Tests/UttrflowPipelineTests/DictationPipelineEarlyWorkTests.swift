@@ -104,30 +104,6 @@ private actor HeldSpeechEngine: SpeechEngine {
     var isHolding: Bool { held != nil }
 }
 
-/// Holds its early recognition across cancellation and names each result so stale words are visible.
-private actor HeldSwapSpeechEngine: SpeechEngine {
-    let kind = SpeechEngineKind.whisperKit
-    private(set) var calls = 0
-    private var held: CheckedContinuation<Void, Never>?
-
-    func prepare() async throws(SpeechEngineError) {}
-
-    func transcribe(
-        _ audio: AudioSamples, options: TranscriptionOptions
-    ) async throws(SpeechEngineError) -> Transcription {
-        calls += 1
-        if calls == 1 { await withCheckedContinuation { held = $0 } }
-        return .fixture(text: "held result")
-    }
-
-    func release() {
-        held?.resume()
-        held = nil
-    }
-
-    var isHolding: Bool { held != nil }
-}
-
 /// A tidier whose first tidy does not finish until the test lets it, so the key can come up mid-tidy.
 private actor HeldCleaner: TranscriptCleaning {
     private var calls = 0
@@ -635,36 +611,6 @@ struct DictationPipelineEarlyWorkTests {
         #expect(inserter.received.isEmpty)
     }
 
-    @Test("a speech swap waits for a cancelled early decode, then loads after it returns")
-    func speechSwapWaitsForCancelledEarlyDecode() async throws {
-        let capture = FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces))
-        await capture.setCaptured(Take.threePieces)
-        let before = HeldSwapSpeechEngine()
-        let after = FakeSpeechEngine(
-            kind: .appleSpeech, transcribeOutcome: .success(.fixture(text: "faster")))
-        let pipeline = makePipeline(capture: capture, speech: before, earlyPoll: .milliseconds(2))
-
-        await pipeline.startRecording()
-        try await eventually { await before.isHolding }
-        await pipeline.cancel()
-        let switching = Task { await pipeline.adopt(speech: after) }
-        try await eventually { await pipeline.speechChangesWaiting == 1 }
-        #expect(
-            await after.prepareCalls.isEmpty,
-            "the replacement recogniser is not loaded before the old decode returns")
-
-        await before.release()
-        await switching.value
-
-        #expect(await after.prepareCalls.count == 1)
-        #expect(await pipeline.speechKind == .appleSpeech)
-        await pipeline.startRecording()
-        await pipeline.finishRecording()
-        #expect(
-            await pipeline.currentState.outcome?.text == "faster",
-            "cancelled words do not enter the next dictation")
-    }
-
     @Test("a retry after canceling a dictation has no context from the cancelled screen")
     func retryAfterCancelDropsEarlyContext() async throws {
         let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
@@ -826,6 +772,62 @@ struct DictationPipelineEarlyWorkTests {
         #expect(outcome?.text == "W1 X. W4 X")
         #expect(outcome?.missedPieces == 1)
         #expect(inserter.received == ["W1 X. W4 X"])
+    }
+
+    @Test("a dictation that missed a piece keeps its recording, and one that missed none deletes it")
+    func missedPieceKeepsTheRecording() async {
+        for missed in [false, true] {
+            let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+            let recordings = FakeRecordingKeeper(current: recording)
+            let pipeline = makePipeline(
+                capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+                speech: NumberingSpeechEngine(blankCalls: missed ? [2, 3] : []),
+                recordings: recordings, earlyPoll: .seconds(60))
+
+            await pipeline.startRecording()
+            await pipeline.finishRecording()
+
+            #expect(await pipeline.currentState.outcome?.missedPieces == (missed ? 1 : 0))
+            #expect(await recordings.discarded == (missed ? [] : [recording.id]))
+        }
+    }
+
+    @Test("a secure-field dictation that missed a piece keeps no audio")
+    func secureMissedPieceKeepsNoAudio() async {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(current: recording)
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: NumberingSpeechEngine(blankCalls: [2, 3]),
+            inserter: FakeTextInserter(.success(InsertionAttempt(.pasteboard, intoSecureField: true))),
+            recordings: recordings, earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState.outcome?.missedPieces == 1)
+        #expect(await recordings.discarded == [recording.id])
+    }
+
+    @Test("retrying the recording kept for a missed piece produces the missing words")
+    func retryRecoversTheMissedPiece() async {
+        let recording = KeptRecording(id: UUID(), when: Date(), duration: .seconds(3))
+        let recordings = FakeRecordingKeeper(
+            current: recording, audioOutcome: .success(Take.threePieces))
+        let speech = NumberingSpeechEngine(blankCalls: [2, 3])
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: speech, recordings: recordings, earlyPoll: .seconds(60))
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+        #expect(await recordings.discarded.isEmpty)
+
+        await pipeline.retry(recording.id)
+
+        let outcome = await pipeline.currentState.outcome
+        #expect(outcome?.text == "W5 X. W6 X. W7 X")
+        #expect(outcome?.missedPieces == 0)
+        #expect(await recordings.discarded == [recording.id])
     }
 
     @Test(

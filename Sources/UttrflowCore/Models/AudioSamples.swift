@@ -34,4 +34,12 @@ public struct AudioSamples: Sendable, Equatable {
     public var duration: Duration {
         .seconds(Double(samples.count) / Double(sampleRate))
     }
+
+    /// Below this magnitude a sample is digital silence; a quiet room's noise floor is far above it.
+    static let noSignalPeak: Float = 1e-6
+
+    /// Whether a second or more arrived with no signal at all: a muted input, a zero input level or a dead cable.
+    public var carriesNoSignal: Bool {
+        duration >= .seconds(1) && samples.allSatisfy { Swift.abs($0) < Self.noSignalPeak }
+    }
 }

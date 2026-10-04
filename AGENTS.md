@@ -75,6 +75,7 @@ Each gate fails its command. Thresholds and the full list are in
 | Spelling matches decided by shape never rise | `make match-audit` |
 | Logic-module UI imports and platform dependencies never rise | `make layering-audit` |
 | 0 real personal data in fixtures | `make pii-audit` |
+| 0 privacy, accuracy or speed claims in user-facing text without registered evidence | `make claims-audit` |
 | 0 connections on the dictation path | `make offline-audit` |
 | 0 conversation or reference material in tracked text | `make disclosure-audit` |
 | 0 contradictions between docs and tree; 0 dates or issue numbers in rule files | `make docs-audit` |

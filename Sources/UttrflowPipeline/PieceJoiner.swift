@@ -213,7 +213,7 @@ enum PieceJoiner {
             else { continue }
             let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
             guard !overflow else { continue }
-            let replacement = amount.symbol + NumberWords.render(sum, grouped: true)
+            let replacement = amount.symbol + NumberWords.render(sum, grouping: .thousands)
             let prefix = String(joined[index].dropLast(last.count))
             joined[index] = prefix + replacement
             joined[index + 1] = ""
@@ -501,7 +501,9 @@ enum PieceJoiner {
         var candidates: [BoundaryCandidate] = []
         for opening in sentenceOpenings(in: draft, starts: starts) {
             guard let found = sequence(draft, live, at: opening, starts: starts),
-                let position = live.firstIndex(of: opening)
+                let position = live.firstIndex(of: opening),
+                // A pause inside "number one" makes "one" an opening, but it is the marker already read.
+                candidates.last.map({ position >= $0.position + $0.length }) ?? true
             else { continue }
             candidates.append(
                 BoundaryCandidate(
@@ -714,24 +716,24 @@ struct SeamSnippetInput: Sendable {
     }
 
     func restoringUnconsumedStops(in expanded: ExpandedTranscript) -> ExpandedTranscript {
-        guard expanded.text != source else { return .unchanged(text) }
+        // The expander saw the text without the seam stops, so an unchanged answer equals that, not the source.
+        guard expanded.text != removingSeamStops() else { return .unchanged(text) }
         let expandedChars = Array(expanded.text)
         var result = ""
-        var inputOffset = 0
-        var stopOffsets = Set(removableStops)
-        for _ in source {
-            if stopOffsets.remove(inputOffset) != nil {
-                if inputOffset < expandedChars.count,
-                    expandedChars[inputOffset].isWhitespace || expandedChars[inputOffset].isNewline
-                {
+        var expandedOffset = 0
+        let stopOffsets = Set(removableStops)
+        // A removed stop has no character in the expansion, so it never advances the expansion's offset.
+        for inputOffset in 0..<source.count {
+            if stopOffsets.contains(inputOffset) {
+                if expandedOffset < expandedChars.count, expandedChars[expandedOffset].isWhitespace {
                     result.append(".")
                 }
-            } else if inputOffset < expandedChars.count {
-                result.append(expandedChars[inputOffset])
+            } else if expandedOffset < expandedChars.count {
+                result.append(expandedChars[expandedOffset])
+                expandedOffset += 1
             }
-            inputOffset += 1
         }
-        result += expandedChars.dropFirst(min(inputOffset, expandedChars.count))
+        result += expandedChars.dropFirst(expandedOffset)
         return ExpandedTranscript(text: result, snippets: expanded.snippets)
     }
 }
