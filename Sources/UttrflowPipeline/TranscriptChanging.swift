@@ -49,6 +49,14 @@ public protocol WordCorrecting: Sendable {
     func corrections(
         for transcription: Transcription, seeing context: AppContext
     ) async throws(DictationChangeError) -> [DictationCorrection]
+
+    /// This corrector held to what it knows now, so every piece of one dictation is corrected alike.
+    func fixed() async -> any WordCorrecting
+}
+
+extension WordCorrecting {
+    /// A corrector that reads nothing that can change is already fixed.
+    public func fixed() async -> any WordCorrecting { self }
 }
 
 /// Puts the user's stored text where they spoke its trigger.
