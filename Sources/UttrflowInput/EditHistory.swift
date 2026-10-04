@@ -1,6 +1,6 @@
 // Keeps the last few spoken edits undoable for a short window, in memory only.
 private import Synchronization
-import UttrflowCore
+public import UttrflowCore
 
 /// The undoable edits in one field, newest last, never persisted and never sent. See `Docs/insertion.md`.
 public final class EditHistory: Sendable {
