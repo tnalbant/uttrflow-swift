@@ -1711,6 +1711,52 @@ public enum EvaluationCorpus {
             mustBeginWith: "Send",
             mustEndWith: "today"
         ),
+        // A clock time in a line a calendar or task app parses is written as digits.
+        .init(
+            id: "quick-entry-things-time", category: .contextual,
+            spoken: "call the plumber tomorrow at five thirty",
+            expected: "Call the plumber tomorrow at 5:30",
+            mustKeep: ["tomorrow", "5:30"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: DestinationRules.things,
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Call",
+            mustEndWith: "5:30"
+        ),
+        .init(
+            id: "quick-entry-fantastical-time", category: .contextual,
+            spoken: "lunch with Sam friday at twelve fifteen",
+            expected: "Lunch with Sam Friday at 12:15",
+            mustKeep: ["Friday", "12:15"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: DestinationRules.fantastical,
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Lunch",
+            mustEndWith: "12:15"
+        ),
+        .init(
+            id: "quick-entry-calendar-time", category: .contextual,
+            spoken: "team review every monday at nine forty five",
+            expected: "Team review every Monday at 9:45",
+            mustKeep: ["Monday", "9:45"],
+            context: AppContext(
+                applicationName: "Calendar",
+                bundleIdentifier: DestinationRules.calendar,
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Team",
+            mustEndWith: "9:45"
+        ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.
         .init(
