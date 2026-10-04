@@ -357,6 +357,20 @@ public struct NumberFormsPass: PieceCleaningPass {
         "at", "by", "until", "till", "from", "around", "about", "before", "after", "since",
     ]
 
+    /// Nouns that take a time of day, after which "for" is a time cue as in "an alarm for seven thirty".
+    static let timedNouns: Set<String> = [
+        "alarm", "alarms", "appointment", "appointments", "booking", "meeting", "meetings",
+        "reminder", "reminders", "reservation",
+    ]
+
+    /// Whether the word before `position` cues a time of day within the same sentence.
+    private static func hasTimeCue(before position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard position > 0, !startsASentence(position, shapes) else { return false }
+        if timeCues.contains(keys[position - 1]) { return true }
+        return keys[position - 1] == "for" && position > 1 && !startsASentence(position - 1, shapes)
+            && timedNouns.contains(keys[position - 2])
+    }
+
     /// Whether the number here is the smaller part of an amount, after a number and its currency.
     private static func completesAmount(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
         var currency = position - 1
@@ -373,9 +387,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
-        let hasBeforeCue =
-            position > 0 && !startsASentence(position, shapes)
-            && timeCues.contains(keys[position - 1])
+        let hasBeforeCue = hasTimeCue(before: position, keys: keys, shapes: shapes)
         let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
         let hasAfterCue =
             minuteEnd < shapes.count && joined(minuteEnd, shapes)

@@ -409,6 +409,19 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "reads for as a time cue only after a noun that takes a time",
+        arguments: [
+            ("set the alarm for seven thirty tomorrow", "set the alarm for 7:30 tomorrow"),
+            ("a reminder for six fifteen today", "a reminder for 6:15 today"),
+            ("we waited for seven thirty minutes", "we waited for 7 30 minutes"),
+            ("the alarm. for seven thirty days", "the alarm. for 7 30 days"),
+        ]
+    )
+    func forAfterTimedNoun(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "writes years spoken in two halves",
         arguments: [
             ("twenty twenty four", "2024"),
