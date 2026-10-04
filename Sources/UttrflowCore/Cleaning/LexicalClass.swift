@@ -18,6 +18,17 @@ public enum LexicalClass {
         return tag(at: text.index(text.startIndex, offsetBy: offset), in: text)
     }
 
+    /// The dictionary form of the word at `index` when the words are read as one sentence: "be" for "is".
+    public static func lemma(ofWordAt index: Int, in words: [String]) -> String? {
+        guard words.indices.contains(index) else { return nil }
+        let text = words.joined(separator: " ")
+        let offset = words[..<index].reduce(0) { $0 + $1.count + 1 }
+        let tagger = NLTagger(tagSchemes: [.lemma])
+        tagger.string = text
+        let start = text.index(text.startIndex, offsetBy: offset)
+        return tagger.tag(at: start, unit: .word, scheme: .lemma).0?.rawValue
+    }
+
     /// Every word of `text` with its class, in order, skipping whitespace and punctuation.
     public static func tags(in text: String) -> [(word: String, tag: NLTag)] {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])

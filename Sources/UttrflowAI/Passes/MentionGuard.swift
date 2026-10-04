@@ -8,6 +8,21 @@ public enum MentionGuard {
         isMentioned(at: position, spanning: length, in: draft.presentIndices, of: draft, reach: phraseReach)
     }
 
+    /// Whether a prose casing phrase names the style rather than asking for it: "the all caps rule", "in all caps".
+    static func namesCasing(at position: Int, spanning length: Int, in live: [Int], of draft: Draft) -> Bool {
+        // A casing phrase goes on the words after it, as an opening mark does.
+        if isMentioned(
+            at: position, spanning: length, in: live, of: draft, reach: phraseReach, kind: .opening)
+        {
+            return true
+        }
+        let words = live.map { draft.shape(at: $0).key }
+        if position > 0, LexicalClass.tag(ofWordAt: position - 1, in: words) == .preposition { return true }
+        // A form of "be" after the phrase makes it the subject of a sentence about the style.
+        let next = position + length
+        return next < live.count && LexicalClass.lemma(ofWordAt: next, in: words) == "be"
+    }
+
     /// Words whose object is always a spelling: "the word ah", "spell um".
     private static let namingWords: Set<String> = ["word", "letter", "sound", "spell"]
     /// Verbs that name a spelling only through a determiner, since a hesitation often follows them: "he said um".

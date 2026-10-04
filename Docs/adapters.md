@@ -29,7 +29,7 @@ decisions became passes switched on by tests of the destination:
 | `Sources/UttrflowAI/Passes/CleaningPipeline+Standard.swift` | `CodeEditorCommandsPass` inserted when `destination == .codeEditor` and the caret is not in a comment |
 | the same file, `terminalStop(_:in:)` | a code editor's stop policy swapped to `.always` inside a comment |
 | the same file and `Sources/UttrflowPipeline/DictationPipeline.swift` | `capitaliseCalendarWords` is enabled only for `.fromInsertionPoint` destinations other than `.codeEditor`; the condition is written twice |
-| `Sources/UttrflowAI/Passes/SpokenPunctuationPass.swift` | `isTechnicalDestination` (terminal, code, SQL) plus a private cue list decide literal hyphens and flags |
+| `Sources/UttrflowAI/Passes/SpokenPunctuationPass.swift` | the `flag` rows of `spoken-commands.json` (enabled in terminal, code, SQL) plus the lexicon's `command` terms decide literal hyphens and flags |
 | `Sources/UttrflowAI/Passes/TerminalStopPass.swift` | an email greeting or sign-off keeps its own stop rule |
 | `Sources/UttrflowAI/PromptBlocks.swift` | the `sqlEditor` block says prose stays prose, includes additional SQL guidance, and has no examples |
 
@@ -242,7 +242,7 @@ deleted in the same pull request.
 | Today | Becomes | Deleted with it |
 |---|---|---|
 | `CodeEditorCommandsPass`, its symbol table and its casing commands | the source adapter's notation pass reading `NotationTable` rows (AD.20.a, AD.21) | the pass's literal tables, and its copies of "comma", "colon" and "semicolon" that prose punctuation already owns |
-| `SpokenPunctuationPass`'s technical branch: `isTechnicalDestination`, the private cue list, long and short flags, literal hyphens | shell rows in `NotationTable`, and shell cues returned by the shell adapter's `applies(to:)` (AD.16, AD.3) | the `destination` parameter of `SpokenPunctuationPass` |
+| `SpokenPunctuationPass`'s technical branch: the `flag` rows' destinations, the lexicon's command terms, long and short flags, literal hyphens | shell rows in `NotationTable`, and shell cues returned by the shell adapter's `applies(to:)` (AD.16, AD.3) | the `destination` parameter of `SpokenPunctuationPass` |
 | `CaretStructure.region` read in `terminalStop(_:in:)` | the region selecting a prose row (section 2) | `terminalStop(_:in:)` in `CleaningPipeline+Standard.swift` |
 | `capitaliseCalendarWords` withheld for code, in two files | a decision on the policy | both `!= .codeEditor` tests |
 | the email greeting rule in `TerminalStopPass` | a `TerminalStopPolicy` value on the email prose row | the `destination == .email` tests |

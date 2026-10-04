@@ -33,7 +33,7 @@ struct NotationAgreementTests {
     ]
 
     /// Block and row pairs where a worked example writes other than the table, a baseline that only shrinks.
-    static let disagreements: Set<String> = ["terminal mark.dash"]
+    static let disagreements: Set<String> = []
 
     @Test("every table row is said by a corpus case in a destination it is enabled in")
     func everyRowHasACorpusCase() {
@@ -60,6 +60,12 @@ struct NotationAgreementTests {
         }
     }
 
+    /// A mark whose words a flag row also says is that flag wherever the flag row is enabled.
+    private static func isSuperseded(_ row: SpokenCommand, in destination: Destination) -> Bool {
+        row.action == .mark
+            && SpokenCommands.flags.contains { $0.words == row.words && $0.isEnabled(in: destination) }
+    }
+
     @Test("a worked example that says a command writes what the table writes for it")
     func promptExamplesFollowTheTable() {
         for (destination, formatter) in DestinationFormatter.registry {
@@ -67,6 +73,7 @@ struct NotationAgreementTests {
             for example in block.examples {
                 for row in SpokenCommands.all
                 where row.action != .casing && row.isEnabled(in: destination)
+                    && !Self.isSuperseded(row, in: destination)
                     && Self.says(row.words, in: example.spoken)
                     && !Self.disagreements.contains("\(block.id) \(row.id)")
                 {

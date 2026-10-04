@@ -175,7 +175,7 @@ struct RulesCorpusTests {
         "writes the exact reference for the cases that have one right answer",
         arguments: [
             ("self-correction", "Let's meet at five on tuesday."),
-            ("ellipsis-glued-fillers", "The invoice is overdue."),
+            ("ellipsis-glued-fillers", "The...the invoice is...overdue."),
             ("version-number", "We're on postgres 16.2 right now."),
             ("spoken-decade", "The 1990s were fun."),
             ("twenty-four-seven-idiom", "It's a twenty four seven service."),

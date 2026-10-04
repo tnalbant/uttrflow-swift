@@ -180,47 +180,7 @@ public struct Draft: Sendable, Equatable {
     }
 
     private static func split(_ text: String, confidence: Double) -> [Word] {
-        text.split(whereSeparator: \.isWhitespace).flatMap { token in
-            splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence) }
-        }
-    }
-
-    /// Splits a pause ellipsis between words while keeping URL punctuation inside its token.
-    private static func splitPauseEllipses(in token: String) -> [String] {
-        let lowercased = token.lowercased()
-        guard !lowercased.contains("://"), !lowercased.hasPrefix("www."), !lowercased.contains("@")
-        else { return [token] }
-
-        let characters = Array(token)
-        var parts = [""]
-        var index = 0
-        while index < characters.count {
-            if index > 0, let length = pauseEllipsisLength(in: characters, at: index),
-                characters[index - 1].isLetter || characters[index - 1].isNumber
-            {
-                parts.append("")
-                index += length
-                continue
-            }
-            parts[parts.count - 1].append(characters[index])
-            index += 1
-        }
-        return parts
-    }
-
-    /// The length of a three-dot or single-character ellipsis at `index` that a letter or digit follows, else nil.
-    private static func pauseEllipsisLength(in characters: [Character], at index: Int) -> Int? {
-        let length: Int
-        if characters[index] == "\u{2026}" {
-            length = 1
-        } else if index + 2 < characters.count, characters[index...(index + 2)].allSatisfy({ $0 == "." }) {
-            length = 3
-        } else {
-            return nil
-        }
-        guard index + length < characters.count else { return nil }
-        let next = characters[index + length]
-        return next.isLetter || next.isNumber ? length : nil
+        text.split(whereSeparator: \.isWhitespace).map { Word(String($0), confidence: confidence) }
     }
 
     /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.

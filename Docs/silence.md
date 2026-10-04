@@ -174,3 +174,30 @@ doubtful-word repair for that piece. One representation cannot disagree with its
 
 With only markers left, the mapped transcript is blank, so the pipeline treats it as nothing heard
 and refuses insertion ([`pipeline.md`](pipeline.md)).
+
+## Measuring what still gets through
+
+`uttrflow-eval nonspeech` (`Sources/uttrflow-eval/NonSpeechProbe.swift`) runs a generated
+non-speech corpus through `BackedSpeechEngine`, the same voice-activity check, trim and loop repair
+a dictation goes through, so it reports the residual rather than raw decoder behaviour. Every clip
+is synthetic and repeatable from its seed (`NonSpeechKind`, `Sources/UttrflowEval/NonSpeech.swift`):
+
+| Kind | Signal, 5 s |
+|---|---|
+| `silence` | digital zero |
+| `roomTone` | low-passed noise at −60 dBFS RMS |
+| `hiss` | white noise at −30 dBFS RMS |
+| `keyboard` | 15 ms decaying bursts, jittered round one every 0.18 s |
+| `breath` | low-passed noise near −40 dBFS rising and falling every 2.5 s |
+| `music` | a three-note chord changing every 0.5 s, at −20 dBFS RMS |
+
+Each kind is also appended, `--tail-seconds` long (default 4), after each `SpokenClips` sentence
+read by `say`, which is the trailing pause after real speech.
+
+| Rate | Counted per clip | Rule |
+|---|---|---|
+| insertion rate | the transcript holds words after the last spoken word that were not said; for a clip with no speech, any word | `NonSpeechScore.insertedWords` |
+| repetition-loop rate | one phrase of at least 3 words follows itself at least 3 times | `NonSpeechScore.looped` |
+
+Both are gated: the command exits non-zero when either rate is above `--max-insertion-rate` or
+`--max-loop-rate`, both 0 by default. `nothingHeard` counts as nothing typed.

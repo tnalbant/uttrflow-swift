@@ -389,7 +389,7 @@ cannot go unbudgeted. These are binary MB (2^20 bytes), like the memory budget.
 | recordings waiting for a retry | ≤ 256 MB | the cap `RecordingStore` prunes to, about 33 recordings of 240 s as 16-bit WAV |
 | dictation history | ≤ 64 MB | 1,000 records at most |
 | clipboard, with its pictures | ≤ 1024 MB | the pictures' own cap is 10^9 bytes, plus the list, saved clips and preferences |
-| diagnostics | ≤ 16 MB | the speech model's load log |
+| diagnostics | ≤ 16 MB | the speech model's load log and the 30-day network ledger |
 | other stores | ≤ 64 MB | the dictionary, snippets, predictions, consent, key and lock |
 
 Read from the support folder of an Apple M5 Pro in daily use: speech model 618 MB, clipboard 9 MB

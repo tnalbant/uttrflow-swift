@@ -217,6 +217,10 @@ data-manifest: ## Prove every bundled resource file is in Resources/DataManifest
 	@python3 Scripts/data_manifest_test.py
 	@python3 Scripts/data_manifest.py
 
+.PHONY: claims-audit
+claims-audit: ## Refuse a privacy, accuracy or speed claim in user-facing text that Docs/claims.json does not back. Needs no build.
+	@python3 Scripts/claims_audit.py --self-test
+
 .PHONY: pii-audit
 pii-audit: ## Prove no personal data is in the tree. Needs no build.
 	./Scripts/pii_audit.sh
