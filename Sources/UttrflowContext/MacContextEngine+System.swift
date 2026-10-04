@@ -91,7 +91,7 @@ extension MacContextEngine {
             await withCheckedContinuation { continuation in
                 readQueue.async {
                     continuation.resume(
-                        returning: read(application.processIdentifier, while: { !expired.isSet }))
+                        returning: read(application, while: { !expired.isSet }))
                 }
             }
         } onCancel: {
@@ -111,11 +111,11 @@ extension MacContextEngine {
     }
 
     private static func read(
-        _ processIdentifier: pid_t, while isWanted: @Sendable () -> Bool
+        _ application: FrontmostApplication, while isWanted: @Sendable () -> Bool
     ) -> FocusedWindow {
         // Skipped before the first message when the caller gave up while this read was still queued.
         guard isWanted() else { return FocusedWindow() }
-        let app = AXUIElementCreateApplication(processIdentifier)
+        let app = AXUIElementCreateApplication(application.processIdentifier)
         // Caps each message so an abandoned read does not outlive the budget the dictation waited for.
         _ = AXUIElementSetMessagingTimeout(app, budgetInSeconds)
 
@@ -141,7 +141,10 @@ extension MacContextEngine {
         let selection = text.selection.flatMap {
             AccessibilityRange.selection(location: $0.location, length: $0.length)
         }
-        let caret = CaretText.around(text.value, selection: selection)
+        let caret =
+            application.bundleIdentifier.map(TerminalApplications.contains) == true
+            ? CaretText.inTerminal(text.value, selection: selection, windowTitle: title)
+            : CaretText.around(text.value, selection: selection)
         let role = names.role
         let multiline =
             SurfaceProbe.boolean(field, "AXMultiline")
