@@ -165,6 +165,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
 | [core-word-error-rate.md](core-word-error-rate.md) | Word error rate |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
+| [disfluency-deletion.md](disfluency-deletion.md) | Disfluency removal scored by the words deleted, per class |
 | [eval-context-cases.md](eval-context-cases.md) | The Hinglish and context cases in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |
