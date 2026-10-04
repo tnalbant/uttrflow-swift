@@ -190,6 +190,24 @@ nothing there; `scriptVerdict` reads the draft the only way it needs to: romanis
 A refusal is not a failure. The router moves on, the rules romanise the draft, and the words
 arrive in Latin letters.
 
+### How well the sound key judges one word
+
+`Romaniser.soundKey` is measured against two tables in `Tests/UttrflowEvalTests/Golden/`:
+`romanised-variants.json`, 169 Hindi words each with the other spellings people type for it
+(297 variant pairs), and `romanised-distinct-words.json`, 54 pairs of different words a
+spelling fold could merge. `RomanisedVariantProbeTests` pins the figures.
+
+| Measure | Result |
+|---|---|
+| Variant pairs given one key (recall) | 133 of 297 (44.8%) |
+| Variant sets whose every spelling meets | 58 of 169 |
+| Distinct pairs given one key (false merges) | 29 of 54 |
+
+Misses are spellings the six rules do not cover: "kyun" and "kyon", "zyada" and "jyada",
+"bahut" and "bohot", "mein" and "main", "nahi" and "nahin", "hai" and "he". Nearly every false
+merge comes from collapsing a doubled letter, which folds a long vowel into a short one:
+"kam" and "kaam", "din" and "deen", "pata" and "patta", "jal" and "jaal".
+
 ## The last resort
 
 `LatinScript.enforced` runs over the finished message. Devanagari is romanised, with a capital
