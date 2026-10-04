@@ -22,6 +22,8 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case codeSymbol
         /// A case style, named by `text`, applied to the words that follow in executable code.
         case casing
+        /// An option marker written before the word after it at a command line; `destinations` are where every dash is one.
+        case flag
     }
 
     /// The row's stable name.
@@ -76,6 +78,8 @@ public enum SpokenCommands {
     public static let codeSymbols = rows(.codeSymbol)
     /// Case styles said by name in code.
     public static let casings = rows(.casing)
+    /// Option markers said by name, longest first.
+    public static let flags = rows(.flag).sorted { $0.words.count > $1.words.count }
     /// The marks that open a quotation.
     public static let openings = marks.filter { $0.placement == .opening }
     /// The marks that close a quotation.

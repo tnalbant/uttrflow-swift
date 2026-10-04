@@ -10,7 +10,7 @@ struct TechnicalLexiconTests {
     @Test("The shipped lexicon loads from the bundle with a term in every category.")
     func shipped() {
         #expect(TechnicalLexicon.isBundled)
-        #expect(TechnicalLexicon.terms.count == 258)
+        #expect(TechnicalLexicon.terms.count == 259)
         let categories = Set(TechnicalLexicon.terms.map(\.category))
         #expect(categories == Set(TechnicalTerm.Category.allCases))
         #expect(TechnicalLexicon.table.source == .bundled)

@@ -32,11 +32,11 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         // The end of the sentence `position` sits in, kept until a write changes the words; nil once stale.
         var sentenceEnd: Int?
         while position < live.count {
-            let literalHyphens = literal.contains(live[position])
-            if literalHyphens, replaceLongFlag(at: position, in: &live, of: &draft) {
+            if replaceLongFlag(at: position, literal: literal, in: &live, of: &draft) {
                 sentenceEnd = nil
                 continue
             }
+            let literalHyphens = literal.contains(live[position])
             if literalHyphens, replaceShortFlag(at: position, in: &live, of: &draft) {
                 sentenceEnd = nil
                 position += 1
@@ -78,16 +78,29 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         return draft
     }
 
-    private var isTechnicalDestination: Bool {
-        destination == .terminal || destination == .codeEditor || destination == .sqlEditor
+    /// Whether every spoken dash here is an option marker, which the flag rows' destinations say.
+    private var isCommandLine: Bool {
+        SpokenCommands.flags.contains { $0.isEnabled(in: destination) }
     }
 
     private func mark(_ value: String, literalHyphens: Bool) -> String {
         literalHyphens && value == "\u{2014}" ? "-" : value
     }
 
-    /// Tools whose name starts a command, so every dash after it in the sentence is one of its options.
-    static let toolCues: Set<String> = ["git", "npm", "yarn", "pnpm"]
+    /// The lexicon's programs, whose name starts a command, so every dash after it in the sentence is one of its options.
+    private static let commands = TechnicalLexicon.terms.filter { $0.category == .command }
+
+    /// Whether a program the lexicon knows is named at `position`, by its written form or a spoken one.
+    private func namesCommand(at position: Int, in live: [Int], of draft: Draft) -> Bool {
+        let key = draft.shape(at: live[position]).key
+        return Self.commands.contains { term in
+            term.applies(in: destination)
+                && (term.id.lowercased() == key
+                    || term.spoken.contains {
+                        draft.spells($0.split(separator: " ").map(String.init), at: position, in: live)
+                    })
+        }
+    }
 
     /// Nouns that introduce a name, so only dashes joining the name said right after them are literal.
     static let nameCues: Set<String> = ["branch", "command", "terminal"]
@@ -98,14 +111,14 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// The word indices of spoken dashes that belong to a command or a name rather than to prose.
     private func literalDashes(in live: [Int], of draft: Draft) -> Set<Int> {
         let dashes = live.filter { draft.shape(at: $0).key == "dash" }
-        if isTechnicalDestination { return Set(dashes) }
+        if isCommandLine { return Set(dashes) }
         var literal: Set<Int> = []
         var inCommand = false
         var position = 0
         while position < live.count {
             let shape = draft.shape(at: live[position])
             if inCommand && shape.key == "dash" { literal.insert(live[position]) }
-            if Self.toolCues.contains(shape.key) { inCommand = true }
+            if namesCommand(at: position, in: live, of: draft) { inCommand = true }
             if Self.nameCues.contains(shape.key) && !shape.endsSentence {
                 position = nameDashes(after: position, in: live, of: draft, into: &literal)
                 continue
@@ -135,36 +148,43 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         return position
     }
 
-    /// Turns two consecutive spoken dashes into a long option, including one at the start of a command.
-    private func replaceLongFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
-        guard position + 2 < live.count,
-            draft.spells(["dash"], at: position, in: live),
-            draft.spells(["dash"], at: position + 1, in: live),
-            !MentionGuard.isMentioned(
-                at: position, spanning: 1, in: live, of: draft,
-                reach: MentionGuard.phraseReach, kind: .joining),
-            !MentionGuard.isMentioned(
-                at: position + 1, spanning: 1, in: live, of: draft,
-                reach: MentionGuard.phraseReach, kind: .joining)
+    /// Turns a long option marker said before a word into the option, including one at the start of a command.
+    private func replaceLongFlag(
+        at position: Int, literal: Set<Int>, in live: inout [Int], of draft: inout Draft
+    ) -> Bool {
+        guard
+            let row = SpokenCommands.flags.first(where: { row in
+                let length = row.words.count
+                return length > 1 && position + length < live.count
+                    && literal.contains(live[position + length - 1])
+                    && draft.spells(row.words, at: position, in: live)
+                    && (position..<(position + length)).allSatisfy {
+                        !MentionGuard.isMentioned(
+                            at: $0, spanning: 1, in: live, of: draft,
+                            reach: MentionGuard.phraseReach, kind: .joining)
+                    }
+            })
         else { return false }
-        let value = live[position + 2]
+        let length = row.words.count
+        let value = live[position + length]
         let option = draft.words[value].text
         let joinsDevelopmentSuffix =
-            option == "save" && position + 3 < live.count
-            && draft.shape(at: live[position + 3]).key == "dev"
+            option == "save" && position + length + 1 < live.count
+            && draft.shape(at: live[position + length + 1]).key == "dev"
         draft.replace(
-            at: value, with: "--" + option + (joinsDevelopmentSuffix ? "-dev" : ""), by: Self.id)
-        if joinsDevelopmentSuffix { draft.remove(at: live[position + 3], by: Self.id) }
-        draft.remove(at: live[position], by: Self.id)
-        draft.remove(at: live[position + 1], by: Self.id)
-        live.removeSubrange(position..<(position + (joinsDevelopmentSuffix ? 4 : 2)))
+            at: value, with: row.text + option + (joinsDevelopmentSuffix ? "-dev" : ""), by: Self.id)
+        if joinsDevelopmentSuffix { draft.remove(at: live[position + length + 1], by: Self.id) }
+        for index in live[position..<(position + length)] { draft.remove(at: index, by: Self.id) }
+        live.removeSubrange(position..<(position + length + (joinsDevelopmentSuffix ? 2 : 0)))
         return true
     }
 
     /// Leaves a one-letter option as its own token: `git commit -m`, not `git commit-m`.
     private func replaceShortFlag(at position: Int, in live: inout [Int], of draft: inout Draft) -> Bool {
         guard position + 1 < live.count, position > 0,
-            draft.spells(["dash"], at: position, in: live),
+            let row = SpokenCommands.flags.first(where: {
+                $0.words.count == 1 && draft.spells($0.words, at: position, in: live)
+            }),
             !MentionGuard.isMentioned(
                 at: position, spanning: 1, in: live, of: draft,
                 reach: MentionGuard.phraseReach, kind: .joining)
@@ -174,7 +194,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
             next.unicodeScalars.allSatisfy({ (65...90).contains($0.value) || (97...122).contains($0.value) })
         else { return false }
         let index = live[position]
-        draft.replace(at: index, with: "-" + next, by: Self.id)
+        draft.replace(at: index, with: row.text + next, by: Self.id)
         draft.remove(at: live[position + 1], by: Self.id)
         live.remove(at: position + 1)
         return true
