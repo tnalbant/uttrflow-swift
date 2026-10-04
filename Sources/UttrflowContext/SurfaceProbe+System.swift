@@ -60,6 +60,51 @@ public enum SurfaceProbe {
             textLength: integer(field, kAXNumberOfCharactersAttribute))
     }
 
+    /// What names the field, asked in one message: its role and the four names it may publish for itself.
+    static func names(of field: AXUIElement) -> FieldNames {
+        let attributes = [
+            kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute, kAXPlaceholderValueAttribute,
+            kAXDescriptionAttribute,
+        ]
+        var answers: CFArray?
+        let result = AXUIElementCopyMultipleAttributeValues(
+            field, attributes as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &answers)
+        // An element that will not answer the batch is asked one attribute at a time instead.
+        let named: [String?]
+        if result == .success, let values = answers as? [AnyObject], values.count == attributes.count {
+            named = values.map { $0 as? String }
+        } else {
+            named = attributes.map { string(field, $0) }
+        }
+        return FieldNames(
+            role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
+            description: named[4])
+    }
+
+    /// The focused field's text around the caret, with the selection moved into it, and whether the field is secure.
+    struct FieldText {
+        let value: String?
+        let selection: NSRange?
+        let isSecure: Bool
+    }
+
+    /// The one read of a focused field's value, never fetched from a declared secure field nor copied whole when long.
+    static func text(of field: AXUIElement, names: FieldNames, at range: CFRange?) -> FieldText {
+        guard !names.isDeclaredSecure else { return FieldText(value: nil, selection: nil, isSecure: true) }
+        let selection = range.map { NSRange(location: $0.location, length: $0.length) }
+        let count = selection == nil ? nil : integer(field, kAXNumberOfCharactersAttribute)
+        let read = ValueWindow.read(
+            count: count, selection: selection,
+            whole: { string(field, kAXValueAttribute) },
+            part: { window in
+                parameterized(
+                    field, kAXStringForRangeParameterizedAttribute,
+                    CFRange(location: window.location, length: window.length)) as? String
+            })
+        return FieldText(
+            value: read.value, selection: read.selection, isSecure: names.isSecure(value: { read.value }))
+    }
+
     /// The screen rectangle Accessibility reports for one text range, which decides whether a ghost can be drawn.
     static func bounds(_ field: AXUIElement, at range: CFRange) -> CGRect? {
         let rect: CGRect? = unwrap(

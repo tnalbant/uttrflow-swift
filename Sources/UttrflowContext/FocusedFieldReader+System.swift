@@ -53,20 +53,11 @@ public enum FocusedFieldReader {
 
     /// Stable Accessibility answers, retained only for one focused field and window.
     private struct StableSnapshotValue: @unchecked Sendable {
-        let identity: FieldIdentity
+        let identity: FieldNames
         let document: String?
         let fieldFrame: CGRect?
         let windowFrame: CGRect?
         let windowTitle: String?
-    }
-
-    /// The five field names fetched together because none changes while that field stays focused.
-    private struct FieldIdentity: Sendable {
-        let role: String?
-        let subrole: String?
-        let identifier: String?
-        let placeholder: String?
-        let description: String?
     }
 
     /// The primary screen's top edge, cached because `NSScreen` is main-thread-only and this reads off it.
@@ -258,7 +249,7 @@ public enum FocusedFieldReader {
         let cacheKey = StableSnapshotKey(
             processIdentifier: app.processIdentifier, field: field, window: window)
         let cached = stableSnapshot.value(for: cacheKey)
-        let fieldIdentity = cached?.identity ?? identity(of: field)
+        let fieldIdentity = cached?.identity ?? SurfaceProbe.names(of: field)
         guard let role = fieldIdentity.role else { return nil }
         guard goOn() else { return nil }
         let stable: StableSnapshotValue
@@ -284,9 +275,7 @@ public enum FocusedFieldReader {
         }
         let identity = stable.identity
         // Decided before the value is fetched, so a declared secure field's contents are never read at all.
-        let declaredSecure = SecureField.isDeclaredSecure(
-            role: role, subrole: identity.subrole, identifier: identity.identifier,
-            placeholder: identity.placeholder, description: identity.description)
+        let declaredSecure = identity.isDeclaredSecure
         guard goOn() else { return nil }
         let selected = SurfaceProbe.selection(field)
         if case .discontinuous = selected { return nil }
@@ -297,9 +286,9 @@ public enum FocusedFieldReader {
             range = declaredSecure || !goOn() ? nil : markerSelection(field)
         }
         guard goOn() else { return nil }
-        let read = declaredSecure ? (value: nil, selection: nil) : boundedValue(of: field, at: range)
+        let read = SurfaceProbe.text(of: field, names: identity, at: range)
         let value = read.value
-        let secure = declaredSecure || (value.map(SecureField.looksMasked) ?? false)
+        let secure = read.isSecure
         guard goOn() else { return nil }
         // The attributed string carries the characters, so a secure field is never asked for its style.
         let styleRange = range.flatMap { boundedStyleRange($0) }
@@ -409,29 +398,6 @@ public enum FocusedFieldReader {
         return HiddenInputLine.read(around: AXNode(field), at: frame, in: AXElementTree(), while: goOn)
     }
 
-    /// What names the field, asked in one message: its role and the four names it may publish for itself.
-    private static func identity(of field: AXUIElement) -> FieldIdentity {
-        let attributes = [
-            kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute, kAXPlaceholderValueAttribute,
-            kAXDescriptionAttribute,
-        ]
-        var answers: CFArray?
-        let result = AXUIElementCopyMultipleAttributeValues(
-            field, attributes as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &answers)
-        // An element that will not answer the batch is asked one attribute at a time instead.
-        guard result == .success, let values = answers as? [AnyObject], values.count == attributes.count
-        else {
-            let named = attributes.map { SurfaceProbe.string(field, $0) }
-            return FieldIdentity(
-                role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
-                description: named[4])
-        }
-        let named = values.map { $0 as? String }
-        return FieldIdentity(
-            role: named[0], subrole: named[1], identifier: named[2], placeholder: named[3],
-            description: named[4])
-    }
-
     /// Whether both keys name the same window, including the absence of a window.
     private static func sameWindow(_ lhs: AXUIElement?, _ rhs: AXUIElement?) -> Bool {
         switch (lhs, rhs) {
@@ -439,22 +405,6 @@ public enum FocusedFieldReader {
         case (let lhs?, let rhs?): CFEqual(lhs, rhs)
         default: false
         }
-    }
-
-    /// The field's value around the caret, with the selection moved into it, so a long scrollback is never copied whole.
-    private static func boundedValue(
-        of field: AXUIElement, at range: CFRange?
-    ) -> (value: String?, selection: NSRange?) {
-        let selection = range.map { NSRange(location: $0.location, length: $0.length) }
-        let count: Int? = selection == nil ? nil : SurfaceProbe.integer(field, kAXNumberOfCharactersAttribute)
-        return ValueWindow.read(
-            count: count, selection: selection,
-            whole: { SurfaceProbe.string(field, kAXValueAttribute) },
-            part: { window in
-                SurfaceProbe.parameterized(
-                    field, kAXStringForRangeParameterizedAttribute,
-                    CFRange(location: window.location, length: window.length)) as? String
-            })
     }
 
     /// Bounds an attributed style read at the start of a selection.

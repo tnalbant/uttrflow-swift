@@ -43,9 +43,11 @@ but hides its selection still yields the half it was willing to give. Between re
 `read(_:while:)` checks whether its caller is still waiting and stops sending messages once it is
 not.
 
-Two answers end the read early. A focused field that is secure (`SecureField`, from its role,
-subrole and names, or mask characters in its first `CaretWindow.maskPrefixUnits`) yields only the
-window title and `isSecure`, so none of its text can reach a prompt. A field with several separate
+Two answers end the read early. A focused field that is secure (`FieldNames.isSecure`, from its
+role, subrole and names, or a value of mask characters alone) yields only the window title and
+`isSecure`, so none of its text can reach a prompt. Dictation and suggestions ask the names with
+`SurfaceProbe.names(of:)` and the value with `SurfaceProbe.text(of:names:at:)`, so the secure order
+and the bounded value window (`ValueWindow`) are one implementation. A field with several separate
 selections yields only the title, since no one selection is the caret.
 
 ## macOS will not say what is behind the front window
