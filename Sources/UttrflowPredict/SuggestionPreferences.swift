@@ -22,8 +22,8 @@ public struct SuggestionApplication: Sendable, Equatable, Hashable {
 public enum SuggestionApplications {
     /// The two editors with suggestions of their own, named rather than matched so both stay findable.
     public static let offByDefault: [SuggestionApplication] = [
-        SuggestionApplication(bundleIdentifier: "com.todesktop.230313mzl4w4u92", name: "Cursor"),
-        SuggestionApplication(bundleIdentifier: "com.microsoft.vscode", name: "Visual Studio Code"),
+        SuggestionApplication(bundleIdentifier: DestinationRules.cursor, name: "Cursor"),
+        SuggestionApplication(bundleIdentifier: DestinationRules.vsCode, name: "Visual Studio Code"),
     ]
 
     /// Whether this application is one of the two, compared the way identifiers compare.
