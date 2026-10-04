@@ -191,6 +191,15 @@
       "bytes": 11864
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/hindi-words.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "dca4a0ebd2324388ddf5ff34312f09d3bda1a129db885b9c74b06261e7990326",
+      "bytes": 6679
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",
       "origin": "authored",
       "licence": "MIT",

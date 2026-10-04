@@ -120,9 +120,6 @@ let owedTriggerCases: Set<String> = [
     "kal ki meeting sorry parso ki meeting cancel hai",
     "kal paanch baje no sorry six baje aana",
     "red wala lo strike that blue wala lo",
-    "tum chalo or rather nahi",
-    "usko sorry bolna padega",
-    "usne no sorry bhi nahi bola",
 ]
 
 @Suite("Correction triggers, one table read by the same code for English and Hindi")
