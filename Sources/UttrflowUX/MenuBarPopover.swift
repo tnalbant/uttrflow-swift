@@ -162,6 +162,8 @@ extension MenuBarPresenter {
             return nil
         case .tapResting:
             detail = "The key tap is restarting. Suggestions will resume automatically."
+        case .restarting:
+            detail = "Suggestions are restarting. Suggestions will resume automatically."
         case .secureInputBlocked:
             detail = "A secure input field is active. Suggestions resume when you leave it."
         case .tapFailed:

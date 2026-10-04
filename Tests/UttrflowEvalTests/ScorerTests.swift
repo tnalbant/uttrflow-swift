@@ -24,6 +24,19 @@ struct ScorerTests {
             mustBeginWith: begin, mustEndWith: end)
     }
 
+    @Test("fails a rewrite that drops a reference word even when similarity clears the floor")
+    func failsAnyDeletedWord() {
+        let reference = reference(expected: "My manager wants the slides by noon.")
+        let shortened = Scorer.score("My manager wants the slides.", against: reference)
+        #expect(shortened.similarity >= 0.8)
+        #expect(shortened.deleted == ["by", "noon"])
+        #expect(!shortened.passed)
+
+        let whole = Scorer.score("My manager wants the slides by noon.", against: reference)
+        #expect(whole.deleted.isEmpty)
+        #expect(whole.passed)
+    }
+
     /// Case and a final mark are measured separately from word agreement.
     @Test("checks a required beginning and ending exactly, case included")
     func checksShape() {
@@ -31,14 +44,16 @@ struct ScorerTests {
         #expect(Scorer.score("the report is attached.", against: reference).passed)
 
         let capitalised = Scorer.score("The report is attached.", against: reference)
-        #expect(capitalised.brokeShape == ["the report"])
+        #expect(capitalised.brokeShape == [#"begins with "the report""#])
         #expect(!capitalised.passed)
 
         let unfinished = Scorer.score("the report is attached", against: reference)
-        #expect(unfinished.brokeShape == ["."])
+        #expect(unfinished.brokeShape == [#"ends with ".""#])
         #expect(!unfinished.passed)
 
-        #expect(Scorer.score("The Report Is Attached", against: reference).brokeShape == ["the report", "."])
+        #expect(Scorer.score("The Report Is Attached", against: reference).brokeShape == [
+            #"begins with "the report""#, #"ends with ".""#,
+        ])
     }
 
     @Test("asks nothing of the shape when the case says nothing about it")
@@ -206,6 +221,19 @@ struct ScorerTests {
         )
         #expect(score.invented == ["{"])
         #expect(!score.passed)
+    }
+
+    /// "()" has no words, so a word-only check reported it lost even when the answer was exactly "()".
+    @Test("keeps a symbol-only requirement when the answer holds it literally")
+    func symbolRequirementKeptLiterally() {
+        let kept = Scorer.score("()", against: reference(expected: "()", mustKeep: ["()"]))
+        #expect(kept.lost.isEmpty)
+        #expect(kept.passed)
+
+        let dropped = Scorer.score(
+            "open close parenthesis", against: reference(expected: "()", mustKeep: ["()"]))
+        #expect(dropped.lost == ["()"])
+        #expect(!dropped.passed)
     }
 
     /// A wordless guard that fired on prose would fail every model on a fault in the scorer.
@@ -525,31 +553,19 @@ struct CorpusIndependenceTests {
         }
     }
 
+    /// Quoted fragments are checked whole from three words, stricter than the audit's default, since a rule quotes slips.
     private func knownContamination(in prompt: PromptBuilder) -> [(caseID: String, fragment: String)] {
         let instructions =
             [prompt.contract] + prompt.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.map(\.rules)
         let fragments =
-            instructions.flatMap(quotedFragments(in:))
+            instructions + instructions.flatMap(quotedFragments(in:))
             + prompt.contractExamples
             .flatMap(\.sentences)
             + prompt.blocks.values.sorted { $0.id.rawValue < $1.id.rawValue }.flatMap(\.examples).flatMap(
                 \.sentences)
-        return EvaluationCorpus.all.flatMap { testCase in
-            let corpusText = [testCase.spoken, testCase.expected].map { Scorer.tokens($0) }
-            return fragments.compactMap { fragment -> (caseID: String, fragment: String)? in
-                let fragmentWords = Scorer.tokens(fragment)
-                guard fragmentWords.count >= 3,
-                    corpusText.contains(where: { containsRun(fragmentWords, in: $0) })
-                else { return nil }
-                return (testCase.id, fragment)
-            }
-        }
-    }
-
-    private func containsRun(_ words: [String], in corpus: [String]) -> Bool {
-        guard words.count <= corpus.count else { return false }
-        return (0...(corpus.count - words.count)).contains { start in
-            Array(corpus[start..<(start + words.count)]) == words
+        let audit = ContaminationAudit(passages: ContaminationAudit.corpusPassages, shortestPhrase: 3)
+        return fragments.flatMap { fragment in
+            audit.findings(in: fragment, asset: "prompt").map { (caseID: $0.caseID, fragment: fragment) }
         }
     }
 

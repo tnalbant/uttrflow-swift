@@ -44,7 +44,7 @@ public actor DictationPipeline {
     private let observers = StateObservers()
 
     /// Counts dictations, so a cancel can name the one it abandoned.
-    private var generation = 0
+    private(set) var generation = 0
     private var cancelledGeneration: Int?
 
     /// Held across every await before the state shows a dictation's next step, so no second entry slips in.
@@ -85,7 +85,7 @@ public actor DictationPipeline {
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     var earlyReadsSettled: Int { early.readsSettled }
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
-    private var dictationWords: [String]?
+    private(set) var dictationWords: [String]?
     /// Pieces of this dictation that held speech and decoded to no words twice, left out of what is inserted.
     private var missedPieces = 0
 
@@ -883,28 +883,15 @@ public actor DictationPipeline {
             dictationContext?.situation
             ?? SituationResolver.resolve(
                 from: appContext ?? AppContext(), overrides: runningOverrides)
-        let joiningFormatter = DestinationFormatter.standard(for: joining)
-        let joined = PieceJoiner.join(
-            pieces, under: joiningFormatter, steps: runningCleaner.cleaningSteps)
-        let correctedAtSeams = await correctAcrossSeams(
-            pieces, in: joined, seeing: appContext ?? AppContext(), recording: tally)
-        let whole = await finishMessage(
-            correctedAtSeams, going: joining, seeing: appContext ?? AppContext())
-        // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
-        let written = LatinScript.enforced(whole.cleaned.text)
-
         // Inserting a blank would delete the user's selection, so it is refused like silence.
-        guard written.hasRecognisableContent else {
+        guard
+            let joined = await join(
+                pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
+        else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return
         }
-
-        // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
-        let snippetInput = PieceJoiner.snippetInput(
-            pieces, under: joiningFormatter, using: written)
-        let layout = joiningFormatter.layout
-        let expanded = await expand(
-            written, matching: snippetInput, laidOut: layout)
+        let (whole, joiningFormatter, expanded) = (joined.whole, joined.formatter, joined.expanded)
         guard !wasCancelled(mine) else { return }
         var output = LatinScript.enforced(expanded.text)
         guard output.hasRecognisableContent else {
@@ -942,7 +929,7 @@ public actor DictationPipeline {
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: output)
+        let toWrite = insertionContext.insertionPoint.paddedBoundary(for: OutputSafety.checked(output).text)
 
         let changes = AppliedChanges(
             corrections: DictationCorrection.locating(

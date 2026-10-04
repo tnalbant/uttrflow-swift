@@ -62,7 +62,7 @@ public struct TransformerRouter: TranscriptCleaning {
         let formatter = DestinationFormatter.standard(for: request.situation)
         let message = CleaningPipeline.message(
             for: formatter, situation: request.situation, heard: request.transcription.text,
-            steps: cleaningSteps)
+            steps: cleaningSteps, vocabulary: request.vocabulary)
         return message.run(Draft(keepingLineBreaks: text)).text
     }
 

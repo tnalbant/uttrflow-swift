@@ -140,6 +140,7 @@ public enum SuggestionRuntimeStatus: Sendable, Equatable {
     case idle
     case starting
     case tapResting
+    case restarting
     case running
     case secureInputBlocked
     case tapFailed

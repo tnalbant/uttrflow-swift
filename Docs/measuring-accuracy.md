@@ -111,6 +111,6 @@ They fit the accent axis of the larger corpus, not the before-and-after check.
 
 Size is not the obstacle — 686 words is about 5.7 minutes of speech, about 11 MB as 16 kHz mono
 WAV. **A voice recording is personal data**: biometric, identifiable, and impossible to withdraw
-once published, and `Scripts/pii_audit.sh` reads text, so it would not catch one. A regression
+once published, and `Scripts/pii_audit.sh` reads text, so `make audio-audit` refuses one instead. A regression
 check compares one voice before and after, so each contributor's own fifteen-minute recording is
 all it needs.

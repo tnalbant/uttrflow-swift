@@ -18,12 +18,13 @@ public struct DictionaryCandidates: CandidateSource {
         let candidates = WordCorrectionEngine.spellings(of: word.text, in: await index())
         let visible = Self.visibleWords(in: situation)
         return Array(
-            candidates.filter { entry in
+            candidates.filter { candidate in
+                let entry = candidate.entry
                 guard entry.origin == .learned || entry.origin == .observed,
                     GeneralVocabulary.isOrdinary(word.text)
                 else { return true }
                 return visible.contains(ReadingRestraint.closedUp(entry.word))
-            }.map { Reading($0.word, entryID: $0.id) }.prefix(Self.maximumOffered))
+            }.map { Reading($0.word, entryID: $0.entry.id) }.prefix(Self.maximumOffered))
     }
 
     /// Screen text can corroborate an inferred word; the selected correction source is included too.

@@ -102,11 +102,13 @@ public struct DestinationFormatter: Sendable, Equatable {
     public let digits: DigitGrouping
     /// The style rules and worked examples the model is shown for this place.
     public let promptBlock: PromptBlockID
+    /// What this place does with the text once it lands.
+    public let consequence: Consequence
 
     public init(
         destination: Destination, firstWord: FirstWordPolicy, terminalStop: TerminalStopPolicy,
         layout: LayoutPolicy, grammar: GrammarPolicy, numbers: NumberPolicy = .fromTen,
-        digits: DigitGrouping = .thousands, promptBlock: PromptBlockID
+        digits: DigitGrouping = .thousands, promptBlock: PromptBlockID, consequence: Consequence = .stores
     ) {
         self.destination = destination
         self.firstWord = firstWord
@@ -116,6 +118,7 @@ public struct DestinationFormatter: Sendable, Equatable {
         self.numbers = numbers
         self.digits = digits
         self.promptBlock = promptBlock
+        self.consequence = consequence
     }
 
     /// The shipped value for every destination; code stays `.never` until comments are told apart.
@@ -138,11 +141,11 @@ public struct DestinationFormatter: Sendable, Equatable {
         .terminal: DestinationFormatter(
             destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
             layout: .preserveNewlines, grammar: .asSpoken, numbers: .always, digits: .none,
-            promptBlock: "terminal"),
+            promptBlock: "terminal", consequence: .executes),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,
             terminalStop: .offForShortMessages(sentences: 2), layout: .paragraphs,
-            grammar: .asSpoken, numbers: .fromTen, promptBlock: "messaging"),
+            grammar: .asSpoken, numbers: .fromTen, promptBlock: "messaging", consequence: .sends),
         .email: DestinationFormatter(
             destination: .email, firstWord: .fromInsertionPoint, terminalStop: .always,
             layout: [.paragraphs, .lists], grammar: .repair, numbers: .fromTen,
@@ -190,6 +193,6 @@ public struct DestinationFormatter: Sendable, Equatable {
                 : (ruleStop ?? (isSingleLine ? base.terminalStop.inOneLineField : base.terminalStop)),
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
-            promptBlock: base.promptBlock)
+            promptBlock: base.promptBlock, consequence: isSearch ? .navigates : base.consequence)
     }
 }

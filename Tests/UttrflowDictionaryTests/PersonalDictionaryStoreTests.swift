@@ -55,6 +55,19 @@ struct PersonalDictionaryStoreTests {
         #expect(await store.allEntries().first?.pronunciation == "cube cuttle")
     }
 
+    @Test("keeps entries whose spellings differ by technical symbols")
+    func technicalSpellingsStayDistinct() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let spellings = ["C++", "C#", "C", ".NET", "NET", "R&D", "RD", "Node.js", "Nodejs"]
+
+        for spelling in spellings {
+            try await store.add(word: spelling, pronunciation: "", at: epoch)
+        }
+
+        #expect(await store.allEntries().map(\.word) == spellings)
+    }
+
     // MARK: Removing
 
     @Test("forgets one word and keeps the rest")
@@ -697,7 +710,7 @@ struct PersonalDictionaryCacheTests {
         let store = PersonalDictionaryStore(file: Sandbox().file)
         let joined = word("OpenAI", used: 4, reverted: 1)
         let spaced = word("Open AI", used: 2)
-        try await store.replaceAll([joined, spaced])
+        try await store.replaceAll { _ in ([joined, spaced], ()) }
         let merged = try #require(try await store.merge(keeping: spaced.id, absorbing: joined.id))
         #expect(merged.id == spaced.id && merged.timesUsed == 6 && merged.timesReverted == 1)
         #expect(await store.allEntries().map(\.id) == [spaced.id])
@@ -710,7 +723,7 @@ struct PersonalDictionaryCacheTests {
         let store = PersonalDictionaryStore(file: Sandbox().file)
         let british = word("Colour", used: 2)
         let american = word("Color", used: 1)
-        try await store.replaceAll([british, american])
+        try await store.replaceAll { _ in ([british, american], ()) }
         #expect(try await store.merge(keeping: british.id, absorbing: american.id) == nil)
         #expect(await store.allEntries().count == 2)
     }

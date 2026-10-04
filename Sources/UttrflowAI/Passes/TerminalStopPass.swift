@@ -25,6 +25,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if layout.contains(.paragraphs), policy != .never {
             Self.stopParagraphs(&draft, destination: destination)
         }
+        Self.separateLeadingReviewTag(&draft, layout: layout)
         Self.separateLeadingQuestionOpener(&draft, layout: layout)
         Self.separateTrailingRequest(&draft, layout: layout)
         Self.separateTrailingRightTag(&draft, layout: layout)
@@ -62,6 +63,16 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         draft.replace(at: index, with: WordShape.marked(draft.words[index].text, with: ","), by: id)
     }
 
+    /// Sets off a review label said first, "nit spelling" → "Nit: spelling", with a colon.
+    private static func separateLeadingReviewTag(_ draft: inout Draft, layout: LayoutPolicy) {
+        guard layout.contains(.paragraphs) else { return }
+        let live = draft.presentIndices.filter { !draft.shape(at: $0).key.isEmpty }
+        guard let first = live.first, !draft.words[first].isLayoutMark,
+            ReviewTag.leads(live.prefix(3).map { draft.shape(at: $0) })
+        else { return }
+        draft.replace(at: first, with: WordShape.marked(draft.words[first].text, with: ":"), by: id)
+    }
+
     /// Sets off the address or multiword lead-in before a direct question.
     private static func separateLeadingQuestionOpener(_ draft: inout Draft, layout: LayoutPolicy) {
         guard layout.contains(.paragraphs) else { return }
@@ -69,7 +80,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         let start = live.indices.dropLast().lastIndex { position in
             let index = live[position]
             guard !draft.words[index].isLayoutMark else { return true }
-            return FirstWordPass.endsSentence(
+            return Abbreviations.endsSentence(
                 draft.words[index].text, followedBy: draft.words[live[position + 1]].text
             )
         }
@@ -97,7 +108,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
         if followingTextContinuesSentence { return word }
-        if hasUnclosedBracket { return word }
+        if insertionPoint.structure?.hasOpenBracketOnCaretLine == true { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
@@ -106,23 +117,6 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         return asks
             ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?", after: preceding)
             : WordShape.finished(word, after: preceding)
-    }
-
-    /// Whether the caret line has an opening bracket without its matching close.
-    private var hasUnclosedBracket: Bool {
-        guard let precedingText = insertionPoint.precedingText else { return false }
-        let line =
-            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        var open: [Character] = []
-        let closingFor: [Character: Character] = [")": "(", "]": "[", "}": "{"]
-        for character in line {
-            if "([{".contains(character) {
-                open.append(character)
-            } else if let expected = closingFor[character], open.last == expected {
-                open.removeLast()
-            }
-        }
-        return !open.isEmpty
     }
 
     /// Whether text after the replacement already ends or continues the sentence.
@@ -141,7 +135,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         let start = live.indices.dropLast().lastIndex { position in
             let index = live[position]
             guard !draft.words[index].isLayoutMark else { return true }
-            return FirstWordPass.endsSentence(
+            return Abbreviations.endsSentence(
                 draft.words[index].text, followedBy: draft.words[live[position + 1]].text
             )
         }

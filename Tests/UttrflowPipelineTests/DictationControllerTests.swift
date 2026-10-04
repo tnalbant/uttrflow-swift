@@ -225,6 +225,20 @@ struct DictationControllerTests {
         #expect(harness.inserter.received == [controllerTidied])
     }
 
+    @Test("stopping while a dictation is recording finishes it and closes the microphone")
+    func stopFinishesARecordingDictation() async throws {
+        let harness = makeHarness(activation: .pressToToggle)
+        try await harness.controller.start(binding: controllerBinding)
+        await harness.controller.handle(.pressed)
+        #expect(await harness.pipeline.currentState.isListening)
+
+        await harness.controller.stop()
+
+        #expect(!(await harness.pipeline.currentState.isListening))
+        #expect(harness.inserter.received == [controllerTidied])
+        #expect(harness.monitor.stops == 1)
+    }
+
     // MARK: Watching for the shortcut
 
     @Test("starts watching for exactly the binding it was given")

@@ -13,6 +13,7 @@ struct Bakeoff: AsyncParsableCommand {
         abstract: "Score clean-up engines against the evaluation corpus.",
         subcommands: [
             Footprint.self, Profile.self, Complete.self, Score.self, GPUMemory.self, ReloadLeaks.self,
+            SpeechShape.self,
         ]
     )
 
@@ -70,11 +71,13 @@ struct Bakeoff: AsyncParsableCommand {
         let contextNote = ignoreContext ? ", context withheld" : ""
         print(
             "Bake-off — \(EvaluationCorpus.all.count) cases, prompt \(PromptBuilder.version)"
-                + "\(contextNote)\n")
+                + "\(contextNote)")
+        print(Self.provenance(of: EvaluationCorpus.all) + "\n")
 
         var measured: [Measurement] = []
         if models == nil {
             measured.append(await measureBaseline(kind: .rules, description: .rules))
+            await compareShapes()
             measured.append(await measureBaseline(kind: .foundationModels, description: .appleOnDevice))
             measured.append(await measureShipping())
         }
@@ -183,6 +186,23 @@ struct Bakeoff: AsyncParsableCommand {
             return .produced(try await router.transform(request).text)
         }
         return Measurement(description: description, report: report)
+    }
+
+    /// Scores the rules floor on bare and recogniser-shaped input side by side, naming what only the shape breaks.
+    private func compareShapes() async {
+        let rules = RuleBasedTransformer()
+        var reports: [InputShape: EvaluationReport] = [:]
+        for shape in InputShape.allCases {
+            reports[shape] = await EvaluationRunner(shape: shape).run(label: shape.rawValue) { testCase in
+                .produced(try await rules.transform(request(for: testCase)).text)
+            }
+        }
+        guard let bare = reports[.bare], let shaped = reports[.recogniser] else { return }
+        print("  input shape: bare \(percent(bare.passRate)), recogniser \(percent(shaped.passRate))")
+        let passedShaped = Set(shaped.scores.filter(\.passed).map(\.caseID))
+        for score in bare.scores where score.passed && !passedShaped.contains(score.caseID) {
+            print("  fails only shaped: \(score.caseID)")
+        }
     }
 
     /// Measures the whole router as the app configures it, fallback included.
@@ -294,6 +314,12 @@ struct Bakeoff: AsyncParsableCommand {
         ) { report, category in
             report.passRate(in: EvaluationCase.Category(rawValue: category) ?? .everyday)
         }
+        // Held out apart from development, so a gain that only tuning bought shows as a gap between the two.
+        printBreakdown(
+            "By split", columns: CorpusSplit.allCases.map(\.rawValue), of: byMultilingual
+        ) { report, split in
+            report.passRate(in: CorpusSplit(rawValue: split) ?? .development)
+        }
         // Per destination, because a block that helps one place can cost another and the total would hide it.
         printBreakdown(
             "By destination", columns: Destination.allCases.map(\.rawValue), of: byMultilingual
@@ -335,6 +361,15 @@ struct Bakeoff: AsyncParsableCommand {
                     .joined()
             )
         }
+    }
+
+    /// How many cases each origin and split holds, so a score is read against where its cases came from.
+    static func provenance(of cases: [EvaluationCase]) -> String {
+        let origins = EvaluationCase.Origin.allCases.map { origin in
+            "\(origin.rawValue) \(cases.count(where: { $0.origin == origin }))"
+        }
+        let splits = CorpusSplit.allCases.map { split in "\(split.rawValue) \(cases.count(where: { $0.split == split }))" }
+        return "origin: " + origins.joined(separator: ", ") + "; split: " + splits.joined(separator: ", ")
     }
 
     private func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
@@ -451,6 +486,11 @@ struct StoredReport: Codable, Sendable {
     /// Pass rate within one category, which is the axis an overall figure hides.
     func passRate(in category: EvaluationCase.Category) -> Double? {
         passRate(over: cases.filter { $0.category == category.rawValue })
+    }
+
+    /// Pass rate within one split, read from the case id so a result stored before splits existed still divides.
+    func passRate(in split: CorpusSplit) -> Double? {
+        passRate(over: cases.filter { CorpusSplit(caseID: $0.caseID) == split })
     }
 
     /// Pass rate over the cases dictated into one kind of place; a result stored before the corpus named destinations is in no column.

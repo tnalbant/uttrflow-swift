@@ -2,7 +2,7 @@ import Foundation
 public import UttrflowCore
 
 /// Writes spoken numbers as numerals, as many of them as the place asks for. See `Docs/cleanup.md`.
-public struct NumberFormsPass: CleaningPass {
+public struct NumberFormsPass: PieceCleaningPass {
     public static let id: PassID = .numberForms
 
     /// Which spoken numbers this place wants as numerals.
@@ -14,10 +14,14 @@ public struct NumberFormsPass: CleaningPass {
     /// Words after which a lone digit is a numeral, digit groups run together, and no separator is used.
     static let contextWords: Set<String> = [
         "port", "version", "extension", "page", "chapter", "step", "number", "line", "section", "figure",
-        "table", "level", "room", "floor",
+        "table", "level", "room", "floor", "route", "flight", "interstate", "highway", "bus", "gate",
     ]
-    static let currencies: Set<String> = ["rupee", "rupees", "dollar", "dollars", "euro", "euros"]
+    static let currencies: Set<String> = [
+        "rupee", "rupees", "dollar", "dollars", "euro", "euros", "pound", "pounds",
+    ]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
+    /// The words a speaker uses for the leading zero of a clock minute.
+    static let clockZeros: Set<String> = ["oh", "o", "zero"]
     static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
@@ -28,6 +32,17 @@ public struct NumberFormsPass: CleaningPass {
         "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13,
         "fourteenth": 14, "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
         "nineteenth": 19, "twentieth": 20, "thirtieth": 30,
+    ]
+    /// Other currencies and units with no second meaning; "pound", "feet" and "second" stay out.
+    static let measures: Set<String> = [
+        "yen", "dirham", "dirhams", "franc", "francs", "kilometre", "kilometres", "kilometer", "kilometers",
+        "kilogram", "kilograms", "metre", "metres", "meter", "meters", "litre", "litres", "liter", "liters",
+        "minutes", "hours",
+    ]
+
+    /// Street words after which a scale number and a unit ordinal are a house number and a street name.
+    static let streetWords: Set<String> = [
+        "avenue", "street", "road", "drive", "lane", "boulevard", "court", "place", "way",
     ]
 
     /// One rendered number and how many words it replaces.
@@ -71,15 +86,14 @@ public struct NumberFormsPass: CleaningPass {
                 continue
             }
             if let time = Self.dottedTime(at: position, keys: keys, shapes: shapes) {
-                let last = position + 1
                 draft.replace(
-                    at: live[position], with: shapes[position].prefix + time.text + shapes[last].suffix,
-                    by: Self.id)
-                draft.remove(at: live[last], by: Self.id)
-                position += 2
+                    at: live[position], with: shapes[position].replacingCore(with: time), by: Self.id)
+                position += 1
                 continue
             }
-            guard let phrase = Self.phrase(at: position, in: shapes, policy: policy, digits: digits)
+            guard
+                let phrase = Self.phrase(
+                    at: position, keys: keys, shapes: shapes, policy: policy, digits: digits)
             else {
                 position += Self.parseOrdinal(at: position, keys: keys, shapes: shapes)?.count ?? 1
                 continue
@@ -98,44 +112,49 @@ public struct NumberFormsPass: CleaningPass {
         at position: Int, keys: [String], shapes: [WordShape], policy: NumberPolicy, digits: DigitGrouping
     ) -> Phrase? {
         guard keys[position] == "p", joined(position + 1, shapes),
-            let number = phrase(at: position + 1, in: shapes, policy: policy, digits: digits),
+            let number = phrase(at: position + 1, keys: keys, shapes: shapes, policy: policy, digits: digits),
             ["50", "90", "95", "99", "99.9"].contains(number.text)
         else { return nil }
         return Phrase(text: number.text, count: number.count + 1)
     }
 
-    /// Reads `H.MM` as a clock only with a meridiem or an `at`/`by` cue.
-    private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        guard position + 1 < shapes.count,
-            let hour = Int(keys[position]), (1...12).contains(hour),
-            shapes[position].core.allSatisfy(\.isNumber),
-            let minute = Int(keys[position + 1]), (0...59).contains(minute),
-            shapes[position + 1].core.count == 2,
-            shapes[position].suffix == ".", shapes[position + 1].suffix.isEmpty,
-            joined(position + 1, shapes)
+    /// The `H.MM` words in `text` that read as a clock by the cue rule this pass writes them with.
+    static func dottedClockTimes(in text: String) -> Set<String> {
+        let shapes = text.split(whereSeparator: \.isWhitespace).map { WordShape(String($0)) }
+        let keys = shapes.map(\.key)
+        let clocks = shapes.indices.filter { dottedTime(at: $0, keys: keys, shapes: shapes) != nil }
+        return Set(clocks.map { shapes[$0].core })
+    }
+
+    /// Writes one `H.MM` word as `H:MM` only with a meridiem or an `at`/`by` cue.
+    private static func dottedTime(at position: Int, keys: [String], shapes: [WordShape]) -> String? {
+        let parts = keys[position].split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 2, shapes[position].prefix.isEmpty,
+            parts[0].allSatisfy(\.isNumber), let hour = Int(parts[0]), (1...12).contains(hour),
+            parts[1].count == 2, parts[1].allSatisfy(\.isNumber), let minute = Int(parts[1]),
+            (0...59).contains(minute)
         else { return nil }
         let hasMeridiem =
-            position + 2 < keys.count && joined(position + 2, shapes)
-            && meridiems.contains(keys[position + 2].trimmingCharacters(in: CharacterSet(charactersIn: ".")))
+            shapes[position].suffix.isEmpty && joined(position + 1, shapes)
+            && meridiems.contains(keys[position + 1].trimmingCharacters(in: CharacterSet(charactersIn: ".")))
         let hasCue =
             position > 0 && !startsASentence(position, shapes)
             && ["at", "by"].contains(keys[position - 1])
         guard hasMeridiem || hasCue else { return nil }
-        return Phrase(text: "\(hour):\(keys[position + 1])", count: 2)
+        return "\(hour):\(parts[1])"
     }
 
     /// The numeral for the number phrase starting at `position`, or nil when the words stay as they are.
     static func phrase(
-        at position: Int, in shapes: [WordShape], policy: NumberPolicy = .fromTen,
+        at position: Int, keys: [String], shapes: [WordShape], policy: NumberPolicy = .fromTen,
         digits: DigitGrouping = .thousands
     ) -> Phrase? {
-        let keys = shapes.map(\.key)
-
         if keys[position] == "plus", joined(position + 1, shapes),
             let run = spokenDigitRun(at: position + 1, keys: keys, shapes: shapes)
         {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
+        if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -145,7 +164,9 @@ public struct NumberFormsPass: CleaningPass {
             if let numeral = NumberWords.digits(keys[position + 1]) {
                 return Phrase(text: "-" + numeral, count: 2)
             }
-            if let magnitude = phrase(at: position + 1, in: shapes, policy: policy, digits: digits) {
+            if let magnitude = phrase(
+                at: position + 1, keys: keys, shapes: shapes, policy: policy, digits: digits)
+            {
                 return Phrase(text: "-" + magnitude.text, count: magnitude.count + 1)
             }
             return nil
@@ -226,6 +247,14 @@ public struct NumberFormsPass: CleaningPass {
                 isPhrase = true
             }
         }
+        if !isPhrase, !inContext, item.spoken, item.count == 1,
+            let hundred = NumberWords.colloquialHundred(unbroken(from: position, keys: keys, shapes: shapes)),
+            readsAsOneQuantity(hundred, at: position, keys: keys, shapes: shapes)
+        {
+            text = String(hundred.value)
+            end = position + hundred.count
+            isPhrase = true
+        }
         if !isPhrase, inContext, item.spoken {
             if joined(end, shapes), keys[end] == "of",
                 let following = NumberWords.cardinal(unbroken(from: end + 1, keys: keys, shapes: shapes))
@@ -244,8 +273,9 @@ public struct NumberFormsPass: CleaningPass {
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
-            let beforeCurrency = joined(end, shapes) && currencies.contains(keys[end])
-            guard policy == .always || inContext || value >= 10 || beforeCurrency else { return nil }
+            let beforeAmount = joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+                || completesAmount(at: position, keys: keys, shapes: shapes)
+            guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
             text = NumberWords.render(value, grouped: digits == .thousands && !inContext)
         } else if !isPhrase {
@@ -254,18 +284,59 @@ public struct NumberFormsPass: CleaningPass {
         return Phrase(text: text, count: end - position)
     }
 
-    /// Requires temporal evidence when the hour and minute form one phrase.
+    /// Whether a colloquial hundred is one value: its tail cannot be a minute, or it is a ratio's first term.
+    private static func readsAsOneQuantity(
+        _ hundred: (value: Int, count: Int), at position: Int, keys: [String], shapes: [WordShape]
+    ) -> Bool {
+        if hundred.value % 100 >= 60 { return true }
+        let after = position + hundred.count
+        return joined(after, shapes) && keys[after] == "over" && joined(after + 1, shapes)
+            && NumberWords.isNumber(keys[after + 1])
+    }
+
+    /// A cued time whose minutes open with a spoken zero, read before the same words can join as a digit string.
+    private static func cuedClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let hour = NumberWords.cardinal(keys[position...position])?.value,
+            position + 1 < keys.count, clockZeros.contains(keys[position + 1]),
+            let time = time(hour: hour, at: position + 1, keys: keys, shapes: shapes), time.count == 2
+        else { return nil }
+        let end = position + 1 + time.count
+        guard !(joined(end, shapes) && singleDigit(keys[end]) != nil),
+            timeAcceptable(
+                position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes)
+        else { return nil }
+        return Phrase(text: time.text, count: end - position)
+    }
+
+    /// Words before an hour-and-minute phrase that mark it as a time of day.
+    static let timeCues: Set<String> = [
+        "at", "by", "until", "till", "from", "around", "about", "before", "after", "since",
+    ]
+
+    /// Whether the number here is the smaller part of an amount, after a number and its currency.
+    private static func completesAmount(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        var currency = position - 1
+        if currency > 0, keys[currency] == "and", joined(currency + 1, shapes) { currency -= 1 }
+        guard currency > 0, currencies.contains(keys[currency]), joined(currency + 1, shapes),
+            joined(currency, shapes)
+        else { return false }
+        let major = currency - 1
+        return NumberWords.digits(keys[major]) != nil || NumberWords.cardinal(keys[major..<currency]) != nil
+    }
+
+    /// Requires a time cue, or a sentence end after the minute, when the hour and minute form one phrase.
     private static func timeAcceptable(
         position: Int, minuteStart: Int, minuteEnd: Int,
         keys: [String], shapes: [WordShape]
     ) -> Bool {
         let hasBeforeCue =
             position > 0 && !startsASentence(position, shapes)
-            && ["at", "by", "until", "from"].contains(keys[position - 1])
+            && timeCues.contains(keys[position - 1])
+        let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
         let hasAfterCue =
             minuteEnd < shapes.count && joined(minuteEnd, shapes)
             && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
-        return hasBeforeCue || hasAfterCue
+        return hasBeforeCue || hasAfterCue || endsTheSentence
     }
 
     /// Whether the words here finish a scale the parser could not read whole, as in "a hundred and fifty".
@@ -411,7 +482,7 @@ public struct NumberFormsPass: CleaningPass {
     }
 
     private static func minutes(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        if keys[start] == "oh" || keys[start] == "zero", joined(start + 1, shapes),
+        if clockZeros.contains(keys[start]), joined(start + 1, shapes),
             let digit = NumberWords.units[keys[start + 1]], digit > 0
         {
             return Phrase(text: "0\(digit)", count: 2)
@@ -448,11 +519,19 @@ public struct NumberFormsPass: CleaningPass {
                 ordinalPosition += 1
                 count += 1
             }
-            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10 {
+            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10,
+                !isHouseNumber(endingAt: position + cardinal.count - 1, keys: keys, shapes: shapes)
+            {
                 return (cardinal.value + unit, count + 1)
             }
         }
         return ordinalUnits[keys[position]].map { ($0, 1) }
+    }
+
+    /// Whether a number ending on a scale word is a house number, because a unit ordinal and a street word follow it.
+    private static func isHouseNumber(endingAt last: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        NumberWords.scales[keys[last]] != nil && joined(last + 1, shapes) && joined(last + 2, shapes)
+            && streetWords.contains(keys[last + 2])
     }
 
     /// Keeps date-like and interrupted date forms intact for the existing date parser to handle.
