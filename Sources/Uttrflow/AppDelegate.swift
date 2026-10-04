@@ -1316,10 +1316,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dock.update(with: dockPresentation(for: lastDictationState))
     }
 
-    /// Redraws the floating button when the gesture that ends a recording has changed.
+    /// Redraws the menu and the floating button when the gesture that ends a recording has changed.
     private func recordingStopGestureChanged(to gesture: StopGesture) {
         guard gesture != recordingStopGesture else { return }
         recordingStopGesture = gesture
+        refreshMenuBar()
         dock.update(with: dockPresentation(for: lastDictationState))
     }
 
@@ -2451,6 +2452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             speechModel: speechReadiness,
             speechLoadElapsed: speechLoadStarted.map { $0.duration(to: .now) } ?? .zero,
             recordingAdvice: recordingAdvice,
+            stopGesture: recordingStopGesture,
             recents: recents.previews.map {
                 MenuBarRecent(
                     id: $0.id,

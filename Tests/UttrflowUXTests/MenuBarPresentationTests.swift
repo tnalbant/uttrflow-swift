@@ -596,6 +596,35 @@ struct MenuBarEnablementTests {
         #expect(shown.statusLine == "Listening… \(RemainingTime.phrase(for: advice) ?? "")")
     }
 
+    @Test(
+        "says how to finish a recording that releasing the keys does not end",
+        arguments: [
+            (StopGesture.letGo, "Listening…", "Uttrflow. Listening."),
+            (
+                .pressAgain, "Listening… Press shortcut to finish",
+                "Uttrflow. Listening. Press shortcut to finish."
+            ),
+            (
+                .pressAgainHandsFree, "Listening… Hands-free — press shortcut to finish",
+                "Uttrflow. Listening. Hands-free — press shortcut to finish."
+            ),
+        ])
+    func listeningSaysHowToFinish(gesture: StopGesture, line: String, spoken: String) {
+        let shown = MenuBarPresenter.present(MenuBarState(activity: .listening, stopGesture: gesture))
+        #expect(shown.statusLine == line)
+        #expect(shown.accessibilityLabel == spoken)
+    }
+
+    @Test("puts the countdown after how to finish")
+    func listeningCountsDownAfterTheInstruction() {
+        let advice = DictationAdvice.approaching(remaining: .seconds(74))
+        let shown = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, recordingAdvice: advice, stopGesture: .pressAgain))
+        #expect(
+            shown.statusLine
+                == "Listening… Press shortcut to finish, \(RemainingTime.phrase(for: advice) ?? "")")
+    }
+
     /// Disabled rather than failing silently, which is what a refused microphone would look like.
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {

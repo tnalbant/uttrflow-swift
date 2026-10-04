@@ -179,6 +179,8 @@ public struct MenuBarState: Sendable, Equatable {
     public var speechLoadElapsed: Duration
     /// How a long recording is going, so the status line can count it down.
     public var recordingAdvice: DictationAdvice
+    /// What ends the recording under way, so the status line says how to finish one that release does not.
+    public var stopGesture: StopGesture
     /// Newest first.
     public var recents: [MenuBarRecent]
     /// The clipboard's kept copies, newest first; the popover shows the first few.
@@ -216,6 +218,7 @@ public struct MenuBarState: Sendable, Equatable {
         speechModel: SpeechModelReadiness = .ready,
         speechLoadElapsed: Duration = .zero,
         recordingAdvice: DictationAdvice = .keepGoing,
+        stopGesture: StopGesture = .letGo,
         recents: [MenuBarRecent] = [],
         clips: [Clip] = [],
         learned: [LearnedWord] = [],
@@ -235,6 +238,7 @@ public struct MenuBarState: Sendable, Equatable {
         self.speechModel = speechModel
         self.speechLoadElapsed = speechLoadElapsed
         self.recordingAdvice = recordingAdvice
+        self.stopGesture = stopGesture
         self.recents = recents
         self.clips = clips
         self.learned = learned
@@ -548,7 +552,7 @@ public enum MenuBarPresenter {
             guard state.features.dictation else { return "Dictation off" }
             return switch state.activity {
             case .idle: "Ready"
-            case .listening: listeningLine(for: state.recordingAdvice)
+            case .listening: listeningLine(for: state.recordingAdvice, stopGesture: state.stopGesture)
             case .working: "Tidying up…"
             case .inserted: "Inserted"
             case .partial: MissedSpeech.line
@@ -587,8 +591,8 @@ public enum MenuBarPresenter {
 
     /// The status line as VoiceOver reads it, built from the same string so the two cannot drift.
     static func spokenForm(of statusLine: String) -> String {
-        // An ellipsis means "still going" to the eye and nothing at all to the ear.
-        let spoken = String(statusLine.filter { $0 != "…" })
+        // An ellipsis means "still going" to the eye; to the ear it is a pause before what follows, or nothing.
+        let spoken = statusLine.replacing("… ", with: ". ").filter { $0 != "…" }
         let stop = spoken.hasSuffix(".") ? "" : "."
         return "Uttrflow. \(spoken)\(stop)"
     }
@@ -659,10 +663,16 @@ public enum MenuBarPresenter {
         return "\(name) — \(headline)"
     }
 
-    /// What a recording says about itself, counting down once it nears its cap.
-    static func listeningLine(for advice: DictationAdvice) -> String {
-        guard let remaining = RemainingTime.phrase(for: advice) else { return "Listening…" }
-        return "Listening… \(remaining)"
+    /// What a recording says about itself: how to finish when releasing the keys does not, and a countdown near its cap.
+    static func listeningLine(for advice: DictationAdvice, stopGesture: StopGesture = .letGo) -> String {
+        let instruction: String? =
+            switch stopGesture {
+            case .pressAgain, .pressAgainHandsFree: stopGesture.recordingLine
+            case .letGo, .clickAgain: nil
+            }
+        let details = [instruction, RemainingTime.phrase(for: advice)].compactMap(\.self)
+        guard !details.isEmpty else { return "Listening…" }
+        return "Listening… \(details.joined(separator: ", "))"
     }
 
     /// Whether the microphone is open, and so whether Stop must be offered. Never while working.
