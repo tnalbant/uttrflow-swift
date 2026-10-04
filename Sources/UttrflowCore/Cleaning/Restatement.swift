@@ -68,6 +68,8 @@ public enum Restatement {
     public static func discardedStart(
         before trigger: Int, after restart: Int, in live: [Int], of draft: Draft
     ) -> Int? {
+        // A trigger that opens the words, as a piece of its own can, has nothing before it to take back.
+        guard trigger > 0 else { return nil }
         let earliest = max(0, trigger - reach)
         let earliestPhraseAnchor = max(0, trigger - repeatedPhraseReach)
         let firstAfter = draft.shape(at: live[restart]).key

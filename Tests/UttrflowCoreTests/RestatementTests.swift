@@ -67,6 +67,12 @@ struct RestatementTests {
         #expect(Restatement.weakAnchors.contains(form))
     }
 
+    @Test("a trigger with no words before it takes nothing back")
+    func triggerFirst() {
+        let (draft, live) = reading("actually three")
+        #expect(Restatement.discardedStart(before: 0, after: 1, in: live, of: draft) == nil)
+    }
+
     @Test("the half taken back has to hold a word the speaker meant, not function words alone")
     func discardedHalfHoldsContent() {
         let good = reading("at four no sorry at five")
