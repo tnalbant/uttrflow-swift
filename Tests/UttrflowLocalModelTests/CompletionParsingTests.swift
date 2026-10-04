@@ -103,7 +103,7 @@ struct CompletionParsingTests {
         #expect(CompletionText.continuation(of: "git commit -m", past: "gitcommit") == " -m")
         #expect(CompletionText.continuation(of: "git  commit -m", past: "git commit") == " -m")
         #expect(CompletionText.continuation(of: "runs fast", past: "run ") == "fast")
-        #expect(CompletionText.continuation(of: "receive the parcel", past: "recieve") == nil)
+        #expect(CompletionText.continuation(of: "receive the parcel", past: "recieve") == " the parcel")
         #expect(CompletionText.continuation(of: "colour scheme", past: "color") == nil)
         #expect(CompletionText.continuation(of: "she is going", past: "he is") == nil)
         #expect(CompletionText.continuation(of: "her is going", past: "he is") == nil)
