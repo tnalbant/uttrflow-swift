@@ -178,7 +178,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             ordinal.value <= limit, policy == .always || ordinal.value >= 10,
             bareMonthIsValid(at: position, keys: keys, shapes: shapes)
         {
-            return Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+            let day = Phrase(text: "\(shapes[position].core) \(ordinal.value)", count: ordinal.count + 1)
+            return withYear(day, at: position, order: .monthFirst, keys: keys, shapes: shapes)
         }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
             if ordinal.value >= 21,
@@ -200,9 +201,10 @@ public struct NumberFormsPass: PieceCleaningPass {
             guard policy == .always || ordinal.value >= 10 else { return nil }
             let month = WordShape.capitalised(keys[end])
             let preposition = hasOf ? " of" : ""
-            return Phrase(
+            let day = Phrase(
                 text: "\(ordinal.value)\(ordinalSuffix(ordinal.value))\(preposition) \(month)",
                 count: end - position + 1)
+            return withYear(day, at: position, order: .dayFirst, keys: keys, shapes: shapes)
         }
         guard let item = item(at: position, keys: keys, shapes: shapes) else { return nil }
         let contextPosition =
@@ -435,6 +437,36 @@ public struct NumberFormsPass: PieceCleaningPass {
         case 3: return "rd"
         default: return "th"
         }
+    }
+
+    /// Which part of a date was spoken first; the parts are never reordered.
+    enum DateOrder {
+        case monthFirst, dayFirst
+
+        /// What stands between the day and the year: month-first dates set the year off with a comma.
+        var yearSeparator: String { self == .monthFirst ? ", " : " " }
+    }
+
+    /// A day and month with the year spoken straight after it, written as one date in the spoken order.
+    private static func withYear(
+        _ day: Phrase, at position: Int, order: DateOrder, keys: [String], shapes: [WordShape]
+    ) -> Phrase {
+        guard let year = dateYear(at: position + day.count, keys: keys, shapes: shapes) else { return day }
+        return Phrase(text: day.text + order.yearSeparator + year.text, count: day.count + year.count)
+    }
+
+    /// The year that can close a date: four written digits from 1900 to 2099, or a spoken year.
+    private static func dateYear(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard joined(start, shapes) else { return nil }
+        if let digits = NumberWords.digits(keys[start]), digits.count == 4, let value = Int(digits),
+            (1900...2099).contains(value)
+        {
+            return Phrase(text: digits, count: 1)
+        }
+        guard let century = NumberWords.teens[keys[start]] ?? NumberWords.tens[keys[start]],
+            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes)
+        else { return nil }
+        return Phrase(text: year.text, count: year.count + 1)
     }
 
     /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.

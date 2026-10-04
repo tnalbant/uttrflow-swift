@@ -438,11 +438,47 @@ struct NumberFormsPassTests {
             ("March third", "March 3"),
             ("the third of March", "the 3rd of March"),
             ("let's meet May fifth", "let's meet May 5"),
-            ("March third twenty twenty five", "March 3 2025"),
+            ("March third twenty twenty five", "March 3, 2025"),
         ]
     )
     func datesWithMonthBeforeOrdinal(input: String, expected: String) {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
+        "writes a spoken year as part of its date, in the spoken order",
+        arguments: [
+            ("March twenty fifth twenty twenty six", "March 25, 2026"),
+            ("March twenty fifth", "March 25"),
+            ("on March twenty fifth twenty twenty six we met", "on March 25, 2026 we met"),
+            ("December thirty first nineteen ninety nine", "December 31, 1999"),
+            ("March twenty fifth 2026", "March 25, 2026"),
+            ("March twenty fifth, twenty twenty six", "March 25, 2026"),
+            ("twenty fifth of March twenty twenty six", "25th of March 2026"),
+            ("the twenty fifth of March twenty twenty six", "the 25th of March 2026"),
+            ("twenty fifth March twenty twenty six", "25th March 2026"),
+            ("twenty fifth of March", "25th of March"),
+            ("tenth of April nineteen ninety nine", "10th of April 1999"),
+            ("twenty fifth of March 2026", "25th of March 2026"),
+        ]
+    )
+    func datesWithYears(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "leaves dates the recogniser already wrote unchanged",
+        arguments: ["March 25, 2026", "25 March 2026", "March 25 2026", "25th of March, 2026", "3/25/2026"]
+    )
+    func writtenDatesUnchanged(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    @Test("a date with its year keeps every quantity the meaning guard counts")
+    func datesKeepQuantities() {
+        let original = "March twenty fifth twenty twenty six"
+        let written = cleaned(original, by: sut)
+        #expect(MeaningPreservationGuard.changedQuantity(original: original, rewritten: written) == nil)
     }
 
     @Test("month-first dates keep the number policy and reject ambiguous or impossible dates")
