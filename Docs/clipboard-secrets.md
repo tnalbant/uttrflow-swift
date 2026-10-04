@@ -138,6 +138,8 @@ words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognis
 - An `Authorization:` or `Proxy-Authorization:` header in any scheme, or a header whose name ends
   in a secret's name (`X-Api-Key:`), quoted or not, with the value in the same word or the next
   two. A scheme alone (`Authorization: Bearer`) sends nothing.
+- A `Cookie:` or `Set-Cookie:` header scans through its value up to the next cookie header, so
+  repeated headers are read once across the line.
 
 A value that is a variable, a substitution or a placeholder (`$TOKEN`, `${token}`, `{token}`,
 `<token>`) is left alone, since it names where the credential is rather than being it.
@@ -309,8 +311,9 @@ the whole-clip patterns' answer; what is bounded is how much of the clip each pa
 
 `ClipKindOracleTests` keeps the whole-clip reading as the oracle and compares it on 50,000 random,
 planted and realistic clips in the full sweep; `ClipClassifyScalingTests` bounds the characters
-handed to the two patterns by the number of prefixes and runs, not the clip's length. The costs
-per clip size are in [`performance.md`](performance.md).
+handed to the two patterns by the number of prefixes and runs, not the clip's length;
+`CookieHeaderScalingTests` bounds command-header work and classifies the largest accepted clip.
+The costs per clip size are in [`performance.md`](performance.md).
 
 ## The oracle sweep
 
