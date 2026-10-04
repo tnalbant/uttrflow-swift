@@ -169,10 +169,12 @@ public struct Draft: Sendable, Equatable {
     /// Romanises each Devanagari word of the transcription, remembering that it was Devanagari.
     public init(romanising transcription: Transcription) {
         let heard = Draft(transcription: transcription)
-        let words = heard.words.map { word in
-            guard Romaniser.containsDevanagari(word.text) else { return word }
-            let latin = Romaniser.romanised(word.text)
-            return Word(text: latin, heard: latin, confidence: word.confidence, origin: .devanagari)
+        // A stop joined to the next word is spaced off when romanised, so the token becomes two words.
+        let words = heard.words.flatMap { word in
+            guard Romaniser.containsDevanagari(word.text) else { return [word] }
+            return Romaniser.romanised(word.text).split(whereSeparator: \.isWhitespace).map {
+                Word(text: String($0), heard: String($0), confidence: word.confidence, origin: .devanagari)
+            }
         }
         self.init(words: words, confidencesAreReal: heard.confidencesAreReal)
     }
