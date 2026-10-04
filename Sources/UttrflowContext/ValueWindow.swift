@@ -38,7 +38,8 @@ public enum ValueWindow {
         }
         guard let text = part(window), text.utf16.count == window.length else { return (nil, selection) }
         let shifted = NSRange(
-            location: selection.location - window.location, length: min(selection.length, need.selectionUnits))
+            location: selection.location - window.location, length: min(selection.length, need.selectionUnits)
+        )
         return (text, shifted)
     }
 }
