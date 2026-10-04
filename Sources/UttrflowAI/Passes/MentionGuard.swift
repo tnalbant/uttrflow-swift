@@ -1,5 +1,5 @@
 import NaturalLanguage
-import UttrflowCore
+public import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
 public enum MentionGuard {
