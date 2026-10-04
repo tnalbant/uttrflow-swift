@@ -634,6 +634,15 @@ struct PieceJoinerSeamTests {
         #expect(whole.cleaned.text == expected)
     }
 
+    @Test("judges a seam against the next piece with words when a piece between was tidied to nothing")
+    func judgesSeamPastAnEmptyPiece() {
+        let whole = PieceJoiner.join(
+            [piece("We moved the review."), piece("", heard: "um"), piece("To the Thursday slot.")],
+            under: .standard(for: .document))
+
+        #expect(whole.cleaned.text == "We moved the review to the Thursday slot.")
+    }
+
     @Test("preserves a name whether or not the recognizer inserted a seam stop")
     func preservesNameWithAndWithoutRecognizerStop() {
         let withStop = PieceJoiner.seamed(

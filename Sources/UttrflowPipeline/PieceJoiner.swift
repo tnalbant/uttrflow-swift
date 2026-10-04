@@ -80,8 +80,24 @@ enum PieceJoiner {
     static func seamed(
         _ pieces: [String], heard: [String] = [], under formatter: DestinationFormatter
     ) -> [String] {
-        let pieces = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
-        return pieces.enumerated().map { index, text in
+        let joined = joiningSpokenMarksAcrossSeams(joiningAmountsAcrossSeams(pieces, heard: heard))
+        // A piece tidied to nothing has no seam, so each seam is judged against the next piece with words.
+        let worded = joined.indices.filter { !joined[$0].allSatisfy(\.isWhitespace) }
+        let heard = heard.count == joined.count ? worded.map { heard[$0] } : []
+        var seamed = joined
+        for (position, text) in seamedWorded(worded.map { joined[$0] }, heard: heard, under: formatter)
+            .enumerated()
+        {
+            seamed[worded[position]] = text
+        }
+        return seamed
+    }
+
+    /// Seams pieces that all have words, each judged against its neighbours.
+    private static func seamedWorded(
+        _ pieces: [String], heard: [String], under formatter: DestinationFormatter
+    ) -> [String] {
+        pieces.enumerated().map { index, text in
             guard index > 0,
                 sentenceRunsOn(pieces[index - 1], into: text)
                     || groupRunsAcross(
