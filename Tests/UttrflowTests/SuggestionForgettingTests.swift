@@ -144,10 +144,10 @@ struct SuggestionForgettingTests {
         let reading = FieldReading(bundleIdentifier: terminal.bundleIdentifier, role: "AXTextArea")
         try await coordinator.capture.record(.allowed, for: terminal.bundleIdentifier)
 
-        #expect(
-            coordinator.acceptances.enqueue { [capture = coordinator.capture] in
-                _ = try? await capture.accepted("forgotten acceptance", in: reading, at: moment)
-            })
+        let queued = coordinator.acceptances.enqueue { [capture = coordinator.capture] in
+            _ = try? await capture.accepted("forgotten acceptance", in: reading, at: moment)
+        }
+        #expect(queued)
         try await coordinator.forgetEverySuggestion()
         await coordinator.finishWrites()
 
