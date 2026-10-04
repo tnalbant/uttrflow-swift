@@ -5,7 +5,7 @@ public import UttrflowCore
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
-        + grammar + secondLanguage + oneLineField + formatting
+        + grammar + secondLanguage + oneLineField + bareLiteral + formatting
         + codeMixing
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
@@ -3590,6 +3590,123 @@ public enum EvaluationCorpus {
             mustBeginWith: "I do",
             mustEndWith: "doing",
             addedFor: 3829
+        ),
+    ]
+    // MARK: A dictation that is only a literal
+
+    static let bareLiteral: [EvaluationCase] = [
+        .init(
+            id: "bare-host-and-path", category: .bareLiteral, spoken: "example dot com slash docs",
+            expected: "example.com/docs",
+            destination: .document, expectedExact: "example.com/docs", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-and-path-plain", category: .bareLiteral, spoken: "example dot com slash docs",
+            expected: "example.com/docs",
+            destination: .plain, expectedExact: "example.com/docs", addedFor: 4066
+        ),
+        .init(
+            id: "bare-subdomain", category: .bareLiteral, spoken: "docs dot example dot org",
+            expected: "docs.example.org",
+            destination: .email, expectedExact: "docs.example.org", addedFor: 4066
+        ),
+        .init(
+            id: "bare-subdomain-message", category: .bareLiteral, spoken: "docs dot example dot org",
+            expected: "docs.example.org",
+            destination: .messaging, expectedExact: "docs.example.org", addedFor: 4066
+        ),
+        .init(
+            id: "bare-capitalised-host", category: .bareLiteral, spoken: "Example dot com",
+            expected: "example.com",
+            destination: .document, expectedExact: "example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-dotted-local", category: .bareLiteral, spoken: "sam dot jones at example dot com",
+            expected: "sam.jones@example.com",
+            destination: .document, expectedExact: "sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-dotted-local-email", category: .bareLiteral,
+            spoken: "sam dot jones at example dot com", expected: "sam.jones@example.com",
+            destination: .email, expectedExact: "sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-capitalised", category: .bareLiteral, spoken: "Sam dot jones at Example dot com",
+            expected: "Sam.jones@example.com",
+            destination: .plain, expectedExact: "Sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-ipv4", category: .bareLiteral, spoken: "ten dot zero dot zero dot one",
+            expected: "10.0.0.1",
+            destination: .document, expectedExact: "10.0.0.1", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-port", category: .bareLiteral, spoken: "localhost colon 8080",
+            expected: "localhost:8080",
+            destination: .document, expectedExact: "localhost:8080", addedFor: 4066
+        ),
+        .init(
+            id: "bare-url", category: .bareLiteral, spoken: "https colon slash slash example dot com",
+            expected: "https://example.com",
+            destination: .plain, expectedExact: "https://example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-www-host", category: .bareLiteral, spoken: "www dot example dot com",
+            expected: "www.example.com",
+            destination: .email, expectedExact: "www.example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-absolute-path", category: .bareLiteral, spoken: "slash var slash log",
+            expected: "/var/log",
+            destination: .document, expectedExact: "/var/log", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-port-path", category: .bareLiteral, spoken: "localhost colon 3000 slash api",
+            expected: "localhost:3000/api",
+            destination: .messaging, expectedExact: "localhost:3000/api", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-keeps-path-case", category: .bareLiteral, spoken: "Example dot com slash Docs",
+            expected: "example.com/Docs", destination: .document, expectedExact: "example.com/Docs",
+            addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-host-is-down", category: .bareLiteral, spoken: "example dot com is down",
+            expected: "example.com is down.",
+            destination: .document, expectedExact: "example.com is down.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-five", category: .bareLiteral, spoken: "five", expected: "Five.",
+            destination: .document, expectedExact: "Five.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-ten-percent", category: .bareLiteral, spoken: "ten percent", expected: "10%.",
+            destination: .document, expectedExact: "10%.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-email-sentence", category: .bareLiteral,
+            spoken: "write to sam at example dot com", expected: "Write to sam@example.com.",
+            destination: .email, expectedExact: "Write to sam@example.com.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-number-sentence", category: .bareLiteral, spoken: "call 415 555 0100 tomorrow",
+            expected: "Call 415 555 0100 tomorrow.",
+            destination: .document, expectedExact: "Call 415 555 0100 tomorrow.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-version-sentence", category: .bareLiteral, spoken: "we shipped 2.3.1 today",
+            expected: "We shipped 2.3.1 today.",
+            destination: .plain, expectedExact: "We shipped 2.3.1 today.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-five-dollars", category: .bareLiteral, spoken: "five dollars",
+            expected: "5 dollars.",
+            destination: .document, expectedExact: "5 dollars.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-path-sentence", category: .bareLiteral,
+            spoken: "the page is example dot com slash docs", expected: "The page is example.com/docs",
+            destination: .messaging, expectedExact: "The page is example.com/docs", addedFor: 4066
         ),
     ]
     // MARK: One-line fields of no known purpose

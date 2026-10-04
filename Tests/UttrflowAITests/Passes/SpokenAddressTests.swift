@@ -11,6 +11,8 @@ struct SpokenAddressTests {
         "writes the address where the words spell one",
         arguments: [
             ("forward the logs to support at example.com", "forward the logs to support@example.com"),
+            ("write to Sam dot Jones at Example dot com", "write to Sam.Jones@example.com"),
+            ("visit Example dot com slash Docs", "visit example.com/Docs"),
             (
                 "forward the logs to support at example dot com",
                 "forward the logs to support@example.com"

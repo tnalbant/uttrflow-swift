@@ -110,6 +110,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if followingTextContinuesSentence { return word }
         if insertionPoint.structure?.hasOpenBracketOnCaretLine == true { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
+        if Self.isLiteral(Self.paragraphWords(in: draft).last ?? [], in: draft) { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
         let asks = layout.contains(.paragraphs) && Self.lastSentenceAsks(draft)
@@ -154,7 +155,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 continue
             }
             if word.text.hasPrefix("\n\n"), let last = paragraph.last, paragraph.count >= 3,
-                !(opening?.isListMark ?? false),
+                !(opening?.isListMark ?? false), !isLiteral(paragraph, in: draft),
                 !(destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft))
             {
                 let preceding = paragraph.dropLast().map { draft.words[$0].text }.joined(separator: " ")
@@ -166,6 +167,11 @@ public struct TerminalStopPass: WholeTextCleaningPass {
                 paragraph = []
             }
         }
+    }
+
+    /// Whether every word of a paragraph is a literal, such as an address, a path or digits, which is not a sentence.
+    private static func isLiteral(_ paragraph: [Int], in draft: Draft) -> Bool {
+        !paragraph.isEmpty && paragraph.allSatisfy { TechnicalToken.classify(draft.words[$0].text) != nil }
     }
 
     /// Whether a paragraph is an email opener or a final closing with a name.

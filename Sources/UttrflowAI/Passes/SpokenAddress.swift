@@ -80,7 +80,7 @@ struct SpokenAddress: Equatable {
         let joint = position + local.length
         guard joint + 1 < run.upperBound, draft.shape(at: live[joint]).key == "at",
             let domain = part(from: joint + 1, within: run, in: live, of: draft),
-            domain.labels.count > 1, let top = domain.labels.last, topLevels.contains(top),
+            domain.labels.count > 1, let top = domain.labels.last, topLevels.contains(top.lowercased()),
             local.isShaped || isIntroduced(before: position, in: live, of: draft)
         else { return nil }
         let span = position..<(joint + 1 + domain.length)
@@ -88,7 +88,8 @@ struct SpokenAddress: Equatable {
         let first = draft.shape(at: live[span.lowerBound])
         let last = draft.shape(at: live[span.upperBound - 1])
         return SpokenAddress(
-            length: span.count, text: first.prefix + local.spelled + "@" + domain.spelled + last.suffix)
+            length: span.count,
+            text: first.prefix + local.spelled + "@" + domain.spelled.lowercased() + last.suffix)
     }
 
     /// Reads a path with no host: two or more slash-led segments say a path on their own, one needs "path is" before it.
@@ -251,7 +252,8 @@ struct SpokenAddress: Equatable {
             host.labels.count > 1, let top = host.labels.last, topLevels.contains(top.lowercased())
         else { return nil }
         return finishHost(
-            prefix + host.spelled, from: position, hostEnd: hostPosition + host.length, within: run,
+            prefix + host.spelled.lowercased(), from: position, hostEnd: hostPosition + host.length,
+            within: run,
             in: live, of: draft)
     }
 
