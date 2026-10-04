@@ -1154,19 +1154,19 @@ final class SuggestionCoordinator {
 
     /// Milliseconds until the prose pause after the latest keystroke is long enough, counted from now rather than from the turn's start.
     nonisolated static func hesitationWake(sinceKeystroke keystroke: Date, now: Date) -> Int {
-        let passed = Int(now.timeIntervalSince(keystroke) * 1000)
+        let passed = max(0, Int(now.timeIntervalSince(keystroke) * 1000))
         return max(0, Quieting.proseHesitationInMilliseconds - passed) + 20
     }
 
     /// What is left of the debounce for a key pressed at `keystroke`, which is nothing once the pause is long enough.
     nonisolated static func remainingDebounce(sinceKeystroke keystroke: Date, now: Date) -> Duration {
-        let passed = now.timeIntervalSince(keystroke) * 1000
+        let passed = max(0, now.timeIntervalSince(keystroke) * 1000)
         return .milliseconds(max(0, Double(Self.generationDebounceInMilliseconds) - passed))
     }
 
     /// Milliseconds left before typing has paused long enough to read the field.
     nonisolated static func remainingFieldReadDebounce(sinceKeystroke keystroke: Date, now: Date) -> Int {
-        let passed = now.timeIntervalSince(keystroke) * 1000
+        let passed = max(0, now.timeIntervalSince(keystroke) * 1000)
         let remaining = Double(Self.fieldReadDebounceInMilliseconds) - passed
         return remaining <= 0.001 ? 0 : Int(ceil(remaining - 0.001))
     }
