@@ -1,5 +1,5 @@
 import NaturalLanguage
-import UttrflowCore
+public import UttrflowCore
 
 /// Words that mean the word after them is being talked about rather than dictated.
 public enum MentionGuard {
@@ -25,15 +25,22 @@ public enum MentionGuard {
         return namingWords.contains(draft.shape(at: live[position - 1]).key)
     }
 
-    /// Verbs that name the layout phrase which follows them.
+    /// Verbs and naming nouns that name the mark or layout phrase which follows them.
     private static let mentionVerbs: Set<String> = [
-        "type", "say", "make", "write", "use", "press",
+        "type", "say", "make", "write", "use", "press", "phrase", "term", "symbol",
     ]
+
+    /// Reporting verbs that name a closing or joining mark after them but introduce an opening quote.
+    private static let reportingVerbs: Set<String> = ["said", "says"]
+
+    /// Mark names that are also nouns a number or another noun may modify: "a waiting period", "the hundred metre dash".
+    private static let nounHeads: Set<String> = ["period", "dash"]
 
     static let determiners: Set<String> = [
         "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
         "every",
         "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
+        "which", "whose",
     ]
 
     /// The ones a modifier may stand between and the mark; a verb takes its object with nothing in between.
@@ -41,7 +48,7 @@ public enum MentionGuard {
         "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "one", "my",
         "your",
         "his",
-        "her", "its", "their", "our", "another", "any", "some", "same",
+        "her", "its", "their", "our", "another", "any", "some", "same", "which", "whose",
     ]
 
     /// How far back the word that opens a noun phrase may stand: "the hundred metre dash".
@@ -49,7 +56,7 @@ public enum MentionGuard {
 
     /// The spoken names of marks and layout, which close the phrase an opener began rather than heading it.
     static let markNames: Set<String> = Set(
-        SpokenPunctuationPass.marks.flatMap(\.words) + LayoutWordsPass.marks.flatMap(\.words))
+        SpokenCommands.marks.flatMap(\.words) + SpokenCommands.layout.flatMap(\.words))
 
     /// Whether the mark word at `position` is mentioned; `reach` is how far the phrase's own opener may stand.
     static func isMentioned(
@@ -59,21 +66,35 @@ public enum MentionGuard {
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
         guard position > 0 else { return kind != .opening }
+        if kind == .closing, isOpenQuotation(before: position, in: live, of: draft) { return false }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
-            finalMark: kind == .trailing && position + length == live.count,
+            finalMark: kind == .trailing && position + length == live.count, opening: kind == .opening,
             corroboratedByLayout: corroboratedByLayout
         ) {
             return true
         }
         let next = position + length
-        return next < live.count && draft.shape(at: live[next]).key == "of"
+        let sentenceEnd = draft.sentenceRun(from: position, in: live).upperBound
+        return next < sentenceEnd && draft.shape(at: live[next]).key == "of"
+    }
+
+    /// Whether a quotation opened earlier in this sentence is still open, so a closing mark here closes it.
+    private static func isOpenQuotation(before position: Int, in live: [Int], of draft: Draft) -> Bool {
+        for back in stride(from: position - 1, through: 0, by: -1) {
+            let shape = draft.shape(at: live[back])
+            if shape.suffix.contains(where: WordShape.openingQuotes.contains) || shape.endsSentence {
+                return false
+            }
+            if shape.prefix.contains(where: WordShape.openingQuotes.contains) { return true }
+        }
+        return false
     }
 
     /// Whether a determiner opens the phrase the mark word heads; given `bridging`, only those words may stand between.
     private static func opensThePhrase(
         ending position: Int, reaching reach: Int, in live: [Int], of draft: Draft,
-        bridgedBy bridging: Set<String>?, finalMark: Bool, corroboratedByLayout: Bool
+        bridgedBy bridging: Set<String>?, finalMark: Bool, opening: Bool, corroboratedByLayout: Bool
     ) -> Bool {
         // A hyphen joins the two words around it, so it heads no phrase and only the word before it speaks.
         let far = draft.shape(at: live[position]).key == "hyphen" ? 1 : reach
@@ -81,7 +102,9 @@ public enum MentionGuard {
             let shape = draft.shape(at: live[position - back])
             // A noun phrase cannot begin in the sentence before, so no opener stands on the far side of a stop.
             if shape.endsSentence { return false }
-            if back == 1, mentionVerbs.contains(shape.key) { return true }
+            if back == 1, mentionVerbs.contains(shape.key) || !opening && reportingVerbs.contains(shape.key) {
+                return true
+            }
             if !corroboratedByLayout,
                 back == 1 ? determiners.contains(shape.key) : phraseOpeners.contains(shape.key)
             {
@@ -99,11 +122,13 @@ public enum MentionGuard {
         return false
     }
 
-    /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
+    /// Recognizes local modifiers, ordinal numbers and cardinals before a period or dash.
     private static func isModifier(
         _ word: String, before head: String, finalMark: Bool, after preceding: String?
     ) -> Bool {
-        if NumberFormsPass.ordinalUnits[word] != nil || (head == "period" && NumberWords.isNumber(word)) {
+        if NumberFormsPass.ordinalUnits[word] != nil
+            || (nounHeads.contains(head) && NumberWords.isNumber(word))
+        {
             return true
         }
         let phrase = "the \(word) \(head)"
@@ -113,6 +138,7 @@ public enum MentionGuard {
         let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
         if head == "period" && finalMark {
@@ -120,10 +146,15 @@ public enum MentionGuard {
             if countedPeriodUnits.contains(word) { return preceding.map(NumberWords.isNumber) ?? false }
             if gerundPeriodParticles.contains(word) { return preceding?.hasSuffix("ing") ?? false }
         }
-        if lexicalClass == .noun && head == "period" && !finalMark {
+        if lexicalClass == .noun && nounHeads.contains(head) && !finalMark {
             return true
         }
 
         return lexicalClass == .noun && word.hasSuffix("ing")
+    }
+
+    /// Whether a word is a cardinal number, spelled or in digits.
+    private static func isCardinal(_ word: String) -> Bool {
+        NumberWords.digits(word) != nil || NumberWords.cardinal([word][...]) != nil
     }
 }

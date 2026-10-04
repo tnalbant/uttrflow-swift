@@ -64,6 +64,25 @@ mangles Hindi has not solved the problem. The category list is built from the en
 category cannot be added to the corpus and go unreported. A rewrite thrown away is always reported
 with a reason, because a rewrite discarded for the wrong reason is invisible in a score.
 
+## Provenance and the held-out split
+
+Every `EvaluationCase` names its `origin`: `authored` (written from scratch to state a behaviour,
+the default), `reportRewrite` (rebuilt from a reported failure, keeping its shape with every value
+invented) or `synthetic` (generated from a template or a rule). An optional `addedFor` names the
+issue the case was added for. No origin admits real text from a person; `make pii-audit` scans the
+corpus source like any other tracked file.
+
+`CorpusSplit` puts one case in five in `heldout` and the rest in `development`, decided by an
+FNV-1a digest of the case id alone. A stored split would let somebody move a case they had tuned
+against; a split by position would move existing cases every time one is added. A prompt, rule or
+lexicon author reads only development cases. `CorpusSplitTests` fails when a held-out case's spoken
+or expected text appears in the prompt contract, a block's rules or any worked example, and when
+any category or language with ten or more cases holds out less than 10% or more than 30%.
+
+The bake-off header prints the count per origin and per split, and the report prints a "By split"
+pass-rate table. A candidate that scores well on development and worse on held-out has been tuned
+to the cases rather than to the behaviour.
+
 ## What the scorer counts
 
 - **A phrase is read inside one sentence.** `Scorer` keeps sentence ends when it looks for a

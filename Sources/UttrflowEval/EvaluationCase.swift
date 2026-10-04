@@ -16,12 +16,28 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case contextual
         /// Grammar slips a formatter may repair, and the dialect that must stay.
         case grammar
+        /// Second-language grammar that is written down as spoken, never repaired.
+        case secondLanguage
         /// An entry into a one-line field of no known purpose, which is a value and takes no stop alone.
         case oneLineField
     }
 
+    /// Where a case's text came from; every value in every case is invented, whichever it is.
+    public enum Origin: String, Sendable, Equatable, CaseIterable, Codable {
+        /// Written from scratch to state a behaviour.
+        case authored
+        /// Rebuilt from a reported failure, keeping its shape with every value invented.
+        case reportRewrite
+        /// Generated from a template or a rule rather than written one by one.
+        case synthetic
+    }
+
     public let id: String
     public let category: Category
+    /// Where the case came from, which is what a reviewer reads before asking whether it holds a real person's text.
+    public let origin: Origin
+    /// The issue the case was added for, when it was added for one.
+    public let addedFor: Int?
     /// The language the speaker used, which decides how the utterance is routed.
     public let language: LanguageCode
     /// The raw transcript, as a recogniser would produce it.
@@ -58,10 +74,14 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         mustBeginWith: String? = nil,
         mustEndWith: String? = nil,
         doubtful: [String] = [],
-        classes: [FormattingClass] = []
+        classes: [FormattingClass] = [],
+        origin: Origin = .authored,
+        addedFor: Int? = nil
     ) {
         self.id = id
         self.category = category
+        self.origin = origin
+        self.addedFor = addedFor
         self.language = language
         self.spoken = spoken
         self.expected = expected

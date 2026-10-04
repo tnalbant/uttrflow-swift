@@ -159,6 +159,9 @@ has taught anything. Importing a shell's history (`ShellHistory`) asks the same 
 terminal it seeds: an application not yet allowed, or declined, gets nothing, and the one-time
 import stays unspent until it is allowed.
 
+The importer reads history from the end in 64 KiB chunks, keeps the newest 5,000 distinct
+commands in chronological order, and skips Bash's epoch timestamp lines.
+
 Both sides file an application under `ApplicationKey`, its bundle identifier lowercased, because
 macOS is not consistent about case and the switch and the field reading see the identifier from
 different places. A consent file holding both spellings of one application is read as the refusal,
@@ -273,6 +276,8 @@ application switch that arrives during a turn is kept and run afterwards.
   panel, disarms the keys and calls `SuggestionSession.invalidate`, so `resolve`,
   `resolveGenerated` and `expandGenerated` return nothing for a turn whose read began before it,
   and the coordinator draws only while `SuggestionSession.isCurrent`.
+- **A timed-out selection read keeps the offer armed** for its next poll. A completed read that
+  cannot identify a focused selection still withdraws it.
 - **A model line keeps the typed case**, so the ghost only adds to the line and Tab never re-cases
   what the user wrote.
 
@@ -534,18 +539,20 @@ process: `uttrflow-dev` launched from a terminal that holds the grant inherits i
 what the model would be shown around the focused field, and
 `uttrflow-dev machine --directory <dir> --under <path>` prints what the machine index lists there.
 
-## Reading the counts
+## Suggestion counts in Insights
 
-The store counts `count`, `accepted`, `rejected` and `self_sourced` per entry and `entryCount()` per
-corpus, and the log names the `Quieting.Reason` of every silence. Read them together, because each
-alone misleads in the same direction:
+When suggestions are on, Insights shows the suggestion corpus' stored lines, recorded uses,
+accepted offers, offers typed past and self-sourced entries. They are lifetime totals for the
+current corpus, across fields; they do not follow the dictation chart's selected range. Turning
+suggestions off removes this group from the page.
 
-- **Acceptance rate rises as the feature offers less.** A build that only speaks about
-  `git status` scores nearly 100% and is worth nothing; read it against how often anything was
-  offered.
-- **Silence is the expected answer.** `secureField` and `writingFluently` are the feature working;
-  `rejectedTooOften` climbing in one application means it is wrong there.
-- **Corpus size is not quality.** 2,000 entries in one field is the eviction cap.
+`recorded uses` sums `count`; `accepted` and `rejected` count offers that the user accepted or
+typed past; `self-sourced` counts entries written because a suggestion was accepted. The corpus
+does not count offers that received no recorded response, so these totals do not form an acceptance
+rate. Quieting reasons such as `secureField`, `writingFluently` and `rejectedTooOften` are logged
+when they occur, but are not stored as totals for Insights. Read acceptance and typed-past counts
+beside the corpus size: a high acceptance count alone can hide that few offers were made. Corpus
+size is not quality; 2,000 entries in one field is the eviction cap.
 
 ## The rules that do not bend
 
@@ -571,3 +578,5 @@ alone misleads in the same direction:
    quarter of one typed. Without it, offering a candidate makes it likelier to be offered, and the
    set of things the feature knows narrows to what it already said while the acceptance rate
    climbs.
+   Positive acceptance lift is scaled by the share of the entry's evidence that was typed by hand;
+   refusals retain their full penalty.

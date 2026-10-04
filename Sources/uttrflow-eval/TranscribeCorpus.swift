@@ -26,6 +26,13 @@ struct TranscribeCorpus: AsyncParsableCommand {
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
 
+    /// Measures a variant the app does not install, so candidates are compared before one is pinned.
+    @Option(name: .long, help: "Load the model from this folder instead of the installed one.")
+    var modelFolder: String?
+
+    @Option(name: .long, help: "Where each model stage runs: shipping, gpu, neuralEngine, all or cpu.")
+    var compute = SpeechComputePlan.shipping.rawValue
+
     /// Off by default because the product detects the language rather than being told it.
     @Flag(name: .long, help: "Tell the engine each passage's language instead of letting it detect.")
     var hintLanguage = false
@@ -75,6 +82,11 @@ struct TranscribeCorpus: AsyncParsableCommand {
         if saveBaseline || failOnRegression, baseline == nil {
             throw ValidationError("--save-baseline and --fail-on-regression need --baseline <path>.")
         }
+        guard SpeechComputePlan(rawValue: compute) != nil else {
+            throw ValidationError(
+                "Unknown compute plan '\(compute)'. Known: "
+                    + SpeechComputePlan.allCases.map(\.rawValue).joined(separator: ", "))
+        }
         guard SpeechEngineKind(rawValue: engine) != nil else {
             throw ValidationError(
                 "Unknown engine '\(engine)'. Known: "
@@ -90,7 +102,9 @@ struct TranscribeCorpus: AsyncParsableCommand {
         if summarise {
             // Stored results come back in file-system order, so they are put back into corpus order.
             let stored = TranscriptionCorpus.inCorpusOrder(try results.all())
-            try compare(reporting: TranscriptionReport(label: label(model), scores: stored))
+            try compare(
+                reporting: TranscriptionReport(
+                    label: label(model), recogniser: recogniser(model), scores: stored))
             return
         }
 
@@ -109,6 +123,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         print("Measuring \(recordings.count) passages with \(label(model))…")
         let measured = await TranscriptionRunner().run(
             label: label(model),
+            recogniser: recogniser(model),
             over: recordings,
             onScore: { score in
                 Terminal.show(".")
@@ -215,11 +230,13 @@ struct TranscribeCorpus: AsyncParsableCommand {
 
     private func prepared(kind: SpeechEngineKind, model: SpeechModel) async throws -> any SpeechEngine {
         let store = FileSystemSpeechModelStore.whisperKit()
-        if kind == .whisperKit, !store.isInstalled(model) {
+        if kind == .whisperKit, modelFolder == nil, !store.isInstalled(model) {
             throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
         }
+        let folder = modelFolder.map { URL(fileURLWithPath: $0) } ?? store.location(of: model)
         let speech = SpeechEngineFactory.make(
-            kind: kind, model: model, modelFolder: store.location(of: model))
+            kind: kind, model: model, modelFolder: folder,
+            compute: SpeechComputePlan(rawValue: compute) ?? .shipping)
         let clock = ContinuousClock()
         let start = clock.now
         try await speech.prepare()
@@ -511,6 +528,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
     // MARK: Names and numbers
 
     private func resolveModel() throws -> SpeechModel {
+        if let modelFolder { return .measured(folder: URL(fileURLWithPath: modelFolder)) }
         guard let modelVariant else { return .default }
         guard let model = SpeechModel.named(modelVariant) else {
             throw ValidationError(
@@ -523,11 +541,22 @@ struct TranscribeCorpus: AsyncParsableCommand {
     /// Keeps results per configuration, so a hinted run cannot overwrite a detected one.
     private func resultsDirectory() -> String {
         let model = (try? resolveModel())?.variant ?? "default"
-        return "\(resultsPath)/\(engine)-\(model)\(hintLanguage ? "-hinted" : "")"
+        return "\(resultsPath)/\(engine)-\(model)\(planSuffix("-"))\(hintLanguage ? "-hinted" : "")"
+    }
+
+    /// Empty for the shipping plan, so labels and baselines recorded before plans existed still match.
+    private func planSuffix(_ separator: String) -> String {
+        compute == SpeechComputePlan.shipping.rawValue ? "" : separator + compute
     }
 
     private func label(_ model: SpeechModel) -> String {
-        "\(engine) \(model.variant)\(hintLanguage ? ", language hinted" : ", language detected")"
+        "\(engine) \(model.variant)\(planSuffix(" on "))\(hintLanguage ? ", language hinted" : ", language detected")"
+    }
+
+    /// The pins a revision bump changes; a model read from an unpinned folder has none.
+    private func recogniser(_ model: SpeechModel) -> String? {
+        guard !model.weightsRevision.isEmpty else { return nil }
+        return "\(model.variant) weights \(model.weightsRevision) tokenizer \(model.tokenizerRevision)"
     }
 
     private func percent(_ value: Double?) -> String {
@@ -538,5 +567,15 @@ struct TranscribeCorpus: AsyncParsableCommand {
         String(
             format: "%.2f",
             duration.inSeconds)
+    }
+}
+
+extension SpeechModel {
+    /// A multilingual model read from a folder the installer never pinned; measured, never shipped.
+    fileprivate static func measured(folder: URL) -> SpeechModel {
+        SpeechModel(
+            variant: folder.lastPathComponent, downloadBytes: 0, isMultilingual: true,
+            weightsRepository: "", weightsRevision: "", weightFiles: [:],
+            tokenizerRepository: "", tokenizerRevision: "", tokenizerDigests: [:])
     }
 }

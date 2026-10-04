@@ -29,8 +29,8 @@ private actor MutableDictionaryReading {
         self.entries = entries
     }
 
-    func snapshot(now: Date) -> (entries: [DictionaryEntry], now: Date) {
-        (entries, now)
+    func snapshot(now: Date) -> (entries: [DictionaryEntry], index: PhoneticIndex, now: Date) {
+        (entries, PhoneticIndex(entries: entries), now)
     }
 }
 
@@ -54,7 +54,7 @@ struct DictionaryVocabularyTests {
         limit: Int = WorkingSet.defaultLimit,
         entries: [DictionaryEntry]
     ) -> DictionaryVocabulary {
-        DictionaryVocabulary(limit: limit) { (entries, Self.now) }
+        DictionaryVocabulary(limit: limit) { (entries, PhoneticIndex(entries: entries), Self.now) }
     }
 
     @Test("offers the dictionary ranked, best first")

@@ -25,7 +25,7 @@ enum CommandCredentialShape {
         for character in text {
             read += 1
             if escaped {
-                word.append(character)
+                word.append(literalShellCharacter(character))
                 escaped = false
                 continue
             }
@@ -39,7 +39,13 @@ enum CommandCredentialShape {
                 continue
             }
             if let open = quote {
-                if character == open { quote = nil } else { word.append(character) }
+                if character == open {
+                    quote = nil
+                } else if open == "'" || "{}<>".contains(character) {
+                    word.append(literalShellCharacter(character))
+                } else {
+                    word.append(character)
+                }
                 continue
             }
             switch character {
@@ -47,6 +53,7 @@ enum CommandCredentialShape {
                 quote = character
                 hasWord = true
             case "\\": escaped = true
+            case "<", ">": endWord()
             case ";" where hasCookieHeader || isCookieHeaderToken(word):
                 word.append(character)
                 hasWord = true
@@ -75,11 +82,30 @@ enum CommandCredentialShape {
         var inMacro = false
     }
 
+    /// Preserves metacharacters that shell quoting or escaping makes literal.
+    private static func literalShellCharacter(_ character: Character) -> Character {
+        switch character {
+        case "$": "\u{E000}"
+        case "{": "\u{E001}"
+        case "}": "\u{E002}"
+        case "<": "\u{E003}"
+        case ">": "\u{E004}"
+        default: character
+        }
+    }
+
     /// Whether the current command is reading a Cookie or Set-Cookie header value.
     private static func isCookieHeaderToken(_ word: String) -> Bool {
+        if isBareCookieHeaderToken(word) { return true }
         guard let colon = word.firstIndex(of: ":") else { return false }
         let name = word[..<colon].trimmingSuffix(while: \.isWhitespace).lowercased()
         return name == "cookie" || name == "set-cookie"
+    }
+
+    /// Whether a complete empty cookie header has its ordinary spelling.
+    private static func isBareCookieHeaderToken(_ word: String) -> Bool {
+        word.caseInsensitiveCompare("Cookie:") == .orderedSame
+            || word.caseInsensitiveCompare("Set-Cookie:") == .orderedSame
     }
 
     // MARK: - One command
@@ -133,7 +159,7 @@ enum CommandCredentialShape {
         for (index, word) in words.enumerated() {
             read += 1
             let next = index + 1 < words.count ? words[index + 1] : nil
-            if carriesHeaderCredential(word, following: words[(index + 1)...]) { return true }
+            if carriesHeaderCredential(word, following: words[(index + 1)...], read: &read) { return true }
             if isNamedAssignment(word) { return true }
             if word.hasPrefix("--"), let value = longFlagValue(word, next: next, programs: programs),
                 isCredential(value)
@@ -322,15 +348,23 @@ enum CommandCredentialShape {
     private static let schemes: Set<String> = ["basic", "bearer", "digest", "token", "negotiate", "ntlm"]
 
     /// Whether a word holds `Authorization:` or a secret-named header, with a value in it or in the words after it.
-    private static func carriesHeaderCredential(_ word: String, following: ArraySlice<String>) -> Bool {
+    private static func carriesHeaderCredential(
+        _ word: String, following: ArraySlice<String>, read: inout Int
+    ) -> Bool {
+        if isBareCookieHeaderToken(word), following.first.map(isCookieHeaderToken) == true {
+            return false
+        }
         guard let colon = word.firstIndex(of: ":") else { return false }
         let name = word[..<colon].trimmingSuffix(while: \.isWhitespace)
         let lowered = name.lowercased()
         // The header name is the last run of name characters before the colon, as `{Authorization` or `Proxy-Authorization` holds.
-        let header = String(lowered.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
+        let headerWord = lowered.hasPrefix("-h") ? lowered.dropFirst(2) : lowered[...]
+        let header = String(headerWord.reversed().prefix { $0.isLetter || $0 == "-" || $0 == "_" }.reversed())
         if header == "cookie" || header == "set-cookie" {
             let rest = word[word.index(after: colon)...]
-            let value = ([String(rest)] + following).joined(separator: " ")
+            let cookieWords = following.prefix { !isCookieHeaderToken($0) }
+            let value = ([String(rest)] + cookieWords).joined(separator: " ")
+            read += value.count
             return hasGeneratedCookieCredential(value)
         }
         guard header.hasSuffix("authorization") || header.contains("-") && namesSecret(header) else {

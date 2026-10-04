@@ -107,8 +107,27 @@ struct AnnouncedPictureReadTests {
         let finishWrite = watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
         finishWrite(source.bumpChangeCount())
 
-        let tick = Task { await watcher.newClip(at: Date()) }
-        #expect(await signalled(source.entered, within: 30))
+        let tickFinished = DispatchSemaphore(value: 0)
+        let tickResult = Mutex("still running")
+        let tick = Task {
+            let result = await watcher.newClip(at: Date())
+            tickResult.withLock { $0 = String(describing: result) }
+            tickFinished.signal()
+            return result
+        }
+        let reachedPictureSource = await signalled(source.entered, within: 30)
+        if !reachedPictureSource {
+            let completion =
+                tickFinished.wait(timeout: .now()) == .success
+                ? tickResult.withLock { $0 } : "still running after 30s"
+            source.release()
+            _ = await tick.value
+            #expect(
+                reachedPictureSource,
+                "picture source was not entered within 30s; watcher tick was \(completion)"
+            )
+            return
+        }
 
         let announced = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {

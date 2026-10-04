@@ -116,6 +116,10 @@ struct SpokenAddressTests {
             ("visit example dot com slash docs", "visit example.com/docs"),
             ("the site is www dot example dot com", "the site is www.example.com"),
             ("go to https colon slash slash example dot com", "go to https://example.com"),
+            ("go to w w w dot example dot org", "go to www.example.org"),
+            ("visit w w w dot example dot com slash pricing", "visit www.example.com/pricing"),
+            ("the url is h t t p s colon slash slash example dot com", "the url is https://example.com"),
+            ("the url is http colon slash slash example dot com", "the url is http://example.com"),
             (
                 "the docs live at docs dot example dot com slash api slash v two",
                 "the docs live at docs.example.com/api/v2"

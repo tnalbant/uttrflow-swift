@@ -37,6 +37,12 @@ public struct SystemPasteboard: Pasteboard {
         NSPasteboard.general.changeCount
     }
 
+    public func discardContents(ifUnchangedSince changeCount: Int) -> Bool {
+        guard NSPasteboard.general.changeCount == changeCount else { return false }
+        clearForThisMacOnly()
+        return true
+    }
+
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
     public func setText(_ text: String, richText: String?) -> PasteboardWriteResult {
         writeText(text, richText: richText)
@@ -151,6 +157,13 @@ private let unmakeableKeystroke = "could not create the keystroke"
 private func postTaggedKeyPair(
     from source: CGEventSource, keyCode: CGKeyCode, prepare: (CGEvent) -> Void
 ) throws(TextInsertionError) {
+    let pair = try makeTaggedKeyPair(from: source, keyCode: keyCode, prepare: prepare)
+    postTaggedKeyPairs([pair])
+}
+
+private func makeTaggedKeyPair(
+    from source: CGEventSource, keyCode: CGKeyCode, prepare: (CGEvent) -> Void
+) throws(TextInsertionError) -> (down: CGEvent, up: CGEvent) {
     guard
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
@@ -160,9 +173,22 @@ private func postTaggedKeyPair(
         prepare(event)
         SyntheticEvent.tag(event)
     }
-    // The one pair that reaches another application. See `Docs/insertion.md`.
-    keyDown.post(tap: .cghidEventTap)
-    keyUp.post(tap: .cghidEventTap)
+    return (keyDown, keyUp)
+}
+
+func buildThenPost<Input, Output>(
+    _ inputs: [Input], build: (Input) throws(TextInsertionError) -> Output,
+    post: ([Output]) -> Void
+) throws(TextInsertionError) {
+    post(try inputs.map(build))
+}
+
+private func postTaggedKeyPairs(_ pairs: [(down: CGEvent, up: CGEvent)]) {
+    for pair in pairs {
+        // The one pair that reaches another application. See `Docs/insertion.md`.
+        pair.down.post(tap: .cghidEventTap)
+        pair.up.post(tap: .cghidEventTap)
+    }
 }
 
 /// The key code posted when no keyboard layout can be read, `v`'s position on a US QWERTY board.
@@ -263,14 +289,12 @@ public struct CGEventKeystrokeSender: KeystrokeSender {
     }
 }
 
-/// Types characters with layout-mapped key events that also carry their Unicode strings.
+/// Types each character on its layout key where the layout has one, and as a bare Unicode string where it does not.
 public struct CGEventTypist: KeystrokeTyping {
     /// Virtual key code for Delete, positional and so correct on any keyboard layout.
     private static let deleteKeyCode: CGKeyCode = 51
 
     public init() {}
-
-    public func canType(_ text: String) -> Bool { preparedStrokes(for: text) != nil }
 
     /// One press per character, because there is no bulk delete a synthetic keyboard can reach for.
     public func deleteBackwards(_ count: Int) throws(TextInsertionError) {
@@ -279,40 +303,39 @@ public struct CGEventTypist: KeystrokeTyping {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for _ in 0..<count {
-            // Flags cleared so a modifier the user is still holding cannot widen the delete.
-            try postTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
-        }
+        try buildThenPost(
+            Array(0..<count),
+            build: { _ in
+                // Flags cleared so a modifier the user is still holding cannot widen the delete.
+                try makeTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
+            }, post: postTaggedKeyPairs)
     }
 
     public func type(_ text: String) throws(TextInsertionError) {
-        guard let strokes = preparedStrokes(for: text) else {
-            throw .insertionRejected(description: "the current keyboard layout cannot type every character")
-        }
         guard AXIsProcessTrusted() else { throw .accessibilityDenied }
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for (character, stroke) in strokes {
-            try postTaggedKeyPair(from: source, keyCode: stroke.code) { event in
-                // Only layout modifiers are set, so held user modifiers cannot change the character.
-                event.flags = stroke.flags
-                var unit = character
-                event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
-            }
-        }
-    }
-
-    /// Resolves every scalar before posting any event, so unsupported text never becomes partial input.
-    private func preparedStrokes(for text: String) -> [(UniChar, LayoutKeyCode.Stroke)]? {
-        var strokes: [(UniChar, LayoutKeyCode.Stroke)] = []
-        for scalar in text.unicodeScalars {
-            guard scalar.value <= UInt32(UInt16.max) else { return nil }
-            let character = UniChar(scalar.value)
-            guard let stroke = PasteKeyLayout.stroke(for: character) else { return nil }
-            strokes.append((character, stroke))
-        }
-        return strokes
+        let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
+        try buildThenPost(
+            keypresses,
+            build: { keypress in
+                switch keypress {
+                case .key(let character, let stroke):
+                    try makeTaggedKeyPair(from: source, keyCode: stroke.code) { event in
+                        // Only layout modifiers are set, so held user modifiers cannot change the character.
+                        event.flags = stroke.flags
+                        var unit = character
+                        event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+                    }
+                case .text(let units):
+                    try makeTaggedKeyPair(from: source, keyCode: 0) { event in
+                        // Flags cleared so a modifier the user is still holding cannot make this a shortcut.
+                        event.flags = []
+                        event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                    }
+                }
+            }, post: postTaggedKeyPairs)
     }
 }
 
@@ -329,6 +352,12 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// Anything focused at all, without asking it to report a selection.
     public func hasFocusedElement() -> Bool { focusedElement() != nil }
+
+    public func focusedElementKind() -> FocusedElementKind {
+        let element = focusedElement()
+        return .of(
+            role: element.flatMap { stringAttribute(kAXRoleAttribute, of: $0) }, isPublished: element != nil)
+    }
 
     public func isTrusted() -> Bool { AXIsProcessTrusted() }
 
@@ -678,7 +707,8 @@ private func selection(of element: AXUIElement) -> AccessibilitySelection {
     }
     let pluralRanges = (plural as? [AnyObject])?.compactMap { rangeValue($0) }
     return AccessibilitySelection.resolve(
-        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges)
+        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges,
+        textLength: characterCount(of: element))
 }
 
 /// Unwraps one Accessibility value as a character range.

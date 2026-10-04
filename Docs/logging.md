@@ -19,6 +19,10 @@ it is present, and the reason, route, engine or timing that explains what happen
 Swapping `.public` for `.private` is not a fix. A private value is still captured, and a Mac
 configured to reveal private data shows it in clear. The text is left out altogether.
 
+Suggestion logs hide the front application's name and bundle identifier as `private` by
+default. Set `UTTRFLOW_DEBUG_SUGGESTION_APPLICATIONS=1` in the app's environment to include
+application identities during local debugging.
+
 An error from a model or a third-party framework is logged by its type and case
 (`SuggestionLog.failure`), because its payload may hold the text the model was given or wrote.
 
@@ -30,17 +34,18 @@ typed line, and `SuggestionLogTests` checks each one against invented text; `TUR
 
 | Line | Carries |
 |---|---|
-| `TURN` | the front application's bundle identifier, whether the field was read, `lineChars`, whether it has a value and the value's length in UTF-16 `units`, the selection's location, whether a caret was read, the role, `labelChars`, whether the field has an identifier, whether it is secure, placement |
+| `FIELD_READ` | whether the field read was attempted, elapsed time, whether it succeeded, and the front application's identity only when the debug switch is enabled |
+| `TURN` | the front application's identity only when the debug switch is enabled, whether the field was read, `lineChars`, whether it has a value and the value's length in UTF-16 `units`, the selection's location, whether a caret was read, the role, `labelChars`, whether the field has an identifier, whether it is secure, placement |
 | `QUERY` | `typedChars`, how many candidates the corpus held, whether the model is ready |
 | `OPTIONS` | `typedChars`, and `none` or how many values the machine offers |
 | `QUIET` | `typedChars`, the silence's reason, rejections, whether the field is silenced, whether suggestions are on |
-| `GENERATE` | the application name, `typedChars`, how many lines, elapsed time, `firstChars` |
+| `GENERATE` | the application name only when the debug switch is enabled, `typedChars`, how many lines, elapsed time, `firstChars` |
 | `ALTERNATIVES` | `typedChars`, how many lines, elapsed time |
 | `ATTEST` | `typedChars`, lines in, lines out, how many were dropped |
 | `VERIFY` | `typedChars`, candidates in and out, elapsed time, `firstChars` |
 | `ACCEPT` | the completion's `chars`, `typedChars`, the insertion route |
 | `CONTEXT` | the lengths of the window title, the surroundings and the preceding text, and how many recent lines |
-| `STALL` | the step the turn left behind was waiting on, the bundle identifier of the application it read, and how many seconds it waited |
+| `STALL` | the step the turn left behind was waiting on, the application's bundle identifier only when the debug switch is enabled, and how many seconds it waited |
 
 A failed `GENERATE` or `ALTERNATIVES` pass carries `typedChars` and the error as
 `SuggestionLog.failure` renders it.

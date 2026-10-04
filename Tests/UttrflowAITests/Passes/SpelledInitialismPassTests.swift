@@ -25,6 +25,58 @@ struct SpelledInitialismPassTests {
                 .run(Draft(text: input)).text == expected)
     }
 
+    @Test("leaves a stammered pronoun as two words rather than an initialism")
+    func stammeredPronoun() {
+        #expect(sut.apply(Draft(text: "I I think we should ship it")).text == "I I think we should ship it")
+    }
+
+    @Test(
+        "never reads a cut-off word as a letter name",
+        arguments: [
+            ("I w- I went", "I w- I went"),
+            ("so I t- to go", "so I t- to go"),
+            ("I s- so", "I s- so"),
+            ("I B M", "IBM"),
+        ])
+    func cutOff(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "joins a pair only when both are bare letters, and any run of three",
+        arguments: [
+            ("are o bhai sun", "are o bhai sun"),
+            ("are be tum bhi", "are be tum bhi"),
+            ("o be pagal hai kya", "o be pagal hai kya"),
+            ("arre are o", "arre are o"),
+            ("jay jay ho", "jay jay ho"),
+            ("oh oh theek hai", "oh oh theek hai"),
+            ("o ho", "o ho"),
+            ("the p r is open", "the PR is open"),
+            ("call the eff bee eye", "call the FBI"),
+        ])
+    func pairsNeedBareLetters(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "keeps a run made only of everyday words as words",
+        arguments: [
+            "you are coming tomorrow", "how are you", "i know you are busy", "see you later",
+            "i see you tomorrow", "so you see it works", "oh i see", "oh why", "why you are late",
+            "she asked me why i left early", "did you see the game", "be you",
+        ])
+    func everydayRun(input: String) {
+        #expect(sut.apply(Draft(text: input)).text == input)
+    }
+
+    @Test(
+        "joins unambiguous spelled runs",
+        arguments: [("i b m", "IBM"), ("u s a", "USA")])
+    func spelledRun(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
     @Test(
         "does not treat i adjacent to a letter name as the pronoun",
         arguments: [
@@ -75,5 +127,36 @@ struct SpelledInitialismPassTests {
         var draft = Draft(text: "we said p uh i")
         draft.remove(at: 3, by: .fillers)
         #expect(FirstWordPass().apply(draft).text == "we said p I")
+    }
+
+    @Test(
+        "keeps the word are beside spelled letters and does not bridge it as R",
+        arguments: [
+            ("my a b c d are good", "My ABCD are good."),
+            ("the letters are a b c d and e f g", "The letters are ABCD and EFG."),
+            ("my initials are j r r tolkien", "My initials are JRR tolkien."),
+            ("i have a b c d are you coming", "I have ABCD are you coming."),
+        ])
+    func keepsAreBesideSpelledRun(input: String, expected: String) {
+        #expect(
+            CleaningPipeline(passes: [sut, FirstWordPass(), TerminalStopPass()])
+                .run(Draft(text: input)).text == expected)
+    }
+}
+
+@Suite("SpelledInitialismPass in the shipped pipeline")
+struct SpelledInitialismShippedTests {
+    @Test(
+        "keeps a dotted pair's stop, a clause-final letter a and the last letter's mark",
+        arguments: [
+            ("use a tool e g a hammer", "Use a tool e.g. a hammer."),
+            ("use it i e now", "Use it i.e. now."),
+            ("i live in the u s a", "I live in the USA."),
+            ("i live in the u s a. we left", "I live in the USA. We left."),
+            ("the a p i, then", "The API, then."),
+            ("send the p d f a copy", "Send the PDF a copy."),
+        ])
+    func shipped(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 }
