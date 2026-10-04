@@ -154,4 +154,6 @@ private struct SystemFieldSource: FocusedWindowSource {
     }
 
     func isMultiline(_ field: AXUIElement) -> Bool? { SurfaceProbe.boolean(field, "AXMultiline") }
+
+    func markedRange(of field: AXUIElement) -> CFRange? { CompositionProbe.markedRange(of: field) }
 }

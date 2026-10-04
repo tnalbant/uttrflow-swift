@@ -324,14 +324,14 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         }
     }
 
-    /// Discards the active recording when Escape is pressed, in either activation mode.
+    /// Discards the dictation under way when Escape is pressed, whether still listening or already being processed.
     private func cancelListening() async {
         forgetUnsettledPress()
         pressedAt = nil
         lastTapEndedAt = nil
         pressOpenedTheMicrophone = false
         setHandsFree(false)
-        guard await pipeline.currentState.isListening else { return }
+        guard await pipeline.currentState.isBusy else { return }
         stopWatchingTheLimit()
         await pipeline.cancel()
         resetControlStartedRecording()
@@ -528,10 +528,11 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             return .started
         case (.start, true):
             return .alreadyRecording
-        case (.cancel, true):
+        case (.cancel, _):
+            guard await pipeline.currentState.isBusy else { return .nothingRecording }
             await cancelListening()
             return .cancelled
-        case (.stop, false), (.cancel, false):
+        case (.stop, false):
             return .nothingRecording
         }
     }

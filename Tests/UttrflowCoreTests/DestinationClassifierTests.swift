@@ -13,6 +13,9 @@ struct DestinationClassifierTests {
         arguments: [
             ("com.microsoft.Word", Destination.document),
             ("com.apple.iWork.Pages", .document),
+            ("com.apple.Pages", .document),
+            ("com.apple.Keynote", .document),
+            ("com.apple.Numbers", .spreadsheet),
             ("com.apple.Notes", .document),
             ("com.apple.TextEdit", .document),
             ("com.apple.iWork.Numbers", .spreadsheet),

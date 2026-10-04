@@ -11,6 +11,11 @@ protocol FocusedWindowSource {
     func text(of field: Field, names: FieldNames, at range: CFRange?) -> FieldText
     func selectedText(of field: Field, at range: CFRange?) -> String?
     func isMultiline(_ field: Field) -> Bool?
+    func markedRange(of field: Field) -> CFRange?
+}
+
+extension FocusedWindowSource {
+    func markedRange(of field: Field) -> CFRange? { nil }
 }
 
 extension MacContextEngine {
@@ -41,10 +46,16 @@ extension MacContextEngine {
         let selection = text.selection.flatMap {
             AccessibilityRange.selection(location: $0.location, length: $0.length)
         }
+        let marked = source.markedRange(of: field).flatMap {
+            AccessibilityRange.selection(location: $0.location, length: $0.length)
+        }
         let caret =
             isTerminal
             ? CaretText.inTerminal(text.value, selection: selection, windowTitle: title)
-            : CaretText.around(text.value, selection: selection)
+            : CaretText.around(
+                text.value, selection: selection,
+                marked: CaretText.shift(
+                    marked, from: range.map { $0.location }, to: text.selection.map { $0.location }))
         let multiline =
             source.isMultiline(field)
             ?? role.flatMap { role in
@@ -58,6 +69,7 @@ extension MacContextEngine {
             FocusedWindow(
                 title: title, selectedText: selected,
                 precedingText: caret?.preceding, followingText: caret?.following,
-                accessibilityRole: role, isMultiline: multiline, fieldLabel: names.label))
+                accessibilityRole: role, isMultiline: multiline, fieldLabel: names.label,
+                isComposing: marked?.isEmpty == false))
     }
 }

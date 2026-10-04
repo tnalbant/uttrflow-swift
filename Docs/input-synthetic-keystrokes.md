@@ -48,6 +48,18 @@ The `Completion` column in [compatibility.md](compatibility.md) records observed
 application without separating the two; terminal emulators, cross-platform editors, remote
 desktops, virtual machines and games need measurements that do.
 
+### Option-only characters
+
+A character the layout reaches only with Option held is posted with `.maskAlternate` set. On US
+QWERTY that is ¬, √, ∑, © and π, among others (`LayoutKeyCode` tests pin the strokes). A target
+may read an Option-flagged key as a command or a dead key instead of reading the Unicode string.
+What each target class does with these events is not yet measured:
+
+| Target class | Result for Option-flagged typed symbols |
+|---|---|
+| Terminal emulator | not measured |
+| Code editor | not measured |
+
 ## Flags are set on every event
 
 A modifier the user is still holding when the paste or the typing goes out would otherwise be

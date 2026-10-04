@@ -6,12 +6,18 @@ public enum DestinationRules {
     public static let tablePlus = "com.tinyapp.TablePlus"
     /// Numbers's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let numbers = "com.apple.iWork.Numbers"
+    /// Numbers's identifier in the Creator Studio build, read from its Info.plist.
+    public static let numbersStudio = "com.apple.Numbers"
     /// Excel's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let excel = "com.microsoft.Excel"
     /// Word's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let word = "com.microsoft.Word"
     /// Pages's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let pages = "com.apple.iWork.Pages"
+    /// Pages's identifier in the Creator Studio build, read from its Info.plist.
+    public static let pagesStudio = "com.apple.Pages"
+    /// Keynote's identifier in the Creator Studio build, read from its Info.plist.
+    public static let keynoteStudio = "com.apple.Keynote"
     /// TextEdit's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let textEdit = "com.apple.TextEdit"
     /// Notes's identifier, named so a corpus case, fixture or default cannot mistype it.
@@ -62,7 +68,7 @@ public enum DestinationRules {
             kind: .sqlEditor
         ),
         DestinationRule(
-            bundlePrefixes: [numbers, excel],
+            bundlePrefixes: [numbers, numbersStudio, excel],
             titleContains: [
                 "Google Sheets", "Excel", "Excel for the web", "Microsoft Excel",
                 "Microsoft Excel for the web",
@@ -72,10 +78,10 @@ public enum DestinationRules {
         ),
         DestinationRule(
             bundlePrefixes: [
-                word, pages, textEdit,
+                word, pages, pagesStudio, keynoteStudio, textEdit,
             ],
             titleContains: ["Google Docs"],
-            nameWords: ["textedit", "pages", "word"],
+            nameWords: ["textedit", "pages", "word", "keynote"],
             kind: .documentEditor
         ),
         DestinationRule(

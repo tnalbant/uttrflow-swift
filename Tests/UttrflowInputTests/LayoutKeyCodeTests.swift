@@ -117,6 +117,18 @@ struct LayoutKeyCodeTests {
         }
     }
 
+    @Test("US QWERTY: Option-only symbols are planned as Option-flagged keys, the set a target probe types")
+    func usOptionOnlySymbols() throws {
+        let data = try layoutData(id: "com.apple.keylayout.US")
+        let expected: [(String, CGKeyCode)] = [("¬", 37), ("√", 9), ("∑", 13), ("©", 5), ("π", 35)]
+        for (symbol, code) in expected {
+            let character = try #require(symbol.utf16.first)
+            #expect(
+                LayoutKeyCode.stroke(for: character, in: data)
+                    == LayoutKeyCode.Stroke(code: code, flags: .maskAlternate), "\(symbol)")
+        }
+    }
+
     @Test("with no layout at all every scalar is sent as its string")
     func noLayoutSendsStrings() {
         let plan = LayoutKeyCode.keypresses(for: "ok\u{1F600}") { _ in nil }
