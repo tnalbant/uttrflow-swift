@@ -36,7 +36,8 @@ public enum ReplaceCommand {
             guard !rest.isEmpty else { continue }
             let replacement = rest.joined(separator: " ").trimmingTrailing(".,;:!?")
             guard !replacement.isEmpty else { continue }
-            return ReplaceRequest(find: tokens[findStart..<split].joined(separator: " "), replacement: replacement)
+            return ReplaceRequest(
+                find: tokens[findStart..<split].joined(separator: " "), replacement: replacement)
         }
         return nil
     }
@@ -54,7 +55,8 @@ public enum ReplaceCommand {
         }
         guard let start = starts.last else { return .notFound }
         let span = words[start].lowerBound..<words[start + wanted.count - 1].upperBound
-        let written = startsSentence(at: span.lowerBound, in: text) && text[span].first?.isUppercase == true
+        let written =
+            startsSentence(at: span.lowerBound, in: text) && text[span].first?.isUppercase == true
             ? WordShape.capitalised(request.replacement) : request.replacement
         return .replaced(text: text.replacingCharacters(in: span, with: written), matches: starts.count)
     }
@@ -84,7 +86,9 @@ public enum ReplaceCommand {
 
     private static func firstIndex(of phrase: [String], in keys: [String], after start: Int) -> Int? {
         guard keys.count >= start + phrase.count + 1 else { return nil }
-        return ((start + 1)...(keys.count - phrase.count)).first { Array(keys[$0..<$0 + phrase.count]) == phrase }
+        return ((start + 1)...(keys.count - phrase.count)).first {
+            Array(keys[$0..<$0 + phrase.count]) == phrase
+        }
     }
 }
 
