@@ -259,6 +259,8 @@ struct SpokenAddress: Equatable {
     private static func part(
         from position: Int, within run: Range<Int>, in live: [Int], of draft: Draft, side: Side = .domain
     ) -> Part? {
+        // "www dot" can end a piece, so the host it announces may lie past the run.
+        guard run.contains(position) else { return nil }
         var labels: [String] = []
         var shaped = false
         var place = position

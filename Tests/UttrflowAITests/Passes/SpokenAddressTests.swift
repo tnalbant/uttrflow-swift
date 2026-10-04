@@ -66,6 +66,11 @@ struct SpokenAddressTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("leaves a piece ending on www dot alone, with no host after it to read")
+    func wwwDotAtTheEnd() {
+        #expect(cleaned("the site is www dot", by: sut) == "the site is www dot")
+    }
+
     @Test(
         "leaves an ordinary at alone",
         arguments: [
