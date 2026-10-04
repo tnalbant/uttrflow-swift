@@ -38,12 +38,16 @@ public struct FocusedWindow: Sendable, Equatable {
     public let isMultiline: Bool?
     /// What the focused field calls itself, never read from a secure field.
     public let fieldLabel: String?
+    /// Whether an input method holds unconfirmed text in the field, which both caret sides already leave out.
+    public let isComposing: Bool
 
     public init(
         title: String? = nil, selectedText: String? = nil, precedingText: String? = nil,
         followingText: String? = nil, isSecure: Bool = false,
-        accessibilityRole: String? = nil, isMultiline: Bool? = nil, fieldLabel: String? = nil
+        accessibilityRole: String? = nil, isMultiline: Bool? = nil, fieldLabel: String? = nil,
+        isComposing: Bool = false
     ) {
+        self.isComposing = isComposing
         self.title = title
         self.selectedText = selectedText
         self.precedingText = precedingText
