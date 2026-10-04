@@ -463,7 +463,7 @@ public actor DictationPipeline {
         cancelledGeneration = generation
         early.cancel()
         await capture.cancel()
-        await discardOpenRecording()
+        await settleRecording(wordsLost: false)
         transition(to: .idle)
     }
 
@@ -1106,8 +1106,7 @@ public actor DictationPipeline {
             }
             // A field found secure at the write counts from here on, before anything is learnt from it.
             if attempt.intoSecureField { destinationIsSecure = true }
-            // The words landed, so the audio has done its job.
-            await discardOpenRecording()
+            await settleRecording(wordsLost: MissedSpeech.isMissing(missedPieces))
             transition(
                 to: .inserted(
                     DictationOutcome(
@@ -1137,17 +1136,25 @@ public actor DictationPipeline {
     /// Ends the dictation in failure, keeping the audio exactly when the words were lost. See `Docs/recordings.md`.
     private func fail(_ failure: DictationFailure) async {
         var failure = failure.markingSecure(destinationIsSecure)
-        if let openRecording {
-            self.openRecording = nil
-            let wordsLost = failure.transcript == nil && failure.severity != .informational
-            // A secure field's audio is not kept for a retry, since its words are a secret.
-            if !wordsLost || destinationIsSecure {
-                await recordings.discard(openRecording)
-            } else if failure.recovery == nil || failure.recovery == .retry {
-                failure = failure.offering(.retryFromRecording)
-            }
+        let wordsLost = failure.transcript == nil && failure.severity != .informational
+        let kept = await settleRecording(wordsLost: wordsLost)
+        if kept, failure.recovery == nil || failure.recovery == .retry {
+            failure = failure.offering(.retryFromRecording)
         }
         transition(to: .failed(failure))
+    }
+
+    /// Keeps the open recording exactly when words were lost and the field is not secure, else deletes it.
+    @discardableResult
+    private func settleRecording(wordsLost: Bool) async -> Bool {
+        guard let openRecording else { return false }
+        self.openRecording = nil
+        // A secure field's audio is not kept for a retry, since its words are a secret.
+        guard wordsLost, !destinationIsSecure else {
+            await recordings.discard(openRecording)
+            return false
+        }
+        return true
     }
 
     /// Takes the recording written while the key was held as this dictation's, or deletes a cancelled one.
@@ -1167,13 +1174,6 @@ public actor DictationPipeline {
                 ?? SituationResolver.resolve(from: destination, overrides: runningOverrides).destination
             await recordings.setDestination(destination, fieldKind: fieldKind, for: id)
         }
-    }
-
-    /// Deletes the kept audio of the dictation under way, if there is one.
-    private func discardOpenRecording() async {
-        guard let openRecording else { return }
-        self.openRecording = nil
-        await recordings.discard(openRecording)
     }
 
     /// Tells the stores what this dictation used, once the words are safely on screen.

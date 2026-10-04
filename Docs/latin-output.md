@@ -24,6 +24,18 @@ Recognition still answers in Devanagari, and what that costs in decoder steps â€
 for decoding straight to Latin, and why none of them is taken â€” is measured in
 `Docs/speech-engines.md`.
 
+## What a model is told
+
+Every prompt that states the rule quotes one constant, `LatinOnlyInstruction.text` in
+`Sources/UttrflowCore/Script/LatinOnlyInstruction.swift`: the tidy contract (`PromptContract`) for
+every destination, and the suggestion prompt (`CompletionPromptBuilder`) whenever its context holds
+another script. `LatinOnlyInstructionTests` checks the constant against this quote:
+
+> Write only English in the Latin alphabet, or romanised Hinglish where the person writes Hindi in Latin letters. Never write Devanagari or any other script, and never translate.
+
+What a prompt says is a request; the romaniser, the script guard and the last resort below are
+what hold whatever a model writes.
+
 ## The romaniser
 
 `Sources/UttrflowCore/Script/Romaniser.swift` writes Devanagari the way Hinglish is typed in a

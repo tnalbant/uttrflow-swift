@@ -1027,7 +1027,7 @@ public enum SettingsPresenter {
     /// What happens to the audio, in the one wording every screen repeats. See `Docs/recordings.md`.
     public static let recordingsPromise =
         "Audio is deleted the moment it becomes text, and kept on this Mac for a day only "
-        + "if it couldn’t be, so you can retry."
+        + "if some of it couldn’t be, so you can retry."
 
     /// The order the theme is offered in: following the Mac first, then the two fixed looks.
     static let offeredAppearances: [AppAppearance] = [.system, .light, .dark]

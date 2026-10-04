@@ -34,6 +34,11 @@ struct PromptBuilderTests {
         #expect(block.id.rawValue == destination.rawValue)
     }
 
+    @Test("states the Latin-only rule in its one shared wording", arguments: Destination.allCases)
+    func latinOnlyRule(destination: Destination) {
+        #expect(builder.instructions(for: destination).contains("- \(LatinOnlyInstruction.text) "))
+    }
+
     @Test(
         "opens each block with the place it is for",
         arguments: [

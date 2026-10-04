@@ -122,6 +122,26 @@ late blocks during a real microphone recording; those need Instruments against a
 `AVAudioConverter` and the Swift-to-Objective-C bridging of its input block may still allocate
 internally, which this code cannot remove.
 
+## Gaps in the capture timeline
+
+Samples cannot say that time passed, so a buffer the tap never received, a conversion that threw,
+or a block the full ring refused would otherwise join the audio either side of it and cut or fuse
+words. `TapClock` checks every buffer's `AVAudioTime.sampleTime` against where the last delivered
+buffer ended (`CaptureTimeline`):
+
+- A hole under half a buffer is clock jitter and is ignored; a step backwards is a new clock.
+- A hole up to 100 ms is filled with silence of the same length, pushed in the same block as the
+  buffer after it, from zeros allocated once per engine, so word timings stay on the real clock.
+- A longer hole sets a flag the handoff's thread takes before delivering the next block, and the
+  session reports it as `CaptureInterruption.began`, the refusal a device change already takes.
+- A lost buffer leaves the expected start where it was, so it reappears as the hole before the next
+  one; lost buffers, holes and total hole length are counted on the timeline.
+
+`CaptureTimelineTests` drops every fifth 1024-frame buffer at 48 kHz for 201 buffers and gets a
+canonical sample count equal to the elapsed time within one block. **Not measured:** how often
+holes happen on a real microphone under load, and so whether 100 ms is the right bound; the counts
+are not yet reported anywhere outside the timeline.
+
 ## The level meter
 
 - A microphone tap runs on a real-time thread that must never wait on an actor, so samples reach

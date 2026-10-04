@@ -294,9 +294,17 @@ private final class LoadedKit: @unchecked Sendable {
         // Reassigned with the rules, so word timings always read the rows this call's prompt left them.
         kit.segmentSeeker = Self.seeker(for: options, tokenizer: tokenizer)
         return (
-            try await kit.transcribe(audioArray: samples, decodeOptions: options),
+            try await kit.transcribe(
+                audioArray: samples, decodeOptions: options, callback: Self.loopStop(windowOf: samples.count)),
             packing?.words ?? []
         )
+    }
+
+    /// Stops a window's decode once its text is a loop that `RecognitionLoop.undone` would cut anyway.
+    static func loopStop(windowOf sampleCount: Int) -> TranscriptionCallback {
+        let samples = min(sampleCount, Constants.defaultWindowSamples)
+        let audio = Duration.seconds(Double(samples) / Double(AudioSamples.canonicalSampleRate))
+        return { progress in RecognitionLoop.isLooping(progress.text, within: audio) ? false : nil }
     }
 
     /// The segment seeker for this call, lined up past the prompt that precedes the transcript in the alignment weights.

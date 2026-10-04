@@ -50,6 +50,10 @@ comment-audit: ## Prove no file gained a multi-line comment. Needs no build.
 comment-report: ## List the multi-line comments left, worst file first.
 	@python3 Scripts/comment_audit.py --report
 
+.PHONY: seam-audit
+seam-audit: ## Prove no corpus cut gained a difference between cleaning its pieces and cleaning the whole.
+	$(SWIFT) run uttrflow-dev seams --check Scripts/seam_baseline.json
+
 .PHONY: match-audit
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
