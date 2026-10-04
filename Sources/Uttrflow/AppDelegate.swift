@@ -1241,7 +1241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Ranked against the screen the pipeline already read for this dictation, not a second read of its own.
         let speechWords = DictionaryVocabulary { [dictionary] in
-            await (dictionary.allEntries(), Date())
+            await (dictionary.allEntries(), dictionary.index(), Date())
         }
 
         // One cue for both ends, shaped when it can be and the plain system sound when it cannot.
@@ -1267,7 +1267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Announced, like every write this app makes. See `Docs/insertion.md`.
             inserter: TextInsertion.dictation(),
             speechWords: { seeing in await speechWords.vocabulary(favouring: seeing) },
-            corrector: DictionaryCorrections(dictionary: dictionary),
+            corrector: DictionaryCorrections { [dictionary] in await dictionary.index() },
             snippets: StoredSnippets(store: snippets),
             learner: StoreCounters(dictionary: dictionary, snippets: snippets),
             vocabulary: LearnedVocabulary(dictionary: dictionary) { [weak self] entries in
@@ -1316,10 +1316,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dock.update(with: dockPresentation(for: lastDictationState))
     }
 
-    /// Redraws the floating button when the gesture that ends a recording has changed.
+    /// Redraws the menu and the floating button when the gesture that ends a recording has changed.
     private func recordingStopGestureChanged(to gesture: StopGesture) {
         guard gesture != recordingStopGesture else { return }
         recordingStopGesture = gesture
+        refreshMenuBar()
         dock.update(with: dockPresentation(for: lastDictationState))
     }
 
@@ -1636,7 +1637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .pasteLastTranscript:
             await pasteLastTranscript()
         case .copyLastTranscript:
-            copyLastTranscript()
+            await copyLastTranscript()
         // Watched through the tap rather than registered, so it never arrives here.
         case .dictate:
             break
@@ -1645,7 +1646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Puts the last dictation back at the caret by the route a dictation takes, never the clipboard.
     private func pasteLastTranscript() async {
-        guard let text = lastTranscript, !text.isEmpty else {
+        guard let text = await keptLastTranscript() else {
             sayNoLastTranscript(to: "paste")
             return
         }
@@ -1665,8 +1666,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Writes the clipboard on purpose, which is the one shortcut whose whole job that is.
-    private func copyLastTranscript() {
-        guard let text = lastTranscript, !text.isEmpty else {
+    private func copyLastTranscript() async {
+        guard let text = await keptLastTranscript() else {
             sayNoLastTranscript(to: "copy")
             return
         }
@@ -2300,6 +2301,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
         if case .inserted(let outcome) = state {
             lastCleanedBy = outcome.cleanedBy
+            if let notice = MainNotice.cleanUpSkipped(by: outcome.cleanedBy) {
+                actionNotice = notice
+                announce(notice.message, urgently: false)
+            }
             if !appleIntelligenceFallbackNoticeShown,
                 outcome.cleanedBy == .rules,
                 let unavailable = outcome.unavailableEngines.first(where: {
@@ -2451,6 +2456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             speechModel: speechReadiness,
             speechLoadElapsed: speechLoadStarted.map { $0.duration(to: .now) } ?? .zero,
             recordingAdvice: recordingAdvice,
+            stopGesture: recordingStopGesture,
             recents: recents.previews.map {
                 MenuBarRecent(
                     id: $0.id,
@@ -2666,6 +2672,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         lastTranscriptGeneration += 1
         lastTranscript = nil
         lastTranscriptID = nil
+    }
+
+    /// The last transcript only while History still keeps its record, so retention forgets it too.
+    private func keptLastTranscript() async -> String? {
+        guard let text = lastTranscript, !text.isEmpty, let id = lastTranscriptID else { return nil }
+        let generation = lastTranscriptGeneration
+        let retention = Retention(days: settings.transcriptRetentionDays, now: Date())
+        let kept = await history.records(keeping: retention).contains { $0.id == id }
+        guard generation == lastTranscriptGeneration, id == lastTranscriptID else { return nil }
+        guard kept else {
+            forgetLastTranscript()
+            return nil
+        }
+        return text
     }
 
     /// Restores the newest retained dictation so paste-last works after relaunch.
@@ -3479,10 +3499,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Whether the floating button collapses to a grip when idle, as the running button has it now.
     var dockShrinksToGrip: Bool { dock.shrinksToGrip }
 
-    /// Hides the main window while the user speaks, and deliberately does not bring it back.
+    /// Minimises the main window while the user speaks; it stays in the Dock until the user opens it.
     private func getOutOfTheWay(for state: DictationState) {
         guard settings.minimisesWhileDictating, case .recording = state else { return }
-        mainWindow?.hide()
+        mainWindow?.minimise()
     }
 
     /// Draws every window Uttrflow owns light or dark together; `nil` means follow the Mac.
@@ -3633,31 +3653,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 }
 
 // MARK: - The pipeline's seams, wired to the real stores
-
-/// The correction engine over the user's dictionary: mapping only, deciding none of it.
-private struct DictionaryCorrections: WordCorrecting {
-    let dictionary: PersonalDictionaryStore
-    let engine = WordCorrectionEngine()
-
-    func corrections(
-        for transcription: Transcription, seeing context: AppContext
-    ) async -> [DictationCorrection] {
-        // No score, no judgement: Apple's recogniser reports none, so it gets no corrections.
-        guard let scored = transcription.scoredWords else { return [] }
-        let utterance = Utterance(
-            words: scored.map { SpokenWord(text: $0.text, confidence: $0.confidence) })
-
-        let proposals = await engine.proposals(
-            for: utterance, against: dictionary.index(), seeing: context)
-
-        return proposals.map {
-            DictationCorrection(
-                heard: $0.heard, wrote: $0.replacement, wordRange: $0.wordRange,
-                entryID: $0.entryID, reason: $0.reason,
-                heardConfidence: $0.heardConfidence)
-        }
-    }
-}
 
 /// The snippet matcher, built from what is on disk at the moment of the dictation.
 private struct StoredSnippets: SnippetExpanding {

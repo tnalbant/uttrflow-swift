@@ -596,6 +596,35 @@ struct MenuBarEnablementTests {
         #expect(shown.statusLine == "Listening… \(RemainingTime.phrase(for: advice) ?? "")")
     }
 
+    @Test(
+        "says how to finish a recording that releasing the keys does not end",
+        arguments: [
+            (StopGesture.letGo, "Listening…", "Uttrflow. Listening."),
+            (
+                .pressAgain, "Listening… Press shortcut to finish",
+                "Uttrflow. Listening. Press shortcut to finish."
+            ),
+            (
+                .pressAgainHandsFree, "Listening… Hands-free — press shortcut to finish",
+                "Uttrflow. Listening. Hands-free — press shortcut to finish."
+            ),
+        ])
+    func listeningSaysHowToFinish(gesture: StopGesture, line: String, spoken: String) {
+        let shown = MenuBarPresenter.present(MenuBarState(activity: .listening, stopGesture: gesture))
+        #expect(shown.statusLine == line)
+        #expect(shown.accessibilityLabel == spoken)
+    }
+
+    @Test("puts the countdown after how to finish")
+    func listeningCountsDownAfterTheInstruction() {
+        let advice = DictationAdvice.approaching(remaining: .seconds(74))
+        let shown = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, recordingAdvice: advice, stopGesture: .pressAgain))
+        #expect(
+            shown.statusLine
+                == "Listening… Press shortcut to finish, \(RemainingTime.phrase(for: advice) ?? "")")
+    }
+
     /// Disabled rather than failing silently, which is what a refused microphone would look like.
     @Test("refuses to start a dictation that cannot happen")
     func startDictationEnablement() {
@@ -845,6 +874,19 @@ struct MenuBarUpdateTests {
         #expect(line(.idle) == "Ready")
     }
 
+    /// An open microphone is the one thing a VoiceOver user must hear, so an update waits behind it.
+    @Test("a live dictation outranks an update, which returns when it ends")
+    func dictationOutranksUpdate() {
+        let listening = MenuBarPresenter.present(
+            MenuBarState(activity: .listening, updateProgress: .readyToInstall))
+        #expect(listening.statusLine == "Listening…")
+        #expect(listening.accessibilityLabel == "Uttrflow. Listening.")
+        let working = MenuBarState(activity: .working, updateProgress: .downloading(fraction: 0.4))
+        #expect(MenuBarPresenter.present(working).statusLine == "Tidying up…")
+        let rested = MenuBarState(activity: .inserted, updateProgress: .readyToInstall)
+        #expect(MenuBarPresenter.present(rested).statusLine == "Update ready — installing when you pause")
+    }
+
     @Test("says when the update feed is being checked")
     func checking() {
         #expect(line(.checking) == "Checking for updates…")
@@ -860,10 +902,10 @@ struct MenuBarUpdateTests {
         #expect(MenuBarPresenter.present(state).statusLine == "Something went wrong")
     }
 
-    /// Below a failure and above the rest: an update is about to take the app away.
-    @Test("an update outranks the ordinary activity line")
+    /// Below a failure and a live dictation, above the rest: an update is about to take the app away.
+    @Test("an update outranks a resting activity line")
     func updateOutranksActivity() {
-        let state = MenuBarState(activity: .listening, updateProgress: .installing)
+        let state = MenuBarState(activity: .inserted, updateProgress: .installing)
         #expect(MenuBarPresenter.present(state).statusLine == "Updating…")
     }
 
