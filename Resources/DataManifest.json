@@ -161,6 +161,15 @@
       "bytes": 3979
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/correction-triggers.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "cad11353bc39acc371ba3c42ab75b7cc26ae2c2050ec2e22d433ef96b000b78a",
+      "bytes": 1659
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/function-words.json",
       "origin": "authored",
       "licence": "MIT",
