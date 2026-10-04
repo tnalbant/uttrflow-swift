@@ -325,6 +325,13 @@ public enum EvaluationCorpus {
             expected: "\"We ship on Friday.\"",
             mustKeep: ["Friday"]
         ),
+        // The prompt folds double quotes to single; the answer must carry the speaker's double ones.
+        .init(
+            id: "quoted-words-mid-sentence", category: .everyday,
+            spoken: "he said \"we ship on Friday\" and left",
+            expected: "He said \"we ship on Friday\" and left.",
+            mustKeep: ["Friday"]
+        ),
         // What PromptContract asks for and Docs/cleanup.md records the model refusing: measured, not asserted.
         .init(
             id: "restatement-slot-adjacent", category: .everyday,
