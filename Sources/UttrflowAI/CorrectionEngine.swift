@@ -8,7 +8,7 @@ public struct WordCorrectionEngine: Sendable {
     public static let certaintyThreshold = 0.5
 
     /// Changing more than one spoken word in this many abandons the whole utterance, not just the excess.
-    public static let maximumChangedInEvery = 5
+    static let maximumChangedInEvery = 5
 
     /// Makes an engine; it holds no state.
     public init() {}
