@@ -31,7 +31,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 continue
             }
             let letters = live[position..<end].compactMap { Self.letterName(draft.shape(at: $0)) }
-            guard letters.count == end - position else {
+            guard letters.count == end - position, Self.isSpelled(live[position..<end], in: draft) else {
                 position += 1
                 continue
             }
@@ -118,6 +118,11 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     /// The letter a word names, where a cut-off is an unfinished word and names no letter.
     private static func letterName(_ shape: WordShape) -> String? {
         shape.isCutOff ? nil : letterNames[shape.key]
+    }
+
+    /// Whether a run is evidence of spelling: three or more letter names, or a pair of bare single letters.
+    private static func isSpelled(_ run: ArraySlice<Int>, in draft: Draft) -> Bool {
+        run.count >= 3 || run.allSatisfy { draft.shape(at: $0).key.count == 1 }
     }
 
     private static func casedOutput(_ output: String, first: String) -> String {

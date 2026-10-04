@@ -676,6 +676,18 @@ public enum EvaluationCorpus {
             expected: "Note: kal chutti hai.",
             mustKeep: ["note", "kal chutti hai"], mustNotAdd: ["colon"]
         ),
+        .init(
+            id: "hinglish-interjections-not-letters", category: .everyday,
+            spoken: "are o bhai sun",
+            expected: "Are o bhai sun.",
+            mustKeep: ["are o bhai"], mustNotAdd: ["RO"]
+        ),
+        .init(
+            id: "hinglish-jay-jay-not-letters", category: .everyday,
+            spoken: "jay jay ho",
+            expected: "Jay jay ho.",
+            mustKeep: ["jay jay"], mustNotAdd: ["JJ"]
+        ),
         // Issue 237: the same bare names said as ordinary words, which must survive as words.
         .init(
             id: "colon-cancer-as-words", category: .everyday,

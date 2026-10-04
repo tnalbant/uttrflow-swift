@@ -43,6 +43,23 @@ struct SpelledInitialismPassTests {
     }
 
     @Test(
+        "joins a pair only when both are bare letters, and any run of three",
+        arguments: [
+            ("are o bhai sun", "are o bhai sun"),
+            ("are be tum bhi", "are be tum bhi"),
+            ("o be pagal hai kya", "o be pagal hai kya"),
+            ("arre are o", "arre are o"),
+            ("jay jay ho", "jay jay ho"),
+            ("oh oh theek hai", "oh oh theek hai"),
+            ("o ho", "o ho"),
+            ("the p r is open", "the PR is open"),
+            ("call the eff bee eye", "call the FBI"),
+        ])
+    func pairsNeedBareLetters(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
         "does not treat i adjacent to a letter name as the pronoun",
         arguments: [
             ("we said i e is the main one", "we said i.e. is the main one"),
