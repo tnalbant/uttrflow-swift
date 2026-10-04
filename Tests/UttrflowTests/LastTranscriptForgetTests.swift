@@ -35,7 +35,8 @@ struct LastTranscriptForgetTests {
         let app = dictated("Sample words", in: sandbox)
         #expect(app.actionNotice == nil)
 
-        app.render(.inserted(DictationOutcome(text: "um sample", method: .accessibility, cleanedBy: .untidied)))
+        app.render(
+            .inserted(DictationOutcome(text: "um sample", method: .accessibility, cleanedBy: .untidied)))
 
         #expect(app.actionNotice == MainNotice.cleanUpSkipped(by: .untidied))
     }

@@ -69,7 +69,8 @@ extension MainNotice {
         guard cleanedBy == .untidied else { return nil }
         let drawing = Self.drawing(for: .degraded)
         return MainNotice(
-            message: "Inserted without clean-up. Tidying did not finish, so your words went in exactly as heard.",
+            message:
+                "Inserted without clean-up. Tidying did not finish, so your words went in exactly as heard.",
             symbolName: drawing.symbolName, tone: drawing.tone)
     }
 
