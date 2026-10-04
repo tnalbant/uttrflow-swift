@@ -88,3 +88,33 @@ The dependency rules these placements keep:
 
 The dependency graph is `Package.swift`; `make layering-audit` checks UI imports and platform
 dependencies, not these rules.
+
+## Where fitting lives
+
+Every fitted parameter a layer ships (reranker weights, the doubt detector, the override-gate
+margin, n-gram counts) is fitted in Swift, in `UttrflowEval` (`Sources/UttrflowEval/Fitting.swift`),
+and run through `uttrflow-eval`. A fit reads the same `TextNormaliser`, `WordErrorRate` alignment,
+phonetic keys and feature code the app ships; no second normaliser, aligner or feature extractor
+exists for fitting, in Swift or in `Scripts/`.
+
+| Model family | Fit | Home |
+|---|---|---|
+| Linear scorer over fewer than 20 features | L2-regularised logistic regression | `LinearScorer.fit` |
+| Monotone calibration map | pool-adjacent-violators | `MonotoneCalibration.fit` |
+| Count table | a dictionary of counts | the layer's own reader format |
+
+Fitting adds no dependency. A step that cannot be done in Swift (for example a one-off model
+conversion) names itself in its issue, pins every package by hash, and states how dependency
+scanning covers it, because `osv-scanner` and dependency review read only `Package.resolved`.
+
+Measured on an Apple M5 Pro with 48 GB, under full CPU load from other builds, `swiftc -O`, one
+thread, synthetic rows of 20 features:
+
+| Fit | Rows | Time |
+|---|---|---|
+| `LinearScorer.fit`, 200 iterations | 100,000 | 7.7 s |
+| `LinearScorer.fit`, 200 iterations | 1,000,000 | 40.2 s |
+| `MonotoneCalibration.fit` | 1,000,000 | 0.17 s |
+| Bigram-shaped count table | 5,000,000 increments | 1.3 s |
+
+The largest fit is under one minute, against a ten-minute limit on a 16 GB Mac.
