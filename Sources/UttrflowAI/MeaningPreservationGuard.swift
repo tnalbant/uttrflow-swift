@@ -384,7 +384,7 @@ public struct MeaningPreservationGuard: Sendable {
     static func sentenceEnds(_ text: String) -> Int {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         return words.indices.count { index in
-            FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
+            Abbreviations.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
         }
     }
 }

@@ -127,9 +127,7 @@ public struct WordShape: Equatable, Sendable {
     public static func marked(_ text: String, with mark: String) -> String {
         if mark == "\u{2014}" { return text + " " + mark }
         if let last = text.last, ",.;:!?".contains(last), ",.;:!?".contains(mark) {
-            if last == ".",
-                InsertionPoint.sentenceAbbreviations.contains(WordShape(text).core.lowercased())
-            {
+            if last == ".", Abbreviations.ownsStop(WordShape(text).core) {
                 return mark == "." ? text : text + mark
             }
             return String(text.dropLast()) + mark

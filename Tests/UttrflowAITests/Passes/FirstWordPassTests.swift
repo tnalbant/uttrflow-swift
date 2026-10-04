@@ -197,11 +197,17 @@ struct FirstWordPassTests {
         #expect(sut.apply(paragraph).text == "First line\n\nSecond line")
     }
 
-    @Test("the same known abbreviations do not end a sentence inside a dictation")
-    func sharedAbbreviationsStayInsideSentence() {
-        for abbreviation in InsertionPoint.sentenceAbbreviations {
-            #expect(!FirstWordPass.endsSentence(abbreviation + "."))
-        }
+    @Test(
+        "an abbreviation's stop does not open a sentence unless the abbreviation table says it may",
+        arguments: [
+            ("call Dr. rao at 5 p.m. today", "Call Dr. rao at 5 p.m. today"),
+            ("fruit e.g. apples", "Fruit e.g. apples"),
+            ("meet at 5 p.m. Sharp", "Meet at 5 p.m. Sharp"),
+            ("see fig. three", "See fig. three"),
+            ("it was done. then home", "It was done. Then home"),
+        ])
+    func abbreviationsKeepTheSentenceOpen(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
     }
 
     @Test(
