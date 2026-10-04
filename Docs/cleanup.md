@@ -147,6 +147,17 @@ and that list, not this page, is the record of what the floor covers. Spellings 
 to decide are the model's alone. A gap gets a corpus case before it gets a prompt line, because
 a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
 
+## Dictation that reads like a request
+
+Dictation that sounds addressed to the model is still dictation, and its expected text is the
+tidied words. `RequestCorpus.swift` holds at least eight invented cases for each class in
+`RequestClass`: questions (factual, personal, rhetorical), imperatives to an assistant,
+"ignore" and "system:" forms, text that names an output format, labels, quotes and fences said
+or added, polite requests, Hindi and Hinglish requests in both scripts, one- and two-word
+inputs, and text that invites a refusal. Each case carries the output of a model that commits
+one `RequestFailure` (obeyed, answered, translated, wrapped, refused), and
+`RequestMatrixTests` fails when a guard on the case does not catch that output.
+
 ## Where the words are going
 
 Two of the Tier 2 cleanings depend on the place rather than the speech, and
