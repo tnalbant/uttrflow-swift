@@ -58,13 +58,56 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
     var deletions: [Int] { deleted.withLock { $0 } }
 
     func type(_ text: String) throws(TextInsertionError) {
-        typed.withLock { $0.append(text) }
         if let error { throw error }
+        typed.withLock { $0.append(text) }
     }
 
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {
         deleted.withLock { $0.append(count) }
         if let error { throw error }
+    }
+}
+
+private enum ReplacementFailureMode: Equatable {
+    case firstType
+    case afterDeleteCancellation
+}
+
+private final class ReplacementTypist: KeystrokeTyping, @unchecked Sendable {
+    private struct State {
+        var visibleText: String
+        var attempts: [String] = []
+        var deletions: [Int] = []
+    }
+    private let state: Mutex<State>
+    private let failureMode: ReplacementFailureMode
+
+    init(text: String, failureMode: ReplacementFailureMode) {
+        state = Mutex(State(visibleText: text))
+        self.failureMode = failureMode
+    }
+    var visibleText: String { state.withLock { $0.visibleText } }
+    var attempts: [String] { state.withLock { $0.attempts } }
+    var deletions: [Int] { state.withLock { $0.deletions } }
+
+    func type(_ text: String) throws(TextInsertionError) {
+        let fails = state.withLock { state in
+            state.attempts.append(text)
+            if failureMode == .firstType, state.attempts.count == 1 { return true }
+            state.visibleText += text
+            return false
+        }
+        if fails { throw .accessibilityDenied }
+    }
+
+    func deleteBackwards(_ count: Int) throws(TextInsertionError) {
+        state.withLock { state in
+            state.deletions.append(count)
+            state.visibleText = String(state.visibleText.dropLast(count))
+        }
+        if failureMode == .afterDeleteCancellation {
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
     }
 }
 
@@ -294,6 +337,81 @@ struct TypedTextInsertionEngineTests {
         #expect(typist.text == ["it commit"])
     }
 
+    @Test("A failed first chunk restores replaced text and asks the user to check the field.")
+    func restoresReplacementWhenFirstChunkFails() async {
+        let typist = ReplacementTypist(text: "gti c", failureMode: .firstType)
+        let target = InsertionDestination(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let engine = TypedTextInsertionEngine(
+            focus: FakeFocus(preceding: "gti c", frontmost: target), typist: typist)
+
+        await #expect(throws: TextInsertionError.insertionUnconfirmed) {
+            try await engine.write("it commit", replacing: "gti c", confirmedPreceding: "gti c")
+        }
+
+        #expect(typist.deletions == [5])
+        #expect(typist.attempts == ["it commit", "gti c"])
+        #expect(typist.visibleText == "gti c")
+        #expect(
+            TextInsertionError.insertionUnconfirmed.userMessage
+                == "The app hasn't confirmed whether the text was inserted. Check the field before trying again."
+        )
+    }
+
+    @Test("Cancellation after Delete does not prevent restoration in the same destination.")
+    func cancellationAfterDeleteStillRestoresReplacement() async {
+        let target = InsertionDestination(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let typist = ReplacementTypist(text: "gti c", failureMode: .afterDeleteCancellation)
+        let engine = TypedTextInsertionEngine(
+            focus: FakeFocus(preceding: "gti c", frontmost: target), typist: typist)
+        let write = Task { () -> TextInsertionError? in
+            do throws(TextInsertionError) {
+                try await engine.write("it commit", replacing: "gti c", confirmedPreceding: "gti c")
+                return nil
+            } catch { return error }
+        }
+
+        let error = await write.value
+
+        #expect(error == .insertionUnconfirmed)
+        #expect(typist.deletions == [5])
+        #expect(typist.attempts == ["gti c"])
+        #expect(typist.visibleText == "gti c")
+    }
+
+    @Test("A failed replacement is not restored into a newly focused application.")
+    func doesNotRestoreReplacementAfterFocusChanges() async {
+        let original = InsertionDestination(applicationName: "Editor", bundleIdentifier: "com.example.editor")
+        let other = InsertionDestination(applicationName: "Chat", bundleIdentifier: "com.example.chat")
+        // Five reads cover capture, pre-delete checks, setup, and the first-chunk check.
+        let focus = SequencedReplacementFocus([
+            original, original, original, original, original, other,
+        ])
+        let typist = ReplacementTypist(text: "gti c", failureMode: .firstType)
+        let engine = TypedTextInsertionEngine(focus: focus, typist: typist)
+
+        await #expect(throws: TextInsertionError.insertionUnconfirmed) {
+            try await engine.write("it commit", replacing: "gti c", confirmedPreceding: "gti c")
+        }
+
+        #expect(typist.deletions == [5])
+        #expect(typist.attempts == ["it commit"])
+    }
+
+    @Test("A replacement is not deleted when the focused application cannot be identified.")
+    func refusesReplacementWithoutKnownApplication() async {
+        let typist = ReplacementTypist(text: "gti c", failureMode: .firstType)
+        let engine = TypedTextInsertionEngine(
+            focus: FakeFocus(preceding: "gti c"), typist: typist)
+
+        await #expect(throws: TextInsertionError.insertionUnconfirmed) {
+            try await engine.write("it commit", replacing: "gti c", confirmedPreceding: "gti c")
+        }
+
+        #expect(typist.deletions.isEmpty)
+        #expect(typist.attempts.isEmpty)
+        #expect(typist.visibleText == "gti c")
+    }
+
     @Test("quit waits through the gap between deleting and typing a replacement")
     func quitWaitsForReplacement() async throws {
         let typist = PausingTypist()
@@ -354,6 +472,25 @@ struct TypedTextInsertionEngineTests {
         #expect(focus.wholeValueReads == 0)
         #expect(typist.deletions == [3])
     }
+}
+
+private final class SequencedReplacementFocus: AccessibilityFocus, @unchecked Sendable {
+    private let applications: [InsertionDestination]
+    private let reads = Mutex(0)
+
+    init(_ applications: [InsertionDestination]) { self.applications = applications }
+
+    func focusedTextField() -> (any FocusedTextField)? { nil }
+    func hasFocusedElement() -> Bool { true }
+    func isSelfFrontmost() -> Bool { false }
+    func focusedApplication() -> InsertionDestination? {
+        reads.withLock { reads in
+            let application = applications[min(reads, applications.count - 1)]
+            reads += 1
+            return application
+        }
+    }
+    func focusedFieldIsSecure() -> Bool { false }
 }
 
 /// A million-character field that counts bounded reads separately from whole-value reads.

@@ -1600,6 +1600,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 7g. Every insertion scenario has an entry for every application class.
+# ---------------------------------------------------------------------------
+printf '\nInsertion test matrix\n'
+
+if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py"; then
+        pass "every insertion scenario names its test and an entry per class"
+    else
+        fail "Docs/insertion-test-matrix.md has a scenario without an entry" \
+            "Each scenario needs an existing test and, per class, a harness, a manual" \
+            "procedure with its own section, or 'not applicable'."
+    fi
+else
+    fail "Scripts/insertion_matrix_audit.py --self-test failed" \
+        "The audit must catch an empty cell before it checks the matrix."
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n'
 if [[ "$failures" -gt 0 ]]; then
     printf 'docs audit: %s check(s) failed. The documentation contradicts the tree.\n\n' "$failures" >&2

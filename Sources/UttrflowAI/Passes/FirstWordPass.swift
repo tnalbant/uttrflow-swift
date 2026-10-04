@@ -68,6 +68,15 @@ public struct FirstWordPass: WholeTextCleaningPass {
                     in: text, heard: Array(heardWords.dropFirst(spokenBefore)))
             } else if startOfSentence {
                 cased = WordShape.capitalised(cased)
+            } else if policy == .fromInsertionPoint,
+                Self.followsDemotedSentenceEnd(at: index, in: draft),
+                FunctionWords.holds(WordShape(cased).key),
+                !Self.keepsCapital(cased),
+                !(capitaliseCalendarWords && Self.isCalendarWord(cased)),
+                !Self.isProperName(cased, in: text),
+                !Self.looksLikeName(cased, in: [Self.otherText(excluding: index, in: draft)] + onScreen)
+            {
+                cased = WordShape.lowercased(cased)
             } else if capitaliseCalendarWords {
                 cased = Self.properNameCapitalised(
                     Self.calendarWordCapitalised(afterPause ? cased : strayCapitalLowered(cased, in: text)),
@@ -82,6 +91,27 @@ public struct FirstWordPass: WholeTextCleaningPass {
             isFirst = false
         }
         return draft
+    }
+
+    private static func followsDemotedSentenceEnd(at index: Int, in draft: Draft) -> Bool {
+        let live = draft.presentIndices
+        guard let position = live.firstIndex(of: index), position > 0 else { return false }
+        let previous = live[position - 1]
+        let replacedWithComma = draft.words[previous].edits.contains { edit in
+            edit.by == SpokenPunctuationPass.id && edit.kind == .replaced
+                && WordShape(edit.to).suffix.hasSuffix(",")
+        }
+        guard replacedWithComma else { return false }
+        return ((previous + 1)..<index).contains { removed in
+            guard case .removed(by: SpokenPunctuationPass.id) = draft.words[removed].state else {
+                return false
+            }
+            return WordShape(draft.words[removed].heard).endsSentence
+        }
+    }
+
+    private static func otherText(excluding index: Int, in draft: Draft) -> String {
+        draft.presentIndices.filter { $0 != index }.map { draft.words[$0].text }.joined(separator: " ")
     }
 
     /// The first word under the policy: a capital, the case it was heard in, or lower-case after a mid-sentence caret.
@@ -247,13 +277,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return WordShape.lowercased(word)
     }
 
-    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, an acronym, or a letter-and-digit code.
+    /// Whether a word keeps its case mid-sentence: "I" and its contractions, an acronym, or a technical token.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
         if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }
-        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
+        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.keepsWrittenCase(core)
     }
 
     /// Copies the case the word was heard in from where it stands, skipping fillers; a changed word is left alone.

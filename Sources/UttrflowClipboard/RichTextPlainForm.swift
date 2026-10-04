@@ -16,15 +16,29 @@ public enum RichTextPlainForm: Sendable {
 
     /// The readable plain-text form of `html`; total, so unparseable input yields text rather than an error.
     public static func plainText(fromHTML html: String) -> String {
+        conversion(fromHTML: html).text
+    }
+
+    static func conversion(
+        fromHTML html: String, maximumOutputBytes: Int = ClipboardBudget.standard.largestClip
+    ) -> (text: String, wasTruncated: Bool) {
         var tokenizer = HTMLTokenizer(html)
 
         // Input with nothing recognisably HTML in it keeps its tags, so `Array<String>` survives.
-        guard tokenizer.looksLikeMarkup() else { return HTMLEntities.decoding(html) }
+        guard tokenizer.looksLikeMarkup() else {
+            var output = Output(maximumBytes: maximumOutputBytes)
+            output.append(HTMLEntities.decoding(html))
+            return (output.result, output.didReachLimit)
+        }
 
         var tokens: [HTMLToken] = []
         while let token = tokenizer.next() { tokens.append(token) }
-        var renderer = PlainTextRenderer(itemCounts: PlainTextRenderer.itemCounts(in: tokens))
-        for token in tokens { renderer.consume(token) }
+        var renderer = PlainTextRenderer(
+            itemCounts: PlainTextRenderer.itemCounts(in: tokens), maximumOutputBytes: maximumOutputBytes)
+        for token in tokens {
+            renderer.consume(token)
+            if renderer.didReachLimit { break }
+        }
         return renderer.finish()
     }
 }
@@ -33,50 +47,107 @@ public enum RichTextPlainForm: Sendable {
 
 /// Accumulates output; breaks are requested, not written, so blank lines never pile up.
 private struct Output {
+    private static let truncationMarker = "…"
+
+    private let maximumBytes: Int?
+    private let truncationMarker: String?
     private var text = ""
+    private var contentBytes = 0
     private var pendingBreaks = 0
     private var pendingSpace = false
+    private var didTruncate = false
+
+    init(maximumBytes: Int) {
+        let marker: String?
+        switch maximumBytes {
+        case ..<1: marker = nil
+        case 1...2: marker = String(repeating: ".", count: maximumBytes)
+        default: marker = Self.truncationMarker
+        }
+        truncationMarker = marker
+        self.maximumBytes = maximumBytes > 0 ? maximumBytes : nil
+    }
 
     /// Asks for `count` newlines before the next content; the largest request wins.
     mutating func requestBreak(_ count: Int) {
-        guard !text.isEmpty else { return }
+        guard !didTruncate, !text.isEmpty else { return }
         pendingBreaks = max(pendingBreaks, count)
         pendingSpace = false
     }
 
     /// Asks for a single space, which a break already pending outranks.
     mutating func requestSpace() {
-        guard !text.isEmpty, !text.hasSuffix(" "), pendingBreaks == 0 else { return }
+        guard !didTruncate, !text.isEmpty, !text.hasSuffix(" "), pendingBreaks == 0 else { return }
         pendingSpace = true
     }
 
     mutating func append(_ content: String) {
-        guard !content.isEmpty else { return }
+        guard !didTruncate, !content.isEmpty else { return }
         settlePending()
-        text += content
+        guard !didTruncate else { return }
+        appendBounded(content)
     }
 
     /// A list marker, after which nothing may be inserted before the item's first word.
     mutating func appendMarker(_ marker: String) {
+        guard !didTruncate else { return }
         settlePending()
-        text += marker
+        guard !didTruncate else { return }
+        appendBounded(marker)
         pendingSpace = false
     }
 
     var result: String { text }
+    var didReachLimit: Bool { didTruncate }
 
     private mutating func settlePending() {
         if pendingBreaks > 0 {
             // Verbatim content can end in its own newlines; counting them stops a blank line after `<pre>`.
             let existing = trailingNewlines
             if pendingBreaks > existing {
-                text += String(repeating: "\n", count: pendingBreaks - existing)
+                appendBounded(String(repeating: "\n", count: pendingBreaks - existing))
             }
         } else if pendingSpace {
-            text += " "
+            appendBounded(" ")
         }
         pendingBreaks = 0
         pendingSpace = false
+    }
+
+    private mutating func appendBounded(_ content: String) {
+        guard let maximumBytes else {
+            text += content
+            return
+        }
+        let remainingBytes = maximumBytes - contentBytes
+        let contentBytesToAppend = content.utf8.count
+        guard contentBytesToAppend <= remainingBytes else {
+            let markerBytes = truncationMarker?.utf8.count ?? 0
+            let contentLimit = max(0, maximumBytes - markerBytes)
+            let retained = Self.utf8Prefix(text, limitedTo: contentLimit)
+            text = retained
+            contentBytes = retained.utf8.count
+            let prefix = Self.utf8Prefix(content, limitedTo: max(0, contentLimit - contentBytes))
+            text += prefix
+            contentBytes += prefix.utf8.count
+            if let truncationMarker { text += truncationMarker }
+            didTruncate = true
+            return
+        }
+        text += content
+        contentBytes += contentBytesToAppend
+    }
+
+    private static func utf8Prefix(_ content: String, limitedTo byteLimit: Int) -> String {
+        var prefix = String.UnicodeScalarView()
+        var byteCount = 0
+        for scalar in content.unicodeScalars {
+            let scalarBytes = scalar.utf8.count
+            guard byteCount + scalarBytes <= byteLimit else { break }
+            prefix.append(scalar)
+            byteCount += scalarBytes
+        }
+        return String(prefix)
     }
 
     private var trailingNewlines: Int {
@@ -96,7 +167,9 @@ private struct Output {
 
 /// Turns the token stream into the text a plain target receives.
 private struct PlainTextRenderer {
-    private var out = Output()
+    private static let maximumListIndentDepth = 8
+
+    private var out: Output
     private var lists: [ListFrame] = []
     /// How many items each list holds directly, by the order the lists open in; a `reversed` list counts down from it.
     private let itemCounts: [Int]
@@ -117,7 +190,8 @@ private struct PlainTextRenderer {
         var step = 1
     }
 
-    init(itemCounts: [Int]) {
+    init(itemCounts: [Int], maximumOutputBytes: Int) {
+        out = Output(maximumBytes: maximumOutputBytes)
         self.itemCounts = itemCounts
     }
 
@@ -160,17 +234,20 @@ private struct PlainTextRenderer {
     }
 
     mutating func consume(_ token: HTMLToken) {
+        guard !out.didReachLimit else { return }
         switch token {
         case .text(let text): write(text)
         case .tag(let tag): apply(tag)
         }
     }
 
-    mutating func finish() -> String {
+    var didReachLimit: Bool { out.didReachLimit }
+
+    mutating func finish() -> (text: String, wasTruncated: Bool) {
         // A document that stops inside an anchor still knows where the anchor pointed.
         closeLink()
         // Trailing whitespace is never content; it is the newline before `</pre>`.
-        return out.result.trimmedTrailing()
+        return (out.result.trimmedTrailing(), out.didReachLimit)
     }
 
     // MARK: Text
@@ -315,7 +392,8 @@ private struct PlainTextRenderer {
     }
 
     private mutating func openItem(_ tag: HTMLTag) {
-        let indent = String(repeating: " ", count: max(0, lists.count - 1) * 2)
+        let depth = min(lists.count, Self.maximumListIndentDepth)
+        let indent = String(repeating: " ", count: max(0, depth - 1) * 2)
         if let checked = checkboxState(of: tag) {
             pendingMarker = indent + Self.box(checked)
         } else if lists.last?.isChecklist == true {

@@ -60,26 +60,10 @@ public struct CodeEditorCommandsPass: PieceCleaningPass {
     }
 
     private static func symbol(at position: Int, in live: [Int], of draft: Draft) -> Command? {
-        let key = draft.shape(at: live[position]).key
-        if position + 1 < live.count {
-            let next = draft.shape(at: live[position + 1]).key
-            if key == "open", ["paren", "parenthesis"].contains(next) {
-                return .symbol(text: "(", consumed: 2)
-            }
-            if key == "close", ["paren", "parenthesis"].contains(next) {
-                return .symbol(text: ")", consumed: 2)
-            }
-            if key == "open", next == "bracket" { return .symbol(text: "[", consumed: 2) }
-            if key == "close", next == "bracket" { return .symbol(text: "]", consumed: 2) }
-            if key == "open", next == "brace" { return .symbol(text: "{", consumed: 2) }
-            if key == "close", next == "brace" { return .symbol(text: "}", consumed: 2) }
-        }
-        let symbols: [String: String] = [
-            "equals": "=", "arrow": "->", "dot": ".", "underscore": "_",
-            "colon": ":", "semicolon": ";", "comma": ",",
-        ]
-        guard let text = symbols[key] else { return nil }
-        return .symbol(text: text, consumed: 1)
+        SpokenCommands.codeSymbols.first {
+            $0.isEnabled(in: .codeEditor)
+                && draft.spells($0.words, at: position, in: live, acrossSentences: true)
+        }.map { .symbol(text: $0.text, consumed: $0.words.count) }
     }
 
     private static func isSpokenClauseWord(_ shape: WordShape) -> Bool {

@@ -47,7 +47,7 @@ public struct WordShape: Equatable, Sendable {
     /// Uppercases the first letter; a leading digit counts as the start and stays as it is.
     public static func capitalised(_ text: String) -> String {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }) else { return text }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(text) else { return text }
         return String(text[..<start]) + text[start].uppercased() + String(text[text.index(after: start)...])
     }
 
@@ -56,8 +56,13 @@ public struct WordShape: Equatable, Sendable {
         guard let start = text.firstIndex(where: { $0.isLetter || $0.isNumber }), text[start].isLetter else {
             return text
         }
-        guard !hasInternalCapital(text) else { return text }
+        guard !keepsWrittenCase(text) else { return text }
         return String(text[..<start]) + text[start].lowercased() + String(text[text.index(after: start)...])
+    }
+
+    /// Whether a word is cased as written: an internal capital, or a technical token such as a path or URL.
+    public static func keepsWrittenCase(_ text: String) -> Bool {
+        hasInternalCapital(text) || TechnicalToken.classify(text) != nil
     }
 
     /// Whether a word carries an uppercase letter after its first letter.
@@ -182,5 +187,14 @@ extension Draft {
             return index + 1 == end
         }
         return end == position + count
+    }
+
+    /// Whether the live words from `position` are the phrase `words`, inside one sentence unless `acrossSentences`.
+    public func spells(
+        _ words: [String], at position: Int, in live: [Int], acrossSentences: Bool = false
+    ) -> Bool {
+        position + words.count <= live.count
+            && (acrossSentences || sentenceContains(words.count, from: position, in: live))
+            && zip(words, live[position..<position + words.count]).allSatisfy { $0 == shape(at: $1).key }
     }
 }

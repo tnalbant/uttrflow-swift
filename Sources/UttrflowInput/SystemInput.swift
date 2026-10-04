@@ -151,6 +151,13 @@ private let unmakeableKeystroke = "could not create the keystroke"
 private func postTaggedKeyPair(
     from source: CGEventSource, keyCode: CGKeyCode, prepare: (CGEvent) -> Void
 ) throws(TextInsertionError) {
+    let pair = try makeTaggedKeyPair(from: source, keyCode: keyCode, prepare: prepare)
+    postTaggedKeyPairs([pair])
+}
+
+private func makeTaggedKeyPair(
+    from source: CGEventSource, keyCode: CGKeyCode, prepare: (CGEvent) -> Void
+) throws(TextInsertionError) -> (down: CGEvent, up: CGEvent) {
     guard
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
@@ -160,9 +167,22 @@ private func postTaggedKeyPair(
         prepare(event)
         SyntheticEvent.tag(event)
     }
-    // The one pair that reaches another application. See `Docs/insertion.md`.
-    keyDown.post(tap: .cghidEventTap)
-    keyUp.post(tap: .cghidEventTap)
+    return (keyDown, keyUp)
+}
+
+func buildThenPost<Input, Output>(
+    _ inputs: [Input], build: (Input) throws(TextInsertionError) -> Output,
+    post: ([Output]) -> Void
+) throws(TextInsertionError) {
+    post(try inputs.map(build))
+}
+
+private func postTaggedKeyPairs(_ pairs: [(down: CGEvent, up: CGEvent)]) {
+    for pair in pairs {
+        // The one pair that reaches another application. See `Docs/insertion.md`.
+        pair.down.post(tap: .cghidEventTap)
+        pair.up.post(tap: .cghidEventTap)
+    }
 }
 
 /// The key code posted when no keyboard layout can be read, `v`'s position on a US QWERTY board.
@@ -277,10 +297,12 @@ public struct CGEventTypist: KeystrokeTyping {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for _ in 0..<count {
-            // Flags cleared so a modifier the user is still holding cannot widen the delete.
-            try postTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
-        }
+        try buildThenPost(
+            Array(0..<count),
+            build: { _ in
+                // Flags cleared so a modifier the user is still holding cannot widen the delete.
+                try makeTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
+            }, post: postTaggedKeyPairs)
     }
 
     public func type(_ text: String) throws(TextInsertionError) {
@@ -288,23 +310,26 @@ public struct CGEventTypist: KeystrokeTyping {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for keypress in LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:)) {
-            switch keypress {
-            case .key(let character, let stroke):
-                try postTaggedKeyPair(from: source, keyCode: stroke.code) { event in
-                    // Only layout modifiers are set, so held user modifiers cannot change the character.
-                    event.flags = stroke.flags
-                    var unit = character
-                    event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+        let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
+        try buildThenPost(
+            keypresses,
+            build: { keypress in
+                switch keypress {
+                case .key(let character, let stroke):
+                    try makeTaggedKeyPair(from: source, keyCode: stroke.code) { event in
+                        // Only layout modifiers are set, so held user modifiers cannot change the character.
+                        event.flags = stroke.flags
+                        var unit = character
+                        event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+                    }
+                case .text(let units):
+                    try makeTaggedKeyPair(from: source, keyCode: 0) { event in
+                        // Flags cleared so a modifier the user is still holding cannot make this a shortcut.
+                        event.flags = []
+                        event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                    }
                 }
-            case .text(let units):
-                try postTaggedKeyPair(from: source, keyCode: 0) { event in
-                    // Flags cleared so a modifier the user is still holding cannot make this a shortcut.
-                    event.flags = []
-                    event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-                }
-            }
-        }
+            }, post: postTaggedKeyPairs)
     }
 }
 

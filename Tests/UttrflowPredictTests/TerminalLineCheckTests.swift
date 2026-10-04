@@ -77,8 +77,7 @@ private final class MutablePackedRefsDisk: FileSystemProbing {
         state = Mutex(State(text: text))
     }
 
-    var homeDirectory: String { disk.homeDirectory }
-    var searchPaths: [String] { disk.searchPaths }
+    var environment: FileSystemEnvironment { disk.environment }
     var packedRefsReads: Int { state.withLock { $0.reads } }
 
     func replacePackedRefs(with text: String) {
@@ -99,6 +98,10 @@ private final class MutablePackedRefsDisk: FileSystemProbing {
 
     func names(inDirectory path: String, limit: Int) -> [String]? {
         disk.names(inDirectory: path, limit: limit)
+    }
+
+    func visitNames(inDirectory path: String, _ visit: (String) -> Bool) -> Bool? {
+        disk.visitNames(inDirectory: path, visit)
     }
 }
 
@@ -367,6 +370,7 @@ struct TerminalLineCheckTests {
             texts: [
                 "/wt/.git": "gitdir: /repo/.git/worktrees/wt\n",
                 "/repo/.git/worktrees/wt/commondir": "../..\n",
+                "/repo/.git/worktrees/wt/gitdir": "/wt/.git\n",
                 "/broken/.git": "nothing here\n",
             ])
         let check = TerminalLineCheck(files: disk)
@@ -374,6 +378,22 @@ struct TerminalLineCheckTests {
         #expect(!check.allows("git checkout main", in: "/table"))
         #expect(!check.allows("git checkout main", in: "/broken"))
         #expect(!check.allows("git checkout main", in: "/"))
+    }
+
+    @Test("Git metadata targets outside the repository and its linked worktree are refused.")
+    func externalGitMetadataIsRefused() {
+        let disk = FakeDisk(
+            directories: ["/repo/.git", "/outside/.git/worktrees/wt", "/outside/.git/refs/heads"],
+            files: ["/repo/.git/refs/heads/main"], executables: ["/usr/bin/git"],
+            texts: [
+                "/repo/.git/commondir": "/outside/.git\n",
+                "/linked/.git": "gitdir: /outside/.git/worktrees/wt\n",
+                "/outside/.git/worktrees/wt/commondir": "../..\n",
+                "/outside/.git/worktrees/wt/gitdir": "/elsewhere/.git\n",
+            ])
+        let check = TerminalLineCheck(files: disk)
+        #expect(!check.allows("git checkout main", in: "/repo"))
+        #expect(!check.allows("git checkout main", in: "/linked"))
     }
 
     @Test("A loose object's filename does not prove that it is a commit.")

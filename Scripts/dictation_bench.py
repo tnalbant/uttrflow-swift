@@ -123,6 +123,10 @@ CORRECTIONS = [
     ("Um so I think uh we should ship the smaller fix first.", "So I think we should ship the smaller fix first."),
     ("Book a table for six, actually eight, at the usual place.", "Book a table for eight at the usual place."),
 ]
+# What the product should write where it differs from what was read: fillers are removed, the words kept.
+WRITTEN_EDITS = {"en-restarts": [("and, um, nobody", "and nobody")]}
+# Spellings that are equally right, offered as alternative references instead of editing a reference.
+SPELLING_VARIANTS = [("card stock", "cardstock")]
 VARIANT_BASES = ["d15-samantha", "d15-daniel", "d15-rishi", "d30-samantha", "reply1-daniel", "reply4-daniel",
                  "numbers1-daniel", "code0-samantha", "tc-en-people-rishi", "tc-hi-everyday-lekha"]
 
@@ -151,6 +155,15 @@ def committed_passages():
                   for x in [re.search(f + r': (""".*?""")', m.group(4), re.S)] if x}
         found.append(dict(id=m.group(1), language=m.group(2), stressor=m.group(3), **fields))
     return found
+
+
+def written_for(case_id, text):
+    """The text the product should write for a committed passage, after its listed edits."""
+    for read, written in WRITTEN_EDITS.get(case_id, []):
+        if read not in text:
+            raise ValueError(f"{case_id}: {read!r} is not in the passage")
+        text = text.replace(read, written)
+    return text
 
 
 def clips():
@@ -203,7 +216,7 @@ def clips():
         if case["language"] == "english":
             for voice in ENGLISH:
                 add(f"tc-{case['id']}-{voice.lower()}", f"tc-{case['stressor']}", "english", voice,
-                    case["romanised"], case["romanised"])
+                    case["romanised"], written_for(case["id"], case["romanised"]), spoken=case["romanised"])
         else:
             add(f"tc-{case['id']}-lekha", f"tc-{case['language']}", case["language"], "Lekha", case["devanagari"],
                 case["romanised"], spoken=case["romanised"], devanagari=case["devanagari"])
@@ -358,10 +371,26 @@ def edits(ref, hyp):
     return row[len(hyp)]
 
 
-def errors(references, hypothesis):
+def with_spelling_variants(references):
+    """Each reference, plus each of its spellings from SPELLING_VARIANTS."""
+    out = [r for r in references if r]
+    for a, b in SPELLING_VARIANTS:
+        for r in list(out):
+            for x, y in ((a, b), (b, a)):
+                changed = re.sub(rf"(?i)\b{re.escape(x)}\b", y, r)
+                if changed != r and changed not in out: out.append(changed)
+    return out
+
+
+def exact_words(text):
+    """Words as written, case, marks and symbols kept, so a wrong capital or symbol is an error."""
+    return unicodedata.normalize("NFC", text).split()
+
+
+def errors(references, hypothesis, words=normalise):
     """The fewest edits against any of the references, with that reference's length."""
-    h = normalise(hypothesis)
-    scored = [(edits(normalise(r), h), len(normalise(r))) for r in references if r]
+    h = words(hypothesis)
+    scored = [(edits(words(r), h), len(words(r))) for r in with_spelling_variants(references)]
     return min(scored, key=lambda x: x[0] / max(1, x[1]))
 
 
@@ -398,7 +427,9 @@ def score(args):
         early = [float(e["t1"]) for e in tidied if float(e["t1"]) <= key_up]
         raw_e, raw_n = errors([c["spoken"], c.get("devanagari")], " ".join(e["text"] for e in heard))
         out_e, out_n = errors([c["written"], c.get("devanagari")], r.get("text", ""))
-        scored.append(dict(r=r, c=c, raw=(raw_e, raw_n), out=(out_e, out_n), first_early=min(early) if early else None,
+        exact = errors([c["written"]], r.get("text", ""), words=exact_words)
+        scored.append(dict(r=r, c=c, raw=(raw_e, raw_n), out=(out_e, out_n), exact=exact,
+                           first_early=min(early) if early else None,
                            asr=sum(float(e["t1"]) - float(e["t0"]) for e in heard),
                            tidy=sum(float(e["t1"]) - float(e["t0"]) for e in tidied)))
     if not scored:
@@ -418,12 +449,13 @@ def score(args):
         groups = defaultdict(list)
         for s in scored:
             if keep(s): groups[key(s)].append(s)
-        print(f"\n{title}\n\n| | clips | raw WER | final WER |\n|---|---|---|---|")
+        print(f"\n{title}\n\n| | clips | raw WER | final WER | final exact WER |\n|---|---|---|---|---|")
         for k in sorted(groups):
             g = groups[k]
             raw = sum(s["raw"][0] for s in g) / max(1, sum(s["raw"][1] for s in g))
             out = sum(s["out"][0] for s in g) / max(1, sum(s["out"][1] for s in g))
-            print(f"| {k} | {len(g)} | {100 * raw:.1f}% | {100 * out:.1f}% |")
+            exact = sum(s["exact"][0] for s in g) / max(1, sum(s["exact"][1] for s in g))
+            print(f"| {k} | {len(g)} | {100 * raw:.1f}% | {100 * out:.1f}% | {100 * exact:.1f}% |")
 
     for cleaner in sorted({s["r"]["cleaner"] for s in scored}):
         for mode in sorted({s["r"]["mode"] for s in scored}):
