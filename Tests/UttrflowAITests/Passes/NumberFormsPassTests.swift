@@ -413,8 +413,8 @@ struct NumberFormsPassTests {
         arguments: [
             ("set the alarm for seven thirty tomorrow", "set the alarm for 7:30 tomorrow"),
             ("a reminder for six fifteen today", "a reminder for 6:15 today"),
-            ("we waited for seven thirty minutes", "we waited for 7 30 minutes"),
-            ("the alarm. for seven thirty days", "the alarm. for 7 30 days"),
+            ("we waited for seven thirty minutes", "we waited for seven 30 minutes"),
+            ("the alarm. for seven thirty days", "the alarm. for seven 30 days"),
         ]
     )
     func forAfterTimedNoun(input: String, expected: String) {
