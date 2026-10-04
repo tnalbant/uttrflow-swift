@@ -75,7 +75,8 @@ public enum MentionGuard {
             return true
         }
         let next = position + length
-        return next < live.count && draft.shape(at: live[next]).key == "of"
+        let sentenceEnd = draft.sentenceRun(from: position, in: live).upperBound
+        return next < sentenceEnd && draft.shape(at: live[next]).key == "of"
     }
 
     /// Whether a quotation opened earlier in this sentence is still open, so a closing mark here closes it.

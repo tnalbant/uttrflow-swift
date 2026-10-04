@@ -86,6 +86,14 @@ struct FirstWordPassTests {
         #expect(cleaned("we met Dr. Lee. Then we left", by: sut) == "We met Dr. Lee. Then we left")
     }
 
+    @Test("a spoken comma replaces a recognizer stop and leaves the next continuation lower-case")
+    func spokenCommaDoesNotLeaveAFalseSentenceCapital() {
+        let afterPunctuation = SpokenPunctuationPass().apply(
+            Draft(text: "we shipped comma. Of course it broke"))
+
+        #expect(FirstWordPass().apply(afterPunctuation).text == "We shipped, of course it broke")
+    }
+
     @Test(
         "capitalises the pronoun I, alone or contracted",
         arguments: [

@@ -355,6 +355,7 @@ spoken-comma-after-an-opener	However, the second build passed.
 spoken-comma-after-yes	Yes, that works for me.
 spoken-comma-before-a-clause	If the tests pass, we ship tonight.
 spoken-comma-before-and	We stayed late, and then we went home.
+spoken-comma-before-next-sentence-of-course	We shipped, of course it broke.
 spoken-commas-around-a-clause	The cafe by the station, which opens early, is the best one?
 spoken-commas-in-a-bare-list	We need apples, pears, plums.
 spoken-commas-in-a-list	Pack the charger, the cable, and the adapter.
