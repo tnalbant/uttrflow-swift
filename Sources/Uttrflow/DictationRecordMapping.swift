@@ -25,10 +25,10 @@ enum DictationRecordMapping {
                             expansion: $0.expansion)
                     },
                     spokenWords: outcome.changes.spokenWords),
-                cleanedBy: outcome.cleanedBy)
+                cleanedBy: outcome.cleanedBy, arrival: RecordedArrival(outcome.arrival))
         case .failed(let failure):
             guard let text = failure.wordsToKeep else { return nil }
-            return DictationRecord(id: id, text: text, when: when)
+            return DictationRecord(id: id, text: text, when: when, arrival: .notInserted)
         case .idle, .recording, .transcribing, .tidying, .inserting:
             return nil
         }

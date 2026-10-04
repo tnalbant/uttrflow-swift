@@ -68,6 +68,8 @@ public struct HistoryRow: Sendable, Equatable, Identifiable {
     public let tag: String?
     /// Whether the user flagged it as wrong.
     public let isFlagged: Bool
+    /// "Not inserted" or "Unconfirmed" when the words may not have reached the field; absent otherwise.
+    public let arrival: String?
     /// The buttons shown while the row is pointed at: copy, copy to paste elsewhere, flag.
     public let actions: [MainAction]
     /// What the row's context menu offers.
@@ -79,7 +81,8 @@ public struct HistoryRow: Sendable, Equatable, Identifiable {
     public init(
         id: UUID, application: HistoryApplication?, when: String, text: String,
         time: String = "", length: String = "", tag: String? = nil, isFlagged: Bool = false,
-        actions: [MainAction] = [], more: [MainAction] = [], recording: HistoryRecording? = nil
+        arrival: String? = nil, actions: [MainAction] = [], more: [MainAction] = [],
+        recording: HistoryRecording? = nil
     ) {
         self.id = id
         self.application = application
@@ -89,6 +92,7 @@ public struct HistoryRow: Sendable, Equatable, Identifiable {
         self.length = length
         self.tag = tag
         self.isFlagged = isFlagged
+        self.arrival = arrival
         self.actions = actions
         self.more = more
         self.recording = recording
@@ -390,6 +394,15 @@ public enum HistoryPresenter {
         return day.formatted(sameYear ? dateStyle : dateStyle.year())
     }
 
+    /// Only an arrival that may have missed the field is labelled; a delivered row stays quiet.
+    static func arrivalLabel(for arrival: RecordedArrival?) -> String? {
+        switch arrival {
+        case .notInserted: "Not inserted"
+        case .unconfirmed: "Unconfirmed"
+        case .confirmed, .notReported, nil: nil
+        }
+    }
+
     /// One dictation as a row, with the buttons it offers when pointed at.
     static func row(
         for entry: HistoryEntry, words: Int? = nil, relativeTo now: Date,
@@ -406,6 +419,7 @@ public enum HistoryPresenter {
             // Only a change is worth a tag; "as dictated" is what every quiet row already says.
             tag: tone == .changed ? tag : nil,
             isFlagged: entry.isFlagged,
+            arrival: arrivalLabel(for: entry.arrival),
             actions: [
                 MainAction(title: "Copy", symbolName: "doc.on.doc", intent: .copy(entry.text)),
                 // From the main window Uttrflow is in front, so the button says what it actually does. See `Docs/insertion.md`.
