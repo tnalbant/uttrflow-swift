@@ -11,6 +11,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BENCH = os.path.join(HERE, "dictation_bench.py")
+TABLE = os.path.join(os.path.dirname(HERE), "Tests", "UttrflowEvalTests", "Golden", "normalisation.tsv")
 sys.path.insert(0, HERE)
 import dictation_bench as bench  # noqa: E402
 
@@ -67,11 +68,12 @@ class BenchTests(unittest.TestCase):
                 handle.write(line + "\n")
         return path
 
-    def test_devanagari_marks_remain_inside_words_when_punctuation_is_removed(self):
-        self.assertEqual(
-            bench.normalise("मैं नहीं आऊँगा, पचास लाख।"),
-            ["मैं", "नहीं", "आऊँगा", "पचास", "लाख"],
-        )
+    def test_normalisation_matches_the_table_the_swift_scorer_is_pinned_to(self):
+        with open(TABLE, encoding="utf-8") as handle:
+            rows = [line.rstrip("\n").split("\t") for line in handle if line.strip()]
+        self.assertTrue(rows)
+        for text, words in rows:
+            self.assertEqual(bench.normalise(text), words.split(), text)
 
     def test_devanagari_matra_errors_are_counted_as_word_edits(self):
         self.assertEqual(
@@ -88,13 +90,9 @@ class BenchTests(unittest.TestCase):
             (1, 3),
         )
 
-    def test_english_normalisation_and_scoring_are_unchanged(self):
+    def test_a_number_written_as_digits_or_words_scores_the_same(self):
         self.assertEqual(
-            bench.normalise("Hello, WORLD! I paid 3 dollars."),
-            ["hello", "world", "i", "paid", "three", "dollars"],
-        )
-        self.assertEqual(
-            bench.errors(["Hello, world! I paid three dollars."], "Hello world, I paid four dollars."),
+            bench.errors(["Hello, world! I paid three dollars."], "Hello world, I paid 4 dollars."),
             (1, 6),
         )
 

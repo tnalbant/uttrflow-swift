@@ -291,6 +291,7 @@ asset query alone at 5–130 ms per call, largest when the system had been idle.
 ```
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 swift build -c release --product uttrflow-dev
+swift build -c release --product uttrflow-eval                             # the scorer's word normalisation
 python3 Scripts/dictation_bench.py corpus                                  # .build/bench, about a minute
 python3 Scripts/dictation_bench.py jobs --cleaners shipping,rules > .build/bench/jobs-fast.tsv
 python3 Scripts/dictation_bench.py jobs --mode rt --clean-only \
@@ -299,6 +300,10 @@ cat .build/bench/jobs-fast.tsv .build/bench/jobs-rt.tsv > .build/bench/jobs.tsv
 .build/release/uttrflow-dev bench .build/bench/jobs.tsv > .build/bench/run.out
 python3 Scripts/dictation_bench.py score .build/bench/run.out
 ```
+
+`score` counts words through `uttrflow-eval normalise`, the same `TextNormaliser.standard` the
+Swift scorers use, and prints the rules in force first; a run printed under other rules is not
+comparable. `Tests/UttrflowEvalTests/Golden/normalisation.tsv` pins both entry points to one table.
 
 `--categories hi-reply` selects the Hindi replies, whose jobs use the `hi` Languages profile.
 `--categories code-switch` selects an English passage followed by a Hindi one and a Hindi sentence

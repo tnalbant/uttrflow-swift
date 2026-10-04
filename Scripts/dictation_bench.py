@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Builds the synthetic dictation corpus, writes jobs for `uttrflow-dev bench`, and scores a run. See Docs/performance.md.
-import argparse, array, hashlib, json, math, os, random, re, statistics, subprocess, sys, unicodedata, wave
+import argparse, array, hashlib, json, math, os, random, re, statistics, subprocess, sys, wave
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -323,43 +323,40 @@ def jobs(args):
     sys.stdout.write("\n".join(lines) + "\n")
 
 
-ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
-TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
-ORDINALS = {"first": "one", "second": "two", "third": "three", "fourth": "four", "fifth": "five", "sixth": "six",
-            "seventh": "seven", "eighth": "eight", "ninth": "nine", "tenth": "ten", "eleventh": "eleven",
-            "twelfth": "twelve", "twentieth": "twenty"}
+NORMALISED = {}
 
 
-def spelled(n):
-    if n < 20: return ONES[n]
-    if n < 100: return TENS[n // 10] + ("" if n % 10 == 0 else " " + ONES[n % 10])
-    if n < 1000: return ONES[n // 100] + " hundred" + ("" if n % 100 == 0 else " " + spelled(n % 100))
-    if n < 1_000_000: return spelled(n // 1000) + " thousand" + ("" if n % 1000 == 0 else " " + spelled(n % 1000))
-    return " ".join(ONES[int(d)] for d in str(n))
+def eval_tool():
+    """The `uttrflow-eval` binary that owns the word-normalisation rule; UTTRFLOW_EVAL overrides the path."""
+    candidates = [os.environ.get("UTTRFLOW_EVAL")] + [os.path.join(ROOT, ".build", c, "uttrflow-eval")
+                                                       for c in ("release", "debug")]
+    found = next((c for c in candidates if c and os.access(c, os.X_OK)), None)
+    if not found:
+        sys.exit("no uttrflow-eval binary: run swift build -c release --product uttrflow-eval, or set UTTRFLOW_EVAL")
+    return found
 
 
-def numeral(m):
-    s = m.group(0).replace(",", "")
-    if ":" in s:
-        h, mi = s.split(":"); return spelled(int(h)) + " " + (spelled(int(mi)) if int(mi) else "")
-    if "." in s:
-        whole, part = s.split("."); return spelled(int(whole)) + " point " + " ".join(ONES[int(d)] for d in part)
-    return spelled(int(s))
+def normalise_all(texts):
+    """Normalises every text not yet seen in one call to `uttrflow-eval normalise`, the rule every scorer shares."""
+    fresh = sorted({" ".join(t.split()) for t in texts} - NORMALISED.keys())
+    if fresh:
+        run = subprocess.run([eval_tool(), "normalise"], input="\n".join(fresh) + "\n",
+                             capture_output=True, text=True, check=True)
+        lines = run.stdout.split("\n")[:len(fresh)]
+        if len(lines) != len(fresh):
+            sys.exit(f"uttrflow-eval normalise answered {len(lines)} lines for {len(fresh)} texts")
+        NORMALISED.update(zip(fresh, (line.split() for line in lines)))
+    return [NORMALISED[" ".join(t.split())] for t in texts]
 
 
 def normalise(text):
-    """Words for a word error rate: numbers spelled, identifiers and addresses split, case and punctuation gone."""
-    t = unicodedata.normalize("NFC", text)
-    t = re.sub(r"(\S+)@(\S+)", lambda m: (m.group(1) + " at " + m.group(2)).replace("-", " dash "), t)
-    t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
-    t = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", t)
-    t = t.lower().replace("_", " ").replace("%", " percent").replace("/", " slash ")
-    t = re.sub(r"(?<=[a-z])\.(?=[a-z])", " dot ", t)
-    t = re.sub(r"(\d)[snrt][tdh]\b", r"\1", t)  # drops the suffix of an ordinal numeral
-    t = re.sub(r"\d[\d,]*(?:[.:]\d+)?", numeral, t)
-    t = "".join(" " if unicodedata.category(ch)[0] in "PS" else ch
-                 for ch in t.replace("'", "").replace("’", ""))
-    return [ORDINALS.get(w, w) for w in t.split()]
+    """The words a word error rate is counted over; see TextNormaliser in Sources/UttrflowEval."""
+    return normalise_all([text])[0]
+
+
+def normalisation_rules():
+    """The rules in force, printed beside every score so runs under different rules are not compared."""
+    return subprocess.run([eval_tool(), "normalise", "--rules"], capture_output=True, text=True, check=True).stdout.strip()
 
 
 def edits(ref, hyp):
@@ -418,6 +415,10 @@ def score(args):
                 rows.append(event)
             else:
                 unknown_ids.append(event.get("id"))
+    print(f"normalisation: {normalisation_rules()}")
+    normalise_all([t for r in rows for t in (made[r["id"]]["spoken"], made[r["id"]]["written"],
+                                            made[r["id"]].get("devanagari") or "", r.get("text", ""),
+                                            " ".join(e["text"] for e in r["events"] if e["kind"] == "asr"))])
     scored = []
     for r in rows:
         c = made[r["id"]]
