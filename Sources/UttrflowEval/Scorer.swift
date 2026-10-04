@@ -118,7 +118,9 @@ public enum Scorer {
         var broken: [String] = []
         if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append("begins with \"\(head)\"") }
         if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append("ends with \"\(tail)\"") }
-        if let exact = reference.expectedExact, rewritten != exact { broken.append("is exactly \"\(exact)\"") }
+        if let exact = reference.expectedExact, rewritten != exact {
+            broken.append("is exactly \"\(exact)\"")
+        }
         return broken
     }
 
