@@ -44,14 +44,16 @@ struct ScorerTests {
         #expect(Scorer.score("the report is attached.", against: reference).passed)
 
         let capitalised = Scorer.score("The report is attached.", against: reference)
-        #expect(capitalised.brokeShape == ["the report"])
+        #expect(capitalised.brokeShape == [#"begins with "the report""#])
         #expect(!capitalised.passed)
 
         let unfinished = Scorer.score("the report is attached", against: reference)
-        #expect(unfinished.brokeShape == ["."])
+        #expect(unfinished.brokeShape == [#"ends with ".""#])
         #expect(!unfinished.passed)
 
-        #expect(Scorer.score("The Report Is Attached", against: reference).brokeShape == ["the report", "."])
+        #expect(Scorer.score("The Report Is Attached", against: reference).brokeShape == [
+            #"begins with "the report""#, #"ends with ".""#,
+        ])
     }
 
     @Test("asks nothing of the shape when the case says nothing about it")

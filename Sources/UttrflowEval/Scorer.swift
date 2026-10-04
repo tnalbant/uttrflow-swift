@@ -113,11 +113,11 @@ public enum Scorer {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The beginning and ending checked literally, because case and a final mark are what these cases are about.
+    /// The beginning and ending checked literally, each named with its side so a missing anchor never reads as output.
     static func brokenShape(of rewritten: String, against reference: EvaluationCase) -> [String] {
         var broken: [String] = []
-        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append(head) }
-        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append(tail) }
+        if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append("begins with \"\(head)\"") }
+        if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append("ends with \"\(tail)\"") }
         return broken
     }
 
