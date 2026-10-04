@@ -147,6 +147,11 @@ and that list, not this page, is the record of what the floor covers. Spellings 
 to decide are the model's alone. A gap gets a corpus case before it gets a prompt line, because
 a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
 
+Which layer owns each formatting class — `rules`, `model` or `both` — is
+`FormattingClass.ownership`, and `Docs/formatting-matrix.md` prints it beside each class's
+cases. Under `both`, the passes after the model have the last word. `FormattingOwnershipTests`
+fails a class whose named pass no shipped pipeline runs.
+
 ## Words spelled letter by letter
 
 A speaker spells a name, a code or a file name so that it is written exactly as spelled. The
