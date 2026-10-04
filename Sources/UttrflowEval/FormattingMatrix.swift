@@ -15,6 +15,8 @@ public enum FormattingClass: String, Sendable, Equatable, CaseIterable, Codable 
     case perDestination = "per-destination"
     case codeAndMarkdown = "code-and-markdown"
     case hinglish
+    /// Prose in a technical app whose notation words must stay words.
+    case abstention
 }
 
 /// How many corpus cases each formatting class has, and whether that is enough.
@@ -43,7 +45,7 @@ public struct FormattingMatrix: Sendable, Equatable {
     public let rows: [Row]
 
     /// The matrix read from `cases`, one row per class whether or not anything is tagged with it.
-    public init(cases: [EvaluationCase] = EvaluationCorpus.all) {
+    public init(cases: [EvaluationCase] = EvaluationCorpus.all + EvaluationCorpus.abstention) {
         rows = FormattingClass.allCases.map { formattingClass in
             Row(
                 formattingClass: formattingClass,
