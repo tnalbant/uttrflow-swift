@@ -341,6 +341,26 @@ takes a freshly built cleaner and the overrides as they now stand. A dictation u
 keeps the cleaner and the overrides it began with, so a step switched off while the user is
 speaking cannot treat the second half of what they say differently from the first.
 
+## Homophone doubt against the confident-homophone guard
+
+`UncertainSpan` doubts every word of a `Homophones` group whatever its score, so `HomophoneCandidates`
+offers its partner; `MeaningPreservationGuard.confidentHomophoneVerdict` refuses a rewrite that swaps a
+word scored at or above `certaintyThreshold` for a sound-alike. `HomophonePolicyProbeTests` runs 40
+sentences (20 function-word, 20 sense, the wrong member present) through `DoubtfulWords.standard` and
+the guard with the rewrite that takes the offered swap; the model step is assumed, not run.
+
+| Group | Score of the wrong word | Swap offered | Offered, then refused |
+|---|---|---|---|
+| function | 0.3 | 20/20 | 7 |
+| function | 0.6 | 20/20 | 20 |
+| function | 0.95 | 20/20 | 20 |
+| sense | 0.3 | 20/20 | 0 |
+| sense | 0.6 | 20/20 | 20 |
+| sense | 0.95 | 20/20 | 20 |
+
+At or above the threshold every offered swap is refused (80 of 80), so the class-only doubt never repairs
+a word and a model that takes it costs the whole rewrite. Which rule stays is not yet decided.
+
 ## Related pages
 
 - `Docs/formatting-matrix.md` — which formatting case classes the corpus covers, generated from its tags.

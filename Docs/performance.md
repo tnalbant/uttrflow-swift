@@ -50,19 +50,18 @@ memory budget" below; this headline does not cover it.
 ## The energy budget
 
 Uttrflow runs all day, from login, on laptops. The Mac to design for is the smallest it supports:
-an 8 GB M1 Air, which has no fan and slows itself when hot. Its performance cores do roughly
-55–60% of the work of the M5 Pro above, and it has fewer of them, so the budget is written in
-quantities that do not depend on the machine — wakeups, work per event, processor-seconds per
-second of speech — and scaled where a figure has to be.
+an 8 GB M1 Air, which has no fan and slows itself when hot. Nothing here has been measured on
+one, so the budget is written in quantities that do not depend on the machine — wakeups, work per
+event, priority — and the measured column names the Mac it came from. A per-Mac processor or
+wall-clock limit waits for a measurement on that Mac; none is estimated from this one.
 
 | state | budget | measured |
 |---|---|---|
 | idle: menu bar only, windows closed, suggestions off | ~0% of a core; at most 2 timer wakeups a second from the app's own code | clipboard poll 1.7 wakeups a second at `PasteboardWatcher.pollInterval` (500 ms) with a fifth of it as tolerance |
 | idle with tab-to-complete on | nothing beyond the line above after 12 s with no keystroke, click or switch and no drawn ghost; while a ghost remains, one coalescible read every 5 s until it disappears | `SuggestionTicking`: a 1 s tick (`interval`), each an Accessibility read of the frontmost app, for `CommitDetector.idleInterval` + 4 = 12 s after activity; a visible ghost keeps a 5 s read (`ghostInterval`); a redraw of what is already on screen does no layout and no placement |
 | typing, suggestions on | the tap callback does one atomic load; a turn per keystroke, coalesced to one running and one waiting; a model pass only after 120 ms of quiet (`generationDebounceInMilliseconds`), cancelled by the next key | as budgeted |
-| a model suggestion pass | at utility priority; none in Low Power Mode or at serious thermal pressure; ≤ 1 processor-second per pass on M1 | `DiscretionaryGenerator`; 0.17 processor-seconds a pass here, ≈ 0.3 on M1 |
-| dictation | speech ≤ 0.1 processor-seconds per second of audio on M1; finished within 0.5× the audio's length on M1 | 0.04 here, ≈ 0.07 scaled; 0.20× wall clock here on a loaded machine |
-| a copy | classified at utility priority, off the main thread; ≤ 0.2 processor-seconds for a 2 MB clip on M1 | 0.085 here for the costliest 2 MB clip measured, ≈ 0.17 on M1 |
+| a model suggestion pass | at utility priority; none in Low Power Mode or at serious thermal pressure | `DiscretionaryGenerator`; 0.17 processor-seconds a pass here |
+| a copy | classified at utility priority, off the main thread | 0.085 processor-seconds here for the costliest 2 MB clip measured |
 | between dictations, the tidier | no prewarmed model session that nothing will use | one warm at key-down; one after each piece tidied while the key is held; none after the last piece (`DictationPipeline`) |
 | animation | none continuous while nobody can see it; none decorative under Reduce Motion, Low Power Mode or serious thermal pressure | `MotionBudget` and `WindowAttention`; nothing runs continuously while hidden |
 
