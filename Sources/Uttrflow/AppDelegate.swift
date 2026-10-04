@@ -2298,6 +2298,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Internal so a test can end a dictation without a microphone.
     func render(_ state: DictationState) {
         getOutOfTheWay(for: state)
+        // A press that started or failed a dictation is an event that already arrived, so no timer is needed.
+        switch state {
+        case .recording, .failed: checkSecureInput()
+        default: break
+        }
         telemetry?.observe(state, language: settings.profile.preferredLanguages.first)
         if case .inserted(let outcome) = state {
             lastCleanedBy = outcome.cleanedBy

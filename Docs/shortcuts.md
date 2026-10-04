@@ -230,12 +230,12 @@ the binding, because the check says only that secure input is on. The claimed sh
 delivered anyway, so the clipboard panel can open while dictation cannot. Talk in the menu bar
 popover and the floating button still work, because neither goes through the tap.
 
-`SecureInputWatch` asks `IsSecureEventInputEnabled()` when another app becomes active and when the
-menu bar popover opens, never on a timer, which the energy budget in
+`SecureInputWatch` asks `IsSecureEventInputEnabled()` when another app becomes active, when the
+menu bar popover opens, and when a dictation starts or fails, never on a timer, which the energy budget in
 [`performance.md`](performance.md) rules out. When the answer changes, the popover shows the reason
 in its header and the floating button's hover hint says it in place of the keycap, until a later
 check finds it off again. An app that turns secure input on a moment after it becomes active is
-caught by the next popover open rather than by the switch.
+caught by the next popover open or dictation press rather than by the switch.
 
 ## What a shortcut is for
 
