@@ -113,11 +113,12 @@ public enum Scorer {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The beginning and ending checked literally, each named with its side so a missing anchor never reads as output.
+    /// The beginning, ending and exact form checked literally, each named with its side so a missing anchor never reads as output.
     static func brokenShape(of rewritten: String, against reference: EvaluationCase) -> [String] {
         var broken: [String] = []
         if let head = reference.mustBeginWith, !rewritten.hasPrefix(head) { broken.append("begins with \"\(head)\"") }
         if let tail = reference.mustEndWith, !rewritten.hasSuffix(tail) { broken.append("ends with \"\(tail)\"") }
+        if let exact = reference.expectedExact, rewritten != exact { broken.append("is exactly \"\(exact)\"") }
         return broken
     }
 

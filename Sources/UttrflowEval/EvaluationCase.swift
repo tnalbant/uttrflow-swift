@@ -56,6 +56,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let mustBeginWith: String?
     /// Exactly how the output must end, for a case about its final mark.
     public let mustEndWith: String?
+    /// The one written form a structured output must take, character for character, where any other spelling is wrong.
+    public let expectedExact: String?
     /// The spoken runs the recogniser was unsure of, which is what makes a case about a doubtful reading fire.
     public let doubtful: [String]
     /// The formatting case classes this case exercises, which is what the coverage matrix counts.
@@ -73,6 +75,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         destination: Destination = .plain,
         mustBeginWith: String? = nil,
         mustEndWith: String? = nil,
+        expectedExact: String? = nil,
         doubtful: [String] = [],
         classes: [FormattingClass] = [],
         origin: Origin = .authored,
@@ -91,6 +94,7 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.destination = destination
         self.mustBeginWith = mustBeginWith
         self.mustEndWith = mustEndWith
+        self.expectedExact = expectedExact
         self.doubtful = doubtful
         self.classes = classes
     }

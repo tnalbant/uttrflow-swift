@@ -56,6 +56,21 @@ struct ScorerTests {
         ])
     }
 
+    /// A structured output has one written form, so a near miss in spacing or case is a miss.
+    @Test("checks an exact form character for character and keeps it through the recogniser shape")
+    func checksExactForm() {
+        let reference = EvaluationCase(
+            id: "case", category: .technical, spoken: "select star from orders",
+            expected: "SELECT * FROM orders", expectedExact: "SELECT * FROM orders")
+        #expect(Scorer.score("SELECT * FROM orders", against: reference).brokeShape.isEmpty)
+        #expect(
+            Scorer.score("SELECT *  FROM orders", against: reference).brokeShape == [
+                #"is exactly "SELECT * FROM orders""#
+            ])
+        #expect(!Scorer.score("select * from orders", against: reference).passed)
+        #expect(reference.shaped(.recogniser).expectedExact == "SELECT * FROM orders")
+    }
+
     @Test("asks nothing of the shape when the case says nothing about it")
     func shapeIsOptional() {
         #expect(Scorer.score("HELLO THERE", against: shaped(expected: "hello there.")).brokeShape.isEmpty)
