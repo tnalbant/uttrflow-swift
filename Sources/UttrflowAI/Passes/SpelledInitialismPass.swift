@@ -41,8 +41,10 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 position += 1
                 continue
             }
-            guard live[position..<end].contains(where: { !Self.everydayWords.contains(draft.shape(at: $0).key) })
-            else {
+            let hasBareLetter = live[position..<end].contains {
+                !Self.everydayWords.contains(draft.shape(at: $0).key)
+            }
+            guard hasBareLetter else {
                 position += 1
                 continue
             }
