@@ -31,6 +31,12 @@ public struct NumberFormsPass: PieceCleaningPass {
         "fourteenth": 14, "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
         "nineteenth": 19, "twentieth": 20, "thirtieth": 30,
     ]
+    /// Other currencies and units with no second meaning; "pound", "feet" and "second" stay out.
+    static let measures: Set<String> = [
+        "yen", "dirham", "dirhams", "franc", "francs", "kilometre", "kilometres", "kilometer", "kilometers",
+        "kilogram", "kilograms", "metre", "metres", "meter", "meters", "litre", "litres", "liter", "liters",
+        "minutes", "hours",
+    ]
 
     /// One rendered number and how many words it replaces.
     struct Phrase: Equatable {
@@ -260,8 +266,9 @@ public struct NumberFormsPass: PieceCleaningPass {
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
-            let beforeCurrency = joined(end, shapes) && currencies.contains(keys[end])
-            guard policy == .always || inContext || value >= 10 || beforeCurrency else { return nil }
+            let beforeAmount =
+                joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+            guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
             text = NumberWords.render(value, grouped: digits == .thousands && !inContext)
         } else if !isPhrase {

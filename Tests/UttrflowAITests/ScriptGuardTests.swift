@@ -25,6 +25,23 @@ struct ScriptGuardTests {
                     reason: "the rewrite translated the Hindi instead of romanising it", kind: .translated))
     }
 
+    @Test("refuses an accented letter the romanised Hindi never has")
+    func refusesAnInventedAccent() {
+        #expect(
+            sut.scriptVerdict(
+                draft: "क्या आपने बग्ठिक्स कर दिया?", rewritten: "Kya aapne bògthiks kar diya?",
+                examples: examples)
+                == .rejected(
+                    reason: "the rewrite wrote 'ò', a letter the romanised Hindi does not have",
+                    kind: .notLatinScript))
+    }
+
+    @Test("keeps an accented letter in an English draft")
+    func keepsAnEnglishAccent() {
+        let said = "Meet José at the café."
+        #expect(sut.scriptVerdict(draft: said, rewritten: said) == .accepted)
+    }
+
     @Test(
         "refuses an English translation of a draft in Arabic, Cyrillic or CJK script",
         arguments: [

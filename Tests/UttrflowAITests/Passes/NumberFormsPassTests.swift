@@ -72,6 +72,24 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
     }
 
+    @Test(
+        "a small amount in another currency or unit is a numeral in prose",
+        arguments: [
+            ("it costs five yen", "it costs 5 yen"),
+            ("we walked three kilometres", "we walked 3 kilometres"),
+            ("wait two minutes", "wait 2 minutes"),
+            ("one of them", "one of them"),
+            ("I lost a pound", "I lost a pound"),
+            ("I lost one pound", "I lost one pound"),
+            ("give me a second", "give me a second"),
+            ("two seconds", "two seconds"),
+            ("six feet", "six feet"),
+        ]
+    )
+    func smallAmountsAreNumerals(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == expected)
+    }
+
     @Test("the place a dictation lands in decides how many of its numbers are numerals")
     func policyComesFromTheFormatter() {
         #expect(cleaned("one of them", by: NumberFormsPass(policy: .fromTen)) == "one of them")

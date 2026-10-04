@@ -129,6 +129,28 @@ happened — a transcript of the steps beats a description of the conclusion.
 
 **Do not open an issue for a security problem.** See [`SECURITY.md`](SECURITY.md).
 
+### Labels for a wrong dictation
+
+A dictation that came out wrong carries one class label and one layer label, so every issue of
+one kind is a single label query.
+
+| Label | Meaning |
+|---|---|
+| `quality:meaning` | the output says something the speaker did not say, or nothing was inserted |
+| `quality:format` | the words are right; punctuation, casing, numbers or layout are wrong |
+| `quality:cosmetic` | the meaning and format are right; a spacing or style detail is off |
+| `layer:recogniser` | the speech model heard the wrong words |
+| `layer:candidates` | the right word was among the alternatives and a different one was chosen |
+| `layer:rules` | a deterministic clean-up rule changed the text |
+| `layer:model` | the clean-up model changed the text |
+| `layer:seam` | text was lost, doubled or joined wrongly between chunks or sessions |
+| `layer:insertion` | the text was right but reached the target app wrong or not at all |
+
+Priority follows the class: `quality:meaning` is P1, and P0 when nothing was inserted.
+
+An accuracy fix names the corpus case it adds, failing before the fix and passing after, or says
+why no case can exist.
+
 ## Licence
 
 By contributing you agree that your contributions are licensed under the MIT Licence, as

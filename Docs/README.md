@@ -20,6 +20,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [pipeline.md](pipeline.md) | The dictation pipeline |
+| [dictation-quality.md](dictation-quality.md) | Dictation quality: the layers, and where each one lives |
 | [pipeline-gestures.md](pipeline-gestures.md) | How a gesture becomes a dictation |
 | [shortcuts.md](shortcuts.md) | Watching for the shortcut |
 | [microphone.md](microphone.md) | The microphone, and the hardware moving under it |
@@ -141,6 +142,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [accuracy-targets.md](accuracy-targets.md) | Accuracy targets, the error taxonomy and the release gate |
+| [segments.md](segments.md) | What each kind of speaker needs, and which corpus slice measures it |
 | [measure-a-change.md](measure-a-change.md) | Measuring a change |
 | [ci-tiers.md](ci-tiers.md) | Which gate runs per pull request, nightly and before a release |
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
