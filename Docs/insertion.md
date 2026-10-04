@@ -343,3 +343,20 @@ the element itself, so asking from any other field empties it as well. It keeps
 Offsets go stale the moment the user types, so a record is never trusted on its own:
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
+
+## The insertion fixture
+
+`uttrflow-insertion-fixture` is a test-only window with a text field, a multi-line view and a
+secure field, each of which takes its edits through one fault mode named on its command line.
+`Scripts/e2e_insertion.sh` launches it once per mode, runs `uttrflow-dev insert` into the focused
+field, and asserts the exit status, the line `insert` prints and what the field holds after. It
+waits until nobody has touched the Mac for 30 s, and needs Accessibility granted to the shell.
+`Scripts/bundle.sh` fails a bundle that contains any of it.
+
+| Mode | Field, route | What the field does | Expected |
+|---|---|---|---|
+| `faithful` | text, Accessibility | takes every edit | written, field holds the words |
+| `changes-nothing` | text, Accessibility | answers the write with success and changes nothing | `insertionUnconfirmed`, field empty |
+| `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
+| `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
+| `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |
