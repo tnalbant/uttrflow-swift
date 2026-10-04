@@ -151,7 +151,7 @@ extension DictationPipeline {
         let request = TransformationRequest(
             transcription: joined.heard.saying(joined.corrected), context: appContext,
             profile: runningProfile,
-            situation: situation)
+            situation: situation, vocabulary: dictationWords ?? [])
         let finished = await runningCleaner.finishMessage(joined.cleaned.text, for: request)
         return Piece(
             heard: joined.heard, corrected: joined.corrected,
