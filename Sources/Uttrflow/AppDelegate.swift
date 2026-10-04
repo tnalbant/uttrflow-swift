@@ -1317,6 +1317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             vocabulary: LearnedVocabulary(dictionary: dictionary) { [weak self] entries in
                 await MainActor.run { self?.noteLearned(entries) }
             },
+            // The same answers typing capture keeps, so one refusal covers both. See `Docs/predict.md`.
+            consent: CapturePreferencesFile(
+                path: CapturePreferencesFile.defaultFile(in: container).path(percentEncoded: false)),
             metrics: telemetry.map { MetricsFanOut([diagnostics, $0.recorder]) } ?? diagnostics,
             cleaningRecorder: diagnostics,
             destinationOverrides: settings.destinations,

@@ -1,25 +1,6 @@
 // What the user has said about learning from each application, in memory and on disk.
-import UttrflowCore
+public import UttrflowCore
 public import Foundation
-
-/// Whether the user has been asked about an application, and what they said.
-public enum ConsentState: String, Sendable, Codable, Equatable, CaseIterable {
-    /// The user has not been asked about this application.
-    case unknown
-    /// The user has opted this application in.
-    case allowed
-    /// The user has said no to this application.
-    case declined
-
-    /// How careful this answer is, so folding two spellings of one application never loses a refusal.
-    var caution: Int {
-        switch self {
-        case .unknown: 0
-        case .allowed: 1
-        case .declined: 2
-        }
-    }
-}
 
 /// What to do about an application, which is to refuse until the user has said otherwise.
 public enum ConsentDecision: Sendable, Equatable, CaseIterable {
@@ -89,7 +70,7 @@ public struct CapturePreferences: Sendable, Equatable, Codable {
 }
 
 /// The preferences on disk, so an answer given once is never asked for twice.
-public struct CapturePreferencesFile: Sendable {
+public struct CapturePreferencesFile: LearningConsent {
     /// The file the answers are read from and written to.
     private let path: String
 
@@ -107,6 +88,12 @@ public struct CapturePreferencesFile: Sendable {
     public func load() -> CapturePreferences {
         LocalStore.read(CapturePreferences.self, from: URL(fileURLWithPath: path)).value
             ?? CapturePreferences()
+    }
+
+    /// What was said about one application, read fresh so a switch moved in Settings counts at once.
+    public func state(of bundleIdentifier: String?) async -> ConsentState {
+        guard let bundleIdentifier else { return .unknown }
+        return load().state(of: bundleIdentifier)
     }
 
     /// Writes what was decided, creating the directory it belongs in when it is not there yet.

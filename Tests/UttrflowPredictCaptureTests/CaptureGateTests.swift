@@ -1,5 +1,7 @@
 import Testing
 
+import UttrflowCore
+
 @testable import UttrflowPredictCapture
 
 private let allowed = CapturePreferences(

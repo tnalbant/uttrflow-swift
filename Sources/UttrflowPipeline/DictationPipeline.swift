@@ -18,6 +18,7 @@ public actor DictationPipeline {
     let corrector: any WordCorrecting
     let snippets: any SnippetExpanding
     private let learner: any DictationLearning
+    private let consent: any LearningConsent
     private let vocabulary: any VocabularyLearning
     let metrics: any MetricsRecording
     /// Where the account of what the clean-up steps did to each dictation goes.
@@ -112,6 +113,7 @@ public actor DictationPipeline {
         snippets: any SnippetExpanding = NoTextChanges(),
         learner: any DictationLearning = NoTextChanges(),
         vocabulary: any VocabularyLearning = NoTextChanges(),
+        consent: any LearningConsent = NothingAskedYet(),
         metrics: any MetricsRecording = NoOpMetricsRecorder(),
         cleaningRecorder: any CleaningRecording = NoOpCleaningRecorder(),
         destinationOverrides: DestinationOverrides = .none,
@@ -134,6 +136,7 @@ public actor DictationPipeline {
         self.snippets = snippets
         self.learner = learner
         self.vocabulary = vocabulary
+        self.consent = consent
         self.metrics = metrics
         self.cleaningRecorder = cleaningRecorder
         self.destinationOverrides = destinationOverrides
@@ -956,6 +959,9 @@ public actor DictationPipeline {
             early.pendingInsertion = toWrite
             return
         }
+        // An application the user declined is learned nothing from, by counting or by the dictionary.
+        guard await consent.mayLearn(from: landedIn(attempt)?.bundleIdentifier ?? appContext?.bundleIdentifier)
+        else { return }
         // Both run after the words are on screen, and neither can fail the dictation. §19.
         await count(changes)
         // A secret is not a word to learn.
