@@ -279,6 +279,22 @@ struct NumberFormsPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    /// A relative clock phrase keeps every word; only the place's number policy reaches the numbers in it.
+    @Test(
+        "keeps the words of a relative clock phrase under either policy",
+        arguments: [
+            ("meet at half past two", "meet at half past two", "meet at half past 2"),
+            ("leave at quarter to six", "leave at quarter to six", "leave at quarter to 6"),
+            ("it is twenty past four", "it is 20 past four", "it is 20 past 4"),
+            ("ten to six", "10 to six", "10 to 6"),
+            ("a quarter past eleven", "a quarter past 11", "a quarter past 11"),
+        ]
+    )
+    func relativeClockPhrases(input: String, fromTen: String, always: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == fromTen)
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == always)
+    }
+
     @Test(
         "writes a 24-hour time only with a cue",
         arguments: [
