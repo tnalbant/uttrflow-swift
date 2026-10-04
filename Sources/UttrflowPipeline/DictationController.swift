@@ -366,7 +366,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             pressOpenedTheMicrophone = await pipeline.currentState.isListening
         case .pressToToggle:
             let wasListening = await pipeline.currentState.isListening
-            await toggleListening()
+            _ = await perform(.toggle)
             let isListening = await pipeline.currentState.isListening
             pressOpenedTheMicrophone = !wasListening && isListening
         }
