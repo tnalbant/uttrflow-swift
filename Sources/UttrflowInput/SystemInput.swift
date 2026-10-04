@@ -299,7 +299,7 @@ public struct CGEventTypist: KeystrokeTyping {
         }
         try buildThenPost(
             Array(0..<count),
-            build: { _ in
+            build: { _ throws(TextInsertionError) in
                 // Flags cleared so a modifier the user is still holding cannot widen the delete.
                 try makeTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
             }, post: postTaggedKeyPairs)
@@ -313,7 +313,7 @@ public struct CGEventTypist: KeystrokeTyping {
         let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
         try buildThenPost(
             keypresses,
-            build: { keypress in
+            build: { keypress throws(TextInsertionError) in
                 switch keypress {
                 case .key(let character, let stroke):
                     try makeTaggedKeyPair(from: source, keyCode: stroke.code) { event in
