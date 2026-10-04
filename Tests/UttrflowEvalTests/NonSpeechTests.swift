@@ -22,7 +22,9 @@ struct NonSpeechTests {
     }
 
     @Test func seedsDiffer() {
-        #expect(NonSpeechKind.hiss.samples(seconds: 0.1, seed: 1) != NonSpeechKind.hiss.samples(seconds: 0.1, seed: 2))
+        #expect(
+            NonSpeechKind.hiss.samples(seconds: 0.1, seed: 1)
+                != NonSpeechKind.hiss.samples(seconds: 0.1, seed: 2))
     }
 
     @Test func anyWordFromANonSpeechClipIsAnInsertion() {

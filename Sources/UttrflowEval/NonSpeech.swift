@@ -2,7 +2,7 @@
 private import Foundation
 private import UttrflowCore
 
-/// One kind of sound that holds no words of its own; see `Docs/silence-corpus.md`.
+/// One kind of sound that holds no words of its own; see `Docs/silence.md`.
 public enum NonSpeechKind: String, CaseIterable, Sendable {
     case silence, roomTone, hiss, keyboard, breath, music
 
@@ -64,7 +64,10 @@ public enum NonSpeechSound {
     /// One-pole low-pass of `samples`, the rumble of a room rather than a hiss, at `rms` dBFS.
     static func lowPassed(_ samples: [Float], keeping coefficient: Float, rms: Double) -> [Float] {
         var level: Float = 0
-        return scaled(samples.map { level += coefficient * ($0 - level); return level }, toRMSDecibels: rms)
+        return scaled(
+            samples.map {
+                level += coefficient * ($0 - level); return level
+            }, toRMSDecibels: rms)
     }
 
     /// Key presses: a 15 ms decaying burst every `every` seconds, jittered, peaking near -12 dBFS.

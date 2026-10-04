@@ -42,7 +42,9 @@ struct NonSpeechProbe: AsyncParsableCommand {
     func run() async throws {
         let model =
             try modelVariant.map { name in
-                guard let found = SpeechModel.named(name) else { throw ValidationError("Unknown model '\(name)'.") }
+                guard let found = SpeechModel.named(name) else {
+                    throw ValidationError("Unknown model '\(name)'.")
+                }
                 return found
             } ?? .default
         let store = FileSystemSpeechModelStore.whisperKit()
@@ -100,11 +102,15 @@ struct NonSpeechProbe: AsyncParsableCommand {
                 clips.append(Clip(kind: kind.rawValue, samples: kind.samples(seed: UInt64(seed)), words: []))
             }
         }
-        let spoken = try SpokenClips.generate(in: clipsPath, inputRate: Double(AudioSamples.canonicalSampleRate))
+        let spoken = try SpokenClips.generate(
+            in: clipsPath, inputRate: Double(AudioSamples.canonicalSampleRate))
         for (index, sentence) in spoken.prefix(SpokenClips.sentences.count).enumerated() {
             for kind in NonSpeechKind.allCases {
                 let tail = kind.samples(seconds: tailSeconds, seed: UInt64(index))
-                clips.append(Clip(kind: "speech+\(kind.rawValue)", samples: sentence.samples + tail, words: sentence.words))
+                clips.append(
+                    Clip(
+                        kind: "speech+\(kind.rawValue)", samples: sentence.samples + tail,
+                        words: sentence.words))
             }
         }
         return clips
@@ -114,11 +120,19 @@ struct NonSpeechProbe: AsyncParsableCommand {
         print("kind".padded(to: 20) + "clips".padded(to: 8) + "inserted".padded(to: 10) + "looped")
         for kind in byKind.keys.sorted() {
             let rates = NonSpeechRates(byKind[kind] ?? [])
-            print(kind.padded(to: 20) + "\(rates.clips)".padded(to: 8) + "\(rates.inserted)".padded(to: 10) + "\(rates.looped)")
+            print(
+                kind.padded(to: 20) + "\(rates.clips)".padded(to: 8) + "\(rates.inserted)".padded(to: 10)
+                    + "\(rates.looped)")
         }
         let total = NonSpeechRates(byKind.values.flatMap { $0 })
-        print(String(format: "\nInsertion rate %.1f%% (%d of %d)", total.insertionRate * 100, total.inserted, total.clips))
-        print(String(format: "Repetition-loop rate %.1f%% (%d of %d)", total.loopRate * 100, total.looped, total.clips))
+        print(
+            String(
+                format: "\nInsertion rate %.1f%% (%d of %d)", total.insertionRate * 100, total.inserted,
+                total.clips))
+        print(
+            String(
+                format: "Repetition-loop rate %.1f%% (%d of %d)", total.loopRate * 100, total.looped,
+                total.clips))
         let failures = total.exceeded(insertionCeiling: maxInsertionRate, loopCeiling: maxLoopRate)
         guard failures.isEmpty else {
             print("Above its ceiling: \(failures.joined(separator: ", ")).")
