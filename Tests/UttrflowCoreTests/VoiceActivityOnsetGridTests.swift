@@ -31,7 +31,8 @@ private enum OnsetGrid {
         switch kind {
         case "fricative": return noise(samples(0.1), rms: level - 20, seed: 3)
         case "nasal": return tone(samples(0.08), hertz: 220, rms: level - 12)
-        case "plosive": return noise(samples(0.01), rms: level - 6, seed: 5) + [Float](repeating: 0, count: samples(0.04))
+        case "plosive":
+            return noise(samples(0.01), rms: level - 6, seed: 5) + [Float](repeating: 0, count: samples(0.04))
         default: return []
         }
     }
@@ -43,7 +44,8 @@ private enum OnsetGrid {
     }
 
     /// One second of room, two words with 150 ms between them, one second of room; and where the speech is.
-    static func clip(onset kind: String, level: Double, floor: Double) -> (audio: [Float], speech: Range<Int>) {
+    static func clip(onset kind: String, level: Double, floor: Double) -> (audio: [Float], speech: Range<Int>)
+    {
         let spoken = word(kind, level: level)
         let lead = samples(1)
         var speech = spoken + [Float](repeating: 0, count: samples(0.15)) + spoken
@@ -64,7 +66,8 @@ struct VoiceActivityOnsetGridTests {
                 for floor in [-70.0, -60.0, -50.0, -40.0, -35.0] {
                     let clip = OnsetGrid.clip(onset: kind, level: level, floor: floor)
                     let label = "\(kind) speech \(Int(level)) floor \(Int(floor))"
-                    guard let found = VoiceActivity.speechRange(in: clip.audio, sampleRate: OnsetGrid.rate) else {
+                    guard let found = VoiceActivity.speechRange(in: clip.audio, sampleRate: OnsetGrid.rate)
+                    else {
                         print("ONSETGRID \(label): rejected")
                         if level - floor >= 10 { clipped.append(label) }
                         continue
@@ -72,7 +75,9 @@ struct VoiceActivityOnsetGridTests {
                     let start = (found.lowerBound - clip.speech.lowerBound) * 1000 / OnsetGrid.rate
                     let end = (found.upperBound - clip.speech.upperBound) * 1000 / OnsetGrid.rate
                     let lost = start > 0 || end < 0
-                    print("ONSETGRID \(label): start \(start) ms, end \(end) ms\(lost ? ", speech clipped" : "")")
+                    print(
+                        "ONSETGRID \(label): start \(start) ms, end \(end) ms\(lost ? ", speech clipped" : "")"
+                    )
                     if lost { clipped.append(label) }
                 }
             }
