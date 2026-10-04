@@ -11,7 +11,7 @@ package final class ScanTally: Sendable {
     /// The characters read so far.
     package var count: Int { read.withLock { $0 } }
 
-    func record(_ characters: Int) { read.withLock { $0 += characters } }
+    package func record(_ characters: Int) { read.withLock { $0 += characters } }
 }
 
 extension Character {

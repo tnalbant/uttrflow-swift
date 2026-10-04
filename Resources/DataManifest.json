@@ -142,7 +142,7 @@
       "bytes": 9423
     },
     {
-      "path": "Sources/UttrflowClipboard/Resources/LICENSE-bip39.txt",
+      "path": "Sources/UttrflowCore/Resources/LICENSE-bip39.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
@@ -153,7 +153,7 @@
       "bytes": 1131
     },
     {
-      "path": "Sources/UttrflowClipboard/Resources/bip39-english.txt",
+      "path": "Sources/UttrflowCore/Resources/bip39-english.txt",
       "origin": "third-party",
       "source": "https://github.com/bitcoin/bips/tree/master/bip-0039",
       "revision": "unrecorded",
