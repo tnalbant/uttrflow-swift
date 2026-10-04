@@ -49,11 +49,9 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
     private let typed = Mutex<[String]>([])
     private let deleted = Mutex<[Int]>([])
     private let error: TextInsertionError?
-    private let acceptsText: Bool
 
-    init(error: TextInsertionError? = nil, acceptsText: Bool = true) {
+    init(error: TextInsertionError? = nil) {
         self.error = error
-        self.acceptsText = acceptsText
     }
 
     var text: [String] { typed.withLock { $0 } }
@@ -63,8 +61,6 @@ private final class RecordingTypist: KeystrokeTyping, @unchecked Sendable {
         typed.withLock { $0.append(text) }
         if let error { throw error }
     }
-
-    func canType(_ text: String) -> Bool { acceptsText }
 
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {
         deleted.withLock { $0.append(count) }
@@ -136,22 +132,6 @@ struct TypedTextInsertionEngineTests {
         #expect(typist.text.isEmpty)
     }
 
-    @Test("It checks the replacement is typeable before deleting the text already there")
-    func unsupportedTextLeavesReplacementUntouched() async {
-        let typist = RecordingTypist(acceptsText: false)
-        let engine = TypedTextInsertionEngine(focus: FakeFocus(preceding: "co"), typist: typist)
-
-        await #expect(
-            throws: TextInsertionError.insertionRejected(
-                description: "the current keyboard layout cannot type every character")
-        ) {
-            try await engine.write("🙂", replacing: "co", confirmedPreceding: "co")
-        }
-
-        #expect(typist.deletions.isEmpty)
-        #expect(typist.text.isEmpty)
-    }
-
     @Test("An insertion refuses when Uttrflow came to the front after canInsert() said yes.")
     func insertRefusesWhenSelfBecameFrontmost() async {
         let focus = SwitchableFocus()
@@ -163,6 +143,48 @@ struct TypedTextInsertionEngineTests {
 
         await #expect(throws: TextInsertionError.noFocusedTextField) {
             _ = try await engine.insert("mit")
+        }
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A dictation is not typed into an application the user switched to.")
+    func insertRefusesWhenDestinationChanged() async {
+        let target = InsertionDestination(applicationName: "Notes", bundleIdentifier: "com.example.notes")
+        let other = InsertionDestination(applicationName: "Chat", bundleIdentifier: "com.example.chat")
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(frontmost: other), typist: typist)
+
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            _ = try await engine.insert("private words", targeting: target)
+        }
+        await #expect(throws: TextInsertionError.insertionTargetChanged) {
+            _ = try await engine.insert("private words", richText: "<b>w</b>", targeting: target)
+        }
+        #expect(typist.text.isEmpty)
+    }
+
+    @Test("A dictation is typed while its captured application is still in front.")
+    func insertTypesIntoUnchangedDestination() async throws {
+        let target = InsertionDestination(applicationName: "Notes", bundleIdentifier: "com.example.notes")
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(frontmost: target), typist: typist)
+
+        _ = try await engine.insert("words", targeting: target)
+
+        #expect(typist.text == ["words"])
+    }
+
+    @Test("A dictation that has given up is not typed.")
+    func insertRefusesWhenCancelled() async {
+        let typist = RecordingTypist()
+        let engine = TypedTextInsertionEngine(focus: FakeFocus(), typist: typist)
+        let task = Task { () async throws(TextInsertionError) -> InsertionArrival in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await engine.insert("late words")
+        }
+
+        await #expect(throws: TextInsertionError.insertionRejected(description: TextInsertion.dictationEnded)) {
+            _ = try await task.value
         }
         #expect(typist.text.isEmpty)
     }

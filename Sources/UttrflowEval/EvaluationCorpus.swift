@@ -325,6 +325,13 @@ public enum EvaluationCorpus {
             expected: "\"We ship on Friday.\"",
             mustKeep: ["Friday"]
         ),
+        // The prompt folds double quotes to single; the answer must carry the speaker's double ones.
+        .init(
+            id: "quoted-words-mid-sentence", category: .everyday,
+            spoken: "he said \"we ship on Friday\" and left",
+            expected: "He said \"we ship on Friday\" and left.",
+            mustKeep: ["Friday"]
+        ),
         // What PromptContract asks for and Docs/cleanup.md records the model refusing: measured, not asserted.
         .init(
             id: "restatement-slot-adjacent", category: .everyday,
@@ -487,6 +494,62 @@ public enum EvaluationCorpus {
             expected: "Let's get coffee at three.",
             mustKeep: ["coffee"],
             mustNotAdd: ["two"]
+        ),
+        .init(
+            id: "correction-between-amounts-spoken", category: .everyday,
+            spoken: "the budget is ten k correction twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "correction"]
+        ),
+        .init(
+            id: "correction-as-a-noun-kept", category: .everyday,
+            spoken: "the correction was small",
+            expected: "The correction was small.",
+            mustKeep: ["correction", "small"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "strike-that-restates-a-phrase", category: .everyday,
+            spoken: "pick the red one strike that the blue one",
+            expected: "Pick the blue one.",
+            mustKeep: ["Pick", "blue"],
+            mustNotAdd: ["red", "strike"]
+        ),
+        .init(
+            id: "strike-that-as-an-order-kept", category: .everyday,
+            spoken: "strike that match and light the candle",
+            expected: "Strike that match and light the candle.",
+            mustKeep: ["Strike that match", "candle"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "or-rather-replaces-a-word", category: .everyday,
+            spoken: "she wanted tea or rather coffee",
+            expected: "She wanted coffee.",
+            mustKeep: ["wanted", "coffee"],
+            mustNotAdd: ["tea", "rather"]
+        ),
+        .init(
+            id: "or-rather-before-a-negation-kept", category: .everyday,
+            spoken: "would you like to stay or rather not",
+            expected: "Would you like to stay or rather not?",
+            mustKeep: ["stay or rather not"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "actually-make-it-between-amounts", category: .everyday,
+            spoken: "the budget is ten k actually make it twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "make it"]
+        ),
+        .init(
+            id: "actually-make-it-as-arriving-kept", category: .everyday,
+            spoken: "we did not actually make it to the party",
+            expected: "We did not actually make it to the party.",
+            mustKeep: ["actually make it", "party"],
+            mustNotAdd: []
         ),
         // The recogniser writes a paused trigger as its own sentence, which is a pause rather than a sentence end.
         .init(
@@ -675,6 +738,18 @@ public enum EvaluationCorpus {
             spoken: "note colon kal chutti hai",
             expected: "Note: kal chutti hai.",
             mustKeep: ["note", "kal chutti hai"], mustNotAdd: ["colon"]
+        ),
+        .init(
+            id: "hinglish-interjections-not-letters", category: .everyday,
+            spoken: "are o bhai sun",
+            expected: "Are o bhai sun.",
+            mustKeep: ["are o bhai"], mustNotAdd: ["RO"]
+        ),
+        .init(
+            id: "hinglish-jay-jay-not-letters", category: .everyday,
+            spoken: "jay jay ho",
+            expected: "Jay jay ho.",
+            mustKeep: ["jay jay"], mustNotAdd: ["JJ"]
         ),
         // Issue 237: the same bare names said as ordinary words, which must survive as words.
         .init(
@@ -1504,6 +1579,128 @@ public enum EvaluationCorpus {
             destination: .document,
             mustBeginWith: "Should",
             mustEndWith: "?"
+        ),
+
+        // A line a calendar or task app parses keeps every date word and takes no stop.
+        .init(
+            id: "quick-entry-things", category: .contextual,
+            spoken: "remind me to call the plumber tomorrow",
+            expected: "Remind me to call the plumber tomorrow",
+            mustKeep: ["plumber", "tomorrow"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Remind",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-things-every-month", category: .contextual,
+            spoken: "pay rent every month",
+            expected: "Pay rent every month",
+            mustKeep: ["rent", "every", "month"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: "com.culturedcode.ThingsMac",
+                documentName: "Upcoming"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Pay",
+            mustEndWith: "month"
+        ),
+        .init(
+            id: "quick-entry-omnifocus", category: .contextual,
+            spoken: "renew the passport next week",
+            expected: "Renew the passport next week",
+            mustKeep: ["passport", "next", "week"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Renew",
+            mustEndWith: "week"
+        ),
+        .init(
+            id: "quick-entry-omnifocus-weekday", category: .contextual,
+            spoken: "dentist on friday",
+            expected: "Dentist on Friday",
+            mustKeep: ["Dentist", "Friday"],
+            context: AppContext(
+                applicationName: "OmniFocus",
+                bundleIdentifier: "com.omnigroup.OmniFocus3",
+                documentName: "Forecast"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Dentist",
+            mustEndWith: "Friday"
+        ),
+        .init(
+            id: "quick-entry-fantastical", category: .contextual,
+            spoken: "lunch with Sam tomorrow",
+            expected: "Lunch with Sam tomorrow",
+            mustKeep: ["Sam", "tomorrow"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Lunch",
+            mustEndWith: "tomorrow"
+        ),
+        .init(
+            id: "quick-entry-fantastical-every-week", category: .contextual,
+            spoken: "team review every monday",
+            expected: "Team review every Monday",
+            mustKeep: ["every", "Monday"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: "com.flexibits.fantastical2.mac",
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Team",
+            mustEndWith: "Monday"
+        ),
+        .init(
+            id: "quick-entry-todoist", category: .contextual,
+            spoken: "water the plants every other day",
+            expected: "Water the plants every other day",
+            mustKeep: ["every", "other", "day"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Inbox"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Water",
+            mustEndWith: "day"
+        ),
+        .init(
+            id: "quick-entry-todoist-today", category: .contextual,
+            spoken: "send the invoice today",
+            expected: "Send the invoice today",
+            mustKeep: ["invoice", "today"],
+            context: AppContext(
+                applicationName: "Todoist",
+                bundleIdentifier: "com.todoist.mac.Todoist",
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Send",
+            mustEndWith: "today"
         ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.

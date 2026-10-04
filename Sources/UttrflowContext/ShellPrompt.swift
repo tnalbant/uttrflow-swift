@@ -315,8 +315,8 @@ public enum ShellPrompt {
         _ terminator: Character, after prefix: Prefix, linePrefix: Substring
     ) -> Bool {
         switch terminator {
-        // zsh puts a space before its `%`, and a percentage never does.
-        case "%": prefix.last?.isWhitespace ?? true
+        // zsh puts a space before its `%`, and its prompt names a host, directory or shell.
+        case "%": (prefix.last?.isWhitespace ?? true) && isZshPromptPrefix(linePrefix)
         // A spaced dollar is a prompt after a directory, host, or shell name, not after command text.
         case "$":
             !(prefix.last?.isWhitespace ?? false)
@@ -340,6 +340,37 @@ public enum ShellPrompt {
         // A tick, a cross and a chevron are drawn by prompt themes and typed by nobody.
         default: true
         }
+    }
+
+    /// A zsh prompt prefix is empty, a shell or directory name, or a host with its current directory.
+    private static func isZshPromptPrefix(_ prefix: Substring) -> Bool {
+        let parts = prefix.split(whereSeparator: \.isWhitespace)
+        guard !parts.isEmpty else { return true }
+        let promptParts =
+            parts.first?.hasPrefix("(") == true && parts.first?.hasSuffix(")") == true
+            ? Array(parts.dropFirst()) : Array(parts)
+        guard let first = promptParts.first else { return false }
+        if promptParts.count == 1 {
+            return first == "zsh" || isZshHost(first) || isZshDirectory(first)
+        }
+        guard promptParts.count == 2, isZshHost(first), let directory = promptParts.last else {
+            return false
+        }
+        return isZshDirectory(directory)
+    }
+
+    /// A zsh hostname has a non-empty user and host separated by `@`.
+    private static func isZshHost(_ name: Substring) -> Bool {
+        guard isBarePromptName(name), let at = name.firstIndex(of: "@"), at > name.startIndex else {
+            return false
+        }
+        return name.index(after: at) < name.endIndex
+    }
+
+    /// A zsh current directory is a path or a simple directory name.
+    private static func isZshDirectory(_ name: Substring) -> Bool {
+        name.hasPrefix("~") || name.hasPrefix("/") || name.hasPrefix("./")
+            || name.hasPrefix("../") || isBarePromptName(name)
     }
 
     /// A PowerShell prompt starts with `PS ` and ends its current-directory token at `>`.

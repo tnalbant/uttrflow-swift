@@ -86,10 +86,13 @@ public actor PersonalDictionaryStore {
         return kept
     }
 
-    /// Replaces the stored snapshot after an archive has been fully validated and merged, returning what was kept.
+    /// Replaces the list with what `merge` derives from it in one actor step, returning what the bound kept.
     @discardableResult
-    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) -> [DictionaryEntry] {
-        let entries = entries.map(\.inLatinScript)
+    public func replaceAll<Outcome: Sendable>(
+        _ merge: @Sendable ([DictionaryEntry]) -> (entries: [DictionaryEntry], outcome: Outcome)
+    ) throws(DictionaryStoreError) -> (kept: [DictionaryEntry], outcome: Outcome) {
+        let derived = merge(load())
+        let entries = derived.entries.map(\.inLatinScript)
         for entry in entries {
             guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
                 throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
@@ -98,7 +101,7 @@ public actor PersonalDictionaryStore {
         let kept = Self.boundedEntries(entries)
         try persist(kept)
         cachedIndex = nil
-        return kept
+        return (kept, derived.outcome)
     }
 
     /// Writes what the user typed in as a word of their own. See `Docs/app-dictionary-store.md`.

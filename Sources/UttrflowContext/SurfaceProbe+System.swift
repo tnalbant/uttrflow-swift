@@ -56,7 +56,8 @@ public enum SurfaceProbe {
         }
         let pluralRanges = (plural as? [AnyObject])?.compactMap { unwrap($0, .cfRange) as CFRange? }
         return AccessibilitySelection.resolve(
-            singular: value(field, kAXSelectedTextRangeAttribute, .cfRange), plural: pluralRanges)
+            singular: value(field, kAXSelectedTextRangeAttribute, .cfRange), plural: pluralRanges,
+            textLength: integer(field, kAXNumberOfCharactersAttribute))
     }
 
     /// The screen rectangle Accessibility reports for one text range, which decides whether a ghost can be drawn.

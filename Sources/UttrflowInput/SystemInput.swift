@@ -263,14 +263,12 @@ public struct CGEventKeystrokeSender: KeystrokeSender {
     }
 }
 
-/// Types characters with layout-mapped key events that also carry their Unicode strings.
+/// Types each character on its layout key where the layout has one, and as a bare Unicode string where it does not.
 public struct CGEventTypist: KeystrokeTyping {
     /// Virtual key code for Delete, positional and so correct on any keyboard layout.
     private static let deleteKeyCode: CGKeyCode = 51
 
     public init() {}
-
-    public func canType(_ text: String) -> Bool { preparedStrokes(for: text) != nil }
 
     /// One press per character, because there is no bulk delete a synthetic keyboard can reach for.
     public func deleteBackwards(_ count: Int) throws(TextInsertionError) {
@@ -286,33 +284,27 @@ public struct CGEventTypist: KeystrokeTyping {
     }
 
     public func type(_ text: String) throws(TextInsertionError) {
-        guard let strokes = preparedStrokes(for: text) else {
-            throw .insertionRejected(description: "the current keyboard layout cannot type every character")
-        }
         guard AXIsProcessTrusted() else { throw .accessibilityDenied }
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        for (character, stroke) in strokes {
-            try postTaggedKeyPair(from: source, keyCode: stroke.code) { event in
-                // Only layout modifiers are set, so held user modifiers cannot change the character.
-                event.flags = stroke.flags
-                var unit = character
-                event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+        for keypress in LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:)) {
+            switch keypress {
+            case .key(let character, let stroke):
+                try postTaggedKeyPair(from: source, keyCode: stroke.code) { event in
+                    // Only layout modifiers are set, so held user modifiers cannot change the character.
+                    event.flags = stroke.flags
+                    var unit = character
+                    event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+                }
+            case .text(let units):
+                try postTaggedKeyPair(from: source, keyCode: 0) { event in
+                    // Flags cleared so a modifier the user is still holding cannot make this a shortcut.
+                    event.flags = []
+                    event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+                }
             }
         }
-    }
-
-    /// Resolves every scalar before posting any event, so unsupported text never becomes partial input.
-    private func preparedStrokes(for text: String) -> [(UniChar, LayoutKeyCode.Stroke)]? {
-        var strokes: [(UniChar, LayoutKeyCode.Stroke)] = []
-        for scalar in text.unicodeScalars {
-            guard scalar.value <= UInt32(UInt16.max) else { return nil }
-            let character = UniChar(scalar.value)
-            guard let stroke = PasteKeyLayout.stroke(for: character) else { return nil }
-            strokes.append((character, stroke))
-        }
-        return strokes
     }
 }
 
@@ -329,6 +321,12 @@ public struct AXAccessibilityFocus: AccessibilityFocus {
 
     /// Anything focused at all, without asking it to report a selection.
     public func hasFocusedElement() -> Bool { focusedElement() != nil }
+
+    public func focusedElementKind() -> FocusedElementKind {
+        let element = focusedElement()
+        return .of(
+            role: element.flatMap { stringAttribute(kAXRoleAttribute, of: $0) }, isPublished: element != nil)
+    }
 
     public func isTrusted() -> Bool { AXIsProcessTrusted() }
 
@@ -678,7 +676,8 @@ private func selection(of element: AXUIElement) -> AccessibilitySelection {
     }
     let pluralRanges = (plural as? [AnyObject])?.compactMap { rangeValue($0) }
     return AccessibilitySelection.resolve(
-        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges)
+        singular: rangeAttribute(kAXSelectedTextRangeAttribute, of: element), plural: pluralRanges,
+        textLength: characterCount(of: element))
 }
 
 /// Unwraps one Accessibility value as a character range.

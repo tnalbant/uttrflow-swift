@@ -9,9 +9,16 @@ milliseconds and never flakes. The tests are in `UITests/UttrflowUITests/`.
 
 ```bash
 brew install xcodegen   # once
+sudo automationmodetool enable-automationmode-without-authentication   # once
 make app                # the bundle under test
 make uitest
 ```
+
+XCUITest drives the app through macOS automation mode. Where enabling it needs authentication,
+which `automationmodetool` with no arguments reports, `xcodebuild` waits about a minute and
+fails with "Timed out while enabling automation mode" before any test runs. The `sudo` line
+above removes that prompt for the logged-in user; `Scripts/uitest.sh` checks for it first and
+stops with that instruction instead of the timeout.
 
 ## Where it lives, and why it is not a SwiftPM target
 

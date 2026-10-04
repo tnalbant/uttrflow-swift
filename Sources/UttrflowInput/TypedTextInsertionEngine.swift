@@ -10,13 +10,6 @@ public protocol KeystrokeTyping: Sendable {
 
     /// Presses Delete `count` times, which is the only way this route takes typed characters back.
     func deleteBackwards(_ count: Int) throws(TextInsertionError)
-
-    /// Whether every character can be represented by a physical key on the active layout.
-    func canType(_ text: String) -> Bool
-}
-
-extension KeystrokeTyping {
-    public func canType(_ text: String) -> Bool { true }
 }
 
 /// Puts text in by typing it, for the fields Accessibility cannot write into.
@@ -41,14 +34,38 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
         self.finishWaitStarted = finishWaitStarted
     }
 
-    /// Anything but ourselves; Electron apps expose no focused element and still take typing.
-    public func canInsert() async -> Bool { !focus.isSelfFrontmost() }
+    /// Anything but ourselves or a focused control; Electron apps expose no focused element and still take typing.
+    public func canInsert() async -> Bool {
+        guard !focus.isSelfFrontmost() else { return false }
+        let focus = focus
+        return await AccessibilityThread.run(orElse: .unpublished) { focus.focusedElementKind() } != .control
+    }
 
     /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival {
-        try refuseIfSelfFrontmost()
-        try typist.type(text)
+        try await insert(text, targeting: nil)
+    }
+
+    /// Types only while the captured application is still in front and the dictation still wants the words.
+    public func insert(
+        _ text: String, targeting destination: InsertionDestination
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try await insert(text, targeting: Optional(destination))
+    }
+
+    private func insert(
+        _ text: String, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) -> InsertionArrival {
+        try refuseIfStale(destination)
+        try await typeInChunks(text, targeting: destination)
         return .notReported
+    }
+
+    /// The one check made immediately before key events are posted: self in front, destination moved, or cancelled.
+    func refuseIfStale(_ destination: InsertionDestination?) throws(TextInsertionError) {
+        try TextInsertion.requireLive()
+        try refuseIfNotTypable()
+        try TextInsertion.requireTarget(destination, focus: focus)
     }
 }
 
@@ -66,9 +83,6 @@ extension TypedTextInsertionEngine: CompletionWriting {
     public func write(
         _ text: String, replacing replaced: String, confirmedPreceding: String?
     ) async throws(TextInsertionError) {
-        guard typist.canType(text) else {
-            throw .insertionRejected(description: "the current keyboard layout cannot type every character")
-        }
         guard let write = writeState.begin() else {
             throw .insertionRejected(description: "the application is terminating")
         }
@@ -87,12 +101,12 @@ extension TypedTextInsertionEngine: CompletionWriting {
                 throw .insertionRejected(
                     description: "the text before the caret is not what would be replaced")
             }
-            try refuseIfSelfFrontmost()
+            try refuseIfNotTypable()
             try typist.deleteBackwards(count)
         } else {
-            try refuseIfSelfFrontmost()
+            try refuseIfNotTypable()
         }
-        try typist.type(text)
+        try await typeInChunks(text, targeting: nil)
     }
 }
 
@@ -141,7 +155,41 @@ private final class TypedWriteState: Sendable {
 
 extension TypedTextInsertionEngine {
     /// Re-checked at the write rather than trusted from `canInsert()`, whose answer can go stale by now.
-    private func refuseIfSelfFrontmost() throws(TextInsertionError) {
-        guard !focus.isSelfFrontmost() else { throw .noFocusedTextField }
+    private func refuseIfNotTypable() throws(TextInsertionError) {
+        guard !focus.isSelfFrontmost(), focus.focusedElementKind() != .control else {
+            throw .noFocusedTextField
+        }
+    }
+
+    /// Characters posted between checks, small enough that a stop lands within a few milliseconds of typing.
+    static let chunkLength = 64
+
+    /// Types `text` a chunk at a time, making the pre-write check again before every chunk after the first.
+    private func typeInChunks(
+        _ text: String, targeting destination: InsertionDestination?
+    ) async throws(TextInsertionError) {
+        let total = text.count
+        let focus = focus
+        // Without a captured destination, the app in front at the first chunk is the one typing must stay in.
+        let current = await AccessibilityThread.run(orElse: nil) { focus.focusedApplication() }
+        let target = destination ?? current.flatMap { $0.isKnown ? $0 : nil }
+        var typed = 0
+        var start = text.startIndex
+        while start < text.endIndex {
+            let end = text.index(start, offsetBy: Self.chunkLength, limitedBy: text.endIndex) ?? text.endIndex
+            do {
+                if typed > 0 {
+                    await Task.yield()
+                    try refuseIfStale(target)
+                }
+                try typist.type(String(text[start..<end]))
+            } catch {
+                // Characters already posted cannot be taken back, so any later stop is a partial insertion.
+                guard typed == 0 else { throw .insertionInterrupted(typed: typed, total: total) }
+                throw error
+            }
+            typed += text.distance(from: start, to: end)
+            start = end
+        }
     }
 }

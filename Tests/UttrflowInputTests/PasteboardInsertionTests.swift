@@ -19,7 +19,7 @@ final class FakePasteboard: Pasteboard {
         var pictures: [Data] = []
         var acceptsWrites = true
         var refusesWrites = false
-        var onImageWrite: (@Sendable () -> Void)?
+        var onImageWrite: (@Sendable (FakePasteboard) -> Void)?
         var onTextWrite: (@Sendable (FakePasteboard) -> Void)?
     }
 
@@ -28,7 +28,7 @@ final class FakePasteboard: Pasteboard {
     /// `acceptsWrites: false` models a clipboard that takes the write and then does not hold it.
     init(
         text: String? = nil, acceptsWrites: Bool = true, refusesWrites: Bool = false,
-        onImageWrite: (@Sendable () -> Void)? = nil,
+        onImageWrite: (@Sendable (FakePasteboard) -> Void)? = nil,
         onTextWrite: (@Sendable (FakePasteboard) -> Void)? = nil
     ) {
         state.withLock { state in
@@ -99,14 +99,14 @@ final class FakePasteboard: Pasteboard {
     /// K4 — a picture write, kept apart from the text ones so a test can tell them apart.
     func setImage(_ data: Data) -> PasteboardWriteResult {
         let (result, onImageWrite) = state.withLock {
-            state -> (PasteboardWriteResult, (@Sendable () -> Void)?) in
+            state -> (PasteboardWriteResult, (@Sendable (FakePasteboard) -> Void)?) in
             guard !state.refusesWrites else { return (.refused, state.onImageWrite) }
             state.pictures.append(data)
             state.changeCount += 1
             if state.acceptsWrites { state.text = nil }
             return (.written(changeCount: state.changeCount), state.onImageWrite)
         }
-        onImageWrite?()
+        onImageWrite?(self)
         return result
     }
 
@@ -652,7 +652,7 @@ struct PasteboardImageInsertionEngineTests {
     func rechecksFrontmostAfterWritingImage() async {
         let imageData = await Task.detached { Data([0x89, 0x50, 0x4E, 0x47]) }.value
         let focus = SwitchableFocus()
-        let pasteboard = FakePasteboard(onImageWrite: { focus.becomeSelfFrontmost() })
+        let pasteboard = FakePasteboard(onImageWrite: { _ in focus.becomeSelfFrontmost() })
         let keystrokes = FakeKeystrokeSender()
         let sut = PasteboardImageInsertionEngine(
             focus: focus, pasteboard: pasteboard, keystrokes: keystrokes)
@@ -738,7 +738,6 @@ private final class PanelRouteTypist: KeystrokeTyping, @unchecked Sendable {
         lock.unlock()
     }
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
-    func canType(_ text: String) -> Bool { true }
 }
 
 @Suite("Clipboard-free dictation insertion")
@@ -797,7 +796,6 @@ private final class RouteRecordingTypist: KeystrokeTyping, @unchecked Sendable {
         lock.unlock()
     }
     func deleteBackwards(_ count: Int) throws(TextInsertionError) {}
-    func canType(_ text: String) -> Bool { true }
 }
 
 @Suite("ClipboardTextInsertionEngine")

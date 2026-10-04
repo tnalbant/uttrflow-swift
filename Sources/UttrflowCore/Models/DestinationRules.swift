@@ -7,7 +7,7 @@ public enum DestinationRules {
                 "at.eggerapps.Postico", "com.tinyapp.TablePlus", "com.jetbrains.datagrip",
                 "org.jkiss.dbeaver", "org.pgadmin.pgadmin4", "com.sequelpro", "com.sequel-ace",
             ],
-            titleContains: ["pgAdmin"],
+            titleContains: ["pgAdmin", "pgAdmin 4"],
             nameWords: ["tableplus", "postico", "datagrip", "dbeaver", "pgadmin", "sequel"],
             kind: .sqlEditor
         ),
@@ -31,7 +31,10 @@ public enum DestinationRules {
             kind: .notes
         ),
         DestinationRule(
-            bundlePrefixes: ["com.apple.reminders", "com.apple.ical"],
+            bundlePrefixes: [
+                "com.apple.reminders", "com.apple.ical", "com.culturedcode.ThingsMac",
+                "com.omnigroup.OmniFocus3", "com.flexibits.fantastical2.mac", "com.todoist.mac.Todoist",
+            ],
             destination: .document, terminalStop: .never
         ),
         DestinationRule(
@@ -68,7 +71,10 @@ public enum DestinationRules {
                 "org.telegram", "com.hnc.Discord", "com.apple.MobileSMS", "com.microsoft.teams",
                 "org.whispersystems.signal",
             ],
-            titleContains: ["Slack", "Discord", "Messages", "WhatsApp", "Telegram", "Teams", "Signal"],
+            titleContains: [
+                "Slack", "Discord", "Messages", "WhatsApp", "Telegram", "Telegram Web", "Teams",
+                "Microsoft Teams", "Signal",
+            ],
             nameWords: [
                 "slack", "discord", "messages", "whatsapp", "telegram", "teams", "signal",
             ],

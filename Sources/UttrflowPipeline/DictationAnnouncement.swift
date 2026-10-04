@@ -100,8 +100,8 @@ private extension RecoveryAction {
             "Choose Download from the Uttrflow menu."
         case .pasteManually:
             "The text is on your clipboard. Press Command V to paste it."
-        case .showRecentDictations:
-            "Open Recent from the Uttrflow menu to find your words."
+        case .showHistory:
+            "Open History from the Uttrflow menu to find your words."
         case .copyTranscript:
             "Choose Copy on the floating button to copy your words."
         case .retryFromRecording:

@@ -136,6 +136,16 @@ struct ShellPromptTests {
                 == #"echo "50% done""#)
     }
 
+    @Test("A spaced modulo operator is not a zsh prompt.")
+    func moduloOperatorIsNotAPrompt() {
+        #expect(ShellPrompt.input(in: "expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "let x=7 % 2") == "let x=7 % 2")
+        #expect(ShellPrompt.input(in: "bc <<< 7 % 2") == "bc <<< 7 % 2")
+        #expect(ShellPrompt.input(in: "user@host experiments % expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "user@host % expr 10 % 3") == "expr 10 % 3")
+        #expect(ShellPrompt.input(in: "zsh % expr 10 % 3") == "expr 10 % 3")
+    }
+
     @Test("A dollar inside a command is not a prompt, whether quoted or expanding a name.")
     func aDollarIsNotAPrompt() {
         #expect(ShellPrompt.input(in: #"git commit -m "fix: 100$""#) == #"git commit -m "fix: 100$""#)

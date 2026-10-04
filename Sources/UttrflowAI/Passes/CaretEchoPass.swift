@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Takes back the text before a mid-sentence caret when a model repeats it at the head of its answer.
-public struct CaretEchoPass: CleaningPass {
+public struct CaretEchoPass: PieceCleaningPass {
     public static let id: PassID = .caretEcho
 
     public let state: InsertionPoint.SentenceState

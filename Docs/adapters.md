@@ -9,6 +9,10 @@ dictation-quality programme (the `AD.` series) implements one section of it and 
 section. The low-level design it extends is [cleanup-design.md](cleanup-design.md); the
 promise it serves is [cleanup.md](cleanup.md): an accurate transcript, never a rewrite.
 
+**Status: proposed design.** `FormatAdapter`, `AdapterRegistry`, and the other adapter types
+described below are not implemented yet. The “Today” columns and references to existing source
+files describe current behavior; the “With the adapter” columns describe the planned design.
+
 ## 0. Why the current seam cannot carry this
 
 `Destination` (eight cases, `Sources/UttrflowCore/Models/Destination.swift`) answers which
@@ -24,10 +28,10 @@ decisions became passes switched on by tests of the destination:
 |---|---|
 | `Sources/UttrflowAI/Passes/CleaningPipeline+Standard.swift` | `CodeEditorCommandsPass` inserted when `destination == .codeEditor` and the caret is not in a comment |
 | the same file, `terminalStop(_:in:)` | a code editor's stop policy swapped to `.always` inside a comment |
-| the same file and `Sources/UttrflowPipeline/DictationPipeline.swift` | `capitaliseCalendarWords` withheld when `destination != .codeEditor`, written twice |
+| the same file and `Sources/UttrflowPipeline/DictationPipeline.swift` | `capitaliseCalendarWords` is enabled only for `.fromInsertionPoint` destinations other than `.codeEditor`; the condition is written twice |
 | `Sources/UttrflowAI/Passes/SpokenPunctuationPass.swift` | `isTechnicalDestination` (terminal, code, SQL) plus a private cue list decide literal hyphens and flags |
 | `Sources/UttrflowAI/Passes/TerminalStopPass.swift` | an email greeting or sign-off keeps its own stop rule |
-| `Sources/UttrflowAI/PromptBlocks.swift` | the `sqlEditor` block says only "prose stays prose" and has no examples |
+| `Sources/UttrflowAI/PromptBlocks.swift` | the `sqlEditor` block says prose stays prose, includes additional SQL guidance, and has no examples |
 
 Each new family (SQL, shell, JSON, formula) would add another branch of this kind, or a
 parallel system. The root cause is that the seam is a table of decisions keyed by **app
@@ -76,7 +80,7 @@ What each part carries:
 
 `AdapterVerdict` is named so because `Verdict` is already a public type in `UttrflowPredict`.
 `Applicability` is never a bare number: missing evidence is its own value, never defaulted to
-the strongest one (`AGENTS.md`, "Mistakes that have already cost time", rule 5).
+the strongest one.
 
 ```swift
 /// Whether an adapter fits a situation, and on what evidence; abstaining is the ordinary answer.
@@ -141,11 +145,11 @@ and adds no stage of its own:
 | Stage | Today | With the adapter |
 |---|---|---|
 | Selection | `DestinationFormatter.standard(for: situation)` | `AdapterRegistry.select(for:)`, once per dictation, beside the situation read |
-| Piece passes | fillers, repeats, stammers, self-correction, spoken punctuation, layout words, numbers, contractions, initialisms, spacing | the same list, with the adapter's `passes(for:)` in one **notation slot** directly after `SelfCorrectionPass` |
+| Piece passes | fillers, repeats, stammers, self-correction, spoken punctuation, layout words, numbers, contractions, spacing | the same list, with the adapter's `passes(for:)` in one **notation slot** directly after `SelfCorrectionPass` |
 | Model | one call, prompt from the formatter's block | one call, prompt from `descriptor.policy.promptBlock`; **no adapter makes a second model call or a second round trip** ([cleanup-design.md](cleanup-design.md), section 8) |
 | Guard | `MeaningPreservationGuard` | the same guard, which accepts a difference only when it is a `NotationTable` row (section 4) |
 | Validation | none | `validate(_:in:)` on the guarded output, then the registry's safety contract (section 7) |
-| Message passes | first word and terminal stop from the formatter | the same passes, reading `descriptor.policy` |
+| Message passes | spelled initialisms, first word and terminal stop from the formatter | the same passes, reading `descriptor.policy` |
 
 The notation slot sits after self-correction so a retracted span is never converted, and
 before spoken punctuation so prose punctuation sees only what notation did not claim. A
@@ -205,6 +209,12 @@ Each registry row declares a `Consequence`, as data, not as a second table:
 | `sends` | a typed Return can send it | messaging (per app, from the probe in AD.18) |
 | `executes` | a typed Return can run it | terminal |
 | `navigates` | a typed Return can open it | address and search fields (AD.30) |
+
+The value lives on `DestinationFormatter` (`consequence`, typed by `Consequence` in
+`Sources/UttrflowCore/Adapters/Consequence.swift`); a search field's row is `navigates`.
+Capture's `CommitPolicy` reads it to decide where Return finishes a field, in place of its
+own terminal and messaging test. An `executes` row never lays out paragraphs or lists, so
+the only line break that reaches it is one the speaker asked for.
 
 It is the single input to three later decisions, so none of them keeps its own list of apps:
 

@@ -92,17 +92,15 @@ public actor PasteboardTextInsertionEngine: TextInsertionEngine {
         _ text: String, richText: String?, targeting destination: InsertionDestination?
     ) async throws(TextInsertionError) -> InsertionArrival {
         // The clipboard is the user's, so a stage that has given up must not take it. See `Docs/insertion.md`.
-        guard !Task.isCancelled else {
-            throw .insertionRejected(description: TextInsertion.dictationEnded)
-        }
+        try TextInsertion.requireLive()
         landedIn = nil
         // Re-checked here rather than trusted from `canInsert()`, whose answer can go stale by now.
         try PasteboardPasteAction.requireExternal(focus: focus)
-        try PasteboardPasteAction.requireTarget(destination, focus: focus)
+        try TextInsertion.requireTarget(destination, focus: focus)
         // Concealed for a field that hides what is typed, so no clipboard history keeps the words.
         let focus = focus
         let isSecure = await AccessibilityThread.run(orElse: true) { focus.focusedFieldIsSecure() }
-        try PasteboardPasteAction.requireTarget(destination, focus: focus)
+        try TextInsertion.requireTarget(destination, focus: focus)
         let write: PasteboardWriteResult
         if isSecure {
             write = pasteboard.writeConcealedText(text)
@@ -162,18 +160,8 @@ enum PasteboardPasteAction {
         targeting destination: InsertionDestination? = nil
     ) throws(TextInsertionError) {
         try requireExternal(focus: focus)
-        try requireTarget(destination, focus: focus)
+        try TextInsertion.requireTarget(destination, focus: focus)
         try keystrokes.sendPaste()
-    }
-
-    /// Rejects a paste when its captured destination is no longer frontmost.
-    static func requireTarget(
-        _ destination: InsertionDestination?, focus: any AccessibilityFocus
-    ) throws(TextInsertionError) {
-        guard let destination else { return }
-        guard destination.isKnown, let expected = destination.bundleIdentifier,
-            focus.focusedApplication()?.bundleIdentifier == expected
-        else { throw .insertionTargetChanged }
     }
 
     /// Rejects a paste while Uttrflow is frontmost, before clipboard contents can be changed.

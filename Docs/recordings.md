@@ -73,7 +73,7 @@ recording exists only as a one-day retry buffer, so backup tools that honour the
 
 `DictationPipeline.fail` decides, and the rule is one sentence: **the audio is kept exactly when
 the words were lost.** A failure that carries a transcript (insertion failed, and the words are
-under Recent) discards it. An informational failure, such as nothing heard, discards it. A
+in History) discards it. An informational failure, such as nothing heard, discards it. A
 dictation into a secure field discards it, since its words are a secret. Everything else keeps it
 and, when the failure's own recovery was `retry` or none, offers `retryFromRecording` instead, so
 the floating button's Retry opens the History page rather than starting a new dictation. A failure

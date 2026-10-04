@@ -48,6 +48,23 @@ struct SuggestionSelectionGuardTests {
         #expect(!selectionChanged)
     }
 
+    @Test("typing past Int.max withdraws the armed offer instead of overflowing")
+    func typedTextOverflowInvalidatesExpectedCaret() {
+        for location in [NSNotFound, Int.max, Int.max - 1, Int.min, -1, 0] {
+            for text in ["x", "ab", "🐕"] {
+                var guardrail = ArmedSelectionGuard(
+                    expectedRange: NSRange(location: location, length: 0))
+                let (expected, overflow) = location.addingReportingOverflow(text.utf16.count)
+                guardrail.typedThrough(text)
+                #expect(guardrail.expectedRange == (overflow ? nil : NSRange(location: expected, length: 0)))
+                if overflow {
+                    let observed = guardrail.observe(nil)
+                    #expect(observed)
+                }
+            }
+        }
+    }
+
     @Test("an unavailable AX selection fails closed")
     func unavailableSelectionWithdrawsOffer() {
         var guardrail = ArmedSelectionGuard(expectedRange: NSRange(location: 12, length: 0))

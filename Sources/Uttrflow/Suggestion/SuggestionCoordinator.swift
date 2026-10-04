@@ -849,12 +849,12 @@ final class SuggestionCoordinator {
         let read = shouldRead ? await FocusedFieldReader.read() : nil
         let readElapsed = Int(Date().timeIntervalSince(readStarted) * 1_000)
         Self.log.debug(
-            "FIELD_READ front=\(front, privacy: .public) attempted=\(shouldRead) elapsedMs=\(readElapsed) read=\(read != nil)"
+            "FIELD_READ front=\(SuggestionLog.application(front), privacy: .public) attempted=\(shouldRead) elapsedMs=\(readElapsed) read=\(read != nil)"
         )
         guard turns.isCurrent(number) else { return }
         composingAtLastRead = read?.markedText == .present
         Self.log.debug(
-            "TURN front=\(front, privacy: .public) read=\(read != nil) lineChars=\(read?.currentLine.count ?? -1) value=\(read?.value != nil) units=\(read?.value?.utf16.count ?? -1) sel=\(read?.selection?.location ?? -1) caret=\(read?.caret != nil) role=\(read?.role ?? "-", privacy: .public) labelChars=\(read?.accessibilityDescription?.count ?? -1) identified=\(read?.identifier != nil) secure=\(read?.isSecure ?? false) placement=\(String(describing: read?.placement), privacy: .public)"
+            "TURN front=\(SuggestionLog.application(front), privacy: .public) read=\(read != nil) lineChars=\(read?.currentLine.count ?? -1) value=\(read?.value != nil) units=\(read?.value?.utf16.count ?? -1) sel=\(read?.selection?.location ?? -1) caret=\(read?.caret != nil) role=\(read?.role ?? "-", privacy: .public) labelChars=\(read?.accessibilityDescription?.count ?? -1) identified=\(read?.identifier != nil) secure=\(read?.isSecure ?? false) placement=\(String(describing: read?.placement), privacy: .public)"
         )
         guard front != ownBundleIdentifier, let snapshot = read else {
             draw(session.turn(in: nil, at: PredictionContext(typed: "")).step)
@@ -863,7 +863,8 @@ final class SuggestionCoordinator {
         let started = Date()
         guard preferences.isEnabled(in: snapshot.bundleIdentifier, at: started) else {
             Self.log.debug(
-                "OFF app=\(snapshot.bundleIdentifier, privacy: .public) not enabled in Suggestions")
+                "OFF app=\(SuggestionLog.application(snapshot.bundleIdentifier), privacy: .public) not enabled in Suggestions"
+            )
             draw(session.turn(in: nil, at: PredictionContext(typed: "")).step)
             return
         }

@@ -141,6 +141,8 @@ public struct SnippetsSnapshot: Sendable, Equatable {
     public let refusal: String?
     /// What has been typed into the search field.
     public let query: String
+    /// The chosen order's identifier; empty or unknown is ``SnippetSort/standard``.
+    public let sort: String
     /// The clock the page is drawn against.
     public let now: Date
     /// How the draft's trigger arrives when said, once measured; one for an older trigger is ignored.
@@ -149,13 +151,14 @@ public struct SnippetsSnapshot: Sendable, Equatable {
     /// Builds a snapshot; everything but the clock defaults to empty.
     public init(
         snippets: [Snippet] = [], draft: SnippetDraft? = nil, refusal: String? = nil,
-        query: String = "", now: Date, arrival: SnippetArrival? = nil
+        query: String = "", sort: String = "", now: Date, arrival: SnippetArrival? = nil
     ) {
         self.arrival = arrival
         self.snippets = snippets
         self.draft = draft
         self.refusal = refusal
         self.query = query
+        self.sort = sort
         self.now = now
     }
 }
@@ -200,7 +203,9 @@ public enum SnippetsPresenter {
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent
     ) -> SnippetsPresentation {
-        let listed = matches(snapshot.snippets, query: snapshot.query, locale: locale)
+        let sort = SnippetSort(named: snapshot.sort)
+        let listed = sort.ordered(
+            matches(snapshot.snippets, query: snapshot.query, locale: locale), id: \.id, locale: locale)
         let places = Dictionary(
             snapshot.snippets.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         let rows = listed.map {
@@ -219,6 +224,7 @@ public enum SnippetsPresenter {
                 search: snapshot.snippets.isEmpty
                     ? nil
                     : MainSearchField(placeholder: searchPlaceholder, query: snapshot.query),
+                sort: snapshot.snippets.isEmpty ? nil : sort.menu,
                 addAction: isBare
                     ? nil : MainAction(title: "New Snippet", symbolName: "plus", intent: .addSnippet)),
             rows: rows,

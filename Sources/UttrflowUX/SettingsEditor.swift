@@ -183,6 +183,10 @@ public enum SettingsEditor {
     static let heldChordNotClaimable =
         "A held combination of modifiers can only be the Dictate shortcut. Add a letter or number key."
 
+    /// Said for F13 to F20 alone on an action Carbon registers, which never fires a hot key without a modifier.
+    static let bareKeyNotClaimable =
+        "A key on its own can only be the Dictate shortcut. Hold ⌘, ⌥, ⌃ or ⇧ as well."
+
     /// The one gate a shortcut passes to be saved, asked by both the recorder and the editor.
     static func rejection(
         forShortcut binding: HotkeyBinding, for action: ShortcutAction
@@ -208,6 +212,12 @@ public enum SettingsEditor {
         {
             // Deliverable in general, but Carbon refuses every held-modifier-only combination.
             return SettingsRejection(reason: heldChordNotClaimable)
+        }
+        if binding.modifiers.isEmpty, binding.heldModifier == nil,
+            ShortcutRegistry.descriptor(for: action).delivery == .claimed
+        {
+            // Only the watched Dictate shortcut takes a key that types nothing on its own; Carbon needs a modifier.
+            return SettingsRejection(reason: bareKeyNotClaimable)
         }
         if action == .dictate, binding.heldModifier == nil,
             let reason = dictateCombinationConflict(binding)
@@ -365,6 +375,10 @@ public enum SettingsEditor {
                 : "Uttrflow has not picked up anything in \(SuggestionApplications.name(of: application)) yet."
         }
     }
+
+    /// Why a reset waits, said while a dictation could still write into what it removes.
+    static let finishTheDictationFirst =
+        "A dictation is still under way. Let it finish, then try again."
 
     /// What to say when the disk refused a reset, naming what is still here rather than apologising.
     static func reason(forFailed reset: SettingsReset) -> String {

@@ -13,7 +13,7 @@ enum SpokenMarkKind: Sendable, Equatable {
 }
 
 /// Turns a punctuation mark said by name into the mark, and a spoken email address into the address, when used rather than mentioned.
-public struct SpokenPunctuationPass: CleaningPass {
+public struct SpokenPunctuationPass: PieceCleaningPass {
     public static let id: PassID = .spokenPunctuation
     private let destination: Destination
 
@@ -58,18 +58,29 @@ public struct SpokenPunctuationPass: CleaningPass {
         var draft = draft
         var live = draft.presentIndices
         let repeated = repeatedNames(in: live, of: draft)
-        let literalHyphens = isTechnicalDestination || hasTechnicalContext(in: live, of: draft)
+        let literal = literalDashes(in: live, of: draft)
         var position = 0
+        // The end of the sentence `position` sits in, kept until a write changes the words; nil once stale.
+        var sentenceEnd: Int?
         while position < live.count {
+            let literalHyphens = literal.contains(live[position])
             if literalHyphens, replaceLongFlag(at: position, in: &live, of: &draft) {
+                sentenceEnd = nil
                 continue
             }
             if literalHyphens, replaceShortFlag(at: position, in: &live, of: &draft) {
+                sentenceEnd = nil
                 position += 1
                 continue
             }
-            if let address = SpokenAddress.read(at: position, in: live, of: draft) {
+            if sentenceEnd.map({ position >= $0 }) ?? true {
+                sentenceEnd = draft.sentenceEnd(from: position, in: live)
+            }
+            if let end = sentenceEnd,
+                let address = SpokenAddress.read(at: position, before: end, in: live, of: draft)
+            {
                 write(address, at: position, in: &live, of: &draft)
+                sentenceEnd = nil
                 position += 1
                 continue
             }
@@ -91,6 +102,7 @@ public struct SpokenPunctuationPass: CleaningPass {
                 position += 1
                 continue
             }
+            sentenceEnd = nil
         }
         return draft
     }
@@ -103,10 +115,53 @@ public struct SpokenPunctuationPass: CleaningPass {
         literalHyphens && value == "\u{2014}" ? "-" : value
     }
 
-    /// Plain editors have no useful destination metadata, so explicit command and branch words carry the cue.
-    private func hasTechnicalContext(in live: [Int], of draft: Draft) -> Bool {
-        let cues: Set<String> = ["git", "npm", "yarn", "pnpm", "branch", "command", "terminal"]
-        return live.contains { cues.contains(draft.shape(at: $0).key) }
+    /// Tools whose name starts a command, so every dash after it in the sentence is one of its options.
+    static let toolCues: Set<String> = ["git", "npm", "yarn", "pnpm"]
+
+    /// Nouns that introduce a name, so only dashes joining the name said right after them are literal.
+    static let nameCues: Set<String> = ["branch", "command", "terminal"]
+
+    /// Words that may stand between a name cue and its name: "the branch is fix dash login".
+    static let nameLinks: Set<String> = ["is", "called", "named"]
+
+    /// The word indices of spoken dashes that belong to a command or a name rather than to prose.
+    private func literalDashes(in live: [Int], of draft: Draft) -> Set<Int> {
+        let dashes = live.filter { draft.shape(at: $0).key == "dash" }
+        if isTechnicalDestination { return Set(dashes) }
+        var literal: Set<Int> = []
+        var inCommand = false
+        var position = 0
+        while position < live.count {
+            let shape = draft.shape(at: live[position])
+            if inCommand && shape.key == "dash" { literal.insert(live[position]) }
+            if Self.toolCues.contains(shape.key) { inCommand = true }
+            if Self.nameCues.contains(shape.key) && !shape.endsSentence {
+                position = nameDashes(after: position, in: live, of: draft, into: &literal)
+                continue
+            }
+            if shape.endsSentence { inCommand = false }
+            position += 1
+        }
+        return literal
+    }
+
+    /// Collects the dashes chaining the name after a name cue and returns the position of its last word.
+    private func nameDashes(
+        after cue: Int, in live: [Int], of draft: Draft, into literal: inout Set<Int>
+    ) -> Int {
+        var position = cue + 1
+        if position < live.count && Self.nameLinks.contains(draft.shape(at: live[position]).key) {
+            position += 1
+        }
+        guard position < live.count, draft.shape(at: live[position]).key != "dash" else { return cue + 1 }
+        while position + 2 < live.count, !draft.shape(at: live[position]).endsSentence,
+            draft.shape(at: live[position + 1]).key == "dash",
+            draft.shape(at: live[position + 2]).key != "dash"
+        {
+            literal.insert(live[position + 1])
+            position += 2
+        }
+        return position
     }
 
     /// Turns two consecutive spoken dashes into a long option, including one at the start of a command.
