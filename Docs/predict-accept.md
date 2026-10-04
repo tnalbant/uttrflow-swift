@@ -145,6 +145,14 @@ when the field answers with something other than what would be replaced, throws
 read. A field that will not say what precedes the caret is not held up by the check: the
 deletions go ahead, since a Tab that does nothing is the worse failure.
 
+If the first typed chunk fails after Delete, the typed route tries to type the replaced suffix back
+only while the application captured before Delete is still in front. It reports
+`.insertionUnconfirmed` either way, so the user is told to check the field before retrying. If the
+application identity was unavailable, or focus changed, it leaves recovery to the user rather than
+typing into an unverified field. Cancellation stops the completion but does not block this guarded
+recovery attempt. Later chunk failures remain `.insertionInterrupted`, because part of the
+completion may already be there.
+
 The Accessibility route checks too. Before it widens the selection, `AXTextField` compares
 the characters that selection would cover with what the edit replaces
 (`BackwardSelection.confirms`) and writes nothing when they differ, so both routes hold the

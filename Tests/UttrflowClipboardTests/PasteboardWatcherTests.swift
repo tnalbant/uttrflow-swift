@@ -341,6 +341,39 @@ struct PasteboardWatcherTests {
         #expect(noticed?.clip.richText == "<p>Hello <b>world</b></p>")
     }
 
+    @Test("records a bounded plain form when deeply nested HTML expands past the clip limit")
+    func deeplyNestedHTMLKeepsItsBoundedPlainForm() async throws {
+        let clipboard = FakeClipboard()
+        let watcher = watcher(clipboard)
+        clipboard.write(nil, html: String(repeating: "<ul><li>x", count: 200_000))
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let clip = try #require(await watcher.newClip(at: noon)?.clip)
+
+        #expect(start.duration(to: clock.now) < .seconds(5))
+        #expect(!clip.text.isEmpty)
+        #expect(clip.text.utf8.count <= ClipboardBudget.standard.largestClip)
+        #expect(clip.text.hasSuffix("…"))
+        #expect(clip.richText == nil)
+    }
+
+    @Test("uses the watcher's output limit and keeps the bounded plain form")
+    func richOnlyCopyUsesItsConfiguredOutputLimit() async throws {
+        let clipboard = FakeClipboard()
+        let html = String(repeating: "<ul><li>x", count: 20)
+        let outputLimit = html.utf8.count
+        let watcher = PasteboardWatcher(
+            source: clipboard, budget: .standard.limiting(largestClip: outputLimit), now: { noon })
+        clipboard.write(nil, html: html)
+
+        let clip = try #require(await watcher.newClip(at: noon)?.clip)
+
+        #expect(clip.text.utf8.count <= outputLimit)
+        #expect(clip.text.hasSuffix("…"))
+        #expect(clip.richText == nil)
+    }
+
     @Test("records an RTF-only copy as plain text")
     func rtfOnlyCopy() async {
         let clipboard = FakeClipboard()

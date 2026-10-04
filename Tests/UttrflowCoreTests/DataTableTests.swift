@@ -101,6 +101,29 @@ struct DataTableTests {
         #expect(decoded > 0)
     }
 
+    @Test("Every truncation and every single-bit flip of a valid table is refused or decodes within the rules.")
+    func exhaustiveDamage() {
+        let valid = Array(
+            #"{"schema": 1, "rows": [{"id": "a", "weight": 1}, {"id": "b", "weight": 2}]}"#.utf8)
+        var damaged = (0..<valid.count).map { Array(valid.prefix($0)) }
+        for position in valid.indices {
+            for bit in 0..<8 {
+                var bytes = valid
+                bytes[position] ^= UInt8(1) << bit
+                damaged.append(bytes)
+            }
+        }
+        for bytes in damaged {
+            guard let rows = try? DataTable<Row>.decode(Data(bytes), schema: 1, limits: limits) else {
+                continue
+            }
+            #expect(rows.count <= limits.maxRows)
+            #expect(Set(rows.map(\.id)).count == rows.count)
+            #expect(rows.allSatisfy { !$0.id.allSatisfy(\.isWhitespace) })
+        }
+        #expect(damaged.count == valid.count * 9)
+    }
+
     @Test("A bundled file that is well formed is used, and says so.")
     func loadsFromBundle() throws {
         let source = try bundle(["weights.json": #"{"schema": 1, "rows": [{"id": "a", "weight": 1}]}"#])

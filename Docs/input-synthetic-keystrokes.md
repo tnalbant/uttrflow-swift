@@ -32,6 +32,10 @@ with Shift, Option or both set when the layout needs them (`LayoutKeyCode.stroke
 field that reads the Unicode string gets the character, and a field that reads physical keys gets
 a matching key and modifiers instead of key code 0.
 
+For one `type(_:)` or `deleteBackwards(_:)` call, the typist constructs and tags every key pair
+before posting the first pair. Event-construction failure therefore posts none of that call's
+characters or Delete presses; an error from a later chunk cannot leave part of that chunk posted.
+
 A scalar with no single key on the selected layout — a character above U+FFFF, one reached only
 through a dead key (é on a US layout), or any Latin letter while a Devanagari, Cyrillic, Arabic,
 Hebrew or Greek layout is selected — is posted as its own key pair with key code 0, no modifiers

@@ -123,7 +123,8 @@ A credential inside a one-line command is not a named secret: the named-secret r
 value to end its line, and in a command the value is followed by more of the command. Terminal
 lines are also what the suggestion corpus learns from (`CaptureGate`), so a password typed once
 would otherwise be stored and offered back. `CommandCredentialShape` reads each line as shell
-words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognises:
+words, honouring quotes, ending words at redirects, and splitting commands at `|`, `;` and `&`.
+It recognises:
 
 - A short flag, only for the program that reads it as a password: `mysql -pX` (joined only,
   since a bare `-p` asks), `sshpass -p`, `docker`/`podman`/`nerdctl login -p`, `redis-cli -a`,
@@ -139,8 +140,9 @@ words, honouring quotes and splitting commands at `|`, `;` and `&`, and recognis
   in a secret's name (`X-Api-Key:`), quoted or not, with the value in the same word or the next
   two. A scheme alone (`Authorization: Bearer`) sends nothing.
 
-A value that is a variable, a substitution or a placeholder (`$TOKEN`, `${token}`, `{token}`,
-`<token>`) is left alone, since it names where the credential is rather than being it.
+A value that is an unquoted variable, substitution or placeholder (`$TOKEN`, `${token}`, `{token}`,
+`<token>`) is left alone, since it names where the credential is rather than being it. Quoted
+shell punctuation is part of the value; a redirect operator outside quotes ends the word first.
 
 A `.netrc` password is read in the context of its machine or default block across lines. `account`
 fields are consumed as values, and a `macdef` body is skipped through its blank-line terminator.
@@ -227,6 +229,11 @@ of a line. They are single-pass readers in `SecretScanners.swift` (`JSONWebToken
 character for character: ASCII classes match only a lone ASCII scalar, `\s` is
 `Character.isWhitespace`, `$` stands before any `Character.isNewline`, a case-insensitive `k`
 also matches U+212A KELVIN SIGN, and `\b` is the Unicode word boundary the pattern engine uses.
+
+Before `NamedSecretScan` walks the clip, `NamedSecretStems` requires `:` or `=` and a case-insensitive
+three-letter keyword prefix. The deterministic selectivity test compares this gate with the previous
+initial-letter gate over realistic non-secret clips; a separate recall test checks every accepted
+keyword spelling before it reaches the full scanner.
 
 `SecretShapesOracleTests` keeps the backtracking patterns (`BacktrackingPatterns`, never shipped)
 as the oracle and compares them with the readers on 200,000 random strings over eight seeds and

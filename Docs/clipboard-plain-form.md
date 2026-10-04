@@ -42,6 +42,13 @@ Line breaks are requested, not written, and nothing is emitted until real conten
 directly after `<pre>` is dropped scalar by scalar, because CR LF is one `Character` in Swift.
 `<script>`, `<style>` and `<title>` contribute no text.
 
+Nested list indentation stops growing at `PlainTextRenderer.maximumListIndentDepth`; deeper items
+share the last indentation. Converted output is capped at the watcher's configured
+`ClipboardBudget.largestClip` in UTF-8 bytes; direct conversion uses `ClipboardBudget.standard`.
+Truncated output ends with an ellipsis, or a dot marker sized to a smaller configured byte limit.
+The watcher drops the rich HTML flavor so the bounded plain-text clip still fits the single-clip
+limit.
+
 ## Checklists
 
 A checklist item is written as `[ ] ` or `[x] ` before its text, so the boxes survive as text a

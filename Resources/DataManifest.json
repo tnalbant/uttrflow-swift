@@ -152,6 +152,15 @@
       "bytes": 13116
     },
     {
+      "path": "Sources/UttrflowCore/Resources/Tables/abbreviations.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "6a188470214354c563841adc39253e75b5e73ff6e94a8c054dcb42f05fac71db",
+      "bytes": 3979
+    },
+    {
       "path": "Sources/UttrflowCore/Resources/Tables/function-words.json",
       "origin": "authored",
       "licence": "MIT",
@@ -168,6 +177,15 @@
       "note": "read through DataTable; see Docs/data-tables.md",
       "sha256": "38ab5d477a670718375895135f9296c146d5945bfb39c162dd720517a503e8f0",
       "bytes": 1930
+    },
+    {
+      "path": "Sources/UttrflowCore/Resources/Tables/spoken-commands.json",
+      "origin": "authored",
+      "licence": "MIT",
+      "redistribution": true,
+      "note": "read through DataTable; see Docs/data-tables.md",
+      "sha256": "d2170a10d7eb4092e8d6ff9d01ba65985e54ad13359494c0581268ecf9d1026e",
+      "bytes": 4124
     },
     {
       "path": "Sources/UttrflowUX/Resources/PropertyValueAliases.txt",

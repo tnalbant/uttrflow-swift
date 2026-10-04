@@ -56,7 +56,7 @@ public enum MentionGuard {
 
     /// The spoken names of marks and layout, which close the phrase an opener began rather than heading it.
     static let markNames: Set<String> = Set(
-        SpokenPunctuationPass.marks.flatMap(\.words) + LayoutWordsPass.marks.flatMap(\.words))
+        SpokenCommands.marks.flatMap(\.words) + SpokenCommands.layout.flatMap(\.words))
 
     /// Whether the mark word at `position` is mentioned; `reach` is how far the phrase's own opener may stand.
     static func isMentioned(
@@ -75,7 +75,8 @@ public enum MentionGuard {
             return true
         }
         let next = position + length
-        return next < live.count && draft.shape(at: live[next]).key == "of"
+        let sentenceEnd = draft.sentenceRun(from: position, in: live).upperBound
+        return next < sentenceEnd && draft.shape(at: live[next]).key == "of"
     }
 
     /// Whether a quotation opened earlier in this sentence is still open, so a closing mark here closes it.
@@ -121,13 +122,12 @@ public enum MentionGuard {
         return false
     }
 
-    /// Recognizes local modifiers, ordinal numbers and cardinal numbers before a period.
+    /// Recognizes local modifiers, ordinal numbers and cardinals before a period or dash.
     private static func isModifier(
         _ word: String, before head: String, finalMark: Bool, after preceding: String?
     ) -> Bool {
         if NumberFormsPass.ordinalUnits[word] != nil
-            || (head == "period" && NumberWords.isNumber(word))
-            || (head == "dash" && NumberWords.isNumber(word))
+            || (nounHeads.contains(head) && NumberWords.isNumber(word))
         {
             return true
         }
@@ -138,6 +138,7 @@ public enum MentionGuard {
         let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
+        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
         if head == "period" && finalMark {
@@ -150,5 +151,10 @@ public enum MentionGuard {
         }
 
         return lexicalClass == .noun && word.hasSuffix("ing")
+    }
+
+    /// Whether a word is a cardinal number, spelled or in digits.
+    private static func isCardinal(_ word: String) -> Bool {
+        NumberWords.digits(word) != nil || NumberWords.cardinal([word][...]) != nil
     }
 }

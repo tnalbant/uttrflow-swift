@@ -54,6 +54,14 @@ comment-report: ## List the multi-line comments left, worst file first.
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
 
+.PHONY: closed-list-audit
+closed-list-audit: ## Prove no source file gained a literal list of four or more words. Needs no build.
+	@python3 Scripts/closed_list_audit.py
+
+.PHONY: closed-list-report
+closed-list-report: ## List the closed word lists still written into code, with the line.
+	@python3 Scripts/closed_list_audit.py --report
+
 .PHONY: python-imports-audit
 python-imports-audit: ## Refuse a Scripts/ Python import that is not standard library, a repository module, or pinned with a hash. Needs no build.
 	@python3 Scripts/python_imports_audit.py
@@ -67,11 +75,17 @@ match-report: ## List the word matches still decided by shape, with the line.
 layering-audit: ## Prove no logic module gained a UI-framework import or a platform dependency. Needs no build.
 	@python3 Scripts/layering_audit.py
 
+.PHONY: string-audit
+string-audit: ## Prove no file gained a fixed English string handed to a view. Needs no build.
+	@python3 Scripts/string_audit.py
+
 .PHONY: ratchet-test
-ratchet-test: ## Prove the comment, word-match and layering baselines refuse a rise without --after-merge. Needs no build.
+ratchet-test: ## Prove the comment, word-match, closed-list, layering and string baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
 	@python3 Scripts/loose_match_audit_test.py
+	@python3 Scripts/closed_list_audit_test.py
 	@python3 Scripts/layering_audit_test.py
+	@python3 Scripts/string_audit_test.py
 
 .PHONY: mutation-probe-test
 mutation-probe-test: ## Prove the mutation probe finds each mutation it names and refuses the main checkout. Needs no build.
@@ -108,6 +122,10 @@ test-name-audit: ## Refuse a test file named after an issue number. Needs no bui
 .PHONY: issue-template-audit
 issue-template-audit: ## Refuse a public issue template that prompts for content the disclosure rule forbids. Needs no build.
 	@python3 Scripts/issue_template_audit.py
+
+.PHONY: audio-audit
+audio-audit: ## Refuse audio outside the synthetic fixture directory: a recording is personal data. Needs no build.
+	@python3 Scripts/audio_audit.py --self-test
 
 .PHONY: root-audit
 root-audit: ## Refuse any file or directory at the repository root that is not on the allowlist. Needs no build.
@@ -274,7 +292,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit data-manifest root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit layering-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
