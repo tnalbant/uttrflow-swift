@@ -14,6 +14,15 @@ public enum CodeCommentContext {
         return !(precedingText.map { endsInsideComment($0, markers: markers) } ?? false)
     }
 
+    /// Whether the caret sits in the body prose of a Markdown or plain-text document: any line but a `#` heading.
+    public static func isDocumentProse(precedingText: String?, documentName: String?) -> Bool {
+        guard let ext = fileExtension(from: documentName), proseExtensions.contains(ext) else { return false }
+        let caretLine = precedingText?.split(separator: "\n", omittingEmptySubsequences: false).last ?? ""
+        return !caretLine.drop(while: { $0 == " " }).hasPrefix("#")
+    }
+
+    private static let proseExtensions: Set<String> = ["md", "markdown", "txt"]
+
     private struct Markers {
         let line: [String]
         let block: (open: String, close: String)?
