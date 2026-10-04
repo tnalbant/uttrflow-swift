@@ -68,14 +68,23 @@ is (`TextNormaliser.standard`), by the harness in `RomaniserCorpusTests`:
 | `Romaniser`, syllable rules alone (no table) | 91.9% | 98.3% |
 | `Romaniser` | **97.9%** | **99.4%** |
 
-The rules and the table were written with these passages in view, so these are upper bounds:
-no held-out Hindi set exists. `RomaniserCorpusTests` holds the floor at 96% of words and 99% of
+These are in-sample figures: the rules and the table were written with these passages in view,
+so they are upper bounds. `RomaniserCorpusTests` holds the floor at 96% of words and 99% of
 characters, and checks that `LatinScript.enforced` returns every English passage and
 expectation exactly as written.
 
 The remaining misses are mostly two spellings of one word, where neither is wrong: the
 references write "theek" and "hun" where the table writes "thik" and "hoon", "Are" where it
 writes "arre", "zaroorat" where the rules write "zarurat", "raghunath" for "raghunaath".
+
+### Held out
+
+`HeldOutHindi` holds 30 invented Devanagari sentences (everyday vocabulary, the sound classes
+below, no real people or places) that no rule, table entry or tuning passage was written against.
+`HeldOutHindiTests` fails if a table entry is added for one of their words or a sentence appears
+in `TranscriptionCorpus`. Each sentence takes Latin references written independently by people
+who have not seen the table, and `RomanisationScore` scores against the closest of them. No
+reference is written yet, so no held-out figure exists.
 
 ### Audited by sound class
 
@@ -189,6 +198,24 @@ nothing there; `scriptVerdict` reads the draft the only way it needs to: romanis
 
 A refusal is not a failure. The router moves on, the rules romanise the draft, and the words
 arrive in Latin letters.
+
+### How well the sound key judges one word
+
+`Romaniser.soundKey` is measured against two tables in `Tests/UttrflowEvalTests/Golden/`:
+`romanised-variants.json`, 169 Hindi words each with the other spellings people type for it
+(297 variant pairs), and `romanised-distinct-words.json`, 54 pairs of different words a
+spelling fold could merge. `RomanisedVariantProbeTests` pins the figures.
+
+| Measure | Result |
+|---|---|
+| Variant pairs given one key (recall) | 133 of 297 (44.8%) |
+| Variant sets whose every spelling meets | 58 of 169 |
+| Distinct pairs given one key (false merges) | 29 of 54 |
+
+Misses are spellings the six rules do not cover: "kyun" and "kyon", "zyada" and "jyada",
+"bahut" and "bohot", "mein" and "main", "nahi" and "nahin", "hai" and "he". Nearly every false
+merge comes from collapsing a doubled letter, which folds a long vowel into a short one:
+"kam" and "kaam", "din" and "deen", "pata" and "patta", "jal" and "jaal".
 
 ## The last resort
 

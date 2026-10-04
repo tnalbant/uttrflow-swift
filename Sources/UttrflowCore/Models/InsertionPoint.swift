@@ -30,19 +30,19 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
     /// Derived from the preceding text, never read from the field.
     public var sentenceState: SentenceState { Self.sentenceState(before: precedingText) }
 
+    /// What the caret stands inside, or `nil` when the field will not report its value.
+    public var structure: CaretStructure? { precedingText.map(CaretStructure.init(precedingText:)) }
+
     /// Whether the caret's line opens with a list marker, so added text stays an unfinished list item.
     public var isOnListItemLine: Bool {
         guard let precedingText else { return false }
-        let line =
-            precedingText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
-        return Self.listItemRemainder(in: line) != nil
+        return Self.listItemRemainder(in: CaretStructure.caretLine(of: precedingText)) != nil
     }
 
     /// Reads the sentence state off the line the caret sits on, since a list marker is not a word.
     public static func sentenceState(before text: String?) -> SentenceState {
         guard let text else { return .unknown }
-        // Any line break ends the line, and a CRLF pair is one `Character`, so it is one break.
-        let line = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let line = CaretStructure.caretLine(of: text)
         let body = withoutOpeningMarker(line)
         guard body.contains(where: { !$0.isWhitespace }) else {
             // Only a marker, a blank line or an empty field stands here; a line break still opened a line.

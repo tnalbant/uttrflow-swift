@@ -175,6 +175,12 @@ public struct DestinationFormatter: Sendable, Equatable {
     /// The destination formatter with an app rule's terminal-stop exception, when that rule still applies.
     public static func standard(for situation: Situation) -> DestinationFormatter {
         let base = standard(for: situation.destination)
+        if situation.destination == .codeEditor,
+            CodeCommentContext.isDocumentProse(
+                precedingText: situation.insertion.precedingText, documentName: situation.app.documentName)
+        {
+            return proseInCodeEditor(base)
+        }
         let ruleStop: TerminalStopPolicy? = {
             guard let rule = DestinationClassifier.rule(for: situation.app),
                 rule.destination == situation.destination
@@ -194,5 +200,13 @@ public struct DestinationFormatter: Sendable, Equatable {
             layout: isSingleLine ? .singleLine : base.layout,
             grammar: base.grammar, numbers: base.numbers, digits: base.digits,
             promptBlock: base.promptBlock, consequence: isSearch ? .navigates : base.consequence)
+    }
+
+    /// A code editor's formatter with a document's stops and lists, for prose in a Markdown or text file.
+    private static func proseInCodeEditor(_ base: DestinationFormatter) -> DestinationFormatter {
+        DestinationFormatter(
+            destination: base.destination, firstWord: base.firstWord, terminalStop: .always,
+            layout: [.paragraphs, .lists], grammar: base.grammar, numbers: base.numbers, digits: base.digits,
+            promptBlock: base.promptBlock, consequence: base.consequence)
     }
 }

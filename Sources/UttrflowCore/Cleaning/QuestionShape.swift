@@ -151,7 +151,7 @@ public enum QuestionShape {
             // "what we need is…" names a thing; "what time is it" asks, so a subject before the verb says no.
             for (offset, word) in clause.dropFirst().prefix(3).enumerated() {
                 // A subject before the auxiliary names a thing; one after it completes the inversion.
-                if subjects.contains(word) { return offset > 0 }
+                if subjects.contains(word) { return offset > 0 && !opensExclamation(clause) }
                 if verbsBeforeSubject.contains(word) || pronounVerbs.contains(word) {
                     return true
                 }
@@ -175,6 +175,16 @@ public enum QuestionShape {
         }
         return hindiQuestionWords.contains(first) || (first == "kya" && hindiSubjects.contains(second))
     }
+
+    /// Whether "what a" or "how" with a modifier heads an exclamation, which keeps its subject before its verb: "how nice it is".
+    private static func opensExclamation(_ clause: [String]) -> Bool {
+        let second = clause.dropFirst().first ?? ""
+        if clause.first == "what" { return ["a", "an"].contains(second) }
+        return clause.first == "how" && !howQuestionHeads.contains(second)
+    }
+
+    /// Words after "how" that still ask with the subject straight after them: "how many of you", "how about you".
+    private static let howQuestionHeads: Set<String> = ["many", "much", "about"]
 
     /// Whether the question word clause is the subject of a later main verb, as in "what works for you is fine".
     private static func isFreeRelativeSubject(_ clause: [String], verbIndex: Int) -> Bool {

@@ -55,6 +55,19 @@ struct PersonalDictionaryStoreTests {
         #expect(await store.allEntries().first?.pronunciation == "cube cuttle")
     }
 
+    @Test("keeps entries whose spellings differ by technical symbols")
+    func technicalSpellingsStayDistinct() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let spellings = ["C++", "C#", "C", ".NET", "NET", "R&D", "RD", "Node.js", "Nodejs"]
+
+        for spelling in spellings {
+            try await store.add(word: spelling, pronunciation: "", at: epoch)
+        }
+
+        #expect(await store.allEntries().map(\.word) == spellings)
+    }
+
     // MARK: Removing
 
     @Test("forgets one word and keeps the rest")
@@ -241,6 +254,23 @@ struct PersonalDictionaryStoreTests {
             try await store.add(word: "Bank of New Zealand", pronunciation: "bank", at: epoch)
         }
         #expect(await store.allEntries().isEmpty)
+    }
+
+    @Test("refuses a one-word spelling too long for the recogniser prompt and writes nothing")
+    func addingOverlongWord() async throws {
+        let sandbox = Sandbox()
+        let store = PersonalDictionaryStore(file: sandbox.file)
+        let long = String(repeating: "x", count: PhoneticIndex.maximumBytesPerEntry + 1)
+        await #expect(throws: DictionaryStoreError.entryIsTooLong(maximum: 80)) {
+            try await store.add(word: long, pronunciation: "", at: epoch)
+        }
+        await #expect(throws: DictionaryStoreError.entryIsTooLong(maximum: 80)) {
+            try await store.add(word(long, from: .added))
+        }
+        #expect(await store.allEntries().isEmpty)
+        #expect(sandbox.onDisk() == nil)
+        let longest = String(repeating: "x", count: PhoneticIndex.maximumBytesPerEntry)
+        #expect(try await store.add(word: longest, pronunciation: "", at: epoch).count == 1)
     }
 
     @Test("refuses a long entry through the direct store path")
@@ -560,6 +590,9 @@ struct DictionaryStoreErrorTests {
         #expect(
             DictionaryStoreError.entryHasTooManyWords(maximum: 3).userMessage
                 == "The spelling and pronunciation can each have at most 3 words.")
+        #expect(
+            DictionaryStoreError.entryIsTooLong(maximum: 80).userMessage
+                == "The spelling can have at most 80 characters.")
     }
 
     /// Nothing offered, because no recovery the user can perform changes whether the disk accepts a write.
@@ -586,13 +619,13 @@ struct DictionaryStoreErrorTests {
             DictionaryStoreError.everyCase
                 == [
                     .couldNotWrite, .couldNotReadSeedRecord, .wordIsEmpty, .wordAlreadyKnown,
-                    .entryHasTooManyWords(maximum: 3),
+                    .entryHasTooManyWords(maximum: 3), .entryIsTooLong(maximum: 80),
                 ])
         #expect(DictionaryStoreError.firstCase.caseAfter == .couldNotReadSeedRecord)
         #expect(
             DictionaryStoreError.wordAlreadyKnown.caseAfter
                 == .entryHasTooManyWords(maximum: 3))
-        #expect(DictionaryStoreError.entryHasTooManyWords(maximum: 3).caseAfter == nil)
+        #expect(DictionaryStoreError.entryIsTooLong(maximum: 80).caseAfter == nil)
     }
 }
 

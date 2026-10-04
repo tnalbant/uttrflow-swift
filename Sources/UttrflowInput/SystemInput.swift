@@ -38,6 +38,12 @@ public struct SystemPasteboard: Pasteboard {
         NSPasteboard.general.changeCount
     }
 
+    public func discardContents(ifUnchangedSince changeCount: Int) -> Bool {
+        guard NSPasteboard.general.changeCount == changeCount else { return false }
+        clearForThisMacOnly()
+        return true
+    }
+
     /// E2 — the plain flavour always, the formatted one beside it when the clip has one.
     public func setText(_ text: String, richText: String?) -> PasteboardWriteResult {
         writeText(text, richText: richText)
@@ -300,7 +306,7 @@ public struct CGEventTypist: KeystrokeTyping {
         }
         try buildThenPost(
             Array(0..<count),
-            build: { _ in
+            build: { _ throws(TextInsertionError) in
                 // Flags cleared so a modifier the user is still holding cannot widen the delete.
                 try makeTaggedKeyPair(from: source, keyCode: Self.deleteKeyCode) { $0.flags = [] }
             }, post: postTaggedKeyPairs)
@@ -314,7 +320,7 @@ public struct CGEventTypist: KeystrokeTyping {
         let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
         try buildThenPost(
             keypresses,
-            build: { keypress in
+            build: { keypress throws(TextInsertionError) in
                 switch keypress {
                 case .key(let character, let stroke):
                     try makeTaggedKeyPair(from: source, keyCode: stroke.code) { event in

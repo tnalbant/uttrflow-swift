@@ -116,4 +116,18 @@ struct DictationRecordTests {
         #expect(older.map(\.text) == ["Ship it"])
         #expect(older.first?.isFlagged == true)
     }
+
+    @Test("the tidying engine survives a round trip, and its absence reads as unrecorded")
+    func keepsTheTidyingEngine() throws {
+        let record = DictationRecord(
+            text: "Ship it", when: Date(timeIntervalSinceReferenceDate: 721_692_800),
+            cleanedBy: .rules)
+        let older = DictationRecord(text: "Ship it", when: record.when)
+
+        let read = try JSONDecoder().decode(
+            [DictationRecord].self, from: JSONEncoder().encode([record, older]))
+
+        #expect(read == [record, older])
+        #expect(read.map(\.cleanedBy) == [.rules, nil])
+    }
 }

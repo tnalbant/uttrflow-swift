@@ -72,7 +72,9 @@ and a word gets in only by defeating all of them. Every learnt word is thrown aw
 alone not counting; the whole phrases sound the same and open alike (`ReadingRestraint`),
 read through their romanisation when either side is Devanagari; and every word of the
 replacement is one `GeneralVocabulary` would not know (otherwise re-dictating "there" as
-"their" would index a homophone of an ordinary word). The entry is stored without a
+"their" would index a homophone of an ordinary word). The one exception is a spelling
+preference: when each replacement word and the word it replaces are both listed romanised Hindi
+and share `Romaniser.soundKey` ("thik" to "theek"), the user's spelling is learnt. The entry is stored without a
 pronunciation, because the two spellings already sound identical.
 
 "A word a general model already knows" is `GeneralVocabulary`: a fixed list of common

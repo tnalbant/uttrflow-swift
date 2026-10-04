@@ -87,6 +87,20 @@ has changed, the passage was read again since the baseline, and the gate reports
 as unverifiable rather than as a pass or a regression. A baseline with no identities is reported
 the same way against a run that has them.
 
+## The committed baseline
+
+`make accuracy-gate` synthesises the English passages with the `say` voice Samantha, transcribes
+them with the installed shipping model and compares with `Scripts/accuracy_baseline.json`. It
+needs no recordings, so every Mac with the model can run it; a Mac without the model stops at
+"is not installed". The baseline's label names the model variant, and each passage's
+`recordingIdentity` pins the synthesised audio, so a macOS release that changes the voice reports
+"unverifiable", not a pass. Its 305 words judge the overall rate; every smaller slice reports as
+too small to judge. Recorded speech is not in this baseline.
+
+Measured on an Apple M5 Pro, 48 GB, macOS 26.5.1, with
+`openai_whisper-large-v3-v20240930_turbo_632MB`: 3.6% word error rate over 6 passages, two runs
+identical. A baseline is replaced only through `--save-baseline` in the change that moves it.
+
 ## The recogniser's version is pinned
 
 `Package.swift` pins WhisperKit with `exact:`, as it pins Sparkle, so no dependency update changes
