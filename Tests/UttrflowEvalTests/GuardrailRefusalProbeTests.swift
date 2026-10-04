@@ -69,10 +69,10 @@ struct GuardrailProbeModel: CleanupModel {
             case .refusal: await failure.set(.refusal)
             default: await failure.set(.otherError)
             }
-            throw .transformFailed(kind: kind, description: error.localizedDescription)
+            throw .transformFailed(kind: kind, failure: .ofSystemModel(error))
         } catch {
             await failure.set(.otherError)
-            throw .transformFailed(kind: kind, description: error.localizedDescription)
+            throw .transformFailed(kind: kind, failure: .ofSystemModel(error))
         }
     }
 }
