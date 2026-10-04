@@ -60,7 +60,7 @@ public enum TextInsertionError: UttrflowFailure {
         case .insertionRejected: .pasteManually
         case .insertionUnconfirmed: .showHistory
         case .insertionNeedsCopy: .copyTranscript
-        case .insertionInterrupted: .showRecentDictations
+        case .insertionInterrupted: .showHistory
         }
     }
 

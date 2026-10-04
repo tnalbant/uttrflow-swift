@@ -697,7 +697,7 @@ struct PersonalDictionaryCacheTests {
         let store = PersonalDictionaryStore(file: Sandbox().file)
         let joined = word("OpenAI", used: 4, reverted: 1)
         let spaced = word("Open AI", used: 2)
-        try await store.replaceAll([joined, spaced])
+        try await store.replaceAll { _ in ([joined, spaced], ()) }
         let merged = try #require(try await store.merge(keeping: spaced.id, absorbing: joined.id))
         #expect(merged.id == spaced.id && merged.timesUsed == 6 && merged.timesReverted == 1)
         #expect(await store.allEntries().map(\.id) == [spaced.id])
@@ -710,7 +710,7 @@ struct PersonalDictionaryCacheTests {
         let store = PersonalDictionaryStore(file: Sandbox().file)
         let british = word("Colour", used: 2)
         let american = word("Color", used: 1)
-        try await store.replaceAll([british, american])
+        try await store.replaceAll { _ in ([british, american], ()) }
         #expect(try await store.merge(keeping: british.id, absorbing: american.id) == nil)
         #expect(await store.allEntries().count == 2)
     }
