@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import Synchronization
 import UttrflowAI
 import UttrflowCore
 import UttrflowEval
@@ -178,14 +179,18 @@ struct Bakeoff: AsyncParsableCommand {
         let engine = TextTransformers.all().first { $0.kind == kind }
 
         print("· \(description.name)")
+        let refusals = RefusalTally()
         let report = await EvaluationRunner().run(label: description.name) { testCase in
             let request = request(for: testCase)
             // An engine that declines a language has behaved well, not answered wrongly.
             if let engine, await engine.availability(for: request).isAvailable == false {
                 return .declined
             }
-            return .produced(try await router.transform(request).text)
+            let result = try await router.transform(request)
+            refusals.add(result.cleaning?.refusals ?? [], in: testCase.category)
+            return .produced(result.text)
         }
+        for line in refusals.lines { print(line) }
         return Measurement(description: description, report: report)
     }
 
@@ -643,4 +648,27 @@ extension String {
         count >= width ? self + " " : self + String(repeating: " ", count: width - count)
     }
     fileprivate var trimmed: String { trimmingCharacters(in: .whitespaces) }
+}
+
+/// Guard refusals counted by kind within each category, since a fallback's pass hides what the model wrote.
+final class RefusalTally: Sendable {
+    private let counts = Mutex<[String: [RefusalKind: Int]]>([:])
+
+    /// Counts each refusal one case drew.
+    func add(_ refusals: [CleaningRecord.Refusal], in category: EvaluationCase.Category) {
+        counts.withLock { counts in
+            for refusal in refusals { counts[category.rawValue, default: [:]][refusal.kind, default: 0] += 1 }
+        }
+    }
+
+    /// One line per category that drew a refusal, kinds in name order.
+    var lines: [String] {
+        counts.withLock { counts in
+            counts.keys.sorted().map { category in
+                let kinds = (counts[category] ?? [:]).sorted { $0.key.rawValue < $1.key.rawValue }
+                return "  refused in \(category): "
+                    + kinds.map { "\($0.key.rawValue) \($0.value)" }.joined(separator: ", ")
+            }
+        }
+    }
 }
