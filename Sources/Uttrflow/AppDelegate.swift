@@ -1241,7 +1241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Ranked against the screen the pipeline already read for this dictation, not a second read of its own.
         let speechWords = DictionaryVocabulary { [dictionary] in
-            await (dictionary.allEntries(), Date())
+            await (dictionary.allEntries(), dictionary.index(), Date())
         }
 
         // One cue for both ends, shaped when it can be and the plain system sound when it cannot.
