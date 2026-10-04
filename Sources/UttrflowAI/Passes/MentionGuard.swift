@@ -138,10 +138,8 @@ public enum MentionGuard {
             return true
         }
         let phrase = "the \(word) \(head)"
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = phrase
         guard let wordRange = phrase.range(of: word) else { return false }
-        let lexicalClass = tagger.tag(at: wordRange.lowerBound, unit: .word, scheme: .lexicalClass).0
+        let lexicalClass = LexicalClass.tag(at: wordRange.lowerBound, in: phrase)
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
         if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }

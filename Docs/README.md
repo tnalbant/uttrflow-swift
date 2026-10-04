@@ -50,6 +50,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
 | [adapters.md](adapters.md) | Format adapters: one registry that grows out of the destination formatter |
