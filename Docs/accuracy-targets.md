@@ -95,7 +95,7 @@ A release is tagged by hand, and only when every step below passes, in this orde
    baseline exits 0:
 
    ```bash
-   uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
+   uttrflow-eval transcribe --corpus-path ./corpus \
                             --baseline ./baseline-last-release.json --fail-on-regression
    ```
 

@@ -199,7 +199,6 @@ EXCLUDED_FILES = {
     "Uttrflow/MenuBar/MenuBarGlass.swift": "SwiftUI glass and colours, values from BrandPalette",
     "UttrflowSpeech/TokenizerDownload.swift": "fetches the tokenizer over the real network at install time",
     "UttrflowSpeech/WhisperKitBackend.swift": "loads the downloaded model and decodes real audio through WhisperKit",
-    "UttrflowSpeech/AppleSpeechBackend.swift": "runs SpeechAnalyzer and SpeechTranscriber over real audio",
     "UttrflowAI/AppleFoundationCleanupModel.swift": "runs Apple's on-device language model",
     "UttrflowLocalModel/MLXCleanupModel.swift": "downloads gigabytes and runs GPU inference",
     "UttrflowLocalModel/AppleCandidateGenerator.swift": "runs Apple's on-device model, which only the real system can",

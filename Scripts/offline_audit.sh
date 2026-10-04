@@ -77,8 +77,6 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 #
 #   the tokenizer      — fetched beside the weights at install time so that loading never
 #                        has to. Check 4 proves loading cannot reach it.
-#   the Apple backend  — not sanctioned. Listed in KNOWN_GAP_FILES below, and reported on
-#                        every run, because it downloads on a path the promise covers.
 #   onboarding         — first-run sign-in, and the reachability banner that says why it
 #                        failed. Signing in is the one thing the product says needs a
 #                        connection, and it happens before any dictation.
@@ -89,7 +87,6 @@ ALLOWED_NETWORK_MODULE='UttrflowAccount'
 DOWNLOAD_ISLAND='Sources/UttrflowSpeech/TokenizerDownload.swift'
 ALLOWED_NETWORK_FILES=(
     "$DOWNLOAD_ISLAND"
-    'Sources/UttrflowSpeech/AppleSpeechBackend.swift'
     'Sources/Uttrflow/Onboarding/NetworkReachability+System.swift'
     'Sources/Uttrflow/Onboarding/OnboardingAccountLayer.swift'
     'Sources/Uttrflow/Onboarding/OnboardingWindowController.swift'
@@ -117,16 +114,7 @@ HUB_CLIENT_FILES=(
 # Allowed above only so that the rest of the tree can be checked at all, and named on
 # every run because each is a live defect rather than a design. Taking a file out of here
 # is how its fix gets recorded; deleting the note is not.
-#
-#   AppleSpeechBackend.load() installs the system locale asset, and transcribe() calls
-#   load(), so choosing the built-in recogniser and speaking downloads on a Mac that has
-#   not installed that locale. WhisperKitBackend has `download: false` for exactly this;
-#   the Apple asset API offers no equivalent, so the fix is a product decision about what
-#   the user is told, not a flag. Docs/offline.md § What this does not prove has the
-#   detail; this list is what keeps it from being forgotten.
-KNOWN_GAP_FILES=(
-    'Sources/UttrflowSpeech/AppleSpeechBackend.swift'
-)
+KNOWN_GAP_FILES=()
 
 # Every way to reach the network that leaves a name in Swift source: Foundation's stack,
 # Network.framework in both its Swift and its C spelling, CFNetwork, the BSD calls those

@@ -528,7 +528,6 @@ public enum SettingsPresenter {
         _ capabilities: SettingsCapabilities,
         _ personalisation: SettingsPersonalisation
     ) -> SettingsPane {
-        let quality = SettingsTranscriptionQuality(engine: settings.engines.speech)
         let availabilityGroups = [foundationModelAvailabilityRow(capabilities)].compactMap { row in
             row.map { SettingsGroup(id: "tidyingAvailability", title: "Tidying availability", rows: [$0]) }
         }
@@ -537,24 +536,6 @@ public enum SettingsPresenter {
             title: title(of: .dictation),
             banner: nil,
             groups: [
-                SettingsGroup(
-                    id: "recognition",
-                    title: "Speech recognition",
-                    rows: [
-                        SettingsRow(
-                            id: "quality",
-                            label: "Speed and accuracy",
-                            explanation:
-                                "Faster uses macOS speech recognition, which does not recognise "
-                                + "Hindi. Use Most accurate for Hindi or Hinglish dictation.",
-                            control: .segmented(
-                                options: SettingsTranscriptionQuality.allCases.map(qualityOption),
-                                selectedID: quality.rawValue),
-                            // Off only when neither option can run, and moving it would achieve nothing.
-                            unavailability: capabilities.readySpeechEngines.isEmpty
-                                ? "This option needs a download that has not finished yet." : nil,
-                            icon: .symbol("waveform", .dictation))
-                    ]),
                 SettingsDestinations.places(
                     settings.destinations, lastApp: personalisation.lastDictationApp),
 
@@ -620,12 +601,6 @@ public enum SettingsPresenter {
             id: "page.\(page.rawValue)", label: SidebarPresenter.title(for: page),
             explanation: explanation, control: .action(title: "Open", change: .openPage(page)),
             icon: .symbol("text.badge.checkmark", .info))
-    }
-
-    /// One transcription quality, as a segmented option.
-    private static func qualityOption(_ quality: SettingsTranscriptionQuality) -> SettingsOption {
-        SettingsOption(
-            id: quality.rawValue, title: quality.title, change: .transcription(quality))
     }
 
     // MARK: - Suggestions

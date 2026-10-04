@@ -566,33 +566,10 @@ struct SettingsDictationPaneTests {
         SettingsPresenter.pane(for: .dictation, settings: settings, capabilities: capabilities)
     }
 
-    @Test("shows the trade the stored engine represents, not the engine")
-    func showsTheQuality() {
-        var settings = Settings.default
-        settings.engines.speech = .appleSpeech
-        guard
-            case .segmented(let options, let selected)? = dictation(settings).row("quality")?
-                .control
-        else {
-            Issue.record("the quality row is not a segmented control")
-            return
-        }
-        #expect(selected == SettingsTranscriptionQuality.faster.rawValue)
-        #expect(options.count == SettingsTranscriptionQuality.allCases.count)
-        #expect(dictation(settings).row("quality")?.explanation?.contains("does not recognise Hindi") == true)
-        #expect(
-            dictation(settings).row("quality")?.explanation?.contains("Most accurate for Hindi or Hinglish")
-                == true)
-    }
-
-    @Test("stays operable while either option can still run")
-    func operableWhileOneEngineIsReady() {
-        var capabilities = SettingsCapabilities.everything
-        capabilities.readySpeechEngines = [.appleSpeech]
-        #expect(dictation(.default, capabilities).row("quality")?.isEnabled == true)
-
-        capabilities.readySpeechEngines = []
-        #expect(dictation(.default, capabilities).row("quality")?.isEnabled == false)
+    @Test("offers no choice of recogniser, since there is one")
+    func offersNoRecogniserChoice() {
+        #expect(dictation().row("quality") == nil)
+        #expect(dictation().groups.allSatisfy { $0.id != "recognition" })
     }
 
     @Test("says dictation needs no connection")
@@ -795,7 +772,7 @@ struct SettingsAppearanceTests {
                 .appearance(appearance), to: Settings(),
                 given: SettingsCapabilities(
                     launchAtLogin: .unavailable, canPlayRecordingSound: false,
-                    readySpeechEngines: [], readyTransformers: []))
+                    readyTransformers: []))
             #expect(after.appearance == appearance)
         }
     }

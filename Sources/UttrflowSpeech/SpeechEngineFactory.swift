@@ -29,10 +29,6 @@ public enum SpeechEngineFactory {
                 didLoad: didLoad,
                 willLoad: willLoad
             )
-        case .appleSpeech:
-            BackedSpeechEngine(
-                kind: .appleSpeech, backend: AppleSpeechBackend(), idleAfter: idleAfter,
-                didRelease: didRelease, didLoad: didLoad, willLoad: willLoad)
         }
     }
 }
