@@ -4,7 +4,7 @@ public import UttrflowDictionary
 public import struct Foundation.Data
 
 public enum PersonalDataTransfer {
-    /// Decodes and validates the complete input before either list is written.
+    /// Validates the whole archive, then merges each list inside its store; a failed second write undoes the first.
     public static func importArchive(
         _ data: Data,
         into dictionary: PersonalDictionaryStore,
@@ -17,13 +17,25 @@ public enum PersonalDataTransfer {
             })
         else { throw PersonalDataArchiveError.invalidContents }
 
-        let merged = archive.merging(
-            dictionary: await dictionary.allEntries(), snippets: await snippets.snippets())
-        let kept = try await dictionary.replaceAll(merged.dictionary)
-        try await snippets.replaceAll(merged.snippets)
+        // Snippets go first because their merge only appends, so removing what it added is an exact undo.
+        let snippetMerge = try await snippets.replaceAll { current in
+            let merge = archive.mergedSnippets(into: current)
+            return (merge.records, merge)
+        }
+        let words: (kept: [DictionaryEntry], outcome: PersonalDataMerge<DictionaryEntry>)
+        do {
+            words = try await dictionary.replaceAll { current in
+                let merge = archive.mergedDictionary(into: current)
+                return (merge.records, merge)
+            }
+        } catch {
+            let added = Set(snippetMerge.added.map(\.id))
+            try? await snippets.replaceAll { current in (current.filter { !added.contains($0.id) }, ()) }
+            throw error
+        }
         return PersonalDataImportReport(
-            duplicateWords: merged.duplicateWords, duplicateSnippets: merged.duplicateSnippets,
-            skippedInferredWords: merged.dictionary.count - kept.count)
+            duplicateWords: words.outcome.duplicates, duplicateSnippets: snippetMerge.duplicates,
+            skippedInferredWords: words.outcome.records.count - words.kept.count)
     }
 }
 

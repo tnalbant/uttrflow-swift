@@ -14,6 +14,7 @@ on-device. This file is for everyone who works on it, by hand or with an agent. 
 |---|---|
 | writing or changing code, tests or comments | [Docs/agents/code-quality.md](Docs/agents/code-quality.md) |
 | changing what dictation, AI suggestions, the clipboard or the data stores do | [Docs/agents/product.md](Docs/agents/product.md) |
+| changing how accurately dictation recognises, corrects or formats words | [Docs/dictation-quality.md](Docs/dictation-quality.md) |
 | branching, committing or opening a pull request | [Docs/agents/workflow.md](Docs/agents/workflow.md) |
 | writing any text that will be committed or posted | [Docs/agents/public-boundary.md](Docs/agents/public-boundary.md) |
 | hitting a tooling failure | [Docs/tooling-traps.md](Docs/tooling-traps.md) |

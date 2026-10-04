@@ -1,7 +1,7 @@
 public import UttrflowCore
 
 /// Puts the apostrophe back into a contraction speech left without one: "dont" → "don't". See `Docs/cleanup.md`.
-public struct ContractionsPass: CleaningPass {
+public struct ContractionsPass: PieceCleaningPass {
     public static let id: PassID = .contractions
 
     /// Whole words that are a contraction and nothing else, so no sentence can want them as they stand.

@@ -17,6 +17,7 @@ AUDITS = {
     "comment_audit.py": ("comment_baseline.json", "// one\n// two\nstruct Example {}\n"),
     "loose_match_audit.py": ("loose_match_baseline.json", "let stem = String(word.prefix(3))\n"),
     "layering_audit.py": ("layering_baseline.json", "import AppKit\n"),
+    "closed_list_audit.py": ("closed_list_baseline.json", 'let cues: Set<String> = ["git", "npm", "yarn", "pnpm"]\n'),
 }
 
 

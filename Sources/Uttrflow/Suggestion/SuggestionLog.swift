@@ -3,6 +3,16 @@ import UttrflowCore
 
 /// The predict log's lines, which carry lengths, counts and reasons and never the text itself. See `Docs/logging.md`.
 enum SuggestionLog {
+    /// Whether a local debug run opts into application identities in suggestion logs.
+    static var revealsApplications: Bool {
+        ProcessInfo.processInfo.environment["UTTRFLOW_DEBUG_SUGGESTION_APPLICATIONS"] == "1"
+    }
+
+    /// Hides an application's identity unless local debugging explicitly opts in.
+    static func application(_ identity: String, reveal: Bool = revealsApplications) -> String {
+        reveal ? identity : "private"
+    }
+
     /// What the corpus held for the line.
     static func query(typed: String, corpus: Int, generatorReady: Bool) -> String {
         "QUERY typedChars=\(typed.count) corpus=\(corpus) generatorReady=\(generatorReady)"
@@ -32,9 +42,10 @@ enum SuggestionLog {
 
     /// What the model offered, and how long it took.
     static func generate(
-        application: String, typed: String, got: Int, elapsedMilliseconds: Int, firstCompletion: String?
+        application: String, typed: String, got: Int, elapsedMilliseconds: Int, firstCompletion: String?,
+        revealApplication: Bool = revealsApplications
     ) -> String {
-        "GENERATE app=\(application) typedChars=\(typed.count) got=\(got) elapsed=\(elapsedMilliseconds)ms firstChars=\(firstCompletion?.count ?? 0)"
+        "GENERATE app=\(self.application(application, reveal: revealApplication)) typedChars=\(typed.count) got=\(got) elapsed=\(elapsedMilliseconds)ms firstChars=\(firstCompletion?.count ?? 0)"
     }
 
     /// A pass for the list behind the drawn line that threw.
@@ -74,10 +85,12 @@ enum SuggestionLog {
         "a completion was refused unwritten: \(reason) typedChars=\(typed.count)"
     }
 
-    /// A turn left behind, named by the step it was waiting on and the bundle identifier of the application it read.
-    static func stall(step: SuggestionTurnStep?, application: String?, afterSeconds seconds: Double) -> String
-    {
-        "STALL step=\(step?.rawValue ?? "unknown") app=\(application ?? "unknown") after=\(Int(seconds))s left behind"
+    /// A turn left behind, named by its step and application identity only when debugging opts in.
+    static func stall(
+        step: SuggestionTurnStep?, application: String?, afterSeconds seconds: Double,
+        revealApplication: Bool = revealsApplications
+    ) -> String {
+        "STALL step=\(step?.rawValue ?? "unknown") app=\(self.application(application ?? "unknown", reveal: revealApplication)) after=\(Int(seconds))s left behind"
     }
 
     /// An error's type and case, without the payload, which may hold the text a model was given or wrote.

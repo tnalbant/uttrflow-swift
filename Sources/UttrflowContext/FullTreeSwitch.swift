@@ -85,11 +85,15 @@ public final class FullTreeSwitch: Sendable {
         operations.withLock { _ in
             let generation = requestedGeneration ?? self.generation
             guard mayAsk(processIdentifier, generation: generation, at: now) else { return }
-            var attributes = [Self.manualAttribute]
-            if Self.isChromiumBrowser(bundleIdentifier) { attributes.append(Self.enhancedAttribute) }
-            for attribute in attributes {
+            // A Chromium browser decides on the screen reader's switch, so the manual one alone never settles it.
+            let attributes =
+                Self.isChromiumBrowser(bundleIdentifier)
+                ? [Self.manualAttribute, Self.enhancedAttribute] : [Self.manualAttribute]
+            for (index, attribute) in attributes.enumerated() {
+                let decides = index == attributes.count - 1
                 let wrote = state.withLock { $0.written[processIdentifier]?.contains(attribute) ?? false }
                 if host.read(attribute) == true {
+                    guard decides else { continue }
                     // On after this switch's own write is this switch's to turn off; on before it is left alone.
                     state.withLock { state in
                         state.settled.insert(processIdentifier)
@@ -105,7 +109,7 @@ public final class FullTreeSwitch: Sendable {
                 }
                 guard recorded else { return }
                 // Chrome answers a write it has applied as not implemented, so the value read back decides.
-                if host.write(attribute, true) || host.read(attribute) == true {
+                if host.write(attribute, true) || host.read(attribute) == true, decides {
                     state.withLock { state in
                         state.settled.insert(processIdentifier)
                         state.switched[processIdentifier] = attribute

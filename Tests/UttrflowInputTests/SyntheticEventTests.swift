@@ -28,6 +28,25 @@ struct SyntheticEventTests {
         #expect(SyntheticEvent.isOurs(event))
     }
 
+    @Test("Event construction failure posts none of the batch.")
+    func constructionFailurePostsNothing() {
+        var built: [Int] = []
+        var posted: [Int] = []
+
+        #expect(throws: TextInsertionError.accessibilityDenied) {
+            try buildThenPost(
+                [1, 2, 3],
+                build: { (value: Int) throws(TextInsertionError) -> Int in
+                    built.append(value)
+                    if value == 2 { throw .accessibilityDenied }
+                    return value
+                }, post: { posted.append(contentsOf: $0) })
+        }
+
+        #expect(built == [1, 2])
+        #expect(posted.isEmpty)
+    }
+
     @Test("An untagged event is treated as the user's, so real typing still wakes a turn.")
     func untaggedIsNotOurs() throws {
         let event = try #require(keyDown(48))

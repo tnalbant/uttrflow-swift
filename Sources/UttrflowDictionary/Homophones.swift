@@ -33,7 +33,7 @@ public enum Homophones {
         ["site", "sight", "cite"], ["complement", "compliment"], ["die", "dye"],
         ["fair", "fare"], ["ate", "eight"], ["flew", "flu"], ["flour", "flower"],
         ["for", "four"], ["hear", "here"], ["hole", "whole"], ["hour", "our"],
-        ["its", "it's"], ["knew", "new"], ["knight", "night"], ["know", "no"],
+        ["its", "it's"], ["lets", "let's"], ["knew", "new"], ["knight", "night"], ["know", "no"],
         ["mail", "male"], ["made", "maid"], ["meat", "meet"], ["need", "knead"],
         ["one", "won"], ["pain", "pane"], ["pair", "pear"], ["peace", "piece"], ["peak", "peek"],
         ["plain", "plane"], ["principal", "principle"], ["rain", "reign", "rein"],
