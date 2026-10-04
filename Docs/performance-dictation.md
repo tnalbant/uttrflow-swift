@@ -9,9 +9,15 @@ come from `uttrflow-bakeoff profile` (method in [`performance.md`](performance.m
 [`measuring-accuracy.md`](measuring-accuracy.md); early transcription is
 [`early-transcription.md`](early-transcription.md).
 
+The current latency is the dated table in
+[`performance.md`](performance.md#latency-budget-per-stage), which names the commit, hardware, load
+and mode it was measured at. Every latency figure on this page is historical and says which commit
+recorded it; read it for the shape of the cost, not for today's value.
+
 ## Latency in the profile
 
-Median and slowest of three runs each, model already loaded, Debug, load average up to 24:
+**Historical, recorded by commit `8b07c12e9` (2026-08-29), before early transcription.** Median and slowest of three runs each, model already loaded, Debug,
+load average up to 24:
 
 ```
   length   audio   runs  end-to-end          transcription       transformation
@@ -54,8 +60,8 @@ them:
 The first sample arrives about 100 ms after `start()` returns, one hardware block. For a modifier
 shortcut `keyDownToAudio` starts at key-down and is read when the press is adopted after
 `modifierSettle`, so it records the settle rather than the first sample; for any other shortcut it
-is not recorded. No latency budget is enforced: `Scripts/perf_budget_audit.py` reads energy and
-memory only.
+is not recorded. Neither has a latency budget; the stages that do are in
+[`performance.md`](performance.md#latency-budget-per-stage).
 
 **Dictionary correction** is held to work, not time: `CorrectionEngineTests` checks that a
 10,000-entry dictionary reads no more entries than a 50-entry one and that the screen is read once
@@ -68,7 +74,7 @@ step.
 
 ### Transcription steps every 30 seconds
 
-From an earlier `profile` run, re-confirmed by the one above (superLinear for transcription, linear
+**Historical, recorded by commit `8b07c12e9` (2026-08-29), before early transcription.** From an earlier `profile` run, re-confirmed by the one above (superLinear for transcription, linear
 for clean-up). Marginal cost, in extra seconds of work per extra second of speech:
 
 ```
@@ -160,8 +166,8 @@ romanised passage, whichever is closer.
 
 ### Word error rate
 
-One run of the commands below, Release, load average 6–30, each clip all at once with the shipping
-router:
+**Historical, recorded by commit `7acaae647` (2026-09-14).** One run of the commands below, Release, load average 6–30, each clip all at
+once with the shipping router:
 
 | category | clips | raw | final |
 |---|---|---|---|
@@ -213,7 +219,7 @@ not a claim about real speakers.
 
 ### The wait
 
-**All at once** hands the whole file over and releases the key, so every piece is recognised and
+**Historical, recorded by commit `7acaae647` (2026-09-14).** **All at once** hands the whole file over and releases the key, so every piece is recognised and
 tidied after key-up: what a retry does, and the worst case. **Real time** plays the file at speaking
 pace, so early transcription works ahead while the key is held. The wait is key-up to the words
 being ready; recognising and tidying are each dictation's total across its pieces, so in real time
@@ -248,7 +254,7 @@ they can exceed the wait.
 
 ### What the recognising time is made of
 
-WhisperKit reports its own stages in `TranscriptionResult.timings`. Read with a temporary print
+**Historical, recorded by commit `7acaae647` (2026-09-14).** WhisperKit reports its own stages in `TranscriptionResult.timings`. Read with a temporary print
 over 528 decodes of the same corpus:
 
 - **Decoder steps are about four fifths of it**, one Neural Engine call per token, 20 ms each on a

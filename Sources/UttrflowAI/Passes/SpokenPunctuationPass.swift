@@ -32,6 +32,8 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
         var position = 0
         // The end of the sentence `position` sits in, kept until a write changes the words; nil once stale.
         var sentenceEnd: Int?
+        // The quotes opened and not yet closed, innermost last.
+        var openQuotes: [String] = []
         while position < live.count {
             if replaceLongFlag(at: position, literal: literal, in: &live, of: &draft) {
                 sentenceEnd = nil
@@ -68,17 +70,29 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
                 isPlaced(
                     found.text, before: position + found.words.count, spanning: found.words.count,
                     in: live, of: draft),
+                case let written = Self.quote(found, inside: openQuotes)
+                    ?? mark(found.text, literalHyphens: literalHyphens),
                 attach(
-                    mark(found.text, literalHyphens: literalHyphens), kind: found.placement,
-                    at: position, spanning: found.words.count,
+                    written, kind: found.placement, at: position, spanning: found.words.count,
                     in: &live, of: &draft)
             else {
                 position += 1
                 continue
             }
+            if found.placement == .opening { openQuotes.append(written) }
+            if found.placement == .closing { _ = openQuotes.popLast() }
             sentenceEnd = nil
         }
         return draft
+    }
+
+    /// The quote a quotation mark writes: a double quote opened inside a double quote is single, and a close matches the quote still open.
+    static func quote(_ found: SpokenCommand, inside open: [String]) -> String? {
+        switch found.placement {
+        case .opening: open.last == "\"" && found.text == "\"" ? "'" : found.text
+        case .closing: open.last ?? found.text
+        case .trailing, .joining: nil
+        }
     }
 
     /// Whether every spoken dash here is an option marker, which the flag rows' destinations say.
@@ -111,7 +125,7 @@ public struct SpokenPunctuationPass: PieceCleaningPass {
     /// Words that may stand between a name cue and its name: "the branch is fix dash login".
     static let nameLinks: Set<String> = ["is", "called", "named"]
 
-    /// The word indices of spoken dashes that belong to a command or a name rather than to prose; `names` gets those joining a name.
+    /// The word indices of spoken dashes that belong to a command or a name rather than to prose.
     private func literalDashes(in live: [Int], of draft: Draft, names: inout Set<Int>) -> Set<Int> {
         let dashes = live.filter { draft.shape(at: $0).key == "dash" }
         if isCommandLine { return Set(dashes) }

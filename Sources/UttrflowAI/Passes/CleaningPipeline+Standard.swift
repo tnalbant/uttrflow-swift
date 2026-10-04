@@ -48,11 +48,15 @@ extension CleaningPipeline {
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
         ]
-        if destination == .codeEditor,
-            CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode,
-            let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
-        {
-            cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
+        let inCode =
+            destination == .codeEditor
+            && CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode
+        if let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords }) {
+            if inCode { cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition) }
+            // A code editor's comments take no casing: its rows are identifiers, which a comment is not.
+            if destination != .codeEditor || inCode {
+                cleanings.insert(SpokenCasingPass(destination: destination), at: layoutPosition)
+            }
         }
         return CleaningPipeline(piece: cleanings.filter { steps.runs($0.id) })
     }
