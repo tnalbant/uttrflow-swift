@@ -35,11 +35,11 @@ closed enumeration:
 | `windowStartedAt`, `windowEndedAt` | the period summarised, encoded as ISO-8601 |
 | `appVersion` | `CFBundleShortVersionString` as three numbers (`26.0926.0` → `26`, `926`, `0`); an unreadable version becomes `0.0.0` |
 | `osVersionMajor` | the macOS major version |
-| `dictationCount` | dictations counted in the window (inserted or failed) |
-| `cancelledCount` | dictations the user abandoned, never more than `dictationCount`; always `0` from the app, because `UsageTelemetry.observe` records no cancellation |
+| `dictationCount` | dictations counted in the window (inserted, cancelled or failed) |
+| `cancelledCount` | dictations the user abandoned, never more than `dictationCount` |
 | `failureCount` | dictations that failed |
 | `audioTotalMs` | total time spoken, from each inserted dictation's spoken duration |
-| `processingTotalMs` | total time the user waited, from the end of listening to insertion or failure |
+| `processingTotalMs` | total time the user waited, from the end of listening to insertion, cancellation or failure |
 | `charactersInserted` | a count of characters inserted, not the characters |
 | `latencyP50Ms`, `latencyP90Ms`, `latencyP99Ms` | end-to-end wait percentiles of inserted dictations |
 | `languages` | dictations per `TelemetryLanguage`, sorted by tag |
@@ -51,8 +51,9 @@ closed enumeration:
 the pipeline leaves recording, and on `.inserted` or `.failed` calls
 `TelemetryCollector.recordDictation` with the outcome, the wait, the spoken duration and the
 inserted text's length; the language is the first of the user's preferred languages in
-Settings. The pipeline's stage timings reach the collector through `MetricsFanOut`, beside
-the diagnostics recorder, so the pipeline needs no telemetry-specific code.
+Settings. When an active dictation returns directly to `.idle`, it records a cancellation, with
+no audio or latency sample. The pipeline's stage timings reach the collector through
+`MetricsFanOut`, beside the diagnostics recorder, so the pipeline needs no telemetry-specific code.
 
 ## When is it sent?
 

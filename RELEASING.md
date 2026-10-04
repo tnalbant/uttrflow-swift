@@ -38,7 +38,11 @@ offers every installed copy a downgrade.
 **Two.** Update `CHANGELOG.md`: move everything under `## [Unreleased]` into a new
 version heading with today's date.
 
-**Three.** Land both through a pull request, like everything else.
+Add `Tests/Fixtures/stores/<tag>/` with each covered store's file as the release writes it
+(invented content only) and add the tag to `releases` in `ReleasedStoreFixtureTests`; see
+[`Tests/Fixtures/stores/README.md`](Tests/Fixtures/stores/README.md).
+
+**Three.** Land all of it through a pull request, like everything else.
 
 **Four.** Tag a candidate and let it soak:
 

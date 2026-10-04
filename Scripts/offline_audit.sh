@@ -223,6 +223,7 @@ URL_READERS=(
     'Sources/UttrflowPredict/EnvironmentReading+System.swift'
     'Sources/UttrflowPredictStore/SQLite.swift'
     'Sources/UttrflowSpeech/SpeechModelStore.swift'
+    'Sources/UttrflowTestSupport/GoldenFile.swift'
     'Sources/UttrflowUX/AliasUnicodeRules.swift'
     'Sources/UttrflowEval/AccuracyBaseline.swift'
     'Sources/UttrflowEval/CorpusCache.swift'

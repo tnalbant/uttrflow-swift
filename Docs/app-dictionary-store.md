@@ -53,9 +53,10 @@ forget to throw away.
 
 ## Adding
 
-`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word,
-case-insensitively: "Kubectl" and "kubectl" are one word to the user and two rows in a settings
-list is a bug they can see. The newcomer's spelling wins, since it is the one they just asked for.
+`add(_:)` replaces any entry with the same identifier and any *other* entry spelling the same word.
+Spelling identity ignores case and spaces but retains `+`, `#`, `&`, `.`, `/` and `-`, so "Open AI"
+and "OpenAI" are one entry while "C++", "C#" and "C" remain distinct. The newcomer's spelling
+wins, since it is the one they just asked for.
 
 `add(word:pronunciation:at:)` is where the editor's input is turned into an entry, so the trimming,
 the empty-pronunciation rule and the origin are decided once. A blank pronunciation is stored as
@@ -102,6 +103,11 @@ and capped at the ledger's 512 (`SightingLedger.maximumRefused`), so a relaunch 
 deleted before it. They are words the user already had in the dictionary and chose to remove, not
 terms read off the screen. `removeEverything()` deletes the record; `removeLearned()` keeps it.
 
+**Several words.** `remove(_:)` also takes a set of identifiers and is the one removal path: one
+word is a set of one. Every word in the set is refused, and the refusals and the dictionary are
+each written once. Past the 512 cap the oldest refusals lapse first, so a batch larger than the cap
+keeps the newest 512 refused.
+
 **Everything.** `removeEverything()` is the blunt instrument and takes the user's own words too.
 It also removes the seed record and the refusals, so the next launch offers the shipped words as
 on a fresh install. If either record cannot be removed, the reset reports a write failure.
@@ -113,7 +119,8 @@ once and reinforced, a colleague's surname bound to a typo — and the honest an
 dictionary is to throw the inferences away. Throwing away the user's own words at the same time
 would make the fix cost more than the fault, and they would stop using it.
 
-Both `learned` and `observed` go, because both are the app's inference and the user cannot be
+Both `learned` and `observed` go, through the same `remove(_:)`, so every one of them is refused
+and the same sightings do not bring it back. Both go because both are the app's inference and the user cannot be
 expected to know which of the two mechanisms guessed wrong. `added` survives, and so does
 `shipped`: a word this build was born knowing was inferred from nothing on this Mac, so there is
 nothing about it to forget. Deleting it one row at a time is still the user's to do, and it stays

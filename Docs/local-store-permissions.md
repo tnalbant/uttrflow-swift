@@ -78,6 +78,7 @@ still held to the rest.
 |---|---|---|
 | `Sources/UttrflowCore/Support/PrivateFile.swift` | every call | The helper itself. |
 | `Sources/UttrflowEval/`, `Sources/uttrflow-bakeoff/`, `Sources/uttrflow-dev/`, `Sources/uttrflow-eval/` | every call | The evaluation harness and developer tools, which never ship and write no user data. |
+| `Sources/UttrflowTestSupport/` | every call | Golden fixtures beside tests; this support module is never linked into the app and does not write user data. |
 | `Sources/UttrflowSpeech/SpeechModelStore.swift`, `Sources/UttrflowSpeech/TokenizerDownload.swift` | every call | Downloaded model weights and tokenizer files, which are public. |
 | `Sources/UttrflowCore/Support/SingleInstanceLock.swift` | `open(O_CREAT)` | Opens its lock file `0600` and needs the descriptor to `flock` it. |
 | `Sources/UttrflowAudio/RecordingWriter.swift` | `open(O_CREAT)` | Opens each recording `0600` and writes through the descriptor. |

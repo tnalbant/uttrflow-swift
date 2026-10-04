@@ -85,12 +85,11 @@ excluded from backup.
 | An envelope with an unsupported version, too short for nonce and tag, or failing authentication or decoding | `.unreadable`, file set aside |
 | Plaintext JSON that decodes (a legacy store) | Sealed in place: the key is fetched or created, the same payload is sealed and atomically written over the plaintext, then `.read(value)` |
 | Plaintext JSON that decodes but cannot be sealed or written | `.unreadable`, file left in place |
-| Plaintext that does not decode | `.unreadable`, file left in place, without asking for a key |
+| Plaintext that does not decode | `.unreadable`, file set aside, without asking for a key |
 
-`.unreadable` is never an empty store: a store that reads it refuses every write, so the
-original bytes cannot be replaced (for the history, see
-[history-store-file.md](history-store-file.md)). A file that could not be set aside stays
-where it is, with the same refusal.
+An unreadable file is set aside before a new empty store is written, preserving the original
+bytes. If the file cannot be set aside, it stays in place and every write is refused (for the
+history, see [history-store-file.md](history-store-file.md)).
 
 `EncryptedStore.write` creates a key only when there is no file at the path. When a file is
 there, it must already be an envelope that opens with the current key, or the write throws

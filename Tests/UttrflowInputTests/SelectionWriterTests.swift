@@ -29,10 +29,12 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
         var reportsValue = true
         var reportsSelection = true
         var readsByRange = true
+        var reportedLength: Int?
         var wholeReads = 0
         var unitsRead = 0
         var refusesText = false
         var ignoresText = false
+        var movesCaretOnly = false
         var refusesSelection = false
         var textWrites: [String] = []
         var selectionWrites: [Range<Int>] = []
@@ -60,7 +62,10 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
     }
 
     func length() -> Int? {
-        state.withLock { $0.reportsValue && $0.readsByRange ? $0.text.utf16.count : nil }
+        state.withLock {
+            guard $0.reportsValue, $0.readsByRange else { return nil }
+            return $0.reportedLength ?? $0.text.utf16.count
+        }
     }
 
     func text(in range: Range<Int>) -> String? {
@@ -82,6 +87,11 @@ final class FakeSelectionField: SelectionAttributes, Sendable {
             state.textWrites.append(text)
             guard !state.refusesText else { return .cannotComplete }
             guard !state.ignoresText else { return .success }
+            if state.movesCaretOnly {
+                state.location += text.utf16.count
+                state.length = 0
+                return .success
+            }
             if let concurrentText = state.concurrentTextBeforeWrite {
                 let concurrentRange = NSRange(location: state.location, length: state.length)
                 state.text = (state.text as NSString).replacingCharacters(
@@ -125,6 +135,29 @@ private func isRejection(_ error: TextInsertionError?) -> Bool {
 
 @Suite("Writing into a field through its Accessibility attributes")
 struct SelectionWriterTests {
+    @Test("A hostile starting caret cannot overflow while confirming a write.")
+    func hostileStartingCaretDoesNotOverflow() {
+        for location in [NSNotFound, Int.max, Int.max - 1, Int.min, -1, 5, 6] {
+            for length in [0, 1, Int.max, -1] {
+                let field = FakeSelectionField("hello", caret: location, length: length) {
+                    $0.ignoresText = true
+                }
+                #expect(throws: TextInsertionError.self) {
+                    try SelectionWriter(field: field).replaceSelection(with: "x")
+                }
+            }
+        }
+    }
+
+    @Test("A hostile selection cannot overflow the comparison window.")
+    func hostileSelectionDoesNotOverflowWindow() throws {
+        let field = FakeSelectionField("hello", caret: .max, length: .max) {
+            $0.reportedLength = .max
+            $0.ignoresText = true
+        }
+        try SelectionWriter(field: field).replaceSelection(with: "")
+    }
+
     @Test func rejectsReadableSelectionOnANonSettableElement() {
         let element = MockFocusedAccessibilityElement(
             role: "AXTextField", selectedTextIsReadable: true, selectedTextIsSettable: false)
@@ -147,6 +180,15 @@ struct SelectionWriterTests {
         #expect(field.text == "same")
         #expect(field.selection == 4..<4, "a genuine write still collapses the selection to a caret past it")
         #expect(field.textWrites == ["same"], "no fallback should have written a second time")
+    }
+
+    @Test("rejects a write that moves the caret over a different selection and leaves the text as it was")
+    func caretMovedButDifferentSelectionUnchangedIsRejected() {
+        let field = FakeSelectionField("other", caret: 0, length: 5) { $0.movesCaretOnly = true }
+        let error = #expect(throws: TextInsertionError.self) {
+            try SelectionWriter(field: field).replaceSelection(with: "words")
+        }
+        #expect(error == .insertionRejected(description: "the field accepted the text and did not change"))
     }
 
     @Test("does not claim a write landed when the field still reports its old value")

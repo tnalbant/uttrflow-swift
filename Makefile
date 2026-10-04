@@ -54,6 +54,18 @@ comment-report: ## List the multi-line comments left, worst file first.
 match-audit: ## Prove no source file gained a word match decided by shape. Needs no build.
 	@python3 Scripts/loose_match_audit.py
 
+.PHONY: closed-list-audit
+closed-list-audit: ## Prove no source file gained a literal list of four or more words. Needs no build.
+	@python3 Scripts/closed_list_audit.py
+
+.PHONY: closed-list-report
+closed-list-report: ## List the closed word lists still written into code, with the line.
+	@python3 Scripts/closed_list_audit.py --report
+
+.PHONY: word-split-audit
+word-split-audit: ## Prove no file gained text split into words by a hand-written separator. Needs no build.
+	@python3 Scripts/word_split_audit.py
+
 .PHONY: python-imports-audit
 python-imports-audit: ## Refuse a Scripts/ Python import that is not standard library, a repository module, or pinned with a hash. Needs no build.
 	@python3 Scripts/python_imports_audit.py
@@ -63,15 +75,27 @@ python-imports-audit: ## Refuse a Scripts/ Python import that is not standard li
 match-report: ## List the word matches still decided by shape, with the line.
 	@python3 Scripts/loose_match_audit.py --report
 
+.PHONY: accessibility-controls
+accessibility-controls: ## Prove Docs/accessibility-controls.md lists every control in the view code. Needs no build.
+	@python3 Scripts/accessibility_controls.py --check
+	@python3 Scripts/accessibility_controls_test.py
+
 .PHONY: layering-audit
 layering-audit: ## Prove no logic module gained a UI-framework import or a platform dependency. Needs no build.
 	@python3 Scripts/layering_audit.py
 
+.PHONY: string-audit
+string-audit: ## Prove no file gained a fixed English string handed to a view. Needs no build.
+	@python3 Scripts/string_audit.py
+
 .PHONY: ratchet-test
-ratchet-test: ## Prove the comment, word-match and layering baselines refuse a rise without --after-merge. Needs no build.
+ratchet-test: ## Prove the comment, word-match, closed-list, layering and string baselines refuse a rise without --after-merge. Needs no build.
 	@python3 Scripts/audit_ratchet_test.py
 	@python3 Scripts/loose_match_audit_test.py
+	@python3 Scripts/closed_list_audit_test.py
+	@python3 Scripts/word_split_audit_test.py
 	@python3 Scripts/layering_audit_test.py
+	@python3 Scripts/string_audit_test.py
 
 .PHONY: mutation-probe-test
 mutation-probe-test: ## Prove the mutation probe finds each mutation it names and refuses the main checkout. Needs no build.
@@ -101,9 +125,17 @@ update-feed-test: ## Prove the release scripts parse update-feed URLs by host, n
 entitlement-gate-test: ## Prove the release gates read entitlement Boolean values, not just key names.
 	@python3 Scripts/entitlement_gate_test.py
 
+.PHONY: test-name-audit
+test-name-audit: ## Refuse a test file named after an issue number. Needs no build.
+	@python3 Scripts/test_name_audit.py
+
 .PHONY: issue-template-audit
 issue-template-audit: ## Refuse a public issue template that prompts for content the disclosure rule forbids. Needs no build.
 	@python3 Scripts/issue_template_audit.py
+
+.PHONY: audio-audit
+audio-audit: ## Refuse audio outside the synthetic fixture directory: a recording is personal data. Needs no build.
+	@python3 Scripts/audio_audit.py --self-test
 
 .PHONY: root-audit
 root-audit: ## Refuse any file or directory at the repository root that is not on the allowlist. Needs no build.
@@ -161,7 +193,14 @@ offline-test: ## Prove the offline audit still refuses every way of reaching the
 .PHONY: docs-audit
 docs-audit: ## Prove the documentation still describes this tree, including that CLAUDE.md delegates to AGENTS.md. Needs no build.
 	@python3 Scripts/preview_gen_test.py
+	@python3 Scripts/rule_file_duplicate_audit.py --self-test
+	@python3 Scripts/rule_file_duplicate_audit.py
 	./Scripts/docs_audit.sh --self-test
+
+.PHONY: data-manifest
+data-manifest: ## Prove every bundled resource file is in Resources/DataManifest.json with its digest. Needs no build.
+	@python3 Scripts/data_manifest_test.py
+	@python3 Scripts/data_manifest.py
 
 .PHONY: pii-audit
 pii-audit: ## Prove no personal data is in the tree. Needs no build.
@@ -263,7 +302,7 @@ disclosure-history: ## Scan every commit on every ref. Run before a repo goes pu
 # whose failure cannot be fixed after the fact. A competitor's name in a commit is
 # published the moment the commit is, and no later edit reaches a clone or a cache.
 .PHONY: verify
-verify: pii-audit root-audit disclosure-audit issue-template-audit docs-audit comment-audit match-audit layering-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
+verify: pii-audit data-manifest audio-audit root-audit disclosure-audit issue-template-audit test-name-audit docs-audit comment-audit match-audit closed-list-audit word-split-audit accessibility-controls layering-audit string-audit python-imports-audit ratchet-test mutation-probe-test range-test hits-test hook-test pre-push-test pre-push-lock-test update-feed-test entitlement-gate-test issue-template-test dependabot-labels-test flake-audit uitest-arguments eval-arguments uitest-result-path developer-dir-test log-audit store-permissions pasteboard-audit context-reach-audit bundle-requirement-test bundle-test release-tag-test release-notes-test provider-mark-test release-order-test notarise-dmg-test soak-test e2e-predict-cleanup-test publish-resume-test publish-cleanup-test offline-audit-tokenizer-test offline-test exclusion-audit perf-budget size-budget lint build coverage offline-audit ## The whole gate: audits, package and release checks, soak and notarisation checks, lint, build, tests, coverage, and offline audit.
 
 # Hooks are not cloned — .git/hooks is local to a checkout — so this points git at a
 # directory that is. One command per clone, and the gate cannot be forgotten after that.
@@ -290,7 +329,7 @@ app: ## Build and sign Uttrflow.app into dist/ for this Mac.
 	./Scripts/bundle.sh
 
 .PHONY: app-preflight
-app-preflight: app ## Build the app bundle and run CI's strict signature verification.
+app-preflight: data-manifest app ## Build the app bundle and run CI's strict signature verification.
 	codesign --verify --deep --strict dist/Uttrflow.app
 
 # Its own identifier, so it runs beside the installed app and keeps its own settings,

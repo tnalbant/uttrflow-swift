@@ -2,31 +2,35 @@
 
 import AppKit
 import ImageIO
-import UniformTypeIdentifiers
+import UttrflowClipboard
 
 extension PanelThumbnailSource {
-    /// Decoded to the drawn size by `CGImageSourceCreateThumbnailAtIndex`, so the full picture is never held.
+    /// Decoded only after the stored picture's header fits the capture budget.
     static let system = PanelThumbnailSource { file, maxPixel in
-        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { return nil }
+        Self.load(file, maxPixel: maxPixel) { source, options in
+            CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+        }
+    }
+
+    /// Reads a bounded thumbnail from a stored image, returning nil for an unreadable or oversized header.
+    static func load(
+        _ file: URL, maxPixel: Int, decode: (CGImageSource, CFDictionary) -> CGImage?
+    ) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width > 0, height > 0,
+            ClipboardBudget.standard.fitsPicture(width: width, height: height)
+        else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: PanelThumbnailSource.longestEdge(
-                of: source, covering: maxPixel),
+            kCGImageSourceThumbnailMaxPixelSize: longestEdge(
+                width: width, height: height, covering: maxPixel),
         ]
-        guard
-            let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
+        guard let image = decode(source, options as CFDictionary) else { return nil }
         return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-    }
-
-    /// The longest edge that leaves the shorter one at `edge`, so a fill-cropped thumbnail is never upscaled.
-    static func longestEdge(of source: CGImageSource, covering edge: Int) -> Int {
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        guard let width = properties?[kCGImagePropertyPixelWidth] as? Int,
-            let height = properties?[kCGImagePropertyPixelHeight] as? Int
-        else { return edge }
-        return longestEdge(width: width, height: height, covering: edge)
     }
 
     /// The same from the picture's size; a panorama is capped at four times `edge`, since the row crops it anyway.

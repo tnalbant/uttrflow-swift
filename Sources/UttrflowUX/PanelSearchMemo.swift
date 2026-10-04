@@ -34,8 +34,8 @@ final class PanelSearchMemo: Sendable, Equatable {
     static let depth = 32
 
     private let listed = Mutex<[Listed]>([])
-    /// Compatibility characters can make a longer query match text that the shorter query did not.
-    private let compatibilityProfile = Mutex<([Clip], Bool)?>(nil)
+    /// Length-changing folds can make a longer query match text that the shorter query did not.
+    private let foldingProfile = Mutex<([Clip], Locale, Bool)?>(nil)
 
     init() {}
 
@@ -53,7 +53,7 @@ final class PanelSearchMemo: Sendable, Equatable {
         // The narrowest earlier list that still bounds this query rules in the fewest clips.
         let candidates = recent.filter { $0.view.narrows(to: view) }
         let bound =
-            candidates.isEmpty || hasCompatibilityText(in: view.clips)
+            candidates.isEmpty || hasLengthChangingFold(in: view.clips, locale: view.locale)
             ? nil
             : candidates.min { $0.matches.count < $1.matches.count }
         let ruledIn = bound.map { Set($0.matches.map(\.result.id)) }
@@ -63,14 +63,14 @@ final class PanelSearchMemo: Sendable, Equatable {
         return (rows, omitted)
     }
 
-    /// Whether any searchable haystack text has a compatibility decomposition, cached for this clip list.
-    private func hasCompatibilityText(in clips: [Clip]) -> Bool {
-        compatibilityProfile.withLock { profile in
-            if let profile, profile.0 == clips { return profile.1 }
-            let found = clips.contains {
-                $0.text.precomposedStringWithCompatibilityMapping != $0.text
+    /// Whether any clip's searchable text has a fold that changes scalar count, cached for this clip list and locale.
+    private func hasLengthChangingFold(in clips: [Clip], locale: Locale) -> Bool {
+        foldingProfile.withLock { profile in
+            if let profile, profile.0 == clips, profile.1 == locale { return profile.2 }
+            let found = clips.contains { clip in
+                hasLengthChangingSearchFold(in: clip.text, locale: locale)
             }
-            profile = (clips, found)
+            profile = (clips, locale, found)
             return found
         }
     }
@@ -93,8 +93,9 @@ extension PanelSearchMemo.View {
     func narrows(to later: Self) -> Bool {
         guard clips == later.clips, filter == later.filter, scope == later.scope,
             category == later.category, locale == later.locale, revealed == later.revealed,
-            !needle.isEmpty,
-            !later.needle.isEmpty
+            !needle.isEmpty, !later.needle.isEmpty,
+            !hasLengthChangingSearchFold(in: needle, locale: locale),
+            !hasLengthChangingSearchFold(in: later.needle, locale: locale)
         else { return false }
         // Asked of the matcher rather than of the characters, so a query it would not find in the longer one searches again.
         return later.needle.contains(needle, ignoringCaseAndAccentsIn: later.locale)
@@ -106,5 +107,19 @@ extension PanelSearchMemo.View {
             clips: snapshot.clips, needle: snapshot.needle, filter: snapshot.filter,
             scope: snapshot.scope, category: snapshot.category, locale: snapshot.locale,
             revealed: snapshot.revealed)
+    }
+}
+
+private func hasLengthChangingSearchFold(in text: String, locale: Locale) -> Bool {
+    let scalars = text.unicodeScalars
+    guard !scalars.allSatisfy({ $0.value < 0x80 }) else { return false }
+    if SearchFolding.hasOverlongGrapheme(in: text) { return true }
+    let folded = text.folding(options: SearchFolding.comparisonOptions, locale: locale)
+    guard folded.unicodeScalars.count == scalars.count else { return true }
+    return scalars.contains { scalar in
+        switch scalar.properties.generalCategory {
+        case .nonspacingMark, .spacingMark, .enclosingMark: true
+        default: false
+        }
     }
 }

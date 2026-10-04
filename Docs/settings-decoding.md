@@ -30,7 +30,9 @@ The engine, profile and suggestion groups (`EngineConfiguration`, `UserProfile`,
 `SuggestionPreferences`) follow the same rule for their own fields. Within their arrays and
 app-keyed dictionaries, `ReadableSetting` (`Sources/UttrflowCore/Support/ReadableSetting.swift`)
 drops only an element that cannot be decoded, preserving the readable choices and their order. A
-missing or unreadable collection uses its field default; an explicitly empty collection stays
+missing or unreadable collection, or one whose every element is unreadable, uses its field
+default (`KeyedDecodingContainer.readableElements`), so corruption never becomes a different
+setting such as an empty language list; an explicitly empty collection stays
 empty. `ShortcutSet` drops an unknown action or an unreadable binding the same way.
 
 The same forgiveness runs the other way. A key this build has no case for, such as

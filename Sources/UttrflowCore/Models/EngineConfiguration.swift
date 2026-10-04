@@ -34,8 +34,8 @@ extension EngineConfiguration {
         }
         self.init(
             speech: (try? container.decode(SpeechEngineKind.self, forKey: .speech)) ?? Self.default.speech,
-            transformerPreference: (try? container.decode(
-                [ReadableSetting<TransformerKind>].self, forKey: .transformerPreference))?
-                .compactMap(\.value) ?? Self.default.transformerPreference)
+            transformerPreference: container.readableElements(
+                of: TransformerKind.self, forKey: .transformerPreference,
+                fallback: Self.default.transformerPreference))
     }
 }

@@ -82,4 +82,52 @@ struct DictationRecordTests {
         #expect(read.first?.applicationIdentifier == "com.anthropic.claudefordesktop")
         #expect(read.first?.applicationName == "Claude")
     }
+
+    @Test("a flag reason survives a round trip, and its absence reads as unlabelled")
+    func keepsTheFlagReason() throws {
+        let record = DictationRecord(
+            text: "Ship it", when: Date(timeIntervalSinceReferenceDate: 721_692_800),
+            isFlagged: true, flagReason: .cosmetic)
+
+        let read = try JSONDecoder().decode(
+            [DictationRecord].self, from: JSONEncoder().encode([record]))
+
+        #expect(read == [record])
+        #expect(read.first?.flagReason == .cosmetic)
+    }
+
+    /// The fields and decoding of the build before reasons, so a downgrade is shown to read the file.
+    private struct RecordBeforeReasons: Decodable {
+        let id: UUID
+        let text: String
+        let when: Date
+        let isFlagged: Bool?
+    }
+
+    @Test("a build from before reasons still reads a file holding one")
+    func downgradeReadsAReason() throws {
+        let record = DictationRecord(
+            text: "Ship it", when: Date(timeIntervalSinceReferenceDate: 721_692_800),
+            isFlagged: true, flagReason: .meaningChanging)
+
+        let older = try JSONDecoder().decode(
+            [RecordBeforeReasons].self, from: JSONEncoder().encode([record]))
+
+        #expect(older.map(\.text) == ["Ship it"])
+        #expect(older.first?.isFlagged == true)
+    }
+
+    @Test("the tidying engine survives a round trip, and its absence reads as unrecorded")
+    func keepsTheTidyingEngine() throws {
+        let record = DictationRecord(
+            text: "Ship it", when: Date(timeIntervalSinceReferenceDate: 721_692_800),
+            cleanedBy: .rules)
+        let older = DictationRecord(text: "Ship it", when: record.when)
+
+        let read = try JSONDecoder().decode(
+            [DictationRecord].self, from: JSONEncoder().encode([record, older]))
+
+        #expect(read == [record, older])
+        #expect(read.map(\.cleanedBy) == [.rules, nil])
+    }
 }

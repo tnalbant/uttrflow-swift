@@ -416,14 +416,25 @@ struct SettingsLanguagesPaneTests {
         #expect(example?.groupID == "tidying")
         #expect(example?.spoken == "um so i think we should uh ship it on friday")
         #expect(example?.writtenLabel == "Uttrflow writes · Standard")
-        #expect(example?.written == "I think we should ship it on Friday.")
+        #expect(example?.written == "So I think we should ship it on Friday.")
         #expect(SettingsPresenter.tidied(at: .light) == "So I think we should ship it on friday.")
         let rulesOutput = CleaningPipeline.standard.run(Draft(text: SettingsPresenter.exampleSpoken)).text
         #expect(SettingsPresenter.tidied(at: .light) == rulesOutput)
         #expect(
             SettingsTidyingLevel.rowExplanation
-                == "Both levels remove filler words and stammers. Standard also rewrites grammar and word choice when an on-device model is available."
+                == "Both levels remove filler sounds and stammers and add punctuation. Standard also repairs grammar slips with an on-device model, which adds a moment to each dictation. Neither level changes, reorders or drops the words you meant."
         )
+    }
+
+    /// The tidier removes and formats and never composes, so the copy may not promise a rewrite.
+    @Test("promises no rewrite in the tidying copy or example")
+    func promisesNoRewrite() {
+        let claims = ["rewrite", "word choice", "polish", "improve your", "rephrase"]
+        let copy = SettingsTidyingLevel.rowExplanation.lowercased()
+        #expect(claims.allSatisfy { !copy.contains($0) })
+        let light = SettingsPresenter.tidied(at: .light).split(separator: " ").map { $0.lowercased() }
+        let standard = SettingsPresenter.tidied(at: .standard).split(separator: " ").map { $0.lowercased() }
+        #expect(light == standard)
     }
 
     @Test("keeps each language's own name in its offer")

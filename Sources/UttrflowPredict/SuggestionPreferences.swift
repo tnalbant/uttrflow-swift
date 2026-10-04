@@ -22,8 +22,8 @@ public struct SuggestionApplication: Sendable, Equatable, Hashable {
 public enum SuggestionApplications {
     /// The two editors with suggestions of their own, named rather than matched so both stay findable.
     public static let offByDefault: [SuggestionApplication] = [
-        SuggestionApplication(bundleIdentifier: "com.todesktop.230313mzl4w4u92", name: "Cursor"),
-        SuggestionApplication(bundleIdentifier: "com.microsoft.vscode", name: "Visual Studio Code"),
+        SuggestionApplication(bundleIdentifier: DestinationRules.cursor, name: "Cursor"),
+        SuggestionApplication(bundleIdentifier: DestinationRules.vsCode, name: "Visual Studio Code"),
     ]
 
     /// Whether this application is one of the two, compared the way identifiers compare.
@@ -206,6 +206,17 @@ public struct SuggestionPreferences: Sendable, Equatable, Codable {
         chosenAcceptKeys[ApplicationKey.of(bundleIdentifier)] = key
     }
 
+    /// Removes per-application overrides, keeping shipped opt-outs on only when explicitly removed.
+    public mutating func removePreferences(for bundleIdentifier: String) {
+        let identifier = ApplicationKey.of(bundleIdentifier)
+        turnedOff.remove(identifier)
+        turnedOn.remove(identifier)
+        chosenAcceptKeys[identifier] = nil
+        if SuggestionApplications.isOffByDefault(identifier) {
+            turnedOn.insert(identifier)
+        }
+    }
+
     /// Starts a pause everywhere, or lifts one that is still running.
     public mutating func setPaused(_ isPaused: Bool, at moment: Date) {
         pausedUntil = isPaused ? moment.addingTimeInterval(Self.pause) : nil
@@ -219,12 +230,10 @@ extension SuggestionPreferences {
             self = .default
             return
         }
-        let turnedOff =
-            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOff))?
-            .compactMap(\.value) ?? []
-        let turnedOn =
-            (try? container.decode([ReadableSetting<String>].self, forKey: .turnedOn))?
-            .compactMap(\.value) ?? []
+        let turnedOff = container.readableElements(
+            of: String.self, forKey: .turnedOff, fallback: Array(Self.default.turnedOff))
+        let turnedOn = container.readableElements(
+            of: String.self, forKey: .turnedOn, fallback: Array(Self.default.turnedOn))
         self.init(
             isEnabled: (try? container.decode(Bool.self, forKey: .isEnabled)) ?? Self.default.isEnabled,
             turnedOff: Set(turnedOff),

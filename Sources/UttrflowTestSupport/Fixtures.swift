@@ -34,7 +34,7 @@ extension AppContext {
     /// A messaging app, the commonest real target.
     public static func fixture(
         applicationName: String? = "Slack",
-        bundleIdentifier: String? = "com.tinyspeck.slackmacgap",
+        bundleIdentifier: String? = DestinationRules.slack,
         documentName: String? = "#engineering",
         selectedText: String? = nil,
         precedingText: String? = nil,

@@ -70,7 +70,7 @@ struct HomeHeroCard: View {
             colors: [PagePalette.dictation, PagePalette.suggestion, PagePalette.clipboard],
             startPoint: .leading, endPoint: .trailing)
         return Text("\(hero.lead) \(Text(hero.emphasis).foregroundStyle(accents))")
-            .font(BrandFont.display(size: 40, weight: .heavy))
+            .font(BrandFont.wordmark(size: 40, weight: .heavy))
             .tracking(-1.6)
             .foregroundStyle(PagePalette.text)
             .lineLimit(2)

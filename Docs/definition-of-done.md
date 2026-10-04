@@ -51,7 +51,7 @@ latencies.
 
 Each deviation is deliberate and current. The page named beside it holds the measurement.
 
-- **§16 recording panel.** The floating button *is* the recorder: it changes into its
+- **§15 recording panel.** The floating button *is* the recorder: it changes into its
   listening form while a dictation runs, so one thing moves on screen rather than two.
   `Docs/app-dock.md` has the forms.
 - **Context does not turn speech into SQL.** The largest deviation, and the one that

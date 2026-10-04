@@ -104,6 +104,17 @@ abandoned recording instead, inserting everything the microphone heard in betwee
 A tap of the shortcut during a click-started dictation finishes it the way a release would,
 rather than discarding the words.
 
+## A spoken command says which state it wants
+
+`toggleFromControl()` is `command(.toggle)`. Voice Control, Switch Control and the Shortcuts app
+also reach `command(.start)`, `command(.stop)` and `command(.cancel)` through the App Intents in
+`DictationIntents.swift`, on the same gesture queue. A toggle is right for a control whose effect
+the person can see; a command spoken without looking has to name the state it wants, or a
+dictation still transcribing turns "stop" into a new start. Each command is judged against the
+state the queue finds and returns a `DictationCommandOutcome`: Start while listening and Stop or
+Cancel while idle change nothing and say so ("Already listening", "Nothing was recording"), and
+Cancel discards the words as Escape does.
+
 ## The minimum hold
 
 A hold shorter than `minimumHold` (200 ms) is a slip, not a dictation. Tapping the shortcut by

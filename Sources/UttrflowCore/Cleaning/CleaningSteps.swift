@@ -5,11 +5,14 @@ public struct CleaningStep: Sendable, Equatable, Identifiable {
     public let name: String
     /// One line saying what switching it off would leave in the text.
     public let detail: String
+    /// An invented spoken sentence that this step changes, which a settings preview cleans with it on and off.
+    public let example: String
 
-    public init(id: PassID, name: String, detail: String) {
+    public init(id: PassID, name: String, detail: String, example: String) {
         self.id = id
         self.name = name
         self.detail = detail
+        self.example = example
     }
 }
 
@@ -42,31 +45,40 @@ public struct CleaningSteps: Sendable, Equatable, Codable {
     public static let offered: [CleaningStep] = [
         CleaningStep(
             id: .fillers, name: "Filler words",
-            detail: "Takes out um, uh, hmm and the rest of what was never meant as words."),
+            detail: "Takes out um, uh, hmm and the rest of what was never meant as words.",
+            example: "um we ship on friday"),
         CleaningStep(
             id: .repeatedPhrase, name: "Repeated phrases",
-            detail: "Takes out repeated words and a few incomplete starts the speaker restarts."),
+            detail: "Takes out repeated words and a few incomplete starts the speaker restarts.",
+            example: "we should we should leave at noon"),
         CleaningStep(
             id: .stammers, name: "Stammers",
-            detail: "Takes out a short word said twice in a row."),
+            detail: "Takes out a short word said twice in a row.",
+            example: "I I think it works"),
         CleaningStep(
             id: .selfCorrection, name: "Self-corrections",
-            detail: "Takes out the half you took back before \"no, sorry\" or \"I mean\"."),
+            detail: "Takes out the half you took back before \"no, sorry\" or \"I mean\".",
+            example: "send it on monday no sorry tuesday"),
         CleaningStep(
             id: .spokenPunctuation, name: "Spoken punctuation",
-            detail: "Turns \"comma\" and \"full stop\" into the marks themselves."),
+            detail: "Turns \"comma\" and \"full stop\" into the marks themselves.",
+            example: "yes comma that works full stop"),
         CleaningStep(
             id: .layoutWords, name: "Layout words",
-            detail: "Turns \"new line\" and \"bullet point\" into layout."),
+            detail: "Turns \"new line\" and \"bullet point\" into layout.",
+            example: "buy milk new line buy bread"),
         CleaningStep(
             id: .numberForms, name: "Numbers",
-            detail: "Writes spoken numbers, times and ports as numerals."),
+            detail: "Writes spoken numbers, times and ports as numerals.",
+            example: "the meeting has twenty five people"),
         CleaningStep(
             id: .contractions, name: "Contractions",
-            detail: "Puts the apostrophe back into dont, cant and their kind."),
+            detail: "Puts the apostrophe back into dont, cant and their kind.",
+            example: "I dont think so"),
         CleaningStep(
             id: .spacing, name: "Spacing",
-            detail: "Puts one space after a mark and none before it."),
+            detail: "Puts one space after a mark and none before it.",
+            example: "yes , that works"),
     ]
 
     /// The step a page shows under this name, or nothing when nothing offers it.

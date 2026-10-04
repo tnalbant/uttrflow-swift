@@ -193,11 +193,18 @@ private struct MenuBarHintView: View {
 /// A dot and a title, a quieter line under it, and a bar when there is progress to show.
 private struct MenuBarStatusView: View {
     let status: MenuBarStatus
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiatesWithoutColour
+
+    private var marker: String {
+        status.emphasis.marker(differentiatesWithoutColour: differentiatesWithoutColour)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 7) {
-                Circle().fill(MenuBarColour.dot(status.emphasis)).frame(width: 7, height: 7)
+                Image(systemName: marker)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(MenuBarColour.dot(status.emphasis))
                 Text(status.title)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(MenuBarColour.text)

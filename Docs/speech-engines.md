@@ -17,7 +17,7 @@ prompt; [`speech-model-install.md`](speech-model-install.md) covers installing t
 | `BackedSpeechEngine.minimumDuration` | 250 ms | shorter audio is refused as too short |
 | `AppleSpeechBackend.chunkFrames` | 4096 frames | the chunk the system analyser is fed |
 | `AnalyserInput.maxFramesPerConversion` | 2048 frames | the slice fed to its converter |
-| `LanguageHeldDecoder.compressionRatioThresholds` | `hi`: 3.0 | Hindi's repetition threshold; others keep 2.4 |
+| `LanguageHeldDecoder.compressionRatioThresholds` | `en`: default, `hi`: 3.0 | one decision per transcribed language; default keeps Whisper's 2.4 |
 | `RecognitionLoop.fastestSpeech` | 4.5 words a second | faster than this, a repeated run is a loop |
 | `RecognitionLoop.mostCopyDifference` | 0.2 WER | how far copies may differ and still be one loop |
 | `RecognitionLoop.fewestCopyWords` | 3 | the shortest copy that counts |
@@ -61,6 +61,53 @@ written down.
 
 `WhisperKitContractTests.computeUnitsArePinned` fails if the app's values leave this table or the
 linked package's defaults leave the app's.
+
+## Model variants and compute plans, measured
+
+`SpeechComputePlan` names the compute plans a harness may ask for; the app passes only
+`.shipping`. Two `uttrflow-eval` options compare candidates without installing them:
+`--model-folder` loads any folder from WhisperKit's model repository, and `--compute` picks a
+plan. `uttrflow-eval synthesise` fills a corpus with the system voice reading the English
+passages, so the comparison needs no microphone.
+
+```bash
+uttrflow-eval synthesise --corpus-path ./synth --voice Samantha
+/usr/bin/time -l uttrflow-eval transcribe --corpus-path ./synth \
+    --model-folder <folder> --compute <plan> --results-path ./results-<name>
+```
+
+Host: Apple M5 Pro (Mac17,8), 48 GB, release build. Corpus: the 6 English passages, 305
+words, in the Samantha voice. Each row is one fresh process; "load" is the one-minute load
+average at the start and end of the run, since other builds shared the machine. Latency is
+per passage (typical / slowest). Ready is the engine load, which includes Core ML's first
+compile for a variant or plan never loaded before, so a first-run figure is not a warm launch.
+
+| Variant | Plan | WER | Latency | Ready | Peak RSS | On disk | Load |
+|---|---|---|---|---|---|---|---|
+| `large-v3-v20240930_turbo_632MB` (shipping) | shipping | 3.6% | 1.13 / 1.14 s | 138.2 s (first compile) | 0.77 GB | 618 MB | 18 → 68 |
+| `large-v3-v20240930_turbo_632MB` | neuralEngine | 3.9% | 1.09 / 1.13 s | 2.5 s | 0.33 GB | 618 MB | 74 → 80 |
+| `large-v3-v20240930_turbo_632MB` | gpu | 3.9% | 1.03 / 6.93 s | 30.4 s | 6.10 GB | 618 MB | 68 → 74 |
+| `large-v3-v20240930_turbo_632MB` | all | 3.9% | 1.04 / 2.74 s | 33.4 s | 6.13 GB | 618 MB | 80 → 52 |
+| `large-v3-v20240930_turbo_632MB` | cpu | 4.3% | 4.04 / 4.16 s | 20.1 s | 3.55 GB | 618 MB | 52 → 30 |
+| `large-v3-v20240930_turbo` (unquantised) | shipping | 4.3% | 1.05 / 1.10 s | 127.8 s (first compile) | 1.62 GB | 1.5 GB | 14 → 18 |
+| `large-v3-v20240930_626MB` (full decoder) | shipping | 3.6% | 1.43 / 1.47 s | 65.4 s (first compile) | 0.54 GB | 600 MB | 18 → 29 |
+| `large-v3-v20240930_547MB` (full decoder) | shipping | 3.9% | 1.37 / 1.47 s | 11.3 s | 0.48 GB | 527 MB | 29 → 28 |
+| `small` | shipping | 4.3% | 0.83 / 0.94 s | 19.5 s | 0.36 GB | 467 MB | 28 → 23 |
+| `small_216MB` | shipping | 5.6% | 1.25 / 1.42 s | 15.5 s | 0.30 GB | 210 MB | 23 → 18 |
+
+What the table supports, and what it does not:
+
+- **No candidate beats the shipping model on accuracy.** The spread is 3.6% to 5.6% over 305
+  words, where one word is 0.33 points; every large-v3 row is within four words of another.
+  The quantised 632 MB build is not worse than its unquantised 1.5 GB source here (3.6% against
+  4.3%) and holds less than half the memory.
+- **The shipping plan stays.** Moving the encoder and decoder to the GPU, or letting Core ML
+  choose, keeps the typical latency, multiplies the slowest passage and holds about 6 GB. The
+  CPU alone is about four times slower. `.neuralEngine` (the mel stage on the Neural Engine
+  too) matched the shipping plan within the load noise.
+- **It cannot decide a switch.** Six synthetic English passages say nothing about Hindi,
+  Hinglish, accents or noise, and the machine was not idle. A change of model or plan needs
+  the recorded multilingual corpus behind the regression gate first.
 
 ## Keeping WhisperKit off the network
 
@@ -263,6 +310,16 @@ therefore not a word error rate.
   (`Core/Models.swift:366`, "order matters here"), so such a window never gets a no-speech
   probability and is retried warmer instead of being discarded as silence. It fired at temperature
   0 on all 50 runs, and at 1.0 on the 34 that ended empty.
+- **The silence test cannot fire at all in the WhisperKit this package pins.** The decoder sets
+  `noSpeechProb` to a constant 0 (`Core/TextDecoder.swift:817`, marked as not yet implemented), so
+  `noSpeechThreshold: 0.6` is never exceeded, neither in the fallback verdict
+  (`Core/Models.swift:369`) nor in the segment skip (`Core/Text/SegmentSeeker.swift:59`). That is
+  why moving the threshold to 0.4 or 0.8 changes nothing on non-speech clips (#2430). A window of
+  breath, cough or key noise therefore ends empty at temperature 0 on the first-token check and is
+  sent up the ladder, where a warmer draw can return a sound caption that differs run to run.
+  Refusing the ladder for such a window needs a real no-speech probability (the `<|nospeech|>`
+  token's probability at the start-of-transcript position) computed outside WhisperKit, or a
+  decision that a first-token rejection at temperature 0 is final.
 - The ladder keeps the first draw that passes the thresholds and otherwise the last one
   (`Core/TranscribeTask.swift:327-405`). Every one of the 16 words came from temperature 0.8;
   0.2 to 0.6 were rejected every time, and the 34 empties are the abandoned decode at 1.0.

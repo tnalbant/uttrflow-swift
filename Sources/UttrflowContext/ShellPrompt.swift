@@ -20,6 +20,9 @@ public enum ShellPrompt {
         "%", "$", "#", ">", "✗", "✔", "✓", "❯", "➜", "➤", "\u{e0b0}",
     ]
 
+    /// Named interactive prompts whose final `>` is not shell redirection.
+    private static let interactivePromptLabels: Set<String> = ["mysql", "mongosh", "sqlite", "test"]
+
     /// Credential terms used to keep terminal replies out of prediction and capture.
     private static let credentialTerms: Set<String> = [
         "password", "passwort", "kennwort", "passphrase", "pin", "passcode", "code", "otp",
@@ -199,10 +202,7 @@ public enum ShellPrompt {
 
     /// Whether a terminal line is asking for a credential rather than a shell command.
     static func isCredentialPrompt(in line: String) -> Bool {
-        let prefix = line.prefix(searchLimit)
-        guard let colon = prefix.firstIndex(where: credentialColons.contains) else { return false }
-        let label = String(prefix[..<colon]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return introducesCredential(label)
+        CredentialPrompt.matches(line)
     }
 
     /// The marks an arrow prompt draws after the branch when the tree has changes, or has none.
@@ -315,19 +315,27 @@ public enum ShellPrompt {
         _ terminator: Character, after prefix: Prefix, linePrefix: Substring
     ) -> Bool {
         switch terminator {
-        // zsh puts a space before its `%`, and a percentage never does.
-        case "%": prefix.last?.isWhitespace ?? true
-        // A shell expands a bare `$` before a name, so one before a space is a prompt rather than a sigil.
-        case "$": !(prefix.last?.isWhitespace ?? false)
-        // A root prompt names a host or a database and touches its hash, which is what tells it from a trailing comment.
+        // zsh puts a space before its `%`, and its prompt names a host, directory or shell.
+        case "%": (prefix.last?.isWhitespace ?? true) && isZshPromptPrefix(linePrefix)
+        // A spaced dollar is a prompt after a directory, host, or shell name, not after command text.
+        case "$":
+            !(prefix.last?.isWhitespace ?? false)
+                || isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
+                || isNamedPromptWithDirectory(linePrefix)
+                || isBarePromptName(linePrefix)
+        // A root prompt ends a directory, host, or shell name with a hash; a spaced comment does not.
         case "#":
-            prefix.isBlank || prefix.last == "=" || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
+            prefix.isBlank || prefix.last == "="
+                || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
+                || isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
+                || isNamedPromptWithDirectory(linePrefix) || isBarePromptName(linePrefix)
         // A `>` is a redirection unless it is a run of them, the tail of a `=>` prompt, or fish glues it to a path token in a `user@host` prompt.
         case ">":
             prefix.isChevrons || prefix.last == "="
                 || (prefix.hasAt && !(prefix.last?.isWhitespace ?? true))
                 || isPowerShellDirectoryPrompt(linePrefix)
                 || isDirectoryPrompt(linePrefix)
+                || isInteractiveShellPrompt(linePrefix)
         // Theme glyphs are prompt endings when they follow a directory-bearing prompt.
         case "➜", "➤", "\u{e0b0}": isDirectoryPrompt(linePrefix, allowsMarkerSpacing: true)
         // A tick, a cross and a chevron are drawn by prompt themes and typed by nobody.
@@ -335,11 +343,73 @@ public enum ShellPrompt {
         }
     }
 
+    /// A zsh prompt prefix is empty, a shell or directory name, or a host with its current directory.
+    private static func isZshPromptPrefix(_ prefix: Substring) -> Bool {
+        let parts = prefix.split(whereSeparator: \.isWhitespace)
+        guard !parts.isEmpty else { return true }
+        let promptParts =
+            parts.first?.hasPrefix("(") == true && parts.first?.hasSuffix(")") == true
+            ? Array(parts.dropFirst()) : Array(parts)
+        guard let first = promptParts.first else { return false }
+        if promptParts.count == 1 {
+            return first == "zsh" || isZshHost(first) || isZshDirectory(first)
+        }
+        guard promptParts.count == 2, isZshHost(first), let directory = promptParts.last else {
+            return false
+        }
+        return isZshDirectory(directory)
+    }
+
+    /// A zsh hostname has a non-empty user and host separated by `@`.
+    private static func isZshHost(_ name: Substring) -> Bool {
+        guard isBarePromptName(name), let at = name.firstIndex(of: "@"), at > name.startIndex else {
+            return false
+        }
+        return name.index(after: at) < name.endIndex
+    }
+
+    /// A zsh current directory is a path or a simple directory name.
+    private static func isZshDirectory(_ name: Substring) -> Bool {
+        name.hasPrefix("~") || name.hasPrefix("/") || name.hasPrefix("./")
+            || name.hasPrefix("../") || isBarePromptName(name)
+    }
+
     /// A PowerShell prompt starts with `PS ` and ends its current-directory token at `>`.
     private static func isPowerShellDirectoryPrompt(_ prefix: Substring) -> Bool {
         guard prefix.hasPrefix("PS ") else { return false }
         let path = prefix.dropFirst(3)
         return !path.isEmpty && !(path.last?.isWhitespace ?? true)
+    }
+
+    /// A username/host followed by a path, as shown by prompts such as `user@host ~/project $`.
+    private static func isNamedPromptWithDirectory(_ prefix: Substring) -> Bool {
+        let words = prefix.split(whereSeparator: \.isWhitespace)
+        guard words.count == 2, isBarePromptName(words[0]), let directory = words.last else { return false }
+        return directory.hasPrefix("~") || directory.hasPrefix("/") || directory.hasPrefix("./")
+            || directory.hasPrefix("../")
+    }
+
+    /// A single host or versioned shell name immediately before its prompt marker.
+    private static func isBarePromptName(_ prefix: Substring) -> Bool {
+        let words = prefix.split(whereSeparator: \.isWhitespace)
+        guard words.count == 1, let name = words.first,
+            name.contains(where: \.isLetter), !name.contains(where: { $0 == "/" || $0 == "\\" })
+        else { return false }
+        return name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || ".-_@".contains($0)) }
+    }
+
+    /// Whether a `>` follows one of the known interactive database or language shell labels.
+    private static func isInteractiveShellPrompt(_ prefix: Substring) -> Bool {
+        guard let last = prefix.last, !last.isWhitespace else { return false }
+        let label = String(prefix).lowercased()
+        if interactivePromptLabels.contains(label) { return true }
+        if label.hasPrefix("irb(main):") {
+            let lineNumber = label.dropFirst("irb(main):".count)
+            return !lineNumber.isEmpty && lineNumber.allSatisfy(\.isNumber)
+        }
+        guard label.hasPrefix("psql ("), label.hasSuffix(")") else { return false }
+        let database = label.dropFirst("psql (".count).dropLast()
+        return !database.isEmpty && !database.contains(where: { $0 == "(" || $0 == ")" })
     }
 
     /// A directory-bearing prompt ends at its path marker rather than treating `>` as a redirection.

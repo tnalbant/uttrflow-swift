@@ -19,7 +19,12 @@ private final class BlockingPictureSource: ClipboardSource, @unchecked Sendable 
 
     var reads: Int { lock.withLock { imageReads } }
     func changeCount() -> Int { lock.withLock { count } }
-    func bumpChangeCount() { lock.withLock { count += 1 } }
+    @discardableResult
+    func bumpChangeCount() -> Int {
+        lock.withLock {
+            count += 1; return count
+        }
+    }
     func unblock() { lock.withLock { isBlocked = false } }
     /// Lets every reader parked in `image()` return.
     func release() { gate.signal() }
@@ -55,10 +60,12 @@ private final class BlockingTextSource: ClipboardSource, @unchecked Sendable {
     private let readGate = DispatchSemaphore(value: 0)
     let entered = DispatchSemaphore(value: 0)
 
-    func write(_ text: String) {
+    @discardableResult
+    func write(_ text: String) -> Int {
         state.withLock {
             $0.count += 1
             $0.text = text
+            return $0.count
         }
     }
 
@@ -97,11 +104,27 @@ struct AnnouncedPictureReadTests {
     func announcingIsNotHeldByAPictureRead() async {
         let source = BlockingPictureSource()
         let watcher = PasteboardWatcher(source: source, readLimit: .seconds(60))
-        watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
-        source.bumpChangeCount()
+        let finishWrite = watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
+        finishWrite(source.bumpChangeCount())
 
-        let tick = Task { await watcher.newClip(at: Date()) }
-        #expect(await signalled(source.entered, within: 30))
+        let tickResult = Mutex("still running")
+        let tick = Task {
+            let result = await watcher.newClip(at: Date())
+            tickResult.withLock { $0 = String(describing: result) }
+            return result
+        }
+        let reachedPictureSource = await signalled(source.entered, within: 30)
+        if !reachedPictureSource {
+            let observed = tickResult.withLock { $0 }
+            let completion = observed == "still running" ? "still running after 30s" : observed
+            source.release()
+            _ = await tick.value
+            #expect(
+                reachedPictureSource,
+                "picture source was not entered within 30s; watcher tick was \(completion)"
+            )
+            return
+        }
 
         let announced = DispatchSemaphore(value: 0)
         DispatchQueue.global().async {
@@ -119,8 +142,8 @@ struct AnnouncedPictureReadTests {
         let source = BlockingPictureSource()
         source.unblock()
         let watcher = PasteboardWatcher(source: source)
-        watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
-        source.bumpChangeCount()
+        let finishWrite = watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
+        finishWrite(source.bumpChangeCount())
 
         #expect(await watcher.newClip(at: Date())?.clip.kind == .image)
         #expect(source.reads == 1)
@@ -130,8 +153,8 @@ struct AnnouncedPictureReadTests {
     func aSlowPictureReadIsGivenUpOn() async {
         let source = BlockingPictureSource()
         let watcher = PasteboardWatcher(source: source, readLimit: .milliseconds(100))
-        watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
-        source.bumpChangeCount()
+        let finishWrite = watcher.ignoreNextPicture(Data([0x89, 0x50, 0x4E, 0x47]))
+        finishWrite(source.bumpChangeCount())
 
         #expect(await watcher.newClip(at: Date()) == nil)
         source.release()
@@ -141,8 +164,8 @@ struct AnnouncedPictureReadTests {
     func timedOutReadWithdrawsAnnouncement() async {
         let source = BlockingTextSource()
         let watcher = PasteboardWatcher(source: source, readLimit: .milliseconds(100))
-        watcher.ignoreNextWrite(of: "same words")
-        source.write("same words")
+        let finishWrite = watcher.ignoreNextWrite(of: "same words")
+        finishWrite(source.write("same words"))
 
         let tick = Task { await watcher.newClip(at: Date()) }
         #expect(await signalled(source.entered, within: 5))
