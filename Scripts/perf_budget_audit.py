@@ -3,9 +3,13 @@
 
 import argparse
 import ast
+import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dictation_bench as bench  # noqa: E402
 
 # Developer tools and measurement harnesses, which never run inside the shipped app.
 NOT_PRODUCT = ("uttrflow-dev", "uttrflow-bakeoff", "uttrflow-eval", "UttrflowEval", "UttrflowTestSupport")
@@ -782,6 +786,108 @@ def check_suggestion_path(tree, findings, report):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Latency: the wait after key release, judged from a `uttrflow-dev bench` run
+# ---------------------------------------------------------------------------------------------------------------
+
+LATENCY_ROW = re.compile(r"^\|\s*`(\w+)`\s*\|\s*`(\w+)`\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|", re.M)
+
+# The fewest clips a target row is judged on; fewer is a failure rather than a pass.
+LATENCY_MIN_CLIPS = 3
+
+
+def latency_targets(doc):
+    """The `(category, mode) -> (p50, p95)` rows of the latency target table in Docs/performance.md."""
+    start = doc.find("## The latency target")
+    if start < 0:
+        return {}
+    end = doc.find("\n## ", start + 1)
+    section = doc[start : end if end > 0 else len(doc)]
+    return {(m[1], m[2]): (float(m[3]), float(m[4])) for m in LATENCY_ROW.finditer(section)}
+
+
+def check_latency_table(tree, findings, report):
+    """The targets exist and are coherent; whether a build meets them needs a bench run (`--latency`)."""
+    targets = latency_targets(tree.read("Docs/performance.md"))
+    if not targets:
+        findings.failures.append("latency: Docs/performance.md has no rows under `## The latency target`")
+        return
+    for (category, mode), (p50, p95) in sorted(targets.items()):
+        if p50 <= 0 or p95 < p50:
+            findings.failures.append(f"latency: `{category}` `{mode}` has p50 {p50} and p95 {p95}; need 0 < p50 <= p95")
+        else:
+            report.append(f"  ✓ {category} {mode}: wait p50 {p50:.2f} s, p95 {p95:.2f} s")
+
+
+def bench_waits(lines, corpus):
+    """Waits after key-up per `(category, mode)`, clean audio and the shipping tidier only."""
+    waits = {}
+    for line in lines:
+        if not line.startswith("BENCH "):
+            continue
+        event = json.loads(line[6:])
+        clip = corpus.get(event.get("id"))
+        if event.get("event") != "result" or clip is None or event.get("failed"):
+            continue
+        if clip["variant"] != "clean" or event.get("cleaner") != "shipping":
+            continue
+        waits.setdefault((clip["category"], event["mode"]), []).append(float(event["wait"]))
+    return waits
+
+
+def latency_breaches(targets, waits):
+    """One line per target the run misses, has too few clips for, or leaves out."""
+    breaches, report = [], []
+    for (category, mode), (p50_limit, p95_limit) in sorted(targets.items()):
+        got = waits.get((category, mode), [])
+        if len(got) < LATENCY_MIN_CLIPS:
+            breaches.append(f"latency: `{category}` `{mode}` has {len(got)} clip(s), needs {LATENCY_MIN_CLIPS}")
+            continue
+        p50, p95 = bench.percentile(got, 50), bench.percentile(got, 95)
+        line = f"{category} {mode}: {len(got)} clips, wait p50 {p50:.2f}/{p50_limit:.2f} s, p95 {p95:.2f}/{p95_limit:.2f} s"
+        if p50 > p50_limit or p95 > p95_limit:
+            breaches.append(f"latency: {line}")
+        else:
+            report.append(f"  ✓ {line}")
+    return breaches, report
+
+
+def performance_doc(root):
+    with open(os.path.join(root, "Docs/performance.md"), encoding="utf-8") as handle:
+        return handle.read()
+
+
+def check_latency_run(root, run_path, corpus_path):
+    targets = latency_targets(performance_doc(root))
+    with open(corpus_path, encoding="utf-8") as handle:
+        corpus = {clip["id"]: clip for clip in json.load(handle)}
+    with open(run_path, encoding="utf-8") as handle:
+        waits = bench_waits(handle, corpus)
+    breaches, report = latency_breaches(targets, waits)
+    print("\n".join(report))
+    return breaches
+
+
+def latency_self_test(root):
+    """A run at every target passes; the same run made 50% slower fails every row."""
+    targets = latency_targets(performance_doc(root))
+    corpus = {}
+    lines = []
+    for (category, mode), (p50, p95) in targets.items():
+        for index, wait in enumerate((p50 * 0.9, p50, p95)):
+            clip_id = f"{category}-{mode}-{index}"
+            corpus[clip_id] = {"category": category, "variant": "clean"}
+            lines.append("BENCH " + json.dumps({"event": "result", "id": clip_id, "mode": mode, "cleaner": "shipping", "wait": wait}))
+    slowed = ["BENCH " + json.dumps(dict(e, wait=e["wait"] * 1.5)) for e in (json.loads(line[6:]) for line in lines)]
+    met, _ = latency_breaches(targets, bench_waits(lines, corpus))
+    missed, _ = latency_breaches(targets, bench_waits(slowed, corpus))
+    if not targets or met or len(missed) != len(targets):
+        print(f"  ✗ latency: on-target run failed {len(met)}, 50% slower run failed {len(missed)} of {len(targets)}")
+        return 1
+    print(f"  ✓ latency catches a 50% slowdown on all {len(targets)} target rows and passes a run on target")
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Running
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -797,6 +903,7 @@ def audit(root, quiet=False, overrides=None):
         ("Cache: every model pass caps MLX's cache and clears it", lambda r: check_cache(tree, findings, r)),
         ("Counters: the harness judges readings by the budget table", lambda r: check_counters(tree, findings, r)),
         ("Suggestions: typing reads, callbacks and draws stay within their budget", lambda r: check_suggestion_path(tree, findings, r)),
+        ("Latency: the wait targets are written and coherent", lambda r: check_latency_table(tree, findings, r)),
     ):
         report = []
         check(report)
@@ -964,7 +1071,7 @@ def self_test(root):
         else:
             print(f"  ✗ {check} did not catch an injection into {path}")
             failed += 1
-    return failed
+    return failed + latency_self_test(root)
 
 
 def main():
@@ -976,7 +1083,14 @@ def main():
     )
     parser.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     parser.add_argument("--self-test", action="store_true", help="also prove each check fails on an injected violation")
+    parser.add_argument("--latency", metavar="RUN", help="judge a `uttrflow-dev bench` run against the latency targets instead")
+    parser.add_argument("--corpus", default=os.path.join(bench.DEFAULT_OUT, "corpus.json"), help="the run's corpus.json")
     options = parser.parse_args()
+    if options.latency:
+        breaches = check_latency_run(options.root, options.latency, options.corpus)
+        for breach in breaches:
+            print(f"  ✗ {breach}", file=sys.stderr)
+        return 1 if breaches else 0
     findings = audit(options.root)
     if options.self_test and self_test(options.root):
         print("\n  ✗ the self-test found a check that no longer fails on its injected violation\n", file=sys.stderr)
