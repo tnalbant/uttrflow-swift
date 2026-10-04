@@ -44,11 +44,10 @@ extension NSColor {
     static func orbit(
         dark: UInt32, light: UInt32, highContrastDark: UInt32? = nil, highContrastLight: UInt32? = nil
     ) -> NSColor {
-        NSColor(name: nil) { appearance in
-            NSColor(
-                rgb: appearance.highContrastValue(dark: highContrastDark, light: highContrastLight)
-                    ?? (appearance.isDark ? dark : light))
-        }
+        orbit(
+            BrandTone(
+                dark: dark, light: light, highContrastDark: highContrastDark,
+                highContrastLight: highContrastLight))
     }
 
     /// The same, for the two places the design asks for a wash rather than a colour.
@@ -56,45 +55,51 @@ extension NSColor {
         dark: UInt32, light: UInt32, highContrastDark: UInt32? = nil, highContrastLight: UInt32? = nil,
         alpha: CGFloat, highContrastAlpha: CGFloat? = nil
     ) -> NSColor {
-        NSColor(name: nil) { appearance in
-            let resolvedAlpha =
-                appearance.highContrastValue(
-                    dark: highContrastAlpha, light: highContrastAlpha) ?? alpha
-            return NSColor(
-                rgb: appearance.highContrastValue(dark: highContrastDark, light: highContrastLight)
-                    ?? (appearance.isDark ? dark : light)
-            ).withAlphaComponent(resolvedAlpha)
-        }
+        orbitAlpha(
+            BrandTone(
+                dark: dark, light: light, highContrastDark: highContrastDark,
+                highContrastLight: highContrastLight),
+            alpha: alpha, highContrastAlpha: highContrastAlpha)
     }
 
     /// A palette tone, resolved per appearance.
     static func orbit(_ tone: BrandTone) -> NSColor {
-        orbit(
-            dark: tone.dark, light: tone.light,
-            highContrastDark: tone.highContrastDark, highContrastLight: tone.highContrastLight)
+        NSColor(name: nil) { orbit(tone, in: $0.orbitVariant) }
+    }
+
+    /// A palette tone as one appearance variant draws it.
+    static func orbit(_ tone: BrandTone, in variant: NSAppearance.Name) -> NSColor {
+        NSColor(
+            rgb: variant.highContrastValue(dark: tone.highContrastDark, light: tone.highContrastLight)
+                ?? (variant.isDarkVariant ? tone.dark : tone.light))
     }
 
     /// A palette tone as a wash.
     static func orbitAlpha(_ tone: BrandTone, alpha: CGFloat, highContrastAlpha: CGFloat? = nil) -> NSColor {
-        orbitAlpha(
-            dark: tone.dark, light: tone.light,
-            highContrastDark: tone.highContrastDark, highContrastLight: tone.highContrastLight,
-            alpha: alpha, highContrastAlpha: highContrastAlpha)
+        NSColor(name: nil) {
+            orbitAlpha(tone, alpha: alpha, highContrastAlpha: highContrastAlpha, in: $0.orbitVariant)
+        }
+    }
+
+    /// A palette wash as one appearance variant draws it.
+    static func orbitAlpha(
+        _ tone: BrandTone, alpha: CGFloat, highContrastAlpha: CGFloat? = nil, in variant: NSAppearance.Name
+    ) -> NSColor {
+        orbit(tone, in: variant).withAlphaComponent(
+            variant.highContrastValue(dark: highContrastAlpha, light: highContrastAlpha) ?? alpha)
     }
 
     /// A palette layer, resolved per appearance at that appearance's own opacity.
     static func orbit(_ layer: BrandLayer) -> NSColor {
-        NSColor(name: nil) { appearance in
-            let highContrastTone = appearance.highContrastValue(
-                dark: layer.tone.highContrastDark, light: layer.tone.highContrastLight)
-            let highContrastOpacity = appearance.highContrastValue(
-                dark: layer.highContrastDarkOpacity, light: layer.highContrastLightOpacity)
-            return appearance.isDark
-                ? NSColor(rgb: highContrastTone ?? layer.tone.dark)
-                    .withAlphaComponent(highContrastOpacity ?? layer.darkOpacity)
-                : NSColor(rgb: highContrastTone ?? layer.tone.light)
-                    .withAlphaComponent(highContrastOpacity ?? layer.lightOpacity)
-        }
+        NSColor(name: nil) { orbit(layer, in: $0.orbitVariant) }
+    }
+
+    /// A palette layer as one appearance variant draws it.
+    static func orbit(_ layer: BrandLayer, in variant: NSAppearance.Name) -> NSColor {
+        let opacity =
+            variant.highContrastValue(dark: layer.highContrastDarkOpacity, light: layer.highContrastLightOpacity)
+            ?? (variant.isDarkVariant ? layer.darkOpacity : layer.lightOpacity)
+        return orbit(layer.tone, in: variant).withAlphaComponent(opacity)
     }
 
     /// A hex as an sRGB colour, so the value in the code is the value on the screen.
@@ -122,19 +127,31 @@ extension NSColor {
 }
 
 extension NSAppearance {
-    /// The value for this appearance's high-contrast variant, or nil when contrast is not increased.
-    func highContrastValue<Value>(dark: Value?, light: Value?) -> Value? {
-        switch bestMatch(from: [
+    /// Which of the four palette variants this appearance draws with; `NSAppearance(named:)` never builds a high-contrast one.
+    var orbitVariant: NSAppearance.Name {
+        bestMatch(from: [
             .aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua,
-        ]) {
+        ]) ?? .aqua
+    }
+
+    /// Whether this appearance is dark, including the accessibility variants `name == .darkAqua` misses.
+    var isDark: Bool {
+        orbitVariant.isDarkVariant
+    }
+}
+
+extension NSAppearance.Name {
+    /// The value for this variant's high contrast, or nil when contrast is not increased.
+    func highContrastValue<Value>(dark: Value?, light: Value?) -> Value? {
+        switch self {
         case .accessibilityHighContrastAqua: light
         case .accessibilityHighContrastDarkAqua: dark
         default: nil
         }
     }
 
-    /// Whether this appearance is dark, including the accessibility variants `name == .darkAqua` misses.
-    var isDark: Bool {
-        bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    /// Whether this palette variant is one of the two dark ones.
+    var isDarkVariant: Bool {
+        self == .darkAqua || self == .accessibilityHighContrastDarkAqua
     }
 }

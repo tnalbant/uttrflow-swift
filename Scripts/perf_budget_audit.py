@@ -868,8 +868,10 @@ INJECTIONS = (
     ),
     (
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        beginPass()\n        defer { endPass() }\n        let generation = forgetGeneration",
-        "        let generation = forgetGeneration", "cache",
+        "            guard let vocabulary = self.vocabulary else { return [] }\n"
+        "            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.\n"
+        "            beginPass()\n            defer { endPass() }\n",
+        "            guard let vocabulary = self.vocabulary else { return [] }\n", "cache",
     ),
     (
         "Sources/Uttrflow/Dock/DockView.swift",
@@ -888,19 +890,9 @@ INJECTIONS = (
         # The same guard, moved after the cached read it is meant to cap: a defer registers
         # when its statement runs, so it covers nothing written above it.
         "Sources/UttrflowLocalModel/MLXCandidateScorer.swift",
-        "        beginPass()\n        defer { endPass() }\n        let generation = forgetGeneration\n"
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.\n"
-        "        if let line = judgementCache.recall(candidate: candidate) {\n"
-        "            judgementCacheHits += 1\n"
-        "            guard let container else { return [] }\n"
-        "            guard let vocabulary = self.vocabulary else { return [] }\n"
+        "            // Only a call that reaches the model holds the process-wide cache; an unloaded scorer never does.\n"
+        "            beginPass()\n            defer { endPass() }\n"
         "            let judged = await container.perform { loaded in\n",
-        "        let generation = forgetGeneration\n"
-        "        // The forward pass runs on the whole candidate, so the result is the same for every typed prefix.\n"
-        "        if let line = judgementCache.recall(candidate: candidate) {\n"
-        "            judgementCacheHits += 1\n"
-        "            guard let container else { return [] }\n"
-        "            guard let vocabulary = self.vocabulary else { return [] }\n"
         "            let judged = await container.perform { loaded in\n"
         "            beginPass()\n            defer { endPass() }\n",
         "cache",

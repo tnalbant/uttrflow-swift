@@ -52,7 +52,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
     /// A key event, or a click that has no release and is told when it has been handled.
     private enum Gesture: Sendable {
         case key(HotkeyEvent)
-        case control(CheckedContinuation<Void, Never>)
+        case control(DictationCommand, CheckedContinuation<DictationCommandOutcome, Never>)
         /// The press with this id has been held long enough to count.
         case settled(Int)
         /// A new activation mode, answered once adopted.
@@ -105,7 +105,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 guard let self else {
                     // A caller still waiting is answered, so it is not left suspended forever.
                     switch gesture {
-                    case .control(let handled), .drained(let handled), .reached(let handled),
+                    case .control(_, let handled):
+                        handled.resume(returning: .nothingRecording)
+                    case .drained(let handled), .reached(let handled),
                         .activation(_, let handled), .handsFree(_, let handled), .sessionEnding(let handled):
                         handled.resume()
                     case .key, .settled, .limitReached: break
@@ -115,9 +117,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
                 switch gesture {
                 case .key(let event):
                     await respond(to: event)
-                case .control(let handled):
-                    await toggleListening()
-                    await answer(handled)
+                case .control(let command, let handled):
+                    let outcome = await perform(command)
+                    await answer(handled, with: outcome)
                 case .settled(let id):
                     await settle(id)
                 case .activation(let activation, let handled):
@@ -164,7 +166,9 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         try await monitor.start(binding: binding)
     }
 
-    public func stop() {
+    /// Stops watching for the shortcut, first finishing any dictation under way so no microphone outlives it.
+    public func stop() async {
+        await endForSessionEnding()
         forgetUnsettledPress()
         stopWatchingTheLimit()
         // Stopped last, so the release it owes for a hold still reaches the forwarder.
@@ -252,10 +256,16 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// Answers a waiting caller once any dictation finished so far has been inserted, without holding the queue.
     private func answer(_ handled: CheckedContinuation<Void, Never>) {
-        guard let processing else { return handled.resume() }
+        answer(handled, with: ())
+    }
+
+    private func answer<Outcome: Sendable>(
+        _ handled: CheckedContinuation<Outcome, Never>, with outcome: Outcome
+    ) {
+        guard let processing else { return handled.resume(returning: outcome) }
         Task {
             await processing.value
-            handled.resume()
+            handled.resume(returning: outcome)
         }
     }
 
@@ -360,7 +370,7 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
             pressOpenedTheMicrophone = await pipeline.currentState.isListening
         case .pressToToggle:
             let wasListening = await pipeline.currentState.isListening
-            await toggleListening()
+            _ = await perform(.toggle)
             let isListening = await pipeline.currentState.isListening
             pressOpenedTheMicrophone = !wasListening && isListening
         }
@@ -466,10 +476,15 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
 
     /// Toggles a dictation from a click, queued behind every other gesture; returns once handled. See Docs/pipeline-gestures.md.
     public nonisolated func toggleFromControl() async {
+        _ = await command(.toggle)
+    }
+
+    /// Runs one command from a click or a spoken intent, queued behind every other gesture, and says what it did.
+    public nonisolated func command(_ command: DictationCommand) async -> DictationCommandOutcome {
         await withCheckedContinuation { handled in
-            // A controller already gone has no queue, so the click is answered at once.
-            guard case .enqueued = gestureSink.yield(.control(handled)) else {
-                handled.resume()
+            // A controller already gone has no queue, so the command is answered at once.
+            guard case .enqueued = gestureSink.yield(.control(command, handled)) else {
+                handled.resume(returning: .nothingRecording)
                 return
             }
         }
@@ -496,18 +511,28 @@ public actor DictationController<ClockType: Clock> where ClockType.Duration == D
         await finishListening()
     }
 
-    /// Finishes the dictation under way, or begins one.
-    private func toggleListening() async {
-        if await pipeline.currentState.isListening {
+    /// Carries out a command against the state the queue finds, so a spoken command cannot act on a stale guess.
+    private func perform(_ command: DictationCommand) async -> DictationCommandOutcome {
+        let listening = await pipeline.currentState.isListening
+        switch (command, listening) {
+        case (.toggle, true), (.stop, true):
             setHandsFree(false)
             stopWatchingTheLimit()
             await finishListening()
-        } else {
+            return .finished
+        case (.toggle, false), (.start, false):
             await beginListening()
-            if await pipeline.currentState.isListening {
-                controlStartedRecording = true
-                onStopGestureChange(.clickAgain)
-            }
+            guard await pipeline.currentState.isListening else { return .didNotStart }
+            controlStartedRecording = true
+            onStopGestureChange(.clickAgain)
+            return .started
+        case (.start, true):
+            return .alreadyRecording
+        case (.cancel, true):
+            await cancelListening()
+            return .cancelled
+        case (.stop, false), (.cancel, false):
+            return .nothingRecording
         }
     }
 

@@ -59,6 +59,15 @@ public struct DictionaryEntry: Sendable, Equatable, Identifiable, Codable {
             timesReverted: try values.decode(Int.self, forKey: .timesReverted))
     }
 
+    /// The spelling with case and spaces closed up, preserving symbols that change its written identity.
+    public var spellingKey: String { Self.spellingKey(for: word) }
+
+    /// The key two spellings share when they write the same word; an all-filtered spelling keys as itself.
+    public static func spellingKey(for spelling: String) -> String {
+        let closed = spelling.lowercased().filter { $0.isLetter || $0.isNumber || "+#&./-".contains($0) }
+        return closed.isEmpty ? spelling.lowercased() : closed
+    }
+
     /// What the index should key this entry on: how it sounds, not how it is spelt.
     public var soundsLike: String { pronunciation ?? word }
 

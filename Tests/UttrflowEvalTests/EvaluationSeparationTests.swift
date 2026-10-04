@@ -93,6 +93,8 @@ struct EvaluationSeparationTests {
             let code = source.split(separator: "\n")
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
                 .joined(separator: "\n")
+                // A dictated address on the reserved example domain is transcript text, never an endpoint.
+                .replacingOccurrences(of: "https://example.com", with: "")
             for pattern in patterns where code.contains(pattern) {
                 offenders.append("\(file.lastPathComponent): \(pattern)")
             }

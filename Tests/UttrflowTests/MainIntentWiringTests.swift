@@ -1,5 +1,6 @@
 // Tests that the main window's buttons reach the stores.
 
+import AppKit
 import Foundation
 import Synchronization
 import UttrflowAI
@@ -45,6 +46,28 @@ private func refusingWrites<T>(under root: URL, _ body: () async throws -> T) as
 struct MainIntentWiringTests {
 
     // MARK: The dictionary
+
+    @Test("launch respells legacy dictionary entries and reports the change")
+    func launchRespellsLegacyDictionaryEntries() async throws {
+        let sandbox = Sandbox()
+        let devanagari = "\u{0906}\u{0930}\u{0935}"
+        let held = DictionaryEntry(
+            word: devanagari, origin: .added, firstSeen: Date(timeIntervalSince1970: 0))
+        try PrivateFile.write(
+            JSONEncoder().encode([held]), to: PersonalDictionaryStore.defaultFile(in: sandbox.root))
+        let app = AppDelegate(container: sandbox.root)
+
+        app.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        await app.dictionaryMigrationWork?.value
+
+        let stored = await PersonalDictionaryStore(
+            file: PersonalDictionaryStore.defaultFile(in: sandbox.root)
+        ).allEntries()
+        #expect(stored.first?.id == held.id)
+        #expect(stored.first?.word == Romaniser.romanised(devanagari))
+        #expect(app.actionNotice?.message.contains("\(devanagari)") == true)
+        #expect(app.actionNotice?.message.contains(Romaniser.romanised(devanagari)) == true)
+    }
 
     @Test("saving a word puts it in the dictionary")
     func savesAWord() async throws {

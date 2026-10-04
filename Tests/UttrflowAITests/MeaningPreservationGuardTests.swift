@@ -85,12 +85,34 @@ struct MeaningPreservationGuardTests {
             ),
             ("the er budget is approved", "The budget is approved."),
             ("send the report full stop then call me", "Send the report. Then call me."),
+            ("send the report period", "Send the report."),
             ("i want to by a new car", "I want to buy a new car."),
             ("the whether is nice today", "The weather is nice today."),
         ]
     )
     func acceptsRepairsForWordsRulesMayMiss(kept: String, rewritten: String) {
         #expect(MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    }
+
+    @Test(
+        "refuses a lost mark name when the added mark stands elsewhere",
+        arguments: [
+            ("the grace period is two weeks", "The grace is two weeks."),
+            ("the test is a period", "The test is a."),
+            ("wait at the bus stop then call me", "Wait at the bus, then call me."),
+            ("compute the dot product, then stop", "Compute the product. Then stop."),
+            ("a comma splice is wrong", "A splice is wrong."),
+        ]
+    )
+    func refusesMarkNameLostAwayFromItsMark(kept: String, rewritten: String) {
+        #expect(!MeaningPreservationGuard.grammarVerdict(kept: kept, rewritten: rewritten).isAccepted)
+    }
+
+    @Test("reads the gaps between grammar words, a joined pair giving up its middle")
+    func readsGrammarTokenGaps() {
+        #expect(MeaningPreservationGuard.grammarTokenGaps("Hi, you. ") == ["", ",", "."])
+        #expect(MeaningPreservationGuard.grammarTokenGaps("I can not go!") == ["", "", "", "!"])
+        #expect(MeaningPreservationGuard.grammarTokenGaps("a — b") == ["", "—", ""])
     }
 
     @Test("as-spoken destinations refuse regular and irregular changes to kept word forms")
@@ -808,6 +830,24 @@ struct GrammarGuardTests {
         rejected("we should ship this", "We should ‘ship this.’")
     }
 
+    @Test("rejects an exclamation mark read from tone, which the transcript does not carry")
+    func rejectsInventedExclamation() {
+        #expect(
+            verdict("that is a great idea", "That is a great idea!")
+                == .rejected(reason: "the rewrite added an exclamation mark", kind: .inventedExclamation))
+        rejected("we won the deal", "We won the deal!")
+        rejected("wow that is fast", "Wow! That is fast.")
+        rejected("are you serious?", "Are you serious?!")
+        rejected("great! see you then", "Great! See you then!")
+    }
+
+    @Test("keeps an exclamation mark the speaker said or the recogniser wrote")
+    func keepsEvidencedExclamation() {
+        #expect(verdict("that is amazing!", "That is amazing!").isAccepted)
+        #expect(verdict("great! see you then", "Great! See you then.").isAccepted)
+        #expect(verdict("great! see you then", "Great. See you then.").isAccepted)
+    }
+
     @Test("keeps quotation pairs the speaker said")
     func keepsSpokenQuotationPairs() {
         accepted("\"we should ship this\"", "\"We should ship this.\"")
@@ -1487,6 +1527,26 @@ struct GuardMatchStrengthTests {
             ])
     }
 
+    @Test("rejects a rewrite of a long text that ends no sentence, and accepts one that does")
+    func rejectsUnpunctuatedLongRewrite() {
+        let spoken = Array(repeating: "we need the final numbers from the vendor before friday", count: 5)
+        let flat = spoken.joined(separator: " ")
+        #expect(
+            verdict(flat, flat.capitalizedFirst)
+                == .rejected(reason: "the rewrite of a long text ends no sentence", kind: .unpunctuated))
+        let stopped = spoken.map { $0.capitalizedFirst + "." }.joined(separator: " ")
+        #expect(verdict(flat, stopped).isAccepted)
+    }
+
+    @Test("scales the churn allowance to the length of what was said")
+    func churnAllowanceScalesWithInput() {
+        let clause = "the cat and the dog and the fish went home"
+        let spoken = Array(repeating: clause, count: 5).joined(separator: " ")
+        let rest = spoken.split(separator: " ").dropFirst(10).joined(separator: " ")
+        let rewritten = "A cat and a dog and the fish went home " + rest + "."
+        #expect(verdict(spoken, rewritten).isAccepted)
+    }
+
     // MARK: - How many sentences the allowance is for
 
     /// The allowance is three function-word edits a sentence, so a miscount is a licence.
@@ -1757,4 +1817,9 @@ extension MeaningPreservationGuard {
     func verdict(original: String, rewritten: String) -> GuardVerdict {
         Self.textVerdict(original: original, rewritten: rewritten, excusingPreamble: false)
     }
+}
+
+extension String {
+    /// The text with its first letter upper-cased.
+    fileprivate var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

@@ -1,19 +1,25 @@
 # Dictating with no network
 
-Uttrflow's claim is that hold-key → capture → transcribe → tidy → insert touches the
-network zero times once the speech model is on disk. This is the evidence for that
-claim and the things it does not prove. Update checks are separate from dictation: the
-General tab can turn off scheduled checks, and **Check Now** makes a request only when
-asked. See `Docs/app-updates.md` for what an update request reveals.
+Uttrflow's claim is that hold-key → capture → transcribe → tidy → insert touches the network
+zero times once the speech model is on disk. This page is the evidence for that claim and the
+list of what it does not prove. The static half is `Scripts/offline_audit.sh`, which runs in
+`make verify`; the dynamic half is a set of sandboxed runs of `uttrflow-dev` and the test
+suite, recorded below with the commands that produced them.
 
-Re-run the static half with `./Scripts/offline_audit.sh`. It exits non-zero if a network
-call site appears anywhere under `Sources/` outside the files that are allowed one, or if
-a linked object can reach the network and was not expected to. *What the audit checks*
-below lists every check and what each one cannot see.
+Network access that is not dictation lives elsewhere: sign-in in `UttrflowAccount` and the
+onboarding window, the model downloads at install time, the updater
+([app-updates.md](app-updates.md); scheduled checks can be turned off in the General tab, and
+**Check Now** makes a request only when asked) and opt-in crash reports
+([crash-reporting.md](crash-reporting.md)).
 
-**Nobody's Wi-Fi was switched off to produce any of this.** The network was denied per
-process with `sandbox-exec`, which needs no system setting and affects nothing outside
-the process it launches.
+```bash
+./Scripts/offline_audit.sh                   # audit, building the app if needed
+./Scripts/offline_audit.sh --no-build        # skip the binary check when nothing is built
+./Scripts/offline_audit.sh --require-binary  # fail rather than skip it (the default when CI is set)
+```
+
+The sandboxed runs deny the network per process with `sandbox-exec`, which needs no system
+setting and affects nothing outside the process it launches.
 
 ## Method
 
@@ -22,10 +28,10 @@ Three kinds of evidence, because no one of them is enough on its own.
 | | What it can show | What it cannot |
 |---|---|---|
 | Source audit | Every call site somebody wrote | Nothing about dependencies compiled from elsewhere, or about what actually runs |
-| Binary audit | Which linked module can open a connection at all | When, or whether, it does |
-| Sandboxed run | What the code really does, once | Only the paths that run actually get exercised |
+| Binary audit | Which linked object can open a connection at all | When, or whether, it does |
+| Sandboxed run | What the code really does, once | Only the paths that run get exercised |
 
-The sandbox profile is three lines:
+The sandbox profile `kill-on-net.sb` is three lines:
 
 ```scheme
 (version 1)
@@ -33,86 +39,87 @@ The sandbox profile is three lines:
 (deny network* (with send-signal SIGKILL))
 ```
 
-`SIGKILL` rather than a plain deny is what makes a *successful* run mean something. A
-denied connection returns an error the program might swallow and carry on from; a
-killed process cannot. So a run that exits 0 under this profile has provably not made a
-single network syscall. Verified against a control first:
+`SIGKILL` rather than a plain deny is what makes a *successful* run mean something. A denied
+connection returns an error the program might swallow and carry on from; a killed process
+cannot. So a run that exits 0 under this profile made no network syscall. The control:
 
 ```
 $ sandbox-exec -f kill-on-net.sb /usr/bin/curl -s -m 8 -o /dev/null https://1.1.1.1
 curl EXIT=137        # 128 + SIGKILL
 ```
 
+`deny-net.sb` is the same profile with a plain `(deny network*)`, for the runs below that need
+the build tools to work.
+
 ## Every network call site
 
-### Uttrflow's own sources: eight files, and none of them on the dictation path
+### Uttrflow's own sources
 
-The full pattern — Foundation's stack, Network.framework in both spellings, CFNetwork, the
-BSD calls, XPC, the speech asset installer and endpoint literals — across all of
-`Sources/` names eight files: the four in `UttrflowAccount`, the three onboarding files in
-the app shell, and the tokenizer install. Two developer CLIs name it too and ship in nothing. Every other module under `Sources/` has none, and that is
-what the audit's first check asserts.
+The audit's source pattern (Foundation's URL stack, Network.framework in both spellings,
+CFNetwork, the BSD calls, XPC, the speech asset installer, `mlx_distributed`, and `http(s)://`
+literals) matches these files under `Sources/`:
+
+| Where | Files | Why |
+|---|---|---|
+| `Sources/UttrflowAccount/` | 4 files match; the whole module is allowed | sign-in, session refresh and telemetry |
+| `Sources/Uttrflow/Onboarding/` | `NetworkReachability+System.swift`, `OnboardingAccountLayer.swift`, `OnboardingWindowController.swift` | first-run sign-in, and the banner that says why it failed |
+| `Sources/UttrflowSpeech/TokenizerDownload.swift` | 1 | fetches the speech model's weights and tokenizer at install time |
+| `Sources/UttrflowSpeech/AppleSpeechBackend.swift` | 1 | installs the system speech asset; a known gap, see *What this does not prove* |
+| `Sources/uttrflow-dev/SignIn.swift`, `Sources/uttrflow-eval/CorpusConnection.swift` | 2 | developer tools that ship in nothing |
+
+The pattern also matches an `https://example.com` inside an expected transcript in
+`Sources/UttrflowEval/EvaluationCorpus.swift`, which is text, not a call. Every other module under
+`Sources/` has no match, and that is what the audit's first check asserts.
 
 No clean-up engine is hosted: `TextTransformers.all` assembles only on-device engines, and
-`Tests/UttrflowAITests/OfflineGuaranteeTests.swift` asserts every assembled and selectable
-kind runs without the network. `TransformerKind.cloud` survives only so a stored record
-naming it still decodes; it is never selectable.
+`Tests/UttrflowAITests/OfflineGuaranteeTests.swift` asserts every assembled and selectable kind
+runs without the network. `TransformerKind.cloud` survives only so a stored record naming it
+still decodes; it is never selectable.
 
-### Dependencies: the model downloaders, and MLX's distributed backend
+### Dependencies
 
-The audit reads undefined symbols out of every object the app links, against a family of
-networking names rather than `URLSession` alone — Foundation's stack, Network.framework's
-C entry points, CFNetwork, the BSD calls, XPC, and the system speech asset installer.
-Widening it that far is what found the last row, which `urlsession` alone could not see:
+The binary check reads the undefined symbols of every object the app links, against a family
+of networking names rather than `URLSession` alone (Foundation's stack, Network.framework's C
+entry points, CFNetwork, the BSD calls, XPC, and the system speech asset installer).
 
 | Module | What can reach the network | In the app? |
 |---|---|---|
-| `Hub` (swift-transformers) | `URLSession` | **yes** — the speech model's downloader |
-| `HuggingFace` (swift-huggingface) | `URLSession` | **yes** — the suggestion model's downloader |
-| `EventSource` | `URLSession` | yes — pulled in by MLX beside `HuggingFace` |
-| `UttrflowLocalModel` | `URLSession`, in the two files that build the hub client | yes — the suggestion model |
-| `UttrflowAccount`, and the app shell's onboarding | `URLSession`, `NWListener`, `NWPathMonitor` | yes — sign-in, and the banner that says why it failed |
-| `UttrflowSpeech` | `URLSession` in the tokenizer install; `AssetInventory` in the Apple backend | yes |
-| `Cmlx` (MLX's C++ core) | `socket`, `connect`, `getaddrinfo` in `mlx/distributed/jaccl/utils.cpp` | yes — see below |
-| `WhisperKit`, `ArgmaxCore`, `Tokenizers`, `Jinja`, `Crypto`, `yyjson`, every other Uttrflow module, collections | nothing | yes |
+| `Hub` (swift-transformers), `ArgmaxCore` | `URLSession` | yes, through WhisperKit; see *Tokenizer* for why loading never reaches it |
+| `HuggingFace` (swift-huggingface), `EventSource` | `URLSession` | yes, the suggestion model's downloader |
+| `UttrflowLocalModel` | `URLSession`, in the files that build the hub client | yes, the suggestion model |
+| `UttrflowAccount`, and the app shell's onboarding | `URLSession`, `NWListener`, `NWPathMonitor` | yes, sign-in |
+| `UttrflowSpeech` | `URLSession` in `TokenizerDownload.swift`; `AssetInventory` in the Apple backend | yes |
+| `Cmlx` (MLX's C++ core) | `socket`, `connect`, `getaddrinfo` in `mlx/distributed/jaccl/utils.cpp` | yes, see below |
+| Sparkle, Sentry | network clients by design | yes, confined by checks 6 and 6b |
+| `WhisperKit`, `Tokenizers`, `Jinja`, `Crypto`, `yyjson`, the collections, every other Uttrflow module | nothing | yes |
 
 **MLX's distributed backend is linked and unreachable.** `Cmlx` compiles MLX's multi-host
-support, so the app binary contains the BSD socket calls whether or not anything uses
-them, and mlx-swift exposes no build flag that drops it. Those calls run only from
-`mlx_distributed_init`, no Uttrflow source names it, and the audit's source check fails on
-any that does — which is the only claim available here, since the code cannot be removed.
-mlx-swift's own Swift surface has no distributed API, so reaching it would mean calling
+support, so the app binary contains the BSD socket calls whether or not anything uses them,
+and mlx-swift exposes no build flag that drops it. Those calls run only from
+`mlx_distributed_init`; no Uttrflow source names it, and the audit's source check fails on any
+that does. mlx-swift's Swift surface has no distributed API, so reaching it would mean calling
 the C symbol directly.
 
-`swift-crypto` is linked but is pure computation — Hub uses it to hash downloaded files.
-`ArgmaxCore.ModelDownloader` wraps Hub and is never instantiated anywhere in this
-build: it is linked and unreachable.
+`swift-crypto` is linked but is pure computation. `ArgmaxCore.ModelDownloader` wraps Hub and is
+never instantiated in this build.
 
-So every model download the shipping app is capable of making goes through `Hub` for the
-speech model or `HuggingFace` for the suggestion model. Hub is reached from exactly two
-places; the suggestion model's path is in *The suggestion model* below.
+### The speech model download
 
-### When Hub runs
-
-**1. Installing a speech model — deliberate, and not on the dictation path.**
-`FileSystemSpeechModelStore.whisperKit()` builds a downloader around `WhisperKit.download`.
-It runs only when something calls `store.install(_:onProgress:)`, which today is only
-`uttrflow-dev models install`. The app itself never calls it (see *Nothing installs the
-model* below). Loading a model passes `download: false`, so a missing model is an error
-rather than a silent 646 MB transfer mid-dictation; `offline_audit.sh` guards that.
-
-**2. Loading the tokenizer — accidental, and squarely on the dictation path.** This is
-the one real hole, below.
-
-`HubApi` also starts an `NWPathMonitor` to decide whether to use its offline mode. That
-observes the interface state; it opens nothing. It did not trip the SIGKILL profile.
+`FileSystemSpeechModelStore.whisperKit()` installs a model with `downloadWeights` and
+`downloadTokenizer` in `Sources/UttrflowSpeech/TokenizerDownload.swift`: each file is fetched
+from `huggingface.co` at a pinned commit (`SpeechModel.weightsRevision`,
+`tokenizerRevision`) and checked against its recorded size and SHA-256. Installing runs from
+onboarding's setup page and from `uttrflow-dev models install`, never from loading. Loading
+passes `download: false` to WhisperKit, so a missing model is an error rather than a 646 MB
+transfer (`SpeechModel.largeV3Turbo.downloadBytes` is 645,668,913) in the middle of a
+dictation. The install is described in [speech-model-install.md](speech-model-install.md).
 
 ## The pipeline runs offline: the evidence
 
-`uttrflow-dev transcribe <file>` is the closest runnable slice of the dictation path:
-read audio → resample to canonical → WhisperKit → `TextTransformers.router()` → output.
-It is the same `AudioSamples`, the same `BackedSpeechEngine` and the same router the app
-builds, with a file standing in for the microphone.
+`uttrflow-dev transcribe <file>` is the closest runnable slice of the dictation path: read
+audio, resample to canonical, WhisperKit, `TextTransformers.router()`, output. It builds its
+recogniser with `SpeechEngineFactory.make` and its cleaner with `TextTransformers.router()`,
+as the app does, with a file standing in for the microphone.
 
 ```
 $ sandbox-exec -f kill-on-net.sb ./uttrflow-dev transcribe offline-probe.aiff
@@ -130,14 +137,14 @@ So the offline audit is working. No network at all.
 EXIT=0
 ```
 
-Exit 0 under a profile that kills on the first network syscall. Speech-to-text ran,
-Apple's Foundation Models ran, and neither reached for anything. The audio was
-synthesised locally with `say`, so even the fixture involved no network.
+Exit 0 under a profile that kills on the first network syscall: speech-to-text and Apple's
+Foundation Models both ran, and neither reached for anything. The audio was synthesised
+locally with `say`.
 
-One thing worth knowing before somebody files a bug about it: the *first* offline run
-after the model is installed took **301.91s** to reach "engine ready". The second took
-**4.09s**. That is Core ML compiling the model for the Neural Engine, not a network
-timeout — it happens under the SIGKILL profile, which a timeout could not.
+The first run after an install is slow, and that is not a network timeout. In the same
+measurement the first offline run took **301.91s** to reach "engine ready" and the second
+**4.09s**. The difference is Core ML compiling the model for the Neural Engine, and it happens
+under the SIGKILL profile, where a timeout could not.
 
 ### The test suite, offline
 
@@ -147,46 +154,36 @@ $ sandbox-exec -f deny-net.sb xcrun swift test --disable-sandbox
 EXIT=0
 ```
 
-Use the plain `(deny network*)` profile for this, not the SIGKILL one: SwiftPM's own
-build machinery talks to itself over local sockets, which macOS classifies as network
-and which would kill the build before a single test ran. `--disable-sandbox` is needed
-for the same reason — SwiftPM sandboxes manifest evaluation itself, and sandboxes do
-not nest.
+What the run shows is the exit status; the count is whatever the run held. Use the plain
+`deny-net.sb` profile, not the SIGKILL one: SwiftPM's build machinery talks to itself over
+local sockets, which macOS classifies as network and which would kill the build before a test
+ran. `--disable-sandbox` is needed for the same reason: SwiftPM sandboxes manifest evaluation
+itself, and sandboxes do not nest.
 
-## The tokenizer: a hole this audit found, and the install now fills
+## Tokenizer
 
-`download: false` governs the *model*. It does not govern the tokenizer, so the install
-fetches the tokenizer itself and `tokenizerFolder` is pinned at the model folder —
-`TokenizerDownload` writes `tokenizer.json` and `tokenizer_config.json` beside the weights
-during `install`, `isInstalled` is false until both are there, and `load()` refuses to start
-without them. `Docs/speech-engines.md` § Keeping WhisperKit off the network says how that is
-arranged; what follows is the measurement that asked for it.
+`download: false` governs the model, not the tokenizer. After loading the model, WhisperKit
+calls `loadTokenizerIfNeeded`, which looks for `tokenizer.json` in its tokenizer folder and in
+the Hub cache and, failing that, **downloads it from Hugging Face**. With no `tokenizerFolder`
+given, that cache defaults to `~/Documents/huggingface/`, which is not the model store.
 
-After loading the model, WhisperKit calls `loadTokenizerIfNeeded`, which looks for
-`tokenizer.json` in the model folder and in Hub's cache — and, failing that,
-**downloads it from Hugging Face**. When this audit ran, Uttrflow passed no
-`tokenizerFolder`, so Hub's cache was its default: `~/Documents/huggingface/`. That
-directory is not the model store. The store did not create it, did not count it in
-`isInstalled`, and did not delete it in `remove`.
+So the tokenizer is a component of the install:
 
-On the machine this audit ran on, the two were in different places and were fetched at
-different times:
+- `TokenizerAssets.fileNames` is `tokenizer.json` and `tokenizer_config.json`, and
+  `TokenizerAssets.arePresent(in:)` requires both, non-empty, in the model folder.
+- `SpeechModelStore.missingComponents(of:)` lists the tokenizer separately from the weights, so
+  `isInstalled` is false until both are on disk, and `install` fetches every missing component
+  and throws if one did not arrive. An install that has the weights but no tokenizer is topped
+  up without fetching the weights again.
+- `WhisperKitBackend.load()` refuses with `.modelNotInstalled` when the tokenizer is absent, and
+  passes `tokenizerFolder: modelFolder`, so the search never reaches the Hub cache.
 
-```
-~/Library/Application Support/Uttrflow/Models/openai_whisper-large-v3-v20240930_turbo_632MB/
-    AudioEncoder.mlmodelc  MelSpectrogram.mlmodelc  TextDecoder.mlmodelc
-    TextDecoderContextPrefill.mlmodelc  config.json  generation_config.json
-    ← no tokenizer.json.  Written 19:19–19:27 by `models install`.
+`FileSystemSpeechModelStoreTests` covers the tokenizer cases (topping up, a failed or empty
+fetch, keeping a tokenizer across a weights swap). Check 4 of `offline_audit.sh` fails if the
+pinned `tokenizerFolder` disappears or becomes `nil`.
 
-~/Documents/huggingface/models/openai/whisper-large-v3/
-    tokenizer.json  tokenizer_config.json  config.json
-    ← written 19:30, by the first transcription.
-```
-
-So `models install` reported success, `isInstalled` said yes, and the tokenizer was still
-missing. It arrived on the first transcription — over the network.
-
-Proved by hiding only that directory and changing nothing else:
+What happens without the pin, measured with a model folder that holds no tokenizer and the
+tokenizer only in the Hub cache:
 
 ```
 $ sandbox-exec -f 'deny network* + deny read ~/Documents/huggingface' \
@@ -194,41 +191,16 @@ $ sandbox-exec -f 'deny network* + deny read ~/Documents/huggingface' \
 EXIT=137
 ```
 
-Killed. With the tokenizer cache visible, the identical command under the identical
-profile exited 0. The difference between the two runs was one directory, and it was worth
-a network call on the dictation path.
+With the cache readable, the same command under the same profile exits 0. The one directory
+is the difference between a local load and a network call on the dictation path.
 
-**Who it bit.** Anyone who installed the model and went offline before dictating once.
-That included the intended first-run story — download on first launch, work offline
-afterwards — if the user quit between the download and their first dictation. It bit a
-side-loaded or restored-from-backup model store too, which is why an install made by an
-older build is repaired rather than trusted.
-
-**What they saw.** The dev tool reported
-`modelLoadFailed(description: "Download failed: …")`. In the app the same error became
-`SpeechEngineError.modelLoadFailed`, so the user got *"Speech recognition couldn't
-start. Try again."* The available recovery is `.retry`; the message no longer points to
-a Settings control that does not exist.
-
-**The fix landed in the store rather than the backend**, which is where the gap was.
-`SpeechModelStore.missingComponents(of:)` treats the tokenizer as a component of its own,
-answered by `TokenizerAssets.arePresent(in:)`, so `isInstalled` means what it says;
-`install` fetches every missing component and throws if one did not arrive; and
-`WhisperKitBackend` passes `tokenizerFolder: modelFolder`, so the search never reaches Hub's
-cache. `FileSystemSpeechModelStoreTests` pins the repair of an install made by a build that
-predates all of this.
-
-`offline_audit.sh` § Tokenizer takes the pass branch on that pinned folder — "a tokenizer
-folder is pinned, so loading cannot fall back to the hub" — and fails if it ever disappears,
-so the fix cannot be quietly undone. The KNOWN GAP note it prints instead is the branch that
-no longer runs.
+Loading the tokenizer still constructs WhisperKit's `HubApi`, which starts an `NWPathMonitor`
+to decide whether to use its offline mode. That observes the interface state and opens
+nothing; it does not trip the SIGKILL profile.
 
 ## No model, no network
 
-Tested, because it is the real first-run failure.
-
-**Trying to install with no connection** — a variant that was genuinely absent, so
-nothing already on disk was at risk:
+**Installing with no connection**, for a variant that was not on disk:
 
 ```
 $ sandbox-exec -f deny-net.sb ./uttrflow-dev models install --model openai_whisper-base
@@ -237,11 +209,10 @@ Error: modelDownloadFailed(description: "Download failed: … Operation not perm
 EXIT=1
 ```
 
-The store's clean-up works: no half-installed directory was left behind. In the app that
-error reads *"Setup couldn't be completed. Check your connection and try again."* with a
-`.downloadSpeechModel` action — the right sentence for the situation.
+No half-installed directory is left behind. In the app that error reads *"Setup couldn't be
+completed. Check your connection and try again."* with a `.downloadSpeechModel` action.
 
-**Dictating with no model** stops before the network is ever needed:
+**Dictating with no model** stops before the network is needed:
 
 ```
 $ sandbox-exec -f 'kill-on-net + deny read ~/Library/Application Support/Uttrflow' \
@@ -249,156 +220,142 @@ $ sandbox-exec -f 'kill-on-net + deny read ~/Library/Application Support/Uttrflo
 openai_whisper-large-v3-v20240930_turbo_632MB is not installed. Run: uttrflow-dev models install
 ```
 
-In the app the same condition raises `.modelNotInstalled` — *"Speech recognition needs
-to finish setting up before you can dictate."* with a `.downloadSpeechModel` action.
-No hang, no crash.
+In the app the same condition raises `.modelNotInstalled`: *"Speech recognition needs to
+finish setting up before you can dictate."* with a `.downloadSpeechModel` action. A model that
+is present and fails to load raises `.modelLoadFailed`, *"Speech recognition couldn't start.
+Try again."*, with `.retry`.
 
-### The model download path routes through onboarding
+### Recovering from a missing or broken model
 
-The **Download**/**Finish Setup** button for `.downloadSpeechModel` reopens the installer.
-`DockView` sends the recovery action through `DockPanelController`, and
-`AppDelegate.wireInterface()` assigns the handler. `AppDelegate.perform(_:)` routes an
-absent model straight to `show(.onboarding)`, whose setup page calls `beginInstall()` on
-the injected installer and shows progress — the same surface a first run uses.
+`AppDelegate.perform(_:)` handles `.downloadSpeechModel`:
 
-When the model was installed but failed to load, `perform(_:)` calls `repairSpeechModel()`
-first: it removes the broken install and resets readiness to `.notInstalled` before showing
-onboarding, so setup downloads a fresh copy instead of retrying the same failed load.
+- With the model absent, it opens onboarding (`show(.onboarding)`), whose setup page calls
+  `beginInstall()` and shows progress, the same surface a first run uses. Dismissing onboarding
+  once does not strand anybody: the action reopens it.
+- With the model present but failing to load (`.loadFailed`, `.loadFailedAgain`), it calls
+  `repairSpeechModel()`, which removes the install, resets readiness to `.notInstalled` and
+  opens onboarding, so setup downloads a fresh copy instead of retrying the same load.
 
-This matters after somebody has dismissed onboarding. **Finish Setup** reopens onboarding's
-setup page and starts the install from there, so dismissing onboarding once does not strand
-the user without a way back into the installer. The offline promise remains conditional on
-the model being installed, but the recovery action itself now gets it installed rather than
-only pointing at Settings.
-
-### Startup now says what happened
-
-At launch, `AppDelegate.loadSpeechModel()` first asks the model store whether the default
-model is installed. If it is absent, it records `.notInstalled` and returns; it does not
-claim that the app is ready. If the files are present, it reports `.loading` while it
-awaits `DictationPipeline.prepare()`.
-
-`DictationPipeline.prepare()` now catches a failed speech-engine load, keeps `isReady`
-false, and publishes a failed state when no dictation is in progress. The app maps a
-successful preparation to `.ready`, an unsuccessful one to `.loadFailed` while the files are
-still on disk and to `.notInstalled` when they are not, so the menu bar can say *"Getting
-ready…"*, *"Speech model didn't load"* or *"Speech model not downloaded"* instead of leaving
-the user with a false *"Ready"*. A missing model is still a setup state rather than a
-startup exception, but it is no longer silently discovered only after the first keypress.
+At launch `AppDelegate.loadSpeechModel()` asks the store first. An absent model records
+`.notInstalled` (or `.incomplete` for a partial install) without loading; a present one shows
+`.loading` while `DictationPipeline.prepare()` runs. The menu bar then reads *"Getting ready…"*,
+*"Speech model didn't load"* or *"Speech model not downloaded"* rather than a false *"Ready"*.
+See [startup.md](startup.md).
 
 ## The suggestion model
 
-`MLXCandidateScorer.prepare()` loads the suggestion model, and the app calls it whenever
-AI suggestions is turned on or the weights are loaded again. It used to load through
-`loadModelContainer(from: #hubDownloader(), …)`. The hub client asks the model host for the
-repository's file list before it looks in the cache, and its cache-only fast path needs a
-metadata file the cache on disk did not have, so every load on an online Mac opened an IP
-connection even with every file already present. Offline the request failed and the load fell
-back to the cache, which is why nothing looked broken (#380).
+`MLXCandidateScorer.prepare()` loads the suggestion model whenever AI suggestions is turned on
+or the weights are loaded again. It goes through
+`LocalModel.weightsDirectory(cache:downloader:onProgress:)`, which reads the local Hugging Face
+cache first. Loading straight through the hub client is avoided because it asks the model host for
+the repository's file list before it looks in the cache, so every load on an online Mac would
+open a connection even with every file present.
 
-`LocalModel.weightsDirectory(cache:downloader:onProgress:)` now decides first. When
-`CachedSnapshot.complete` finds `snapshots/<LocalModel.revision>/` with `config.json`,
-`tokenizer.json` and `tokenizer_config.json` present, every `*.safetensors` file exactly as long
-as its own header says, every numbered shard present, and the weights at least nine tenths of
-the model's recorded download, the model loads from that directory and the hub is never
-constructed. Anything less goes to the hub exactly as before, so a first download still works.
-The shard index is not trusted as a list of files: one candidate's index names two shards
-while its repository holds one.
+`CachedSnapshot.complete` accepts `snapshots/<LocalModel.revision>/` only when:
 
-A model already whole on disk is never refreshed from the hub; a new revision arrives only
-when the cache is missing or incomplete.
+- the revision is a full 40-character commit hash;
+- `config.json`, `tokenizer.json` and `tokenizer_config.json` are present and non-empty;
+- every `*.safetensors` file is exactly as long as its own header says, and every numbered
+  shard its name implies is present (the shard index is not trusted as a list of files: one
+  candidate's index names two shards while its repository holds one);
+- the weights total at least `minimumWeightBytes`, nine tenths of `LocalModel.downloadBytes`.
 
-`CachedSnapshotTests` pins it with a downloader that counts and refuses every call, and
-`offline_audit.sh` § Suggestion model fails if a load takes the hub downloader directly again.
+Then the model loads from that directory and the hub is never constructed. Anything less goes
+to the hub through `AnonymousHub.client()`, so a first download still works. A model already
+whole on disk is never refreshed from the hub; a new revision arrives only when the cache is
+missing or incomplete.
+
+`CachedSnapshotTests` pins this with a downloader that counts and refuses every call, and
+check 5 fails if a load takes the hub downloader directly.
 
 Measured with `uttrflow-bakeoff gpu-memory --passes 1` against a cache holding the whole
-gemma-3-4b-it-qat-4bit snapshot, under `kill-on-net.sb`:
+`mlx-community/gemma-3-4b-it-qat-4bit` snapshot, under `kill-on-net.sb`:
 
-| build | exit |
+| Load | Exit |
 |---|---|
-| before | 137, killed before "loaded" |
-| after | 0 |
+| through the hub downloader | 137, killed before "loaded" |
+| through `weightsDirectory` | 0 |
 
 ## What the audit checks
 
-`Scripts/offline_audit.sh` runs in `make verify`, after `build`, because two of its checks
-read object files. Seven checks, each default-deny: every module and every linked object is
-covered unless it is named, with the reason, in the script. That shape matters more than
-the patterns do — the version this replaced listed the seven modules to look at, and the
-clipboard, the history, the dictionary, the settings, the two suggestion stores and the UX
-were unchecked simply by not being on the list.
+`Scripts/offline_audit.sh` runs in `make verify` after `build`, because its binary check reads
+object files. Every check is default-deny: every module and every linked object is covered
+unless it is named, with the reason, in the script. A list of places to look would miss a
+module nobody added to it; a list of what is allowed covers a new module by default.
 
 | # | What it asserts | How |
 |---|---|---|
-| 1 | No file under `Sources/` names a way to reach the network, except `UttrflowAccount` and seven named files | Source grep over Foundation's stack, Network.framework in both spellings, CFNetwork, the BSD calls, XPC, the speech asset installer, `mlx_distributed`, and endpoint literals |
-| 1b | No file reads a URL through `Data(contentsOf:)` or its siblings outside the files known to read local paths | Source grep; see the limits below for what this can and cannot say |
+| 1 | No file under `Sources/` names a way to reach the network, except `UttrflowAccount` and the files in `ALLOWED_NETWORK_FILES`; every named exception still exists; the known gap is printed every run | Source grep with `NETWORK_PATTERN` |
+| 1b | No file reads a URL through `Data(contentsOf:)` or its siblings outside the files in `URL_READERS` | Source grep; see the limits below |
 | 2 | No source or target names `UTTRFLOW_CLOUD`, so no build flag can switch a hosted engine back on | grep on `Package.swift` and `Sources/` |
-| 3 | Loading a speech model still passes `download: false`, and the model hub is named only where the install runs | Source grep over the whole tree |
-| 4 | A `tokenizerFolder` is pinned, so loading cannot fall back to the hub | Source grep |
-| 5 | The suggestion model checks its cache before asking the hub, and no load takes the hub downloader directly | Source grep |
-| 6 | The updater is imported in one file in the app shell, and one target depends on it | Source grep, grep on `Package.swift` |
-| 7 | No linked object can reach the network unless its source file was allowed one, and no new network-capable dependency has appeared | `nm -uA` over every object in the app's link file list |
+| 3 | Loading a speech model passes `download: false`, and `HubApi`, `WhisperKit.download` and `AutoTokenizer` are named nowhere but the backend and the install file | Source grep |
+| 4 | A non-`nil` `tokenizerFolder` is pinned, so loading cannot fall back to the hub | Source grep on `WhisperKitBackend.swift` |
+| 5 | The suggestion model checks its cache before the hub, no load takes the hub downloader directly, the hub client is named only in `HUB_CLIENT_FILES`, no client is built with its defaults, no download sends a token or follows `HF_ENDPOINT`, and no model is fetched from a branch | Source grep |
+| 6 | Sparkle is imported in one file in the app shell, and one target depends on it | Source grep, grep on `Package.swift` |
+| 6b | Sentry is imported only in `UttrflowDiagnostics`, one target links it, and only the app depends on that module | Source grep, grep on `Package.swift` |
+| 7 | No linked Uttrflow object can reach the network unless its source file is allowed one, and no network-capable dependency outside `ALLOWED_NETWORK_DEPENDENCIES` (`Hub ArgmaxCore HuggingFace EventSource Cmlx`) is linked | one `nm -uA` over every object in `Uttrflow.product/Objects.LinkFileList` |
 
-Check 7 needs the built binary. In CI — and with `--require-binary` — a missing one is a
-failure, because it is the only check that can see a dependency's network call, and
-skipping it quietly is how one would ship. Locally a bare run says so and carries on, so
-that a contributor mid-change gets the source checks in a second or two.
-
-The whole audit costs a couple of seconds beyond `nm`, and a few more than the version it
-replaced: one `nm -uA` pass over every linked object, rather than one per module, is what
+Check 7 needs the built binary. With `--require-binary`, or whenever `CI` is set, a missing one
+is a failure, because it is the only check that can see a dependency's network call. A bare
+local run notes the skip and carries on, so a contributor mid-change gets the source checks in
+a second or two. One `nm -uA` pass over every linked object, rather than one per file, is what
 keeps the per-file resolution affordable in a gate.
 
 ## What this does not prove
 
 - **The microphone and the insertion steps were not exercised offline.** `AVAudioCaptureEngine`
-  needs a real hold-to-talk gesture and `TextInsertionCoordinator` needs a focused text
-  field in another app; neither can be driven headlessly, and the sandbox cannot grant
-  the TCC permissions they require. Both are argued to be network-free from the source
-  audit only: `UttrflowAudio` and `UttrflowInput` contain no network call site, and
-  `offline_audit.sh` keeps it that way. The sandboxed run does exercise the second half
-  of capture — `AudioFileReader` hands its samples through the same `AudioResampler` the
-  microphone path uses — but a full hold-key-to-inserted-text run offline has not been
-  observed.
-- **Apple's frameworks are taken at their word.** `FoundationModels`, `Speech` and
-  `CoreML` are closed. The sandboxed run shows that none of them opened a socket *from
-  this process*; work they hand to a system daemon over XPC is outside the sandbox and
-  outside what this can see. For `FoundationModels` that is Apple's documented
-  on-device guarantee, not something measured here.
-- **`AppleSpeechBackend` is not offline-safe on first use, and was not tested.** Its
-  `load()` calls `AssetInventory.assetInstallationRequest(...).downloadAndInstall()`,
-  which fetches a system speech asset, and `transcribe()` calls `load()`. That is a
-  network call on the dictation path whenever the locale's asset is absent — it returns
-  immediately once `status` is `.installed`. It is off the default path
-  (`EngineConfiguration.default.speech` is `.whisperKit`) but one settings change away:
-  *Built-in speech recognition* selects it. The audit now names it on every run, as a
-  known gap rather than a sanctioned exception, because the fix is a product decision
-  about what the user is told — `WhisperKitBackend` has `download: false` for exactly
-  this, and Apple's asset API offers no equivalent.
+  needs a real hold-to-talk gesture and `TextInsertionCoordinator` needs a focused text field
+  in another app; neither can be driven headlessly, and the sandbox cannot grant the TCC
+  permissions they require. Both are argued network-free from the source audit only:
+  `UttrflowAudio` and `UttrflowInput` contain no network call site, and `offline_audit.sh` keeps
+  it that way. The sandboxed run does exercise the second half of capture (`AudioFileReader`
+  hands its samples through the same `AudioResampler` the microphone path uses), but a full
+  hold-key-to-inserted-text run offline has not been observed.
+- **Apple's frameworks are taken at their word.** `FoundationModels`, `Speech` and `CoreML` are
+  closed. The sandboxed run shows that none of them opened a socket *from this process*; work
+  they hand to a system daemon over XPC is outside the sandbox and outside what this can see.
+  For `FoundationModels` that is Apple's documented on-device guarantee, not something
+  measured here.
+- **`AppleSpeechBackend` is not offline-safe on first use.** Its `load()` calls
+  `AssetInventory.assetInstallationRequest(supporting:)?.downloadAndInstall()`, which fetches a
+  system speech asset, and `transcribe()` calls `load()`. That is a network call on the
+  dictation path whenever the locale's asset is absent; it returns immediately once the asset
+  is `.installed`. It is off the default path (`EngineConfiguration.default.speech` is
+  `.whisperKit`) but one setting away: Settings → Dictation → **Speed and accuracy** →
+  **Faster** selects it (Diagnostics names it *Built-in speech recognition*). The audit lists it
+  in `KNOWN_GAP_FILES` and prints it on every run, as a known gap rather than a sanctioned
+  exception, because the fix is a product decision about what the user is told:
+  `WhisperKitBackend` has `download: false` for exactly this, and Apple's asset API offers no
+  equivalent. This path has not been run under the sandbox.
 - **Reading a URL cannot be told from fetching one.** `Data(contentsOf:)` and
   `String(contentsOf:)` fetch a remote URL synchronously inside Foundation, so the calling
   module names no networking type and its object file carries no networking symbol. Both
-  halves of the audit are blind to it. What the audit does instead is name every file that
-  uses one today, so a new one has to be argued for; it does not establish that the
-  existing ones are local, which was done by reading them.
-- **A dependency is judged whole, not per file.** The per-object check applies to
-  Uttrflow's own modules, where the audit has a file-level claim to make. For somebody
-  else's source tree it asserts only that the set of network-capable dependencies has not
-  grown, which says nothing about when any of them runs.
-- **Sparkle is not inspected.** It fetches an appcast and an archive; that is the feature,
-  so reading the framework would only confirm it. What is checked is that it can be driven
-  from one file in the app shell and that no library target links it, which is what keeps
-  the updater off every path a dictation, a clip or a history entry runs through.
-- **Only the paths that ran were tested.** A sandboxed run proves what happened, not
-  what would happen on a different model, locale or failure branch. That is what
-  `offline_audit.sh` is for.
+  halves of the audit are blind to it. Check 1b names every file that uses one, so a new one
+  has to be argued for; it does not establish that the existing ones are local, which was done
+  by reading them. `Sources/UttrflowTestSupport/GoldenFile.swift` reads the repository fixture beside
+  its calling test, derived from that test's `#filePath`; it is not linked into the app.
+- **A dependency is judged whole, not per file.** The per-object check applies to Uttrflow's
+  own modules, where the audit has a file-level claim to make. For a dependency it asserts only
+  that the set of network-capable dependencies has not grown, which says nothing about when any
+  of them runs.
+- **Sparkle and Sentry are not inspected.** Sparkle fetches an appcast and an archive, and
+  Sentry sends opt-in reports; that is each one's feature, so reading the framework would only
+  confirm it. Checks 6 and 6b establish where each can be driven from, which is what keeps them
+  off every path a dictation, a clip or a history entry runs through.
+- **Only the paths that ran were tested.** A sandboxed run proves what happened, not what would
+  happen on a different model, locale or failure branch. That is what `offline_audit.sh` is for.
 
 ## Summary
 
-The app is offline-safe on the dictation path with WhisperKit, which is the default
-recogniser: Uttrflow's own code, the clean-up engines, the router and the model load all
-completed under a profile that kills the process for touching the network, and the
-tokenizer hole that was open here is closed by the install pinning a `tokenizerFolder`.
+The app is offline-safe on the dictation path with WhisperKit, the default recogniser:
+Uttrflow's own code, the clean-up engines, the router and the model load all completed under a
+profile that kills the process for touching the network, and the tokenizer is installed beside
+the weights with its folder pinned.
 
-One gap is open, and the audit names it on every run rather than passing over it: with
-*Built-in speech recognition* selected, the first dictation in a locale whose system
-speech asset is not installed downloads that asset. See *What this does not prove*.
+One gap is open, and the audit names it on every run: with **Faster** selected, the first
+dictation in a locale whose system speech asset is not installed downloads that asset. See
+*What this does not prove*.
+
+Related: [speech-engines.md](speech-engines.md) § Keeping WhisperKit off the network,
+[speech-model-install.md](speech-model-install.md), [predict-llm.md](predict-llm.md),
+[app-updates.md](app-updates.md), [crash-reporting.md](crash-reporting.md).

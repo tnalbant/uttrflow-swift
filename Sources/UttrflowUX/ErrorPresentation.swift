@@ -3,9 +3,9 @@ public import UttrflowCore
 
 /// Which surface carries the notice.
 public enum FailurePlacement: Sendable, Equatable, CaseIterable {
-    /// Stays until the cause is gone; the menu bar is the only always-visible surface.
+    /// Lights the menu bar, the only always-visible surface, for a blocking failure or when no button is shown.
     case menuBar
-    /// Shown beside the work and allowed to dismiss itself.
+    /// Shown beside the work on the floating button and allowed to dismiss itself.
     case floatingButton
 }
 
@@ -54,15 +54,18 @@ public struct FailurePresentation: Sendable, Equatable {
 
 /// Turns any ``UttrflowFailure`` into what the user sees, from its message, recovery and severity alone.
 public enum FailurePresenter {
-    /// Presents a failure from its own message, recovery and severity.
-    public static func present(_ failure: some UttrflowFailure) -> FailurePresentation {
+    /// Presents a failure from its own message, recovery and severity, on the surfaces that are shown.
+    public static func present(
+        _ failure: some UttrflowFailure, floatingButtonShown: Bool
+    ) -> FailurePresentation {
         present(
-            message: failure.userMessage, recovery: failure.recovery, severity: failure.severity)
+            message: failure.userMessage, recovery: failure.recovery, severity: failure.severity,
+            floatingButtonShown: floatingButtonShown)
     }
 
     /// The same for a failure already reduced to a sentence, an action and a cost; both share one body.
     public static func present(
-        message: String, recovery: RecoveryAction?, severity: FailureSeverity
+        message: String, recovery: RecoveryAction?, severity: FailureSeverity, floatingButtonShown: Bool
     ) -> FailurePresentation {
         let (headline, detail) = splitIntoSentences(message)
         return FailurePresentation(
@@ -70,10 +73,14 @@ public enum FailurePresenter {
             detail: detail,
             symbolName: symbolName(for: recovery),
             severity: severity,
-            // A blocking failure has to outlive the moment it happened in; everything else is news.
-            placement: severity == .blocking ? .menuBar : .floatingButton,
+            placement: placement(for: severity, floatingButtonShown: floatingButtonShown),
             action: recovery.map { FailureAction(title: title(for: $0), recovery: $0) }
         )
+    }
+
+    /// A blocking failure outlives its moment; other news goes beside the work, or to the menu bar when no button is.
+    static func placement(for severity: FailureSeverity, floatingButtonShown: Bool) -> FailurePlacement {
+        severity != .blocking && floatingButtonShown ? .floatingButton : .menuBar
     }
 
     /// Splits a message at the first sentence break into the headline and the line that explains it.
@@ -95,7 +102,7 @@ public enum FailurePresenter {
         case .downloadSpeechModel: "arrow.down.circle"
         case .retry: "arrow.clockwise"
         case .pasteManually: "doc.on.clipboard"
-        case .showRecentDictations: "menubar.arrow.up.rectangle"
+        case .showHistory: "clock"
         case .copyTranscript: "doc.on.clipboard"
         case .retryFromRecording: "arrow.clockwise"
         }

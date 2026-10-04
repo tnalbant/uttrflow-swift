@@ -37,7 +37,7 @@ public actor PersonalDictionaryStore {
 
     /// Where the dictionary lives by default; versioned in the name so a new shape can sit beside it.
     public static func defaultFile(in directory: URL = .applicationSupportDirectory) -> URL {
-        LocalStore.file("dictionary.v1.json", in: directory)
+        LocalStoreEntry.personalDictionary.location(in: directory)
     }
 
     /// Which shipped words this dictionary has been given, named after it so two never share one record.
@@ -76,26 +76,32 @@ public actor PersonalDictionaryStore {
     @discardableResult
     public func add(_ entry: DictionaryEntry) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let entry = entry.inLatinScript
-        guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+        if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+            throw refusal
         }
-        let spelling = entry.word.lowercased()
+        let spelling = entry.spellingKey
         let kept =
-            load().filter { $0.id != entry.id && $0.word.lowercased() != spelling } + [entry]
+            load().filter { $0.id != entry.id && $0.spellingKey != spelling } + [entry]
         try persist(kept)
         return kept
     }
 
-    /// Replaces the stored snapshot after an archive has been fully validated and merged.
-    public func replaceAll(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
-        let entries = entries.map(\.inLatinScript)
+    /// Replaces the list with what `merge` derives from it in one actor step, returning what the bound kept.
+    @discardableResult
+    public func replaceAll<Outcome: Sendable>(
+        _ merge: @Sendable ([DictionaryEntry]) -> (entries: [DictionaryEntry], outcome: Outcome)
+    ) throws(DictionaryStoreError) -> (kept: [DictionaryEntry], outcome: Outcome) {
+        let derived = merge(load())
+        let entries = derived.entries.map(\.inLatinScript)
         for entry in entries {
-            guard PhoneticIndex.supports(word: entry.word, pronunciation: entry.pronunciation) else {
-                throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
+            if let refusal = PhoneticIndex.refusal(word: entry.word, pronunciation: entry.pronunciation) {
+                throw refusal
             }
         }
-        try persist(Self.boundedEntries(entries))
+        let kept = Self.boundedEntries(entries)
+        try persist(kept)
         cachedIndex = nil
+        return (kept, derived.outcome)
     }
 
     /// Writes what the user typed in as a word of their own. See `Docs/app-dictionary-store.md`.
@@ -107,16 +113,49 @@ public actor PersonalDictionaryStore {
         guard !typed.isEmpty else { throw .wordIsEmpty }
         let spelling = Romaniser.romanised(typed)
         let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PhoneticIndex.supports(word: spelling, pronunciation: sound) else {
-            throw .entryHasTooManyWords(maximum: PhoneticIndex.maximumWordsPerEntry)
-        }
-        guard !load().contains(where: { $0.word.lowercased() == spelling.lowercased() }) else {
+        if let refusal = PhoneticIndex.refusal(word: spelling, pronunciation: sound) { throw refusal }
+        let key = DictionaryEntry.spellingKey(for: spelling)
+        guard !load().contains(where: { $0.spellingKey == key }) else {
             throw .wordAlreadyKnown
         }
         return try add(
             DictionaryEntry(
                 word: typed, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
                 firstSeen: moment))
+    }
+
+    /// Respells an entry as the user typed it, keeping its identity and counters, and drops any other entry of that spelling.
+    @discardableResult
+    public func replace(
+        _ id: UUID, word: String, pronunciation: String
+    ) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        let typed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw .wordIsEmpty }
+        guard let existing = load().first(where: { $0.id == id }) else { return load() }
+        let sound = pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try add(
+            DictionaryEntry(
+                id: id, word: typed, pronunciation: sound.isEmpty ? nil : sound, origin: .added,
+                firstSeen: existing.firstSeen, timesUsed: existing.timesUsed,
+                timesReverted: existing.timesReverted))
+    }
+
+    /// Folds one spelling of a word into another: the kept entry takes both counters and the other goes.
+    @discardableResult
+    public func merge(
+        keeping kept: UUID, absorbing absorbed: UUID
+    ) throws(DictionaryStoreError) -> DictionaryEntry? {
+        let entries = load()
+        guard kept != absorbed,
+            var keeper = entries.first(where: { $0.id == kept }),
+            let other = entries.first(where: { $0.id == absorbed }),
+            keeper.spellingKey == other.spellingKey
+        else { return nil }
+        keeper.timesUsed = DictionaryEntry.clamped(keeper.timesUsed + other.timesUsed)
+        keeper.timesReverted = DictionaryEntry.clamped(keeper.timesReverted + other.timesReverted)
+        let merged = keeper
+        try persist(entries.compactMap { $0.id == absorbed ? nil : $0.id == kept ? merged : $0 })
+        return merged
     }
 
     /// Offers shipped words once until a full reset; individual deletions stay deleted.
@@ -176,12 +215,19 @@ public actor PersonalDictionaryStore {
     /// Forgets one word; an identifier that is not there is not an error.
     @discardableResult
     public func remove(_ id: UUID) throws(DictionaryStoreError) -> [DictionaryEntry] {
+        try remove(Set([id]))
+    }
+
+    /// Forgets every named word and refuses each one, with one write of each record.
+    @discardableResult
+    public func remove(_ ids: Set<UUID>) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let existing = load()
-        let kept = existing.filter { $0.id != id }
+        let gone = existing.filter { ids.contains($0.id) }
+        let kept = existing.filter { !ids.contains($0.id) }
         // A deleted word must not simply be counted up again, whoever first put it there.
-        if let gone = existing.first(where: { $0.id == id }) {
+        if !gone.isEmpty {
             var sightings = sightingLedger()
-            sightings.refuse(gone.word)
+            for entry in gone { sightings.refuse(entry.word) }
             ledger = sightings
             try recordRefusals(sightings.refusals)
         }
@@ -203,15 +249,13 @@ public actor PersonalDictionaryStore {
         }
     }
 
-    /// Clears pending sightings, keeps refusals, and retains user-added and shipped words.
+    /// Removes every inferred word through the batch `remove`, so each is refused, and clears pending sightings.
     @discardableResult
     public func removeLearned() throws(DictionaryStoreError) -> [DictionaryEntry] {
-        // Pending evidence goes with inferred entries, while refusals remain in force.
         clearPendingSightings()
         // A shipped word was inferred from nothing, so there is nothing about it to forget.
-        let kept = load().filter { $0.origin == .added || $0.origin == .shipped }
-        try persist(kept)
-        return kept
+        let inferred = load().filter { $0.origin != .added && $0.origin != .shipped }
+        return try remove(Set(inferred.map(\.id)))
     }
 
     /// Learns from a landed dictation; `heard` is the raw transcript. See `Docs/app-dictionary-store.md`.
@@ -221,20 +265,20 @@ public actor PersonalDictionaryStore {
     ) throws(DictionaryStoreError) -> [DictionaryEntry] {
         let existing = load()
         // What is already held, so neither path adds a second row or reaches the replacing `add`.
-        var known = Set(existing.map { $0.word.lowercased() })
+        var known = Set(existing.map(\.spellingKey))
         var learnt: [DictionaryEntry] = []
         var sightings = sightingLedger()
 
         if let corrected = LearnableWords.corrected(over: context.selectedText, wrote: wrote),
             !sightings.isRefused(corrected),
-            known.insert(corrected.lowercased()).inserted
+            known.insert(DictionaryEntry.spellingKey(for: corrected)).inserted
         {
             learnt.append(DictionaryEntry(word: corrected, origin: .learned, firstSeen: moment))
         }
 
         // Filtered before the tally, so a word already held stops being counted rather than counted on.
         let seen = LearnableWords.seenAndSaid(heard: heard, seeing: context)
-            .filter { !known.contains($0.lowercased()) }
+            .filter { !known.contains(DictionaryEntry.spellingKey(for: $0)) }
         learnt += sightings.record(seen).map {
             DictionaryEntry(word: $0, origin: .observed, firstSeen: moment)
         }

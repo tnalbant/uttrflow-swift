@@ -93,6 +93,20 @@ public struct MenuBarRow: Sendable, Equatable {
     }
 }
 
+/// A word the dictionary just learned, where it came from, and the Undo that removes and refuses it.
+public struct MenuBarLearnedRow: Sendable, Equatable {
+    public let word: String
+    /// "from a correction" or "from the screen".
+    public let source: String
+    public let undo: MenuBarCommand
+
+    public init(word: String, source: String, undo: MenuBarCommand) {
+        self.word = word
+        self.source = source
+        self.undo = undo
+    }
+}
+
 // MARK: - Deciding it
 
 extension MenuBarPresenter {
@@ -122,12 +136,15 @@ extension MenuBarPresenter {
             return .status(MenuBarStatus(title: statusLine, emphasis: .live))
         case .working:
             return .status(MenuBarStatus(title: statusLine))
-        case .idle, .inserted, .unconfirmed, .copied:
+        case .idle, .inserted, .partial, .unconfirmed, .copied:
             break
         }
         if let notice = state.suggestionUnheard, state.features.suggestions {
             return .status(
                 MenuBarStatus(title: "AI suggestions paused", detail: notice, emphasis: .attention))
+        }
+        if state.features.suggestions, let status = suggestionStatus(state.suggestionRuntime) {
+            return .status(status)
         }
         if state.shortcutUnheard != nil, state.features.dictation {
             return .status(
@@ -136,6 +153,27 @@ extension MenuBarPresenter {
                     emphasis: .attention))
         }
         return .hint(hint(for: state))
+    }
+
+    private static func suggestionStatus(_ runtime: SuggestionRuntimeStatus) -> MenuBarStatus? {
+        let detail: String
+        switch runtime {
+        case .idle, .starting, .running:
+            return nil
+        case .tapResting:
+            detail = "The key tap is restarting. Suggestions will resume automatically."
+        case .restarting:
+            detail = "Suggestions are restarting. Suggestions will resume automatically."
+        case .secureInputBlocked:
+            detail = "A secure input field is active. Suggestions resume when you leave it."
+        case .tapFailed:
+            detail =
+                "Allow Uttrflow to monitor input in Privacy & Security, then turn suggestions off and on again."
+        case .corpusFailed:
+            detail =
+                "The suggestion corpus could not be opened. Check its file access, then turn suggestions off and on again."
+        }
+        return MenuBarStatus(title: "AI suggestions paused", detail: detail, emphasis: .attention)
     }
 
     /// Each speech-model state, with the words and the one action its design gives it.
@@ -270,6 +308,21 @@ extension MenuBarPresenter {
         if clip.kind == .secret { return PanelPresenter.mask }
         if let image = clip.image, clip.summary.isEmpty { return "Picture · \(image.dimensions)" }
         return clip.summary
+    }
+
+    /// How many learned words the popover lists.
+    public static let learnedCount = 5
+
+    /// The newest learned words, each with an Undo that a running dictation does not race.
+    static func learnedRows(for state: MenuBarState) -> [MenuBarLearnedRow] {
+        state.learned.prefix(learnedCount).map { word in
+            MenuBarLearnedRow(
+                word: word.word, source: word.source,
+                undo: MenuBarCommand(
+                    title: "Undo", intent: .undoLearnedWord(id: word.id),
+                    isEnabled: !isBusy(state.activity),
+                    tooltip: "Remove “\(word.word)” and stop learning it"))
+        }
     }
 
     /// A row whose two commands are greyed while a dictation runs, which a paste would race.

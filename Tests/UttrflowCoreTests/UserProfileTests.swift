@@ -12,6 +12,20 @@ struct UserProfileTests {
         #expect(UserProfile.default.preferredLanguages == [.english])
     }
 
+    /// A list with nothing readable left is no preference, so it must not become a different setting.
+    @Test(
+        "reads languages as saved, an empty list as empty, and a list with nothing readable as the default",
+        arguments: [
+            (#"["hi", "123", "en"]"#, [LanguageCode.hindi, .english]),
+            ("[]", []),
+            (#"["123", null]"#, [.english]),
+            ("42", [.english]),
+        ])
+    func unreadableLanguages(saved: String, expected: [LanguageCode]) throws {
+        let json = Data(#"{"preferredLanguages": \#(saved)}"#.utf8)
+        #expect(try JSONDecoder().decode(UserProfile.self, from: json).preferredLanguages == expected)
+    }
+
     @Test("round-trips a populated profile through Codable")
     func codableRoundTrip() throws {
         let original = UserProfile(preferredLanguages: [.english, .hindi])

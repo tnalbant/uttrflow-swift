@@ -1,240 +1,217 @@
-# Context-aware suggestions: register, surroundings and personal style
+# AI suggestions: register, surroundings and personal style
 
-The goal: one generalised mechanism that makes a suggestion in a terminal read like a
-command, in a chat like a reply this person would send, and in a document like the next
-line of this document — with no list of applications anywhere. Latency and accuracy are
-the two constraints every decision below is measured against.
+When the model writes an AI suggestion (tab-to-complete), one mechanism makes it read like a
+command in a terminal, a reply this person would send in a chat, and the next line of the document
+in a document — with no list of applications anywhere. Each pass carries three kinds of context
+read live: the **surroundings** (window title and the text visible around the field), the
+**field's own text** before the line, and the **person's own recent lines** in this field. Pure
+code derives **register hints** from them — measurable facts, never application names — and the
+prompt hands the model the raw context and the hints under a token budget. Latency and accuracy are
+the two constraints every choice here is measured against.
 
-## What existed before G1, and what the phases changed
+| Piece | Where |
+|---|---|
+| Field and surroundings read | `Sources/UttrflowContext/FocusedFieldReader+System.swift`, `Sources/UttrflowContext/Surroundings.swift` |
+| What the model is told | `GenerationSituation` in `Sources/UttrflowPredict/CandidateGeneration.swift`, mapped by `SuggestionMoment` in `Sources/Uttrflow/Suggestion/SuggestionMoment.swift` |
+| Register | `Register` in `Sources/UttrflowPredict/Register.swift` |
+| Prompt | `PromptBuilder` in `Sources/UttrflowLocalModel/PromptBuilder.swift`, run by `MLXCandidateScorer` |
+| Recent lines | `PredictStore.recent(in:limit:)` in `Sources/UttrflowPredictStore/PredictStore.swift` |
+| Caching for one turn | `SuggestionContextCache` in `Sources/Uttrflow/Suggestion/SuggestionContextCache.swift` |
 
-| Piece | Where | Before G1 | Now |
-|---|---|---|---|
-| Field reading | `Sources/UttrflowContext/FocusedFieldReader+System.swift` | One AX read per turn: bundle id, app name, role, subrole, identifier, placeholder, description, document (URL or cwd), whole value, selection, caret rect, window rect, font size + family, secure, composing. Not read: the window title, any text outside the field. | The same read, plus a second, separately budgeted read of the focused window's title and the visible text around the field (`surroundings`), made once a model pass is certain and cached by `SuggestionContextCache` for one second per window. |
-| What the model is told | `Sources/UttrflowPredict/CandidateGeneration.swift` → `GenerationSituation` | `application`, `field`, `document`, `preceding` (≤400 chars of the field's own text before the caret's line). | Those four, plus `windowTitle`, `surroundings`, `recentLines` (the person's own lines here, newest first) and `isMultiline`. |
-| The prompt | `Sources/UttrflowLocalModel/MLXCandidateScorer.swift`, `Sources/UttrflowLocalModel/PromptBuilder.swift` | One fixed instruction + one user message; a new `ChatSession` per call prefilled the ~120-token instruction every time; `maxTokens` fixed at 128, temperature 0. | The instruction prefix is prefilled once at load into a KV cache, and the last pass's whole prompt is kept in one too, so a pass reads only the tokens past the longest run it shares with the prompt before it; `maxTokens` is `min(128, register.maxTokens × share)`, share 1 for the one line and 3 for the alternatives; temperature 0. |
-| Memory | `Sources/UttrflowPredictStore/PredictStore.swift`, SQLite `surface`/`entry` | Per surface (bundle + role + locator + scope): every line the user typed there (with consent), counts, accepted/rejected, last used. Queried only by prefix and successor; no "the last N lines this person wrote here". | `recent(in:limit:)` exists: newest first, each text once, across every document of the field, self-sourced-only and superseded lines left out, over the `entry_recent` index. |
-| Gates | `Sources/UttrflowPredict/Verifier.swift`, `Sources/UttrflowPredict/Verification.swift` | Remembered lines pass attestation (environment index), nearest-neighbour correction, then the 4B plausibility floor (−6.0, ~100 ms per line). Generated lines are not scored. | Generated lines are scored by the pass that wrote them (mean log-probability of their own tokens, no second pass), and only drawn when they clear `certainFloor` (−0.9) alone or `choiceFloor` (−1.5) in a list; an unscored line is never drawn. See `Docs/predict-precision.md`, P6. |
-| Timing | `Sources/Uttrflow/Suggestion/SuggestionCoordinator.swift` | 120 ms debounce, in-flight pass cancelled by the next key, last answer reused while the line still begins one of its lines, prose answered 400 ms after the last key. Generation of 3–4 lines ≈ 500–1 000 ms on the 4B; corpus path ≈ 1–150 ms. | The same debounce, cancellation and reuse; one line generated first and the alternatives fetched behind it; an empty answer remembered per line. Measured in the table below. |
-| Register | — | `isProse` = multi-line field that is not a terminal was the only "kind" the code knew. Accept key by bundle-prefix table (terminals →, editors ⌥⇥) — key semantics, not context. | `Register` in `UttrflowPredict` computes seven facts off the moment — including whether the field writes addresses or searches — and turns them into prompt hints, a token budget and a history-only refusal; `isProse` and the accept-key table still do their own jobs. |
+The loop that calls this is [predict.md](predict.md), the model [predict-llm.md](predict-llm.md),
+and the rules that withhold its line [predict-precision.md](predict-precision.md).
 
-## The approach in one paragraph
+`GenerationSituation` carries `application`, `field`, `document`, `preceding` (at most
+`SuggestionMoment.precedingContextLength`, 400 characters of the field's own text before the
+caret's line), `windowTitle`, `surroundings`, `recentLines` (newest first) and `isMultiline`.
 
-Nothing about an application is hardcoded. Every turn that reaches the model carries
-**three kinds of context read live**: the *surroundings* (window title and the text visible
-around the field), the *field's own text* before the line, and the *user's own recent lines
-on this surface*. From these, pure code derives a small set of **register hints** —
-measurable facts, not app names: is the field one line or many, how long are this person's
-lines here, is the visible text a back-and-forth of short turns, how much of it is symbols.
-The prompt hands the model the raw context **and** the hints, and asks it to match register,
-length and tone to them. The user's own lines are the personalisation: the model imitates
-how this person writes *here*, and a chat reply is drafted against the last messages on
-screen. Everything is bounded by a token budget so the added context costs tens of
-milliseconds, not hundreds.
+## How a pass is assembled
 
-## How it works, step by step
+Context is read only once a pass is certain — after the 120 ms debounce, never for a reused answer
+— so a burst cancelled by the next key never pays for it. The surroundings walk and the corpus query
+run side by side.
 
-1. **Read surroundings (once per pass, budgeted, uncached).** `FocusedFieldReader.surroundings`
-   reads the focused window's `AXTitle` and walks outward from the field ring by ring — the
-   thread beside a compose box before the sidebar — taking the text of labels, messages,
-   headings, links, cells and other fields. Each ring is gathered nearest the field first and
-   put back into reading order afterwards, so when a thread outruns the allowance it is the
-   newest messages that survive, not the oldest. In a browser the walk never climbs past the page
-   (`AXWebArea`), so the tab strip, toolbar and infobars are never read. An element is read only where its frame meets
-   the window's: no frame is trusted, zero size is hidden, off-window is pruned with its whole
-   subtree; a label a container already carries is not read again from its children. A field
-   that declares itself secure — the secure role or subrole anywhere, or a name `SecureField`
-   recognises on an element that takes text, never on a message that only mentions a password —
-   is passed over whole before its text is asked for, one whose text is mask characters alone is
-   dropped, and nothing at all is read around a focused secure field. Every
-   element costs one Accessibility message — role, subrole, identifier, placeholder, frame,
-   title, description, children and parent in a single multiple-attribute call, the value apart. `Surroundings.collect` stops at 60 ms,
-   400 elements, 400 characters per element and 1 200 in all — the moment the characters are
-   gathered, not a ring later — and returns what it has. Every label is read without its control
-   and direction marks and without its timestamp parts: a chat labels each message "text,
-   4 September at 6:41 PM, Received from Priya" (WhatsApp without the spaces), and `Timestamps`
-   drops a part that is only a time, or a date naming a month, weekday or day-half in the current
-   calendar's own words, glued or not. `uttrflow-dev context --bundle <id> --surroundings` prints
-   exactly what this read hands the model. Around it, every Accessibility call into the other application gives up
-   after 50 ms (`elementTimeoutInSeconds`), the walk runs on its own queue, and the turn
-   waits at most 200 ms for it (`Deadline`) before going on without it. `SuggestionContextCache`
-   reuses a built `GenerationSituation` for the same turn — so the alternatives pass asks the
-   machine nothing a second time — and caches one window's surroundings for one second per
-   window key, so a burst of passes over an unchanged window walks it once. A walk that times
-   out is not kept, and a cancelled burst before the walk starts never pays for it. In a chat this is the last few messages
-   and who they are from; in Mail the quoted thread; in a browser the page heading and the
-   field's label; in a terminal nothing (the value already holds the scrollback,
-   `preceding`).
-2. **Read the person (an indexed read per matching scope).** `PredictStore.recent(in:limit:)`
-   with a limit of 6 first reads the surface's own retired texts, then runs one indexed
-   `ORDER BY last_used DESC LIMIT ?` read over `entry_recent` for each scope that matches this
-   surface, before deduplicating and ranking the results in Swift — the current document first,
-   then newest, arrival order breaking ties. The cost scales with the number of matching scopes,
-   not a single query. Only surfaces the user allowed learning from have any. In WhatsApp this is
-   literally how they answer people; in a terminal their real commands; in Notes their own
-   phrasing.
-3. **Derive register hints (pure, tested, no model).** `Register.infer` computes from the
-   situation and the typed text:
-   - `isMultiline`: whether the field holds many lines (the prose role, or a value with a
-     newline in it);
-   - `typicalLength`: median length in characters of the user's recent lines here, or of
-     the screen's lines when there are none and the screen is a conversation — the
-     strongest verbosity signal there is;
-   - `isConversational`: the screen shows at least three non-blank lines, at least 60 % of
-     them under 200 characters, and people taking turns on it — at least three lines opening
-     with a short speaker name and a colon, two or more speakers, one of them speaking twice;
-     or a field named as a message composer ("Type a message", "Message #platform", never a
-     mail's body) beside at least two lines stamped with a time of day. A web page's menus,
-     links and buttons are short lines too, and on their own they are not a conversation;
-   - `symbolShare`: the share of visible characters that are neither letters nor digits,
-     excluding punctuation in prose. On lines with a flag or path separator, quotes and dots
-     count as command evidence; those structured lines can provide evidence below 8 visible
-     characters (shell lines sit near 0.14, prose under 0.06; the line is 0.10);
-   - `usesSentenceCase`: whether at least half the person's lines here start upper-case and
-     end with sentence punctuation, or nothing when they have written nothing here yet;
-   - `writesAddresses`: whether this person's lines here are web addresses, or (with none of
-     their own) whether the field's own accessibility name says it takes one — a bare word then
-     continues into a host, never a shell command;
-   - `isSearchField`: whether the field's own accessibility name says it searches, so its next
-     word only ever comes from what this person has looked for before.
-   `writesAddresses` and `isSearchField` together decide `answersFromHistoryAlone`: an address
-   or search field's line can only come from what this person entered here before, never from
-   generation. These are numbers and booleans, derived the same way in every application.
-4. **Assemble the prompt under a budget.** `PromptBuilder` (in `UttrflowLocalModel`,
-   deterministic, tested by estimated token count) lays out: where the caret is and the hints →
-   what is on screen around the field → the lines this person wrote here before →
-   `preceding` → the line to finish. The context around the line has a hard budget of 160
-   tokens, headings included; the fixed parts and the line itself sit outside it and are
-   never cut. The field's own text before the line is paid for first, from its end, with up
-   to half; the person's recent lines take up to half of what is left, newest first; the
-   screen takes what remains but never more than 96 tokens, as whole lines nearest the field,
-   each line said once so a "Reply" under every comment costs one. Once the field's own text
-   fills 64 tokens the screen is left out entirely. See "Page context under a token budget"
-   below for the estimate and the measurements. `maxTokens` is
-   `clamp(typicalLength / 2, 24, 96)` when the register knows a typical length, else 32
-   for symbolic text, 48 for a conversation and 64 otherwise; the alternatives pass gets
-   three times that, and every pass is capped at 128.
-   The window title and the leading suggestion the alternatives pass excludes are quoted.
-   Screen text, recent lines, preceding field text and typed text each use a backtick fence
-   longer than any backtick run in that block, so the block cannot close its own boundary.
-5. **Emotion and tone are the model's job, not a classifier's.** Given the last messages
-   and this person's earlier replies, the 4B infers register; there is no sentiment
-   module, because one would be a second hardcoded thing to be wrong. The evaluation set
-   (below) is where we check it actually does.
-6. **Keep the fixed part warm — done.** At load the instruction prefix — the exact token run
-   two different prompts share, chat template included — is prefilled into a `[KVCache]`;
-   each pass checks the real prompt opens with those tokens and feeds only the remainder
-   against a copy of the cache. It saved ~60 ms per pass.
-7. **Keep the last prompt too — done.** Consecutive keystrokes on one line share all but the
-   last few tokens of the prompt, so the pass keeps its tokens and its cache and the next
-   pass trims that cache back to the longest run the two share and reads only the rest.
-   It saved 20–25 ms per pass over one typed reply and costs 91 MB held between passes; both
-   numbers, and what it does to a near tie, are under "what a suggestion pass prefills" in
-   `Docs/performance.md`.
+### 1. Read the surroundings
 
-## Latency targets (from a pause to a drawn ghost)
+`FocusedFieldReader.surroundings` reads the focused window's `AXTitle` and walks outward from the
+field ring by ring — the thread beside a compose box before the sidebar — taking the text of labels,
+messages, headings, links, cells and other fields.
 
-| Path | Target | Lever |
+- Each ring is gathered nearest the field first and put back into reading order afterwards, so when
+  a thread outruns the allowance it is the newest messages that survive.
+- In a browser the walk never climbs past the page (`Surroundings.pageRoles`, `AXWebArea`), so the
+  tab strip, toolbar and infobars are never read.
+- An element is read only where its frame meets the window's: no frame is trusted, zero size is
+  hidden, and an off-window element is pruned with its whole subtree. A label a container already
+  carries is not read again from its children.
+- A field that declares itself secure — the secure role or subrole anywhere, or a name
+  `SecureField` recognises on an element that takes text, never on a message that only mentions a
+  password — is passed over before its text is asked for, one whose text is mask characters alone
+  is dropped, and nothing at all is read around a focused secure field.
+- Every element costs one Accessibility message: role, subrole, identifier, placeholder, frame,
+  title, description, children and parent in a single multiple-attribute call, the value apart.
+- Every label is read without its control and direction marks and without its timestamp parts: a
+  chat labels each message "text, 4 September at 6:41 PM, Received from Priya", and `Timestamps`
+  drops a part that is only a time, or a date naming a month, weekday or day-half in the current
+  calendar's own words, glued or not.
+- A terminal's window is not walked (`SuggestionCoordinator.walksSurroundings`): its value already
+  holds the scrollback, which reaches the model as `preceding`.
+
+| Bound | Constant | Value |
 |---|---|---|
-| Remembered line, verified | 1–150 ms | unchanged |
-| Reused model answer (typing on / backspace) | 0 ms | unchanged |
-| New generation, command | ≤ 400 ms | register-sized `maxTokens`, warm instruction prefix |
-| New generation, chat reply | ≤ 600 ms | `maxTokens` from the person's line length, surroundings ≤ 1 200 chars |
-| New generation, paragraph | ≤ 900 ms | `maxTokens` ≤ 96 |
-| Context reads (AX surroundings + SQL) | ≤ 200 ms wait, off the keystroke path | 60 ms walk budget, 50 ms per element, `Deadline` |
+| Walk time | `Surroundings.budgetInMilliseconds` | 60 ms |
+| Elements | `Surroundings.maximumElements` | 400 |
+| Characters per element | `Surroundings.maximumCharactersPerElement` | 400 |
+| Characters in all | `Surroundings.maximumCharacters` | 1,200 (the walk stops the moment they are gathered) |
+| One Accessibility message | `FocusedFieldReader.elementTimeoutInSeconds` | 50 ms |
+| How long the turn waits for the walk | `FocusedFieldReader.surroundingsAllowance` | 200 ms, then goes on without it |
+| How long one window's walk is reused | `SuggestionContextCache.surroundingsLifetime` | 1 s |
 
-What each phase measured against these is the G2–G4 table below; the generation targets are
-not yet met, and the table says where the remaining time goes. Measured by
-`uttrflow-bakeoff complete --fixtures` over the fixture set and by `GENERATE … elapsed=` in
-the live log; p50 and p95 reported per phase, regressions block the phase.
+The walk runs on its own queue. `SuggestionContextCache` reuses a built `GenerationSituation` for
+the same turn, so the alternatives pass asks the machine nothing a second time, and reuses one
+window's surroundings for a second, so a burst of passes over an unchanged window walks it once. A
+walk that times out is not kept. In a chat this is the last few messages and who they are from; in
+Mail the quoted thread; in a browser the page heading and the field's label.
+`uttrflow-dev context --bundle <id> --surroundings` prints exactly what this read hands the model.
 
-## Accuracy: how we know it works
+### 2. Read the person
 
-- **Fixture set** (`Sources/uttrflow-bakeoff/Fixtures.swift` and `Catalogue*.swift`, on the
-  types in `Sources/UttrflowEval/CompletionCase.swift` and `Sources/UttrflowEval/LineCut.swift`). `Fixture.all`
-  is 29 hand-written fixtures followed by the catalogue, which is generated: a `Scenario`
-  names one place lines are typed — its `GenerationSituation`, a length band, text that
-  must never be echoed, `known` sibling lines — and lists the full lines typed there; each
-  `Line` is cut at the scenario's `LineCut`s (`.afterWord(n)`, `.intoWord(n, by:)`,
-  `.midWord(n)`, `.characters(n)`, `.whole`), and a `Determinacy` says how much of the rest
-  the cut determines — the rest of the word or segment up to a separator set (`.command`,
-  `.query`, `.address`, `.prose`, `.code`), the whole line, anything in register, or
-  nothing at all for a finished line. A cut that leaves fewer than two typed characters,
-  or nothing left to write, is not a case. Scenario × line × cut comes to roughly 1 090
-  cases across terminal, SQL, URL, six kinds of chat, mail, notes, code and a `robust/` set
-  built from live failures, named `category/scenario/line/cutN` so hit rates read per
-  category. `bakeoff complete --fixtures [--only chat/] [--limit n] [--json f]` scores hit
-  rate, register conformance and latency; run before and after every phase.
-- **Live KPI**: `ACCEPT / GENERATE` ratio and "typed past" rate per application, straight
-  from the existing log lines; the un-hardcoded design is judged by an application we never
-  tested doing as well as one we did.
-- **Guard rails already in place** stay: prompt-echo, loop and paragraph filters; ≥ 2 typed
-  characters; secure fields never read; nothing generated is stored unless accepted.
+`PredictStore.recent(in:limit:)` with a limit of `SuggestionMoment.recentLinesShown` (6) first reads
+the surface's own retired texts, then runs one indexed `ORDER BY last_used DESC LIMIT ?` read over
+`entry_recent` for each scope that matches this surface, and ranks the results in Swift: the lines
+written in this very document or conversation first (a greeting belongs to its conversation), then
+the rest of the field newest first, each text once, self-sourced-only and superseded lines left out.
+The cost scales with the number of matching scopes. Only applications the user allows learning from
+have any. The line being typed is never listed among the lines written before
+(`SuggestionMoment.recentLines`). In a chat this is how the person answers people; in a terminal
+their real commands; in Notes their own phrasing.
 
-## Privacy
+### 3. Derive the register
 
-Surroundings are read into memory for one pass and never written anywhere — not to the
-corpus, not to the log (the log names lengths and the application, not the text; see [logging.md](logging.md)). Recent
-lines come only from surfaces the user allowed learning from, and **Forget what it learned
-here** in Settings removes them through `forget(bundleIdentifier:)`. Everything runs on the Mac; no network is touched (`make verify`'s
-offline audit still holds).
+`Register.infer` computes from the situation and the typed text:
 
-## Phases
+| Fact | How |
+|---|---|
+| `isMultiline` | The prose role, or a value with a newline in it |
+| `typicalLength` | Median length in characters of this person's recent lines here, or of the screen's lines when there are none and the screen is a conversation |
+| `isConversational` | At least `conversationLines` (3) non-blank screen lines, at least 60% of them under `conversationLineLength` (200) characters, and either people taking turns (at least three lines opening with a short speaker name and a colon, two or more speakers, one speaking twice) or a field named as a message composer ("Type a message", "Message #platform", never a mail's body or subject) beside at least `timedTurns` (2) lines stamped with a time of day. A web page's short menu lines alone are not a conversation |
+| `symbolShare` | The share of visible characters, emoji left out, that are neither letters nor digits, over `preceding`, the typed text and the recent lines, excluding punctuation in prose; on lines with a flag or path separator, quotes and dots count as command evidence, and those structured lines give evidence below 8 visible characters, which other samples do not; shell lines sit near 0.14 and prose under 0.06, so `symbolicShare` is 0.10 |
+| `usesSentenceCase` | Whether at least half the person's lines here start upper-case and end with sentence punctuation; nothing when they have written nothing here |
+| `writesAddresses` | Whether at least half the person's lines here are shaped like web addresses, or with none of their own, whether the field's own accessibility name says it takes one |
+| `isSearchField` | Whether the field's own accessibility name says it searches or finds |
+| `isCodeDestination` | Whether the destination table classifies the application as a SQL or code editor |
 
-| Phase | Deliverable | Files | Test |
-|---|---|---|---|
-| G1 Read — **done** | `Surroundings.collect` walks outward from the field, ring by ring (the thread beside a compose box before the sidebar), each ring nearest-first then restored to reading order so the newest messages survive the caps; frame-against-window visibility with off-window subtrees pruned; container labels not re-read from children; one multiple-attribute message per element; 60 ms and 400 elements, 400 chars per element, 1 200 in all, stopping the moment the characters are gathered; read only once a pass is certain, after the debounce, never on a reused answer. `PredictStore.recent(in:limit:)` distinct, wrong lines left out, the lines written in this very document first (a greeting belongs to its conversation) and the rest of the field newest first after them. Both in `GenerationSituation` and the prompt; the log records lengths only. | `Sources/UttrflowContext/Surroundings.swift`, Reader+System (`AXElementTree`), PredictStore, CandidateGeneration, MLXCandidateScorer.prompt, Coordinator.situation | `SurroundingsTests` (fake tree: order, skips, caps, budget, allowance), `RecentLinesTests`, `PromptTests` |
-| G2 Register — **done** | `Register.infer` reads five facts off the moment (single/multi-line, typical length of this person's lines here or of the screen's turns, conversation on screen, symbol share — shell lines sit near 0.14, prose under 0.06, so the line is 0.10 — and sentence case), turns them into hints the prompt carries and a token budget `clamp(typical/2, 24, 96)`; `PromptBuilder` capped the message near 2 400 characters at G2, since halved to 1 400 (the last row of the table below), trimming the screen first, then the oldest own lines, the line never. | `Sources/UttrflowPredict/Register.swift`, `Sources/UttrflowLocalModel/PromptBuilder.swift`, MLXCandidateScorer | `RegisterTests`, `PromptTests` |
-| G3 Warm — **done** | Two changes, each measured. **One line first**: the pass asks for the single most likely completion and ends at its newline; the alternatives are fetched in a second pass once that line is on screen, which a keystroke cancels, so ⌥↓ still opens a list. **Warm instructions**: at load the instruction prefix — the exact token run two different prompts share, template included — is prefilled into a KV-cache; each pass checks the real prompt opens with it and feeds only the remainder against a copy. | MLXCandidateScorer, SuggestionSession.expandGenerated, Coordinator.generate | fixtures before/after, table below |
-| G5 Prefill — **done** | The 1 090-case catalogue's raw readout showed the model's empty answers were structural: it echoed the line and stopped, or continued without echoing, or ignored the prefix. For the one-line pass the line up to its last word is appended after the chat template as the opening of the model's own turn (`Ask.opening(of:)`), and the last word is *owed*: a `TokenHealing` logit processor allows only tokens consistent with it until it is produced, then forbids an immediate newline or end-of-turn so a finished word is continued, then frees the model. The parser reads `written + answer` as the whole line with every earlier guarantee intact, and the echo budget shrinks to the owed word. Measured on the way: prefilling the whole line left 93 lines stopping empty at once (a word cut mid-token cannot be continued, a finished one invites a newline); leaving the last word unconstrained had the model write the likeliest word instead of the typed one (`git l` → `git commit`). The alternatives pass, and a last word outside ASCII (spelt in byte tokens), keep the repeat-and-continue path. The instruction at the line names the register's `kind` (web address, command, reply, line), and an address bar is recognised from the field's own accessibility name when the person has no lines there yet. | PromptBuilder.Ask, MLXCandidateScorer.run, Register.kind, Register.namesAddressField | PromptTests, RegisterTests, PromptPropertyTests; scorecard in predict-reliability.md |
-| G6 Mid-word — **done** | A line cut inside a word left the boundary decision unweighted: once the owed fragment was written out exactly, `Vocabulary.allowed` let the next token be anything visible, so the model could declare the fragment finished and start a different word — `tooth` drew `tooth paste`, `func subtr` drew `func subtr act(a: Int`. `TokenHealing` now knows whether the person stopped inside a word (`isMidWord`: the fragment ends in a letter or digit and no space follows), and at that one step prices every token that starts something new by `newWordPenalty`, 3 logits, instead of nothing. It is a price and not a ban, so a fragment that really is a whole word still breaks where the model is sure of it. Measured over the 1 154 fixtures on Gemma 3 4B QAT 4-bit: breaks directly after a fragment ending in a letter or digit 62 → 48, of which spaces 47 → 37; hits 573 → 575 over the 611 fixtures the step can reach, with no fixture losing a hit. Two fixtures become right (`tooth` → `toothpaste`, `but` → `buttermilk`) and four stop splitting but misspell instead (`oni` → `oniions`), which is the limit of the lever: under real ambiguity (`npm i`, `Looking for`, `see you a`) the fragment is also a whole word and no local rule can choose for the model. Penalising only spaces was measured first and is worse — the model escapes onto other punctuation (`pan.`, `di-jon`), 56 breaks against 48 — so the rule is "anything but a letter or digit", which also closes the non-breaking space the space-only rule leaked through. | TokenHealing.Vocabulary.startsNewWord, TokenHealing.isMidWord, TokenHealing.mask | TokenHealingTests |
-| G4 Prove — **done** | 29 fixtures across terminal, SQL, address bar, four kinds of chat, mail, notes, code and search, each with surroundings, the person's lines, preceding text, the typed prefix, acceptable continuations, a length band and text that must not be echoed; `bakeoff complete --fixtures [--only chat/]` prints per-fixture hit, register conformance and latency, then per-category rates and p50/p95. The live matrix is the user's own testing, read off `CONTEXT`/`GENERATE`/`ACCEPT` in the log. | `Sources/uttrflow-bakeoff/Fixtures.swift`, `Sources/uttrflow-bakeoff/Complete.swift` | the table below |
+`writesAddresses` and `isSearchField` together decide `answersFromHistoryAlone`: such a field's
+line comes only from what this person entered there before, never from generation. The register
+turns into short hints the prompt carries (`Register.hints`), a `kind` named at the line (web
+address, command, reply, line), a token budget, and a length limit
+([predict-precision.md](predict-precision.md)).
 
-## What G2–G4 measured (Gemma 3 4B QAT 4-bit, 29 fixtures, Apple silicon)
+Emotion and tone are the model's job, not a classifier's: given the last messages and this person's
+earlier replies, the model infers register.
 
-| Build | Hit | In register | p50 | p95 | What changed |
-|---|---|---|---|---|---|
-| G2 baseline, Debug bakeoff | 27/29 | 28/29 | 944 ms | 1 340 ms | register hints, budgeted prompt, four lines per pass |
-| + one line first | 27/29 | 28/29 | 895 ms | 1 054 ms | pass ends at the first newline |
-| + warm instructions | 27/29 | 28/29 | 835 ms | 965 ms | instruction prefix read once; every first line identical |
-| same code, **Release** bakeoff | 27/29 | 28/29 | 677 ms | 819 ms | the app is a Release build (`bundle.sh`), so this is what the person sees |
-| + prompt budget 2 400 → 1 400 chars, Release | 27/29 | 28/29 | **666 ms** | **787 ms** | every first line identical; the fixtures' contexts rarely reached the old cap, a live chat thread does |
+### 4. Assemble the prompt under a budget
 
-The two misses are stable across every build: `sql/update` (`UPDATE users SET ` → nothing usable) and
-`url/git` (`git` in an address bar → `git commit -m`, a plausible reading of an ambiguous prefix). Every
-chat, mail, note and terminal fixture hits, and no fixture echoes its context.
+`PromptBuilder` lays out, in order: where the caret is and the hints → what is on screen around the
+field → the lines this person wrote here before → `preceding` → the line to finish. The context
+around the line has a hard budget of `PromptBuilder.contextBudgetInTokens` (160) tokens, headings
+included; the fixed parts and the line itself sit outside it and are never cut.
 
-**What the numbers say about where the time goes.** Cutting generation to one line saved ~50 ms at p50 and
-~290 ms at p95; caching the ~220-token instruction prefix saved ~60 ms; the Release build saved ~160 ms;
-halving the prompt budget saved ~10 ms at p50 and ~30 ms at p95 on fixtures whose context was small to
-begin with. What is left is a floor near 500 ms that even a near-empty prompt pays (`search/inv`, 507 ms):
-a short prefill and eight to twelve decode steps of a 4B model at a few dozen tokens a second. Neither
-context nor instructions move that floor. The lever that does is **speculative decoding** — the 1B Gemma
-drafting tokens the 4B verifies in one pass, which `ChatSession`/`generate` already support through
-`SpeculativeDecodingConfig` — and after it a smaller verifier. Targets (command ≤ 400 ms, reply ≤ 600 ms)
-are not yet met; the p95 of 787 ms is within the "1–2 s is acceptable for now" the operator set for this
-stage.
-
-## Page context under a token budget
-
-A browser field hands the model a page: navigation, an article, comments, a "Reply" under each
-one. Read by `Surroundings.collect` that is up to 1 200 characters, and under the old
-1 400-character message cap it filled almost all of it, so every pass prefilled 250–360 tokens
-of page and the model answered at the length of what it had read. The context around the line
-now has a budget in tokens rather than characters (`PromptBuilder.contextBudgetInTokens`), with
-the screen held to a share of it.
+- The field's own text before the line is paid for first, from its end, with up to half.
+- The person's recent lines take up to half of what is left, newest first.
+- The screen takes what remains but never more than `screenBudgetInTokens` (96), as whole lines
+  nearest the field, each line said once so a "Reply" under every comment costs one.
+- A text or single screen line that exceeds its allowance keeps only complete whitespace-delimited
+  words; a word too large to fit is omitted, and whitespace without a word is dropped.
+- Once the field's own text fills `ownTextSufficesInTokens` (64), the screen is left out.
+- The window title and the leading suggestion the alternatives pass excludes are quoted. Screen
+  text, recent lines, preceding text and typed text each use a backtick fence longer than any
+  backtick run inside, so a block cannot close its own boundary.
+- Where the screen, the title or the text before the line holds another script, the prompt adds
+  `PromptBuilder.scriptInstruction` ([predict.md](predict.md)).
 
 **The estimate.** No tokeniser runs while the prompt is laid out: `PromptBuilder.estimatedTokens`
 counts a run of Latin letters as one token per four, other letters and combining marks as one per
-two, and each digit, symbol, newline and space before a digit as one. Over 188 samples of page
-text, titles, commands, queries, addresses, Hindi, French and emoji it came to 3 684 estimated
-tokens for 2 647 real Gemma 3 tokens. Single short lines can be under-counted ("Snoozed" is 4
-real tokens against 2), which a whole section averages out; the budget holds against the
-estimate, not against the real count.
+two, and each digit, symbol, newline and space before a digit as one. Over 188 samples of page text,
+titles, commands, queries, addresses, Hindi, French and emoji it came to 3,684 estimated tokens for
+2,647 real Gemma 3 tokens. Single short lines can be under-counted ("Snoozed" is 4 real tokens
+against 2), which a whole section averages out; the budget holds against the estimate.
 
-**Measured** with an on-disk Gemma 3 4B QAT 4-bit, Release, seven browser-like moments (a blog
-comment box, an issue comment, a web mail reply, a docs search, a Hindi news page, a comment with
-a paragraph already typed, a bare field), 20 passes each, two alternating runs on a heavily
-loaded machine, so compare the columns rather than the absolute numbers:
+**The token budget for a pass** (`Register.maxTokens`) is `clamp(typicalLength / 2, 24, 96)` when
+the register knows a typical length, else 32 for code-like text, `replyTokens` (48) for a
+conversation and 64 otherwise. The one-line pass gets that; the alternatives pass three times that;
+each is capped at 128 (`MLXCandidateScorer.maximumTokens`), plus the tokens of the echo it must
+repeat (`CompletionText.tokenBudget`). Temperature is 0.
+
+### 5. Write the line into the model's own turn
+
+For the one-line pass, the line up to its last word is appended after the chat template as the
+opening of the model's own turn (`Ask.opening(of:)` in `PromptBuilder.swift`), and the last word is *owed*: a
+`TokenHealing` logit processor allows only tokens consistent with it until it is written, then
+forbids an immediate newline or end-of-turn so a finished word is continued, then frees the model.
+The parser reads `written + answer` as the whole line. The alternatives pass, and a last word
+outside ASCII where the vocabulary spells it in byte pieces, repeat the line and continue it
+instead. A last word that ends in terminal punctuation may end the line, so a complete line
+(`Thanks, see you tomorrow.`) answers nothing.
+
+Measured on 223 misses of the catalogue with `uttrflow-bakeoff complete --fixtures --raw`: asking
+the model to repeat the line then continue it left 162 empty answers; prefilling the whole line
+gave 59 hits (93 stopped empty at once, since a word cut mid-token cannot be continued and a
+finished one invites a newline); leaving the last word unconstrained gave 43 (the model wrote the
+likeliest word, `git l` → `git commit`); healing the last word gave 100.
+
+**A word cut mid-word is lengthened unless the model is sure of a break.** `TokenHealing` knows
+whether the person stopped inside a word (`isMidWord`: the fragment ends in a letter or digit and
+no space follows), and at the step after the owed fragment it prices every token that starts
+something new (`Vocabulary.startsNewWord`) by `TokenHealing.newWordPenalty`, 3 logits. It is a
+price and not a ban, so a fragment that is a whole word still breaks where the model is sure.
+Measured over 1,154 fixtures on Gemma 3 4B QAT 4-bit: breaks directly after a fragment ending in a
+letter or digit 62 → 48, spaces among them 47 → 37; hits 573 → 575 over the 611 fixtures the step
+can reach, none losing a hit (`tooth` → `toothpaste`, `but` → `buttermilk`; four stop splitting but
+misspell instead, `oni` → `oniions`). Under real ambiguity (`npm i`, `see you a`) the fragment is
+also a whole word and no local rule can choose. Penalising only spaces is worse: the model escapes
+onto other punctuation (`pan.`, `di-jon`), 56 breaks against 48, and a non-breaking space leaks
+through.
+
+### 6. Keep the fixed part and the last prompt warm
+
+At load, the instruction prefix — the exact token run two different prompts share, chat template
+included — is prefilled into a `[KVCache]`; a pass whose prompt opens with those tokens feeds only
+the remainder against a copy (about 60 ms saved per pass). The last pass's whole prompt is kept in a
+cache too: consecutive keystrokes on one line share all but the last few tokens, so the next pass
+trims that cache back to the longest run the two share and reads only the rest. That saves 20–25 ms
+per pass over one typed reply and holds 91 MB between passes ([performance.md](performance.md),
+"what a suggestion pass prefills").
+
+## Latency
+
+`uttrflow-bakeoff complete --fixtures` over the 29 hand-written fixtures (`Fixtures.swift`), Gemma 3
+4B QAT 4-bit, Apple silicon. The app is a Release build (`Scripts/bundle.sh`), so the Release rows
+are what a person sees.
+
+| Configuration | Hit | In register | p50 | p95 |
+|---|---|---|---|---|
+| Four lines per pass, Debug | 27/29 | 28/29 | 944 ms | 1 340 ms |
+| One line first, Debug | 27/29 | 28/29 | 895 ms | 1 054 ms |
+| + warm instructions, Debug | 27/29 | 28/29 | 835 ms | 965 ms |
+| Same, Release | 27/29 | 28/29 | 677 ms | 819 ms |
+| + prompt cap 1,400 characters, Release | 27/29 | 28/29 | **666 ms** | **787 ms** |
+
+The two misses are stable: `sql/update` (`UPDATE users SET ` → nothing usable) and `url/git` (`git`
+in an address bar → `git commit -m`). One line first saves about 50 ms at p50 and 290 ms at p95;
+warm instructions about 60 ms; a Release build about 160 ms. What is left is a floor near 500 ms
+that even a near-empty prompt pays (`search/inv`, 507 ms): a short prefill and eight to twelve
+decode steps of a 4B model at a few dozen tokens a second. Neither context nor instructions move
+that floor; only a faster decoder does.
+
+### Page context under a token budget
+
+A browser field hands the model a page: navigation, an article, comments, a "Reply" under each.
+Under a 1,400-character message cap that filled almost all of the 1,200 surrounding characters, so
+every pass prefilled 250–360 tokens of page and the model answered at the length of what it had
+read. Measured with an on-disk Gemma 3 4B QAT 4-bit, Release, seven browser-like moments, 20 passes
+each, two alternating runs on a heavily loaded machine (compare columns, not absolute numbers),
+before and after the 160-token budget:
 
 | Moment | Message tokens before | after | Prefill p50 before | after | Pass p50 before | after |
 |---|--:|--:|--:|--:|--:|--:|
@@ -246,24 +223,49 @@ loaded machine, so compare the columns rather than the absolute numbers:
 | bare field | 41 | 41 | 49–72 ms | 52–56 ms | 672–756 ms | 637–730 ms |
 | all seven, p50 | | | 143–168 ms | 82–96 ms | 2 038–2 316 ms | 902–1 160 ms |
 
-Prefill fell by about 40%, but most of the pass time saved is decode: with a page of text in
-front of it the model wrote a whole comment, and with the nearest lines it writes a line. On a
-fanless machine, where both prefill and decode run several times slower, both savings grow in
-proportion.
+Prefill falls by about 40%, but most of the time saved is decode: with a page in front of it the
+model writes a whole comment, and with the nearest lines it writes a line. On a fanless machine both
+savings grow in proportion.
 
-**Quality** over `uttrflow-bakeoff complete --fixtures`: 542 of the 1 154 fixtures get a
-different message under the new layout (terminal scrollback, SQL and notes text before the line,
-chat threads and recent lines), and those were rerun; the rest are unchanged at temperature 0.
-Hits went from 968 to 965 of 1 154 and fixtures in register from 990 to 989. The three lost are
-one terminal line (`mkdir -p tests` became `mkdir -d tests`) and two notes cuts whose old answer
-was the same generic sentence; notes lost four in register (77 → 73 of the 80 changed), where a
-document's own text before the line is now held to 64 tokens. Chat, mail, SQL and robust hits
-are unchanged.
+Quality over `uttrflow-bakeoff complete --fixtures`: 542 of 1,154 fixtures get a different message
+under the budget; hits go from 968 to 965 and fixtures in register from 990 to 989. The three lost
+are one terminal line (`mkdir -p tests` → `mkdir -d tests`) and two notes cuts whose answer was the
+same generic sentence; notes lose four in register (77 → 73 of 80 changed), where a document's own
+text before the line is held to 64 tokens.
 
-## Not doing, and why
+## Accuracy: how it is checked
 
-- No per-application prompts, kinds or tables: the hints are computed, the model decides.
+- **Fixture set.** `Sources/uttrflow-bakeoff/Fixtures.swift` and `Catalogue*.swift`, on the types in
+  `Sources/UttrflowEval/CompletionCase.swift` and `Sources/UttrflowEval/LineCut.swift`. `Fixture.all`
+  is 29 hand-written fixtures followed by a generated catalogue: a `Scenario` names one place lines
+  are typed — its `GenerationSituation`, a length band, text that must never be echoed, sibling
+  lines — and lists the full lines typed there; each `Line` is cut at the scenario's `LineCut`s
+  (`.afterWord(n)`, `.intoWord(n, by:)`, `.midWord(n)`, `.characters(n)`, `.whole`), and a
+  `Determinacy` says how much of the rest the cut determines (the rest of a segment up to a set of
+  separators, the whole line, anything in register, or nothing for a finished line). A cut that
+  leaves fewer than two typed characters, or nothing to write, is not a case. Cases are named
+  `category/scenario/line/cutN` and span terminal, SQL, URL, six kinds of chat, mail, notes, code and
+  a `robust/` set. `uttrflow-bakeoff complete --fixtures [--only chat/] [--limit n] [--json f]`
+  scores hit rate, register conformance and latency
+  ([predict-reliability.md](predict-reliability.md)).
+- **Live.** The log's `CONTEXT`, `GENERATE` and `ACCEPT` lines per application; `CONTEXT` records
+  lengths only.
+- **Guard rails.** Prompt-echo, loop and paragraph filters; at least
+  `MLXCandidateScorer.minimumTypedLength` (2) typed characters; secure fields never read; nothing
+  generated is stored unless accepted.
+
+## Privacy
+
+Surroundings are read into memory for one pass and never written anywhere — not to the corpus, not
+to the log, which names lengths and the application, not the text ([logging.md](logging.md)).
+Recent lines come only from applications the user allows learning from, and **Forget what it
+learned here** in Settings removes them. Everything runs on the Mac; `make verify`'s offline audit
+holds.
+
+## Not done, and why
+
+- No per-application prompts, kinds or tables: the hints are computed and the model decides.
 - No sentiment classifier: the transcript plus the person's own replies carry the tone.
-- No scoring of generated lines with the verifier: 3 × 100 ms would eat the latency win;
-  the fixture set is where quality is checked instead.
+- No second scoring pass over generated lines: about 100 ms a line would eat the latency; the pass's
+  own score is used instead ([predict-precision.md](predict-precision.md)).
 - No reading beyond the focused window: other windows are someone else's context.

@@ -1,9 +1,13 @@
 # How `uttrflow-eval transcribe` measures a recogniser
 
-`uttrflow-eval` (`Sources/uttrflow-eval`) runs the recorded corpus through a speech engine and
-reports word error rate, latency and failures. This page holds the measurement decisions the
-code relies on, so the one-line comments in the source can stay short. The targets these
-measurements are judged against are in [accuracy-targets.md](accuracy-targets.md).
+`uttrflow-eval` (`Sources/uttrflow-eval/`) runs the recorded corpus through a speech engine and
+reports word error rate, latency and failures; the decisions it relies on live in `UttrflowEval`
+(`Sources/UttrflowEval/`): `TranscriptionCorpus`, `TextNormaliser`, `TranscriptionScorer`,
+`AccuracyBaseline` and `RegressionTolerance`. This page holds those measurement decisions, so the
+one-line comments in the source can stay short. The targets these measurements are judged
+against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
+[`measuring-accuracy.md`](measuring-accuracy.md); the edit distance is in
+[`core-word-error-rate.md`](core-word-error-rate.md).
 
 ## The baseline gate
 
@@ -20,8 +24,7 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
   compared with anything.
 - Matching a shared case ID is not enough: `recordingIdentity` (a WAV digest locally, a
   catalogue sample's own key from the backend) has to match too, or the gate reports it as
-  unverifiable instead of comparing rates that may belong to two different takes. See
-  `Docs/measuring-accuracy.md`.
+  unverifiable instead of comparing rates that may belong to two different takes.
 
 ## What is scored and what is only timed
 
@@ -52,7 +55,7 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
 ## Local recordings and the catalogue
 
 - The local corpus is the passages somebody read on this Mac; the catalogue is the backend's
-  bucket (around a thousand samples). Both are a `(passages, audio directory)` pair to the
+  bucket. Both are a `(passages, audio directory)` pair to the
   runner, which is what lets them be compared at all.
 - `transcribe --from-catalogue` refuses to download missing audio. A measurement run that also
   fetches gigabytes reports a latency that includes somebody's broadband, and an interrupted
@@ -62,16 +65,16 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
 
 ## Recording a corpus (`record`)
 
-- The recordings are the only half a machine cannot do: roughly twenty minutes of somebody's
-  afternoon, after which every transcription measurement runs unattended off the same audio.
+- The recordings are the only half a machine cannot do: about fifteen minutes of somebody's
+  reading, after which every transcription measurement runs unattended off the same audio.
 - Each take reaches disk before the corpus service is told anything. Upload is layered on top
-  of that, and `--sync` sends whatever has no receipt beside it. See `Docs/recordings.md` for
-  the same rule inside the app.
+  of that, and `--sync` sends whatever has no receipt beside it. [`recordings.md`](recordings.md)
+  has the same rule inside the app.
 - A cohort name is validated before a word is spoken, because a name the catalogue refuses is
-  otherwise discovered after forty passages.
-- A take is warned about immediately when it is silent (no microphone access produces silence)
-  or too short: fewer than two and a half words a second means the recording stopped before the
-  passage ended.
+  otherwise discovered after the whole sitting.
+- A take is warned about immediately when it is silent (peak under 0.001, which is what no
+  microphone access produces), very quiet (under 0.05), clipping (over 0.99), or too short: under
+  60% of the passage's length at two and a half words a second means it stopped early.
 
 ## The corpus connection
 
@@ -108,7 +111,13 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
 
 - Two runs of the same model over the same audio can differ by a word. A gate that called that a
   regression would be switched off within a week, which is the real failure mode of an accuracy
-  gate. `RegressionTolerance` says how much movement counts.
+  gate. `RegressionTolerance` says how much movement counts:
+
+  | field | default | meaning |
+  |---|---|---|
+  | `percentagePoints` | 0.5 | how far a slice's rate may rise before it is a regression (`--tolerance`) |
+  | `minimumReferenceWords` | 200 | the fewest reference words a slice needs to be judged |
+
 - A slice under `minimumReferenceWords` is still printed, as "too small to judge", never as a
   verdict: a cohort of two short samples swings by ten points on one misheard name.
 - Slices are never pooled. An engine that gets better at English and worse at Hinglish has not
@@ -120,6 +129,24 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
   different normalisation rule set. Both mean the numbers are not about the same thing.
 - Baseline entries store error and reference-word counts, never a rate. A stored rate cannot be
   re-aggregated, and storing both is how the two come to disagree.
+
+### Run-to-run and machine-to-machine spread
+
+- The 0.5-point default is not yet measured. A recogniser running through CoreML can give
+  different words on different chip generations and OS builds, and hosted CI runners have no
+  Neural Engine, so a baseline from one machine and a gate run on another can disagree for
+  reasons that are not the code.
+- `RunToRunSpread` (`Sources/UttrflowEval/RunToRunSpread.swift`) turns repeated runs of one
+  configuration over the same audio into the numbers the tolerance must sit above: per passage,
+  the identical-text rate (transcripts compared character for character) and the rate spread; over
+  the corpus, the share of passages every run agreed on and the headline spread between runs.
+- The tolerance is set at or above the measured spread, and the baseline records chip and OS
+  build. Until a second machine reproduces the table, the gate runs only on the machine that
+  recorded the baseline.
+
+  | chip | OS build | runs | identical passages | headline spread (points) | differing passages |
+  |---|---|---|---|---|---|
+  | not yet measured | | 8 | | | |
 
 ## The upload outbox
 
@@ -137,9 +164,9 @@ measurements are judged against are in [accuracy-targets.md](accuracy-targets.md
 - A receipt that cannot be written is not worth failing an upload over: the backend upserts by
   slug, so the worst case is one repeated transfer.
 - Hinglish has no BCP-47 tag, so it files under `hi-IN` and the outbox adds the `code-switching`
-  stress, which is what the catalogue reads it back as Hinglish by. Rows uploaded before the outbox
-  added it read back as Hindi: delete those recordings' receipts under `uploads/` and flush again,
-  and the backend's upsert by slug rewrites their stresses.
+  stress, which is what the catalogue reads it back as Hinglish by. Deleting a recording's receipt
+  under `uploads/` and flushing again re-sends it, and the backend's upsert by slug rewrites its
+  stresses.
 - Catalogue rows are a faithful mirror of the database. Several tools read that database, and a
   client that renamed or dropped fields would be the reason two of them disagree.
 
@@ -158,6 +185,9 @@ What is deliberately not done matters as much as what is:
   and "teen" are also English words. "एक" and "दो" are left out even so: one is the everyday word
   for "a", the other for "give". Nothing above ninety-nine is mapped; the corpus keeps large
   numbers as digits the operator reads aloud.
+- `TextNormaliser` keeps its own number table (`NumberWords` in `TextNormaliser.swift`) rather
+  than reading `UttrflowCore`'s: it must not compose scales, and sharing the table would move every
+  stored baseline.
 - "3 point 11" joins to "3.11" only when both neighbours are entirely digits.
 - ICU transliteration is a last resort. It romanises akshara by akshara, so "करना" becomes
   "karana" where a person writes "karna", and every score computed through it is an upper bound.
@@ -176,6 +206,9 @@ What is deliberately not done matters as much as what is:
 - A recording carries the whole `TranscriptionCase`, not only its id, so a reworded passage never
   silently scores old audio against new words; `drifted(from:)` names the recordings whose text
   has changed, as a prompt to re-record rather than an error.
+- Digits are read aloud as the reader says them. `en-versions` says "production is on 443", read
+  as "four four three"; a recogniser that writes `4 4 3` scores three errors there, which is the
+  digits stressor working, not a defect in the normaliser.
 - Three files per passage share one id: `<id>.json` for the harness, `<id>.wav`, and `<id>.txt`
   for whoever opens the folder in six months. Audio is written before the record, so a crash
   between the two leaves a passage that reads as not yet recorded rather than a record pointing
@@ -203,7 +236,52 @@ What is deliberately not done matters as much as what is:
   pages back), but a figure that climbs at every repetition and never comes down ends with a
   swapping Mac after an afternoon's work. Readings are taken after the same point in each cycle,
   never including the first dictation of the process, which pays for buffers the rest reuse.
-- The allowance is 32 MB over the default ten dictations: a little over 3 MB each, which for a
+- The allowance is 32 MiB (`LeakCheck.defaultAllowanceBytes`) over the default ten dictations: a little over 3 MB each, which for a
   hundred dictations in a working day is roughly a third of a gigabyte. Anything looser would
   call that noise. Growth that wobbles is "suspect" and needs a longer run; two readings are
-  "undetermined", which is not a pass.
+  "undetermined", which is not a pass. Readings are in [`performance-leaks.md`](performance-leaks.md).
+
+## How far the corpus is from spontaneous speech
+
+- `uttrflow-bakeoff speech-shape` prints, per 100 words, the words the standard passes remove by
+  grant (sound, repetition, retraction), marks by kind, mean words per sentence and the share of
+  lines with a repetition or retraction. With no option it reads the English cases' `spoken`;
+  `--reference <file>` reads a local file of one utterance per line. The passes are the
+  instrument on both sides, so a gap is a difference in the text, not in two definitions.
+- The margin, fixed before any reference is measured: a figure differs when the two columns are
+  more than 25% of the reference value apart, or more than 0.5 per 100 words where the reference
+  is under 2. A class outside the margin gets cases added to the matrix, or a filed gap with case
+  counts.
+- A reference is a public spontaneous-speech transcript set whose licence permits use of its
+  transcripts. Only the printed numbers and the set's name, version and licence are committed,
+  never its text. Until one is measured the reference column is empty.
+
+| Figure | Corpus (English `spoken`) | Reference |
+|---|---|---|
+| Words removed as sounds /100w | 0.90 | not measured |
+| Words removed as repetitions /100w | 0.83 | not measured |
+| Words removed as retractions /100w | 1.99 | not measured |
+| `.` /100w | 2.13 | not measured |
+| `,` /100w | 0.63 | not measured |
+| `?` /100w | 0.07 | not measured |
+| `!` /100w | 0.07 | not measured |
+| Other marks /100w | 1.46 | not measured |
+| Words per sentence | 6.81 | not measured |
+| Lines with a restart | 7.07% | not measured |
+
+The corpus column is 410 English cases, 3,011 words.
+
+## The contamination audit
+
+- `ContaminationAudit` is the one check that no tuned-on text carries a corpus passage. It reads
+  every clean-up case's spoken and expected text and every transcription passage in each form it
+  is written in, and reports the case id, the asset and the shared words.
+- An asset fails on a run of 8 or more consecutive words shared with a passage
+  (`ContaminationAudit.sharedRunWords`), or on a phrase of 4 or more words that sits whole inside
+  one (`ContaminationAudit.wholePhraseWords`). Function words are exempt by these lengths, not by
+  a word list: any two English texts share runs of two or three of them.
+- The prompt check passes 3 as the shortest phrase, because rules quote slips that short.
+- Measured on Apple M5 Pro: 0 findings across the prompt contract, rules and worked examples, and
+  across every `.txt` and `.json` file under `Sources/*/Resources`, so 0 false positives today
+  (`swift test --filter ContaminationAuditTests`).
+- Bundled assets are found by walking `Sources/*/Resources` until the data manifest lists them.

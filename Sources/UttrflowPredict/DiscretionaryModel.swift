@@ -1,6 +1,6 @@
 // The suggestion model's scores, loads and releases run as work nobody is waiting for yet.
 
-/// Wraps the suggestion model so every score, load and release runs at utility priority, and no score runs while `mayRun` says no. See `Docs/performance.md`.
+/// Wraps the suggestion model so every score, load and release runs at utility priority, and no score runs while `mayRun` says no. See `Docs/performance-suggestions.md`.
 public struct DiscretionaryModel<Model: ReleasableModel>: CandidateScoring {
     private let model: Model
     private let mayRun: @Sendable () -> Bool

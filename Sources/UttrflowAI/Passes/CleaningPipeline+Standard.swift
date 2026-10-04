@@ -19,7 +19,8 @@ extension CleaningPipeline {
 
     /// Every pass the user has left on over a whole message, in the shipped order: the piece's, then the message's.
     public static func standard(
-        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default
+        for formatter: DestinationFormatter, situation: Situation, steps: CleaningSteps = .default,
+        vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
@@ -27,7 +28,7 @@ extension CleaningPipeline {
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
                 documentName: situation.app.documentName, steps: steps
             ).passes
-                + message(for: formatter, situation: situation, steps: steps).passes)
+                + message(for: formatter, situation: situation, steps: steps, vocabulary: vocabulary).passes)
     }
 
     /// The passes that are right on any piece of a message, which is why no casing or stop policy can reach them.
@@ -37,7 +38,7 @@ extension CleaningPipeline {
         precedingText: String? = nil, documentName: String? = nil,
         steps: CleaningSteps = .default
     ) -> CleaningPipeline {
-        var cleanings: [any CleaningPass] = [
+        var cleanings: [any PieceCleaningPass] = [
             FillersPass(), RepeatedPhrasePass(), StammersPass(), SelfCorrectionPass(),
             // Spoken punctuation must mark a stop before LayoutWordsPass checks for a break after it.
             SpokenPunctuationPass(destination: destination),
@@ -46,50 +47,56 @@ extension CleaningPipeline {
             ContractionsPass(), SpacingPass(),
         ]
         if destination == .codeEditor,
-            !CodeCommentContext.isComment(precedingText: precedingText, documentName: documentName),
+            CodeCommentContext.isCode(precedingText: precedingText, documentName: documentName),
             let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
         {
             cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
         }
-        return CleaningPipeline(passes: cleanings.filter { steps.runs($0.id) })
+        return CleaningPipeline(piece: cleanings.filter { steps.runs($0.id) })
     }
 
     /// The passes that finish a model's answer to a whole message: the caret's echo taken back, then the message's.
     public static func afterModel(
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
-        spoken: String? = nil, steps: CleaningSteps = .default
+        spoken: String? = nil, steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: afterModelPiece(situation: situation, heard: heard, spoken: spoken).passes
-                + message(for: formatter, situation: situation, heard: heard, steps: steps).passes)
+            passes: afterModelPiece(
+                digits: formatter.digits, situation: situation, heard: heard, spoken: spoken
+            ).passes
+                + message(
+                    for: formatter, situation: situation, heard: heard, steps: steps, vocabulary: vocabulary
+                ).passes)
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
     public static func afterModelPiece(
-        situation: Situation, heard: String? = nil, spoken: String? = nil
+        digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
-        CleaningPipeline(passes: [
+        CleaningPipeline(piece: [
             SpokenPunctuationPass(destination: situation.destination),
             CaretEchoPass(
                 state: situation.insertion.sentenceState, precedingText: situation.insertion.precedingText,
                 spokenText: heard),
             CaretCloserPass(precedingText: situation.insertion.precedingText, spokenText: spoken),
+            DigitGroupingPass(digits: digits, spokenText: spoken),
         ])
     }
 
     /// The passes asked once of a whole message, spelled letters to the final stop; `heard` is what `.asSpoken` copies.
     public static func message(
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
-        steps: CleaningSteps = .default
+        steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
         CleaningPipeline(
-            passes: initialisms(steps: steps) + [
+            wholeText: initialisms(steps: steps) + [
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
                     onScreen: situation.app.textOnScreen, heard: heard,
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
-                        && formatter.destination != .codeEditor),
+                        && formatter.destination != .codeEditor,
+                    vocabulary: vocabulary),
                 TerminalStopPass(
                     policy: terminalStop(formatter, in: situation), layout: formatter.layout,
                     insertionPoint: situation.insertion, destination: formatter.destination),
@@ -97,7 +104,7 @@ extension CleaningPipeline {
     }
 
     /// The one registration of the spelled-letter join, a whole-text pass filtered like every other step.
-    private static func initialisms(steps: CleaningSteps) -> [any CleaningPass] {
+    private static func initialisms(steps: CleaningSteps) -> [any WholeTextCleaningPass] {
         [SpelledInitialismPass()].filter { steps.runs($0.id) }
     }
 

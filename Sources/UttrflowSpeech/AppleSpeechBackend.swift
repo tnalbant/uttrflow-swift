@@ -120,12 +120,15 @@ public actor AppleSpeechBackend: TranscriptionBackend {
                     locale: locale, format: format, vocabulary: normalizedVocabulary)
             }
             defer { prepareNext(format: format, vocabulary: normalizedVocabulary) }
-            return try await run(samples, on: pair, format: format)
-        } catch let error as SpeechEngineError {
-            forget()
-            throw error
+            let analyzer = pair.analyzer
+            return try await withTaskCancellationHandler {
+                try await run(samples, on: pair, format: format)
+            } onCancel: {
+                Task { await analyzer.cancelAndFinishNow() }
+            }
         } catch {
-            forget()
+            if Self.invalidatesCache(error, cancelled: Task.isCancelled) { forget() }
+            if let error = error as? SpeechEngineError { throw error }
             throw .transcriptionFailed(description: error.localizedDescription)
         }
     }
@@ -155,6 +158,11 @@ public actor AppleSpeechBackend: TranscriptionBackend {
             languageProbability: nil,
             segments: transcript.segments
         )
+    }
+
+    /// Whether an error says the cached assets are bad; a cancelled dictation says nothing about them.
+    static func invalidatesCache(_ error: any Error, cancelled: Bool) -> Bool {
+        !(cancelled || error is CancellationError)
     }
 
     /// Drops cached assets and analyzer state after a transcription error.

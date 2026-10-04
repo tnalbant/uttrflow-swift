@@ -66,6 +66,11 @@ struct SpokenAddressTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
+    @Test("leaves a piece ending on www dot alone, with no host after it to read")
+    func wwwDotAtTheEnd() {
+        #expect(cleaned("the site is www dot", by: sut) == "the site is www dot")
+    }
+
     @Test(
         "leaves an ordinary at alone",
         arguments: [
@@ -116,6 +121,10 @@ struct SpokenAddressTests {
             ("visit example dot com slash docs", "visit example.com/docs"),
             ("the site is www dot example dot com", "the site is www.example.com"),
             ("go to https colon slash slash example dot com", "go to https://example.com"),
+            ("go to w w w dot example dot org", "go to www.example.org"),
+            ("visit w w w dot example dot com slash pricing", "visit www.example.com/pricing"),
+            ("the url is h t t p s colon slash slash example dot com", "the url is https://example.com"),
+            ("the url is http colon slash slash example dot com", "the url is http://example.com"),
             (
                 "the docs live at docs dot example dot com slash api slash v two",
                 "the docs live at docs.example.com/api/v2"
@@ -127,6 +136,13 @@ struct SpokenAddressTests {
             ("my handle is sam at discord", "my handle is sam@discord"),
             ("my handle is sam at example dot com", "my handle is sam@example.com"),
             ("the variable is user underscore id", "the variable is user_id"),
+            ("Visit example dot com slash pricing.", "Visit example.com/pricing."),
+            ("The site is example dot org slash docs slash intro.", "The site is example.org/docs/intro."),
+            (
+                "The url is https colon slash slash example dot com slash docs.",
+                "The url is https://example.com/docs."
+            ),
+            ("The path is slash users slash sam slash notes.", "The path is /users/sam/notes."),
         ]
     )
     func writesSpokenAddresses(input: String, expected: String) {
@@ -230,5 +246,55 @@ struct SpokenAddressTests {
         #expect(
             MeaningPreservationGuard().verdict(draft: draft, rewritten: "Cc billing@example.com.")
                 == .accepted)
+    }
+
+    @Test(
+        "writes hosts, ports, paths and queries said with explicit separators",
+        arguments: [
+            ("cd slash users slash sam", "cd /users/sam"),
+            ("the file is at slash etc slash hosts", "the file is at /etc/hosts"),
+            ("connect to localhost colon eight thousand", "connect to localhost:8000"),
+            ("connect to example dot com colon eight thousand", "connect to example.com:8000"),
+            ("open localhost colon three thousand slash admin", "open localhost:3000/admin"),
+            ("the server is at ten dot zero dot zero dot one", "the server is at 10.0.0.1"),
+            ("ssh to ten dot zero dot zero dot one colon twenty two", "ssh to 10.0.0.1:22"),
+            ("visit acme dash shop dot example dot com", "visit acme-shop.example.com"),
+            (
+                "open example dot com slash search question mark q equals cats",
+                "open example.com/search?q=cats"
+            ),
+            (
+                "open example dot com slash search question mark q equals cats and page equals two",
+                "open example.com/search?q=cats&page=two"
+            ),
+            ("http colon slash slash ten dot zero dot zero dot one slash docs", "http://10.0.0.1/docs"),
+        ]
+    )
+    func writesHostsAndPaths(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "leaves ordinary slashes, dots and colons as words",
+        arguments: [
+            "and slash or", "he made a slash with his sword", "use a dot here", "the dot com bubble",
+            "localhost is fine", "one dot two", "the ratio is two colon one", "a slash users slash sam",
+        ]
+    )
+    func leavesOrdinaryWords(input: String) {
+        #expect(cleaned(input, by: sut) == input)
+    }
+
+    /// A piece can end anywhere inside an address, so every reader stops at the piece's last word.
+    @Test(
+        "stops at a piece that ends mid address",
+        arguments: [
+            "go to www dot", "www dot", "connect to localhost colon", "the server is ten dot zero dot",
+            "open example dot com slash search question mark", "open example dot com colon",
+            "cd slash users slash", "q equals",
+        ]
+    )
+    func stopsAtPieceEnd(input: String) {
+        #expect(!cleaned(input, by: sut).isEmpty)
     }
 }

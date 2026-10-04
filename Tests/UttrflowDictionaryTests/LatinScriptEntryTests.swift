@@ -45,7 +45,9 @@ struct LatinScriptEntryTests {
     func importRespells() async throws {
         let sandbox = Sandbox()
         let store = PersonalDictionaryStore(file: sandbox.file)
-        try await store.replaceAll([word(devanagari, from: .added), word("Uttrflow", from: .added)])
+        try await store.replaceAll { _ in
+            ([word(devanagari, from: .added), word("Uttrflow", from: .added)], ())
+        }
         let words = await store.allEntries().map(\.word)
         #expect(words == [Romaniser.romanised(devanagari), "Uttrflow"])
     }

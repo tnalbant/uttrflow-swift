@@ -1457,17 +1457,18 @@ else
     read -r -d '' CORPUS_PROGRAM <<'PYTHON' || true
 import re
 
-SOURCE = "Sources/UttrflowEval/EvaluationCorpus.swift"
+SOURCES = ["Sources/UttrflowEval/EvaluationCorpus.swift", "Sources/UttrflowEval/RequestCorpus.swift"]
 DOC = "Docs/bakeoff.md"
 
 real = {}
-for match in re.finditer(r"category: \.([A-Za-z]+),", open(SOURCE, errors="ignore").read()):
-    real[match.group(1)] = real.get(match.group(1), 0) + 1
+for source in SOURCES:
+    for match in re.finditer(r"category: \.([A-Za-z]+),", open(source, errors="ignore").read()):
+        real[match.group(1)] = real.get(match.group(1), 0) + 1
 real_total = sum(real.values())
 
 text = open(DOC, errors="ignore").read()
 sentence = re.search(
-    r"The corpus is ([0-9,]+) cases in six categories\*\*.*?written by hand\.",
+    r"The corpus is ([0-9,]+) cases in [a-z]+ categories\*\*.*?written by hand\.",
     text, re.DOTALL,
 )
 if sentence is None:
@@ -1597,6 +1598,24 @@ else
             "The audit's self-test must catch provider and title drift before it checks" \
             "the committed artboards. Fix the audit before relying on it."
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7g. Every insertion scenario has an entry for every application class.
+# ---------------------------------------------------------------------------
+printf '\nInsertion test matrix\n'
+
+if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py" --self-test; then
+    if python3 "$PACKAGE_ROOT/Scripts/insertion_matrix_audit.py"; then
+        pass "every insertion scenario names its test and an entry per class"
+    else
+        fail "Docs/insertion-test-matrix.md has a scenario without an entry" \
+            "Each scenario needs an existing test and, per class, a harness, a manual" \
+            "procedure with its own section, or 'not applicable'."
+    fi
+else
+    fail "Scripts/insertion_matrix_audit.py --self-test failed" \
+        "The audit must catch an empty cell before it checks the matrix."
 fi
 
 # ---------------------------------------------------------------------------

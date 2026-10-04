@@ -1013,6 +1013,18 @@ EVAL_SYMBOLS="$(
     printf '  may. Remove the dependency; measurement belongs in uttrflow-eval.'
 )"
 
+# The insertion fixture is a test-only window whose fields misbehave on purpose; nothing of it ships.
+FIXTURE_LEAK="$(
+    { find "$APP" -name 'uttrflow-insertion-fixture*'
+      nm -a "$APP/Contents/MacOS/$EXECUTABLE" 2>/dev/null | { grep -F 'uttrflow_insertion_fixture' || true; }
+    } | head -5
+)"
+[[ -z "$FIXTURE_LEAK" ]] || fail "$(
+    printf 'the insertion fixture is in the bundle:\n'
+    printf '%s\n' "$FIXTURE_LEAK" | sed 's/^/    /'
+    printf '  It exists only for Scripts/e2e_insertion.sh. Remove the dependency on it.'
+)"
+
 STRAY_AUDIO="$(find "$APP" \( -name '*.wav' -o -name '*.aiff' -o -name '*.aif' \
     -o -name '*.m4a' -o -name '*.flac' -o -name '*.caf' \) | head -5)"
 [[ -z "$STRAY_AUDIO" ]] || fail "$(
@@ -1063,6 +1075,9 @@ UNAPPROVED_TEXT_RESOURCES="$(unapproved_text_resources "$APP")"
 )"
 
 # ---------------------------------------------------------------------------
+
+# 12. The bundle and the resolved packages fit the delivery budget in Scripts/size_budget.json.
+python3 Scripts/size_budget.py --app "$APP" || fail "$APP is over the size budget; Docs/performance.md#delivery-budget says how it was set"
 
 # Basenames only; the full paths are build-tree noise nobody reading this needs.
 RESOURCE_SUMMARY="no resource bundles"

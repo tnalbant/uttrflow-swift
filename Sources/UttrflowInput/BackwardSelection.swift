@@ -14,8 +14,12 @@ public enum BackwardSelection {
         in text: String, location: Int, length: Int, covering characters: Int
     ) -> Range<Int>? {
         guard let preceding = range(in: text, endingAt: location, covering: characters) else { return nil }
-        let selected = Swift.min(Swift.max(length, 0), text.utf16.count - location)
-        return preceding.lowerBound..<(location + selected)
+        let (remaining, subtractionOverflow) = text.utf16.count.subtractingReportingOverflow(location)
+        guard !subtractionOverflow, remaining >= 0 else { return nil }
+        let selected = Swift.min(Swift.max(length, 0), remaining)
+        let (end, additionOverflow) = location.addingReportingOverflow(selected)
+        guard !additionOverflow else { return nil }
+        return preceding.lowerBound..<end
     }
 
     /// Exactly `characters` before `caret`, or `nil` when there are fewer; the delete path needs the count.

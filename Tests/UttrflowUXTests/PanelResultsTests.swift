@@ -71,7 +71,7 @@ struct PanelFilteringTests {
         #expect(panel.categories.isEmpty)
     }
 
-    @Test("the collections are the ones clips are filed under, in the order first met")
+    @Test("the collections are the ones clips are filed under, in alphabetical order")
     func categoryNames() {
         let clips = [
             PanelFixture.clip("one", minutesAgo: 1, category: "Prod"),
@@ -81,7 +81,7 @@ struct PanelFilteringTests {
             PanelFixture.clip("five", minutesAgo: 5, category: "  "),
         ]
 
-        #expect(PanelFixture.panel(clips).categories == ["Prod", "Personal"])
+        #expect(PanelFixture.panel(clips).categories == ["Personal", "Prod"])
     }
 }
 
@@ -133,6 +133,29 @@ struct PanelSearchTests {
 
         #expect(PanelFixture.panel(clips, query: "cafe").results.rows.count == 1)
         #expect(PanelFixture.panel(clips, query: "bengaluru").results.rows.count == 1)
+    }
+
+    @Test("a 200 KB combining-mark clip searches within one second and only through its bounded prefix")
+    func longGraphemeSearchIsBounded() {
+        let text = "a" + String(repeating: "\u{0301}", count: 100_000) + "x"
+        #expect(text.utf8.count > 200_000)
+        let clip = PanelFixture.clip(text)
+        var snapshot = PanelFixture.panel([clip]).applying(.search("x")).state
+        let start = ContinuousClock.now
+        _ = PanelPresenter.present(snapshot)
+        snapshot = snapshot.applying(.search("xy")).state
+        let secondSearch = PanelPresenter.present(snapshot)
+        let elapsed = start.duration(to: .now)
+
+        #expect(secondSearch.rows.isEmpty)
+        #expect(elapsed < .seconds(1))
+    }
+
+    @Test("ordinary text beyond the safety prefix stays searchable")
+    func ordinaryLongTextIsNotCapped() {
+        let clip = PanelFixture.clip(String(repeating: "a", count: 1_100) + "needle")
+
+        #expect(PanelFixture.panel([clip], query: "needle").results.rows.map(\.clip) == [clip])
     }
 
     @Test("full-width and half-width text match their usual spelling")

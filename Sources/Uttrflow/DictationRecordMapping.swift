@@ -24,7 +24,8 @@ enum DictationRecordMapping {
                             snippetID: $0.snippetID, matched: $0.matched,
                             expansion: $0.expansion)
                     },
-                    spokenWords: outcome.changes.spokenWords))
+                    spokenWords: outcome.changes.spokenWords),
+                cleanedBy: outcome.cleanedBy)
         case .failed(let failure):
             guard let text = failure.wordsToKeep else { return nil }
             return DictationRecord(id: id, text: text, when: when)

@@ -161,7 +161,7 @@ public struct FileSystemSpeechModelStore: SpeechModelStore {
             FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return LocalStore.directory("Models", in: base)
+        return LocalStoreEntry.speechModels.location(in: base)
     }
 
     public func location(of model: SpeechModel) -> URL {

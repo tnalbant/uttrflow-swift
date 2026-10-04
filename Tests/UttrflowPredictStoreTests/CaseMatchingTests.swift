@@ -58,7 +58,6 @@ struct CaseMatchingTests {
               rejected INTEGER NOT NULL DEFAULT 0, self_sourced INTEGER NOT NULL DEFAULT 0,
               last_used REAL NOT NULL, superseded_by TEXT, UNIQUE (surface_id, text))
             """)
-        try old.execute("CREATE INDEX entry_prefix ON entry (surface_id, text)")
         try old.run("INSERT INTO schema_version (version) VALUES (1)") { _ in }
         try old.run("INSERT INTO surface (bundle_id, role) VALUES (?, ?)") {
             $0.bind(1, field.bundleIdentifier)
