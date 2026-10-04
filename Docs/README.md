@@ -132,6 +132,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [account-keychain.md](account-keychain.md) | The refresh token in the Keychain: what `KeychainTokenStore` promises |
 | [account-transport.md](account-transport.md) | The transport: why `URLSessionTransport` has no cache |
 | [crash-reporting.md](crash-reporting.md) | Crash and hang reporting |
+| [account-server-data.md](account-server-data.md) | Account data on the server: what is kept, for how long, and how it is deleted |
 | [account-telemetry.md](account-telemetry.md) | Telemetry: what leaves the Mac, and why a dictation never waits for it |
 | [core-history-decoding.md](core-history-decoding.md) | Decoding a stored history: one unreadable change costs one change |
 | [core-history-undo.md](core-history-undo.md) | Undoing a correction: how the words are found and when they are left alone |
