@@ -37,7 +37,8 @@ enum HistoryFixture {
         application: String? = "Slack",
         applicationIdentifier: String? = nil,
         changes: RecordedChanges? = RecordedChanges(),
-        isFlagged: Bool = false
+        isFlagged: Bool = false,
+        arrival: RecordedArrival? = nil
     ) -> HistoryEntry {
         HistoryEntry(
             id: UUID(),
@@ -48,7 +49,8 @@ enum HistoryFixture {
             applicationName: application,
             applicationIdentifier: applicationIdentifier,
             changes: changes,
-            isFlagged: isFlagged)
+            isFlagged: isFlagged,
+            arrival: arrival)
     }
 
     /// A snapshot over these entries at the fixed clock.
@@ -201,6 +203,18 @@ struct HistoryPresentationTests {
         let row = page.days.first?.rows.first
         #expect(row?.time.isEmpty == false)
         #expect(row?.time != row?.when)
+    }
+
+    @Test("a row whose words never reached a field says so; a delivered row stays quiet")
+    func rowsCarryTheArrival() {
+        let arrivals: [RecordedArrival?] = [.notInserted, .unconfirmed, .confirmed, .notReported, nil]
+        let labels = arrivals.map {
+            HistoryPresenter.row(
+                for: HistoryFixture.entry(arrival: $0), relativeTo: HistoryFixture.now,
+                locale: HistoryFixture.locale
+            ).arrival
+        }
+        #expect(labels == ["Not inserted", "Unconfirmed", nil, nil, nil])
     }
 }
 

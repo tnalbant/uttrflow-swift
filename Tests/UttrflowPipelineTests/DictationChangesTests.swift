@@ -234,7 +234,7 @@ struct NoTextChangesTests {
         #expect(expanded.snippets.isEmpty)
 
         // Neither throws, which is the whole of what a caller needs from them.
-        try await learner.recordUse(ofEntries: [UUID()])
+        try await learner.recordUse(ofEntries: [UUID()], writtenIn: "the words")
         try await learner.recordUse(ofSnippets: [UUID()])
     }
 }

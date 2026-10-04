@@ -230,6 +230,18 @@ differs from the heard words only in its capitals is not counted: "Claude" for "
 sentence does to its first word whatever the dictionary holds, so the capital is no evidence the
 model chose the entry. Such an entry is still counted when the correction engine applies it.
 
+A third way leaves no rewrite at all: the vocabulary prompt makes the recogniser spell the entry
+right, so nothing corrects it. `timesUsed` therefore means "appeared in a landed dictation", not
+"was rewritten into one". After the words land, the pipeline hands the counter the text it wrote,
+and `DictionaryAppearances.used` adds every entry whose spelling stands in that text as whole words,
+by the same boundary test the guard uses (`MeaningPreservationGuard.isWritten`), never a prefix or
+substring: "Orvanta" inside "Orvantasoft" is not counted. Each entry still counts once per
+dictation, whichever routes used it. Without this, a word the prompt helps most is counted least,
+leaves the working set once its unused lifetime passes, and comes back only after the recogniser
+misspells it again. Words sent to a secure field are not read for this. Undo is unchanged: an
+undone dictation is one appearance and one revert, so the ratio retires a word the user keeps
+undoing exactly as before.
+
 Undo does not charge a taken reading. A taken reading is not a `DictationCorrection` — it has no
 word range in what was heard, because the model rewrote the sentence around it — so History has
 nothing to put back, and `timesReverted` only moves for corrections. An entry used only through the

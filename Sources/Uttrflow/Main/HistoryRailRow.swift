@@ -133,7 +133,7 @@ struct HistoryRailRow: View {
         }
     }
 
-    /// The text on one line, then app · time · length · tag, and the flag when there is one.
+    /// The text on one line, then app · time · length · tag, the arrival and the flag when there are.
     private var words: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(row.text)
@@ -155,6 +155,11 @@ struct HistoryRailRow: View {
                     Label(tag, systemImage: "wand.and.stars")
                         .labelStyle(HistoryTagLabelStyle())
                         .foregroundStyle(PagePalette.suggestion)
+                }
+                if let arrival = row.arrival {
+                    Label(arrival, systemImage: "exclamationmark.circle")
+                        .labelStyle(HistoryTagLabelStyle())
+                        .foregroundStyle(PagePalette.clipboardInk)
                 }
                 if row.isFlagged {
                     Label("Flagged", systemImage: "flag")

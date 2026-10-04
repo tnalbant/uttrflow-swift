@@ -2896,7 +2896,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
-                    machine: MachineDescription.current)),
+                    machine: MachineDescription.current, arrivals: entries.map(\.arrival))),
             account: accountPage(at: now),
             shortcutKeycaps: SettingsShortcut.keycaps(for: settings.hotkey))
     }
@@ -3366,6 +3366,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     message = "A snippet is longer than the import limit. Nothing was imported."
                 case .dictionaryWordTooLong:
                     message = "A dictionary word is longer than the import limit. Nothing was imported."
+                case .tooManyDictionaryEntries:
+                    message = "The archive exceeds the dictionary word limit. Nothing was imported."
                 case .unsupportedVersion, .invalidContents:
                     message = "The selected archive is not valid. Nothing was imported."
                 }
@@ -3810,9 +3812,11 @@ private struct StoreCounters: DictationLearning {
     let dictionary: PersonalDictionaryStore
     let snippets: SnippetStore
 
-    func recordUse(ofEntries ids: [UUID]) async throws(DictationChangeError) {
+    func recordUse(ofEntries ids: [UUID], writtenIn text: String) async throws(DictationChangeError) {
+        let used = DictionaryAppearances.used(await dictionary.allEntries(), applied: ids, writtenIn: text)
+        guard !used.isEmpty else { return }
         do {
-            _ = try await dictionary.recordUse(of: ids)
+            _ = try await dictionary.recordUse(of: used)
         } catch {
             throw .storeRefused
         }

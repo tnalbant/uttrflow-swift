@@ -26,8 +26,8 @@ every ordinary keystroke look like ours.
 
 ## Typed text uses one mapped key per character
 
-`CGEventTypist.type(_:)` posts one key-down and key-up per Unicode scalar. Each event carries that
-scalar as its Unicode string and the current layout's physical key code for the same character,
+`CGEventTypist.type(_:)` posts one key-down and key-up per grapheme cluster. Each event carries that
+cluster as its Unicode string and the current layout's physical key code for the same character,
 with Shift, Option or both set when the layout needs them (`LayoutKeyCode.stroke(for:in:)`). A
 field that reads the Unicode string gets the character, and a field that reads physical keys gets
 a matching key and modifiers instead of key code 0.
@@ -36,10 +36,13 @@ For one `type(_:)` or `deleteBackwards(_:)` call, the typist constructs and tags
 before posting the first pair. Event-construction failure therefore posts none of that call's
 characters or Delete presses; an error from a later chunk cannot leave part of that chunk posted.
 
-A scalar with no single key on the selected layout — a character above U+FFFF, one reached only
-through a dead key (é on a US layout), or any Latin letter while a Devanagari, Cyrillic, Arabic,
-Hebrew or Greek layout is selected — is posted as its own key pair with key code 0, no modifiers
-and the scalar's UTF-16 units as the Unicode string (`LayoutKeyCode.keypresses(for:stroke:)`).
+A cluster with no single key on the selected layout — a character above U+FFFF, one reached only
+through a dead key (é on a US layout), a cluster of several scalars (a ZWJ emoji, a flag, a letter
+with combining marks, a Devanagari conjunct), or any Latin letter while a Devanagari, Cyrillic,
+Arabic, Hebrew or Greek layout is selected — is posted as its own key pair with key code 0, no
+modifiers and all of the cluster's UTF-16 units as the Unicode string
+(`LayoutKeyCode.keypresses(for:stroke:)`). A field that renders per event therefore never shows
+a cluster cut in two; the chunks of `TypedTextInsertionEngine` are counted in clusters too.
 One unmapped character therefore never refuses the rest of the text; it falls back to the plain
 Unicode-string event the typed route used before layout keys were added.
 

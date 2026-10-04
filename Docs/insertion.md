@@ -53,6 +53,16 @@ A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insert
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
+## Dictating over a selection
+
+A dictation started with text selected replaces that text, on every route: the Accessibility
+route writes over `kAXSelectedTextAttribute`, and the typed and paste routes send only the words,
+so the field's own typing or paste replaces the selection. No route collapses or moves the
+selection first. This is the platform convention, and the same replacement is what re-dictating
+over a selection relies on; the replaced text is taken back by the field's own undo, measured per
+application in [compatibility.md](compatibility.md). Collapsing to the end of the selection and
+appending is not built. `DictationOverSelectionTests` asserts the behaviour per route.
+
 ## What every insertion may contain
 
 `OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
@@ -352,6 +362,20 @@ the element itself, so asking from any other field empties it as well. It keeps
 Offsets go stale the moment the user types, so a record is never trusted on its own:
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
+
+How much of that text an edit command covers is one value, `CommandScope`: `word`, `clause`,
+`sentence`, `piece` or `dictation`, with `dictation` for a bare "delete that". `range(in:)`
+divides the newest insertion, finding sentences through `Abbreviations.endsSentence` (so "3.5"
+and "e.g." never split) and clauses through written clause marks and `ClauseSegmenter`.
+`span(in:)` turns that into the one record an `EditTarget` takes; a dictation is the newest
+insertion and each earlier one that ends where the next begins. An empty ledger or a blank insertion returns nil, and nil makes no edit.
+
+An edit returns an `EditUndo`: the span its own text now occupies, the text it took out, and up
+to `EditUndo.contextUnits` UTF-16 units either side. `EditHistory` keeps the last
+`EditHistory.depth` of them for `EditHistory.window`, in memory only. An undo is itself an edit
+of that span back to the removed text, so it refuses unless the span, both neighbours and the
+caret are as the edit left them, and a second undo re-applies the first edit. A refused undo,
+or asking from another field, forgets every entry. `EditUndo` never describes the removed text.
 
 ## The insertion fixture
 

@@ -50,6 +50,7 @@
         {"id": "case.kebab", "words": ["kebab", "case"], "action": "casing", "text": "kebab", "destinations": ["codeEditor"]},
         {"id": "case.upper", "words": ["all", "caps"], "action": "casing", "text": "upper", "destinations": ["codeEditor"]},
         {"id": "case.upper-span", "words": ["all", "caps", "on"], "action": "casing", "text": "upper", "reach": "span", "until": ["all", "caps", "off"], "destinations": ["document", "email", "messaging", "plain"]},
-        {"id": "case.upper-word", "words": ["all", "caps"], "action": "casing", "text": "upper", "reach": "word", "destinations": ["document", "email", "messaging", "plain"]}
+        {"id": "case.upper-word", "words": ["all", "caps"], "action": "casing", "text": "upper", "reach": "word", "destinations": ["document", "email", "messaging", "plain"]},
+        {"id": "edit.replace", "words": ["replace"], "action": "replace", "text": "", "reach": "span", "until": ["with"]}
     ]
 }
