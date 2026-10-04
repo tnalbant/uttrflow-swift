@@ -38,7 +38,8 @@ struct ScriptGuardTests {
 
     @Test("keeps an accented letter in an English draft")
     func keepsAnEnglishAccent() {
-        #expect(sut.scriptVerdict(draft: "Meet José at the café.", rewritten: "Meet José at the café.") == .accepted)
+        let said = "Meet José at the café."
+        #expect(sut.scriptVerdict(draft: said, rewritten: said) == .accepted)
     }
 
     @Test(
