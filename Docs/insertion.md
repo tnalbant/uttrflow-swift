@@ -30,6 +30,12 @@ plain text and drop the formatting. The typed strategy refuses the whole text wh
 has no single key on the current layout; see
 [input-synthetic-keystrokes.md](input-synthetic-keystrokes.md).
 
+Every strategy that sends words makes the same two checks immediately before it does:
+`TextInsertion.requireLive()` refuses once the waiting stage has given up, and
+`TextInsertion.requireTarget(_:focus:)` refuses with `insertionTargetChanged` when the captured
+destination is no longer the frontmost application. The typed strategy makes both, so a switch to
+an app with no readable field is refused rather than typed into.
+
 A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged` or `clipboardChanged`
 stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
