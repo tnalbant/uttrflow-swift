@@ -33,7 +33,8 @@ Every figure was taken on one machine:
 **Three headlines, in the order they matter.**
 
 **A dictation is nearly free, and it is free in the surprising direction.** A fifteen-second
-dictation costs **0.76 processor-seconds** and finishes in 2.4 s. It never holds even half a core,
+dictation costs **0.76 processor-seconds** and finished in 2.4 s in the historical profile
+(commit `8b07c12e9`, 2026-08-29; current latency is [below](#latency-budget-per-stage)). It never holds even half a core,
 because the work is on the Neural Engine and the app spends most of a dictation waiting. So the
 answer to "what Mac does this need" is not about cores or clock speed.
 
@@ -266,9 +267,16 @@ clean audio, played at speaking pace (`rt`), and is judged by the same `percenti
 | `asr:<field>` | one piece's recognition and its sub-stages, from the `asr` events `bench` writes |
 | `clean` | one tidy by the shipping tidier |
 
-**These numbers were measured on a loaded Mac and are to be re-measured on an idle one.** One run on
-an Apple M5 Pro (48 GB), Release, 2 repeats of the `dur5`, `dur30` and `dur120` clips, at a load
-average of 225 to 374 from other builds, so they are several times the quiet-Mac waits in
+This is the current latency of the app; every other latency figure in these pages is historical
+and is labelled with the commit that recorded it. A re-measurement replaces both tables below and
+names its commit, which the source audit requires.
+
+| measured at | hardware | build | load average | mode |
+|---|---|---|---|---|
+| commit `cfb11bf73` | Apple M5 Pro, 48 GB | Release | 225–374 | real time, early transcription, clean audio, shipping tidier, 2 repeats of `dur5`, `dur30`, `dur120` |
+
+**These numbers were measured on a loaded Mac and are to be re-measured on an idle one.** The load
+came from other builds, so they are several times the quiet-Mac waits recorded earlier in
 [`performance-dictation.md`](performance-dictation.md#the-wait).
 
 | stage | p95 s | budget s | samples |
@@ -325,7 +333,8 @@ it would mean the times and the counters disagree.
 
 ### A slower processor barely matters
 
-`taskpolicy -b` runs the profile at background priority, which confines it to the efficiency
+**Historical, recorded by commit `8b07c12e9` (2026-08-29).** `taskpolicy -b` runs the profile at
+background priority, which confines it to the efficiency
 cores. The implied clock falls from **4.10 GHz to 1.87 GHz**, and the instruction counts come back
 identical to three significant figures (3.5, 8.8, 35.1 G against 3.5, 8.8, 35.0 G), so the same
 work ran on a slower processor.

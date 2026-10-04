@@ -801,6 +801,9 @@ LATENCY_ROW = re.compile(r"^\|\s*`([\w:.-]+)`\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*
 # A stage's budget is its measured p95 times this; the one place the headroom is set.
 LATENCY_HEADROOM = 1.2
 
+# The current latency table names the commit it was measured at, so no older figure can pass for it.
+LATENCY_COMMIT = re.compile(r"^\|\s*commit `[0-9a-f]{7,40}`\s*\|", re.M)
+
 # The fewest samples a stage is judged on; fewer is a failure rather than a pass.
 LATENCY_MIN_SAMPLES = 3
 
@@ -818,22 +821,28 @@ def latency_budget(p95):
     return math.ceil(p95 * LATENCY_HEADROOM * 1000 - 1e-6) / 1000
 
 
-def latency_targets(doc):
-    """The `stage -> (measured p95, budget)` rows of the stage budget table in Docs/performance.md."""
+def latency_section(doc):
     start = doc.find("## Latency budget per stage")
     if start < 0:
-        return {}
+        return ""
     end = doc.find("\n## ", start + 1)
-    section = doc[start : end if end > 0 else len(doc)]
-    return {m[1]: (float(m[2]), float(m[3])) for m in LATENCY_ROW.finditer(section)}
+    return doc[start : end if end > 0 else len(doc)]
+
+
+def latency_targets(doc):
+    """The `stage -> (measured p95, budget)` rows of the stage budget table in Docs/performance.md."""
+    return {m[1]: (float(m[2]), float(m[3])) for m in LATENCY_ROW.finditer(latency_section(doc))}
 
 
 def check_latency_table(tree, findings, report):
     """Every budget is its measured p95 plus the headroom; whether a build meets them needs `--latency`."""
-    targets = latency_targets(tree.read("Docs/performance.md"))
+    doc = tree.read("Docs/performance.md")
+    targets = latency_targets(doc)
     if not targets:
         findings.failures.append("latency: Docs/performance.md has no rows under `## Latency budget per stage`")
         return
+    if not LATENCY_COMMIT.search(latency_section(doc)):
+        findings.failures.append("latency: the current latency table names no `| commit `<hash>` |` it was measured at")
     findings.failures.extend(unearned_budgets(targets))
     report.extend(f"  ✓ {stage}: p95 {p95:.3f} s, budget {budget:.3f} s" for stage, (p95, budget) in sorted(targets.items()))
 
@@ -1089,6 +1098,10 @@ INJECTIONS = (
         "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)",
         "let text = Self.typedText(characters: event.characters, modifiers: event.modifierFlags)\n"
         "            let copy = text.map { [$0] }", "suggestions", "key callback contains an allocation-heavy operation",
+    ),
+    (
+        "Docs/performance.md", "| commit `cfb11bf73` |", "| `cfb11bf73` |",
+        "latency", "names no `| commit",
     ),
     (
         "Sources/Uttrflow/Suggestion/SuggestionPanelController.swift",
