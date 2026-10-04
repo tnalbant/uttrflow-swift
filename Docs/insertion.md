@@ -52,6 +52,18 @@ A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insert
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
+## What every insertion may contain
+
+`OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
+pipeline, before any route writes it, so no destination relies on its own layout flag for this:
+
+1. No control character except tab and line feed; any other becomes a space.
+2. No trailing line break, which a shell or chat field would read as Return.
+3. No escape sequence; an ANSI sequence is removed whole.
+
+Whether a line break inside the text may reach a destination whose Return sends or runs it is
+decided per route by the line-break probe, and is not yet part of this check.
+
 ## The Accessibility write that changes nothing
 
 Some applications built on a bundled browser engine publish a focused text field, accept a write
