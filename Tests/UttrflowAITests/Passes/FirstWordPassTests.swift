@@ -467,4 +467,26 @@ struct FirstWordPassTests {
             Draft(text: "hello"))
         #expect(unchanged.words[0].state == .kept)
     }
+
+    /// A dictionary entry in lower case keeps that case at any sentence start, under every policy.
+    @Test(
+        "keeps a lower-case dictionary spelling at a sentence start",
+        arguments: [
+            (FirstWordPolicy.fromInsertionPoint, "kubectl apply the file", "kubectl apply the file"),
+            (.fromInsertionPoint, "it failed. kubectl apply again", "It failed. kubectl apply again"),
+            (.fromInsertionPoint, "npm install. zorbix runs it", "npm install. zorbix runs it"),
+            (.alwaysCapital, "kubectl apply the file", "kubectl apply the file"),
+            (.alwaysCapital, "done. npm test next", "Done. npm test next"),
+        ]
+    )
+    func keepsAPinnedLowerCaseSpelling(policy: FirstWordPolicy, input: String, expected: String) {
+        let pass = FirstWordPass(policy: policy, vocabulary: ["kubectl", "npm", "zorbix"])
+        #expect(cleaned(input, by: pass) == expected)
+    }
+
+    @Test("still capitalises an ordinary lower-case entry and keeps a capitalised one")
+    func pinsOnlyUnusualLowerCaseEntries() {
+        let pass = FirstWordPass(vocabulary: ["okay", "Zorbix"])
+        #expect(cleaned("okay then. zorbix is up", by: pass) == "Okay then. Zorbix is up")
+    }
 }

@@ -12,10 +12,12 @@ protocol FocusedWindowSource {
     func selectedText(of field: Field, at range: CFRange?) -> String?
     func isMultiline(_ field: Field) -> Bool?
     func markedRange(of field: Field) -> CFRange?
+    func identity(of field: Field) -> FieldIdentity?
 }
 
 extension FocusedWindowSource {
     func markedRange(of field: Field) -> CFRange? { nil }
+    func identity(of field: Field) -> FieldIdentity? { nil }
 }
 
 extension MacContextEngine {
@@ -27,21 +29,24 @@ extension MacContextEngine {
         let title = source.windowTitle()
         sink.bank(FocusedWindow(title: title))
         guard isWanted(), let field = source.focusedField() else { return }
+        let identity = source.identity(of: field)
+        sink.bank(FocusedWindow(title: title, field: identity))
         // The same names, selection and bounded value the suggestion read asks, so the secure order is decided once.
         let names = source.names(of: field)
-        guard !names.isDeclaredSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true)) }
+        guard !names.isDeclaredSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity)) }
         guard isWanted() else { return }
         let resolvedSelection = source.selection(of: field)
         if case .discontinuous = resolvedSelection { return }
         let range: CFRange? = if case .range(let range) = resolvedSelection { range } else { nil }
         let text = source.text(of: field, names: names, at: range)
-        guard !text.isSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true)) }
+        guard !text.isSecure else { return sink.bank(FocusedWindow(title: title, isSecure: true, field: identity)) }
         let role = names.role
-        sink.bank(FocusedWindow(title: title, accessibilityRole: role, fieldLabel: names.label))
+        sink.bank(FocusedWindow(title: title, accessibilityRole: role, fieldLabel: names.label, field: identity))
         let selected = source.selectedText(of: field, at: range)
         sink.bank(
             FocusedWindow(
-                title: title, selectedText: selected, accessibilityRole: role, fieldLabel: names.label))
+                title: title, selectedText: selected, accessibilityRole: role, fieldLabel: names.label,
+                field: identity))
         guard isWanted() else { return }
         let selection = text.selection.flatMap {
             AccessibilityRange.selection(location: $0.location, length: $0.length)
@@ -70,6 +75,6 @@ extension MacContextEngine {
                 title: title, selectedText: selected,
                 precedingText: caret?.preceding, followingText: caret?.following,
                 accessibilityRole: role, isMultiline: multiline, fieldLabel: names.label,
-                isComposing: marked?.isEmpty == false))
+                isComposing: marked?.isEmpty == false, field: identity))
     }
 }

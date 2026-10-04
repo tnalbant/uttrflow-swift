@@ -29,6 +29,9 @@ struct HistoryRailRow: View {
         .contextMenu {
             ForEach(offered) { menuItem($0) }
             if !offered.isEmpty && !row.more.isEmpty { Divider() }
+            if !row.fixes.isEmpty {
+                Menu("Fix Word") { ForEach(row.fixes) { menuItem($0) } }
+            }
             ForEach(row.more) { menuItem($0) }
         }
     }
@@ -110,7 +113,7 @@ struct HistoryRailRow: View {
         }
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
-        .rowActions(offered + row.more, onIntent: onIntent)
+        .rowActions(offered + row.fixes + row.more, onIntent: onIntent)
     }
 
     /// The card's film, a little brighter when pointed at and tinted amber for a recording.

@@ -40,12 +40,14 @@ public struct FocusedWindow: Sendable, Equatable {
     public let fieldLabel: String?
     /// Whether an input method holds unconfirmed text in the field, which both caret sides already leave out.
     public let isComposing: Bool
+    /// The focused field itself, read even when it is secure since it carries no text.
+    public let field: FieldIdentity?
 
     public init(
         title: String? = nil, selectedText: String? = nil, precedingText: String? = nil,
         followingText: String? = nil, isSecure: Bool = false,
         accessibilityRole: String? = nil, isMultiline: Bool? = nil, fieldLabel: String? = nil,
-        isComposing: Bool = false
+        isComposing: Bool = false, field: FieldIdentity? = nil
     ) {
         self.isComposing = isComposing
         self.title = title
@@ -56,6 +58,7 @@ public struct FocusedWindow: Sendable, Equatable {
         self.accessibilityRole = accessibilityRole
         self.isMultiline = isMultiline
         self.fieldLabel = fieldLabel
+        self.field = field
     }
 }
 
@@ -163,7 +166,8 @@ public final class MacContextEngine: ContextEngine, Sendable {
             return AppContext(
                 applicationName: Self.meaningful(gathered.application?.name),
                 bundleIdentifier: Self.meaningful(gathered.application?.bundleIdentifier),
-                documentName: Self.meaningful(gathered.window?.title), isSecure: true)
+                documentName: Self.meaningful(gathered.window?.title), isSecure: true,
+                field: gathered.window?.field)
         }
         return AppContext(
             applicationName: Self.meaningful(gathered.application?.name),
@@ -175,7 +179,8 @@ public final class MacContextEngine: ContextEngine, Sendable {
             followingText: gathered.window?.followingText,
             accessibilityRole: gathered.window?.accessibilityRole,
             isMultiline: gathered.window?.isMultiline,
-            fieldLabel: gathered.window?.fieldLabel
+            fieldLabel: gathered.window?.fieldLabel,
+            field: gathered.window?.field
         )
     }
 

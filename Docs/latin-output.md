@@ -19,6 +19,9 @@ it true, from the most specific to the last resort.
 
 Snippet expansions stay stored exactly as the user wrote them. The final script check runs
 after expansion, so a snippet written in Devanagari is inserted romanised in Latin letters.
+A trigger stays stored as typed and is matched in the form dictation writes it: `Snippet.triggerWords`
+reads it through `LatinScript.enforced`, so a trigger typed in Devanagari or mixed script fires when
+said, and two triggers that romanise alike are one trigger to the store's duplicate check.
 
 Recognition still answers in Devanagari, and what that costs in decoder steps — with the options
 for decoding straight to Latin, and why none of them is taken — is measured in

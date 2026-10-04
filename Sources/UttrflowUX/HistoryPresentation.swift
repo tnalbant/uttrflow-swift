@@ -76,13 +76,15 @@ public struct HistoryRow: Sendable, Equatable, Identifiable {
     public let more: [MainAction]
     /// Set on a recording whose words were lost, which draws in place of the text.
     public let recording: HistoryRecording?
+    /// One "Fix" per distinct word in the text, each opening the word editor on that spelling.
+    public let fixes: [MainAction]
 
     /// Builds a row from its parts; everything after the text defaults to a bare dictation.
     public init(
         id: UUID, application: HistoryApplication?, when: String, text: String,
         time: String = "", length: String = "", tag: String? = nil, isFlagged: Bool = false,
         arrival: String? = nil, actions: [MainAction] = [], more: [MainAction] = [],
-        recording: HistoryRecording? = nil
+        recording: HistoryRecording? = nil, fixes: [MainAction] = []
     ) {
         self.id = id
         self.application = application
@@ -96,6 +98,7 @@ public struct HistoryRow: Sendable, Equatable, Identifiable {
         self.actions = actions
         self.more = more
         self.recording = recording
+        self.fixes = fixes
     }
 }
 
@@ -437,7 +440,19 @@ public enum HistoryPresenter {
                         title: "Keep as clip", symbolName: "doc.on.clipboard",
                         intent: .keepDictationAsClip(entry.id))
                 ]
-                : []) + [.delete(.forgetDictation(entry.id))])
+                : []) + [.delete(.forgetDictation(entry.id))],
+            fixes: fixes(for: entry.text))
+    }
+
+    /// One action per distinct word in the text, in text order, for teaching the dictionary its right spelling.
+    static func fixes(for text: String) -> [MainAction] {
+        var seen: Set<String> = []
+        return text.split(whereSeparator: \.isWhitespace).compactMap { token in
+            let word = String(token).trimmingCharacters(in: .punctuationCharacters.union(.symbols))
+            guard word.contains(where: \.isLetter), seen.insert(word).inserted else { return nil }
+            return MainAction(
+                title: "Fix “\(word)”", symbolName: "character.cursor.ibeam", intent: .fixWord(word))
+        }
     }
 
     /// A recording whose words were lost, as a row with the way to hear it and to retry it.

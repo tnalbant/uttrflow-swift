@@ -35,6 +35,16 @@ struct PersonalDataArchiveTests {
         #expect(snippets.duplicates == 0)
     }
 
+    @Test("export and import keep a caret marker and an escaped marker exactly as stored")
+    func roundTripsMarkers() throws {
+        let marked = Snippet(
+            id: UUID(), trigger: "reply", expansion: "Hi {caret},\nwrite \\{caret} literally",
+            created: Date(timeIntervalSince1970: 3))
+        let archive = PersonalDataArchive(dictionary: [], snippets: [marked])
+        let decoded = try PersonalDataArchive.decode(archive.encoded())
+        #expect(decoded.mergedSnippets(into: []).records == [marked])
+    }
+
     @Test("import merges records and reports case-insensitive word and trigger duplicates")
     func mergeAndReportDuplicates() {
         let existingWord = DictionaryEntry(

@@ -1,6 +1,6 @@
 // Edits text already written into another app's field, by its recorded range and only once the range is verified.
 import ApplicationServices
-import UttrflowCore
+public import UttrflowCore
 
 /// A recorded insertion to edit, and what is known now about the field in front.
 public struct EditTarget: Sendable, Equatable {
@@ -59,32 +59,9 @@ extension SelectionWriter {
     @discardableResult
     func edit(_ target: EditTarget, to text: String) throws(TextInsertionError) -> EditUndo {
         let span = target.record.range
-        guard !target.isSecure else {
-            throw .insertionRejected(description: "the field is a secure field")
-        }
-        guard target.focused == target.record.field else {
-            throw .insertionRejected(description: "the field in front is not where the text was written")
-        }
-        guard let length = field.length() ?? field.value()?.utf16.count, span.upperBound <= length else {
-            throw .insertionRejected(description: "the field will not report the range")
-        }
-        guard spanText(span) == target.record.text else {
-            throw .insertionRejected(description: "the text at the range is no longer what was written")
-        }
-        let beforeRange = (span.lowerBound - target.before.utf16.count)..<span.lowerBound
-        let afterRange = span.upperBound..<(span.upperBound + target.after.utf16.count)
-        guard beforeRange.lowerBound >= 0, afterRange.upperBound <= length,
-            target.before.isEmpty || spanText(beforeRange) == target.before,
-            target.after.isEmpty || spanText(afterRange) == target.after
-        else {
-            throw .insertionRejected(description: "the text around the range differs from what the edit left")
-        }
+        let (length, caret) = try verified(target)
         let leftOf = spanText(max(0, span.lowerBound - EditUndo.contextUnits)..<span.lowerBound) ?? ""
         let rightOf = spanText(span.upperBound..<min(length, span.upperBound + EditUndo.contextUnits)) ?? ""
-        // The caret at the span's end is the evidence nothing was typed or moved since the write.
-        guard let caret = field.selectedRange(), caret.length == 0, caret.location == span.upperBound else {
-            throw .insertionRejected(description: "the selection moved since the text was written")
-        }
         let range = CFRange(location: span.lowerBound, length: span.count)
         guard field.setSelectedRange(range) == .success, let selected = field.selectedRange(),
             selected.location == range.location, selected.length == range.length
@@ -106,6 +83,52 @@ extension SelectionWriter {
         let now = InsertionRecord(
             field: target.record.field, range: span.lowerBound..<(span.lowerBound + written), text: text)
         return EditUndo(written: now, removed: target.record.text, before: leftOf, after: rightOf)
+    }
+
+    /// Moves the caret `units` back from the end of the recorded span, staying inside it, refusing what it cannot verify.
+    func placeCaret(in target: EditTarget, back units: Int) throws(TextInsertionError) {
+        let span = target.record.range
+        guard (0...span.count).contains(units) else {
+            throw .insertionRejected(description: "the caret would leave the text that was written")
+        }
+        guard units > 0 else { return }
+        _ = try verified(target)
+        let place = CFRange(location: span.upperBound - units, length: 0)
+        guard field.setSelectedRange(place) == .success, let moved = field.selectedRange(),
+            moved.location == place.location, moved.length == 0
+        else {
+            throw .insertionRejected(description: "the field will not move the caret")
+        }
+    }
+
+    /// The field's length and caret once the span is proved to still hold its recorded text, untouched.
+    private func verified(_ target: EditTarget) throws(TextInsertionError) -> (length: Int, caret: CFRange) {
+        let span = target.record.range
+        guard !target.isSecure else {
+            throw .insertionRejected(description: "the field is a secure field")
+        }
+        guard target.focused == target.record.field else {
+            throw .insertionRejected(description: "the field in front is not where the text was written")
+        }
+        guard let length = field.length() ?? field.value()?.utf16.count, span.upperBound <= length else {
+            throw .insertionRejected(description: "the field will not report the range")
+        }
+        guard spanText(span) == target.record.text else {
+            throw .insertionRejected(description: "the text at the range is no longer what was written")
+        }
+        let beforeRange = (span.lowerBound - target.before.utf16.count)..<span.lowerBound
+        let afterRange = span.upperBound..<(span.upperBound + target.after.utf16.count)
+        guard beforeRange.lowerBound >= 0, afterRange.upperBound <= length,
+            target.before.isEmpty || spanText(beforeRange) == target.before,
+            target.after.isEmpty || spanText(afterRange) == target.after
+        else {
+            throw .insertionRejected(description: "the text around the range differs from what the edit left")
+        }
+        // The caret at the span's end is the evidence nothing was typed or moved since the write.
+        guard let caret = field.selectedRange(), caret.length == 0, caret.location == span.upperBound else {
+            throw .insertionRejected(description: "the selection moved since the text was written")
+        }
+        return (length, caret)
     }
 
     /// The text a UTF-16 range covers, read by range or cut from the whole value.

@@ -11,6 +11,8 @@ public import class Foundation.JSONEncoder
 public actor PersonalDictionaryStore {
     /// The maximum number of inferred entries retained alongside user and shipped words.
     public static let maximumInferredEntries = 256
+    /// The most deleted spellings refused at once; past it the oldest refusal lapses.
+    public static let maximumRefusedWords = SightingLedger.maximumRefused
     /// The file, injected so a test writes into a temporary directory rather than a real dictionary.
     private let file: URL
     private let encryptedStore: EncryptedStore?
@@ -241,6 +243,19 @@ public actor PersonalDictionaryStore {
         } catch {
             throw .couldNotWrite
         }
+    }
+
+    /// The spellings deleted words are refused under, newest first, as the Dictionary page lists them.
+    public func refusedWords() -> [String] {
+        sightingLedger().refusals.reversed()
+    }
+
+    /// Lets a refused spelling be learned again, removing it from the ledger and the record.
+    public func allowAgain(_ word: String) throws(DictionaryStoreError) {
+        var sightings = sightingLedger()
+        guard sightings.allow(word) else { return }
+        try recordRefusals(sightings.refusals)
+        ledger = sightings
     }
 
     /// Removes every inferred word through the batch `remove`, so each is refused, and clears pending sightings.

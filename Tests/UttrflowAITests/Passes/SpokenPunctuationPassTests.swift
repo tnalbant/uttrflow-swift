@@ -203,7 +203,7 @@ struct SpokenPunctuationPassTests {
         #expect(cleaned(input, by: sut) == expected)
     }
 
-    /// The first word inside a quotation keeps the case it was heard in; the pass never recases it.
+    /// The first word inside a quotation keeps its spoken case; the pass never recases it.
     @Test(
         "keeps the case of the first quoted word",
         arguments: [
