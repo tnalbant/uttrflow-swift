@@ -21,12 +21,14 @@ enum CaretText {
     /// A terminal screen's edges: the shell input before the caret and the rest of its row, never scrollback or a prompt.
     static func inTerminal(_ screen: String?, selection: Range<Int>?, windowTitle: String?) -> Sides? {
         guard let screen, let ends = ends(of: selection, in: screen),
-            let typed = FocusedFieldSnapshot.shellInput(in: screen, before: ends.caret, windowTitle: windowTitle),
+            let typed = FocusedFieldSnapshot.shellInput(
+                in: screen, before: ends.caret, windowTitle: windowTitle),
             !typed.isCut
         else { return nil }
         return Sides(
             preceding: suffix(Substring(typed.text), limit: InsertionPoint.precedingLimit),
-            following: prefix(screen[ends.after...].prefix { !$0.isNewline }, limit: InsertionPoint.followingLimit))
+            following: prefix(
+                screen[ends.after...].prefix { !$0.isNewline }, limit: InsertionPoint.followingLimit))
     }
 
     /// The selection's two ends in `value`, out-of-range ends clamped.
