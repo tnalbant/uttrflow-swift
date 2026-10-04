@@ -3141,6 +3141,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             redrawPages([page])
         case .addWord:
             editWord(DictionaryDraft())
+        case .fixWord(let written):
+            // The wrong spelling is the recogniser's reading of the sound, so it fills "Say it like"; the editor focuses "Write it as".
+            actionNotice = nil
+            mainWindow?.show(.dictionary)
+            editWord(DictionaryDraft(pronunciation: written))
         case .cancelWordEdit:
             editWord(nil)
         case .saveWord(let word, let pronunciation):
