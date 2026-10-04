@@ -1,4 +1,4 @@
-import ApplicationServices
+public import ApplicationServices
 import Foundation
 import UttrflowCore
 
@@ -61,7 +61,7 @@ public enum SurfaceProbe {
     }
 
     /// What names the field, asked in one message: its role and the four names it may publish for itself.
-    static func names(of field: AXUIElement) -> FieldNames {
+    public static func names(of field: AXUIElement) -> FieldNames {
         let attributes = [
             kAXRoleAttribute, kAXSubroleAttribute, kAXIdentifierAttribute, kAXPlaceholderValueAttribute,
             kAXDescriptionAttribute,
@@ -82,14 +82,14 @@ public enum SurfaceProbe {
     }
 
     /// The focused field's text around the caret, with the selection moved into it, and whether the field is secure.
-    struct FieldText {
-        let value: String?
+    public struct FieldText {
+        public let value: String?
         let selection: NSRange?
-        let isSecure: Bool
+        public let isSecure: Bool
     }
 
     /// The one read of a focused field's value, never fetched from a declared secure field nor copied whole when long.
-    static func text(of field: AXUIElement, names: FieldNames, at range: CFRange?) -> FieldText {
+    public static func text(of field: AXUIElement, names: FieldNames, at range: CFRange?) -> FieldText {
         guard !names.isDeclaredSecure else { return FieldText(value: nil, selection: nil, isSecure: true) }
         let selection = range.map { NSRange(location: $0.location, length: $0.length) }
         let count = selection == nil ? nil : integer(field, kAXNumberOfCharactersAttribute)
@@ -103,6 +103,13 @@ public enum SurfaceProbe {
             })
         return FieldText(
             value: read.value, selection: read.selection, isSecure: names.isSecure(value: { read.value }))
+    }
+
+    /// The field's whole value under the same secure-check order, for a guard that edits the field rather than describes it.
+    public static func readableValue(of field: AXUIElement) -> String? {
+        let names = names(of: field)
+        guard !names.isDeclaredSecure, let value = string(field, kAXValueAttribute) else { return nil }
+        return names.isSecure(value: { value }) ? nil : value
     }
 
     /// The screen rectangle Accessibility reports for one text range, which decides whether a ghost can be drawn.
