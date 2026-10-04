@@ -548,6 +548,16 @@ struct PieceJoinerSeamTests {
         #expect(whole.cleaned.text == "the word full stop")
     }
 
+    @Test(
+        "keeps a spoken mark name after any determiner across a piece boundary",
+        arguments: ["the", "which", "whose", "both", "all", "his", "her", "its", "some", "any"])
+    func keepsSpokenMarkNameAfterDeterminer(determiner: String) {
+        let whole = PieceJoiner.join(
+            [piece("tell me \(determiner)"), piece("comma")], under: .standard(for: .messaging))
+
+        #expect(whole.cleaned.text.hasSuffix(" comma") && !whole.cleaned.text.contains("\(determiner),"))
+    }
+
     @Test("keeps a question mark at a seam rather than adding a stop after it")
     func keepsAQuestionMarkAtASeam() {
         let whole = PieceJoiner.join(

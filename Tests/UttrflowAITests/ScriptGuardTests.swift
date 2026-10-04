@@ -26,6 +26,28 @@ struct ScriptGuardTests {
     }
 
     @Test(
+        "refuses an English translation of a draft in Arabic, Cyrillic or CJK script",
+        arguments: [
+            ("مرحبا", "Hello."),
+            ("Привет всем", "Hello everyone."),
+            ("你好，谢谢观看", "Hello, thanks for watching."),
+            ("こんにちは", "Good afternoon."),
+        ])
+    func refusesATranslationFromAnotherScript(draft: String, rewritten: String) {
+        #expect(
+            sut.scriptVerdict(draft: draft, rewritten: rewritten, examples: examples)
+                == .rejected(
+                    reason: "the rewrite translated a draft in another script instead of romanising it",
+                    kind: .translated))
+    }
+
+    @Test("accepts a transliteration of a draft in another script")
+    func acceptsATransliterationFromAnotherScript() {
+        let draft = "Привет всем"
+        #expect(sut.scriptVerdict(draft: draft, rewritten: LatinScript.enforced(draft) + ".") == .accepted)
+    }
+
+    @Test(
         "accepts a romanisation, spelled any of the usual ways, with digits for number words",
         arguments: [
             ("वो क्या है ना, यानि मुझे थोड़ा टाइम चाहिए.", "Woh kya hai na, yaani mujhe thoda time chahiye."),

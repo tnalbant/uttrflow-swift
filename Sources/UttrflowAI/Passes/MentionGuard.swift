@@ -34,6 +34,7 @@ public enum MentionGuard {
         "a", "an", "the", "put", "add", "insert", "with", "no", "this", "that", "these", "those", "each",
         "every",
         "my", "your", "his", "her", "its", "their", "our", "another", "any", "some", "same",
+        "which", "whose",
     ]
 
     /// The ones a modifier may stand between and the mark; a verb takes its object with nothing in between.
@@ -41,7 +42,7 @@ public enum MentionGuard {
         "a", "an", "the", "with", "no", "this", "that", "these", "those", "each", "every", "one", "my",
         "your",
         "his",
-        "her", "its", "their", "our", "another", "any", "some", "same",
+        "her", "its", "their", "our", "another", "any", "some", "same", "which", "whose",
     ]
 
     /// How far back the word that opens a noun phrase may stand: "the hundred metre dash".

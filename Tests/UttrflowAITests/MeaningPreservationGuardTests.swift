@@ -1527,6 +1527,26 @@ struct GuardMatchStrengthTests {
             ])
     }
 
+    @Test("rejects a rewrite of a long text that ends no sentence, and accepts one that does")
+    func rejectsUnpunctuatedLongRewrite() {
+        let spoken = Array(repeating: "we need the final numbers from the vendor before friday", count: 5)
+        let flat = spoken.joined(separator: " ")
+        #expect(
+            verdict(flat, flat.capitalizedFirst)
+                == .rejected(reason: "the rewrite of a long text ends no sentence", kind: .unpunctuated))
+        let stopped = spoken.map { $0.capitalizedFirst + "." }.joined(separator: " ")
+        #expect(verdict(flat, stopped).isAccepted)
+    }
+
+    @Test("scales the churn allowance to the length of what was said")
+    func churnAllowanceScalesWithInput() {
+        let clause = "the cat and the dog and the fish went home"
+        let spoken = Array(repeating: clause, count: 5).joined(separator: " ")
+        let rest = spoken.split(separator: " ").dropFirst(10).joined(separator: " ")
+        let rewritten = "A cat and a dog and the fish went home " + rest + "."
+        #expect(verdict(spoken, rewritten).isAccepted)
+    }
+
     // MARK: - How many sentences the allowance is for
 
     /// The allowance is three function-word edits a sentence, so a miscount is a licence.
@@ -1797,4 +1817,9 @@ extension MeaningPreservationGuard {
     func verdict(original: String, rewritten: String) -> GuardVerdict {
         Self.textVerdict(original: original, rewritten: rewritten, excusingPreamble: false)
     }
+}
+
+extension String {
+    /// The text with its first letter upper-cased.
+    fileprivate var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

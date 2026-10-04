@@ -85,7 +85,7 @@ public actor DictationPipeline {
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     var earlyReadsSettled: Int { early.readsSettled }
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
-    private var dictationWords: [String]?
+    private(set) var dictationWords: [String]?
     /// Pieces of this dictation that held speech and decoded to no words twice, left out of what is inserted.
     private var missedPieces = 0
 

@@ -366,6 +366,41 @@ struct FirstWordPassTests {
         #expect(cased.text == "Total Revenue")
     }
 
+    @Test(
+        "lowers a capital the recogniser put on an ordinary word mid-sentence",
+        arguments: [
+            ("The train leaves at 7.15 from Platform 4.", "The train leaves at 7.15 from platform 4."),
+            (
+                "Tamsin will present the Zephyrix Roadmap on Monday.",
+                "Tamsin will present the Zephyrix roadmap on Monday."
+            ),
+            (
+                "Please Rebase your branch on Main and Push again.",
+                "Please rebase your branch on main and push again."
+            ),
+            ("The Database Index reduced the query time.", "The database index reduced the query time."),
+            ("I said API and Q4 to London.", "I said API and Q4 to London."),
+        ]
+    )
+    func lowersAStrayCapital(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test("keeps a mid-sentence capital the dictionary or the screen holds")
+    func keepsAStrayCapitalWithEvidence() {
+        let text = "I bought an Apple and a Bill."
+        #expect(
+            cleaned(text, by: FirstWordPass(vocabulary: ["Apple Music"])) == "I bought an Apple and a bill.")
+        #expect(
+            cleaned(text, by: FirstWordPass(onScreen: ["ask Bill about it"]))
+                == "I bought an apple and a Bill.")
+    }
+
+    @Test("leaves mid-sentence capitals alone where the policy copies the heard case")
+    func leavesStrayCapitalsAsSpoken() {
+        #expect(asSpoken("we merged to Main", heard: "we merged to Main") == "we merged to Main")
+    }
+
     @Test("records a changed word against this pass, once")
     func provenance() {
         let draft = sut.apply(Draft(text: "hello there"))

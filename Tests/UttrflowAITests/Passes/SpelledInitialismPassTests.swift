@@ -111,3 +111,20 @@ struct SpelledInitialismPassTests {
         #expect(FirstWordPass().apply(draft).text == "we said p I")
     }
 }
+
+@Suite("SpelledInitialismPass in the shipped pipeline")
+struct SpelledInitialismShippedTests {
+    @Test(
+        "keeps a dotted pair's stop, a clause-final letter a and the last letter's mark",
+        arguments: [
+            ("use a tool e g a hammer", "Use a tool e.g. a hammer."),
+            ("use it i e now", "Use it i.e. now."),
+            ("i live in the u s a", "I live in the USA."),
+            ("i live in the u s a. we left", "I live in the USA. We left."),
+            ("the a p i, then", "The API, then."),
+            ("send the p d f a copy", "Send the PDF a copy."),
+        ])
+    func shipped(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+}
