@@ -788,7 +788,7 @@ public actor DictationPipeline {
                         biasedTowards: await vocabulary(mine, seeing: earlyContext ?? AppContext()),
                         recording: tally, skippingAMiss: true, for: mine)
                 } catch {
-                    failure = DictationFailure(error, speechEngineKind: speech.kind)
+                    failure = Self.failure(error, in: audio, speechEngineKind: speech.kind)
                     tidying.cancelAll()
                     return
                 }
@@ -830,9 +830,7 @@ public actor DictationPipeline {
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
-            let silence: SpeechEngineError =
-                missedPieces > 0 ? .speechWithoutWords : audio.carriesNoSignal ? .noSignal : .nothingHeard
-            await fail(DictationFailure(silence))
+            await fail(Self.silence(missedPieces > 0 ? .speechWithoutWords : .nothingHeard, in: audio))
             return
         }
         // Every piece is done while recording, and the screen it is read against still applies.
@@ -1026,6 +1024,22 @@ public actor DictationPipeline {
         }
         isReady = true
         return heard
+    }
+
+    /// A recognition failure, where silence a refusal names reads the same as silence found in blank windows.
+    private static func failure(
+        _ error: any Error, in audio: AudioSamples, speechEngineKind kind: SpeechEngineKind
+    ) -> DictationFailure {
+        switch error as? SpeechEngineError {
+        case .nothingHeard?: silence(.nothingHeard, in: audio)
+        case .speechWithoutWords?: silence(.speechWithoutWords, in: audio)
+        default: DictationFailure(error, speechEngineKind: kind)
+        }
+    }
+
+    /// Silence is not a recogniser fault, so it names no engine; a recording of digital zeros is a muted input.
+    private static func silence(_ heard: SpeechEngineError, in audio: AudioSamples) -> DictationFailure {
+        DictationFailure(heard == .nothingHeard && audio.carriesNoSignal ? SpeechEngineError.noSignal : heard)
     }
 
     /// What the recogniser made of one window.

@@ -868,7 +868,7 @@ struct DictationPipelineEarlyWorkTests {
     func allSilentIsRefused() async {
         let speech = NumberingSpeechEngine(silentCalls: [1])
         let pipeline = makePipeline(
-            capture: FakeAudioCaptureEngine(stopOutcome: .success(AudioSamples.canonical(Take.silence(3)))),
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(.roomTone(seconds: 3))),
             speech: speech)
 
         await pipeline.startRecording()
@@ -882,7 +882,7 @@ struct DictationPipelineEarlyWorkTests {
         let speech = NumberingSpeechEngine(blankCalls: [1])
         let pipeline = makePipeline(
             capture: FakeAudioCaptureEngine(
-                stopOutcome: .success(AudioSamples.canonical(Take.silence(3)))),
+                stopOutcome: .success(.roomTone(seconds: 3))),
             speech: speech)
 
         await pipeline.startRecording()
