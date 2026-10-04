@@ -488,6 +488,62 @@ public enum EvaluationCorpus {
             mustKeep: ["coffee"],
             mustNotAdd: ["two"]
         ),
+        .init(
+            id: "correction-between-amounts-spoken", category: .everyday,
+            spoken: "the budget is ten k correction twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "correction"]
+        ),
+        .init(
+            id: "correction-as-a-noun-kept", category: .everyday,
+            spoken: "the correction was small",
+            expected: "The correction was small.",
+            mustKeep: ["correction", "small"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "strike-that-restates-a-phrase", category: .everyday,
+            spoken: "pick the red one strike that the blue one",
+            expected: "Pick the blue one.",
+            mustKeep: ["Pick", "blue"],
+            mustNotAdd: ["red", "strike"]
+        ),
+        .init(
+            id: "strike-that-as-an-order-kept", category: .everyday,
+            spoken: "strike that match and light the candle",
+            expected: "Strike that match and light the candle.",
+            mustKeep: ["Strike that match", "candle"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "or-rather-replaces-a-word", category: .everyday,
+            spoken: "she wanted tea or rather coffee",
+            expected: "She wanted coffee.",
+            mustKeep: ["wanted", "coffee"],
+            mustNotAdd: ["tea", "rather"]
+        ),
+        .init(
+            id: "or-rather-before-a-negation-kept", category: .everyday,
+            spoken: "would you like to stay or rather not",
+            expected: "Would you like to stay or rather not?",
+            mustKeep: ["stay or rather not"],
+            mustNotAdd: []
+        ),
+        .init(
+            id: "actually-make-it-between-amounts", category: .everyday,
+            spoken: "the budget is ten k actually make it twelve k",
+            expected: "The budget is 12 k.",
+            mustKeep: ["budget", "12"],
+            mustNotAdd: ["10", "make it"]
+        ),
+        .init(
+            id: "actually-make-it-as-arriving-kept", category: .everyday,
+            spoken: "we did not actually make it to the party",
+            expected: "We did not actually make it to the party.",
+            mustKeep: ["actually make it", "party"],
+            mustNotAdd: []
+        ),
         // The recogniser writes a paused trigger as its own sentence, which is a pause rather than a sentence end.
         .init(
             id: "trigger-as-its-own-sentence", category: .everyday,
