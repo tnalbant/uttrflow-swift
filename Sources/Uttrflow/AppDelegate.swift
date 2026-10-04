@@ -169,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let container: URL
     private let onboardingRecordStore: any OnboardingRecordStore
     private let clipboardPreferencesFile: ClipboardPreferencesFile
+    /// The speech model's last loads, kept across launches for the Diagnostics page.
+    private let speechModelLoadLog: SpeechModelLoadLog
     private var clipboardPreferences = ClipboardPreferences()
     private var clipboardPreferencesUnreadable = false
     private var clipboardPreferencesSetAside: URL?
@@ -257,6 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.encryptedStore = encryptedStore
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
+        speechModelLoadLog = SpeechModelLoadLog(file: SpeechModelLoadLog.defaultFile(in: container))
         switch clipboardPreferencesFile.load() {
         case .missing:
             clipboardPreferences = ClipboardPreferences()
@@ -1210,6 +1213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let model = SpeechModel.default
         let engine = SpeechEngineFactory.make(
             kind: kind, model: model, modelFolder: modelStore.location(of: model),
+            loadLog: speechModelLoadLog,
             didRelease: { [weak self] in
                 Task { @MainActor [weak self] in self?.speechModelWasReleased() }
             },
@@ -2803,6 +2807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let decoding = await diagnostics.decoding
             lastMeasurements = measurements
             lastDecoding = decoding
+            lastSpeechModelLoads = speechModelLoadLog.history().records
             lastCleaning = await diagnostics.lastCleaning
             lastVocabularyPrompt = await diagnostics.vocabularyPrompt
             let kept = await history.records(
@@ -2917,6 +2922,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     hasDefaultInputDevice: SettingsCapabilities.hasAudioInput,
                     measurements: measurements, vocabularyPrompt: lastVocabularyPrompt,
                     decoding: lastDecoding,
+                    speechModelLoads: lastSpeechModelLoads,
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
@@ -3021,6 +3027,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastMeasurements: [StageMeasurement] = []
     /// The decode effort last read, so a keystroke redraw uses the same bounded session window.
     private var lastDecoding: [DecodeEffort] = []
+    /// The speech model loads last read from their log.
+    private var lastSpeechModelLoads: [SpeechModelLoadRecord] = []
     /// Whether the main window's pages were last skipped because it was out of sight.
     private var mainWindowIsBehind = false
     /// Everything the store keeps, which is not ``recents`` — that is the menu's five.

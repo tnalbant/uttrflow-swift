@@ -18,6 +18,7 @@ refusal. The page on screen may quote words; the copy never does.
 | `version`, `machine` | the build and this Mac's macOS, chip and memory |
 | `measurements` | per-stage typical, slowest and sample count; stages never run are named |
 | `decoding` | counts of extra decodes and retries, and the mean recognition split in seconds |
+| `speechModelLoads` | per kept load: date, seconds, macOS build, short model revision and the closed-enum reason |
 | `cleaning` | per offered step: counts removed, rewritten and added; steps switched off; refusal kind summary; engine skipped or failed reason |
 | `engines`, `speechInUse`, `transformerAvailability`, `lastCleanedBy` | engine names and states |
 | `speechModel`, `speechReadiness`, `appleSpeechStatus`, `appleSpeechLoadFailure`, `suggestionModel` | model card status lines |
