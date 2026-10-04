@@ -64,6 +64,7 @@ struct AppleSpeechBackendTests {
                 RawWord(text: "pool", start: 0.1, end: 0.25, probability: 0.9),
                 RawWord(text: "request", start: 0.3, end: 0.7, probability: 0.2),
             ])
+        #expect(segment.reliability == nil)
 
         let raw = RawTranscript(text: "pool request", segments: [segment])
         let transcript = raw.transcription(audioDuration: .seconds(1))
