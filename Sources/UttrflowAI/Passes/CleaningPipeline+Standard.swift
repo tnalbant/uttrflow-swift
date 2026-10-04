@@ -90,6 +90,9 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             wholeText: initialisms(steps: steps) + [
+                AcronymCasingPass(
+                    destination: formatter.destination, vocabulary: vocabulary,
+                    onScreen: situation.app.textOnScreen),
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,

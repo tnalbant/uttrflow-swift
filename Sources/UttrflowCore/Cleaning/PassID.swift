@@ -37,6 +37,8 @@ extension PassID {
     /// Spaces around the marks the other passes put in.
     public static let spacing: PassID = "spacing"
     public static let spelledInitialism: PassID = "spelledInitialism"
+    /// An acronym said as one word, written in its known casing.
+    public static let acronymCasing: PassID = "acronymCasing"
     /// The case of the first word, which the formatter decides.
     public static let firstWord: PassID = "firstWord"
     /// The last mark, which the formatter decides.
