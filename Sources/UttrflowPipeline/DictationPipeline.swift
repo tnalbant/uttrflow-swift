@@ -483,7 +483,8 @@ public actor DictationPipeline {
             let audio = await capture.capturedSoFar(from: early.cut - lead)
             guard
                 let cut = windowing.nextCut(
-                    in: audio.samples, sampleRate: audio.sampleRate, from: lead)
+                    in: audio.samples, sampleRate: audio.sampleRate, from: lead,
+                    boundaries: audio.discontinuities)
             else { continue }
             let start = early.cut
             let end = early.cut - lead + cut
@@ -732,7 +733,8 @@ public actor DictationPipeline {
 
         var remainder = windowing.windows(
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
-            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil)
+            joiningPreviousWindowFrom: delivery == .insert ? previousWindowStart : nil,
+            boundaries: audio.discontinuities)
         if let first = remainder.first, first.lowerBound < cut {
             if !spans.isEmpty { spans.removeLast() }
         }
