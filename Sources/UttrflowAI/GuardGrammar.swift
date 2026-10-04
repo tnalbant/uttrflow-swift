@@ -125,14 +125,15 @@ extension MeaningPreservationGuard {
         // The draft the passes read, so a name the spoken-punctuation pass judged a mention is judged the same here.
         let draft = Draft(
             words: kept.indices.map { Draft.Word(kept[$0].text + keptGaps[$0 + 1]) })
-        for mark in Set(SpokenPunctuationPass.marks.map(\.mark)) {
+        for mark in Set(SpokenCommands.marks.map(\.text)) {
             guard let character = mark.first, String(character) == mark else { continue }
-            let names = SpokenPunctuationPass.marks.filter { $0.mark == mark }
+            let names = SpokenCommands.marks.filter { $0.text == mark }
                 .sorted { $0.words.count > $1.words.count }
             for change in alignment.changes {
                 var remaining =
                     addedMarks(character, in: change, keptGaps: keptGaps, rewrittenGaps: rewrittenGaps)
-                for (name, _, kind) in names where remaining > 0 {
+                for command in names where remaining > 0 {
+                    let name = command.words
                     guard name.count <= change.kept.count else { continue }
                     for start in change.kept where remaining > 0 {
                         let end = start + name.count
@@ -141,7 +142,7 @@ extension MeaningPreservationGuard {
                             !removable.contains(where: { start..<end ~= $0 }),
                             !MentionGuard.isMentioned(
                                 at: start, spanning: name.count, in: Array(kept.indices), of: draft,
-                                reach: MentionGuard.phraseReach, kind: kind)
+                                reach: MentionGuard.phraseReach, kind: command.placement)
                         else { continue }
                         removable.formUnion(start..<end)
                         remaining -= 1

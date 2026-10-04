@@ -195,7 +195,17 @@ fileprivate func effort(of results: [TranscriptionResult]) -> DecodeEffort {
     DecodeEffort(
         fallbacks: results.reduce(0) { $0 + Int($1.timings.totalDecodingFallbacks) },
         fallbackSeconds: results.reduce(0) { $0 + $1.timings.decodingFallback },
-        encoderRuns: results.reduce(0) { $0 + Int($1.timings.totalEncodingRuns) })
+        encoderRuns: results.reduce(0) { $0 + Int($1.timings.totalEncodingRuns) },
+        timings: results.reduce(.zero) { $0.adding(recognitionTimings(of: $1.timings)) })
+}
+
+/// WhisperKit's per-result timings in the sub-stages ``RecognitionTimings`` names.
+fileprivate func recognitionTimings(of timings: TranscriptionTimings) -> RecognitionTimings {
+    RecognitionTimings(
+        melSeconds: timings.logmels, encodeSeconds: timings.encoding,
+        decoderSetupSeconds: timings.decodingInit, decodeSteps: Int(timings.totalDecodingLoops),
+        decodeSeconds: timings.decodingPredictions, wordTimingRuns: Int(timings.totalTimestampAlignmentRuns),
+        wordTimingSeconds: timings.decodingWordTimestamps, recognitionSeconds: timings.fullPipeline)
 }
 
 /// Adapts ``LoadedKit`` to ``TranscriptionBackend`` so ``CappedDecodeRetry`` can call it without knowing about WhisperKit.

@@ -61,8 +61,7 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
                     .drop(while: { "\"'“(".contains($0) })
             )
             let isKnownAbbreviation =
-                sentenceAbbreviations.contains(normalizedWord)
-                || normalizedWord.split(separator: ".").count > 1
+                terminal == "." && !Abbreviations.endsSentence(normalizedWord + ".", followedBy: nil)
             if !word.isEmpty, !isKnownAbbreviation {
                 return .startOfSentence
             }
@@ -108,9 +107,6 @@ public struct InsertionPoint: Sendable, Equatable, Codable {
 
     /// Closing quotes and brackets may follow a sentence end without changing it.
     private static let closingSentenceCharacters: Set<Character> = ["\"", "'", "”", "’", ")", "]", "}"]
-
-    /// Dotted forms that keep the current sentence open, shared with first-word casing.
-    public static let sentenceAbbreviations: Set<String> = ["e.g", "i.e", "vs", "etc", "p.m", "a.m"]
 
     /// Pads `text` with a space at each caret edge where it would otherwise join a neighbouring word.
     public func paddedBoundary(for text: String) -> String {

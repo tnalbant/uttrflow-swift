@@ -102,12 +102,12 @@ sizes fit `RecordingStore.defaultByteLimit` together, and deletes the older ones
 The newest recording is always kept, since it is the retry a failed dictation just offered.
 A 240-second recording is about 7.7 MB as 16-bit WAV, so the limit holds about 33 of the longest.
 
-`AppDelegate.sweepExpired` does the deleting, at launch and after every dictation that finishes or
-fails, whether or not a window is open. The same sweep drops transcripts past the History retention
-setting. Opening the main window reads the list too, and deletes as it reads. There is no timer:
-launch plus each dictation bounds a stale file to one day and one dictation, at no idle cost
-([performance.md](performance.md)). A file in the folder that is not a recording is deleted once
-it is outside the same window.
+`AppDelegate.sweepExpired` does the deleting at launch, after every dictation that finishes or
+fails, when a retention setting changes, and hourly while the app is open, whether or not a window
+is open. The same sweep drops transcripts past the History retention setting and clipboard clips
+past their retention windows, including their picture files. Opening the main window reads each
+list too and deletes as it reads. A file in the recordings folder that is not a recording is deleted
+once it is outside the same window.
 
 The window is `RetentionWindow`, the rule the history and the clipboard are held to as well, so a
 recording dated ahead of the clock counts as due rather than as not yet made, and a clock that

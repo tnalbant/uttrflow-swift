@@ -5,10 +5,10 @@ public import UttrflowCore
 
 /// Types text as key events, the one route into a hidden field that never borrows the clipboard.
 public protocol KeystrokeTyping: Sendable {
-    /// Types `text` into whatever has focus.
+    /// Types `text` into whatever has focus, posting no key if this call throws.
     func type(_ text: String) throws(TextInsertionError)
 
-    /// Presses Delete `count` times, which is the only way this route takes typed characters back.
+    /// Presses Delete `count` times, which is the only way this route takes typed characters back; throws before posting any when a call fails.
     func deleteBackwards(_ count: Int) throws(TextInsertionError)
 }
 
@@ -64,6 +64,11 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
     /// The one check made immediately before key events are posted: self in front, destination moved, or cancelled.
     func refuseIfStale(_ destination: InsertionDestination?) throws(TextInsertionError) {
         try TextInsertion.requireLive()
+        try refuseIfUnsafeTarget(destination)
+    }
+
+    /// Checks the destination and field without cancellation, for restoring text already deleted by this write.
+    func refuseIfUnsafeTarget(_ destination: InsertionDestination?) throws(TextInsertionError) {
         try refuseIfNotTypable()
         try TextInsertion.requireTarget(destination, focus: focus)
     }
@@ -87,7 +92,12 @@ extension TypedTextInsertionEngine: CompletionWriting {
             throw .insertionRejected(description: "the application is terminating")
         }
         defer { writeState.end(write) }
+        let focus = focus
+        let current = await AccessibilityThread.run(orElse: nil) { focus.focusedApplication() }
+        let target = current.flatMap { $0.isKnown ? $0 : nil }
         let count = replaced.count
+        if count > 0, target == nil { throw .insertionUnconfirmed }
+        try refuseIfStale(target)
         if count > 0 {
             // A blind backspace could eat a shell prompt, so what is there is checked when the field will say.
             let preceding: String?
@@ -101,12 +111,11 @@ extension TypedTextInsertionEngine: CompletionWriting {
                 throw .insertionRejected(
                     description: "the text before the caret is not what would be replaced")
             }
-            try refuseIfNotTypable()
+            try refuseIfStale(target)
             try typist.deleteBackwards(count)
-        } else {
-            try refuseIfNotTypable()
         }
-        try await typeInChunks(text, targeting: nil)
+        try await typeInChunks(
+            text, targeting: target, restoring: count > 0 ? replaced : nil)
     }
 }
 
@@ -166,7 +175,7 @@ extension TypedTextInsertionEngine {
 
     /// Types `text` a chunk at a time, making the pre-write check again before every chunk after the first.
     private func typeInChunks(
-        _ text: String, targeting destination: InsertionDestination?
+        _ text: String, targeting destination: InsertionDestination?, restoring replaced: String? = nil
     ) async throws(TextInsertionError) {
         let total = text.count
         let focus = focus
@@ -180,12 +189,22 @@ extension TypedTextInsertionEngine {
             do {
                 if typed > 0 {
                     await Task.yield()
-                    try refuseIfStale(target)
                 }
+                try refuseIfStale(target)
                 try typist.type(String(text[start..<end]))
             } catch {
                 // Characters already posted cannot be taken back, so any later stop is a partial insertion.
                 guard typed == 0 else { throw .insertionInterrupted(typed: typed, total: total) }
+                if let replaced {
+                    guard let destination, destination.isKnown, destination.bundleIdentifier != nil else {
+                        throw .insertionUnconfirmed
+                    }
+                    do {
+                        try refuseIfUnsafeTarget(destination)
+                        try typist.type(replaced)
+                    } catch { throw .insertionUnconfirmed }
+                    throw .insertionUnconfirmed
+                }
                 throw error
             }
             typed += text.distance(from: start, to: end)

@@ -27,11 +27,25 @@ struct DestructiveCommandTests {
             "reboot",
             "killall -9 Finder",
             "killall -KILL Finder",
+            "killall -SIGKILL Finder",
+            "killall -sigkill Finder",
+            "killall -s SIGKILL Finder",
+            "killall -sKILL Finder",
+            "killall --signal=SIGKILL Finder",
             "pkill -9 -f node",
             "pkill -KILL node",
+            "pkill -SIGKILL node",
             "pkill -s 9 node",
+            "pkill -s SIGKILL node",
+            "pkill -sKILL node",
+            "pkill --signal=SIGKILL node",
             "kill -9 -1",
             "kill -KILL -1",
+            "kill -SIGKILL 1234",
+            "kill -sigkill 1234",
+            "kill -s SIGKILL 1234",
+            "kill -sKILL 1234",
+            "kill --signal=SIGKILL 1234",
             ":(){ :|:& };:",
         ])
     func recognisesDestructive(_ line: String) {
@@ -82,9 +96,12 @@ struct DestructiveCommandTests {
             "npm run dev",
             "kill 1234",
             "kill -TERM 1234",
+            "kill -s SIGTERM 1234",
+            "kill --signal=SIGTERM 1234",
             "pkill node",
             "pkill -TERM -f node",
             "killall Finder",
+            "killall -TERM Finder",
             "restart the staging database",
         ])
     func leavesOrdinaryAlone(_ line: String) {
@@ -368,7 +385,8 @@ struct DestructiveCommandTests {
         "An output redirection that empties a file first is destructive.",
         arguments: [
             "echo x > notes.txt", "echo \"\" > notes.txt", "> notes.txt", "sort data.csv >| data.csv",
-            "ls 1> listing.txt", "make &> build.log", "echo x >notes.txt", "cat a.txt > b.txt && ls",
+            "ls 1> listing.txt", "make 2> errors.log", "make 3> trace.log", "make 2>| errors.log",
+            "make &> build.log", "echo x >notes.txt", "cat a.txt > b.txt && ls",
             "make 2>&1 | tee build.log", "make >& build.log", "make >&build.log",
             "ls -la >&listing.txt && ls",
         ])
@@ -381,8 +399,9 @@ struct DestructiveCommandTests {
         "An rsync that deletes nothing, and a redirection that empties no file, are ordinary.",
         arguments: [
             "rsync -a src dst", "rsync -av --progress src/ backup/", "echo x >> notes.txt",
-            "make 2> errors.log", "make 2>&1 | tee", "echo x >&2", "make > /dev/null",
-            "make > /dev/null 2>&1", "echo x > /dev/stderr", "make &>> build.log", "sort < data.csv",
+            "make 2>&1 | tee", "make 3>&2", "echo x >&2", "make > /dev/null",
+            "make 2> /dev/null", "make 3>| /dev/stderr", "make > /dev/null 2>&1",
+            "echo x > /dev/stderr", "make &>> build.log", "sort < data.csv",
             "grep '>' notes.txt", "make | tee -a build.log", "make | tee --append build.log", "make | tee",
             "make >&2", "make 1>&-", "make >& /dev/null", "make >>& build.log",
         ])
@@ -589,9 +608,14 @@ struct DestructiveCommandTests {
         arguments: [
             "dropdb mydb", "dropdb -h db.example.com mydb", "dropuser app", "redis-cli FLUSHALL",
             "redis-cli -h cache.example.com -n 2 flushdb", "valkey-cli flushall",
+            "DROP KEYSPACE app", "DROP VIEW users", "DROP MATERIALIZED VIEW events_mv", "DROP USER app",
+            "DROP ROLE analyst", "DROP TYPE mood", "DROP FUNCTION score", "DROP PROCEDURE refresh",
             #"mongosh mydb --eval "db.dropDatabase()""#, #"mongo mydb --eval "db.users.drop()""#,
             #"mongosh --eval "db.users.deleteMany({})""#, #"sqlite3 app.db "DELETE FROM users""#,
             #"psql -c "DELETE FROM users WHERE id = 1""#, "DELETE FROM users",
+            #"cqlsh -e "DROP KEYSPACE app""#,
+            #"clickhouse-client -q "ALTER TABLE logs DELETE WHERE 1""#,
+            #"clickhouse-client -q "ALTER TABLE logs DROP PARTITION '2026-10'""#,
         ])
     func datastoreDeletionsAreDestructive(_ line: String) {
         #expect(
@@ -603,6 +627,7 @@ struct DestructiveCommandTests {
         arguments: [
             #"psql -c "select 1""#, "redis-cli get k", "redis-cli info", #"mongosh --eval "db.users.find()""#,
             #"sqlite3 app.db "SELECT * FROM users""#, "createdb mydb",
+            #"clickhouse-client -q "SELECT * FROM logs""#,
         ])
     func datastoreReadsAreOrdinary(_ line: String) {
         #expect(!DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be ordinary")

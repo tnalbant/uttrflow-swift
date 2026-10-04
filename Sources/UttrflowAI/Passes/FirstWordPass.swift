@@ -54,7 +54,10 @@ public struct FirstWordPass: WholeTextCleaningPass {
             if letterAdjacent, WordShape(word.text).key == "i" {
                 let cased = WordShape(word.text).replacingCore(with: "i")
                 draft.replace(at: index, with: cased, by: Self.id)
-                startOfSentence = Self.endsSentence(cased) && !WordShape.trailsOff(WordShape(cased).suffix)
+                let following = present.dropFirst(order + 1).first.map { draft.words[$0].text }
+                startOfSentence =
+                    Abbreviations.endsSentence(cased, followedBy: following)
+                    && !WordShape.trailsOff(WordShape(cased).suffix)
                 afterPause = WordShape.trailsOff(WordShape(cased).suffix)
                 isFirst = false
                 continue
@@ -68,6 +71,15 @@ public struct FirstWordPass: WholeTextCleaningPass {
                     in: text, heard: Array(heardWords.dropFirst(spokenBefore)))
             } else if startOfSentence {
                 cased = WordShape.capitalised(cased)
+            } else if policy == .fromInsertionPoint,
+                Self.followsDemotedSentenceEnd(at: index, in: draft),
+                FunctionWords.holds(WordShape(cased).key),
+                !Self.keepsCapital(cased),
+                !(capitaliseCalendarWords && Self.isCalendarWord(cased)),
+                !Self.isProperName(cased, in: text),
+                !Self.looksLikeName(cased, in: [Self.otherText(excluding: index, in: draft)] + onScreen)
+            {
+                cased = WordShape.lowercased(cased)
             } else if capitaliseCalendarWords {
                 cased = Self.properNameCapitalised(
                     Self.calendarWordCapitalised(afterPause ? cased : strayCapitalLowered(cased, in: text)),
@@ -77,11 +89,33 @@ public struct FirstWordPass: WholeTextCleaningPass {
             // A word trailing off in an ellipsis is a pause, so the next keeps the case it was heard in.
             let next = present.dropFirst(order + 1).first.map { draft.words[$0].text }
             startOfSentence =
-                Self.endsSentence(cased, followedBy: next) && !WordShape.trailsOff(WordShape(cased).suffix)
+                Abbreviations.endsSentence(cased, followedBy: next)
+                && !WordShape.trailsOff(WordShape(cased).suffix)
             afterPause = WordShape.trailsOff(WordShape(cased).suffix)
             isFirst = false
         }
         return draft
+    }
+
+    private static func followsDemotedSentenceEnd(at index: Int, in draft: Draft) -> Bool {
+        let live = draft.presentIndices
+        guard let position = live.firstIndex(of: index), position > 0 else { return false }
+        let previous = live[position - 1]
+        let replacedWithComma = draft.words[previous].edits.contains { edit in
+            edit.by == SpokenPunctuationPass.id && edit.kind == .replaced
+                && WordShape(edit.to).suffix.hasSuffix(",")
+        }
+        guard replacedWithComma else { return false }
+        return ((previous + 1)..<index).contains { removed in
+            guard case .removed(by: SpokenPunctuationPass.id) = draft.words[removed].state else {
+                return false
+            }
+            return WordShape(draft.words[removed].heard).endsSentence
+        }
+    }
+
+    private static func otherText(excluding index: Int, in draft: Draft) -> String {
+        draft.presentIndices.filter { $0 != index }.map { draft.words[$0].text }.joined(separator: " ")
     }
 
     /// The first word under the policy: a capital, the case it was heard in, or lower-case after a mid-sentence caret.
@@ -109,41 +143,6 @@ public struct FirstWordPass: WholeTextCleaningPass {
             WordShape(word).core == contraction
         else { return word }
         return WordShape(word).replacingCore(with: heardShape.core)
-    }
-
-    /// Whether the word closes a sentence; a dotted abbreviation such as "p.m." carries a stop of its own.
-    static func endsSentence(_ text: String) -> Bool {
-        let shape = WordShape(text)
-        guard shape.endsSentence else { return false }
-        guard let abbreviation = dottedAbbreviation(atSentenceEnd: shape) else { return true }
-        return !isAbbreviation(abbreviation)
-    }
-
-    static func endsSentence(_ text: String, followedBy next: String?) -> Bool {
-        let shape = WordShape(text)
-        guard shape.endsSentence else { return false }
-        guard let abbreviation = dottedAbbreviation(atSentenceEnd: shape), isAbbreviation(abbreviation) else {
-            return true
-        }
-        guard let next, let first = next.first else { return false }
-        if isTitle(abbreviation) { return false }
-        return first.isUppercase
-    }
-
-    /// The abbreviation whose full stop is the last sentence mark, if any.
-    private static func dottedAbbreviation(atSentenceEnd shape: WordShape) -> String? {
-        guard shape.suffix.reversed().first(where: { ".!?…।॥".contains($0) }) == "." else { return nil }
-        return shape.core.lowercased()
-    }
-
-    private static func isTitle(_ word: String) -> Bool {
-        ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof"].contains(word)
-    }
-
-    private static func isAbbreviation(_ word: String) -> Bool {
-        InsertionPoint.sentenceAbbreviations.contains(word) || word.contains(".") || word.count == 1
-            || ["mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "approx", "dept", "fig", "eg", "ie"]
-                .contains(word)
     }
 
     /// "i" and "i'll" become "I" and "I'll"; nothing else changes.
@@ -247,13 +246,13 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return WordShape.lowercased(word)
     }
 
-    /// Whether a word keeps its capital mid-sentence: "I" and its contractions, an acronym, or a letter-and-digit code.
+    /// Whether a word keeps its case mid-sentence: "I" and its contractions, an acronym, or a technical token.
     static func keepsCapital(_ word: String) -> Bool {
         let core = WordShape(word).core
         if core == "I" || core.hasPrefix("I'") || core.hasPrefix("I\u{2019}") { return true }
         let letters = core.filter(\.isLetter)
         if core.contains(where: \.isNumber) && letters.contains(where: \.isUppercase) { return true }
-        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.hasInternalCapital(core)
+        return (letters.count >= 2 && letters.allSatisfy(\.isUppercase)) || WordShape.keepsWrittenCase(core)
     }
 
     /// Copies the case the word was heard in from where it stands, skipping fillers; a changed word is left alone.

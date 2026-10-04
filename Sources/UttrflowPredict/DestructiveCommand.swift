@@ -623,9 +623,7 @@ public enum DestructiveCommand {
                 return true
             }
         case "killall":
-            if lowered.contains(where: { $0 == "-9" || $0 == "-kill" || $0 == "-s9" || $0 == "-skill" }) {
-                return true
-            }
+            if processKillIsDestructive(lowered) { return true }
         case "pkill", "kill":
             if processKillIsDestructive(lowered) { return true }
         case "rsync":
@@ -654,17 +652,7 @@ public enum DestructiveCommand {
             }
             return false
         }
-        // SQL that drops or empties a table, wherever the verb sits in the statement.
-        let sequence = ([command] + lowered).flatMap {
-            $0.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "_" }).map(String.init)
-        }
-        let words = Set(sequence)
-        if words.contains("drop"), words.contains(where: droppableObject) { return true }
-        // A DELETE empties rows wherever its FROM follows, with or without a WHERE.
-        if let delete = sequence.firstIndex(of: "delete"), sequence[delete...].contains("from") {
-            return true
-        }
-        return words.contains("truncate")
+        return SQLDestructiveCommand.matches(command: command, arguments: lowered)
     }
 
     /// Calls in a MongoDB shell script that drop a database or a collection, or delete its documents.
@@ -761,15 +749,35 @@ public enum DestructiveCommand {
 
     /// Whether a process signal or target can terminate more than one ordinary process.
     private static func processKillIsDestructive(_ arguments: [String]) -> Bool {
-        let signalFlags: Set<String> = ["-9", "-kill", "--signal=9", "--signal=kill"]
-        if arguments.contains(where: signalFlags.contains) { return true }
-        if zip(arguments, arguments.dropFirst()).contains(where: { flag, value in
-            ["-s", "--signal"].contains(flag) && ["9", "kill"].contains(value)
-        }) {
-            return true
+        for (index, argument) in arguments.enumerated() {
+            if argument == "--" { break }
+            if argument.hasPrefix("--signal=") {
+                if isForceKillSignal(String(argument.dropFirst("--signal=".count))) { return true }
+                continue
+            }
+            if argument == "-s" || argument == "--signal" {
+                if arguments.indices.contains(index + 1), isForceKillSignal(arguments[index + 1]) {
+                    return true
+                }
+                continue
+            }
+            guard argument.hasPrefix("-"), !argument.hasPrefix("--") else { continue }
+            let signal = argument.dropFirst()
+            if isForceKillSignal(String(signal)) { return true }
+            if signal.lowercased().hasPrefix("s"), isForceKillSignal(String(signal.dropFirst())) {
+                return true
+            }
         }
         let positionals = positionals(arguments, valued: ["-s", "--signal", "-p", "--pid"])
         return positionals.contains("-1")
+    }
+
+    /// Whether a signal spelling names SIGKILL, with or without its prefix.
+    private static func isForceKillSignal(_ spelling: String) -> Bool {
+        let name =
+            spelling.lowercased().hasPrefix("sig")
+            ? String(spelling.dropFirst(3)).lowercased() : spelling.lowercased()
+        return name == "kill" || Int(name) == 9
     }
 
     /// Git subcommands that rewrite every commit or drop unreachable objects whatever their flags.
@@ -878,8 +886,4 @@ public enum DestructiveCommand {
         "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env",
     ]
 
-    /// The kinds of thing a DROP destroys, which is what makes the statement irreversible.
-    private static func droppableObject(_ word: String) -> Bool {
-        word == "table" || word == "database" || word == "schema" || word == "index"
-    }
 }

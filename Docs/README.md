@@ -37,7 +37,9 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [input-paste-eligibility.md](input-paste-eligibility.md) | When the paste strategy volunteers |
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
+| [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
+| [insertion-test-matrix.md](insertion-test-matrix.md) | Which insertion situations a test, a harness or a person checks, and the set run before a tag |
 | [context-budget.md](context-budget.md) | The context read's budget |
 | [stuck-recording.md](stuck-recording.md) | The recording that never stops |
 | [recordings.md](recordings.md) | Recordings kept for retry |
@@ -52,7 +54,11 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [adapters.md](adapters.md) | Format adapters: one registry that grows out of the destination formatter |
 | [latin-output.md](latin-output.md) | Latin letters only |
 | [adding-a-language.md](adding-a-language.md) | What adding a language requires, and where each language is keyed |
+| [adding-a-pass.md](adding-a-pass.md) | Adding a cleaning pass, step by step |
+| [adding-a-destination.md](adding-a-destination.md) | Adding a destination, step by step |
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
+| [data-manifest.md](data-manifest.md) | Origin, licence and digest of every bundled resource file, and the check |
+| [data-asset-delivery.md](data-asset-delivery.md) | Bundled or downloaded data assets: sizes, load time and update path |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |
 | [ai-correction-thresholds.md](ai-correction-thresholds.md) | Word correction: the numbers and why they are what they are |
@@ -107,6 +113,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [app-settings-controls.md](app-settings-controls.md) | Settings controls |
 | [app-updates.md](app-updates.md) | Updates: why the app holds Sparkle's install handle |
 | [quitting.md](quitting.md) | Quitting |
+| [localisation.md](localisation.md) | Words the app shows: localisable, and never the dictation |
 
 ## What is kept, and what leaves the Mac
 
@@ -114,6 +121,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 |---|---|
 | [offline.md](offline.md) | Dictating with no network |
 | [logging.md](logging.md) | What the unified log may carry |
+| [diagnostics-export.md](diagnostics-export.md) | What "Copy diagnostics" may carry |
 | [entitlements.md](entitlements.md) | What somebody is allowed to do, and how that is known offline |
 | [account-session.md](account-session.md) | The account session: what `HTTPAuthenticationService` promises |
 | [account-keychain.md](account-keychain.md) | The refresh token in the Keychain: what `KeychainTokenStore` promises |
@@ -125,6 +133,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [core-history-accuracy.md](core-history-accuracy.md) | The "Left as dictated" figure: where its denominator comes from |
 | [history-store-file.md](history-store-file.md) | The dictation history file, and the shape of the store around it |
 | [persona-threat-model.md](persona-threat-model.md) | Threat model for learned personal data |
+| [learned-state.md](learned-state.md) | Learned state: one evidence ledger for every inferred fact |
 | [local-store-permissions.md](local-store-permissions.md) | Who may read the local store |
 | [local-store-encryption.md](local-store-encryption.md) | Encrypting local user stores |
 | [retention-clock.md](retention-clock.md) | Retention, against a clock that may be wrong |

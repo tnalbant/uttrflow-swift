@@ -68,6 +68,7 @@ would make. Safe in every register.
 | Bare-hyphen cut-off completed by the next word | "th- the" → "the", "w- we" → "we" | `SelfCorrectionPass`; the cut-off is removed only when `WordForms.sameForm` confirms the next word completes it, including inflected restarts such as "go- went". Hyphenated words and spoken "dash" are not cut-offs |
 | Repeated phrase — a false start restarted verbatim or in a recognised incomplete clause | "so I was I was thinking" → "so I was thinking"; "I went to the I'll call you later" → "I'll call you later" | `RepeatedPhrasePass`: a 2–4-word run repeated right after itself, case-insensitive, never across punctuation; the first copy goes. It also removes a short incomplete prefix at a clause boundary when a new subject and predicate restart it: an unfinished destination ("I went to the"), "let me", "was going to", a repeated-subject question start ("can we we should"), and the named-topic restart ("the problem is what I wanted to say is"). It keeps complete lookalikes such as "I said I'd go" and "She was going to the store". A run said twice on purpose is left alone on the same terms as the stammer row — one word filling the window ("ha ha ha ha", "no no no no"), or a run of content words and nothing else, which is a name said twice ("New York New York") rather than a restart. A run of function words is removed, so "it is what it is what it is" loses a copy |
 | Sentence capitalisation and the pronoun "I" | "i think i'll go" → "I think I'll go" | `FirstWordPass` (also "i'll", "i'm"; a new sentence after `. ! ?`, a paragraph or a bullet, not after a plain line break) and the prompt. A word carrying a stop inside itself — "p.m.", "a.m.", "e.g." — does not end a sentence, so "call me at 5 p.m. tomorrow" keeps its "tomorrow" in lower case. The first word's case is read from its own place in the text |
+| Technical tokens keep their written case | "config.yaml is missing." stays "config.yaml is missing." | `TechnicalToken.classify` in `UttrflowCore` names a token as a URL, path, file name, host, version or identifier, and `WordShape.capitalised` and `WordShape.lowercased` leave it as written. A host or file name needs a known ending, so recogniser glue such as "okay.thanks" and abbreviations such as "e.g." are still capitalised; "and/or" is not a path |
 | Spelled initialisms | "a p i" → "API", "i e" → "i.e." | `SpelledInitialismPass` joins adjacent spoken letter names, emits `e.g.` and `i.e.` with stops, and leaves an article "a" alone unless it begins a longer initialism such as "a p i" → "API". A lone "I" stays the pronoun except beside other letter names |
 | Terminal punctuation on the last sentence | "ship it" → "Ship it." | `TerminalStopPass` and the prompt, as the destination's formatter says. Under a `paragraphs` layout (document, email, plain, messaging) the last sentence ends whatever line breaks the text holds, and every paragraph of three or more words before a blank line ends with a full stop; a list item never gets one; under `preserveNewlines` (code, SQL, terminal) a text holding a newline gets none; under `singleLine` (a cell) every line break becomes a space. "Does this already end?" is read off the word's suffix rather than its last character, so a sentence ending in a symbol — `5%`, `20°`, `$5` — is finished like any other, and the stop goes inside a closing quote (`she said "ship it."`). A clause mark, an ellipsis or a bracket the words closed themselves already ends the text, and a quotation opening and closing on one word (`"hello"`) is a quoted term rather than a sentence, so it takes none |
 | The mark on a word that goes | "so are we shipping today, uh?" → "So are we shipping today?" | `Draft.remove(at:by:carryingMarks:)`, used by `FillersPass`, `StammersPass`, `RepeatedPhrasePass` and `SelfCorrectionPass`. The recogniser hangs a sentence's mark on whatever word it ended on, so a removed word hands its mark on rather than taking it away. Closing marks move back onto the word before, opening marks forward onto the word after, and two marks meeting are merged by `WordShape.marked`, so a clause mark replaces one already there. A comma is the exception: it is the pause the removed word stood in, so it goes with the word, which leaves "we should, uh, ship it" with no comma at all. The comma before it stays when the sentence owns it — after its first word, or beside a discourse word such as "yes", "well", "okay" or "yeah" — so "Well, um, I think so." becomes "Well, I think so." while "The deadline is, um, Friday." loses both. A currency sign or a percent sign is part of the amount rather than the sentence, so it leaves with the word: "$40, no wait, $50" becomes "$50", not "$$50". No mark crosses a line break |
@@ -145,6 +146,57 @@ times, percentages, ports, the paragraph-break cases and the numbered-list matri
 and that list, not this page, is the record of what the floor covers. Spellings the screen has
 to decide are the model's alone. A gap gets a corpus case before it gets a prompt line, because
 a prompt line that is not measured is a guess (`Docs/bakeoff.md`).
+
+## Words spelled letter by letter
+
+A speaker spells a name, a code or a file name so that it is written exactly as spelled. The
+recogniser already writes a spelled word as upper-case letters joined by hyphens, and that is
+the intended output: cleaning leaves it as written.
+
+| Shape spoken | Intended output | Why |
+|---|---|---|
+| Spelled name or word ("T A V I S H") | left as the recogniser wrote it, `T-A-V-I-S-H` | Joining needs the word's case, which the letters do not carry; the name is usually said beside it |
+| Spelled code with digits ("K 7 Q 2 9 X") | upper-case code, `K7Q29X` | The recogniser writes it joined; nothing to do |
+| Doubled letters ("double L", "double R") | the letter twice, as the recogniser writes it | Already expanded before cleaning |
+| Phonetic alphabet ("M as in Mike", "Bravo Echo") | left as spoken | Not consistent enough to read: "as in" survives, and bare code words come back as separate sentences |
+| Spelled file name ("R E A D M E dot t x t") | left as the recogniser wrote it, `readme.txt` | Already joined |
+
+No rule is added: no shape is both left wrong by the recogniser and consistent enough to read.
+One cleaning regression was measured: in "A as in Alpha" the spelled letter loses its capital
+("a as in Alpha"), because the article "a" and the letter name are one spelling.
+
+Measured on an Apple M5 Pro with `say -v Samantha` clips at 16 kHz, then
+`uttrflow-dev transcribe --raw -l en` (the shipping WhisperKit model) and
+`uttrflow-dev clean -e rules`:
+
+| # | Spoken | Recogniser | After cleaning |
+|---|---|---|---|
+| 1 | my name is Tavish, that's T A V I S H | My name is Tavish. That's T-A-V-I-S-H. | unchanged |
+| 2 | her surname is spelled M-O-R-L-A-N-D | Her surname is spelled M-O-R-L-N-D. | unchanged |
+| 3 | the code is B as in boy, seven four | The code is B as in boy. 7-4. | unchanged |
+| 4 | the file is called R E A D M E dot txt | The file is called readme.txt. | unchanged |
+| 5 | the booking reference is K 7 Q 2 9 X | Booking references K7Q29X. | unchanged |
+| 6 | it's M as in Mike, A as in Alpha, R as in Romeo, A as in Alpha | It's M as in Mike, A as in Alpha, R as in Romeo, A as in Alpha. | It's M as in Mike, a as in Alpha, R as in Romeo, a as in Alpha. |
+| 7 | spell it Bravo Echo Lima Tango | Spell it. Bravo. Echo Lima. Tango. | unchanged |
+| 8 | that's Callum with a C, C A double L U M | That's Callum with a C, C-A-L-L-U-M. | unchanged |
+| 9 | the street is spelled O, double R, I, N | The street is spelled O-R-R-I-N. | unchanged |
+| 10 | the ticket is J R A dash four one two | Ticket is JRA-412. | unchanged |
+| 11 | my username is Z O R I N 8 8 | My username is Z-O-R-I-N-A-D-A-T. | unchanged |
+| 12 | the city is spelled E L D R A V I A | The city is spelled E-L-D-R-A-V-I-A. | unchanged |
+
+The recogniser's own errors (a dropped letter in 2, "8 8" heard as letters in 11) are
+recognition, not cleaning, and are out of reach of any rule here. Synthetic voices spell more
+evenly than people do, so a recorded human set may still change these shapes.
+## Dictation that reads like a request
+
+Dictation that sounds addressed to the model is still dictation, and its expected text is the
+tidied words. `RequestCorpus.swift` holds at least eight invented cases for each class in
+`RequestClass`: questions (factual, personal, rhetorical), imperatives to an assistant,
+"ignore" and "system:" forms, text that names an output format, labels, quotes and fences said
+or added, polite requests, Hindi and Hinglish requests in both scripts, one- and two-word
+inputs, and text that invites a refusal. Each case carries the output of a model that commits
+one `RequestFailure` (obeyed, answered, translated, wrapped, refused), and
+`RequestMatrixTests` fails when a guard on the case does not catch that output.
 
 ## Where the words are going
 
@@ -339,6 +391,26 @@ All three take effect on the next dictation, not the next launch: `DictationPipe
 takes a freshly built cleaner and the overrides as they now stand. A dictation under way
 keeps the cleaner and the overrides it began with, so a step switched off while the user is
 speaking cannot treat the second half of what they say differently from the first.
+
+## Homophone doubt against the confident-homophone guard
+
+`UncertainSpan` doubts every word of a `Homophones` group whatever its score, so `HomophoneCandidates`
+offers its partner; `MeaningPreservationGuard.confidentHomophoneVerdict` refuses a rewrite that swaps a
+word scored at or above `certaintyThreshold` for a sound-alike. `HomophonePolicyProbeTests` runs 40
+sentences (20 function-word, 20 sense, the wrong member present) through `DoubtfulWords.standard` and
+the guard with the rewrite that takes the offered swap; the model step is assumed, not run.
+
+| Group | Score of the wrong word | Swap offered | Offered, then refused |
+|---|---|---|---|
+| function | 0.3 | 20/20 | 7 |
+| function | 0.6 | 20/20 | 20 |
+| function | 0.95 | 20/20 | 20 |
+| sense | 0.3 | 20/20 | 0 |
+| sense | 0.6 | 20/20 | 20 |
+| sense | 0.95 | 20/20 | 20 |
+
+At or above the threshold every offered swap is refused (80 of 80), so the class-only doubt never repairs
+a word and a model that takes it costs the whole rewrite. Which rule stays is not yet decided.
 
 ## Related pages
 

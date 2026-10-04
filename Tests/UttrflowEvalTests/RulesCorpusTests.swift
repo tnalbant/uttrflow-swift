@@ -101,6 +101,15 @@ struct RulesCorpusTests {
         #expect(EvaluationCorpus.cases(in: .grammar).count == 22)
     }
 
+    @Test("writes every second-language case as spoken, with no article, preposition or tense repaired")
+    func rulesKeepSecondLanguageGrammar() async throws {
+        #expect(EvaluationCorpus.secondLanguage.count == 40)
+        for testCase in EvaluationCorpus.secondLanguage {
+            let written = try await RuleBasedTransformer().transform(testCase.transformationRequest()).text
+            #expect(written == testCase.expected, "\(testCase.id) wrote \(written)")
+        }
+    }
+
     @Test("gives every destination at least three cases, so the bake-off can score its block")
     func everyDestinationIsMeasured() {
         for destination in Destination.allCases where destination != .plain {
@@ -153,6 +162,7 @@ struct RulesCorpusTests {
             ("fifty-fifty-idiom", "It's fifty fifty."),
             ("page-fraction", "Page 2 of 3."),
             ("spoken-comma", "We still need milk, eggs, and bread from the shop."),
+            ("spoken-comma-before-next-sentence-of-course", "We shipped, of course it broke."),
             ("new-paragraph", "Thanks for the update.\n\nThe second issue is the login timeout."),
             ("time-of-day", "The dentist moved my appointment to 2:30 pm tomorrow."),
             ("port-number", "The gateway listens on port 8080 in staging."),
@@ -221,5 +231,14 @@ struct RulesCorpusTests {
     func exactText(id: String, expected: String) async throws {
         let testCase = try #require(EvaluationCorpus.all.first { $0.id == id })
         #expect(try await RuleBasedTransformer().transform(testCase.transformationRequest()).text == expected)
+    }
+
+    @Test("a spoken comma before a new sentence is written without keeping the mark word")
+    func spokenCommaBeforeNextSentenceOfCourse() async throws {
+        let testCase = try #require(
+            EvaluationCorpus.all.first { $0.id == "spoken-comma-before-next-sentence-of-course" })
+        let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
+
+        #expect(result.text == testCase.expected)
     }
 }
