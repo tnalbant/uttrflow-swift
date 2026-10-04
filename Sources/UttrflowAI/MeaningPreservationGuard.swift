@@ -520,8 +520,12 @@ public struct MeaningPreservationGuard: Sendable {
         if added > 0 {
             return .rejected(reason: "the rewrite added a negation", kind: .negationAdded)
         }
+        let long = words(in: alignment.rewrittenText) > wordsPerSentenceEnd
+        if long, sentenceEnds(alignment.rewrittenText) == 0 {
+            return .rejected(reason: "the rewrite of a long text ends no sentence", kind: .unpunctuated)
+        }
         let churn = alignedFunctionWordChurn(alignment)
-        if churn > 3 * sentenceCount(alignment.rewrittenText) {
+        if churn > 3 * churnSentences(alignment) {
             return .rejected(reason: "the rewrite changed \(churn) small words", kind: .smallWordChurn)
         }
         // A word put back where a pass took it without the grant to is the speaker's, not the model's.
@@ -1295,13 +1299,27 @@ public struct MeaningPreservationGuard: Sendable {
         return Set(before.keys).union(after.keys).reduce(0) { $0 + abs((before[$1] ?? 0) - (after[$1] ?? 0)) }
     }
 
+    /// Words a sentence of dictation runs to before a text without any sentence end counts as unpunctuated.
+    static let wordsPerSentenceEnd = 40
+
+    /// Sentences the churn allowance is for: those the rewrite closes, or those the input's length implies, whichever is more.
+    static func churnSentences(_ alignment: RewriteAlignment) -> Int {
+        let byLength = (words(in: alignment.keptText) + wordsPerSentenceEnd - 1) / wordsPerSentenceEnd
+        return max(sentenceCount(alignment.rewrittenText), byLength)
+    }
+
+    /// Whitespace-separated words in the text.
+    static func words(in text: String) -> Int { text.split(whereSeparator: \.isWhitespace).count }
+
     /// Sentences in the rewrite, counted by closing marks followed by space or end, never below one.
-    static func sentenceCount(_ text: String) -> Int {
+    static func sentenceCount(_ text: String) -> Int { max(1, sentenceEnds(text)) }
+
+    /// Closing marks followed by space or end, which may be none.
+    static func sentenceEnds(_ text: String) -> Int {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-        let count = words.indices.count { index in
+        return words.indices.count { index in
             FirstWordPass.endsSentence(words[index], followedBy: words.dropFirst(index + 1).first)
         }
-        return max(1, count)
     }
 
     // MARK: Checks
