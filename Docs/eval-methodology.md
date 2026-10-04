@@ -241,6 +241,36 @@ What is deliberately not done matters as much as what is:
   call that noise. Growth that wobbles is "suspect" and needs a longer run; two readings are
   "undetermined", which is not a pass. Readings are in [`performance-leaks.md`](performance-leaks.md).
 
+## How far the corpus is from spontaneous speech
+
+- `uttrflow-bakeoff speech-shape` prints, per 100 words, the words the standard passes remove by
+  grant (sound, repetition, retraction), marks by kind, mean words per sentence and the share of
+  lines with a repetition or retraction. With no option it reads the English cases' `spoken`;
+  `--reference <file>` reads a local file of one utterance per line. The passes are the
+  instrument on both sides, so a gap is a difference in the text, not in two definitions.
+- The margin, fixed before any reference is measured: a figure differs when the two columns are
+  more than 25% of the reference value apart, or more than 0.5 per 100 words where the reference
+  is under 2. A class outside the margin gets cases added to the matrix, or a filed gap with case
+  counts.
+- A reference is a public spontaneous-speech transcript set whose licence permits use of its
+  transcripts. Only the printed numbers and the set's name, version and licence are committed,
+  never its text. Until one is measured the reference column is empty.
+
+| Figure | Corpus (English `spoken`) | Reference |
+|---|---|---|
+| Words removed as sounds /100w | 0.90 | not measured |
+| Words removed as repetitions /100w | 0.83 | not measured |
+| Words removed as retractions /100w | 1.99 | not measured |
+| `.` /100w | 2.13 | not measured |
+| `,` /100w | 0.63 | not measured |
+| `?` /100w | 0.07 | not measured |
+| `!` /100w | 0.07 | not measured |
+| Other marks /100w | 1.46 | not measured |
+| Words per sentence | 6.81 | not measured |
+| Lines with a restart | 7.07% | not measured |
+
+The corpus column is 410 English cases, 3,011 words.
+
 ## The contamination audit
 
 - `ContaminationAudit` is the one check that no tuned-on text carries a corpus passage. It reads

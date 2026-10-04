@@ -1,7 +1,7 @@
 // The dictionary arranged by sound.
 
 private import struct Foundation.UUID
-package import UttrflowCore
+public import UttrflowCore
 
 /// The dictionary arranged by sound, so a lookup costs the same with fifty thousand entries as with ten.
 public struct PhoneticIndex: Sendable, Equatable {
@@ -14,10 +14,24 @@ public struct PhoneticIndex: Sendable, Equatable {
     /// The longest run of spoken words that can be one entry; `setUserPrefs` is said as three.
     public static let maximumWordsPerEntry = 3
 
-    /// Whether both editor fields fit the spans the lookup can produce.
+    /// The longest spelling in UTF-8 bytes; a byte-level tokeniser keeps it inside the 111-token recogniser prompt.
+    public static let maximumBytesPerEntry = 80
+
+    /// Whether both editor fields fit the spans the lookup can produce and the recogniser prompt.
     public static func supports(word: String, pronunciation: String?) -> Bool {
-        wordCount(in: word) <= maximumWordsPerEntry
-            && (pronunciation.map { wordCount(in: $0) <= maximumWordsPerEntry } ?? true)
+        refusal(word: word, pronunciation: pronunciation) == nil
+    }
+
+    /// Why an entry cannot be kept, or `nil` when it fits; the one check the store, editor and import share.
+    public static func refusal(word: String, pronunciation: String?) -> DictionaryStoreError? {
+        guard
+            wordCount(in: word) <= maximumWordsPerEntry,
+            pronunciation.map({ wordCount(in: $0) <= maximumWordsPerEntry }) ?? true
+        else { return .entryHasTooManyWords(maximum: maximumWordsPerEntry) }
+        guard word.utf8.count <= maximumBytesPerEntry else {
+            return .entryIsTooLong(maximum: maximumBytesPerEntry)
+        }
+        return nil
     }
 
     /// The words separated by whitespace, which is how recogniser utterances are split.

@@ -60,6 +60,19 @@ public enum SurfaceProbe {
             textLength: integer(field, kAXNumberOfCharactersAttribute))
     }
 
+    /// What names the field, asked in one message: its role and the four names it may publish for itself.
+    static func names(of field: AXUIElement) -> FieldNames {
+        FocusedFieldRead.names(
+            of: FocusedFieldReader.AXNode(keepingTimeout: field), in: FocusedFieldReader.AXElementTree())
+    }
+
+    /// The one read of a focused field's value, never fetched from a declared secure field nor copied whole when long.
+    static func text(of field: AXUIElement, names: FieldNames, at range: CFRange?) -> FieldText {
+        FocusedFieldRead.text(
+            of: FocusedFieldReader.AXNode(keepingTimeout: field), in: FocusedFieldReader.AXElementTree(),
+            names: names, at: range.map { NSRange(location: $0.location, length: $0.length) })
+    }
+
     /// The screen rectangle Accessibility reports for one text range, which decides whether a ghost can be drawn.
     static func bounds(_ field: AXUIElement, at range: CFRange) -> CGRect? {
         let rect: CGRect? = unwrap(

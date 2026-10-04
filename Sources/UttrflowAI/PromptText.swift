@@ -2,7 +2,7 @@
 
 /// Makes text safe to place inside one prompt line. See Docs/cleanup.md.
 public enum PromptText {
-    /// The value as one line: no control characters or bidirectional marks, whitespace collapsed, quotes single, capped.
+    /// The value as one line: no control characters, bidirectional marks or zero-width spaces, whitespace collapsed, quotes single, capped.
     public static func quoted(_ text: String, limit: Int? = nil) -> String {
         let flattened = TextTidy.collapseWhitespace(scrubbed(text, lineBreak: " "))
         guard let limit else { return flattened }
@@ -64,13 +64,13 @@ public enum PromptText {
         "\u{22}", "\u{201C}", "\u{201D}", "\u{201E}", "\u{201F}", "\u{2033}", "\u{2036}", "\u{FF02}",
     ]
 
-    /// Line breaks become `lineBreak`, other controls a space, bidirectional marks nothing, double quotes single.
+    /// Line breaks become `lineBreak`, other controls a space, bidirectional marks and zero-width spaces nothing, double quotes single.
     private static func scrubbed(_ text: String, lineBreak: Unicode.Scalar) -> String {
         var scalars = String.UnicodeScalarView()
         var previous: Unicode.Scalar?
         for scalar in text.unicodeScalars {
             defer { previous = scalar }
-            if scalar.properties.isBidiControl { continue }
+            if scalar.properties.isBidiControl || scalar == "\u{200B}" { continue }
             if isLineBreak(scalar) {
                 // A carriage return and line feed are one break, not two.
                 if scalar == "\n", previous == "\r" { continue }

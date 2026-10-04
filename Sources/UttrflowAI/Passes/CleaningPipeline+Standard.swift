@@ -47,7 +47,7 @@ extension CleaningPipeline {
             ContractionsPass(), SpacingPass(),
         ]
         if destination == .codeEditor,
-            !CodeCommentContext.isComment(precedingText: precedingText, documentName: documentName),
+            CodeCommentContext.isCode(precedingText: precedingText, documentName: documentName),
             let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
         {
             cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
