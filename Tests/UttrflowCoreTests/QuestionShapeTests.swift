@@ -51,6 +51,8 @@ struct QuestionShapeTests {
             "tum kal aa rahe ho na",
             "may i come in", "may we leave early", "do they know", "had you heard about it",
             "were you there when it happened", "did it work",
+            "how many of you are coming", "how much of it is left", "how about you",
+            "how old are you", "what a mess is this",
         ])
     func asks(text: String) {
         #expect(QuestionShape.asks(shapes(text)))
@@ -59,6 +61,8 @@ struct QuestionShapeTests {
     @Test(
         "leaves a statement, an indirect question and a command alone",
         arguments: [
+            "how nice of you to come", "how beautiful it is here", "what a day i am so tired",
+            "what an idea you had", "what a lovely surprise", "what a mess this is", "what a day",
             "I wonder if the build passed", "what we need is more time", "what we need is more tests",
             "what works for you is fine", "who owns the house is unclear",
             "the person who owns the notification service is unclear",
