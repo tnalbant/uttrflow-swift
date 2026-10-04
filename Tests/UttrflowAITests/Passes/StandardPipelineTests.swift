@@ -218,12 +218,12 @@ struct StandardPipelineTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 
-    @Test("splits fillers glued to their neighbours by pause ellipses")
-    func splitsGluedFillers() {
+    @Test("removes fillers glued to their neighbours by pause ellipses, keeping the ellipses between words")
+    func removesGluedFillers() {
         #expect(
             CleaningPipeline.standard.run(
                 Draft(text: "Ah...the...um...the invoice is...ah...overdue")
-            ).text == "The invoice is overdue."
+            ).text == "The...the invoice is...overdue."
         )
     }
 

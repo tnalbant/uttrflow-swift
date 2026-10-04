@@ -150,7 +150,7 @@ editor-identifier-casing	The crash only happens in payment sheet after the card 
 editor-identifier-then-prose	We call set user prefs at launch so the settings page never has to set user prefs again.
 editor-ordinary-question	Can you remind me to renew the parking permit before the end of the month?
 editor-selected-identifier	Let's rename set user prefs before the release nobody knows what it does.
-ellipsis-glued-fillers	The invoice is overdue.
+ellipsis-glued-fillers	The...the invoice is...overdue.
 email-continues-mid-sentence	the quote you sent last week.
 email-greeting-kept	Hi meera just confirming the venue for the offsite is booked.
 email-two-paragraphs	Thanks for your note.\n\nI've attached the revised quote for the second floor.
