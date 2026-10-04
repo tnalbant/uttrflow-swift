@@ -266,9 +266,9 @@ Mac did rather than what a dictation should cost, and run several times over the
 
 | category | mode | wait p50 s | wait p95 s |
 |---|---|---|---|
-| `dur5` | `rt` | 6.31 | 7.19 |
-| `dur30` | `rt` | 20.79 | 84.76 |
-| `dur120` | `rt` | 6.29 | 6.68 |
+| `dur5` | `rt` | 6.32 | 7.20 |
+| `dur30` | `rt` | 20.80 | 84.77 |
+| `dur120` | `rt` | 6.30 | 6.69 |
 
 The source audit only checks that the rows exist and are coherent. Timing needs the models and a
 quiet Mac, so it is not in `make verify` or CI; a release candidate runs it:
