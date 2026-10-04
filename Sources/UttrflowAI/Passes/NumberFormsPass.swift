@@ -282,7 +282,8 @@ public struct NumberFormsPass: PieceCleaningPass {
             }
         }
         if !isPhrase, item.spoken, let value = item.value {
-            let beforeAmount = joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
+            let beforeAmount =
+                joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
                 || completesAmount(at: position, keys: keys, shapes: shapes)
             guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.

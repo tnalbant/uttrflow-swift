@@ -900,7 +900,8 @@ public actor DictationPipeline {
         }
 
         // Pads the words with a space where the field's surrounding text would otherwise join them.
-        let destination = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides).destination
+        let destination = SituationResolver.resolve(from: insertionContext, overrides: runningOverrides)
+            .destination
         let toWrite = insertionContext.insertionPoint.paddedBoundary(
             for: OutputSafety.checked(output).text, in: destination)
 
