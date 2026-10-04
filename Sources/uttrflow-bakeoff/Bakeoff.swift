@@ -374,7 +374,9 @@ struct Bakeoff: AsyncParsableCommand {
         let origins = EvaluationCase.Origin.allCases.map { origin in
             "\(origin.rawValue) \(cases.count(where: { $0.origin == origin }))"
         }
-        let splits = CorpusSplit.allCases.map { split in "\(split.rawValue) \(cases.count(where: { $0.split == split }))" }
+        let splits = CorpusSplit.allCases.map { split in
+            "\(split.rawValue) \(cases.count(where: { $0.split == split }))"
+        }
         return "origin: " + origins.joined(separator: ", ") + "; split: " + splits.joined(separator: ", ")
     }
 
@@ -635,8 +637,10 @@ struct RegressionComparison {
     /// The corpus change first, then each set of cases left out of the verdict.
     var corpusReport: [String] {
         guard corpusChanged || !added.isEmpty || !removed.isEmpty || !changed.isEmpty else { return [] }
-        var lines = corpusChanged ? ["Corpus changed since the baseline; only unchanged cases are judged."] : []
-        for (label, ids) in [("added", added), ("removed", removed), ("changed", changed)] where !ids.isEmpty {
+        var lines =
+            corpusChanged ? ["Corpus changed since the baseline; only unchanged cases are judged."] : []
+        for (label, ids) in [("added", added), ("removed", removed), ("changed", changed)] where !ids.isEmpty
+        {
             lines.append("  \(label) (\(ids.count)): \(ids.joined(separator: ", "))")
         }
         return lines
