@@ -353,6 +353,13 @@ Offsets go stale the moment the user types, so a record is never trusted on its 
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
 
+An edit returns an `EditUndo`: the span its own text now occupies, the text it took out, and up
+to `EditUndo.contextUnits` UTF-16 units either side. `EditHistory` keeps the last
+`EditHistory.depth` of them for `EditHistory.window`, in memory only. An undo is itself an edit
+of that span back to the removed text, so it refuses unless the span, both neighbours and the
+caret are as the edit left them, and a second undo re-applies the first edit. A refused undo,
+or asking from another field, forgets every entry. `EditUndo` never describes the removed text.
+
 ## The insertion fixture
 
 `uttrflow-insertion-fixture` is a test-only window with a text field, a multi-line view and a
