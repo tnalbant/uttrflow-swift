@@ -313,7 +313,7 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
-        await expire(StageTimeout.quick, at: .inserting(into: nil), of: pipeline, on: clock)
+        await expire(StageTimeout.insertion, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -379,7 +379,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await expire(StageTimeout.transformation, at: .tidying, of: pipeline, on: clock)
-        await expire(StageTimeout.quick, at: .inserting(into: nil), of: pipeline, on: clock)
+        await expire(StageTimeout.insertion, at: .inserting(into: nil), of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -406,7 +406,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         while !(await capture.calls.contains(.stop)) { await Task.yield() }
-        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await expire(StageTimeout.captureStop, at: .recording, of: pipeline, on: clock)
         await settle(finishing)
 
         guard case .failed(let failure) = await pipeline.currentState else {
@@ -437,7 +437,7 @@ struct DictationStageTimeoutTests {
 
         await pipeline.startRecording()
         await waitForCall(context.calls)
-        await expire(StageTimeout.quick, at: .recording, of: pipeline, on: clock)
+        await expire(StageTimeout.screenRead, at: .recording, of: pipeline, on: clock)
         await pipeline.finishRecording()
 
         #expect(inserter.inserted == ["Tidied."])
@@ -469,7 +469,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await waitForCall(corrector.calls)
-        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await expire(StageTimeout.correction, at: .tidying, of: pipeline, on: clock)
         await settle(finishing)
 
         #expect(inserter.inserted == ["Tidied."])
@@ -500,7 +500,7 @@ struct DictationStageTimeoutTests {
         await pipeline.startRecording()
         let finishing = Task { await pipeline.finishRecording() }
         await waitForCall(snippets.calls)
-        await expire(StageTimeout.quick, at: .tidying, of: pipeline, on: clock)
+        await expire(StageTimeout.expansion, at: .tidying, of: pipeline, on: clock)
         await settle(finishing)
 
         #expect(inserter.inserted == ["Tidied."])

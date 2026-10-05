@@ -198,7 +198,7 @@ clears a newer copy. Once the key is posted, arrival can be uncertain, so the cl
 written.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
-arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
+arrival notice. If the insertion stage itself times out (`StageTimeout.insertion`, 15 s), the failure
 is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 

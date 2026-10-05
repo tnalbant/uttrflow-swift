@@ -32,7 +32,7 @@ extension DictationPipeline {
         do {
             let weighed =
                 try await metrics.measuringInTime(.correction, clock: clock) {
-                    try await withStageTimeout(StageTimeout.quick, clock: clock) { [corrector] in
+                    try await withStageTimeout(StageTimeout.correction, clock: clock) { [corrector] in
                         if let seams {
                             try await corrector.weighAcrossSeams(transcription, at: seams, seeing: appContext)
                         } else {
@@ -244,7 +244,7 @@ extension DictationPipeline {
     ) async -> ExpandedTranscript {
         do {
             let expanded = try await metrics.measuringInTime(.expansion, clock: clock) {
-                try await withStageTimeout(StageTimeout.quick, clock: clock) { [snippets] in
+                try await withStageTimeout(StageTimeout.expansion, clock: clock) { [snippets] in
                     try await snippets.expand(seamInput.removingSeamStops())
                 }
             }

@@ -55,6 +55,10 @@ struct NumberFormsPassTests {
             ("port negative five", "port -5"),
             ("negative five degrees", "negative five degrees"),
             ("negative, fifteen degrees", "negative, 15 degrees"),
+            ("it was minus fifteen outside", "it was -15 outside"),
+            ("the balance is five hundred minus fifty", "the balance is 500 minus 50"),
+            ("twenty minus twelve", "20 minus 12"),
+            ("15 minus 3", "15 minus 3"),
             ("five, dollars", "five, dollars"),
             ("a dollar", "a dollar"),
         ]
@@ -105,6 +109,27 @@ struct NumberFormsPassTests {
         ]
     )
     func everyNumberAsANumeral(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
+        "a pronoun one stays a word where every number is a numeral",
+        arguments: [
+            ("no one knows", "no one knows"),
+            ("they help one another", "they help one another"),
+            ("which one is it", "which one is it"),
+            ("this one works", "this one works"),
+            ("the one that matters", "the one that matters"),
+            ("one by one they left", "one by one they left"),
+            ("any one of us", "any one of us"),
+            ("take each one", "take each one"),
+            ("I want that one", "I want that one"),
+            ("we need one reviewer", "we need 1 reviewer"),
+            ("add one row", "add 1 row"),
+            ("the one reviewer", "the 1 reviewer"),
+        ]
+    )
+    func pronounOneStaysAWord(input: String, expected: String) {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
     }
 
@@ -208,6 +233,38 @@ struct NumberFormsPassTests {
         ]
     )
     func writesSpokenDigitRuns(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "writes an offset from UTC or GMT as the zone, a sign, the hour and any half hour",
+        arguments: [
+            ("u t c plus five thirty", "UTC+5:30"),
+            ("utc plus five thirty", "UTC+5:30"),
+            ("g m t minus eight", "GMT-8"),
+            ("gmt plus eight", "GMT+8"),
+            ("UTC plus 5", "UTC+5"),
+            ("u t c plus five forty five", "UTC+5:45"),
+            ("plus five points", "plus five points"),
+        ]
+    )
+    func writesZoneOffsets(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
+        "reads double, triple and quadruple before a digit word inside a digit run",
+        arguments: [
+            ("double oh seven", "007"),
+            ("triple five one two", "55512"),
+            ("call five five double two", "call 5522"),
+            ("the room is quadruple one", "the room is 1111"),
+            ("double check the list", "double check the list"),
+            ("double two", "double two"),
+            ("a double espresso and one two", "a double espresso and one two"),
+        ]
+    )
+    func readsRepeatedDigits(input: String, expected: String) {
         #expect(cleaned(input, by: sut) == expected)
     }
 

@@ -12,6 +12,8 @@ public struct EvidenceRow: Sendable, Equatable, Codable {
         case use, revert, restore, sighting
         /// Style counts, keyed by destination; see ``StyleSignals``.
         case styleMessage, styleWords, styleSentences, styleShortMessage, styleClosingStop
+        /// A respelling between two spellings of one listed word, and the user's deletion of it; see `SpellingPreferences`.
+        case spellingPreference, spellingPreferenceCleared
     }
 
     /// Which path produced the row.

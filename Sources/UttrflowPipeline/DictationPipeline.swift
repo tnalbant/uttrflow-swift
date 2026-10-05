@@ -184,6 +184,9 @@ public actor DictationPipeline {
     /// The languages this dictation is being listened for and tidied in, for the same reason.
     var runningProfile: UserProfile { inUse?.profile ?? profile }
 
+    /// Where this dictation's pieces are cut, for how long the person it is running for pauses.
+    var runningWindowing: SpeechWindowing { windowing.adjusted(for: runningProfile.pauses) }
+
     /// The dictionary held at the start of this dictation; a word added meanwhile waits for the next.
     var runningCorrector: any WordCorrecting { dictationContext?.corrector ?? corrector }
 
@@ -364,7 +367,7 @@ public actor DictationPipeline {
         do {
             // Draining and converting the buffer, which is the part Uttrflow costs the user.
             let captured = try await metrics.measuringInTime(.capture, clock: clock) {
-                try await withStageTimeout(StageTimeout.quick, clock: clock) { [capture] in
+                try await withStageTimeout(StageTimeout.captureStop, clock: clock) { [capture] in
                     try await capture.stop()
                 }
             }
@@ -518,7 +521,7 @@ public actor DictationPipeline {
             let lead = early.cut > 0 ? 1 : 0
             let audio = await capture.capturedSoFar(from: early.cut - lead)
             guard
-                let cut = windowing.nextCut(
+                let cut = runningWindowing.nextCut(
                     in: audio.samples, sampleRate: audio.sampleRate, from: lead,
                     boundaries: audio.discontinuities)
             else { continue }
@@ -653,9 +656,9 @@ public actor DictationPipeline {
         generation == mine && !wasCancelled(mine)
     }
 
-    /// Asks what is on screen within the quick limit, since an injected engine need not keep a budget of its own.
+    /// Asks what is on screen within the screen-read limit, since an injected engine need not keep a budget of its own.
     private func readContext() async -> AppContext {
-        ((try? await withStageTimeout(StageTimeout.quick, clock: clock) { [context] in
+        ((try? await withStageTimeout(StageTimeout.screenRead, clock: clock) { [context] in
             await context.currentContext()
         }) ?? nil) ?? AppContext()
     }
@@ -771,7 +774,7 @@ public actor DictationPipeline {
             cleaningRecords = []
         }
 
-        var remainder = windowing.windows(
+        var remainder = runningWindowing.windows(
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
             joiningPreviousWindowFrom: delivery != .copy ? previousWindowStart : nil,
             boundaries: audio.discontinuities)
@@ -1115,7 +1118,7 @@ public actor DictationPipeline {
         transition(to: .inserting(into: insertedInto))
         do {
             let inserted = try await metrics.measuringInTime(.insertion, clock: clock) {
-                try await withStageTimeout(StageTimeout.quick, clock: clock) {
+                try await withStageTimeout(StageTimeout.insertion, clock: clock) {
                     if delivery == .copy {
                         return try await inserter.insert(text)
                     }
