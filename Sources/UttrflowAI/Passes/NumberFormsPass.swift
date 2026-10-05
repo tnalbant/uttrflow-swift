@@ -568,7 +568,7 @@ public struct NumberFormsPass: PieceCleaningPass {
     }
 
     /// Words before two dotted digit groups that say they are an address, version or decimal.
-    static let dottedCues: Set<String> = ["ip", "address", "version", "v", "build", "release"]
+    static let dottedCues = NumberCues.words(for: .dotted)
 
     /// "one nine two dot one six eight dot one dot one": digit groups a spoken "dot" joins, three or more or two after a cue.
     private static func dottedNumber(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
@@ -644,9 +644,7 @@ public struct NumberFormsPass: PieceCleaningPass {
     }
 
     /// Words before a digit run that say it is a code or a number to dial, not a count.
-    static let digitCues: Set<String> = contextWords.union([
-        "is", "code", "pin", "passcode", "password", "otp", "plus", "dial", "call", "on", "at", "was",
-    ])
+    static let digitCues = contextWords.union(NumberCues.words(for: .digitRun))
 
     /// Whether the digits step up or down by one each time, as a count-off or countdown does.
     private static func isCount(_ digits: String) -> Bool {
