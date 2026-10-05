@@ -145,7 +145,9 @@ public struct NumberFormsPass: PieceCleaningPass {
     }
 
     /// Writes `text` over the draft words behind the split words in `span`.
-    private static func write(_ text: String, over span: ClosedRange<Int>, of live: [Int], in draft: inout Draft) {
+    private static func write(
+        _ text: String, over span: ClosedRange<Int>, of live: [Int], in draft: inout Draft
+    ) {
         draft.replace(at: live[span.lowerBound], with: text, by: id)
         for index in Set(live[span]).subtracting([live[span.lowerBound]]).sorted() {
             draft.remove(at: index, by: id)
