@@ -20,6 +20,101 @@ extension FocusedWindowSource {
     func identity(of field: Field) -> FieldIdentity? { nil }
 }
 
+/// How a tree's raw answers become the elements and ranges the window read needs.
+struct FieldAnswerDecoder<Element> {
+    let element: (Any) -> Element?
+    let range: (Any) -> CFRange?
+}
+
+/// The attributes the dictation's window read asks together, each list one message.
+enum WindowReadAttributes {
+    /// The application's focused window and focused element.
+    static let focus = ["AXFocusedWindow", "AXFocusedUIElement"]
+    /// The field's selection, length, line mode and marked run, none of them its text.
+    static let state = [
+        "AXSelectedTextRanges", "AXSelectedTextRange", "AXNumberOfCharacters", "AXMultiline",
+        "AXTextInputMarkedRange",
+    ]
+}
+
+/// The dictation's window read over any `ElementTree`, the focus and the field's state each one message.
+final class TreeWindowSource<Tree: ElementTree>: FocusedWindowSource {
+    private let tree: Tree
+    private let app: Tree.Element
+    private let decode: FieldAnswerDecoder<Tree.Element>
+    private let cap: (Tree.Element) -> Void
+    private let identify: (Tree.Element) -> FieldIdentity?
+    private var field: Tree.Element?
+    private var state: [FieldAnswer] = []
+
+    /// `cap` sets an element's messaging timeout to the time left before it is asked anything.
+    init(
+        tree: Tree, app: Tree.Element, decode: FieldAnswerDecoder<Tree.Element>,
+        cap: @escaping (Tree.Element) -> Void, identify: @escaping (Tree.Element) -> FieldIdentity?
+    ) {
+        self.tree = tree
+        self.app = app
+        self.decode = decode
+        self.cap = cap
+        self.identify = identify
+    }
+
+    func windowTitle() -> String? {
+        cap(app)
+        let focus = tree.attributes(WindowReadAttributes.focus, of: app)
+        field = focus.count == 2 ? value(focus[1]).flatMap(decode.element) : nil
+        guard let window = focus.first.flatMap(value).flatMap(decode.element) else { return nil }
+        cap(window)
+        return tree.attribute("AXTitle", of: window).string
+    }
+
+    func focusedField() -> Tree.Element? { field }
+
+    func names(of field: Tree.Element) -> FieldNames {
+        cap(field)
+        return FocusedFieldRead.names(of: field, in: tree)
+    }
+
+    func selection(of field: Tree.Element) -> AccessibilitySelection {
+        cap(field)
+        let asked = tree.attributes(WindowReadAttributes.state, of: field)
+        state = asked.count == WindowReadAttributes.state.count ? asked : []
+        let plural = answer(0).flatMap { $0 as? [Any] }
+        if let plural, plural.count > 1 { return .discontinuous }
+        return AccessibilitySelection.resolve(
+            singular: answer(1).flatMap(decode.range), plural: plural?.compactMap(decode.range),
+            textLength: state.isEmpty ? nil : state[2].integer)
+    }
+
+    func text(of field: Tree.Element, names: FieldNames, at range: CFRange?) -> FieldText {
+        cap(field)
+        return FocusedFieldRead.text(
+            of: field, in: tree, names: names,
+            at: range.map { NSRange(location: $0.location, length: $0.length) },
+            count: { self.state.isEmpty ? nil : self.state[2].integer })
+    }
+
+    func selectedText(of field: Tree.Element, at range: CFRange?) -> String? {
+        cap(field)
+        return FocusedFieldRead.selectedText(
+            of: field, in: tree, at: range.map { NSRange(location: $0.location, length: $0.length) })
+    }
+
+    func isMultiline(_ field: Tree.Element) -> Bool? { (answer(3) as? NSNumber)?.boolValue }
+
+    func markedRange(of field: Tree.Element) -> CFRange? { answer(4).flatMap(decode.range) }
+
+    func identity(of field: Tree.Element) -> FieldIdentity? { identify(field) }
+
+    /// One answer from the state batch, or nothing when the field refused it or the batch was not asked.
+    private func answer(_ index: Int) -> Any? { state.indices.contains(index) ? value(state[index]) : nil }
+
+    private func value(_ answer: FieldAnswer) -> Any? {
+        guard case .value(let value) = answer else { return nil }
+        return value
+    }
+}
+
 extension MacContextEngine {
     /// Banks each answer as it lands; no text is banked before the secure check finishes. See `Docs/context-accessibility.md`.
     static func read<Source: FocusedWindowSource>(

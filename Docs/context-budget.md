@@ -44,11 +44,28 @@ one the dictation was read from.
   identity, then the focused-window read, together. `withDeadline`
   (`Sources/UttrflowCore/Support/StageTimeout.swift`) stops waiting at 100 ms and hands back
   whatever was gathered; it never extends the wait for a read still in flight.
-- **The per-message timeout** (`MacContextEngine.budgetInSeconds`) bounds one Accessibility
-  message to one element. A focused-window read sends several (title, focused field, selection,
-  caret text), so a napped application can cost close to the whole-request deadline one message at
-  a time even though no single message waited longer than its own timeout.
+- **The per-message timeout** (`MacContextEngine.timeLeft(since:)`) bounds one Accessibility
+  message to the part of the budget still left when it is sent, never the whole budget, so a
+  napped application cannot hold the read past its deadline one message at a time.
 - **The lifetime of abandoned work**, which is unbounded in principle; see below.
+
+## Messages per read
+
+`TreeWindowSource` (`Sources/UttrflowContext/FocusedWindowRead.swift`) asks each element once per
+batch with `AXUIElementCopyMultipleAttributeValues`. Counted with the fake tree in
+`WindowReadMessageCountTests`, for a native text view, a long browser text area and a terminal:
+
+| Message | One at a time | Batched |
+|---|---|---|
+| Focused window and focused field | 2 | 1 |
+| Window title | 1 | 1 |
+| Field names for the secure check | 6 | 1 |
+| Selection, length, line mode, marked run | 5 | 1 |
+| Value, or a range of it when long | 1 | 1 |
+| **Total** | **15** | **5** |
+
+The reading is identical either way. `_AXUIElementGetWindow` adds one message outside the tree in
+both. A selection adds one ranged read. Live time per family is not measured here.
 
 ## The seconds conversion is not cosmetic
 
