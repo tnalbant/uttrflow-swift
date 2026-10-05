@@ -811,7 +811,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             && (digitCues.contains(keys[start - 1]) || NumberWords.isNumber(keys[start - 1]))
     }
 
-    private static func ordinalSuffix(_ value: Int) -> String {
+    static func ordinalSuffix(_ value: Int) -> String {
         let remainder = value % 100
         if (11...13).contains(remainder) { return "th" }
         switch value % 10 {

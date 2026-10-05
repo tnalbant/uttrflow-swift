@@ -97,15 +97,18 @@ extension CleaningPipeline {
         for formatter: DestinationFormatter, situation: Situation, heard: String? = nil,
         steps: CleaningSteps = .default, vocabulary: [String] = []
     ) -> CleaningPipeline {
-        CleaningPipeline(
+        let casing = AcronymCasingPass(
+            destination: formatter.destination, vocabulary: vocabulary, onScreen: situation.app.textOnScreen)
+        return CleaningPipeline(
             wholeText: initialisms(steps: steps) + [
+                casing,
                 SentenceBoundaryPass(),
                 FirstWordPass(
                     policy: formatter.firstWord, state: situation.insertion.sentenceState,
                     onScreen: situation.app.textOnScreen, heard: heard,
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
                         && formatter.destination != .codeEditor,
-                    vocabulary: vocabulary),
+                    vocabulary: vocabulary, casing: casing),
                 CommentMarkerPass(
                     opensComment: formatter.destination == .codeEditor
                         && CaretStructure.opensComment(

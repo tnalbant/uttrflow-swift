@@ -78,6 +78,7 @@ public enum GeneralVocabulary {
         become show leave feel put bring begin keep hold write stand hear let mean set meet
         run pay sit speak lie lead read grow open walk win offer remember love consider
         appear buy wait serve die send expect build stay fall cut reach remain suggest raise
+        affect effect
         pass sell require report decide pull last long great little own old big high
         different small large next early young important few public bad same able very
         really here today tomorrow yesterday tonight please thanks thank yes okay sure maybe
