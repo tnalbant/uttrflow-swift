@@ -214,8 +214,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "00125d832fe722ad50161286d8c1d13247cb2f23f369006f9f3d7c11ccf75c23",
-      "bytes": 896
+      "sha256": "6e9802b2d8947edb0b9f78c05030590980e5d0d69ea34822cb2d05f2b213ef37",
+      "bytes": 1218
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/number-words.json",
@@ -232,8 +232,8 @@
       "licence": "MIT",
       "redistribution": true,
       "note": "read through DataTable; see Docs/data-tables.md",
-      "sha256": "7b3be2ba8624e9a7efd5f4233ae8e9022a9b1f487fe4dda49cdc82717da61757",
-      "bytes": 6457
+      "sha256": "b51259363aa9a1d3945a47010bba823935f3e598dd861bd8a0db299a134b50e9",
+      "bytes": 7848
     },
     {
       "path": "Sources/UttrflowCore/Resources/Tables/technical-lexicon.json",
