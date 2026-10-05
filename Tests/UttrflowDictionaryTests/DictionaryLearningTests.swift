@@ -69,17 +69,17 @@ struct DictionaryLearningTests {
         for file in 0..<200 {
             for _ in 0..<3 {
                 _ = try await dictate(
-                    into: store, saying: "the spreadsheet is open",
-                    titled: "Spreadsheet\(file).xlsx")
+                    into: store, saying: "the budget sheet is open",
+                    titled: "BudgetSheet\(file).xlsx")
             }
         }
 
         let entries = await store.allEntries()
         #expect(
-            entries.filter { $0.origin == .observed || $0.origin == .learned }.map(\.word) == ["Spreadsheet"])
+            entries.filter { $0.origin == .observed || $0.origin == .learned }.map(\.word) == ["BudgetSheet"])
         let workingSet = WorkingSet.words(from: entries, limit: 8, now: epoch)
         #expect(workingSet.contains("Marisol"))
-        #expect(!workingSet.contains("Spreadsheet199"))
+        #expect(!workingSet.contains("BudgetSheet199"))
     }
 
     @Test("bounds inferred entries while preserving added and shipped entries")
