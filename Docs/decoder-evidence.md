@@ -22,7 +22,7 @@ UTTRFLOW_PROBE_AUDIO=/path/a.wav,/path/b.wav swift test --filter DecoderEvidence
 | Top-k alternatives at a position | carried: up to 5 leaders beside the chosen token in `tokenLogProbs` | `EvidenceSampler`, passed in by `LanguageHeldDecoder.decodeText` | 0.31 to 0.39 ms per step, median |
 | No-speech probability | **no**: always 0 | TextDecoder.swift:817 writes the constant | n/a |
 | No-speech token at the first sampled step | readable, but measured ~0 even on silence | logits filter | as top-k |
-| Substituting the sampler | yes, only by wrapping the `TextDecoding` | `LanguageHeldDecoder.decodeText` | none |
+| Substituting the sampler | yes: the repository owns the loop ([decode-session.md](decode-session.md)) | `DecodeSession.decode`, called by `LanguageHeldDecoder.decodeText` | none |
 
 ## Per-token log-probabilities
 
