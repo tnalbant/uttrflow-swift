@@ -114,7 +114,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         let marked = AddedMarkCheck.checked(finished, against: spoken).text
         return TransformationResult(
             text: marked, producedBy: kind,
-            cleaning: CleaningRecord(draft: draft, ran: pipeline.ids),
+            cleaning: CleaningRecord(draft: draft, ran: pipeline.ids, modelAnswers: [rewritten]),
             entriesTaken: taken.compactMap(\.entryID))
     }
 

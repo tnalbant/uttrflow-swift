@@ -97,6 +97,16 @@ struct GenerativeTextTransformerTests {
         #expect(result.producedBy == .foundationModels)
     }
 
+    @Test("keeps the model's answer as it came, before it is unwrapped and finished")
+    func recordsTheRawAnswer() async throws {
+        let answer = "  The room is booked.  Do you need a projector?"
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: FakeCleanupModel { _ in answer })
+
+        let result = try await sut.transform(request("the room is booked do you need a projector"))
+        #expect(result.text == "The room is booked. Do you need a projector?")
+        #expect(result.cleaning?.modelAnswers == [answer])
+    }
+
     /// The model leaves output ragged even when told not to, so a deterministic pass finishes it.
     @Test(
         "finishes what the model left ragged",
