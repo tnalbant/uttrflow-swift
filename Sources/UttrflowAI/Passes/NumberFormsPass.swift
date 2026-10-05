@@ -167,7 +167,9 @@ public struct NumberFormsPass: PieceCleaningPass {
             return decade
         }
 
-        if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes) {
+        if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes),
+            !subtracts(at: position, keys: keys, shapes: shapes)
+        {
             if let numeral = NumberWords.digits(keys[position + 1]) {
                 return Phrase(text: "-" + numeral, count: 2)
             }
@@ -434,6 +436,14 @@ public struct NumberFormsPass: PieceCleaningPass {
     private static func finishesAScale(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
         position >= 2 && !startsASentence(position, shapes) && !startsASentence(position - 1, shapes)
             && keys[position - 1] == "and" && NumberWords.scales[keys[position - 2]] != nil
+    }
+
+    /// Whether a "minus" here follows a number, so it subtracts rather than signs the number after it.
+    private static func subtracts(at position: Int, keys: [String], shapes: [WordShape]) -> Bool {
+        guard keys[position] == "minus", position > 0, joined(position, shapes) else { return false }
+        let previous = keys[position - 1]
+        return NumberWords.digits(previous) != nil || NumberWords.cardinal([previous]) != nil
+            || NumberWords.scales[previous] != nil
     }
 
     /// Whether the word at `index` opens a sentence, past which a number reads none of its context.

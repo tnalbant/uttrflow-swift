@@ -55,6 +55,10 @@ struct NumberFormsPassTests {
             ("port negative five", "port -5"),
             ("negative five degrees", "negative five degrees"),
             ("negative, fifteen degrees", "negative, 15 degrees"),
+            ("it was minus fifteen outside", "it was -15 outside"),
+            ("the balance is five hundred minus fifty", "the balance is 500 minus 50"),
+            ("twenty minus twelve", "20 minus 12"),
+            ("15 minus 3", "15 minus 3"),
             ("five, dollars", "five, dollars"),
             ("a dollar", "a dollar"),
         ]
