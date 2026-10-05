@@ -108,9 +108,11 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
         if MarkLegality.verdict(.stop, after: word) == .illegal { return Self.leftOpen(word) }
-        if followingTextContinuesSentence { return word }
-        if insertionPoint.structure?.hasOpenBracketOnCaretLine == true { return word }
-        if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
+        // The text after the caret carries on the sentence, so a stop the recogniser closed it with goes.
+        if followingTextContinuesSentence || insertionPoint.structure?.hasOpenBracketOnCaretLine == true {
+            return Abbreviations.ownsStop(WordShape(word).core) ? word : WordShape.withoutTrailingStop(word)
+        }
+        if insertionPoint.isOnListItemLine || draft.endsInListItem { return Self.unstopped(word) }
         if Self.isLiteral(Self.paragraphWords(in: draft).last ?? [], in: draft) { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
@@ -124,6 +126,14 @@ public struct TerminalStopPass: WholeTextCleaningPass {
     /// A word that leaves its clause open, such as a trailing "and", keeps no stop; an abbreviation keeps its own dot.
     private static func leftOpen(_ word: String) -> String {
         MarkLegality.state(of: word) == .leadsOn ? WordShape.withoutTrailingStop(word) : word
+    }
+
+    /// A list item's last word without the full stop a recogniser closes every dictation with; an abbreviation keeps its own dot.
+    private static func unstopped(_ word: String) -> String {
+        switch MarkLegality.state(of: word) {
+        case .abbreviation, .leadingAbbreviation, .technical: word
+        default: WordShape.withoutTrailingStop(word)
+        }
     }
 
     /// Whether text after the replacement already ends or continues the sentence.

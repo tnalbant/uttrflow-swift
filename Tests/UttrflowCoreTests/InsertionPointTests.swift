@@ -288,4 +288,14 @@ struct InsertionPointTests {
         let family = "\u{1F469}\u{200D}\u{1F467}"
         #expect(InsertionPoint.visibleText(family) == family)
     }
+
+    @Test("the vocabulary view drops a key and keeps every prose word and line")
+    func vocabularyDropsSecrets() {
+        let point = InsertionPoint(
+            precedingText: "Meeting moved to Thursday, see you there.\nkey AKIAIOSFODNN7EXAMPLE here",
+            followingText: "well-known co-op notes")
+        #expect(point.vocabulary.precedingText == "Meeting moved to Thursday, see you there.\nkey  here")
+        #expect(point.vocabulary.followingText == "well-known co-op notes")
+        #expect(InsertionPoint.unknown.vocabulary == .unknown)
+    }
 }
