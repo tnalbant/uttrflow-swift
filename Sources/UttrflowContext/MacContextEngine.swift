@@ -166,12 +166,14 @@ public final class MacContextEngine: ContextEngine, Sendable {
             return AppContext(
                 applicationName: Self.meaningful(gathered.application?.name),
                 bundleIdentifier: Self.meaningful(gathered.application?.bundleIdentifier),
+                processIdentifier: gathered.application?.processIdentifier,
                 documentName: Self.meaningful(gathered.window?.title), isSecure: true,
                 field: gathered.window?.field)
         }
         return AppContext(
             applicationName: Self.meaningful(gathered.application?.name),
             bundleIdentifier: Self.meaningful(gathered.application?.bundleIdentifier),
+            processIdentifier: gathered.application?.processIdentifier,
             documentName: Self.meaningful(gathered.window?.title),
             selectedText: Self.meaningful(gathered.window?.selectedText).map(Self.truncated),
             // Kept verbatim: an empty field is the start of the text, not nothing learnt.

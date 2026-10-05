@@ -19,6 +19,8 @@ public actor DictationPipeline {
     private let learner: any DictationLearning
     private let vocabulary: any VocabularyLearning
     let metrics: any MetricsRecording
+    /// Which quality layers run; a layer that is off leaves its stage's input as it came.
+    let layers: QualityLayers
     /// Where the account of what the clean-up steps did to each dictation goes.
     private let cleaningRecorder: any CleaningRecording
     /// The apps the user has told Uttrflow to treat as somewhere other than the table says.
@@ -124,14 +126,16 @@ public actor DictationPipeline {
         earlyPoll: Duration = .seconds(1),
         pollClock: any Clock<Duration> = ContinuousClock(),
         speechLoadLimit: Duration = StageTimeout.speechModelLoad,
-        commands: EditCommandRegistry = EditCommandRegistry()
+        commands: EditCommandRegistry = EditCommandRegistry(),
+        layers: QualityLayers = QualityLayers()
     ) {
         self.capture = capture
         self.speech = speech
         self.cleaner = cleaner
         self.context = context
         self.inserter = inserter
-        self.speechWords = speechWords
+        self.speechWords = layers.isOn(.recogniserBias) ? speechWords : { @Sendable _ in [] }
+        self.layers = layers
         self.corrector = corrector
         self.snippets = snippets
         self.learner = learner
@@ -946,7 +950,8 @@ public actor DictationPipeline {
                 unavailableEngines: whole.cleaned.cleaning?.unavailableEngines ?? [],
                 destination: InsertionDestination(
                     applicationName: appContext?.applicationName,
-                    bundleIdentifier: appContext?.bundleIdentifier, field: appContext?.field))
+                    bundleIdentifier: appContext?.bundleIdentifier,
+                    processIdentifier: appContext?.processIdentifier, field: appContext?.field))
         else { return }
         // Read before the next await, since the next dictation may start once these words are on screen.
         let wasSecure = destinationIsSecure
@@ -1103,7 +1108,7 @@ public actor DictationPipeline {
     ) async -> InsertionAttempt? {
         let inserter = delivery == .copy ? clipboard : self.inserter
         // Said before the words are handed over, because the app takes its own time to show them.
-        transition(to: .inserting)
+        transition(to: .inserting(into: insertedInto))
         do {
             let inserted = try await metrics.measuringInTime(.insertion, clock: clock) {
                 try await withStageTimeout(StageTimeout.quick, clock: clock) {

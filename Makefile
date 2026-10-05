@@ -85,7 +85,7 @@ accessibility-controls: ## Prove Docs/accessibility-controls.md lists every cont
 	@python3 Scripts/accessibility_controls_test.py
 
 .PHONY: layering-audit
-layering-audit: ## Prove no logic module gained a UI-framework import or a platform dependency. Needs no build.
+layering-audit: ## Prove no logic module gained a UI-framework import or a platform dependency, and no module gained an edge outside Scripts/module_layers.json. Needs no build.
 	@python3 Scripts/layering_audit.py
 
 .PHONY: type-name-audit

@@ -171,6 +171,10 @@ dependency from one of those modules to a module of the first row. The count is 
 `Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
 --report` lists what is left.
 
+It also fails on any module edge, a `Package.swift` dependency or an `import` of a package module,
+that `Scripts/module_layers.json` does not list, and on a listed edge nothing uses. Adding an edge
+is a reviewed diff to that file, with a line under `reasons` when the edge is not obvious.
+
 ```bash
 make public-api-audit
 ```

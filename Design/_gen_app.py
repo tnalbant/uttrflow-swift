@@ -759,7 +759,12 @@ SCREENS = [
 
 written = []
 for stem, active, caption, scope_html, search_html, add_html, content, recent, tails in SCREENS:
-    written += write_pair(
+    writer = (
+        write_whitespace_clean_pair
+        if stem in ("Main-Home", "Main-Dictionary-Empty", "Main-Snippets-Empty")
+        else write_pair
+    )
+    written += writer(
         stem,
         lambda dark, a=active, cap=caption, sc=scope_html, se=search_html, ad=add_html,
         c=content, r=recent, x=tails:

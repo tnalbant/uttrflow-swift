@@ -131,6 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var speechLoadStarted: ContinuousClock.Instant?
     /// Redraws the load's estimate once a second while a load runs, and is gone once it ends.
     private var speechLoadTicker: Task<Void, Never>?
+    /// The key release that starts the current wait, so a long wait can name its stage.
+    private var waitStarted: ContinuousClock.Instant?
+    /// Redraws the working line once a second while the wait after key release runs.
+    private var waitTicker: Task<Void, Never>?
+    /// Whether VoiceOver already knows this wait's stage; it hears it once.
+    private var waitAnnounced = false
     /// The recogniser the pipeline transcribes with, which Diagnostics names rather than the setting.
     private var speechInUse: SpeechEngineKind?
     /// Whether the last load already failed, so a second failure offers a download rather than another reload.
@@ -703,7 +709,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return DictationPresenter.dock(
             for: state, advice: recordingAdvice, speechModel: speechModelLoad,
             download: speechReadiness.download, stopGesture: recordingStopGesture,
-            heardSoFar: heardSoFar)
+            heardSoFar: heardSoFar, waited: waitStarted.map { $0.duration(to: .now) } ?? .zero)
     }
 
     /// Asks each clean-up engine whether it could run, so Diagnostics has an answer to show; the task ends once it has.
@@ -1295,7 +1301,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     pasteboard: announcingPasteboard,
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
-            profile: settings.profile
+            profile: settings.profile,
+            layers: QualityLayers { key in
+                let defaults = UserDefaults.standard
+                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+            }
         )
         self.pipeline = pipeline
 
@@ -2455,12 +2465,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordingStopGesture = .letGo
         }
         menuBar.update(with: MenuBarPresenter.present(menuBarState(for: state)))
+        trackWait(for: state)
         dock.update(with: dockPresentation(for: state))
         announce(DictationPresenter.announcement(for: state))
         // No page shows a dictation under way, so the pages are read and built only once it has ended.
         if !state.isBusy { refreshMainWindow() }
 
         scheduleDismissal(after: state)
+    }
+
+    /// Starts the clock on the wait at key release and redraws its line each second until the dictation ends.
+    private func trackWait(for state: DictationState) {
+        guard state.isBusy, !state.isListening else {
+            waitStarted = nil
+            waitTicker?.cancel()
+            waitTicker = nil
+            waitAnnounced = false
+            return
+        }
+        guard waitStarted == nil else { return }
+        waitStarted = .now
+        waitTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, let started = waitStarted else { return }
+                let waited = started.duration(to: .now)
+                dock.update(with: dockPresentation(for: lastDictationState))
+                if let said = WaitLine.announcement(
+                    for: lastDictationState, waited: waited, alreadyAnnounced: waitAnnounced)
+                {
+                    waitAnnounced = true
+                    announce(said)
+                }
+            }
+        }
     }
 
     /// Offers every word one dictation taught in the popover and names the first through VoiceOver.
