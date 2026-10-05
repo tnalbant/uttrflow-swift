@@ -165,6 +165,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recordingStopGesture: StopGesture = .letGo
 
     private var pipeline: DictationPipeline?
+    /// The quality layers the pipeline is built with, read once from local defaults; Diagnostics shows the same value.
+    private let qualityLayers = QualityLayers { key in
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+    }
     /// Lets the app wiring test wait for a refused retry to finish without timing guesses.
     private(set) var retryWork: Task<Void, Never>?
     /// The pipeline's recogniser, held so memory pressure can let it go between dictations.
@@ -1317,10 +1322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
-            layers: QualityLayers { key in
-                let defaults = UserDefaults.standard
-                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
-            }
+            layers: qualityLayers
         )
         self.pipeline = pipeline
 
@@ -1332,11 +1334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
             doubleTapWindow: .milliseconds(settings.handsFreeDoubleTapMilliseconds),
+            minimumHold: .milliseconds(settings.handsFreeHoldMilliseconds),
             clock: ContinuousClock(),
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
             },
             onWarning: reportWarning.report,
+            onNearMissTap: { [weak self] in
+                Task { @MainActor in self?.announce(DictationPresenter.nearMissTapAnnouncement) }
+            },
             onStopGestureChange: { [weak self] gesture in
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
@@ -2554,7 +2560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             do {
                 try await evidence.append(rows, keeping: window)
             } catch {
-                Self.log.error("style counts not saved: \(String(describing: error), privacy: .public)")
+                Self.log.error("style counts not saved: \(ErrorLog.failure(error), privacy: .public)")
             }
         }
     }
@@ -2980,7 +2986,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
-                    machine: MachineDescription.current, arrivals: entries.map(\.arrival))),
+                    machine: MachineDescription.current, arrivals: entries.map(\.arrival),
+                    qualityLayers: qualityLayers)),
             account: accountPage(at: now),
             shortcutKeycaps: SettingsShortcut.keycaps(for: settings.hotkey))
     }
@@ -3629,6 +3636,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { [weak self] in
                 await self?.controller?.setDoubleTapWindow(
                     .milliseconds(updated.handsFreeDoubleTapMilliseconds))
+            }
+        }
+        if updated.handsFreeHoldMilliseconds != previous.handsFreeHoldMilliseconds {
+            Task { [weak self] in
+                await self?.controller?.setMinimumHold(
+                    .milliseconds(updated.handsFreeHoldMilliseconds))
             }
         }
         telemetry?.setEnabled(updated.sharesUsageStatistics)

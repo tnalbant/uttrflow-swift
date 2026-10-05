@@ -2461,6 +2461,35 @@ public enum EvaluationCorpus {
             mustBeginWith: "git",
             mustEndWith: "status"
         ),
+        // A line break at a shell prompt is Return, so a spoken break into a terminal becomes a space.
+        .init(
+            id: "terminal-spoken-new-line-stays-on-one-line", category: .contextual,
+            spoken: "cd src new line ls",
+            expected: "cd src ls",
+            mustKeep: ["cd src", "ls"],
+            context: AppContext(
+                applicationName: "Terminal",
+                bundleIdentifier: DestinationRules.terminal
+            ),
+            mustNotAdd: ["new line"],
+            destination: .terminal,
+            expectedExact: "cd src ls",
+            addedFor: 612
+        ),
+        .init(
+            id: "terminal-spoken-new-paragraph-stays-on-one-line", category: .contextual,
+            spoken: "git status new paragraph git diff",
+            expected: "git status git diff",
+            mustKeep: ["git status", "git diff"],
+            context: AppContext(
+                applicationName: "iTerm",
+                bundleIdentifier: DestinationRules.iTerm
+            ),
+            mustNotAdd: ["new paragraph"],
+            destination: .terminal,
+            expectedExact: "git status git diff",
+            addedFor: 612
+        ),
         // A question mark from the shape of a sentence needs the model; the rules are not asked to pass this one.
         .init(
             id: "message-question-keeps-its-mark", category: .contextual,

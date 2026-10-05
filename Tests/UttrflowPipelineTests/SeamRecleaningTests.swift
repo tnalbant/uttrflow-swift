@@ -65,24 +65,49 @@ struct SeamRecleaningTests {
             pieces: ["the plan costs nine", "ninety nine a month"],
             whole: "the plan costs nine ninety nine a month"),
         SeamCut(
-            pieces: ["we met at nine", "a m and left at five"], whole: "we met at nine a m and left at five"),
-        SeamCut(
             pieces: ["send it to sam at example", "dot com and copy the team"],
             whole: "send it to sam at example dot com and copy the team"),
         SeamCut(
             pieces: ["the site is example dot com", "slash pricing"],
             whole: "the site is example dot com slash pricing"),
+    ]
+
+    /// Units no pass reads as one even in a single piece, so the seam's stop is judged without them.
+    static let unreadUnitCuts: [SeamCut] = [
+        SeamCut(
+            pieces: ["we met at nine", "a m and left at five"], whole: "we met at nine a m and left at five"),
         SeamCut(
             pieces: ["the meeting is on march", "third at ten"], whole: "the meeting is on march third at ten"
         ),
     ]
 
-    @Test("a number, time or address said across a pause writes what one piece does", arguments: unitCuts)
-    func unitAcrossSeam(_ cut: SeamCut) async {
+    @Test(
+        "a meridiem or date no pass reads as one unit still differs across a pause", arguments: unreadUnitCuts
+    )
+    func unreadUnitAcrossSeam(_ cut: SeamCut) async {
         let pieces = await written(cut.pieces)
         let whole = await written([cut.whole])
-        // Only a mark name is read across the seam so far; numbers, times and addresses are #3428.
         withKnownIssue { #expect(pieces == whole) }
+    }
+
+    @Test("a number, time or address said across a pause writes what one piece does", arguments: unitCuts)
+    func unitAcrossSeam(_ cut: SeamCut) async {
+        #expect(await written(cut.pieces) == written([cut.whole]))
+    }
+
+    @Test("a number, time or address is read whole at every cut inside it")
+    func everyUnitCut() async {
+        for (sentence, unit) in [
+            ("the meeting is at three thirty tomorrow", "3:30"),
+            ("send it to sam at example dot com", "sam@example.com"),
+        ] {
+            let words = sentence.split(separator: " ").map(String.init)
+            for cut in 1..<words.count {
+                let pieces = [words[..<cut].joined(separator: " "), words[cut...].joined(separator: " ")]
+                let text = await written(pieces) ?? ""
+                #expect(text.contains(unit), "cut at \(cut): \(text)")
+            }
+        }
     }
 
     @Test("a mark name is read across a cut at every word boundary")

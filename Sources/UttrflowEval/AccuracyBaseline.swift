@@ -163,7 +163,6 @@ public struct BaselineComparison: Sendable, Equatable {
             self.isUnderpowered = interval == nil
         }
 
-
         public var delta: Double? {
             guard let before, let after else { return nil }
             return after - before

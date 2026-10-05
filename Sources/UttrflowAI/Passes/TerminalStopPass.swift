@@ -112,7 +112,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         if followingTextContinuesSentence || insertionPoint.structure?.hasOpenBracketOnCaretLine == true {
             return Abbreviations.ownsStop(WordShape(word).core) ? word : WordShape.withoutTrailingStop(word)
         }
-        if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
+        if insertionPoint.isOnListItemLine || draft.endsInListItem { return Self.unstopped(word) }
         if Self.isLiteral(Self.paragraphWords(in: draft).last ?? [], in: draft) { return word }
         if layout.contains(.preserveNewlines), draft.text.contains(where: \.isNewline) { return word }
         // Only prose asks: "where total is greater than 12000" in a SQL editor is a clause, not a question.
@@ -128,9 +128,17 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         MarkLegality.state(of: word) == .leadsOn ? WordShape.withoutTrailingStop(word) : word
     }
 
+    /// A list item's last word without the full stop a recogniser closes every dictation with; an abbreviation keeps its own dot.
+    private static func unstopped(_ word: String) -> String {
+        switch MarkLegality.state(of: word) {
+        case .abbreviation, .leadingAbbreviation, .technical: word
+        default: WordShape.withoutTrailingStop(word)
+        }
+    }
+
     /// Whether text after the replacement already ends or continues the sentence.
     private var followingTextContinuesSentence: Bool {
-        guard let followingText = insertionPoint.followingText else { return false }
+        guard let followingText = insertionPoint.followingText.map(InsertionPoint.visibleText) else { return false }
         let leadingWhitespace = followingText.prefix(while: \.isWhitespace)
         guard !leadingWhitespace.contains(where: \.isNewline),
             let next = followingText.dropFirst(leadingWhitespace.count).first

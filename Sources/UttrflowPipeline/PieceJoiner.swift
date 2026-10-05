@@ -114,6 +114,27 @@ enum PieceJoiner {
         }
     }
 
+    /// Whether the passes that read a spoken number, time or address read one across the cut, so only one piece writes it.
+    static func unitRunsAcross(
+        _ head: String, into tail: String, under formatter: DestinationFormatter, digits: DigitGrouping
+    ) -> Bool {
+        let headWords = head.split(whereSeparator: \.isWhitespace).suffix(longestSpokenUnit)
+        let tailWords = tail.split(whereSeparator: \.isWhitespace).prefix(longestSpokenUnit)
+        guard !headWords.isEmpty, !tailWords.isEmpty else { return false }
+        let units = CleaningPipeline(piece: [
+            SpokenPunctuationPass(destination: formatter.destination),
+            NumberFormsPass(policy: formatter.numbers, digits: digits),
+        ])
+        func read(_ words: [Substring]) -> [String] {
+            units.run(Draft(text: words.joined(separator: " "))).text
+                .split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
+        }
+        return read(Array(headWords + tailWords)) != read(Array(headWords)) + read(Array(tailWords))
+    }
+
+    /// The most words either side of a cut that one spoken number, time or address is read from.
+    static let longestSpokenUnit = 8
+
     /// Attaches standalone spoken marks to adjacent words across piece boundaries.
     private static func joiningSpokenMarksAcrossSeams(_ pieces: [String]) -> [String] {
         guard pieces.count > 1 else { return pieces }
@@ -251,11 +272,11 @@ enum PieceJoiner {
         guard pieces.count > 1, heard.count == pieces.count else { return pieces }
         var joined = pieces
         for index in 0..<(joined.count - 1) {
-            let following = joined[index + 1].split(whereSeparator: \.isWhitespace)
-            guard let last = joined[index].split(whereSeparator: \.isWhitespace).last,
-                following.count == 2, WordShape(String(following[0])).key == "and",
-                let leadingValue = integer(String(last)),
-                let amount = currencyAmount(String(following[1])),
+            let following = WordTokens.words(joined[index + 1], .display)
+            guard let last = WordTokens.words(joined[index], .display).last,
+                following.count == 2, WordShape(following[0]).key == "and",
+                let leadingValue = integer(last),
+                let amount = currencyAmount(following[1]),
                 let scale = closingScale(of: heard[index]),
                 leadingValue.isMultiple(of: scale), amount.value < scale
             else { continue }
@@ -271,8 +292,8 @@ enum PieceJoiner {
 
     /// The scale word, such as hundred or thousand, that a piece was heard to end on.
     private static func closingScale(of heard: String) -> Int? {
-        guard let last = heard.split(whereSeparator: \.isWhitespace).last else { return nil }
-        return NumberWords.scales[WordShape(String(last)).key]
+        guard let last = WordTokens.words(heard, .display).last else { return nil }
+        return NumberWords.scales[WordShape(last).key]
     }
 
     /// Reads a grouped or ungrouped nonnegative integer.
@@ -296,7 +317,7 @@ enum PieceJoiner {
     ) -> String {
         if endsWithSpokenLineCommand(text, before: next) { return WordShape.withoutTrailingStop(text) }
         if formatter.terminalStop == .never { return WordShape.withoutTrailingStop(text) }
-        if next.split(whereSeparator: \.isWhitespace).isEmpty { return text }
+        if WordTokens.words(next, .display).isEmpty { return text }
         let piece = Draft(keepingLineBreaks: text)
         guard let last = text.last, !last.isNewline, !piece.endsInListItem,
             !(formatter.layout.contains(.preserveNewlines) && text.contains(where: \.isNewline))
@@ -335,8 +356,8 @@ enum PieceJoiner {
     private static func groupRunsAcross(
         _ text: String, into next: String, previousWasHeardEndingOnScale: Bool = false
     ) -> Bool {
-        guard let last = text.split(whereSeparator: \.isWhitespace).last.map({ WordShape(String($0)) }),
-            let first = next.split(whereSeparator: \.isWhitespace).first.map({ WordShape(String($0)) })
+        guard let last = WordTokens.words(text, .display).last.map(WordShape.init),
+            let first = WordTokens.words(next, .display).first.map(WordShape.init)
         else { return false }
         let noSentenceStop = last.suffix.isEmpty
         return (noSentenceStop || (last.suffix == "." && previousWasHeardEndingOnScale))
@@ -346,10 +367,7 @@ enum PieceJoiner {
 
     /// Whether the recognizer heard the preceding piece end on a number scale word.
     private static func heardScaleEnding(_ heard: [String], at index: Int) -> Bool {
-        guard heard.indices.contains(index),
-            let last = heard[index].split(whereSeparator: \.isWhitespace).last
-        else { return false }
-        return NumberWords.scales[WordShape(String(last)).key] != nil
+        heard.indices.contains(index) && closingScale(of: heard[index]) != nil
     }
 
     /// A rendered digit group, or a run of capital letters said one at a time, no longer than `longestSpokenGroup`.
