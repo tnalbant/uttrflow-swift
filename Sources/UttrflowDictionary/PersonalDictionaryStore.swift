@@ -184,11 +184,13 @@ public actor PersonalDictionaryStore {
         let offered: [String]?
     }
 
-    /// A missing record is new; an unreadable one is not evidence that a deleted word may return.
+    /// A missing record is new; an unreadable one, or one set aside as unreadable, is not evidence that a deleted word may return.
     private func offeredSpellings() throws(DictionaryStoreError) -> Set<String> {
         let record: SeedRecord
         switch readRecord(SeedRecord.self, from: seedRecord) {
-        case .missing: return []
+        case .missing:
+            guard !LocalStore.hasSetAside(seedRecord) else { throw .couldNotReadSeedRecord }
+            return []
         case .unreadable: throw .couldNotReadSeedRecord
         case .read(let read): record = read
         }
