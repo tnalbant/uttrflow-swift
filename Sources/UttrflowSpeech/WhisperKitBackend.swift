@@ -171,8 +171,9 @@ public actor WhisperKitBackend: TranscriptionBackend {
         // Counted, not named: the log audit reads a name holding "prompt" as text somebody typed.
         let retried = effort.retriedWithoutPrompt ? 1 : 0
         let unresolved = effort.capUnresolved ? 1 : 0
+        let budgetSpent = effort.retryBudgetSpent ? 1 : 0
         log.info(
-            "decoded piece: fallbacks=\(effort.fallbacks, privacy: .public) fallbackSeconds=\(effort.fallbackSeconds, format: .fixed(precision: 2), privacy: .public) encoderRuns=\(effort.encoderRuns, privacy: .public) retried=\(retried, privacy: .public) capUnresolved=\(unresolved, privacy: .public)"
+            "decoded piece: fallbacks=\(effort.fallbacks, privacy: .public) fallbackSeconds=\(effort.fallbackSeconds, format: .fixed(precision: 2), privacy: .public) encoderRuns=\(effort.encoderRuns, privacy: .public) retried=\(retried, privacy: .public) capUnresolved=\(unresolved, privacy: .public) retryBudgetSpent=\(budgetSpent, privacy: .public)"
         )
     }
 }

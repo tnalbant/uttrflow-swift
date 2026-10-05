@@ -14,22 +14,34 @@ public enum CappedDecodeRetry {
     /// Silence between a collapsed segment's last word and its end past which words are taken to have been dropped.
     public static let collapsedGapSeconds = 1.0
 
-    /// Re-decodes an empty vocabulary-biased result once without vocabulary.
+    /// Re-decodes an empty vocabulary-biased result once without vocabulary, within the same time budget as the tail retries.
     static func transcribeRecoveringEmptyPrompt(
         samples: [Float],
         sampleRate: Double = Double(AudioSamples.canonicalSampleRate),
         languageHint: LanguageCode?,
         vocabulary: [String],
-        using backend: any TranscriptionBackend
+        using backend: any TranscriptionBackend,
+        now: @escaping @Sendable () -> Duration = RetryBudget.monotonicNow
     ) async throws(SpeechEngineError) -> RawTranscript {
+        var budget = RetryBudget(now: now)
         let biased = try await transcribe(
             samples: samples, sampleRate: sampleRate, languageHint: languageHint,
-            vocabulary: vocabulary, using: backend)
+            vocabulary: vocabulary, using: backend, budget: &budget)
         guard !vocabulary.isEmpty, biased.text.isEmpty else { return biased }
+        guard !budget.isSpent else {
+            return RawTranscript(
+                text: biased.text,
+                languageIdentifier: biased.languageIdentifier,
+                languageProbability: biased.languageProbability,
+                segments: biased.segments,
+                effort: biased.effort.markingRetryBudgetSpent(),
+                tokensUsed: biased.tokensUsed,
+                vocabularyPrompt: biased.vocabularyPrompt)
+        }
 
         let retried = try await transcribe(
             samples: samples, sampleRate: sampleRate, languageHint: languageHint,
-            vocabulary: [], using: backend)
+            vocabulary: [], using: backend, budget: &budget)
         return RawTranscript(
             text: retried.text,
             languageIdentifier: retried.languageIdentifier,
@@ -46,7 +58,23 @@ public enum CappedDecodeRetry {
         sampleRate: Double = Double(AudioSamples.canonicalSampleRate),
         languageHint: LanguageCode?,
         vocabulary: [String],
-        using backend: any TranscriptionBackend
+        using backend: any TranscriptionBackend,
+        now: @escaping @Sendable () -> Duration = RetryBudget.monotonicNow
+    ) async throws(SpeechEngineError) -> RawTranscript {
+        var budget = RetryBudget(now: now)
+        return try await transcribe(
+            samples: samples, sampleRate: sampleRate, languageHint: languageHint,
+            vocabulary: vocabulary, using: backend, budget: &budget)
+    }
+
+    /// The tail-retry loop, spending from a budget the caller may share with a later retry of the same piece.
+    static func transcribe(
+        samples: [Float],
+        sampleRate: Double,
+        languageHint: LanguageCode?,
+        vocabulary: [String],
+        using backend: any TranscriptionBackend,
+        budget: inout RetryBudget
     ) async throws(SpeechEngineError) -> RawTranscript {
         var accumulatedText = ""
         var accumulatedSegments: [RawSegment] = []
@@ -61,9 +89,15 @@ public enum CappedDecodeRetry {
 
         for _ in 0..<maxRetries {
             guard !remaining.isEmpty else { break }
+            guard !budget.isSpent else {
+                totalEffort = totalEffort.markingRetryBudgetSpent()
+                break
+            }
             stillCapped = false
+            let decodeStart = budget.now()
             let result = try await backend.transcribe(
                 remaining, languageHint: languageHint, biasedTowards: vocabulary)
+            budget.recordDecode(startedAt: decodeStart)
             languageIdentifier = result.languageIdentifier ?? languageIdentifier
             languageProbability = result.languageProbability ?? languageProbability
             totalEffort = totalEffort.adding(result.effort)
@@ -200,5 +234,39 @@ public enum CappedDecodeRetry {
             return word.end
         }
         return segments.last?.end
+    }
+}
+
+/// One time limit for every decode of a piece after the first, so recovery cannot stack decodes up to the stage timeout.
+public struct RetryBudget: Sendable {
+    /// How many first-decode durations may pass after the first decode before the chain stops starting decodes.
+    public static let firstDecodeMultiple = 2.0
+    /// The least time retries get, so a fast first decode still leaves room to recover a capped tail.
+    public static let minimumBudget: Duration = .seconds(2)
+    /// The process's monotonic time, which is what the budget is measured on outside tests.
+    public static let monotonicNow: @Sendable () -> Duration = {
+        ContinuousClock.now - RetryBudget.origin
+    }
+    private static let origin = ContinuousClock.now
+
+    let now: @Sendable () -> Duration
+    /// When retries must stop, known once the first decode finishes.
+    private(set) var deadline: Duration?
+
+    init(now: @escaping @Sendable () -> Duration) {
+        self.now = now
+    }
+
+    /// Whether the retries are out of time, so the chain returns what it has.
+    var isSpent: Bool {
+        guard let deadline else { return false }
+        return now() >= deadline
+    }
+
+    /// Sets the deadline from the first decode's duration; later decodes only spend from it.
+    mutating func recordDecode(startedAt start: Duration) {
+        guard deadline == nil else { return }
+        let end = now()
+        deadline = end + max((end - start) * Self.firstDecodeMultiple, Self.minimumBudget)
     }
 }
