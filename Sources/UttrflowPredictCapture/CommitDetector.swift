@@ -139,6 +139,8 @@ public struct CommitDetector: Sendable, Equatable {
     private var span: InsertedSpan?
     /// The edit the last ending found inside inserted text, held until the caller takes it.
     private var editedSpan: EditedSpan?
+    /// An accepted line replaced by what the person committed, held until the caller retracts its acceptance.
+    private var acceptedLineToRetract: String?
 
     /// A detector watching a field nothing has been typed into.
     public init() {}
@@ -156,7 +158,14 @@ public struct CommitDetector: Sendable, Equatable {
         case .keystroke(let text, let moment):
             let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if hasObservedLine, (!typedSinceRead.isEmpty || hasUnverifiableKeySinceRead) {
-                if text != observedLine + typedSinceRead { holdsMutation = true }
+                let replacesAcceptedText =
+                    acceptedLine != nil && !typedSinceRead.isEmpty
+                    && Self.isRangeReplaced(
+                        in: observedLine, by: text, typing: typedSinceRead,
+                        keyed: !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead)
+                if text != observedLine + typedSinceRead && !replacesAcceptedText {
+                    holdsMutation = true
+                }
             }
             let keyed = !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead
             if text != observedLine,
@@ -171,6 +180,10 @@ public struct CommitDetector: Sendable, Equatable {
             typedSinceRead = ""
             hasUnverifiableKeySinceRead = false
             lastKeystroke = moment
+            if let acceptedLine, line != acceptedLine, line.hasPrefix(acceptedLine) {
+                // Typing on past the suggestion keeps its acceptance evidence.
+                self.acceptedLine = nil
+            }
             // A line emptied by hand holds nothing inserted, so what is typed into it next is learned again.
             if pending.isEmpty {
                 holdsInsertion = false
@@ -211,6 +224,19 @@ public struct CommitDetector: Sendable, Equatable {
     public mutating func accepted(_ text: String) {
         pending = text.trimmingCharacters(in: .whitespacesAndNewlines)
         acceptedLine = pending
+        observedLine = text
+        lineBeforeRead = text
+        hasObservedLine = true
+        typedSinceRead = ""
+        hasUnverifiableKeySinceRead = false
+        holdsInsertion = false
+        holdsMutation = false
+        span = nil
+    }
+
+    /// Forgets the accepted baseline after the capture session determines the person undid it.
+    mutating func cancelAcceptedLine() {
+        acceptedLine = nil
     }
 
     /// Forgets the field, which is what a new field focused in the same session amounts to.
@@ -229,12 +255,19 @@ public struct CommitDetector: Sendable, Equatable {
         lineBeforeRead = ""
         span = nil
         editedSpan = nil
+        acceptedLineToRetract = nil
     }
 
     /// Hands over the edit the last ending found inside inserted text, once.
     public mutating func takeEditedSpan() -> EditedSpan? {
         defer { editedSpan = nil }
         return editedSpan
+    }
+
+    /// Hands over an accepted line replaced by this ending, once.
+    mutating func takeAcceptedLineToRetract() -> String? {
+        defer { acceptedLineToRetract = nil }
+        return acceptedLineToRetract
     }
 
     /// Undoes the most recent idle commit, so a later tick can re-emit the value after a failed write.
@@ -251,9 +284,11 @@ public struct CommitDetector: Sendable, Equatable {
         if keyedSinceRead { holdsMutation = true }
         let edit =
             keyedSinceRead ? nil : span.flatMap { Self.edit(of: $0, into: observedLine, at: moment) }
+        let acceptedToRetract = acceptedLine != pending ? acceptedLine : nil
         let finished = commit(reason, admits)
         reset()
         editedSpan = edit
+        if finished != nil { acceptedLineToRetract = acceptedToRetract }
         return finished
     }
 
