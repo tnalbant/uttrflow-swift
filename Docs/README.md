@@ -52,6 +52,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [closed-phrase-marks.md](closed-phrase-marks.md) | Recogniser commas and stops after a closed-class word, measured |
 | [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
