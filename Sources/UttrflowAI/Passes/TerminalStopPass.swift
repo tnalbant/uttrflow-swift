@@ -107,6 +107,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// The last word with a stop unless it ends a list item, or the layout keeps newlines and the text holds one.
     private func finishedLast(_ word: String, in draft: Draft) -> String {
+        if MarkLegality.verdict(.stop, after: word) == .illegal { return Self.leftOpen(word) }
         if followingTextContinuesSentence { return word }
         if insertionPoint.structure?.hasOpenBracketOnCaretLine == true { return word }
         if insertionPoint.isOnListItemLine || draft.endsInListItem { return word }
@@ -118,6 +119,11 @@ public struct TerminalStopPass: WholeTextCleaningPass {
         return asks
             ? WordShape.finished(WordShape.withoutTrailingStop(word), with: "?", after: preceding)
             : WordShape.finished(word, after: preceding)
+    }
+
+    /// A word that leaves its clause open, such as a trailing "and", keeps no stop; an abbreviation keeps its own dot.
+    private static func leftOpen(_ word: String) -> String {
+        MarkLegality.state(of: word) == .leadsOn ? WordShape.withoutTrailingStop(word) : word
     }
 
     /// Whether text after the replacement already ends or continues the sentence.
@@ -156,6 +162,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
             }
             if word.text.hasPrefix("\n\n"), let last = paragraph.last, paragraph.count >= 3,
                 !(opening?.isListMark ?? false), !isLiteral(paragraph, in: draft),
+                MarkLegality.verdict(.stop, after: draft.words[last].text) != .illegal,
                 !(destination == .email && Self.isEmailGreetingOrSignOff(paragraph, in: draft))
             {
                 let preceding = paragraph.dropLast().map { draft.words[$0].text }.joined(separator: " ")
