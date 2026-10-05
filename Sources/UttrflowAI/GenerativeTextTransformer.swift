@@ -73,7 +73,7 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
             prompts.userPrompt(
                 for: request, spoken: spoken, doubtful: readings,
                 preserving: steps.switchedOff),
-            instructions: prompts.instructions(for: request.situation.destination), kind: kind
+            prompt: prompts.conversation(for: request.situation.destination), kind: kind
         )
 
         // Models echo the shape of the worked examples, so the answer is unwrapped before it is judged.

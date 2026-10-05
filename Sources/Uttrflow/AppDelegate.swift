@@ -82,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let settingsStore: UserDefaultsSettingsStore
     private let encryptedStore: EncryptedStore?
+    /// The suggestion model's loaded weights, which also tidy dictation when Apple's model cannot.
+    private let localTidier: (any CleanupModel)?
     private var settings = Settings()
     /// The pipeline's recording cue, told when the sound setting changes.
     private var recordingSounds: RecordingSounds?
@@ -259,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         releaseModel: (@Sendable () async -> Void)? = nil,
         allowModelReload: (@Sendable () async -> Void)? = nil,
         encryptedStore: EncryptedStore? = nil,
+        localTidier: (any CleanupModel)? = nil,
         waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
@@ -267,6 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.container = container
         self.onboardingRecordStore = onboardingRecordStore
         self.encryptedStore = encryptedStore
+        self.localTidier = localTidier
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
         speechModelLoadLog = SpeechModelLoadLog(file: SpeechModelLoadLog.defaultFile(in: container))
@@ -1205,7 +1209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func cleaner(for settings: Settings) -> TransformerRouter {
         TextTransformers.router(
             configuration: settings.engines, steps: settings.cleaning,
-            spellings: { [dictionary] in await dictionary.index() })
+            spellings: { [dictionary] in await dictionary.index() }, localModel: localTidier)
     }
 
     /// The recogniser of `kind`, over the downloaded model.

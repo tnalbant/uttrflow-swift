@@ -17,12 +17,14 @@ public struct WorkedExample: Sendable, Equatable {
     }
 
     /// The example as the model reads it, in the shape the situation block uses.
-    public var rendered: String {
+    public var rendered: String { "\(question)\nCleaned: \"\(cleaned)\"" }
+
+    /// The example as a user turn, in the shape a real request's user prompt takes.
+    public var question: String {
         var lines: [String] = []
         if let typedInto { lines.append("\(AppContextDescriber.label) \(typedInto)") }
         if let caret { lines.append("\(PromptBuilder.caretLabel) \"\(caret)\"") }
         lines.append("Spoken: \"\(spoken)\"")
-        lines.append("Cleaned: \"\(cleaned)\"")
         return lines.joined(separator: "\n")
     }
 

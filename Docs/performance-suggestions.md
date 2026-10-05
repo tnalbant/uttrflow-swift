@@ -19,7 +19,7 @@ minutes of typing).
 
 `GPUBufferCache` caps that cache at 256 MB (`GPUBufferCache.limit`) for the process, and every
 pass through `MLXCandidateScorer` — a generation, an alternatives pass, a score — empties it when
-the pass ends, however it ends. `MLXCleanupModel` does the same around a rewrite.
+the pass ends, however it ends, a tidying rewrite included.
 
 Measured with `uttrflow-bakeoff gpu-memory` (Release, 48 GB Apple silicon): forty passes over
 invented message threads of 120–310 words, every fourth cancelled part-way, each followed by one

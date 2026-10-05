@@ -349,4 +349,16 @@ struct WorkedExampleTests {
                 == "Typed into: a chat app\nText before the caret: \"…because\"\nSpoken: \"hi\"\nCleaned: \"hi.\""
         )
     }
+
+    @Test("chat turns carry the same rules and examples as the one-block instructions", arguments: Destination.allCases)
+    func conversationMatchesInstructions(destination: Destination) {
+        let builder = PromptBuilder.standard
+        let conversation = builder.conversation(for: destination)
+        #expect(conversation.instructions == builder.instructions(for: destination))
+        #expect(!conversation.rules.contains("Examples:"))
+        for example in conversation.examples {
+            #expect(example.rendered == example.question + "\nCleaned: \"\(example.cleaned)\"")
+            #expect(!example.question.contains("Cleaned:"))
+        }
+    }
 }
