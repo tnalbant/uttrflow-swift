@@ -18,7 +18,7 @@ held to are in [accuracy-targets.md](accuracy-targets.md).
 | A scorer that enforces `mustKeep` | `TranscriptionScorer` |
 | Recording, offline | `uttrflow-eval record` |
 | Scoring, offline | `uttrflow-eval transcribe` |
-| A regression gate | `transcribe --baseline … --fail-on-regression --tolerance` |
+| A regression gate | `transcribe --baseline … --fail-on-regression` |
 
 No recordings are committed. Each contributor records their own (below).
 
@@ -72,8 +72,9 @@ uttrflow-eval transcribe --corpus-path ./corpus \
 
 ## What the gate says
 
-`--fail-on-regression` exits non-zero when any slice has got worse by more than `--tolerance`
-percentage points (default 0.5). Results are reported by language, by stressor and by cohort and
+`--fail-on-regression` exits non-zero when any slice's 95% paired-bootstrap interval for the change
+in rate lies wholly above zero. Every slice prints its interval and the smallest change its sample
+can detect; a slice whose interval holds zero reports "no change detectable". Results are reported by language, by stressor and by cohort and
 never pooled: an engine that improves on English and regresses on Hinglish has not improved.
 
 A run the gate cannot judge also exits non-zero, because no verdict is not "no regression": a
@@ -94,8 +95,8 @@ them with the installed shipping model and compares with `Scripts/accuracy_basel
 needs no recordings, so every Mac with the model can run it; a Mac without the model stops at
 "is not installed". The baseline's label names the model variant, and each passage's
 `recordingIdentity` pins the synthesised audio, so a macOS release that changes the voice reports
-"unverifiable", not a pass. Its 305 words judge the overall rate; every smaller slice reports as
-too small to judge. Recorded speech is not in this baseline.
+"unverifiable", not a pass. Each slice with at least two shared passages gets an interval; a slice of one
+passage reports as too few utterances to judge. Recorded speech is not in this baseline.
 
 Measured on an Apple M5 Pro, 48 GB, macOS 26.5.1, with
 `openai_whisper-large-v3-v20240930_turbo_632MB`: 3.6% word error rate over 6 passages, two runs
