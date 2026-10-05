@@ -229,9 +229,15 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     /// Whether these words begin the first paragraph with a conventional email greeting.
     private static func isEmailGreeting(_ indices: [Int], in draft: Draft) -> Bool {
-        guard !indices.isEmpty, indices.count <= 3, paragraphWords(in: draft).first == indices else {
-            return false
-        }
+        let paragraphs = paragraphWords(in: draft)
+        guard !indices.isEmpty, paragraphs.first == indices else { return false }
+        // A longer greeting is one only on its own paragraph, with no clause mark carrying it on into the body.
+        let standsAlone =
+            paragraphs.count > 1
+            && indices.dropLast().allSatisfy {
+                !draft.shape(at: $0).suffix.contains(where: { ",.;:!?".contains($0) })
+            }
+        guard indices.count <= 3 || standsAlone else { return false }
         let openingWords = ["dear", "hello", "hi", "good morning", "good afternoon", "good evening"]
         return openingWords.contains { prefix in
             let words = prefix.split(separator: " ").map(String.init)
