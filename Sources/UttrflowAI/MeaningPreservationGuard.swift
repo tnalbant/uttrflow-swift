@@ -322,9 +322,15 @@ public struct MeaningPreservationGuard: Sendable {
     static func hasRomanisedHindiContext(_ tokens: [GrammarToken]) -> Bool {
         tokens.contains { token in
             let word = token.matching
-            return isNegation(word) || WordForms.hindiVerbStems.contains(word)
-                || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
+            return isNegation(word) || isHindiVerbForm(word)
         }
+    }
+
+    /// Whether a word is a Hindi verb stem or one of its forms, and not an English small word spelled the same ("a", "so").
+    private static func isHindiVerbForm(_ word: String) -> Bool {
+        guard !FunctionWords.holds(word) else { return false }
+        return WordForms.hindiVerbStems.contains(word)
+            || WordForms.hindiVerbStems.contains { WordForms.hindiForms(of: $0).contains(word) }
     }
 
     /// How many words in `tokens` turn a sentence's meaning around.
