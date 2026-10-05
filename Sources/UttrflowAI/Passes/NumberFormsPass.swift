@@ -214,6 +214,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let dotted = dottedNumber(at: position, keys: keys, shapes: shapes) { return dotted }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
+        if let decimal = leadingDecimal(at: position, keys: keys, shapes: shapes) { return decimal }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
         }
@@ -288,13 +289,9 @@ public struct NumberFormsPass: PieceCleaningPass {
             end += 1 + group.count
             isPhrase = true
         }
-        if joined(end, shapes), keys[end] == "percent" {
+        if let percent = percentWords(at: end, keys: keys, shapes: shapes) {
             text += "%"
-            end += 1
-            isPhrase = true
-        } else if joined(end, shapes), keys[end] == "per", joined(end + 1, shapes), keys[end + 1] == "cent" {
-            text += "%"
-            end += 2
+            end += percent
             isPhrase = true
         }
         if !isPhrase, let value = item.value, !inContext {
@@ -521,6 +518,35 @@ public struct NumberFormsPass: PieceCleaningPass {
         let previous = keys[position - 1]
         return NumberWords.digits(previous) != nil || NumberWords.cardinal([previous]) != nil
             || NumberWords.scales[previous] != nil
+    }
+
+    /// The number of words of a spoken "percent" or "per cent" at `index`, if one is there.
+    private static func percentWords(at index: Int, keys: [String], shapes: [WordShape]) -> Int? {
+        guard joined(index, shapes) else { return nil }
+        if keys[index] == "percent" { return 1 }
+        return keys[index] == "per" && joined(index + 1, shapes) && keys[index + 1] == "cent" ? 2 : nil
+    }
+
+    /// Units after which a decimal with no whole part reads as a number; "second" is safe after digits.
+    static let leadingDecimalUnits = measures.union(currencies).union(["second", "seconds", "minute", "hour"])
+
+    /// "point five percent", "minus point two": a decimal with no whole part, cued by a sign before or a unit after.
+    private static func leadingDecimal(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard keys[position] == "point", let group = digitGroup(at: position + 1, keys: keys, shapes: shapes)
+        else { return nil }
+        let end = position + 1 + group.count
+        let text = "0." + group.text
+        if let percent = percentWords(at: end, keys: keys, shapes: shapes) {
+            return Phrase(text: text + "%", count: end + percent - position)
+        }
+        let signed =
+            position > 0 && joined(position, shapes) && ["negative", "minus"].contains(keys[position - 1])
+        // An adjective before "point" makes it the noun, as in "a good point five minutes ago".
+        let measured =
+            joined(end, shapes) && leadingDecimalUnits.contains(keys[end])
+            && (position == 0 || LexicalClass.tag(ofWordAt: position - 1, in: keys) != .adjective)
+        guard signed || measured else { return nil }
+        return Phrase(text: text, count: end - position)
     }
 
     /// Whether the word at `index` opens a sentence, past which a number reads none of its context.

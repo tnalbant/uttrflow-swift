@@ -380,6 +380,14 @@ struct NumberFormsPassTests {
             ("two point five percent", "2.5%"),
             ("one point is that", "one point is that"),
             ("sixteen point 2", "16.2"),
+            ("point five percent", "0.5%"),
+            ("point five per cent", "0.5%"),
+            ("minus point two", "-0.2"),
+            ("negative point two five", "-0.25"),
+            ("a point five second delay", "a 0.5 second delay"),
+            ("point five kilometres", "0.5 kilometres"),
+            ("this point five of us", "this point five of us"),
+            ("a good point five minutes ago", "a good point 5 minutes ago"),
         ]
     )
     func decimals(input: String, expected: String) {
