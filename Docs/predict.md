@@ -181,6 +181,9 @@ its own ([development-build.md](development-build.md)).
 - a destructive command (`DestructiveCommand`);
 - a value shorter than `CaptureGate.minimumLength` (2).
 
+A keyed edit inside an accepted line, when committed, records the final text as typed and removes
+the original acceptance and self-sourced count. An unchanged accepted line keeps its acceptance.
+
 ## The corpus on disk, and forgetting
 
 The working database is SQLite held in memory. Each committed change is sealed with AES-GCM
@@ -468,7 +471,7 @@ say why nothing was drawn:
 | 5 | `nowhereToDraw` | The field reports no caret |
 | 6 | `textSelected` | Text is selected |
 | 7 | `caretInsideText` | The caret is not at the end of its line |
-| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or a word opens the application's mention, emoji, channel or slash-command picker (`AppPicker`, never on a terminal's command line) |
+| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or trigger text opens a known picker application's mention, emoji, channel or slash-command picker (`AppPicker`; ordinary applications and terminal command lines are not inferred to have one) |
 | 9 | `rejectedTooOften` | `Quieting.rejectionsBeforeSilence` (3) suggestions typed past in this field |
 | 10 | `writingFluently` | A prose writer has not paused for 400 ms |
 

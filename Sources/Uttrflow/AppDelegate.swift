@@ -82,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let settingsStore: UserDefaultsSettingsStore
     private let encryptedStore: EncryptedStore?
+    /// The suggestion model's loaded weights, which also tidy dictation when Apple's model cannot.
+    private let localTidier: (any CleanupModel)?
     private var settings = Settings()
     /// The pipeline's recording cue, told when the sound setting changes.
     private var recordingSounds: RecordingSounds?
@@ -163,6 +165,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recordingStopGesture: StopGesture = .letGo
 
     private var pipeline: DictationPipeline?
+    /// The quality layers the pipeline is built with, read once from local defaults; Diagnostics shows the same value.
+    private let qualityLayers = QualityLayers { key in
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+    }
     /// Lets the app wiring test wait for a refused retry to finish without timing guesses.
     private(set) var retryWork: Task<Void, Never>?
     /// The pipeline's recogniser, held so memory pressure can let it go between dictations.
@@ -259,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         releaseModel: (@Sendable () async -> Void)? = nil,
         allowModelReload: (@Sendable () async -> Void)? = nil,
         encryptedStore: EncryptedStore? = nil,
+        localTidier: (any CleanupModel)? = nil,
         waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
@@ -267,6 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.container = container
         self.onboardingRecordStore = onboardingRecordStore
         self.encryptedStore = encryptedStore
+        self.localTidier = localTidier
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
         speechModelLoadLog = SpeechModelLoadLog(file: SpeechModelLoadLog.defaultFile(in: container))
@@ -1205,7 +1214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func cleaner(for settings: Settings) -> TransformerRouter {
         TextTransformers.router(
             configuration: settings.engines, steps: settings.cleaning,
-            spellings: { [dictionary] in await dictionary.index() })
+            spellings: { [dictionary] in await dictionary.index() }, localModel: localTidier)
     }
 
     /// The recogniser of `kind`, over the downloaded model.
@@ -1286,6 +1295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let microphone = AVAudioCaptureEngine(
             source: AVAudioEngineMicrophoneSource(), recordings: recordings, cue: cue)
         dock.setLevelSource { microphone.momentaryLevel }
+        dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
         let pipeline = DictationPipeline(
             capture: microphone,
@@ -1312,10 +1322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
-            layers: QualityLayers { key in
-                let defaults = UserDefaults.standard
-                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
-            }
+            layers: qualityLayers
         )
         self.pipeline = pipeline
 
@@ -1327,11 +1334,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
             doubleTapWindow: .milliseconds(settings.handsFreeDoubleTapMilliseconds),
+            minimumHold: .milliseconds(settings.handsFreeHoldMilliseconds),
             clock: ContinuousClock(),
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
             },
             onWarning: reportWarning.report,
+            onNearMissTap: { [weak self] in
+                Task { @MainActor in self?.announce(DictationPresenter.nearMissTapAnnouncement) }
+            },
             onStopGestureChange: { [weak self] gesture in
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
@@ -2549,7 +2560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             do {
                 try await evidence.append(rows, keeping: window)
             } catch {
-                Self.log.error("style counts not saved: \(String(describing: error), privacy: .public)")
+                Self.log.error("style counts not saved: \(ErrorLog.failure(error), privacy: .public)")
             }
         }
     }
@@ -2975,7 +2986,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
-                    machine: MachineDescription.current, arrivals: entries.map(\.arrival))),
+                    machine: MachineDescription.current, arrivals: entries.map(\.arrival),
+                    qualityLayers: qualityLayers)),
             account: accountPage(at: now),
             shortcutKeycaps: SettingsShortcut.keycaps(for: settings.hotkey))
     }
@@ -3624,6 +3636,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { [weak self] in
                 await self?.controller?.setDoubleTapWindow(
                     .milliseconds(updated.handsFreeDoubleTapMilliseconds))
+            }
+        }
+        if updated.handsFreeHoldMilliseconds != previous.handsFreeHoldMilliseconds {
+            Task { [weak self] in
+                await self?.controller?.setMinimumHold(
+                    .milliseconds(updated.handsFreeHoldMilliseconds))
             }
         }
         telemetry?.setEnabled(updated.sharesUsageStatistics)

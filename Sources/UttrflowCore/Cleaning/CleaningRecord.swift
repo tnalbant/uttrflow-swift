@@ -102,6 +102,27 @@ public struct CleaningRecord: Sendable, Equatable {
         }
     }
 
+    /// A stage that gave up on this dictation and passed its words on as they came in.
+    public struct SkippedStage: Sendable, Equatable {
+        /// The stages that fall back to the words they were given rather than fail the dictation.
+        public enum Stage: String, Sendable, Equatable, CaseIterable {
+            case correction, tidy, expansion
+        }
+
+        /// Why the stage gave up: it ran past its limit, or it threw.
+        public enum Reason: String, Sendable, Equatable, CaseIterable {
+            case timeout, error
+        }
+
+        public let stage: Stage
+        public let reason: Reason
+
+        public init(_ stage: Stage, _ reason: Reason) {
+            self.stage = stage
+            self.reason = reason
+        }
+    }
+
     /// One entry per step that changed something, ordered by the first word each touched.
     public let changes: [Change]
     /// The steps that were not in the pipeline that ran, in the order they would have run.
@@ -112,39 +133,53 @@ public struct CleaningRecord: Sendable, Equatable {
     public let unavailableEngines: [UnavailableEngine]
     /// Engines that failed before the recorded engine answered.
     public let engineFailures: [EngineFailure]
+    /// Stages whose words passed through unchanged because they timed out or threw.
+    public let skippedStages: [SkippedStage]
+    /// What the kept model said, word for word, before unwrapping and finishing; one per piece, held only in memory.
+    public let modelAnswers: [String]
 
     public init(
         changes: [Change], switchedOff: [PassID] = [], refusals: [Refusal] = [],
-        unavailableEngines: [UnavailableEngine] = [], engineFailures: [EngineFailure] = []
+        unavailableEngines: [UnavailableEngine] = [], engineFailures: [EngineFailure] = [],
+        skippedStages: [SkippedStage] = [], modelAnswers: [String] = []
     ) {
         self.changes = changes
         self.switchedOff = switchedOff
         self.refusals = refusals
         self.unavailableEngines = unavailableEngines
         self.engineFailures = engineFailures
+        self.skippedStages = skippedStages
+        self.modelAnswers = modelAnswers
+    }
+
+    /// A record holding only that `stage` gave up for `reason`.
+    public static func skipped(_ stage: SkippedStage.Stage, _ reason: SkippedStage.Reason) -> CleaningRecord {
+        CleaningRecord(changes: [], skippedStages: [SkippedStage(stage, reason)])
     }
 
     /// The same record, saying which answers were refused before the one it describes.
     public func refused(_ refusals: [Refusal]) -> CleaningRecord {
         CleaningRecord(
             changes: changes, switchedOff: switchedOff, refusals: refusals,
-            unavailableEngines: unavailableEngines, engineFailures: engineFailures)
+            unavailableEngines: unavailableEngines, engineFailures: engineFailures,
+            skippedStages: skippedStages, modelAnswers: modelAnswers)
     }
 
     /// At most this many words are listed per step; the counts are exact either way.
     public static let wordLimit = 12
 
     /// Reads what every step did off the finished draft, `ran` being the pipeline's own order.
-    public init(draft: Draft, ran: [PassID]) {
+    public init(draft: Draft, ran: [PassID], modelAnswers: [String] = []) {
         self.init(
             changes: Self.changes(in: draft),
-            switchedOff: CleaningSteps.offered.map(\.id).filter { !ran.contains($0) })
+            switchedOff: CleaningSteps.offered.map(\.id).filter { !ran.contains($0) },
+            modelAnswers: modelAnswers)
     }
 
     /// Whether anything at all is worth showing.
     public var isEmpty: Bool {
         changes.isEmpty && switchedOff.isEmpty && refusals.isEmpty && unavailableEngines.isEmpty
-            && engineFailures.isEmpty
+            && engineFailures.isEmpty && skippedStages.isEmpty
     }
 
     /// One record for a dictation done in pieces, keeping each step's words in the order they were said.
@@ -180,10 +215,15 @@ public struct CleaningRecord: Sendable, Equatable {
         for failure in records.flatMap(\.engineFailures) where !engineFailures.contains(failure) {
             engineFailures.append(failure)
         }
+        var skippedStages: [SkippedStage] = []
+        for skip in records.flatMap(\.skippedStages) where !skippedStages.contains(skip) {
+            skippedStages.append(skip)
+        }
         return CleaningRecord(
             changes: order.compactMap { merged[$0] },
             switchedOff: CleaningSteps.offered.map(\.id).filter(off.contains),
-            refusals: refusals, unavailableEngines: unavailableEngines, engineFailures: engineFailures)
+            refusals: refusals, unavailableEngines: unavailableEngines, engineFailures: engineFailures,
+            skippedStages: skippedStages, modelAnswers: records.flatMap(\.modelAnswers))
     }
 
     /// Every word a step touched, grouped by the step and ordered by the first word it reached.

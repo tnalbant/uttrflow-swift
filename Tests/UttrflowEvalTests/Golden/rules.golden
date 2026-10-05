@@ -587,6 +587,21 @@ second-language-tense-will-told	I will told him tomorrow
 second-language-tense-yesterday-go	Yesterday I go to the market
 second-language-word-order-what-is-he	I do not know what is he doing
 second-language-word-order-where-is	Can you tell me where is the station?
+segment-researcher-abbreviation-eg	Several markers e.g. ferritin and albumin were measured at baseline.
+segment-researcher-author-year	As shown by Okafor et al. 2019 the effect fades after six weeks.
+segment-researcher-hedged-claim	These results suggest but do not prove that the two pathways interact.
+segment-researcher-reference-entry	Lindqvist and Moreau 2021 journal of applied soil science volume 12.
+segment-researcher-sample-size	The sample had 120 participants and a mean age of 34.
+segment-student-abbreviation-ie	The control group i.e. the students without tutoring scored lower.
+segment-student-course-code	The reading for bio 204 is chapter 7 on cell signalling.
+segment-student-deadline-note	The draft is due on the twelfth and the final version a week later.
+segment-student-essay-opening	In this essay I will argue that the treaty of westbrook changed trade more than it changed borders.
+segment-student-lab-question	Why did the titration overshoot when we added the base slowly?
+segment-support-agent-customer-name	Hi orla the refund for order 772 is on its way.
+segment-support-agent-product-name	Please update the brightdesk app to version 3.2 and try again.
+segment-support-agent-short-close	Glad that worked let us know if anything else comes up.
+segment-support-agent-templated-reply	Thanks for reaching out I have reset your password link and it will expire in 24 hours.
+segment-support-agent-ticket-number	I have escalated ticket 4419 to the billing team.
 self-correction	Let's meet at five on Tuesday.
 sentence-per-new-line	Agenda\nOne intro\nTwo demo.
 short-yes	Yes.
@@ -659,6 +674,8 @@ terminal-command-keeps-case	npm run build
 terminal-command-keeps-case-mid-pipeline	ls -la
 terminal-command-keeps-no-stop	git status
 terminal-command-writes-double-dash-flag	git push --force
+terminal-spoken-new-line-stays-on-one-line	cd src, Ls
+terminal-spoken-new-paragraph-stays-on-one-line	git status, Git diff
 time-of-day	The dentist moved my appointment to 2:30 pm tomorrow.
 trigger-as-its-own-sentence	Meet me at five.
 twenty-four-seven-idiom	It's a twenty four seven service.
