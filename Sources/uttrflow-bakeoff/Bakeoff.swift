@@ -430,6 +430,12 @@ struct Bakeoff: AsyncParsableCommand {
         ) { report, destination in
             report.passRate(for: Destination(rawValue: destination) ?? .plain)
         }
+        // Per segment slice, so a speaker Docs/segments.md lists is read against cases written like theirs.
+        printBreakdown(
+            "By segment", columns: Segment.allCases.map(\.rawValue), of: byMultilingual
+        ) { report, segment in
+            report.passRate(for: Segment(rawValue: segment) ?? .student)
+        }
 
         printCapitalisation(of: byMultilingual)
 
@@ -616,6 +622,8 @@ struct StoredReport: Codable, Sendable {
         let category: String
         /// Absent from results stored before the corpus named destinations.
         let destination: String?
+        /// Absent from results stored before the corpus labelled segments, and for every case outside them.
+        var segment: String? = nil
         let similarity: Double
         /// Absent from result files written before mark accuracy was recorded.
         let markAccuracy: Double?
@@ -656,6 +664,11 @@ struct StoredReport: Codable, Sendable {
         passRate(over: cases.filter { $0.destination == destination.rawValue })
     }
 
+    /// Pass rate over one segment's slice; a result stored before segments were labelled is in no column.
+    func passRate(for segment: Segment) -> Double? {
+        passRate(over: cases.filter { $0.segment == segment.rawValue })
+    }
+
     private func passRate(over slice: [CaseResult]) -> Double? {
         let attempted = slice.filter { !$0.declined }
         guard !attempted.isEmpty else { return nil }
@@ -680,6 +693,7 @@ struct StoredReport: Codable, Sendable {
             CaseResult(
                 caseID: $0.caseID, category: corpus[$0.caseID]?.category.rawValue ?? "unknown",
                 destination: corpus[$0.caseID]?.destination.rawValue,
+                segment: corpus[$0.caseID]?.segment?.rawValue,
                 similarity: $0.similarity,
                 markAccuracy: $0.markAccuracy, caseAccuracy: $0.caseAccuracy,
                 lost: $0.lost, invented: $0.invented,

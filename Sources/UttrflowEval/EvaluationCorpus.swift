@@ -6,7 +6,7 @@ public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
         + grammar + secondLanguage + oneLineField + bareLiteral + formatting
-        + codeMixing + commandInput
+        + codeMixing + commandInput + segments
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
