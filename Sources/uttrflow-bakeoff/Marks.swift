@@ -18,7 +18,11 @@ struct Marks: AsyncParsableCommand {
     @Flag(name: .long, help: "Print every case where a candidate's commas differ from the reference.")
     var verbose = false
 
-    @Option(name: .long, help: "Print the local model's raw reply for this many cases, in one block and as chat turns, then stop.")
+    @Option(
+        name: .long,
+        help:
+            "Print the local model's raw reply for this many cases, in one block and as chat turns, then stop."
+    )
     var raw = 0
 
     /// Destinations whose text is prose, where a comma is a choice rather than syntax.
@@ -26,7 +30,9 @@ struct Marks: AsyncParsableCommand {
 
     func run() async throws {
         let cases = EvaluationCorpus.all.filter { Self.prose.contains($0.destination) }
-        print("Marks — \(cases.count) prose cases of \(EvaluationCorpus.all.count), prompt \(PromptBuilder.version)")
+        print(
+            "Marks — \(cases.count) prose cases of \(EvaluationCorpus.all.count), prompt \(PromptBuilder.version)"
+        )
 
         if raw > 0 {
             try await showRaw(cases.prefix(raw))
@@ -38,17 +44,25 @@ struct Marks: AsyncParsableCommand {
         let rules = RuleBasedTransformer()
         candidates.append(("rules", { try await rules.transform($0.transformationRequest()).text }))
         candidates.append(
-            ("rules+clauses", { ClauseCommas.place(in: try await rules.transform($0.transformationRequest()).text) }))
+            (
+                "rules+clauses",
+                { ClauseCommas.place(in: try await rules.transform($0.transformationRequest()).text) }
+            ))
         var apple = EngineConfiguration.default
         apple.transformerPreference = [.foundationModels]
         let appleRouter = TextTransformers.router(configuration: apple)
         let appleEngine = TextTransformers.all().first { $0.kind == .foundationModels }
         candidates.append(
-            ("apple", { testCase in
-                let request = testCase.transformationRequest()
-                if let appleEngine, await appleEngine.availability(for: request).isAvailable == false { return nil }
-                return try await appleRouter.transform(request).text
-            }))
+            (
+                "apple",
+                { testCase in
+                    let request = testCase.transformationRequest()
+                    if let appleEngine, await appleEngine.availability(for: request).isAvailable == false {
+                        return nil
+                    }
+                    return try await appleRouter.transform(request).text
+                }
+            ))
         if local {
             let cleanup = MLXCandidateScorer(model: .gemma3)
             try await cleanup.prepare()
@@ -109,7 +123,8 @@ struct Marks: AsyncParsableCommand {
             let request = testCase.transformationRequest()
             let conversation = PromptBuilder.standard.conversation(for: request.situation.destination)
             let question = PromptBuilder.standard.userPrompt(for: request)
-            let block = try await model.rewrite(question, instructions: conversation.instructions, kind: .localModel)
+            let block = try await model.rewrite(
+                question, instructions: conversation.instructions, kind: .localModel)
             let turns = try await model.rewrite(question, prompt: conversation, kind: .localModel)
             print("\(testCase.id)\n  spoken: \(testCase.spoken)\n  block:  \(block)\n  turns:  \(turns)")
         }
@@ -239,8 +254,11 @@ struct MarkCounts: Sendable {
             guard !word.isEmpty else { return nil }
             let tail = token.reversed().prefix { !($0.isLetter || $0.isNumber) }
             let mark: Mark? =
-                tail.contains("?") ? .question : tail.contains(where: { $0 == "." || $0 == "!" }) ? .stop
-                : tail.contains(",") ? .comma : nil
+                tail.contains("?")
+                ? .question
+                : tail.contains(where: { $0 == "." || $0 == "!" })
+                    ? .stop
+                    : tail.contains(",") ? .comma : nil
             return (word, mark)
         }
     }
@@ -284,21 +302,24 @@ struct MarkTally: Sendable {
 
     static func table(_ tallies: [MarkTally]) -> String {
         let header =
-            "candidate".padded(to: 15) + "comma F1".padded(to: 10) + "P/R".padded(to: 12) + "stop F1".padded(to: 9)
+            "candidate".padded(to: 15) + "comma F1".padded(to: 10) + "P/R".padded(to: 12)
+            + "stop F1".padded(to: 9)
             + "question F1".padded(to: 13) + "words changed".padded(to: 15) + "p50".padded(to: 8)
             + "p95".padded(to: 8) + "declined"
         var lines = ["", header, String(repeating: "─", count: header.count)]
         for tally in tallies {
             let total = tally.total
             let comma = total.comma
-            let precision = Double(comma.truePositive) / Double(max(1, comma.truePositive + comma.falsePositive))
+            let precision =
+                Double(comma.truePositive) / Double(max(1, comma.truePositive + comma.falsePositive))
             let recall = Double(comma.truePositive) / Double(max(1, comma.truePositive + comma.falseNegative))
             let sorted = tally.seconds.sorted()
             let p50 = sorted.isEmpty ? 0 : sorted[sorted.count / 2]
             let p95 = sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, sorted.count * 95 / 100)]
             lines.append(
                 tally.name.padded(to: 15) + fixed(comma.f1).padded(to: 10)
-                    + "\(fixed(precision))/\(fixed(recall))".padded(to: 12) + fixed(total.stop.f1).padded(to: 9)
+                    + "\(fixed(precision))/\(fixed(recall))".padded(to: 12)
+                    + fixed(total.stop.f1).padded(to: 9)
                     + fixed(total.question.f1).padded(to: 13) + "\(total.wordsChanged)".padded(to: 15)
                     + String(format: "%.2fs", p50).padded(to: 8) + String(format: "%.2fs", p95).padded(to: 8)
                     + "\(tally.perCase.filter { $0 == nil }.count)")
@@ -308,7 +329,9 @@ struct MarkTally: Sendable {
 
     /// Comma F1 of this tally minus the other's, over cases both answered, with a seeded 2000-draw bootstrap.
     func commaDifference(against other: MarkTally) -> String {
-        let paired = zip(perCase, other.perCase).compactMap { a, b in a.flatMap { a in b.map { (a.comma, $0.comma) } } }
+        let paired = zip(perCase, other.perCase).compactMap { a, b in
+            a.flatMap { a in b.map { (a.comma, $0.comma) } }
+        }
         guard !paired.isEmpty else { return "no shared cases" }
         func difference(_ sample: [(MarkCount, MarkCount)]) -> Double {
             sample.map(\.0).reduce(MarkCount(), +).f1 - sample.map(\.1).reduce(MarkCount(), +).f1
@@ -316,10 +339,13 @@ struct MarkTally: Sendable {
         var generator = SplitMix(seed: 3857)
         var draws: [Double] = []
         for _ in 0..<2000 {
-            draws.append(difference((0..<paired.count).map { _ in paired[Int(generator.next() % UInt64(paired.count))] }))
+            draws.append(
+                difference(
+                    (0..<paired.count).map { _ in paired[Int(generator.next() % UInt64(paired.count))] }))
         }
         draws.sort()
-        return "\(signed(difference(paired))) [\(signed(draws[50])), \(signed(draws[1949]))] over \(paired.count) cases"
+        return
+            "\(signed(difference(paired))) [\(signed(draws[50])), \(signed(draws[1949]))] over \(paired.count) cases"
     }
 }
 

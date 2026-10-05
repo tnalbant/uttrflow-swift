@@ -350,7 +350,9 @@ struct WorkedExampleTests {
         )
     }
 
-    @Test("chat turns carry the same rules and examples as the one-block instructions", arguments: Destination.allCases)
+    @Test(
+        "chat turns carry the same rules and examples as the one-block instructions",
+        arguments: Destination.allCases)
     func conversationMatchesInstructions(destination: Destination) {
         let builder = PromptBuilder.standard
         let conversation = builder.conversation(for: destination)

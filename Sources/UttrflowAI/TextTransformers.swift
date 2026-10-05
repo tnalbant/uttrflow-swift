@@ -14,7 +14,7 @@ public enum TextTransformers {
         return [
             GenerativeTextTransformer(
                 kind: .foundationModels, model: AppleFoundationCleanupModel(),
-                steps: steps, doubtful: doubtful),
+                steps: steps, doubtful: doubtful)
         ] + open + [RuleBasedTransformer(steps: steps)]
     }
 

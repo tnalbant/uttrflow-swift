@@ -45,7 +45,9 @@ public struct PromptBuilder: Sendable, Equatable {
     /// The same contract, rules and examples, with the examples kept apart so a chat model can be shown them as turns.
     public func conversation(for destination: Destination) -> ModelPrompt {
         let block = block(for: destination)
-        return ModelPrompt(rules: [contract, block.rules].joined(separator: "\n\n"), examples: contractExamples + block.examples)
+        return ModelPrompt(
+            rules: [contract, block.rules].joined(separator: "\n\n"),
+            examples: contractExamples + block.examples)
     }
 
     /// Every sentence the model is shown for a destination, so a test can prove the corpus reuses none of them.
