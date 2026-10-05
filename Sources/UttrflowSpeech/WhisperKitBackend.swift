@@ -12,6 +12,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
     /// On: only prewarm holds the first compile's peak down, and that peak is still unread (#481).
     private let prewarm: Bool
     private let compute: SpeechComputePlan
+    private let fallback: SpeechFallbackPlan
     private var kit: LoadedKit?
     private var modelUseLease: ModelDirectoryUseLease?
     /// Where each finished load is kept for the Diagnostics page; `nil` in a measurement harness.
@@ -19,12 +20,13 @@ public actor WhisperKitBackend: TranscriptionBackend {
 
     public init(
         model: SpeechModel, modelFolder: URL, prewarm: Bool = true, compute: SpeechComputePlan = .shipping,
-        loadLog: SpeechModelLoadLog? = nil
+        fallback: SpeechFallbackPlan = .shipping, loadLog: SpeechModelLoadLog? = nil
     ) {
         self.model = model
         self.modelFolder = modelFolder
         self.prewarm = prewarm
         self.compute = compute
+        self.fallback = fallback
         self.loadLog = loadLog
     }
 
@@ -94,7 +96,7 @@ public actor WhisperKitBackend: TranscriptionBackend {
             // Detection may only answer in a language the product transcribes, so Hindi is never heard as Urdu.
             whisper.textDecoder = LanguageHeldDecoder(
                 wrapping: whisper.textDecoder, languages: LanguageCode.transcribed)
-            kit = LoadedKit(whisper)
+            kit = LoadedKit(whisper, fallback: fallback)
         } catch {
             modelUseLease = nil
             throw WeightsAssets.loadFailure(
@@ -271,9 +273,11 @@ extension FileSystemSpeechModelStore {
 /// Owns the loaded recogniser; `WhisperKit` is not `Sendable`, and `BackedSpeechEngine` admits one call at a time.
 private final class LoadedKit: @unchecked Sendable {
     private let kit: WhisperKit
+    private let fallback: SpeechFallbackPlan
 
-    init(_ kit: WhisperKit) {
+    init(_ kit: WhisperKit, fallback: SpeechFallbackPlan) {
         self.kit = kit
+        self.fallback = fallback
     }
 
     /// What the load cost, as WhisperKit measured it while doing it.
@@ -289,7 +293,8 @@ private final class LoadedKit: @unchecked Sendable {
         let options = VocabularyPrompt.decodingOptions(
             languageHint: languageHint,
             vocabulary: vocabulary,
-            tokenizer: promptTokenizer
+            tokenizer: promptTokenizer,
+            fallback: fallback
         )
         // Reassigned on every call, including to nothing, so a rule never outlives the prompt it was measured for.
         kit.textDecoder.logitsFilters = Self.rules(for: options, tokenizer: tokenizer)
