@@ -364,7 +364,7 @@ public actor DictationPipeline {
         do {
             // Draining and converting the buffer, which is the part Uttrflow costs the user.
             let captured = try await metrics.measuringInTime(.capture, clock: clock) {
-                try await withStageTimeout(StageTimeout.quick, clock: clock) { [capture] in
+                try await withStageTimeout(StageTimeout.captureStop, clock: clock) { [capture] in
                     try await capture.stop()
                 }
             }
@@ -653,9 +653,9 @@ public actor DictationPipeline {
         generation == mine && !wasCancelled(mine)
     }
 
-    /// Asks what is on screen within the quick limit, since an injected engine need not keep a budget of its own.
+    /// Asks what is on screen within the screen-read limit, since an injected engine need not keep a budget of its own.
     private func readContext() async -> AppContext {
-        ((try? await withStageTimeout(StageTimeout.quick, clock: clock) { [context] in
+        ((try? await withStageTimeout(StageTimeout.screenRead, clock: clock) { [context] in
             await context.currentContext()
         }) ?? nil) ?? AppContext()
     }
@@ -1115,7 +1115,7 @@ public actor DictationPipeline {
         transition(to: .inserting(into: insertedInto))
         do {
             let inserted = try await metrics.measuringInTime(.insertion, clock: clock) {
-                try await withStageTimeout(StageTimeout.quick, clock: clock) {
+                try await withStageTimeout(StageTimeout.insertion, clock: clock) {
                     if delivery == .copy {
                         return try await inserter.insert(text)
                     }
