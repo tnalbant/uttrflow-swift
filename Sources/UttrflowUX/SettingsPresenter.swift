@@ -225,7 +225,7 @@ public enum SettingsPresenter {
                     label: "Double-tap speed",
                     explanation: "Choose how far apart your taps can be.",
                     control: .menu(
-                        options: [450, 600, 800].map { milliseconds in
+                        options: Settings.handsFreeDoubleTapChoices.map { milliseconds in
                             SettingsOption(
                                 id: String(milliseconds), title: "\(milliseconds) ms",
                                 change: .handsFreeDoubleTap(milliseconds: milliseconds))
@@ -233,6 +233,20 @@ public enum SettingsPresenter {
                         selectedID: String(settings.handsFreeDoubleTapMilliseconds)),
                     style: .inset),
                 at: 2)
+            shortcuts.insert(
+                SettingsRow(
+                    id: "handsFreeHoldMilliseconds",
+                    label: "Hold length",
+                    explanation: "Choose how long a press can last and still count as a tap.",
+                    control: .menu(
+                        options: Settings.handsFreeHoldChoices.map { milliseconds in
+                            SettingsOption(
+                                id: String(milliseconds), title: "\(milliseconds) ms",
+                                change: .handsFreeHold(milliseconds: milliseconds))
+                        },
+                        selectedID: String(settings.handsFreeHoldMilliseconds)),
+                    style: .inset),
+                at: 3)
         }
         shortcuts.append(
             SettingsRow(

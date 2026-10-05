@@ -125,6 +125,15 @@ struct SettingsGeneralDesignTests {
                 change: .handsFreeDoubleTap(milliseconds: milliseconds))
         }
         #expect(speed.control == .menu(options: options, selectedID: "450"))
+        #expect(shortcuts.rows.map(\.id).dropFirst(3).first == "handsFreeHoldMilliseconds")
+        let hold = try #require(row("handsFreeHoldMilliseconds", in: pane(.general)))
+        #expect(hold.label == "Hold length")
+        let holdOptions = [200, 300, 500].map { milliseconds in
+            SettingsOption(
+                id: String(milliseconds), title: "\(milliseconds) ms",
+                change: .handsFreeHold(milliseconds: milliseconds))
+        }
+        #expect(hold.control == .menu(options: holdOptions, selectedID: "200"))
     }
 
     @Test("the hands-free switch follows the setting and turns it off")
