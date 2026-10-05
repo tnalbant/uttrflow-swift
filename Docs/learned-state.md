@@ -81,6 +81,16 @@ It sends nothing anywhere and logs nothing about its rows.
 - **Reset**: "Reset everything" deletes the file. "Forget learned words" keeps it, because
   rows also count uses of words the user added.
 
+## Style signals
+
+`StyleSignals` writes five style kinds per inserted, non-secure dictation, with the
+`Destination` as the subject and no word of the text: `styleMessage` (+1), `styleWords`
+(word count), `styleSentences` (runs closed by `.`, `?` or `!` before a space or the end, plus
+an unclosed tail), and, for a dictation of at most 12 words, `styleShortMessage` (+1) and
+`styleClosingStop` (+1 when it ends with `.`). The projection per destination is
+`meanSentenceLength` = words / sentences and `closingStopRate` = closing stops / short
+dictations. No contraction rate is kept: acting on one would rewrite the user's words.
+
 ## Still open
 
 The downgrade rule for the ledger's own file belongs to the store compatibility contract. The

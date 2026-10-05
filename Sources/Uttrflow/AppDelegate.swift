@@ -2408,6 +2408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
             else { break }
             keep(record)
+            noteStyle(outcome)
         case .failed(let notice):
             Self.log.error(
                 """
@@ -2527,6 +2528,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSAccessibility.post(
             element: NSApplication.shared, notification: .announcementRequested,
             userInfo: [.announcement: text, .priority: priority.rawValue])
+    }
+
+    /// Counts how the user writes in the destination the words went into; never the words themselves.
+    private func noteStyle(_ outcome: UttrflowPipeline.DictationOutcome) {
+        guard let evidence, !outcome.intoSecureField, !outcome.isFromRecording else { return }
+        let app = AppContext(
+            applicationName: outcome.insertedInto, bundleIdentifier: outcome.insertedIntoIdentifier)
+        let destination = DestinationClassifier.classify(app, overrides: settings.destinations)
+        let now = Date()
+        let rows = StyleSignals.rows(for: outcome.text, into: destination, day: EvidenceRow.day(of: now))
+        guard !rows.isEmpty else { return }
+        let window = RetentionWindow(days: settings.transcriptRetentionDays, now: now)
+        Task {
+            do {
+                try await evidence.append(rows, keeping: window)
+            } catch {
+                Self.log.error("style counts not saved: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     /// Keeps one dictation, inserted or salvaged, and makes it what the last-transcript shortcuts act on.
