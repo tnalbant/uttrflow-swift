@@ -314,7 +314,8 @@ the bundle identifier costs no permission at all.
   restraints the model still needs spelled out ("never invent or change a name, number,
   date or amount", "when unsure, keep the original wording"), how to read the "Typed into:"
   line (spelling only) and the "Text before the caret:" line (continue the sentence, repeat
-  nothing, close nothing), then the examples: a question, a plain sentence, an acronym, an
+  nothing, close nothing) and the "Said just before:" line, the previous piece's last
+  sentence (context only, copy none of it), then the examples: a question, a plain sentence, an acronym, an
   injection typed as dictation, a slot the speaker said twice over, three Hindi or Hinglish
   ones, a name off a chat title, an identifier off nearby text, a SQL-editor sentence that
   stays prose, and a continued sentence after a caret. The Tier 3 never-list is not a

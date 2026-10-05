@@ -532,7 +532,7 @@ public actor DictationPipeline {
             let end = early.cut - lead + cut
 
             // A leftover tidy is folded in only once there is a next piece to recognise.
-            if let earlyTidyTask = early.tidyTask {
+            if let earlyTidyTask = early.tidyTask?.task {
                 let piece = await earlyTidyTask.value
                 guard state == .recording, generation == mine, !wasCancelled(mine), !Task.isCancelled
                 else { return }
@@ -568,12 +568,14 @@ public actor DictationPipeline {
             early.cut = end
             early.lastWindowStart = heard == nil ? nil : start
             if let heard {
+                // The piece before is read as heard, which every path has once it is recognised.
+                let preceding = early.spans.last?.heard
                 let tidy = Task {
                     await self.finish(
-                        heard, seeing: seeing, correctionSeeing: seeing,
+                        heard, seeing: seeing, correctionSeeing: seeing, after: preceding,
                         recording: NoOpMetricsRecorder(), for: mine)
                 }
-                early.tidyTask = tidy
+                early.tidyTask = Span.Tidying(task: tidy, heard: heard)
                 // Warm for the next piece after this one finishes, without making key-up wait for warm-up.
                 Task {
                     let piece = await tidy.value
@@ -706,7 +708,22 @@ public actor DictationPipeline {
         case done(Piece)
         case pending(Range<Int>)
         /// Still being tidied when the key came up; joined by the release pass instead of waited on at the hand-off.
-        case tidying(Task<Piece, Never>)
+        case tidying(Tidying)
+
+        /// A tidy under way and the words it tidies, which the next piece reads before the tidy ends.
+        struct Tidying {
+            let task: Task<Piece, Never>
+            let heard: Transcription
+        }
+
+        /// The words recognised for this span, or `nil` for audio not yet recognised.
+        var heard: Transcription? {
+            switch self {
+            case .done(let piece): piece.heard
+            case .pending: nil
+            case .tidying(let tidying): tidying.heard
+            }
+        }
     }
 
     /// The early loop's state, beside the main sequence rather than in it. See `Docs/early-transcription.md`.
@@ -717,7 +734,7 @@ public actor DictationPipeline {
         var lastWindowStart: Int?
         var task: Task<Void, Never>?
         /// A tidy the early loop started but has not yet folded into `spans`, picked up by the release pass at key-up.
-        var tidyTask: Task<Piece, Never>?
+        var tidyTask: Span.Tidying?
         /// Whether a piece is being recognised or tidied right now, which is what makes the drain a wait worth timing.
         var pieceInFlight = false
         /// Early recogniser calls still running after their cancelled task has returned.
@@ -831,14 +848,18 @@ public actor DictationPipeline {
                 if case .pending = work[$0] { return true }
                 return false
             })
+            // The previous span's words as heard, the one context every path has. See `Docs/early-transcription.md`.
+            var precedingHeard: Transcription?
             for (spanIndex, span) in work.enumerated() {
                 let window: Range<Int>
+                if let heard = span.heard { precedingHeard = heard }
                 switch span {
                 case .done(let piece):
                     if let earlier = await tidying.next() { pieces.append(earlier) }
                     pieces.append(piece)
                     continue
-                case .tidying(let task):
+                case .tidying(let running):
+                    let task = running.task
                     // The recognition after it can start before this tidy is done; the group still drains it first.
                     if let earlier = await tidying.next() { pieces.append(earlier) }
                     if spanIndex == work.indices.last {
@@ -874,10 +895,12 @@ public actor DictationPipeline {
                 if appContext == nil { appContext = await contextFor(delivery) }
                 let seeing = appContext ?? AppContext()
                 let finalPiece = spanIndex == finalPending
+                let preceding = precedingHeard
+                precedingHeard = heard
                 tidying.addTask {
                     await self.finish(
                         heard, seeing: seeing, correctionSeeing: seeing,
-                        finalPiece: finalPiece, recording: tally, for: mine)
+                        finalPiece: finalPiece, after: preceding, recording: tally, for: mine)
                 }
             }
             while let last = await tidying.next() { pieces.append(last) }

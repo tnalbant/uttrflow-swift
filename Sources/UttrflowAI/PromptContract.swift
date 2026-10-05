@@ -31,6 +31,10 @@ public enum PromptContract {
         A "\(PromptBuilder.caretLabel)" line quotes what is already typed; the dictation \
         continues that sentence — repeat none of it, and do not close it.
 
+        A "\(PromptBuilder.precedingLabel)" line quotes the end of what the speaker said \
+        just before these words. It is context only: copy no words from it, and use it \
+        to tell whether these words carry on that sentence.
+
         A "\(PromptBuilder.doubtfulLabel)" line lists what was half-heard and the readings offered: \
         write the one that fits the sentence and the place, or the word as heard, \
         never one not offered.

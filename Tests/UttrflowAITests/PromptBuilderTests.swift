@@ -297,6 +297,43 @@ struct SituationBlockTests {
                 == "Typed into: a chat app (Slack), #engineering\nSpoken: \"the deploy failed\"")
     }
 
+    @Test("quotes the previous piece's last sentence for a piece, and never for a whole message")
+    func precedingLine() {
+        let piece = TransformationRequest(
+            transcription: Transcription(text: "and then we shipped it"), scope: .piece,
+            precedingPiece: "The tests passed. we waited for the build because")
+        #expect(
+            builder.userPrompt(for: piece)
+                == "Said just before: \"we waited for the build because\"\nSpoken: \"and then we shipped it\""
+        )
+        let message = TransformationRequest(
+            transcription: Transcription(text: "and then we shipped it"),
+            precedingPiece: "we waited for the build because")
+        #expect(builder.userPrompt(for: message) == "Spoken: \"and then we shipped it\"")
+    }
+
+    @Test(
+        "takes the last sentence of the previous piece, its own stop dropped, cut at a word boundary",
+        arguments: [
+            ("we waited", "we waited"),
+            ("It rained. we waited.", "we waited"),
+            ("Did it pass? yes it did ", "yes it did"),
+            ("Done.", "Done"),
+            (
+                String(repeating: "wxyz ", count: 30) + "end",
+                "…" + String(repeating: "wxyz ", count: 23) + "end"
+            ),
+        ])
+    func finalSentence(piece: String, quoted: String) {
+        #expect(PromptBuilder.finalSentence(of: piece) == quoted)
+    }
+
+    @Test("says nothing before the first piece or after a piece of nothing but stops")
+    func finalSentenceSilent() {
+        #expect(PromptBuilder.finalSentence(of: nil) == nil)
+        #expect(PromptBuilder.finalSentence(of: " . ") == nil)
+    }
+
     @Test("writes the caret line with no place to name")
     func caretWithoutPlace() {
         let situation = Situation(

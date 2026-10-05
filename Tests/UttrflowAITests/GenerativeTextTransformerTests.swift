@@ -469,6 +469,26 @@ struct GenerativeTextTransformerTests {
         }
     }
 
+    @Test("shows the model the previous piece and refuses an answer that copies it in")
+    func previousPieceIsReadOnly() async {
+        let model = FakeCleanupModel { _ in "We waited because I did not tell Mary to call John." }
+        let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
+        let piece = TransformationRequest(
+            transcription: .fixture(text: "I did not tell Mary to call John", language: .english),
+            scope: .piece, precedingPiece: "we waited because")
+
+        do {
+            _ = try await sut.transform(piece)
+            Issue.record("expected the copied context to be refused")
+        } catch {
+            guard case .outputRejected = error else {
+                Issue.record("expected outputRejected, got \(error)")
+                return
+            }
+        }
+        #expect(model.calls.first?.text.contains("Said just before: \"we waited because\"") == true)
+    }
+
     @Test("accepts a faithful contraction in the same instruction")
     func acceptsFaithfulNegation() async throws {
         let model = FakeCleanupModel { _ in "I didn't tell Mary to call John." }

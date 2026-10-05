@@ -7,6 +7,7 @@ extension DictationPipeline {
     func finish(
         _ heard: Transcription, seeing appContext: AppContext,
         correctionSeeing correctionContext: AppContext, finalPiece: Bool = false,
+        after preceding: Transcription? = nil,
         recording metrics: any MetricsRecording, for mine: Int,
         correcting corrector: (any WordCorrecting)? = nil
     ) async -> Piece {
@@ -15,7 +16,7 @@ extension DictationPipeline {
             heard, seeing: correctionContext, recording: metrics, correcting: corrector, for: mine)
         let cleaned = await tidy(
             heard, saying: corrected, seeing: appContext, finalPiece: finalPiece,
-            recording: metrics, for: mine)
+            after: preceding, recording: metrics, for: mine)
         return Piece(heard: heard, corrected: corrected, cleaned: cleaned)
     }
 
@@ -135,7 +136,7 @@ extension DictationPipeline {
     /// Tidies the transcript, falling back to exactly what was said. The only optional stage.
     func tidy(
         _ transcription: Transcription, saying corrected: CorrectedTranscript,
-        seeing appContext: AppContext, finalPiece: Bool = false,
+        seeing appContext: AppContext, finalPiece: Bool = false, after preceding: Transcription? = nil,
         recording metrics: any MetricsRecording, for mine: Int
     ) async -> TransformationResult {
         let text = corrected.text
@@ -143,7 +144,7 @@ extension DictationPipeline {
         let (situation, profile) = tidyingFrame(seeing: appContext)
         let request = TransformationRequest(
             transcription: transcription.saying(corrected), context: appContext,
-            profile: profile, situation: situation, scope: .piece)
+            profile: profile, situation: situation, scope: .piece, precedingPiece: preceding?.text)
         if finalPiece { await runningCleaner.reserveFinalPiece(situation) }
         // Not `.rules`: no pass ran over these words, and a record that says otherwise cannot be read.
         let untidied = TransformationResult(text: text, producedBy: .untidied)
@@ -198,7 +199,8 @@ extension DictationPipeline {
             pieces.append(
                 await finish(
                     piece, seeing: appContext, correctionSeeing: appContext,
-                    finalPiece: index == heard.indices.last, recording: NoOpMetricsRecorder(),
+                    finalPiece: index == heard.indices.last, after: heard[..<index].last,
+                    recording: NoOpMetricsRecorder(),
                     for: generation + 1, correcting: corrector))
         }
         let joined = await join(
