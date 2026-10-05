@@ -526,7 +526,9 @@ public enum SettingsPresenter {
             title: title(of: .languages),
             banner: nil,
             groups: [
-                SettingsGroup(id: "spoken", title: "Languages you speak", rows: [listenForRow(settings), pausesRow(settings)]),
+                SettingsGroup(
+                    id: "spoken", title: "Languages you speak",
+                    rows: [listenForRow(settings), pausesRow(settings)]),
                 SettingsGroup(
                     id: "tidying", title: "Tidying up",
                     rows: [tidyingRow(level, capabilities)]

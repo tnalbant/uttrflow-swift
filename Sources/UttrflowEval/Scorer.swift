@@ -24,7 +24,8 @@ public enum Scorer {
         let alignment = WordErrorRate.measure(reference: wanted, hypothesis: produced).alignment
         return CaseScore(
             caseID: reference.id,
-            similarity: overlap(spellingFolded(produced, in: reference), spellingFolded(wanted, in: reference)),
+            similarity: overlap(
+                spellingFolded(produced, in: reference), spellingFolded(wanted, in: reference)),
             markAccuracy: markAccuracy(rewritten, reference.expected),
             caseAccuracy: capitalisation.accuracy,
             keptEverythingRequired: lost.isEmpty,
