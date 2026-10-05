@@ -34,7 +34,8 @@ public struct NumberFormsPass: PieceCleaningPass {
         "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7,
         "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12, "thirteenth": 13,
         "fourteenth": 14, "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
-        "nineteenth": 19, "twentieth": 20, "thirtieth": 30,
+        "nineteenth": 19, "twentieth": 20, "thirtieth": 30, "fortieth": 40, "fiftieth": 50,
+        "sixtieth": 60, "seventieth": 70, "eightieth": 80, "ninetieth": 90,
     ]
     /// Other currencies and units with no second meaning; "pound", "feet" and "second" stay out.
     static let measures: Set<String> = [
@@ -995,10 +996,13 @@ public struct NumberFormsPass: PieceCleaningPass {
                 ordinalPosition += 1
                 count += 1
             }
-            if joined(ordinalPosition, shapes), let unit = ordinalUnits[keys[ordinalPosition]], unit < 10,
+            // The tail fills the cardinal's empty places: under ten after a ten, under a hundred after a scale.
+            let room = cardinal.value % 100 == 0 ? 100 : cardinal.value % 10 == 0 ? 10 : 1
+            if joined(ordinalPosition, shapes),
+                let tail = parseOrdinal(at: ordinalPosition, keys: keys, shapes: shapes), tail.value < room,
                 !isHouseNumber(endingAt: position + cardinal.count - 1, keys: keys, shapes: shapes)
             {
-                return (cardinal.value + unit, count + 1)
+                return (cardinal.value + tail.value, count + tail.count)
             }
         }
         return ordinalUnits[keys[position]].map { ($0, 1) }

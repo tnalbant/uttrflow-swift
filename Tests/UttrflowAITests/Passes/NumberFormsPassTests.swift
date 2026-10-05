@@ -520,6 +520,15 @@ struct NumberFormsPassTests {
             ("the twenty fifth anniversary", "the 25th anniversary"),
             ("we finished twenty third", "we finished 23rd"),
             ("the one hundred and twenty first floor", "the 121st floor"),
+            ("the one hundred and first visitor", "the 101st visitor"),
+            ("the one hundred and first", "the 101st"),
+            ("the one hundred and twentieth day", "the 120th day"),
+            ("the one hundred twenty first floor", "the 121st floor"),
+            ("the one thousand and first night", "the 1001st night"),
+            ("the one hundred and twenty-first floor", "the 121st floor"),
+            ("the two hundred and fiftieth year", "the 250th year"),
+            ("the one hundred and twelfth day", "the 112th day"),
+            ("the 121st floor", "the 121st floor"),
             ("the twenty-fifth floor", "the 25th floor"),
         ]
     )
@@ -774,7 +783,6 @@ struct NumberFormsPassTests {
             "twenty fifth, March", "tenth of, April", "tenth of \"April\"",
             "twenty--fifth of March",
             "twenty-tenth of March", "first", "a hundred and twentieth of June",
-            "the one hundred and first",
         ]
     )
     func preservesOrdinals(input: String) {
