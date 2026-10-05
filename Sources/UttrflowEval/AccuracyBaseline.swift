@@ -210,14 +210,21 @@ public struct BaselineComparison: Sendable, Equatable {
 
 extension AccuracyBaseline {
     /// Compares a fresh run with this baseline over the samples they share, reporting the rest.
-    public func compare(
+    func compare(
         with report: TranscriptionReport, tolerance: RegressionTolerance = .standard
     ) -> BaselineComparison {
-        let after = Dictionary(report.scores.map { ($0.caseID, BaselineEntry($0)) }) { first, _ in first }
+        compare(with: AccuracyBaseline.capture(report, at: recordedAt), tolerance: tolerance)
+    }
+
+    /// Compares a run already reduced to counts, such as one a scorer outside this package wrote, with this baseline.
+    public func compare(
+        with measured: AccuracyBaseline, tolerance: RegressionTolerance = .standard
+    ) -> BaselineComparison {
+        let after = Dictionary(measured.entries.map { ($0.caseID, $0) }) { first, _ in first }
         let before = Dictionary(entries.map { ($0.caseID, $0) }) { first, _ in first }
         let shared = Set(before.keys).intersection(after.keys).sorted()
 
-        let mismatch = incomparability(with: report, shared: shared, before: before, after: after)
+        let mismatch = incomparability(with: measured, shared: shared, before: before, after: after)
         let sharedBefore = shared.compactMap { before[$0] }
         let sharedAfter = shared.compactMap { after[$0] }
 
@@ -246,7 +253,7 @@ extension AccuracyBaseline {
 
     /// Why these two runs are not about the same thing, if they are not; growth is not a reason.
     private func incomparability(
-        with report: TranscriptionReport, shared: [String],
+        with report: AccuracyBaseline, shared: [String],
         before: [String: BaselineEntry], after: [String: BaselineEntry]
     ) -> String? {
         if report.label != label {

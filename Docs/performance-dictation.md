@@ -315,6 +315,10 @@ python3 Scripts/dictation_bench.py score .build/bench/run.out
 Swift scorers use, and prints the rules in force first; a run printed under other rules is not
 comparable. `Tests/UttrflowEvalTests/Golden/normalisation.tsv` pins both entry points to one table.
 
+`score --baseline <path>` compares the final text's rates, one cleaner and mode at a time, with a
+stored run through `uttrflow-eval compare`, the rule `make accuracy-gate` judges with; add
+`--save-baseline` to store the run, or `--fail-on-regression` to exit non-zero on a worse slice.
+
 `--categories hi-reply` selects the Hindi replies, whose jobs use the `hi` Languages profile.
 `--categories code-switch` selects an English passage followed by a Hindi one and a Hindi sentence
 followed by an English one, each after a 1.5-second pause; their jobs use both `en,hi` and `hi,en`
