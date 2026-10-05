@@ -566,6 +566,14 @@ struct NumberFormsPassTests {
             ("nineteen ninety nine", "1999"),
             ("twenty ten", "2010"),
             ("in twenty twenty", "in 2020"),
+            ("in twenty oh five", "in 2005"),
+            ("since nineteen oh one", "since 1901"),
+            ("from nineteen oh five until twenty oh nine", "from 1905 until 2009"),
+            ("in two thousand", "in 2000"),
+            ("in two thousand five", "in 2005"),
+            ("in two thousand and five", "in 2005"),
+            ("March twenty oh five", "March 2005"),
+            ("twenty oh five people", "20 oh five people"),
         ]
     )
     func years(input: String, expected: String) {

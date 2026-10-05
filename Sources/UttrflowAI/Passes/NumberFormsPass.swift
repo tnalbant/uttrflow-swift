@@ -23,6 +23,8 @@ public struct NumberFormsPass: PieceCleaningPass {
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
     /// The words a speaker uses for the leading zero of a clock minute.
     static let clockZeros: Set<String> = ["oh", "o", "zero"]
+    /// Words after which "nineteen oh five" is a year rather than a clock time or a count.
+    static let yearCues: Set<String> = ["in", "since", "year", "of", "from", "until", "till"]
     static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
@@ -160,6 +162,7 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
         if let date = numericDate(at: position, keys: keys, shapes: shapes) { return date }
+        if let year = cuedYear(at: position, keys: keys, shapes: shapes) { return year }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
@@ -702,17 +705,32 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: digits, count: 1)
         }
         guard let century = NumberWords.teens[keys[start]] ?? NumberWords.tens[keys[start]],
-            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes)
+            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes, cued: true)
         else { return nil }
         return Phrase(text: year.text, count: year.count + 1)
     }
 
-    /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.
+    /// A spoken year after a year cue or a month, so "in twenty oh five" is 2005 and never a clock time.
+    private static func cuedYear(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard position > 0, !startsASentence(position, shapes),
+            yearCues.contains(keys[position - 1]) || monthDays[keys[position - 1]] != nil,
+            let century = NumberWords.teens[keys[position]] ?? NumberWords.tens[keys[position]],
+            let year = year(after: century, at: position + 1, keys: keys, shapes: shapes, cued: true)
+        else { return nil }
+        return Phrase(text: year.text, count: year.count + 1)
+    }
+
+    /// "twenty twenty four" and "nineteen ninety nine"; a cued year also takes "oh" and a unit, as in "twenty oh five".
     private static func year(
-        after century: Int, at start: Int, keys: [String], shapes: [WordShape]
+        after century: Int, at start: Int, keys: [String], shapes: [WordShape], cued: Bool = false
     ) -> Phrase? {
-        guard century == 19 || century == 20, joined(start, shapes),
-            let rest = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
+        guard century == 19 || century == 20, joined(start, shapes) else { return nil }
+        if cued, clockZeros.contains(keys[start]), joined(start + 1, shapes),
+            let unit = NumberWords.units[keys[start + 1]], unit > 0
+        {
+            return Phrase(text: String(century * 100 + unit), count: 2)
+        }
+        guard let rest = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
             (10...99).contains(rest.value), rest.count <= 2
         else { return nil }
         return Phrase(text: String(century * 100 + rest.value), count: rest.count)
