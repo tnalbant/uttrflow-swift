@@ -32,10 +32,21 @@ extension EngineConfiguration {
             self = .default
             return
         }
+        let stored = container.readableElements(
+            of: TransformerKind.self, forKey: .transformerPreference,
+            fallback: Self.default.transformerPreference)
         self.init(
             speech: (try? container.decode(SpeechEngineKind.self, forKey: .speech)) ?? Self.default.speech,
-            transformerPreference: container.readableElements(
-                of: TransformerKind.self, forKey: .transformerPreference,
-                fallback: Self.default.transformerPreference))
+            transformerPreference: Self.migrated(stored))
+    }
+
+    /// Orders earlier builds saved without the user choosing them: the old default, and the Standard level it normalised to.
+    static let formerDefaults: [[TransformerKind]] = [
+        [.foundationModels, .localModel, .rules], [.foundationModels, .rules],
+    ]
+
+    /// Moves an order the user never chose onto today's default, and keeps one they did choose.
+    static func migrated(_ stored: [TransformerKind]) -> [TransformerKind] {
+        formerDefaults.contains(stored) ? Self.default.transformerPreference : stored
     }
 }

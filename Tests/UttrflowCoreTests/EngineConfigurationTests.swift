@@ -58,6 +58,35 @@ struct EngineConfigurationTests {
     }
 }
 
+@Suite("Saved preference migration")
+struct EnginePreferenceMigrationTests {
+    private func decoded(_ preference: String) throws -> EngineConfiguration {
+        let json = Data(#"{"speech":"whisperKit","transformerPreference":\#(preference)}"#.utf8)
+        return try JSONDecoder().decode(EngineConfiguration.self, from: json)
+    }
+
+    @Test(
+        "moves an order an earlier build saved by default onto the local model first",
+        arguments: [#"["foundationModels","localModel","rules"]"#, #"["foundationModels","rules"]"#])
+    func migratesFormerDefault(saved: String) throws {
+        #expect(try decoded(saved).transformerPreference == [.localModel, .foundationModels, .rules])
+    }
+
+    @Test("keeps an order the user chose", arguments: [#"["rules"]"#, #"["localModel","rules"]"#])
+    func keepsUserChoice(saved: String) throws {
+        let kept = try decoded(saved).transformerPreference
+        #expect(kept == (saved.contains("localModel") ? [.localModel, .rules] : [.rules]))
+    }
+
+    @Test("migrates once: the migrated order round-trips unchanged")
+    func migratesOnce() throws {
+        let migrated = try decoded(#"["foundationModels","rules"]"#)
+        let again = try JSONDecoder().decode(
+            EngineConfiguration.self, from: JSONEncoder().encode(migrated))
+        #expect(again == migrated)
+    }
+}
+
 @Suite("Engine kinds")
 struct EngineKindsTests {
     @Test("never offers the retired hosted engine")
