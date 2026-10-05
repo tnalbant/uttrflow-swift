@@ -228,6 +228,22 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "reads double, triple and quadruple before a digit word inside a digit run",
+        arguments: [
+            ("double oh seven", "007"),
+            ("triple five one two", "55512"),
+            ("call five five double two", "call 5522"),
+            ("the room is quadruple one", "the room is 1111"),
+            ("double check the list", "double check the list"),
+            ("double two", "double two"),
+            ("a double espresso and one two", "a double espresso and one two"),
+        ]
+    )
+    func readsRepeatedDigits(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "keeps two single digits and number words in a hyphenated count",
         arguments: [
             "one or two",

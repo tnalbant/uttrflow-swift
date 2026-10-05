@@ -534,14 +534,27 @@ public struct NumberFormsPass: PieceCleaningPass {
         NumberWords.spokenDigit(key).map(String.init)
     }
 
-    /// Joins three or more digit words with a nonzero one among them, no scale after them, and a cue before a count.
+    /// How many times "double", "triple" and "quadruple" repeat the digit word after them.
+    static let digitRepeats: [String: Int] = ["double": 2, "triple": 3, "quadruple": 4]
+
+    /// The digits one step of a spoken run reads: a digit word, or a repeat word joined to one.
+    private static func digitStep(at index: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard index < keys.count else { return nil }
+        if let digit = singleDigit(keys[index]) { return Phrase(text: digit, count: 1) }
+        guard let times = digitRepeats[keys[index]], joined(index + 1, shapes),
+            let digit = singleDigit(keys[index + 1])
+        else { return nil }
+        return Phrase(text: String(repeating: digit, count: times), count: 2)
+    }
+
+    /// Joins three or more digits with a nonzero one among them, no scale after them, and a cue before a count.
     private static func spokenDigitRun(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
-        guard let first = singleDigit(keys[start]) else { return nil }
-        var text = first
-        var end = start + 1
-        while joined(end, shapes), let digit = singleDigit(keys[end]) {
-            text.append(digit)
-            end += 1
+        guard let first = digitStep(at: start, keys: keys, shapes: shapes) else { return nil }
+        var text = first.text
+        var end = start + first.count
+        while joined(end, shapes), let step = digitStep(at: end, keys: keys, shapes: shapes) {
+            text += step.text
+            end += step.count
         }
         guard text.count >= 3, text.contains(where: { $0 != "0" }) else { return nil }
         guard !(joined(end, shapes) && NumberWords.scales[keys[end]] != nil) else { return nil }
