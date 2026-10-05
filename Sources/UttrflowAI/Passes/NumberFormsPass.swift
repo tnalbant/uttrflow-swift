@@ -162,6 +162,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         if let date = numericDate(at: position, keys: keys, shapes: shapes) { return date }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
+        if let dotted = dottedNumber(at: position, keys: keys, shapes: shapes) { return dotted }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -560,6 +561,44 @@ public struct NumberFormsPass: PieceCleaningPass {
         guard let group = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
             group.value >= 10
         else { return nil }
+        return Phrase(text: String(group.value), count: group.count)
+    }
+
+    /// Words before two dotted digit groups that say they are an address, version or decimal.
+    static let dottedCues: Set<String> = ["ip", "address", "version", "v", "build", "release"]
+
+    /// "one nine two dot one six eight dot one dot one": digit groups a spoken "dot" joins, three or more or two after a cue.
+    private static func dottedNumber(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let first = leadingGroup(at: position, keys: keys, shapes: shapes) else { return nil }
+        var text = first.text
+        var end = position + first.count
+        var groups = 1
+        while joined(end, shapes), keys[end] == "dot",
+            let group = digitGroup(at: end + 1, keys: keys, shapes: shapes)
+        {
+            text += "." + group.text
+            end += 1 + group.count
+            groups += 1
+        }
+        let cued =
+            position > 0 && !startsASentence(position, shapes) && dottedCues.contains(keys[position - 1])
+        guard groups >= 3 || (groups == 2 && cued) else { return nil }
+        return Phrase(text: text, count: end - position)
+    }
+
+    /// The first group of a dotted number: single digit words run together, digits, or one cardinal.
+    private static func leadingGroup(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        var text = ""
+        var end = position
+        while end < keys.count, end == position || joined(end, shapes), let digit = singleDigit(keys[end]) {
+            text.append(digit)
+            end += 1
+        }
+        if !text.isEmpty { return Phrase(text: text, count: end - position) }
+        if let digits = NumberWords.digits(keys[position]) { return Phrase(text: digits, count: 1) }
+        guard let group = NumberWords.cardinal(unbroken(from: position, keys: keys, shapes: shapes)) else {
+            return nil
+        }
         return Phrase(text: String(group.value), count: group.count)
     }
 
