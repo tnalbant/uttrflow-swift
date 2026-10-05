@@ -1263,8 +1263,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let speech = makeSpeechEngine(settings.engines.speech)
         speechInUse = speech.kind
 
+        let layers = QualityLayers { key in
+            let defaults = UserDefaults.standard
+            return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+        }
+        // The ledger is read only while the persona layer is on, and only inside History's window.
+        var personaEvidence: (@Sendable () async -> [EvidenceRow])?
+        if layers.isOn(.personaVocabulary), let ledger = evidence {
+            let days = settings.transcriptRetentionDays
+            personaEvidence = { await ledger.rows(keeping: RetentionWindow(days: days, now: Date())) }
+        }
         // Ranked against the screen the pipeline already read for this dictation, not a second read of its own.
-        let speechWords = DictionaryVocabulary { [dictionary] in
+        let speechWords = DictionaryVocabulary(evidence: personaEvidence) { [dictionary] in
             await (dictionary.allEntries(), dictionary.index(), Date())
         }
 
@@ -1308,10 +1318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
-            layers: QualityLayers { key in
-                let defaults = UserDefaults.standard
-                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
-            }
+            layers: layers
         )
         self.pipeline = pipeline
 

@@ -899,6 +899,7 @@ def latency_breaches(targets, samples):
 # The bench stage whose p95-plus-headroom row is each quality layer's latency budget, keyed by `QualityLayer` raw value.
 LAYER_STAGES = {
     "recogniser-bias": "asr:recognitionSeconds",
+    "persona-vocabulary": "asr:recognitionSeconds",
     "evidence-capture": "asr:wordTimingSeconds",
     "candidate-generation": "correct",
     "scoring": "correct",

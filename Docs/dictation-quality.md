@@ -30,7 +30,9 @@ inside and a one-line summary. `QualityLayers` resolves which are on from those 
 only by the local defaults key `QualityLayer.<name>` (`-QualityLayer.<name> NO` for one launch),
 never from a network source. `QualityLayers.ablation(only:without:)` builds the set a bake-off or
 eval run asks for, and refuses an unknown name. A new layer is added as a case with `defaultOn`
-false, measured, then turned on in a reviewed pull request.
+false, measured, then turned on in a reviewed pull request. `persona-vocabulary` is such a case inside
+recogniser bias: it ranks the prompt's words by the persona projection in
+[learned-state.md](learned-state.md#the-persona-projection).
 
 `DictationPipeline` takes the set as `layers` and a layer that is off leaves its stage's input as it
 came: recogniser bias off sends the recogniser no vocabulary; evidence capture, candidate

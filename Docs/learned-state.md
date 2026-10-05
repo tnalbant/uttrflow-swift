@@ -81,6 +81,16 @@ It sends nothing anywhere and logs nothing about its rows.
 - **Reset**: "Reset everything" deletes the file. "Forget learned words" keeps it, because
   rows also count uses of words the user added.
 
+## The persona projection
+
+`PersonaProjection.standing` (`Sources/UttrflowDictionary/PersonaProjection.swift`) is the
+persona: kept recent use per dictionary entry, `use` rows minus `revert` rows not covered by a
+`restore`, each weighted on the `WorkingSet` recency curve. It is computed on read and stored
+nowhere. `WorkingSet` adds it to an entry's value as `p / (1 + p)`, at most one, the same ceiling
+as frequency. `DictionaryVocabulary` reads the ledger for it only while the `persona-vocabulary`
+quality layer is on, which it is not by default: the layer turns on only after the
+developer-vocabulary corpus measures `wer-biased` with it on and off.
+
 ## Still open
 
 The downgrade rule for the ledger's own file belongs to the store compatibility contract. The
