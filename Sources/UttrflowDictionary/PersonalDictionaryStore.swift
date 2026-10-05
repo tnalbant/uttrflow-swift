@@ -86,10 +86,7 @@ public actor PersonalDictionaryStore {
             throw refusal
         }
         let spelling = entry.spellingKey
-        let kept =
-            load().filter { $0.id != entry.id && $0.spellingKey != spelling } + [entry]
-        try persist(kept)
-        return kept
+        return try persist(load().filter { $0.id != entry.id && $0.spellingKey != spelling } + [entry])
     }
 
     /// Replaces the list with what `merge` derives from it in one actor step, returning what the bound kept.
@@ -104,8 +101,7 @@ public actor PersonalDictionaryStore {
                 throw refusal
             }
         }
-        let kept = Self.boundedEntries(entries)
-        try persist(kept)
+        let kept = try persist(entries)
         cachedIndex = nil
         return (kept, derived.outcome)
     }
@@ -190,11 +186,13 @@ public actor PersonalDictionaryStore {
         let offered: [String]?
     }
 
-    /// A missing record is new; an unreadable one is not evidence that a deleted word may return.
+    /// A missing record is new; an unreadable one, or one set aside as unreadable, is not evidence that a deleted word may return.
     private func offeredSpellings() throws(DictionaryStoreError) -> Set<String> {
         let record: SeedRecord
         switch readRecord(SeedRecord.self, from: seedRecord) {
-        case .missing: return []
+        case .missing:
+            guard !LocalStore.hasSetAside(seedRecord) else { throw .couldNotReadSeedRecord }
+            return []
         case .unreadable: throw .couldNotReadSeedRecord
         case .read(let read): record = read
         }
@@ -306,8 +304,7 @@ public actor PersonalDictionaryStore {
 
         learnt = learnt.map(\.inLatinScript)
         guard !learnt.isEmpty else { return [] }
-        let bounded = Self.boundedEntries(existing + learnt)
-        try persist(bounded)
+        let bounded = try persist(existing + learnt)
         return learnt.filter { entry in bounded.contains(where: { $0.id == entry.id }) }
     }
 
@@ -445,14 +442,16 @@ public actor PersonalDictionaryStore {
         cache.load() ?? []
     }
 
-    /// Writes the whole list atomically, or removes the file when nothing is left to keep.
-    private func persist(_ entries: [DictionaryEntry]) throws(DictionaryStoreError) {
+    /// Writes the list within the inferred bound atomically, or removes the file when nothing is left; returns what it kept.
+    @discardableResult
+    private func persist(_ unbounded: [DictionaryEntry]) throws(DictionaryStoreError) -> [DictionaryEntry] {
         guard !cache.isUnreadable else { throw .couldNotWrite }
+        let entries = Self.boundedEntries(unbounded)
         do {
             guard !entries.isEmpty else {
                 try removeFile()
                 cache.remember(nil)
-                return
+                return entries
             }
             if let encryptedStore {
                 try encryptedStore.write(entries, to: file)
@@ -464,6 +463,7 @@ public actor PersonalDictionaryStore {
             cache.forget()
             throw .couldNotWrite
         }
+        return entries
     }
 
     /// Keeps all trusted origins and the strongest, most recent inferred entries within the bound.

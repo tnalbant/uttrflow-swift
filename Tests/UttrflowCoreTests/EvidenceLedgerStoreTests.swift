@@ -37,7 +37,10 @@ struct EvidenceLedgerStoreTests {
         let bytes = try Data(contentsOf: file)
         #expect(EncryptedStore.isSealed(bytes))
         #expect(!String(decoding: bytes, as: UTF8.self).contains("entry-1"))
-        #expect(await EvidenceLedgerStore(file: file, encryptedStore: encrypted).rows(keeping: always) == [row, revert])
+        #expect(
+            await EvidenceLedgerStore(file: file, encryptedStore: encrypted).rows(keeping: always) == [
+                row, revert,
+            ])
     }
 
     @Test("reset deletes every row and resetting an absent ledger succeeds")

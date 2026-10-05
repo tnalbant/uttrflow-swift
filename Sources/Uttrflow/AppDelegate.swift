@@ -82,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private let settingsStore: UserDefaultsSettingsStore
     private let encryptedStore: EncryptedStore?
+    /// The suggestion model's loaded weights, which also tidy dictation when Apple's model cannot.
+    private let localTidier: (any CleanupModel)?
     private var settings = Settings()
     /// The pipeline's recording cue, told when the sound setting changes.
     private var recordingSounds: RecordingSounds?
@@ -163,6 +165,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recordingStopGesture: StopGesture = .letGo
 
     private var pipeline: DictationPipeline?
+    /// The quality layers the pipeline is built with, read once from local defaults; Diagnostics shows the same value.
+    private let qualityLayers = QualityLayers { key in
+        let defaults = UserDefaults.standard
+        return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+    }
     /// Lets the app wiring test wait for a refused retry to finish without timing guesses.
     private(set) var retryWork: Task<Void, Never>?
     /// The pipeline's recogniser, held so memory pressure can let it go between dictations.
@@ -215,7 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The latest fetch of those weights, internal so a test can wait for it rather than for the clock.
     private(set) var modelPreparation: Task<Void, Never>?
     /// When the suggestion model gives memory back and takes it again; internal so a test can shorten the waits.
-    var memoryPressure = SuggestionModelPressure()
+    var memoryPressure = ModelMemoryPressure()
+    /// When the speech model gives memory back and may give it back again; internal so a test can drive it.
+    var speechPressure = ModelMemoryPressure()
     /// The reload waiting for memory to stay calm, cancelled by the next reading; internal so a test can wait for it.
     private(set) var pressureReload: Task<Void, Never>?
     private let pressureSource = MemoryPressureSource()
@@ -257,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         releaseModel: (@Sendable () async -> Void)? = nil,
         allowModelReload: (@Sendable () async -> Void)? = nil,
         encryptedStore: EncryptedStore? = nil,
+        localTidier: (any CleanupModel)? = nil,
         waitForCalm: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         transformerReadiness: @escaping @Sendable (UserProfile) async -> Set<TransformerKind> = {
             profile in await SettingsCapabilities.refreshed(for: profile).readyTransformers
@@ -265,6 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.container = container
         self.onboardingRecordStore = onboardingRecordStore
         self.encryptedStore = encryptedStore
+        self.localTidier = localTidier
         clipboardPreferencesFile = ClipboardPreferencesFile(
             path: ClipboardPreferencesFile.defaultFile(in: container).path)
         speechModelLoadLog = SpeechModelLoadLog(file: SpeechModelLoadLog.defaultFile(in: container))
@@ -1110,9 +1121,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Lets the recogniser go under memory pressure unless a dictation is under way; the next key-down loads it again.
-    private func releaseSpeechModelIfIdle() {
+    /// Lets the recogniser go under pressure when idle, at a warning only once the last reload has held. See `Docs/performance.md`.
+    private func releaseSpeechModelIfIdle(at level: MemoryPressureLevel) {
         guard case .idle = lastDictationState, let speechEngine else { return }
+        guard level == .critical || speechPressure.allowsRelease(at: .now) else { return }
+        speechPressure.released(at: .now)
         Task { await speechEngine.release() }
     }
 
@@ -1123,7 +1136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PanelThumbnails.shared.releaseForMemoryPressure()
             pressureReload?.cancel()
             pressureReload = nil
-            releaseSpeechModelIfIdle()
+            releaseSpeechModelIfIdle(at: level)
             guard settings.suggestions.isEnabled, isModelPreparing else { return }
             memoryPressure.released(at: .now)
             releaseTheModel()
@@ -1209,7 +1222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func cleaner(for settings: Settings) -> TransformerRouter {
         TextTransformers.router(
             configuration: settings.engines, steps: settings.cleaning,
-            spellings: { [dictionary] in await dictionary.index() })
+            spellings: { [dictionary] in await dictionary.index() }, localModel: localTidier)
     }
 
     /// The recogniser of `kind`, over the downloaded model.
@@ -1290,6 +1303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let microphone = AVAudioCaptureEngine(
             source: AVAudioEngineMicrophoneSource(), recordings: recordings, cue: cue)
         dock.setLevelSource { microphone.momentaryLevel }
+        dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
         let pipeline = DictationPipeline(
             capture: microphone,
@@ -1316,10 +1330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
             profile: settings.profile,
-            layers: QualityLayers { key in
-                let defaults = UserDefaults.standard
-                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
-            }
+            layers: qualityLayers
         )
         self.pipeline = pipeline
 
@@ -1331,11 +1342,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             activation: settings.hotkeyActivation,
             handsFreeEnabled: settings.handsFreeEnabled,
             doubleTapWindow: .milliseconds(settings.handsFreeDoubleTapMilliseconds),
+            minimumHold: .milliseconds(settings.handsFreeHoldMilliseconds),
             clock: ContinuousClock(),
             onAdvice: { [weak self] advice in
                 Task { @MainActor in self?.recordingAdviceChanged(to: advice) }
             },
             onWarning: reportWarning.report,
+            onNearMissTap: { [weak self] in
+                Task { @MainActor in self?.announce(DictationPresenter.nearMissTapAnnouncement) }
+            },
             onStopGestureChange: { [weak self] gesture in
                 Task { @MainActor in self?.recordingStopGestureChanged(to: gesture) }
             }
@@ -2416,6 +2431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
             else { break }
             keep(record)
+            noteStyle(outcome)
         case .failed(let notice):
             Self.log.error(
                 """
@@ -2470,6 +2486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         onboarding?.dictationChanged(to: state)
         // A dictation's own outcome is newer than any panel paste's report.
         if state != .idle { pasteReport = nil }
+        if state.isBusy, speechPressure.isReleased { speechPressure.reloaded(at: .now) }
         DictationInProgress.shared.set(dictating: state.isBusy)
         completions?.dictationChanged(isDictating: state.isBusy)
 
@@ -2535,6 +2552,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSAccessibility.post(
             element: NSApplication.shared, notification: .announcementRequested,
             userInfo: [.announcement: text, .priority: priority.rawValue])
+    }
+
+    /// Counts how the user writes in the destination the words went into; never the words themselves.
+    private func noteStyle(_ outcome: UttrflowPipeline.DictationOutcome) {
+        guard let evidence, !outcome.intoSecureField, !outcome.isFromRecording else { return }
+        let app = AppContext(
+            applicationName: outcome.insertedInto, bundleIdentifier: outcome.insertedIntoIdentifier)
+        let destination = DestinationClassifier.classify(app, overrides: settings.destinations)
+        let now = Date()
+        let rows = StyleSignals.rows(for: outcome.text, into: destination, day: EvidenceRow.day(of: now))
+        guard !rows.isEmpty else { return }
+        let window = RetentionWindow(days: settings.transcriptRetentionDays, now: now)
+        Task {
+            do {
+                try await evidence.append(rows, keeping: window)
+            } catch {
+                Self.log.error("style counts not saved: \(ErrorLog.failure(error), privacy: .public)")
+            }
+        }
     }
 
     /// Keeps one dictation, inserted or salvaged, and makes it what the last-transcript shortcuts act on.
@@ -2958,7 +2994,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     cleaning: lastCleaning,
                     lastCleanedBy: lastCleanedBy,
                     suggestionModel: suggestionModel, version: .ofThisBuild,
-                    machine: MachineDescription.current, arrivals: entries.map(\.arrival))),
+                    machine: MachineDescription.current, arrivals: entries.map(\.arrival),
+                    qualityLayers: qualityLayers)),
             account: accountPage(at: now),
             shortcutKeycaps: SettingsShortcut.keycaps(for: settings.hotkey))
     }
@@ -3607,6 +3644,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Task { [weak self] in
                 await self?.controller?.setDoubleTapWindow(
                     .milliseconds(updated.handsFreeDoubleTapMilliseconds))
+            }
+        }
+        if updated.handsFreeHoldMilliseconds != previous.handsFreeHoldMilliseconds {
+            Task { [weak self] in
+                await self?.controller?.setMinimumHold(
+                    .milliseconds(updated.handsFreeHoldMilliseconds))
             }
         }
         telemetry?.setEnabled(updated.sharesUsageStatistics)

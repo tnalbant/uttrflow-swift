@@ -136,7 +136,7 @@ sightings go with the entries, cancelled in the evidence ledger: a word that app
 forget what it had worked out would make a liar of the button.
 
 Only the inferred entries are capped. At most `maximumInferredEntries` (256) `learned` and
-`observed` entries are kept when the dictionary learns or imports, the strongest first — most uses
+`observed` entries are kept on every write, the strongest first — most uses
 net of undos, then the most recently first seen, then alphabetical. Words the user added and words
 the build shipped are never trimmed: a silent trim there would delete words a user deliberately
 taught the app.

@@ -41,6 +41,8 @@ extension PassID {
     /// The full stop a sentence-length pause inside one piece put there.
     public static let pauseStop: PassID = "pauseStop"
     public static let spelledInitialism: PassID = "spelledInitialism"
+    /// An acronym said as one word, written in its known casing.
+    public static let acronymCasing: PassID = "acronymCasing"
     /// The case of the first word, which the formatter decides.
     public static let firstWord: PassID = "firstWord"
     /// The last mark, which the formatter decides.
