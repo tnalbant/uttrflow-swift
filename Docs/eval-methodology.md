@@ -3,7 +3,7 @@
 `uttrflow-eval` (`Sources/uttrflow-eval/`) runs the recorded corpus through a speech engine and
 reports word error rate, latency and failures; the decisions it relies on live in `UttrflowEval`
 (`Sources/UttrflowEval/`): `TranscriptionCorpus`, `TextNormaliser`, `TranscriptionScorer`,
-`AccuracyBaseline` and `RegressionTolerance`. This page holds those measurement decisions, so the
+`AccuracyBaseline` and `PairedBootstrap`. This page holds those measurement decisions, so the
 one-line comments in the source can stay short. The targets these measurements are judged
 against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
 [`measuring-accuracy.md`](measuring-accuracy.md); the edit distance is in

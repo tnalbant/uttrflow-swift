@@ -3,7 +3,7 @@
 Speech accuracy is measured by reading a fixed set of passages aloud once, then running every
 speech-engine change over the same recordings and comparing word error rates against a stored
 baseline. The passages are `TranscriptionCorpus` (`Sources/UttrflowEval/TranscriptionCorpus.swift`),
-the scorer is `TranscriptionScorer` and the gate is `AccuracyBaseline` and `RegressionTolerance`
+the scorer is `TranscriptionScorer` and the gate is `AccuracyBaseline` and `PairedBootstrap`
 (`Sources/UttrflowEval/`), and the command is `uttrflow-eval` (`Sources/uttrflow-eval/`). How each
 measurement decision is made is in [`eval-methodology.md`](eval-methodology.md); the edit distance
 itself is in [`core-word-error-rate.md`](core-word-error-rate.md). To pick the command a given
