@@ -109,8 +109,10 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
 
         // Only a taught reading has an entry to count; the screen's and the vocabulary's have none.
         let taken = meaningGuard.readingsTaken(draft: draft, rewritten: finished, offering: readings)
+        // The guard judges words, so a mark added where the clause runs on is taken out here, alone.
+        let marked = AddedMarkCheck.checked(finished, against: spoken).text
         return TransformationResult(
-            text: finished, producedBy: kind,
+            text: marked, producedBy: kind,
             cleaning: CleaningRecord(draft: draft, ran: pipeline.ids),
             entriesTaken: taken.compactMap(\.entryID))
     }
