@@ -65,7 +65,8 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
         let draft = pipeline.run(Draft(transcription: request.transcription))
         let spoken = draft.text
-        if let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps) {
+        if let floor = try await Self.floorSettles(request, draft: draft, formatter: formatter, steps: steps)
+        {
             return floor
         }
         // The sources answer in milliseconds and run beside each other, so the readings cost the call nothing.
@@ -133,7 +134,8 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
             !QuestionShape.opensQuestionLater(draft.presentIndices.map(draft.shape(at:)))
         else { return nil }
         let floor = try await RuleBasedTransformer(steps: steps).transform(request)
-        let unchanged = MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
+        let unchanged =
+            MeaningPreservationGuard.grammarTokens(floor.text).map(\.matching) == tokens.map(\.matching)
         return unchanged ? floor : nil
     }
 

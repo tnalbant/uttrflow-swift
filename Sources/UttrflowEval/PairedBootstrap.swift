@@ -11,8 +11,7 @@ struct PairedBootstrap: Sendable, Equatable {
     /// Fixed, so the same two runs always produce the same interval and the same verdict.
     let seed: UInt64
 
-    init(confidence: Double = 0.95, power: Double = 0.8, resamples: Int = 2_000, seed: UInt64 = 0x5EED)
-    {
+    init(confidence: Double = 0.95, power: Double = 0.8, resamples: Int = 2_000, seed: UInt64 = 0x5EED) {
         self.confidence = confidence
         self.power = power
         self.resamples = resamples
@@ -27,13 +26,6 @@ struct PairedBootstrap: Sendable, Equatable {
         let wordsBefore: Int
         let errorsAfter: Int
         let wordsAfter: Int
-
-        init(errorsBefore: Int, wordsBefore: Int, errorsAfter: Int, wordsAfter: Int) {
-            self.errorsBefore = errorsBefore
-            self.wordsBefore = wordsBefore
-            self.errorsAfter = errorsAfter
-            self.wordsAfter = wordsAfter
-        }
     }
 
     /// The interval for a pooled-rate change, and the smallest change this sample can resolve.
