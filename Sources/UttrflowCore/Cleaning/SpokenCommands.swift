@@ -45,6 +45,8 @@ public struct SpokenCommand: DataTableRow, Equatable {
         case word
         /// Every word up to the row's closing phrase, which is said and dropped.
         case span
+        /// Every word up to a timed pause, a spoken clause mark or the end of the piece: a hashtag.
+        case pause
     }
 
     /// The row's stable name.

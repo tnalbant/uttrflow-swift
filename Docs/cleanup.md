@@ -507,6 +507,16 @@ corpus (comma F1 against the rules, paired, 95% bootstrap):
   decided, and they run after the model too. They are also the floor whenever the model declines
   or is not installed.
 
+## A spoken hashtag
+
+"hashtag" joins the words after it into one lower-case tag (`#springlaunch`) in prose destinations, up to
+the first of: a timed pause of at least 300 ms, a spoken or written clause mark, or the end of the piece.
+Words alone cannot say where a tag ends, so no word list or word shape decides it. A pause right after
+"hashtag" itself does not end the tag. "hashtag" after a determiner or before a form of "be" names a tag and
+stays a word ("the hashtag was trending"), as does a "hashtag" with no word after it. A code editor keeps the
+word. Measured on 21 invented timed cases plus 3 boundary cases in
+`Tests/UttrflowAITests/Passes/HashtagReachTests.swift`: 21 of 21 exact, one to four words.
+
 ## Related pages
 
 - `Docs/formatting-matrix.md` — which formatting case classes the corpus covers, generated from its tags.
