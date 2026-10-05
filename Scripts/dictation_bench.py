@@ -209,9 +209,12 @@ def clips():
     out = []
 
     def add(cid, category, language, voice, say, written, spoken=None, vocabulary=(), devanagari=None,
-            languages=None, parts=None, rate=None):
+            languages=None, parts=None, rate=None, entities=None):
+        # Entities are the tagged terms the entity metrics count, kept whether or not a vocabulary is supplied.
+        entities = [e for e in (vocabulary if entities is None else entities) if e in written]
         clip = dict(id=cid, category=category, language=language, voice=voice, say=say, spoken=spoken or say,
-                    written=written, vocabulary=list(vocabulary), variant="clean", devanagari=devanagari)
+                    written=written, vocabulary=list(vocabulary), variant="clean", devanagari=devanagari,
+                    entities=entities)
         if languages is not None: clip["languages"] = languages
         if parts is not None: clip["parts"] = parts
         if rate is not None: clip["rate"] = rate
@@ -248,11 +251,12 @@ def clips():
         for i, (said, written) in enumerate(rows):
             for voice in ENGLISH:
                 for context, s, w in (("bare", said, written), ("context", f"{lead} {said}.", f"{lead} {written}.")):
-                    add(f"devvocab-{kind}{i}-{voice.lower()}-{context}", f"devvocab-{kind}", "english", voice, s, w)
+                    add(f"devvocab-{kind}{i}-{voice.lower()}-{context}", f"devvocab-{kind}", "english", voice, s, w,
+                        entities=[written])
                     out[-1].update(context=context, term=written)
     for i, (said, words) in enumerate(NOUNS):
         for voice in ENGLISH:
-            add(f"nouns{i}-{voice.lower()}", "nouns", "english", voice, said, said)
+            add(f"nouns{i}-{voice.lower()}", "nouns", "english", voice, said, said, entities=words)
             add(f"nouns{i}-{voice.lower()}-vocabulary", "nouns-vocabulary", "english", voice, said, said, vocabulary=words)
     for i, said in enumerate(HINGLISH):
         add(f"hinglish{i}-rishi", "hinglish-latin", "hinglish", "Rishi", said, said)
@@ -479,7 +483,8 @@ def score(args):
     print(f"normalisation: {normalisation_rules()}")
     normalise_all([t for r in rows for t in (made[r["id"]]["spoken"], made[r["id"]]["written"],
                                             made[r["id"]].get("devanagari") or "", r.get("text", ""),
-                                            " ".join(e["text"] for e in r["events"] if e["kind"] == "asr"))])
+                                            " ".join(e["text"] for e in r["events"] if e["kind"] == "asr"),
+                                            *made[r["id"]].get("entities", []))])
     scored = []
     for r in rows:
         c = made[r["id"]]
@@ -490,7 +495,8 @@ def score(args):
         raw_e, raw_n = errors([c["spoken"], c.get("devanagari")], " ".join(e["text"] for e in heard))
         out_e, out_n = errors([c["written"], c.get("devanagari")], r.get("text", ""))
         exact = errors([c["written"]], r.get("text", ""), words=exact_words)
-        scored.append(dict(r=r, c=c, raw=(raw_e, raw_n), out=(out_e, out_n), exact=exact,
+        entity = entity_counts(c, " ".join(e["text"] for e in heard), r.get("text", ""))
+        scored.append(dict(r=r, c=c, raw=(raw_e, raw_n), out=(out_e, out_n), exact=exact, entity=entity,
                            first_early=min(early) if early else None,
                            asr=sum(float(e["t1"]) - float(e["t0"]) for e in heard),
                            tidy=sum(float(e["t1"]) - float(e["t0"]) for e in tidied)))
@@ -550,6 +556,7 @@ def score(args):
                          f"{max(s['r']['peakMB'] for s in g):.0f}"]
                 print(f"| {k} | " + " | ".join(str(x) for x in cells) + " |")
             devvocab_pairs(scored, mine)
+            entity_metrics(scored, mine)
     failed = [(s["r"]["id"], s["r"]["failed"]) for s in scored if s["r"].get("failed")]
     print(f"\nfailed: {failed or 'none'}")
     unstable(scored)
@@ -582,6 +589,66 @@ def devvocab_pairs(scored, keep):
                         for s in g)
             cells.append(f"{heard}/{len(g)}")
         print(f"| {k} | " + " | ".join(str(x) for x in cells) + " |")
+
+
+def word_hits(ref, hyp):
+    """For each reference word, whether the cheapest alignment with the hypothesis keeps it unchanged."""
+    cost = [[0] * (len(hyp) + 1) for _ in range(len(ref) + 1)]
+    for i in range(len(ref) + 1):
+        for j in range(len(hyp) + 1):
+            cost[i][j] = i + j if not i or not j else min(
+                cost[i - 1][j] + 1, cost[i][j - 1] + 1, cost[i - 1][j - 1] + (ref[i - 1] != hyp[j - 1]))
+    hits, i, j = [False] * len(ref), len(ref), len(hyp)
+    while i and j:
+        if ref[i - 1] == hyp[j - 1] and cost[i][j] == cost[i - 1][j - 1]:
+            hits[i - 1], i, j = True, i - 1, j - 1
+        elif cost[i][j] == cost[i - 1][j - 1] + 1:
+            i, j = i - 1, j - 1
+        elif cost[i][j] == cost[i - 1][j] + 1:
+            i -= 1
+        else:
+            j -= 1
+    return hits
+
+
+def entity_counts(clip, heard, final):
+    """Entity, tagged-word and false-override counts for one clip. See Docs/performance-dictation.md."""
+    ref = normalise(clip["written"])
+    tagged = [normalise(e) for e in clip.get("entities", [])]
+    tagged_words = {w for t in tagged for w in t}
+    final_hits = word_hits(ref, normalise(final))
+    entity_missed = sum(not term_heard(e, final) for e in clip.get("entities", []))
+    tag = [w in tagged_words for w in ref]
+    out = dict(entities=len(tagged), entity_missed=entity_missed,
+               tagged=sum(tag), tagged_wrong=sum(t and not h for t, h in zip(tag, final_hits)),
+               untagged=sum(not t for t in tag), untagged_wrong=sum(not t and not h for t, h in zip(tag, final_hits)),
+               decoder_right=0, overridden=0, compared=normalise(clip["spoken"]) == ref)
+    if out["compared"]:
+        decoder_hits = word_hits(ref, normalise(heard))
+        out["decoder_right"] = sum(decoder_hits)
+        out["overridden"] = sum(d and not f for d, f in zip(decoder_hits, final_hits))
+    return out
+
+
+def entity_metrics(scored, keep):
+    """Entity error rate, tagged against untagged word error, and the false-override rate, by category and vocabulary."""
+    groups = defaultdict(list)
+    for s in scored:
+        if keep(s) and s["c"]["variant"] == "clean":
+            vocabulary = "vocabulary" if s["c"]["vocabulary"] else "no vocabulary"
+            groups[f"{s['c']['category']}, {vocabulary}"].append(s["entity"])
+    if not groups:
+        return
+    rate = lambda n, d: f"{100 * n / d:.1f}%" if d else "—"
+    print("\nEntities and false overrides, final text against the written reference, clean audio\n\n"
+          "| | clips | entity error | tagged-word WER | untagged-word WER | false-override rate | clips compared |\n"
+          "|---|---|---|---|---|---|---|")
+    for k in sorted(groups):
+        g = groups[k]
+        total = lambda f: sum(e[f] for e in g)
+        print(f"| {k} | {len(g)} | {rate(total('entity_missed'), total('entities'))} | "
+              f"{rate(total('tagged_wrong'), total('tagged'))} | {rate(total('untagged_wrong'), total('untagged'))} | "
+              f"{rate(total('overridden'), total('decoder_right'))} | {total('compared')} |")
 
 
 def unstable(scored):

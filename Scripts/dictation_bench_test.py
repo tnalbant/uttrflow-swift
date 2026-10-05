@@ -151,6 +151,51 @@ class BenchTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("| devvocab-commands | 1 | 50.0% | 0.0% | 0/1 | 1/1 |", out.stdout)
 
+    def test_every_clip_tags_only_entities_its_written_text_contains_with_or_without_a_vocabulary(self):
+        made = bench.clips()
+        nouns = {c["id"]: c for c in made if c["category"] in ("nouns", "nouns-vocabulary")}
+        for c in made:
+            for e in c["entities"]:
+                self.assertIn(e, c["written"], c["id"])
+        bare = next(c for c in nouns.values() if not c["vocabulary"])
+        self.assertEqual(bare["entities"], nouns[bare["id"] + "-vocabulary"]["entities"])
+        self.assertTrue(bare["entities"])
+
+    def test_entity_error_counts_a_term_with_any_word_wrong_and_tagged_words_apart_from_the_rest(self):
+        clip = dict(CLIP, written="run git push now", spoken="run git push now", entities=["git push"])
+        counts = bench.entity_counts(clip, "run git push now", "ran get push now")
+        self.assertEqual((counts["entities"], counts["entity_missed"]), (1, 1))
+        self.assertEqual((counts["tagged"], counts["tagged_wrong"]), (2, 1))
+        self.assertEqual((counts["untagged"], counts["untagged_wrong"]), (2, 1))
+
+    def test_a_false_override_is_a_word_the_decoder_had_right_and_the_final_text_does_not(self):
+        clip = dict(CLIP, written="open the json file", spoken="open the json file", entities=["json"])
+        counts = bench.entity_counts(clip, "open the jason file", "open a jason file")
+        self.assertEqual((counts["decoder_right"], counts["overridden"]), (3, 1))
+        self.assertTrue(counts["compared"])
+
+    def test_a_false_override_is_not_counted_where_the_spoken_and_written_forms_differ(self):
+        clip = dict(CLIP, written="--force", spoken="dash dash force", entities=["--force"])
+        counts = bench.entity_counts(clip, "dash dash force", "dash dash force")
+        self.assertFalse(counts["compared"])
+        self.assertEqual(counts["decoder_right"], 0)
+
+    def test_a_score_prints_entity_metrics_sliced_by_category_and_vocabulary(self):
+        clips = [dict(CLIP, id="with", category="nouns-vocabulary", vocabulary=["Pravix"], entities=["Pravix"],
+                      spoken="meet Pravix today", written="meet Pravix today"),
+                 dict(CLIP, id="without", category="nouns", entities=["Pravix"],
+                      spoken="meet Pravix today", written="meet Pravix today")]
+        with open(os.path.join(self.out, "corpus.json"), "w") as handle:
+            json.dump(clips, handle)
+        right = result_event("with", text="meet Pravix today")
+        right["events"][0]["text"] = "meet Pravix today"
+        wrong = result_event("without", text="meet previous today")
+        wrong["events"][0]["text"] = "meet Pravix today"
+        out = self.run_bench("score", self.write_run("BENCH " + json.dumps(right), "BENCH " + json.dumps(wrong)))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("| nouns, no vocabulary | 1 | 100.0% | 100.0% | 0.0% | 33.3% | 1 |", out.stdout)
+        self.assertIn("| nouns-vocabulary, vocabulary | 1 | 0.0% | 0.0% | 0.0% | 0.0% | 1 |", out.stdout)
+
     # jobs
 
     def test_a_matching_category_produces_jobs(self):

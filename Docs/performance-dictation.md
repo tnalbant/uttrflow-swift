@@ -176,6 +176,17 @@ after the lead-in; term heard bare → after): commands 29.8% → 4.6%, 15 → 2
 halves: flags 85.4%, tools 44.4%, acronyms 31.5%, commands 30.5%; spoken flags are not yet written
 as `--flag`.
 
+**Entities and false overrides.** Each clip tags its entities: the developer-vocabulary term,
+the invented names in `nouns` whether or not they are supplied as vocabulary, and the supplied
+vocabulary words its text contains. `score` prints, per category and per vocabulary supplied or
+not, four rates over the final text against the written reference: entity error (a term with any
+word wrong), tagged-word WER and untagged-word WER (substitutions and deletions only; an inserted
+word belongs to neither), and the false-override rate, words the recogniser had right that the
+final text has wrong, over words the recogniser had right. The false-override rate is counted only
+where the spoken and written references normalise the same, since elsewhere the two stages answer
+different references; `clips compared` says how many. `uttrflow-eval transcribe` scores the
+recogniser alone and carries no entity tags, so these are scored here.
+
 **Voices and their licence.** Every voice is a macOS system voice (Samantha, Daniel, Rishi,
 Lekha), used under the macOS software licence agreement that ships them. `corpus` refuses a voice
 missing from `VOICE_SOURCES`, so a new voice is added there with its source before it is used.
