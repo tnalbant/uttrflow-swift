@@ -24,7 +24,7 @@ public enum Scorer {
         let alignment = WordErrorRate.measure(reference: wanted, hypothesis: produced).alignment
         return CaseScore(
             caseID: reference.id,
-            similarity: overlap(produced, wanted),
+            similarity: overlap(spellingFolded(produced, in: reference), spellingFolded(wanted, in: reference)),
             markAccuracy: markAccuracy(rewritten, reference.expected),
             caseAccuracy: capitalisation.accuracy,
             keptEverythingRequired: lost.isEmpty,
@@ -144,6 +144,11 @@ public enum Scorer {
         flush()
         if keepingSentenceEnds, closed, !found.isEmpty { found.append(sentenceEnd) }
         return found
+    }
+
+    /// Romanised Hindi has no single spelling, so its words are compared by the romaniser's sound key: "theek" is "thik".
+    static func spellingFolded(_ words: [String], in reference: EvaluationCase) -> [String] {
+        reference.language == .hindi ? words.map(Romaniser.soundKey) : words
     }
 
     /// Harmonic mean of precision and recall over an aligned reading, so a word moved is not a word kept.

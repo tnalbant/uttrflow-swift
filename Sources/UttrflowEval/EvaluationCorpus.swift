@@ -186,7 +186,7 @@ public enum EvaluationCorpus {
         .init(
             id: "weekday-and-month-casing", category: .everyday,
             spoken: "can we push the demo to thursday instead of wednesday in august",
-            expected: "Can we push the demo to Thursday instead of Wednesday in August.",
+            expected: "Can we push the demo to Thursday instead of Wednesday in August?",
             mustKeep: ["Thursday", "Wednesday", "August"]
         ),
         .init(
@@ -513,8 +513,8 @@ public enum EvaluationCorpus {
                 because we found a regression in the payment flow
                 """,
             expected: """
-                Can you let the team know that the release is delayed until next week? \
-                We found a regression in the payment flow.
+                Can you let the team know that the release is delayed until next week \
+                because we found a regression in the payment flow?
                 """,
             mustKeep: ["payment"]
         ),

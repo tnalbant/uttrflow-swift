@@ -795,6 +795,7 @@ struct RegressionComparison {
         let latest = Dictionary(uniqueKeysWithValues: current.report.cases.map { ($0.caseID, $0) })
         var regressions: [String] = []
         var changed: [String] = []
+        var paired: [(old: StoredReport.CaseResult, new: StoredReport.CaseResult)] = []
 
         for (caseID, old) in previous {
             guard let new = latest[caseID] else { continue }
@@ -802,6 +803,7 @@ struct RegressionComparison {
                 changed.append(caseID)
                 continue
             }
+            paired.append((old, new))
             if old.passed && !new.passed {
                 regressions.append("\(caseID): previously passing case now fails")
             }
@@ -810,6 +812,7 @@ struct RegressionComparison {
                     "\(caseID): lost words increased from \(old.lost.count) to \(new.lost.count)")
             }
         }
+        regressions += markAndCaseDrops(paired)
         let before = baseline.report.corpusIdentity
         let after = current.report.corpusIdentity
         return RegressionComparison(
@@ -819,6 +822,34 @@ struct RegressionComparison {
             changed: changed.sorted(),
             corpusChanged: before != nil && after != nil && before != after)
     }
+
+    /// A pass is judged on words, so a lost comma or capital fails here instead: a category's mean over unchanged cases never falls.
+    static func markAndCaseDrops(
+        _ paired: [(old: StoredReport.CaseResult, new: StoredReport.CaseResult)]
+    ) -> [String] {
+        let measures: [(String, KeyPath<StoredReport.CaseResult, Double?>)] = [
+            ("mark accuracy", \.markAccuracy), ("case accuracy", \.caseAccuracy),
+        ]
+        var drops: [String] = []
+        for (category, pairs) in Dictionary(grouping: paired, by: \.new.category) {
+            let attempted = pairs.filter { !$0.old.declined && !$0.new.declined }
+            for (name, measure) in measures {
+                let values = attempted.compactMap { pair in
+                    pair.old[keyPath: measure].flatMap { old in pair.new[keyPath: measure].map { (old, $0) } }
+                }
+                guard !values.isEmpty else { continue }
+                let before = values.map(\.0).reduce(0, +) / Double(values.count)
+                let after = values.map(\.1).reduce(0, +) / Double(values.count)
+                if after < before - 1e-9 {
+                    drops.append(
+                        "category \(category): \(name) fell from \(percent(before)) to \(percent(after))")
+                }
+            }
+        }
+        return drops
+    }
+
+    private static func percent(_ fraction: Double) -> String { String(format: "%.1f%%", fraction * 100) }
 
     /// The corpus change first, then each set of cases left out of the verdict.
     var corpusReport: [String] {
