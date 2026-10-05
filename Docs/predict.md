@@ -468,7 +468,7 @@ say why nothing was drawn:
 | 5 | `nowhereToDraw` | The field reports no caret |
 | 6 | `textSelected` | Text is selected |
 | 7 | `caretInsideText` | The caret is not at the end of its line |
-| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or a word opens the application's mention, emoji, channel or slash-command picker (`AppPicker`, never on a terminal's command line) |
+| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or trigger text opens a known picker application's mention, emoji, channel or slash-command picker (`AppPicker`; ordinary applications and terminal command lines are not inferred to have one) |
 | 9 | `rejectedTooOften` | `Quieting.rejectionsBeforeSilence` (3) suggestions typed past in this field |
 | 10 | `writingFluently` | A prose writer has not paused for 400 ms |
 
