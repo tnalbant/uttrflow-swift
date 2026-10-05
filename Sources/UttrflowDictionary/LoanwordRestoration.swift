@@ -29,7 +29,9 @@ public struct LoanwordRestoration: Sendable {
         let sounds = Set([heard, String(heard.map { $0 == "w" ? "v" : $0 })])
         for source in english {
             let matches = source.filter { key in
-                sounds.contains { ReadingRestraint.opensAlike(key.closed, heard: $0) && Self.isRespelling($0, as: key.word) }
+                sounds.contains {
+                    ReadingRestraint.opensAlike(key.closed, heard: $0) && Self.isRespelling($0, as: key.word)
+                }
             }
             // A word already spelt as a source word is that word, in the source's own casing: "kotlin" is "Kotlin".
             if let spelt = matches.first(where: { $0.closed == heard }) { return spelt.word }
