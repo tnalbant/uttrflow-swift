@@ -112,4 +112,26 @@ struct GuardNumberWordsTests {
         let verdict = MeaningPreservationGuard().verdict(original: original, rewritten: rewritten)
         #expect((verdict == .accepted) == accepted)
     }
+
+    /// A magnitude is part of the amount, so "50K", "50 thousand" and "50,000" are one value and a changed magnitude is not.
+    @Test(
+        "the guard compares an amount's value across magnitude spellings",
+        arguments: [
+            ("the budget is 50K", "The budget is 50,000.", true),
+            ("the budget is 50000", "The budget is 50K.", true),
+            ("we sold 5 million units", "We sold 5,000,000 units.", true),
+            ("we raised $2.5M", "We raised $2,500,000.", true),
+            ("they spent 3bn", "They spent 3 billion.", true),
+            ("2 lakh rupaye bheje", "2,00,000 rupaye bheje.", true),
+            ("the budget is 50K", "The budget is 50.", false),
+            ("the budget is 50K", "The budget is 50M.", false),
+            ("we sold 5 million units", "We sold 5 thousand units.", false),
+            ("we raised $2.5M", "We raised $250,000.", false),
+            ("the budget is 50000", "The budget is 5K.", false),
+        ]
+    )
+    func magnitudeIsPartOfTheValue(original: String, rewritten: String, accepted: Bool) {
+        let verdict = MeaningPreservationGuard().verdict(original: original, rewritten: rewritten)
+        #expect((verdict == .accepted) == accepted)
+    }
 }
