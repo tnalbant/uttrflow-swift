@@ -184,6 +184,9 @@ public actor DictationPipeline {
     /// The languages this dictation is being listened for and tidied in, for the same reason.
     var runningProfile: UserProfile { inUse?.profile ?? profile }
 
+    /// Where this dictation's pieces are cut, for how long the person it is running for pauses.
+    var runningWindowing: SpeechWindowing { windowing.adjusted(for: runningProfile.pauses) }
+
     /// The dictionary held at the start of this dictation; a word added meanwhile waits for the next.
     var runningCorrector: any WordCorrecting { dictationContext?.corrector ?? corrector }
 
@@ -518,7 +521,7 @@ public actor DictationPipeline {
             let lead = early.cut > 0 ? 1 : 0
             let audio = await capture.capturedSoFar(from: early.cut - lead)
             guard
-                let cut = windowing.nextCut(
+                let cut = runningWindowing.nextCut(
                     in: audio.samples, sampleRate: audio.sampleRate, from: lead,
                     boundaries: audio.discontinuities)
             else { continue }
@@ -771,7 +774,7 @@ public actor DictationPipeline {
             cleaningRecords = []
         }
 
-        var remainder = windowing.windows(
+        var remainder = runningWindowing.windows(
             in: audio.samples, sampleRate: audio.sampleRate, from: cut,
             joiningPreviousWindowFrom: delivery != .copy ? previousWindowStart : nil,
             boundaries: audio.discontinuities)

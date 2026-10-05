@@ -60,7 +60,8 @@ public struct GenerativeTextTransformer: TextTransformationEngine {
     ) async throws(TransformationError) -> TransformationResult {
         let formatter = DestinationFormatter.standard(for: request.situation)
         let pipeline = CleaningPipeline.beforeModel(
-            for: formatter, situation: request.situation, steps: steps)
+            for: formatter, situation: request.situation, steps: steps,
+            pauses: request.profile.pauses)
         // The passes go first, so fillers and self-corrections are gone before the model can rewrite them.
         let draft = pipeline.run(Draft(transcription: request.transcription))
         let spoken = draft.text
