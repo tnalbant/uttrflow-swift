@@ -77,6 +77,8 @@ public struct RawTranscript: Sendable, Equatable {
     public let promptPositions: Int
     /// Personal dictionary spellings that survived the recogniser's token budget.
     public let vocabularyPrompt: [String]
+    /// Whether the recogniser could condition the decode on the user's words.
+    public let conditioning: DecodeConditioning
 
     public init(
         text: String,
@@ -86,7 +88,8 @@ public struct RawTranscript: Sendable, Equatable {
         effort: DecodeEffort = .none,
         tokensUsed: Int = 0,
         promptPositions: Int = 0,
-        vocabularyPrompt: [String] = []
+        vocabularyPrompt: [String] = [],
+        conditioning: DecodeConditioning = .available
     ) {
         self.text = text
         self.languageIdentifier = languageIdentifier
@@ -96,6 +99,7 @@ public struct RawTranscript: Sendable, Equatable {
         self.tokensUsed = tokensUsed
         self.promptPositions = promptPositions
         self.vocabularyPrompt = vocabularyPrompt
+        self.conditioning = conditioning
     }
 }
 

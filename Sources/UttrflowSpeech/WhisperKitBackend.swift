@@ -182,7 +182,8 @@ public actor WhisperKitBackend: TranscriptionBackend {
 
 /// Flattens WhisperKit's per-window results into one transcript.
 fileprivate func rawTranscript(
-    from results: [TranscriptionResult], promptPositions: Int = 0, vocabularyPrompt: [String] = []
+    from results: [TranscriptionResult], promptPositions: Int = 0, vocabularyPrompt: [String] = [],
+    conditioning: DecodeConditioning = .available
 ) -> RawTranscript {
     TranscriptAssembly.whisper(
         results.map { result in
@@ -207,7 +208,8 @@ fileprivate func rawTranscript(
                 effort: effort(of: [result]),
                 tokensUsed: result.segments.reduce(0) { $0 + $1.tokens.count },
                 promptPositions: promptPositions,
-                vocabularyPrompt: vocabularyPrompt)
+                vocabularyPrompt: vocabularyPrompt,
+                conditioning: conditioning)
         })
 }
 
@@ -251,7 +253,8 @@ private struct RetryBackend: TranscriptionBackend {
                 samples, languageHint: languageHint, biasedTowards: vocabulary)
             return rawTranscript(
                 from: decoded.results, promptPositions: decoded.promptPositions,
-                vocabularyPrompt: decoded.vocabularyPrompt)
+                vocabularyPrompt: decoded.vocabularyPrompt,
+                conditioning: decoded.conditioning)
         } catch {
             throw .transcriptionFailed(description: error.localizedDescription)
         }
@@ -288,8 +291,11 @@ private final class LoadedKit: @unchecked Sendable {
 
     func transcribe(
         _ samples: [Float], languageHint: LanguageCode?, biasedTowards vocabulary: [String]
-    ) async throws -> (results: [TranscriptionResult], promptPositions: Int, vocabularyPrompt: [String]) {
-        // Passed through optional, so a half-loaded kit gives an unbiased dictation, not a crash.
+    ) async throws -> (
+        results: [TranscriptionResult], promptPositions: Int, vocabularyPrompt: [String],
+        conditioning: DecodeConditioning
+    ) {
+        // Passed through optional, so a half-loaded kit gives an unbiased dictation, reported as unconditioned.
         let tokenizer = kit.tokenizer
         let promptTokenizer = tokenizer.map { WhisperPromptTokenizer(tokenizer: $0) }
         let packing = promptTokenizer.map { VocabularyPrompt.packing(for: vocabulary, using: $0) }
@@ -312,7 +318,8 @@ private final class LoadedKit: @unchecked Sendable {
                     isMultilingual: !$0.allLanguageTokens.isEmpty
                 ).transcriptStart
             } ?? 0,
-            packing?.words ?? []
+            packing?.words ?? [],
+            tokenizer == nil ? .unavailable(.tokenizerUnavailable) : .available
         )
     }
 

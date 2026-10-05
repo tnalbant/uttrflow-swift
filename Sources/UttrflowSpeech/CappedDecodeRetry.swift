@@ -41,7 +41,8 @@ public enum CappedDecodeRetry {
                 segments: biased.segments,
                 effort: biased.effort.markingRetryBudgetSpent(),
                 tokensUsed: biased.tokensUsed,
-                vocabularyPrompt: biased.vocabularyPrompt)
+                vocabularyPrompt: biased.vocabularyPrompt,
+                conditioning: biased.conditioning)
         }
 
         let retried = try await transcribe(
@@ -55,7 +56,8 @@ public enum CappedDecodeRetry {
             effort: biased.effort.addingRetry(retried.effort),
             tokensUsed: retried.tokensUsed,
             promptPositions: retried.promptPositions,
-            vocabularyPrompt: retried.vocabularyPrompt)
+            vocabularyPrompt: retried.vocabularyPrompt,
+            conditioning: biased.conditioning.adding(retried.conditioning))
     }
 
     /// Decodes `samples` with `backend`, retrying the tail when the decoder's token cap stops a decode early.
@@ -90,6 +92,7 @@ public enum CappedDecodeRetry {
         var totalTokensUsed = 0
         var promptPositions = 0
         var vocabularyPrompt: [String] = []
+        var conditioning = DecodeConditioning.available
         var remaining = samples
         var sliceStartSeconds = 0.0
         var stillCapped = false
@@ -111,6 +114,7 @@ public enum CappedDecodeRetry {
             totalTokensUsed += result.tokensUsed
             promptPositions = result.promptPositions
             vocabularyPrompt = result.vocabularyPrompt
+            conditioning = conditioning.adding(result.conditioning)
 
             let sliceDuration = Duration.seconds(Double(remaining.count) / sampleRate)
             let collapse = collapsedWindow(in: result.segments, sliceSeconds: sliceDuration.inSeconds)
@@ -181,7 +185,8 @@ public enum CappedDecodeRetry {
             effort: totalEffort,
             tokensUsed: totalTokensUsed,
             promptPositions: promptPositions,
-            vocabularyPrompt: vocabularyPrompt
+            vocabularyPrompt: vocabularyPrompt,
+            conditioning: conditioning
         )
     }
 

@@ -10,6 +10,7 @@ struct WhisperTranscriptWindow: Sendable {
     let tokensUsed: Int
     let promptPositions: Int
     let vocabularyPrompt: [String]
+    var conditioning: DecodeConditioning = .available
 }
 
 /// One result from Apple's recogniser, with its finality kept as plain data.
@@ -37,7 +38,8 @@ enum TranscriptAssembly {
             effort: windows.reduce(.none) { $0.adding($1.effort) },
             tokensUsed: windows.reduce(0) { $0 + $1.tokensUsed },
             promptPositions: windows.first?.promptPositions ?? 0,
-            vocabularyPrompt: windows.first?.vocabularyPrompt ?? [])
+            vocabularyPrompt: windows.first?.vocabularyPrompt ?? [],
+            conditioning: windows.reduce(.available) { $0.adding($1.conditioning) })
     }
 
     /// Joins only final Apple results in the order the recogniser emitted them.

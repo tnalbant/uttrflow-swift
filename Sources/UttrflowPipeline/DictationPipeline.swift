@@ -1055,6 +1055,7 @@ public actor DictationPipeline {
                     let transcription = try await speech.transcribe(
                         slice, options: TranscriptionOptions(languageHint: language, vocabulary: words))
                     await metrics.recordVocabularyPrompt(transcription.vocabularyPrompt)
+                    await metrics.recordConditioning(transcription.conditioning)
                     // A piece mostly in a script neither language is written in is a recognition failure, not words.
                     if transcription.isBlank || LatinScript.isMostlyUntranscribedScript(transcription.text) {
                         return speaks ? Heard.missed : Heard.nothing

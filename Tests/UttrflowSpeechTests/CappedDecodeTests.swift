@@ -713,3 +713,29 @@ struct CappedDecodeResumeTests {
         #expect(raw.segments.map(\.text) == [" Hello, world."])
     }
 }
+
+@Suite("A decode the recogniser could not condition")
+struct UnconditionedDecodeTests {
+    private let samples = Array(repeating: Float(0.1), count: 2 * 16_000)
+
+    @Test("a backend without a tokenizer hands back its unbiased text marked unconditioned")
+    func tokenizerMissingIsReported() async throws {
+        let backend = FixedTranscriptBackend(
+            transcript: RawTranscript(
+                text: "send it to Maelis", conditioning: .unavailable(.tokenizerUnavailable)))
+        let raw = try await CappedDecodeRetry.transcribeRecoveringEmptyPrompt(
+            samples: samples, languageHint: nil, vocabulary: ["Maelis"], using: backend)
+        #expect(raw.text == "send it to Maelis")
+        #expect(raw.conditioning == .unavailable(.tokenizerUnavailable))
+        let transcription = raw.transcription(audioDuration: .seconds(2))
+        #expect(transcription.conditioning == .unavailable(.tokenizerUnavailable))
+    }
+
+    @Test("a conditioned decode is reported as conditioned")
+    func conditionedIsReported() async throws {
+        let backend = FixedTranscriptBackend(transcript: RawTranscript(text: "hello"))
+        let raw = try await CappedDecodeRetry.transcribeRecoveringEmptyPrompt(
+            samples: samples, languageHint: nil, vocabulary: ["Maelis"], using: backend)
+        #expect(raw.conditioning == .available)
+    }
+}
