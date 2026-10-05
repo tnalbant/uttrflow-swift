@@ -213,7 +213,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The latest fetch of those weights, internal so a test can wait for it rather than for the clock.
     private(set) var modelPreparation: Task<Void, Never>?
     /// When the suggestion model gives memory back and takes it again; internal so a test can shorten the waits.
-    var memoryPressure = SuggestionModelPressure()
+    var memoryPressure = ModelMemoryPressure()
+    /// When the speech model gives memory back and may give it back again; internal so a test can drive it.
+    var speechPressure = ModelMemoryPressure()
     /// The reload waiting for memory to stay calm, cancelled by the next reading; internal so a test can wait for it.
     private(set) var pressureReload: Task<Void, Never>?
     private let pressureSource = MemoryPressureSource()
@@ -1096,9 +1098,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Lets the recogniser go under memory pressure unless a dictation is under way; the next key-down loads it again.
-    private func releaseSpeechModelIfIdle() {
+    /// Lets the recogniser go under pressure when idle, at a warning only once the last reload has held. See `Docs/performance.md`.
+    private func releaseSpeechModelIfIdle(at level: MemoryPressureLevel) {
         guard case .idle = lastDictationState, let speechEngine else { return }
+        guard level == .critical || speechPressure.allowsRelease(at: .now) else { return }
+        speechPressure.released(at: .now)
         Task { await speechEngine.release() }
     }
 
@@ -1109,7 +1113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PanelThumbnails.shared.releaseForMemoryPressure()
             pressureReload?.cancel()
             pressureReload = nil
-            releaseSpeechModelIfIdle()
+            releaseSpeechModelIfIdle(at: level)
             guard settings.suggestions.isEnabled, isModelPreparing else { return }
             memoryPressure.released(at: .now)
             releaseTheModel()
@@ -2456,6 +2460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         onboarding?.dictationChanged(to: state)
         // A dictation's own outcome is newer than any panel paste's report.
         if state != .idle { pasteReport = nil }
+        if state.isBusy, speechPressure.isReleased { speechPressure.reloaded(at: .now) }
         DictationInProgress.shared.set(dictating: state.isBusy)
         completions?.dictationChanged(isDictating: state.isBusy)
 
