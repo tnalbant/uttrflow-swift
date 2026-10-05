@@ -278,7 +278,8 @@ struct LanguageHeldDecoderTests {
     /// A transcribed language with no recorded decision would silently keep Whisper's threshold. See `Docs/adding-a-language.md`.
     @Test("records a compression-ratio decision for exactly the transcribed languages")
     func everyTranscribedLanguageHasACompressionDecision() {
-        #expect(Set(LanguageHeldDecoder.compressionRatioThresholds.keys) == Set(LanguageCode.transcribed.map(\.value)))
+        let transcribed = Set(LanguageCode.transcribed.map(\.value))
+        #expect(Set(LanguageHeldDecoder.compressionRatioThresholds.keys) == transcribed)
     }
 }
 

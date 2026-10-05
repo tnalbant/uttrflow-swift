@@ -8,6 +8,21 @@ public enum MentionGuard {
         isMentioned(at: position, spanning: length, in: draft.presentIndices, of: draft, reach: phraseReach)
     }
 
+    /// Whether a prose casing phrase names the style rather than asking for it: "the all caps rule", "in all caps".
+    static func namesCasing(at position: Int, spanning length: Int, in live: [Int], of draft: Draft) -> Bool {
+        // A casing phrase goes on the words after it, as an opening mark does.
+        if isMentioned(
+            at: position, spanning: length, in: live, of: draft, reach: phraseReach, kind: .opening)
+        {
+            return true
+        }
+        let words = live.map { draft.shape(at: $0).key }
+        if position > 0, LexicalClass.tag(ofWordAt: position - 1, in: words) == .preposition { return true }
+        // A form of "be" after the phrase makes it the subject of a sentence about the style.
+        let next = position + length
+        return next < live.count && LexicalClass.lemma(ofWordAt: next, in: words) == "be"
+    }
+
     /// Words whose object is always a spelling: "the word ah", "spell um".
     private static let namingWords: Set<String> = ["word", "letter", "sound", "spell"]
     /// Verbs that name a spelling only through a determiner, since a hesitation often follows them: "he said um".
@@ -71,11 +86,11 @@ public enum MentionGuard {
         corroboratedByLayout: Bool = false
     ) -> Bool {
         // An opening mark goes on the word after it, so a text beginning with one is using it, not naming it.
-        guard position > 0 else { return kind != .opening }
+        guard position > 0 else { return !kind.attachesAfter }
         if kind == .closing, isOpenQuotation(before: position, in: live, of: draft) { return false }
         if opensThePhrase(
             ending: position, reaching: reach, in: live, of: draft, bridgedBy: bridging,
-            finalMark: kind == .trailing && position + length == live.count, opening: kind == .opening,
+            finalMark: kind == .trailing && position + length == live.count, opening: kind.attachesAfter,
             corroboratedByLayout: corroboratedByLayout
         ) {
             return true
@@ -142,7 +157,9 @@ public enum MentionGuard {
         let lexicalClass = LexicalClass.tag(at: wordRange.lowerBound, in: phrase)
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
-        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }
+        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) {
+            return true
+        }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
         if head == "period" && finalMark {

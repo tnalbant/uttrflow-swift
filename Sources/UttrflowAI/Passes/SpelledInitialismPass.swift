@@ -17,10 +17,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     ]
     static let letterNamesForCasing = Set(letterNames.keys)
 
-    /// Spoken letter names that are also common English words, so a spelled run cannot
-    /// admit one unless the run's own evidence (a single-letter name on each side) says
-    /// it is the letter. "are" reads overwhelmingly as the verb; "you" reads as the
-    /// pronoun (#3312); "why", "oh", "be" and "see" follow for the same reason.
+    /// Letter names that are also common English words, admitted only between single-letter names.
     private static let ambiguousLetterNames: Set<String> = [
         "are", "you", "why", "oh", "be", "see",
     ]
@@ -77,8 +74,10 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             return nil
         }
         let token = draft.shape(at: live[position])
+        let doubled = position + 1 < live.count && draft.shape(at: live[position + 1]).key == token.key
+        let spelledDouble = doubled && Self.isSpelledRun(around: position, in: live, draft: draft)
         // The pronoun said twice running is a stammer, never an initialism.
-        if token.key == "i", position + 1 < live.count, draft.shape(at: live[position + 1]).key == "i" {
+        if token.key == "i", doubled, !spelledDouble {
             return nil
         }
         if token.key == "a", position + 1 < live.count,
@@ -88,16 +87,14 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             return position + 2
         }
         let inSpokenPhrase = position > 0 && !draft.shape(at: live[position - 1]).endsClause
-        if token.key == "a", inSpokenPhrase, token.core.first?.isUppercase != true {
+        if token.key == "a", inSpokenPhrase, !spelledDouble, token.core.first?.isUppercase != true {
             let candidateEnd = candidateRunEnd(from: position, in: live, draft: draft)
             let value = live[position..<candidateEnd].compactMap { Self.letterName(draft.shape(at: $0)) }
                 .joined().lowercased()
             guard candidateEnd - position >= 3 || Self.dottedPairs.contains(value) else { return nil }
         }
         let initialismStart = position
-        // An ambiguous letter name (a common English word like "are") cannot start a run on its own:
-        // "the letters are a b c d" reads "are" as the verb, not the letter R, so the run begins on the
-        // first single-letter name that follows.
+        // An ambiguous letter name never starts a run; the run begins on the next single letter.
         guard !Self.isAmbiguousLetterName(draft.shape(at: live[initialismStart]).key) else {
             return nil
         }
@@ -107,14 +104,16 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             !draft.words[live[end - 1]].isLayoutMark,
             !draft.words[live[end]].isLayoutMark,
             Self.letterName(draft.shape(at: live[end])) != nil,
-            // An ambiguous letter name in the middle of a run still needs a single-letter name on each
-            // side; otherwise the spoken word is meant as itself.
+            // Mid-run, an ambiguous letter name needs a single-letter name on each side.
             !Self.isAmbiguousLetterName(draft.shape(at: live[end]).key)
                 || (Self.isSingleLetterName(draft.shape(at: live[end - 1]).key)
                     && (end + 1 == live.count
                         || Self.isSingleLetterName(draft.shape(at: live[end + 1]).key))),
             // A letter a closing a clause cannot be an article, so it ends the initialism.
             (draft.shape(at: live[end]).key != "a" || end == initialismStart
+                || (draft.shape(at: live[end - 1]).key == "a"
+                    || end + 1 < live.count && draft.shape(at: live[end + 1]).key == "a")
+                    && Self.isSpelledRun(around: end, in: live, draft: draft)
                 || end + 1 == live.count || draft.shape(at: live[end]).endsClause
                 || end + 1 < live.count
                     && Self.letterName(draft.shape(at: live[end + 1])) != nil
@@ -149,6 +148,26 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             end += 1
         }
         return end
+    }
+
+    /// Whether the letter at `position` sits in a spelled run: three or more single letters, or two beside a number.
+    static func isSpelledRun(around position: Int, in live: [Int], draft: Draft) -> Bool {
+        let isLetter = { (i: Int) in
+            isSingleLetterName(draft.shape(at: live[i]).key) && letterName(draft.shape(at: live[i])) != nil
+        }
+        let joins = { (i: Int) in live[i] == live[i - 1] + 1 && !draft.shape(at: live[i - 1]).endsClause }
+        guard position < live.count, isLetter(position) else { return false }
+        var start = position
+        while start > 0, joins(start), isLetter(start - 1) { start -= 1 }
+        var end = position + 1
+        while end < live.count, joins(end), isLetter(end) { end += 1 }
+        if end - start >= 3 { return true }
+        guard end - start == 2 else { return false }
+        let numberBefore =
+            start > 0 && joins(start) && NumberWords.isNumber(draft.shape(at: live[start - 1]).key)
+        let numberAfter =
+            end < live.count && joins(end) && NumberWords.isNumber(draft.shape(at: live[end]).key)
+        return numberBefore || numberAfter
     }
 
     /// The letter a word names, where a cut-off is an unfinished word and names no letter.

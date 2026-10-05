@@ -69,10 +69,10 @@ struct GuardrailProbeModel: CleanupModel {
             case .refusal: await failure.set(.refusal)
             default: await failure.set(.otherError)
             }
-            throw .transformFailed(kind: kind, description: error.localizedDescription)
+            throw .transformFailed(kind: kind, failure: .ofSystemModel(error))
         } catch {
             await failure.set(.otherError)
-            throw .transformFailed(kind: kind, description: error.localizedDescription)
+            throw .transformFailed(kind: kind, failure: .ofSystemModel(error))
         }
     }
 }
@@ -112,7 +112,9 @@ struct GuardrailRefusalProbeTests {
                     outcome = await slot.outcome ?? .guardRejected
                 }
                 await tally.add(entry.register, outcome, entry.evaluation.id)
-                print("PROBE \(configuration.rawValue) \(entry.evaluation.id) \(outcome.rawValue) | \(text) \(detail)")
+                print(
+                    "PROBE \(configuration.rawValue) \(entry.evaluation.id) \(outcome.rawValue) | \(text) \(detail)"
+                )
             }
             let rows = await tally.rows
             for register in SensitiveRegisterCorpus.Register.allCases {
@@ -120,8 +122,9 @@ struct GuardrailRefusalProbeTests {
                 let counts = ProbeOutcome.allCases.map { outcome in
                     "\(outcome.rawValue)=\(mine.filter { $0.1 == outcome }.count)"
                 }
-                print("PROBE-SUMMARY \(configuration.rawValue) \(register.rawValue) n=\(mine.count) "
-                    + counts.joined(separator: " "))
+                print(
+                    "PROBE-SUMMARY \(configuration.rawValue) \(register.rawValue) n=\(mine.count) "
+                        + counts.joined(separator: " "))
             }
         }
     }

@@ -38,8 +38,6 @@ public enum SettingsEditor {
             updated.shortcutsReturnedToDefault.remove(action)
         case .tidying(let level):
             try applyTidying(level, to: &updated, given: capabilities)
-        case .transcription(let quality):
-            try applyTranscription(quality, to: &updated, given: capabilities)
         case .spokenLanguage(let code, let isSpoken):
             try applyLanguage(code, isSpoken: isSpoken, to: &updated)
         case .appearance(let appearance):
@@ -284,27 +282,6 @@ public enum SettingsEditor {
             return reason.diagnosticDescription + ". Uttrflow will still apply its rules."
         }
         return "Full tidying is not available on this Mac yet, so Uttrflow will still apply its rules."
-    }
-
-    /// Throws when the engine behind this quality is not downloaded, then selects it.
-    private static func applyTranscription(
-        _ quality: SettingsTranscriptionQuality,
-        to settings: inout Settings,
-        given capabilities: SettingsCapabilities
-    ) throws(SettingsRejection) {
-        if let reason = unavailability(ofTranscription: quality, given: capabilities) {
-            throw SettingsRejection(reason: reason)
-        }
-        settings.engines.speech = quality.engine
-    }
-
-    /// Why this quality cannot be chosen, or `nil` when it can.
-    static func unavailability(
-        ofTranscription quality: SettingsTranscriptionQuality,
-        given capabilities: SettingsCapabilities
-    ) -> String? {
-        capabilities.readySpeechEngines.contains(quality.engine)
-            ? nil : "This option needs a download that has not finished yet."
     }
 
     // MARK: - Languages

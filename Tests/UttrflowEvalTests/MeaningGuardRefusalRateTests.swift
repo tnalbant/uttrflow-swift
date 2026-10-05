@@ -9,7 +9,6 @@ import Testing
 struct MeaningGuardRefusalRateTests {
     /// Refusals still open, each with the issue that owns it; the gate lets this list fall and never rise.
     static let acknowledged: [String: Int] = [
-        "ellipsis-glued-fillers": 5083,
         "spoken-colon-before-an-item": 5083,
         "compound-ordinal-above-one-hundred": 5083,
         "spoken-domain-api-path": 5083,
@@ -56,7 +55,8 @@ struct MeaningGuardRefusalRateTests {
     @Test("every refused expected text is acknowledged with an issue, so the count never rises")
     func noUnacknowledgedRefusal() {
         let refused = Self.refusals()
-        print("meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
+        print(
+            "meaning guard false refusals: \(refused.count) of \(EvaluationCorpus.all.count) expected texts")
         for refusal in refused {
             print("  \(refusal.id)  \(refusal.kind)  \(refusal.reason)")
         }

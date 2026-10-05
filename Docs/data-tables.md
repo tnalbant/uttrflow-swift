@@ -57,21 +57,17 @@ the app with every other resource bundle. Nothing is fetched at run time.
 
 | File | Read by | Rows |
 |---|---|---|
-| `function-words.json` | `FunctionWords` | a small word and the lists it belongs to: `function`, `leadsOn`, `meaningBearing` |
+| `correction-triggers.json` | `Restatement` | a phrase that announces a spoken correction, its `language`, and the `evidence` it needs before anything is taken back: `alignedHalves`, `alignedHalvesPausedSingleWord`, `restatedNumber`, `pausedRestatedNumber` |
+| `function-words.json` | `FunctionWords` | a small word and the lists it belongs to: `function`, `leadsOn`, `meaningBearing`, `determiner` |
+| `hindi-words.json` | `HindiWords` | a romanised Hindi spelling, its `classes` (`copula`, `negation`, `postposition`, `conjunction`, `questionWord`, `pronoun`, `possessive`, `verbStem`), the `word` it respells, the pronoun it is a `caseOf`, and whether it is also an `english` content word |
+| `kinship-words.json` | `KinshipWords` | a kinship or honorific word said in place of a name, and the `languages` (`en`, `hi`) it is said in |
 | `number-words.json` | `NumberWords` | a number word, its value and its rank: `unit`, `teen`, `ten`, `scale` |
-| `spoken-commands.json` | `SpokenCommands` | a phrase said as a command, its `action` (`mark`, `layout`, `codeSymbol`), the text it writes, and optionally its `placement`, `requiresLists` and `destinations`; no two rows of one action share a phrase in one destination |
+| `spoken-commands.json` | `SpokenCommands` | a phrase said as a command, its `action` (`mark`, `layout`, `codeSymbol`, `casing`, `flag`, `leadIn`, `replace`), the text it writes, and optionally its `placement`, `requiresLists` and `destinations`; no two rows of one action share a phrase in one destination |
 | `technical-lexicon.json` | `TechnicalLexicon` | a technical term's written form and casing, its `spoken` forms, its `category` (`acronym`, `language`, `command`, `tool`, `concept`, `fileFormat`), and optionally `pronunciations` and `destinations` |
 
 ## The technical lexicon
 
-Every row is written for this repository and copied from no published list; its licence and
-digest are in [data-manifest.md](data-manifest.md). It holds generic technical vocabulary and
-the names of widely used open tools and languages, and no person, address or product of a
-single vendor. A spoken form is lower-case Latin words separated by single spaces. A term
-written or said as an ordinary word (`GeneralVocabulary.isOrdinary`) carries `destinations`,
-so it is never offered in prose. `TechnicalLexicon.problems` states these rules, and
-`TechnicalLexiconTests` and `TechnicalLexiconOrdinaryTests` fail on any shipped row that
-breaks one.
+Its entry format, what is rejected and how to check a change are in [lexicon.md](lexicon.md).
 
 ## Testing
 

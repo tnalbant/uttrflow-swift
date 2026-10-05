@@ -111,6 +111,7 @@
         {"id": "npm", "category": "command", "spoken": ["n p m"]},
         {"id": "npx", "category": "command", "spoken": ["n p x"]},
         {"id": "pnpm", "category": "command", "spoken": ["p n p m"]},
+        {"id": "yarn", "category": "command", "spoken": ["yarn"]},
         {"id": "pip", "category": "command", "spoken": ["pip"]},
         {"id": "cargo", "category": "command", "spoken": ["cargo"]},
         {"id": "rustup", "category": "command", "spoken": ["rust up"]},

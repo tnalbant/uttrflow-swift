@@ -21,6 +21,12 @@ private actor Recorder: CaptureSink {
         superseded.append((text, replacement))
     }
 
+    private(set) var edits: [EditedSpan] = []
+
+    func recordEditedSpan(_ edit: EditedSpan, in surface: Surface) {
+        edits.append(edit)
+    }
+
     var texts: [String] { recorded.map(\.text) }
 }
 
@@ -893,5 +899,72 @@ struct CaptureSessionRetryReentrancyTests {
         #expect(await sink.recorded == ["git status"])
         #expect(await session.unwrittenCommitCount() == 0)
         #expect(await session.unwrittenAcceptanceCount() == 0)
+    }
+
+    /// Dictates `inserted` into an empty line of `field`, types `replacement` over `old` and presses Return.
+    private func dictateAndEdit(
+        _ inserted: String, replacing old: String, with replacement: String, in field: FieldReading,
+        allowing: [String]
+    ) async throws -> [EditedSpan] {
+        let scratch = Scratch()
+        let recorder = Recorder()
+        let session = try await session(scratch, recorder, allowing: allowing)
+        _ = try await session.handle(.keystroke("", at: start), in: field)
+        for event in CaptureEvent.marking([.keystroke(inserted, at: start)], insertedAt: start) {
+            _ = try await session.handle(event, in: field)
+        }
+        let edited = inserted.replacingOccurrences(of: old, with: replacement)
+        _ = try await session.handle(.typed(replacement, at: start), in: field)
+        _ = try await session.handle(.keystroke(edited, at: start), in: field)
+        #expect(try await session.handle(.returnPressed(at: start), in: field) == .nothing)
+        #expect(await recorder.texts.isEmpty)
+        return await recorder.edits
+    }
+
+    @Test("A word replaced inside dictated text reaches the sink as one edit.")
+    func anEditInsideDictationReachesTheSink() async throws {
+        let chat = FieldReading(bundleIdentifier: "com.example.chat", role: "AXTextArea")
+        let edits = try await dictateAndEdit(
+            "see you on tuesday", replacing: "tuesday", with: "thursday", in: chat,
+            allowing: ["com.example.chat"])
+        #expect(edits == [EditedSpan(position: 3, old: ["tuesday"], new: ["thursday"])])
+    }
+
+    @Test("An edit in an application not yet asked about is heard, since learning is on by default.")
+    func anEditInAnUnaskedApplicationIsHeard() async throws {
+        let chat = FieldReading(bundleIdentifier: "com.example.chat", role: "AXTextArea")
+        let edits = try await dictateAndEdit(
+            "see you on tuesday", replacing: "tuesday", with: "thursday", in: chat, allowing: [])
+        #expect(edits == [EditedSpan(position: 3, old: ["tuesday"], new: ["thursday"])])
+    }
+
+    @Test("An edit in a secure field, an opted-out application or of a secret shape is never heard.")
+    func refusedEditsAreNotHeard() async throws {
+        let chat = FieldReading(bundleIdentifier: "com.example.chat", role: "AXTextArea")
+        let secure = FieldReading(
+            bundleIdentifier: "com.example.chat", role: "AXTextField", subrole: "AXSecureTextField")
+        #expect(
+            try await dictateAndEdit(
+                "my code is tuesday", replacing: "tuesday", with: "thursday", in: secure,
+                allowing: ["com.example.chat"]
+            ).isEmpty)
+        let declining = Scratch()
+        let recorder = Recorder()
+        let session = try await session(declining, recorder)
+        try await session.record(.declined, for: "com.example.chat")
+        _ = try await session.handle(.keystroke("", at: start), in: chat)
+        let dictated = [CaptureEvent.keystroke("see you on tuesday", at: start)]
+        for event in CaptureEvent.marking(dictated, insertedAt: start) {
+            _ = try await session.handle(event, in: chat)
+        }
+        _ = try await session.handle(.typed("thursday", at: start), in: chat)
+        _ = try await session.handle(.keystroke("see you on thursday", at: start), in: chat)
+        _ = try await session.handle(.returnPressed(at: start), in: chat)
+        #expect(await recorder.edits.isEmpty)
+        #expect(
+            try await dictateAndEdit(
+                "the key is tuesday", replacing: "tuesday", with: "AKIAIOSFODNN7EXAMPLE", in: chat,
+                allowing: ["com.example.chat"]
+            ).isEmpty)
     }
 }

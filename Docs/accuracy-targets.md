@@ -59,7 +59,7 @@ zero.
 | `formatting` | formatting accuracy | marks and capitalisation matched against the reference, averaged over attempted cases | `CaseScore.markAccuracy` and `CaseScore.caseAccuracy` |
 | `cosmetic` | cosmetic errors | class-3 errors per case | not measured |
 | `seam-artefact` | seam-artefact rate | errors at the joins between separately recognised pieces (a duplicated, dropped or re-cased word, a stray stop) per join | not measured as a rate; `PieceJoiner` is tested by example |
-| `silence-insertion` | silence-insertion rate | inputs with no speech that produce any inserted text, divided by such inputs | not measured as a rate; how silence is refused is in [silence.md](silence.md) |
+| `silence-insertion` | silence-insertion rate | inputs with no speech that produce any inserted text, divided by such inputs | `uttrflow-eval nonspeech`, with the repetition-loop rate; see [silence.md](silence.md#measuring-what-still-gets-through) |
 | `latin-output` | non-Latin output | outputs containing Devanagari or a translation, divided by outputs | the last check before insertion, see [latin-output.md](latin-output.md) |
 | `tail-latency` | tail latency | the slowest dictations, from key release to words on screen | named here only; its stages, clocks and limits are set where latency is measured ([performance.md](performance.md)), not on this page |
 
@@ -95,7 +95,7 @@ A release is tagged by hand, and only when every step below passes, in this orde
    baseline exits 0:
 
    ```bash
-   uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
+   uttrflow-eval transcribe --corpus-path ./corpus \
                             --baseline ./baseline-last-release.json --fail-on-regression
    ```
 

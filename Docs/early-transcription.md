@@ -57,14 +57,14 @@ can end. Quiet is judged with the same threshold as the voice-activity trim,
 
 | `SpeechWindowing` field | Default | Rule |
 |---|---|---|
-| `minimumLength` | 5 s | audio collected before the window is checked at all |
-| `earlyLength` | 2.5 s | no cut falls before this |
-| `earlyPause` | 1.0 s | a pause this long may end a piece before `minimumLength` |
-| `sentencePause` | 0.8 s | a pause this long ends a piece once the cut falls past `minimumLength` |
-| `comfortableLength` | 15 s | past this, a shorter pause will do |
-| `anyPause` | 0.4 s | the pause that ends a piece past `comfortableLength` |
-| `maximumLength` | 30 s | no piece holds more, the recogniser's own window |
-| `minimumSpeech` | 0.8 s | speech a piece must hold before a pause may end it |
+| `minimumLength` | <!-- value:SpeechWindowing.minimumLength -->5 s | audio collected before the window is checked at all |
+| `earlyLength` | <!-- value:SpeechWindowing.earlyLength -->2.5 s | no cut falls before this |
+| `earlyPause` | <!-- value:SpeechWindowing.earlyPause -->1.0 s | a pause this long may end a piece before `minimumLength` |
+| `sentencePause` | <!-- value:SpeechWindowing.sentencePause -->0.8 s | a pause this long ends a piece once the cut falls past `minimumLength` |
+| `comfortableLength` | <!-- value:SpeechWindowing.comfortableLength -->15 s | past this, the pause that ends a piece shrinks evenly from `sentencePause` toward `anyPause` |
+| `anyPause` | <!-- value:SpeechWindowing.anyPause -->0.4 s | the pause that ends a piece at `maximumLength`, the end of that ramp |
+| `maximumLength` | <!-- value:SpeechWindowing.maximumLength -->30 s | no piece holds more, the recogniser's own window |
+| `minimumSpeech` | <!-- value:SpeechWindowing.minimumSpeech -->0.8 s | speech a piece must hold before a pause may end it |
 
 **A pause is as long as the speaker made it, wherever the five-second mark falls inside it.**
 Every quiet run is measured from where it truly began and the cut goes to its middle, so a 0.9 s
@@ -271,6 +271,22 @@ Measured with `make bakeoff ARGS="--baselines-only"` as the judge:
 
 Every trim costs corpus cases, and the largest saving is a tenth of a second on a wait that working
 ahead has already taken out of the user's way. The prompt stays as it is.
+
+## Whether the model throttles a burst of pieces
+
+A long dictation sends one tidying request per piece in quick succession, and the app is an agent
+application that is rarely in front. Apple's model has a rate-limit failure, which the router records
+as `rateLimited` and answers with the rules. `uttrflow-dev burst` sends dictations of several pieces,
+one after another or all at once with `--concurrent`, and prints the rate-limited requests per 1,000
+sent and the first piece in a burst that was throttled.
+
+From a command-line process on an Apple M5 Pro under heavy load, no request was throttled: 0 of 50
+sent five to a dictation one after another (typical 3.39 s, slowest 4.17 s), and 0 of 30 sent five
+at once (typical 3.82 s, slowest 5.44 s). Started together, the five wait on one another rather
+than fail, so a burst of pieces costs time, not the model's answer.
+
+The menu-bar app with another application in front has not been measured: that needs the app
+itself sending the bursts, and it is the condition the limit is most likely to apply to.
 
 ## Reproducing the numbers
 

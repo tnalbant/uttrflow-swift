@@ -12,11 +12,13 @@ rule, and the measure shown is what the reviewer counts.
 |---|---|---|---|
 | Comments | lines in a new `//` or `///` block; multi-line blocks per file | 1; never above `Scripts/comment_baseline.json` | `make comment-audit` |
 | Line coverage per module | percent | at least 95 | `make coverage` |
-| Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS` | `make exclusion-audit` |
+| User-facing claims | privacy, accuracy or speed sentences in `Sources/UttrflowUX`, `Sources/Uttrflow` and `README.md` not in `Docs/claims.json` with live, unexpired evidence | 0 | `make claims-audit` |
+| Coverage exclusion size | lines per excluded file | at most 400, unless listed in `OVERSIZED_EXCLUSIONS`; a listed file never above `Scripts/exclusion_baseline.json` | `make exclusion-audit` |
 | Spelling matches decided by shape, per file | count | never above `Scripts/loose_match_baseline.json` | `make match-audit` |
 | Closed word lists: literal collections of 4 or more words, per file | count | never above `Scripts/closed_list_baseline.json` | `make closed-list-audit` |
 | Text split by a hand-written separator (`split(whereSeparator:` or `split {`) in `UttrflowAI`, `UttrflowPipeline`, `UttrflowCore/Cleaning`, `UttrflowEval`, per file | count | never above `Scripts/word_split_baseline.json` | `make word-split-audit` |
 | Fixed English literals handed to `Text`, `Button`, `Label`, `.help`, `.accessibilityLabel`, per file | count | never above `Scripts/string_baseline.json`; see [localisation.md](../localisation.md) | `make string-audit` |
+| Top-level type names declared in more than one module, per name | modules past the first | never above `Scripts/type_name_baseline.json` | `make type-name-audit` |
 | Line length and indentation | characters, spaces | 110, 4 | `make lint` |
 | Force unwraps, `try!`, implicitly unwrapped optionals, leading underscores, non-`///` doc comments | count | 0 | `make lint` |
 | Compiler warnings | count | 0 | `make build` |
@@ -168,6 +170,20 @@ fails on a UI-framework import in any module of the second row, and on a `Packag
 dependency from one of those modules to a module of the first row. The count is baselined in
 `Scripts/layering_baseline.json` and may fall and never rise; `python3 Scripts/layering_audit.py
 --report` lists what is left.
+
+It also fails on any module edge, a `Package.swift` dependency or an `import` of a package module,
+that `Scripts/module_layers.json` does not list, and on a listed edge nothing uses. Adding an edge
+is a reviewed diff to that file, with a line under `reasons` when the edge is not obvious.
+
+```bash
+make public-api-audit
+```
+
+fails on a `public` or `open` declaration whose module, kind and name are not in
+`Scripts/public_api_baseline.json`. Make a new one `internal` unless another module needs it;
+otherwise record it with `python3 Scripts/public_api_audit.py --update` so the baseline line shows
+in the diff. `--unused` lists public declarations named nowhere outside their module, counting a
+test that reaches the module through `@testable import` as inside.
 
 A change that adds a module states, in the pull request: the module's one-sentence
 responsibility, the modules it depends on and why none points the wrong way, its public surface in
@@ -328,7 +344,8 @@ Evidence for rules 7 to 10: [measurement-claims.md](../measurement-claims.md).
    A new test is run by name (`swift test --filter`), and the run shows it executed: a test that
    is not discovered covers 0 lines.
 5. An exclusion lives in `Scripts/coverage_report.py` with a stated reason, printed on every
-   run. Adding tests until the exclusion can go is the way out.
+   run. Adding tests until the exclusion can go is the way out. Logic worth a test goes in a
+   covered module and the excluded file only wires it.
 6. A test leaves 0 side effects: every temporary file, `UserDefaults` suite and Keychain item it
    creates is removed (`Docs/preferences-suites.md`).
 7. A test injects a fake for the Keychain, the pasteboard and `UserDefaults`; `make test` shows 0
@@ -347,6 +364,7 @@ Change one only when the task is about it, and say so in the PR.
 | `Resources/Uttrflow-Info.plist` version fields | changed only by a release |
 | Bundle identifier and signing identity | unchanged across builds; Keychain items are tied to the signature (`Docs/account-keychain.md`) |
 | `Design/*.dc.html` artboards | regenerated from `Design/_gen_*.py`; edit the generator |
+| `Scripts/design_*.py`, the `design-audit` target and its place in `verify`, `ALLOWED` and `SCENERY` | never loosened; an exception is added with its reason ([design.md](design.md#exceptions)) |
 
 ## Dependencies
 

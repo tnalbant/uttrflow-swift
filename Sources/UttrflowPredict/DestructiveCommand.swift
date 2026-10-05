@@ -2,6 +2,16 @@
 public enum DestructiveCommand {
     /// Whether taking this line as a completion could do irreversible harm, judged conservatively.
     public static func matches(_ text: String, failClosedOnUnresolved: Bool = false) -> Bool {
+        matches(text, failClosedOnUnresolved: failClosedOnUnresolved, files: defaultFileSystem)
+    }
+
+    /// The disk the no-filesystem callers fall back on, so `git checkout <path>` can be told from `git checkout <branch>`.
+    private static let defaultFileSystem: any FileSystemProbing = CachedFileSystem(SystemFileSystem())
+
+    /// Whether taking this line as a completion could do irreversible harm, asked of a disk so `git checkout <path>` can be told from `git checkout <branch>`.
+    public static func matches(
+        _ text: String, failClosedOnUnresolved: Bool = false, files: (any FileSystemProbing)?
+    ) -> Bool {
         // A fork bomb carries no ordinary tokens, so it is matched on the whitespace-stripped text.
         if text.lowercased().filter({ !$0.isWhitespace }).contains(":(){:|:&};:") { return true }
         let lower = text.lowercased()
@@ -18,7 +28,7 @@ public enum DestructiveCommand {
                 return true
             }
             if clause.overwrites.contains(where: { !harmlessOutputs.contains($0.text) }) { return true }
-            return destroys(clause.words, failClosedOnUnresolved: failClosedOnUnresolved)
+            return destroys(clause.words, failClosedOnUnresolved: failClosedOnUnresolved, files: files)
         }
     }
 
@@ -270,7 +280,10 @@ public enum DestructiveCommand {
                     return operation == "rm" || operation == "rb"
                         || (operation == "sync" && arguments.contains("--delete"))
                 }
-                return operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
+                return awsDestructiveOperations.contains(operation)
+                    || operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
+                    || operation.hasPrefix("deregister-") || operation.hasPrefix("purge-")
+                    || operation.hasPrefix("remove-")
             }),
         "gcloud": VerbTool(
             valued: [
@@ -345,6 +358,12 @@ public enum DestructiveCommand {
         "--python", "--proxy", "--retries", "--timeout", "--index-url", "--extra-index-url",
         "--find-links", "--trusted-host", "--cert", "--client-cert", "--cache-dir", "--log",
         "--log-file", "--exists-action", "--no-binary", "--only-binary",
+    ]
+
+    /// AWS operations, exact-spelled, that are irreversible in fact but do not begin with `delete-` or `terminate-`; `deregister-`, `purge-` and `remove-` are handled as prefixes in the AWS verb tool.
+    private static let awsDestructiveOperations: Set<String> = [
+        "schedule-key-deletion",
+        "disable-key",
     ]
 
     /// Pip's quiet unattended uninstallation, recognized only when it is the actual pip subcommand.
@@ -528,7 +547,9 @@ public enum DestructiveCommand {
     ]
 
     /// Whether one clause destroys data or the machine.
-    private static func destroys(_ tokens: [ShellWord], failClosedOnUnresolved: Bool) -> Bool {
+    private static func destroys(
+        _ tokens: [ShellWord], failClosedOnUnresolved: Bool, files: (any FileSystemProbing)? = nil
+    ) -> Bool {
         if let carrier = carriesDestructive(tokens) { return carrier }
         let parsed = command(in: tokens)
         if case .unresolved = parsed { return failClosedOnUnresolved }
@@ -552,7 +573,7 @@ public enum DestructiveCommand {
         case "chmod", "chown", "chgrp":
             if hasRecursiveOption(arguments) { return true }
         case "git":
-            if matchesDestructiveGit(arguments) { return true }
+            if matchesDestructiveGit(arguments, files: files) { return true }
         case "hg":
             if matchesDestructiveMercurial(arguments) { return true }
         case "svn":
@@ -574,7 +595,9 @@ public enum DestructiveCommand {
                     }
                     j += 1
                 }
-                if destroys(Array(tokens[start..<end]), failClosedOnUnresolved: failClosedOnUnresolved) {
+                if destroys(
+                    Array(tokens[start..<end]), failClosedOnUnresolved: failClosedOnUnresolved, files: files
+                ) {
                     return true
                 }
                 i = end + 1
@@ -680,7 +703,9 @@ public enum DestructiveCommand {
     ]
 
     /// Whether a git clause throws work away for good: a forced, deleting, mirroring or pruning push, a hard reset, a forced clean, a forced branch deletion, a dropped stash, changes discarded by a checkout, switch or restore, or history rewritten or pruned.
-    private static func matchesDestructiveGit(_ arguments: [String]) -> Bool {
+    private static func matchesDestructiveGit(
+        _ arguments: [String], files: (any FileSystemProbing)? = nil
+    ) -> Bool {
         let head = subcommandIndex(arguments)
         if let head, historyDestroyers.contains(arguments[head]) { return true }
         // The flags of the clause's own subcommand, so the same word as a message or path is not one.
@@ -724,6 +749,8 @@ public enum DestructiveCommand {
         {
             return true
         }
+        if checkoutRestoresExistingPath(flags(after: "checkout"), files: files) { return true }
+        if matchesDestructiveGitCleanup(arguments) { return true }
         if let flags = flags(after: "switch"),
             flags.contains("--force") || flags.contains("--discard-changes")
                 || flags.contains(where: { shortFlags($0, include: "f", valuesAfter: ["c", "C"]) })
@@ -745,6 +772,70 @@ public enum DestructiveCommand {
             return true
         }
         return false
+    }
+
+    /// `git worktree remove`, `git rm` and a forced `git submodule deinit` each destroy work without further flags.
+    private static func matchesDestructiveGitCleanup(_ arguments: [String]) -> Bool {
+        let head = subcommandIndex(arguments)
+        func flags(after subcommand: String) -> ArraySlice<String>? {
+            guard let head, arguments[head] == subcommand else { return nil }
+            return arguments[(head + 1)...]
+        }
+        if let flags = flags(after: "worktree"), flags.first == "remove" { return true }
+        if let flags = flags(after: "rm"), !flags.contains("--cached") { return true }
+        if let flags = flags(after: "submodule"), let deinitIndex = flags.firstIndex(of: "deinit") {
+            let rest = flags[(deinitIndex + 1)...]
+            return rest.contains("--force")
+                || rest.contains(where: { shortFlags($0, include: "f", valuesAfter: []) })
+        }
+        return false
+    }
+
+    /// Whether the only positional left of `git checkout` names a file that exists on disk, so the line restores that file from the index.
+    private static func checkoutRestoresExistingPath(
+        _ flags: ArraySlice<String>?, files: (any FileSystemProbing)?
+    ) -> Bool {
+        guard let flags, let files, let path = singleCheckoutPositional(flags) else { return false }
+        if case .file = files.kind(atPath: path) { return true }
+        return false
+    }
+
+    /// The one word `git checkout` is left with once its flags and their values are read past, or nil when it is followed by more than one.
+    private static func singleCheckoutPositional(_ flags: ArraySlice<String>) -> String? {
+        var names: [String] = []
+        var afterDashes = false
+        var skipNext = false
+        var index = flags.startIndex
+        while index < flags.endIndex {
+            let word = flags[index]
+            if skipNext {
+                skipNext = false
+            } else if afterDashes {
+                names.append(word)
+            } else if word == "--" {
+                afterDashes = true
+            } else if word == "-b" || word == "-B" || word == "--orphan" {
+                skipNext = true
+            } else if !word.hasPrefix("-") {
+                names.append(word)
+            }
+            index += 1
+        }
+        guard names.count == 1 else { return nil }
+        let path = names[0]
+        return looksLikePath(path) ? path : nil
+    }
+
+    /// Whether a single token has the shape of a filesystem path rather than a git commit, branch or revision.
+    private static func looksLikePath(_ token: String) -> Bool {
+        guard !token.isEmpty, !token.hasPrefix("-") else { return false }
+        for character in token {
+            switch character {
+            case "~", "^", ":", "*", "?", "[", "]", "\\": return false
+            default: continue
+            }
+        }
+        return true
     }
 
     /// Whether a process signal or target can terminate more than one ordinary process.

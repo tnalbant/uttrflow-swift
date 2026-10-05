@@ -55,12 +55,12 @@ Both defaults are local; nobody needs `CORPUS_BUCKET` or an operator token to me
 uttrflow-eval record --corpus-path ./corpus --cohort <reader>-quiet \
                      --speaker <label> --setting "quiet room, built-in mic"
 
-# once per engine, to record the baseline
-uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
+# once, to record the baseline
+uttrflow-eval transcribe --corpus-path ./corpus \
                          --baseline ./baseline.json --save-baseline
 
 # after a change, to compare
-uttrflow-eval transcribe --corpus-path ./corpus --engine whisperKit \
+uttrflow-eval transcribe --corpus-path ./corpus \
                          --baseline ./baseline.json --fail-on-regression
 ```
 

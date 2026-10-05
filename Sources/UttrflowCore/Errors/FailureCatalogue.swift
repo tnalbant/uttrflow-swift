@@ -51,7 +51,8 @@ extension SpeechEngineError: CataloguedFailure {
         case .modelLoadFailed: .modelDamaged(fileCount: 0)
         case .modelDamaged: .audioTooShort
         case .audioTooShort: .nothingHeard
-        case .nothingHeard: .speechWithoutWords
+        case .nothingHeard: .noSignal
+        case .noSignal: .speechWithoutWords
         case .speechWithoutWords: .recogniserTimedOut
         case .recogniserTimedOut: .transcriptionFailed(description: "")
         case .transcriptionFailed: nil
@@ -64,7 +65,7 @@ extension TransformationError: CataloguedFailure {
 
     public var caseAfter: Self? {
         switch self {
-        case .noCapableTransformer: .transformFailed(kind: .rules, description: "")
+        case .noCapableTransformer: .transformFailed(kind: .rules, failure: .other)
         case .transformFailed: .outputRejected(reason: "", kind: .lostWord)
         case .outputRejected: .cancelled
         case .cancelled: nil

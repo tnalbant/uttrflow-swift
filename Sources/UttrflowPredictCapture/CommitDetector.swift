@@ -73,10 +73,43 @@ public struct Commit: Sendable, Equatable {
     }
 }
 
+/// A word-level edit the person makes inside inserted text, aligned against the inserted words.
+public struct EditedSpan: Sendable, Equatable {
+    /// Where the edit starts, counted in words from the first inserted word.
+    public let position: Int
+    /// The inserted words the person replaced, empty when they only added words.
+    public let old: [String]
+    /// The words the person put in their place, empty when they only removed words.
+    public let new: [String]
+
+    /// An edit at this word position, replacing these inserted words with those.
+    public init(position: Int, old: [String], new: [String]) {
+        self.position = position
+        self.old = old
+        self.new = new
+    }
+}
+
+/// The inserted words a line is watched for, from the line they reached until an ending or the window passes.
+struct InsertedSpan: Sendable, Equatable {
+    /// The whole line as the insertion left it, which the final line is aligned against.
+    let line: String
+    /// The inserted words, as a range of the line's words.
+    let words: Range<Int>
+    /// The moment of the insertion, which the edit window runs from.
+    let moment: Date
+    /// Whether keys the person pressed explain every change since.
+    var isExplainedByKeys = true
+}
+
 /// Decides when a line holds a finished value, so nothing is ever remembered per keystroke.
 public struct CommitDetector: Sendable, Equatable {
     /// How long a line sits genuinely untouched before an idle commit will consider it finished.
     public static let idleInterval: TimeInterval = 8
+    /// How long after an insertion an ending may still report an edit inside it.
+    public static let spanEditWindow: TimeInterval = 60
+    /// The most words either side of an edit inside inserted text may hold.
+    public static let spanEditWordLimit = 3
 
     /// The line as it last stood, trimmed, which is what any ending would commit.
     private var pending = ""
@@ -100,6 +133,12 @@ public struct CommitDetector: Sendable, Equatable {
     private var hasUnverifiableKeySinceRead = false
     /// Whether a host-app edit made the line differ from the delivered keyboard input.
     private var holdsMutation = false
+    /// The line read before the last one, which tells an insertion's words from the words around them.
+    private var lineBeforeRead = ""
+    /// The inserted words being watched for an edit, if any.
+    private var span: InsertedSpan?
+    /// The edit the last ending found inside inserted text, held until the caller takes it.
+    private var editedSpan: EditedSpan?
 
     /// A detector watching a field nothing has been typed into.
     public init() {}
@@ -119,6 +158,13 @@ public struct CommitDetector: Sendable, Equatable {
             if hasObservedLine, (!typedSinceRead.isEmpty || hasUnverifiableKeySinceRead) {
                 if text != observedLine + typedSinceRead { holdsMutation = true }
             }
+            let keyed = !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead
+            if text != observedLine,
+                !Self.isRangeReplaced(in: observedLine, by: text, typing: typedSinceRead, keyed: keyed)
+            {
+                span?.isExplainedByKeys = false
+            }
+            lineBeforeRead = observedLine
             observedLine = text
             pending = line
             hasObservedLine = true
@@ -129,6 +175,7 @@ public struct CommitDetector: Sendable, Equatable {
             if pending.isEmpty {
                 holdsInsertion = false
                 holdsMutation = false
+                span = nil
             }
             return nil
         case .typed(let text, _):
@@ -141,14 +188,16 @@ public struct CommitDetector: Sendable, Equatable {
         case .inserted(let moment):
             holdsInsertion = true
             lastKeystroke = moment
+            span = Self.insertedSpan(from: lineBeforeRead, to: observedLine, at: moment)
             return nil
-        case .returnPressed:
-            return finish(.returnPressed, admits)
-        case .focusLeft:
-            return finish(.focusLeft, admits)
-        case .applicationDeactivated:
-            return finish(.applicationDeactivated, admits)
+        case .returnPressed(let moment):
+            return finish(.returnPressed, at: moment, admits)
+        case .focusLeft(let moment):
+            return finish(.focusLeft, at: moment, admits)
+        case .applicationDeactivated(let moment):
+            return finish(.applicationDeactivated, at: moment, admits)
         case .tick(let moment):
+            if let span, moment.timeIntervalSince(span.moment) > Self.spanEditWindow { self.span = nil }
             guard let lastKeystroke,
                 moment.timeIntervalSince(lastKeystroke) >= Self.idleInterval,
                 // A fragment still being typed is left to Return or a focus change, not to the timer.
@@ -177,6 +226,15 @@ public struct CommitDetector: Sendable, Equatable {
         typedSinceRead = ""
         hasUnverifiableKeySinceRead = false
         holdsMutation = false
+        lineBeforeRead = ""
+        span = nil
+        editedSpan = nil
+    }
+
+    /// Hands over the edit the last ending found inside inserted text, once.
+    public mutating func takeEditedSpan() -> EditedSpan? {
+        defer { editedSpan = nil }
+        return editedSpan
     }
 
     /// Undoes the most recent idle commit, so a later tick can re-emit the value after a failed write.
@@ -186,10 +244,78 @@ public struct CommitDetector: Sendable, Equatable {
     }
 
     /// Commits and then forgets, for the three events that end the field's life.
-    private mutating func finish(_ reason: CommitReason, _ admits: (CommitReason) -> Bool) -> Commit? {
-        if !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead { holdsMutation = true }
-        defer { reset() }
-        return commit(reason, admits)
+    private mutating func finish(
+        _ reason: CommitReason, at moment: Date, _ admits: (CommitReason) -> Bool
+    ) -> Commit? {
+        let keyedSinceRead = !typedSinceRead.isEmpty || hasUnverifiableKeySinceRead
+        if keyedSinceRead { holdsMutation = true }
+        let edit =
+            keyedSinceRead ? nil : span.flatMap { Self.edit(of: $0, into: observedLine, at: moment) }
+        let finished = commit(reason, admits)
+        reset()
+        editedSpan = edit
+        return finished
+    }
+
+    /// The words an insertion added between two reads of the line, or nothing when it added none.
+    private static func insertedSpan(
+        from before: String, to after: String, at moment: Date
+    ) -> InsertedSpan? {
+        let old = words(before)
+        let new = words(after)
+        let (prefix, suffix) = sharedEnds(old, new)
+        guard new.count - suffix > prefix else { return nil }
+        return InsertedSpan(line: after, words: prefix..<(new.count - suffix), moment: moment)
+    }
+
+    /// The one bounded word edit that turned the inserted line into the final one, inside the inserted words.
+    private static func edit(of span: InsertedSpan, into line: String, at moment: Date) -> EditedSpan? {
+        guard span.isExplainedByKeys, moment.timeIntervalSince(span.moment) <= spanEditWindow
+        else { return nil }
+        let old = words(span.line)
+        let new = words(line)
+        let (prefix, suffix) = sharedEnds(old, new)
+        let replaced = Array(old[prefix..<(old.count - suffix)])
+        let replacing = Array(new[prefix..<(new.count - suffix)])
+        guard !(replaced.isEmpty && replacing.isEmpty), replaced.count <= spanEditWordLimit,
+            replacing.count <= spanEditWordLimit, prefix >= span.words.lowerBound,
+            old.count - suffix <= span.words.upperBound
+        else { return nil }
+        return EditedSpan(position: prefix - span.words.lowerBound, old: replaced, new: replacing)
+    }
+
+    /// A line's words, split on whitespace.
+    private static func words(_ line: String) -> [String] {
+        line.split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// How many leading and trailing elements two sequences share, never overlapping either.
+    private static func sharedEnds<Element: Equatable>(_ old: [Element], _ new: [Element]) -> (Int, Int) {
+        let limit = min(old.count, new.count)
+        var prefix = 0
+        while prefix < limit, old[prefix] == new[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < limit - prefix, old[old.count - 1 - suffix] == new[new.count - 1 - suffix] {
+            suffix += 1
+        }
+        return (prefix, suffix)
+    }
+
+    /// Whether the new line is the old one with one stretch replaced by the typed characters, which keys can explain.
+    static func isRangeReplaced(in old: String, by new: String, typing typed: String, keyed: Bool) -> Bool {
+        guard keyed else { return false }
+        let old = Array(old)
+        let new = Array(new)
+        let typed = Array(typed)
+        let (prefix, suffix) = sharedEnds(old, new)
+        guard new.count >= typed.count else { return false }
+        let kept = new.count - typed.count
+        for head in 0...min(prefix, kept) {
+            let tail = kept - head
+            guard tail <= suffix, head + tail <= old.count else { continue }
+            if Array(new[head..<(head + typed.count)]) == typed { return true }
+        }
+        return false
     }
 
     /// Emits what is pending, unless it is nothing, holds text that was not typed, is exactly what was emitted last, or ended in a way not admitted.

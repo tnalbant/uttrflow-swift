@@ -303,7 +303,8 @@ public actor ClipboardStore {
 
     /// Where the pictures live: a folder beside the clipboard file, never inside that whole-file rewrite.
     public var imagesFolder: URL {
-        file.deletingLastPathComponent().appending(path: "Images", directoryHint: .isDirectory)
+        file.deletingLastPathComponent().appending(
+            path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
     }
 
     /// Records a noticed copy, writing its picture first so a clip never points at a file that is missing.
@@ -742,7 +743,7 @@ public actor ClipboardStore {
     /// Where saved clips are kept: beside the history and never in it. See `Docs/clipboard-store.md`.
     var savedFile: URL {
         file.deletingLastPathComponent()
-            .appending(path: "saved.v1.json", directoryHint: .notDirectory)
+            .appending(path: LocalStoreEntry.savedClips.name, directoryHint: .notDirectory)
     }
 
     /// The list, read from disk the first time and from memory thereafter.

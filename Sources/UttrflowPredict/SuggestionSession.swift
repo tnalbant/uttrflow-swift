@@ -445,8 +445,9 @@ public struct SuggestionSession: Sendable, Equatable {
         }
     }
 
-    /// Follows the focus, forgetting everything that belonged to the field being left.
+    /// Follows identified fields, forgetting what belonged to the field being left.
     private mutating func adopt(_ surface: Surface?, typing: String, now: Date) -> String? {
+        guard let surface else { return nil }
         guard surface == self.surface else {
             self.surface = surface
             isSilencedHere = false

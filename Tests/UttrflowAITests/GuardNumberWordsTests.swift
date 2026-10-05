@@ -41,6 +41,19 @@ struct GuardNumberWordsTests {
         #expect(MeaningPreservationGuard.numberWords == expected)
     }
 
+    /// A model that turns a relative clock phrase into a clock time states a number nobody said, and is refused.
+    @Test(
+        "a relative clock phrase rewritten as a clock time is refused",
+        arguments: [
+            ("meet at half past two", "Meet at 2:30."),
+            ("leave at quarter to six", "Leave at 5:45."),
+            ("it is twenty past four", "It is 4:20."),
+        ]
+    )
+    func relativeClockPhraseAsClockTime(original: String, rewritten: String) {
+        #expect(MeaningPreservationGuard().verdict(original: original, rewritten: rewritten) != .accepted)
+    }
+
     /// The scales above a thousand are the only words the guard gained when its own table went.
     @Test("a million spoken and a million written are the same number to the guard")
     func millionIsANumber() {
@@ -48,5 +61,18 @@ struct GuardNumberWordsTests {
         #expect(
             MeaningPreservationGuard.inventedNumber(
                 original: "one million rows", rewritten: "one million rows") == nil)
+    }
+
+    /// A rewrite that swaps one Hindi quantity for another changes the stated quantity, and is refused.
+    @Test(
+        "a changed Hindi quantity is refused",
+        arguments: [
+            ("kal sattar log aaye", "Kal assi log aaye."),
+            ("dedh ghante baad milte hain", "Dhai ghante baad milte hain."),
+            ("paanch lakh rupaye bheje", "Paanch hazaar rupaye bheje."),
+        ]
+    )
+    func changedHindiQuantity(original: String, rewritten: String) {
+        #expect(MeaningPreservationGuard().verdict(original: original, rewritten: rewritten) != .accepted)
     }
 }

@@ -10,7 +10,8 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
-                numbers: formatter.numbers, digits: formatter.digits, layout: formatter.layout,
+                numbers: formatter.numbers, digits: situation.digits(for: formatter),
+                layout: formatter.layout,
                 insertionPoint: situation.insertion, destination: formatter.destination,
                 precedingText: situation.insertion.precedingText, documentName: situation.app.documentName,
                 steps: steps
@@ -24,7 +25,8 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: piece(
-                numbers: formatter.numbers, digits: formatter.digits, insertionPoint: situation.insertion,
+                numbers: formatter.numbers, digits: situation.digits(for: formatter),
+                insertionPoint: situation.insertion,
                 destination: formatter.destination, precedingText: situation.insertion.precedingText,
                 documentName: situation.app.documentName, steps: steps
             ).passes
@@ -45,12 +47,18 @@ extension CleaningPipeline {
             LayoutWordsPass(layout: layout, insertionPoint: insertionPoint),
             NumberFormsPass(policy: numbers, digits: digits),
             ContractionsPass(), SpacingPass(),
+            // Last, so a pause inside a number or a removed filler is read on the words left standing.
+            PauseStopPass(destination: destination),
         ]
-        if destination == .codeEditor,
-            CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode,
-            let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords })
-        {
-            cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition)
+        let inCode =
+            destination == .codeEditor
+            && CaretStructure.region(precedingText: precedingText, documentName: documentName).isCode
+        if let layoutPosition = cleanings.firstIndex(where: { $0.id == .layoutWords }) {
+            if inCode { cleanings.insert(CodeEditorCommandsPass(), at: layoutPosition) }
+            // A code editor's comments take no casing: its rows are identifiers, which a comment is not.
+            if destination != .codeEditor || inCode {
+                cleanings.insert(SpokenCasingPass(destination: destination), at: layoutPosition)
+            }
         }
         return CleaningPipeline(piece: cleanings.filter { steps.runs($0.id) })
     }
@@ -62,7 +70,7 @@ extension CleaningPipeline {
     ) -> CleaningPipeline {
         CleaningPipeline(
             passes: afterModelPiece(
-                digits: formatter.digits, situation: situation, heard: heard, spoken: spoken
+                digits: situation.digits(for: formatter), situation: situation, heard: heard, spoken: spoken
             ).passes
                 + message(
                     for: formatter, situation: situation, heard: heard, steps: steps, vocabulary: vocabulary
@@ -70,7 +78,7 @@ extension CleaningPipeline {
     }
 
     /// What finishes a model's answer to one piece before the final message-wide passes run.
-    public static func afterModelPiece(
+    static func afterModelPiece(
         digits: DigitGrouping, situation: Situation, heard: String? = nil, spoken: String? = nil
     ) -> CleaningPipeline {
         CleaningPipeline(piece: [

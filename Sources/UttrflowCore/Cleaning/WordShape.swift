@@ -18,7 +18,7 @@ public struct WordShape: Equatable, Sendable {
 
     /// Lower-cased runs of letters and digits, which is the unit every word comparison counts in.
     public static func words(_ text: String) -> [String] {
-        text.lowercased().split(whereSeparator: isMark).map(String.init)
+        WordTokens.words(text.lowercased(), .comparison)
     }
 
     /// Whether the word closes a clause or a sentence.
@@ -75,7 +75,7 @@ public struct WordShape: Equatable, Sendable {
     static let finishers: Set<Character> = [",", ".", ";", ":", "!", "?", "\u{2026}", "।", "॥"]
 
     /// Each closing bracket mapped to the bracket that opens it.
-    static let bracketOpeners: [Character: Character] = [")": "(", "]": "[", "}": "{"]
+    public static let bracketOpeners: [Character: Character] = [")": "(", "]": "[", "}": "{"]
 
     /// Quotes that open a quotation, read on the word's own prefix.
     public static let openingQuotes: Set<Character> = ["\"", "'", "\u{201C}", "\u{2018}", "\u{00AB}"]
@@ -97,12 +97,31 @@ public struct WordShape: Equatable, Sendable {
             guard closers.isEmpty || !shape.prefix.contains(where: openingQuotes.contains) else {
                 return text
             }
-            return body + mark + closers
+            return quotationIsSpeech(preceding) ? body + mark + closers : text + mark
         }
         let enclosed = preceding + " " + body + closers[..<bracket]
         if bracketOpensSentence(enclosed, closedBy: closers[bracket]) { return body + mark + closers }
         let quoted = trailingQuotes(of: closers)
         return String(text.dropLast(quoted.count)) + mark + quoted
+    }
+
+    /// Verbs of saying, which make the quotation after them reported speech rather than a quoted term.
+    static let speechVerbs: Set<String> = [
+        "say", "says", "said", "reply", "replies", "replied", "ask", "asks", "asked", "answer", "answers",
+        "answered", "tell", "tells", "told", "write", "writes", "wrote", "shout", "shouts", "shouted",
+    ]
+
+    /// Whether the quotation the last word closes is speech: it opens its sentence, follows a verb of saying, or opens on a subject.
+    private static func quotationIsSpeech(_ preceding: String) -> Bool {
+        let line = preceding.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).last ?? ""
+        let words = WordTokens.words(line, .display).map(WordShape.init)
+        guard let start = words.lastIndex(where: { $0.prefix.contains(where: openingQuotes.contains) }) else {
+            return true
+        }
+        guard start > 0, !words[start - 1].endsSentence, !speechVerbs.contains(words[start - 1].key) else {
+            return true
+        }
+        return QuestionShape.newSubjects.contains(words[start].key)
     }
 
     /// Whether the bracket that `closer` matches is the first thing in its sentence, so the whole sentence sits inside it.

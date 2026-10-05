@@ -132,7 +132,7 @@ Greek, Han, kana and the digits of those scripts do.
 | `SuggestionSession.turn` | A line containing another script gets no turn: it settles as `Quieting.Reason.nonLatinLine`, and neither the store nor the model is asked |
 | `SuggestionSession.resolve` | A remembered or machine candidate containing another script is never ranked or drawn, though capture keeps it |
 | `CompletionText.finished`, `SuggestionSession.drawable` | A generated line containing another script is dropped where the reply is parsed, so the bake-off sees it too, and again before anything is drawn |
-| `PromptBuilder.scriptInstruction`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
+| `LatinOnlyInstruction.text`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
 
 **A non-Latin line is silent, not completed in Latin.** A completion in that script breaks the
 rule, and a Latin one glues a romanised tail onto a Devanagari word, which is text nobody types.
@@ -490,7 +490,7 @@ refused rather than written to.
 
 | Limit | Constant | Value |
 |---|---|---|
-| Entries per surface, evicted by count then age | `PredictStore.entriesPerSurface` | 2,000 |
+| Entries per surface, evicted by fragment status, acceptance, uses and age | `PredictStore.entriesPerSurface` | 2,000 |
 | Scopes kept per field, least recently used evicted | `PredictStore.surfacesPerField` | 64 |
 | Most recent scopes a lookup reads | `PredictStore.scopeLimit` | 8 |
 | Candidates a lookup returns | `PredictStore.candidateLimit` | 16 |
@@ -498,6 +498,10 @@ refused rather than written to.
 An entry carries `count`, `accepted`, `rejected`, `self_sourced` and `last_used`. A
 `superseded_by` value marks text the gates replaced or refused, and a superseded entry is never
 proposed again. Forgetting works at three sizes: one entry, one application, everything.
+
+A write protects its new entry and succession pair from its own eviction. Later pressure removes
+fragments first, then entries with fewer acceptances, fewer uses and older `last_used` values;
+retired entries remain last.
 
 ## Two measurements behind the store's shape
 

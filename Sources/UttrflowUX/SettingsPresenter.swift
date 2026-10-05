@@ -159,6 +159,7 @@ public enum SettingsPresenter {
         case .clipboard: .symbol("list.clipboard", .suggestion)
         case .pasteLastTranscript: .symbol("text.insert", .info)
         case .copyLastTranscript: .symbol("doc.on.doc", .mint)
+        case .editCommand: .symbol("wand.and.stars", .dictation)
         }
     }
 
@@ -528,7 +529,6 @@ public enum SettingsPresenter {
         _ capabilities: SettingsCapabilities,
         _ personalisation: SettingsPersonalisation
     ) -> SettingsPane {
-        let quality = SettingsTranscriptionQuality(engine: settings.engines.speech)
         let availabilityGroups = [foundationModelAvailabilityRow(capabilities)].compactMap { row in
             row.map { SettingsGroup(id: "tidyingAvailability", title: "Tidying availability", rows: [$0]) }
         }
@@ -537,24 +537,6 @@ public enum SettingsPresenter {
             title: title(of: .dictation),
             banner: nil,
             groups: [
-                SettingsGroup(
-                    id: "recognition",
-                    title: "Speech recognition",
-                    rows: [
-                        SettingsRow(
-                            id: "quality",
-                            label: "Speed and accuracy",
-                            explanation:
-                                "Faster uses macOS speech recognition, which does not recognise "
-                                + "Hindi. Use Most accurate for Hindi or Hinglish dictation.",
-                            control: .segmented(
-                                options: SettingsTranscriptionQuality.allCases.map(qualityOption),
-                                selectedID: quality.rawValue),
-                            // Off only when neither option can run, and moving it would achieve nothing.
-                            unavailability: capabilities.readySpeechEngines.isEmpty
-                                ? "This option needs a download that has not finished yet." : nil,
-                            icon: .symbol("waveform", .dictation))
-                    ]),
                 SettingsDestinations.places(
                     settings.destinations, lastApp: personalisation.lastDictationApp),
 
@@ -620,12 +602,6 @@ public enum SettingsPresenter {
             id: "page.\(page.rawValue)", label: SidebarPresenter.title(for: page),
             explanation: explanation, control: .action(title: "Open", change: .openPage(page)),
             icon: .symbol("text.badge.checkmark", .info))
-    }
-
-    /// One transcription quality, as a segmented option.
-    private static func qualityOption(_ quality: SettingsTranscriptionQuality) -> SettingsOption {
-        SettingsOption(
-            id: quality.rawValue, title: quality.title, change: .transcription(quality))
     }
 
     // MARK: - Suggestions
@@ -973,12 +949,6 @@ public enum SettingsPresenter {
                     id: "retention",
                     title: "Your data",
                     rows: [
-                        SettingsRow(
-                            id: "onDevice",
-                            label: "Your words stay on your Mac",
-                            explanation: "Nothing you say is uploaded",
-                            control: .status("On-device"),
-                            icon: .symbol("checkmark.shield", .dictation)),
                         retentionRow(settings),
                         toggleRow(
                             .sharesUsageStatistics,
@@ -995,6 +965,9 @@ public enum SettingsPresenter {
                             settings, .everything
                         ).with(icon: .symbol("exclamationmark.bubble", .neutral)),
                     ]),
+                SettingsGroup(
+                    id: "network", title: "Network, last \(NetworkActivity.windowDays) days",
+                    rows: networkRows(personalisation.network)),
                 SettingsGroup(id: "appearance", title: "Appearance", rows: [appearanceRow(settings)]),
                 SettingsGroup(
                     id: "reset",
@@ -1005,6 +978,34 @@ public enum SettingsPresenter {
                 symbolName: "lock",
                 message: "\(privacyPromise) \(signingOutKeepsEverything)",
                 tint: .dictation))
+    }
+
+    /// Dictation first, which no purpose belongs to, then every purpose with its count from the ledger.
+    static func networkRows(_ network: [NetworkPurpose: NetworkTally]) -> [SettingsRow] {
+        let dictation = SettingsRow(
+            id: "network.dictation",
+            label: "Dictation",
+            explanation: "Nothing you say is uploaded",
+            control: .status(counted(0, "request", "requests")),
+            icon: .symbol("checkmark.shield", .dictation))
+        return [dictation]
+            + NetworkPurpose.allCases.map { purpose in
+                SettingsRow(
+                    id: "network.\(purpose.rawValue)",
+                    label: networkLabel(purpose),
+                    control: .status(counted(network[purpose]?.count ?? 0, "request", "requests")))
+            }
+    }
+
+    /// The name each purpose goes by in the Privacy pane.
+    static func networkLabel(_ purpose: NetworkPurpose) -> String {
+        switch purpose {
+        case .account: "Account and sign-in"
+        case .modelDownload: "Downloads"
+        case .updateCheck: "Update checks"
+        case .crashReport: "Crash reports"
+        case .usageStatistics: "Usage statistics"
+        }
     }
 
     /// What a crash report carries, in the words the row shows. See `Docs/crash-reporting.md`.
@@ -1027,7 +1028,7 @@ public enum SettingsPresenter {
     /// What happens to the audio, in the one wording every screen repeats. See `Docs/recordings.md`.
     public static let recordingsPromise =
         "Audio is deleted the moment it becomes text, and kept on this Mac for a day only "
-        + "if it couldn’t be, so you can retry."
+        + "if some of it couldn’t be, so you can retry."
 
     /// The order the theme is offered in: following the Mac first, then the two fixed looks.
     static let offeredAppearances: [AppAppearance] = [.system, .light, .dark]

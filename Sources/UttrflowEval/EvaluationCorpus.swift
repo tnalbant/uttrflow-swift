@@ -5,8 +5,8 @@ public import UttrflowCore
 public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
-        + grammar + secondLanguage + oneLineField + formatting
-        + codeMixing
+        + grammar + secondLanguage + oneLineField + bareLiteral + formatting
+        + codeMixing + commandInput
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -316,7 +316,7 @@ public enum EvaluationCorpus {
         .init(
             id: "ellipsis-glued-fillers", category: .everyday,
             spoken: "Ah...the...um...the invoice is...ah...overdue",
-            expected: "The invoice is overdue."
+            expected: "The...the invoice is...overdue."
         ),
         .init(
             id: "filler-carrying-a-question-mark", category: .everyday,
@@ -404,6 +404,42 @@ public enum EvaluationCorpus {
             id: "no-punctuation", category: .everyday,
             spoken: "the build passed everything looks good ship it",
             expected: "The build passed. Everything looks good. Ship it."
+        ),
+        .init(
+            id: "paused-three-statements", category: .everyday,
+            spoken: "the kettle boiled the tea is ready come and get it",
+            expected: "The kettle boiled. The tea is ready. Come and get it.",
+            classes: [.sentenceBoundaries], pausedAfter: [2, 6], addedFor: 2199
+        ),
+        .init(
+            id: "paused-two-statements", category: .everyday,
+            spoken: "the meeting moved to thursday please update your calendar",
+            expected: "The meeting moved to Thursday. Please update your calendar.",
+            classes: [.sentenceBoundaries], pausedAfter: [4], addedFor: 2199
+        ),
+        .init(
+            id: "paused-question-after-statement", category: .everyday,
+            spoken: "the room is booked do you need anything else",
+            expected: "The room is booked. Do you need anything else?",
+            classes: [.sentenceBoundaries], pausedAfter: [3], addedFor: 2199
+        ),
+        .init(
+            id: "paused-after-article-runs-on", category: .everyday,
+            spoken: "we need to finish the report by friday",
+            expected: "We need to finish the report by Friday.",
+            classes: [.sentenceBoundaries], pausedAfter: [4], addedFor: 2199
+        ),
+        .init(
+            id: "paused-before-because-runs-on", category: .everyday,
+            spoken: "i stayed home because it was raining",
+            expected: "I stayed home because it was raining.",
+            classes: [.sentenceBoundaries], pausedAfter: [2], addedFor: 2199
+        ),
+        .init(
+            id: "paused-after-preposition-runs-on", category: .everyday,
+            spoken: "she put the keys on the shelf by the door",
+            expected: "She put the keys on the shelf by the door.",
+            classes: [.sentenceBoundaries], pausedAfter: [5], addedFor: 2199
         ),
         .init(
             id: "pronoun-i", category: .everyday,
@@ -758,6 +794,36 @@ public enum EvaluationCorpus {
             spoken: "we left early dash it was raining",
             expected: "We left early \u{2014} it was raining.",
             mustKeep: ["left early", "raining"], mustNotAdd: ["dash"]
+        ),
+        .init(
+            id: "spoken-ellipsis-mid-sentence", category: .everyday,
+            spoken: "well dot dot dot maybe not",
+            expected: "Well\u{2026} maybe not.",
+            mustKeep: ["maybe not"], mustNotAdd: ["dot"]
+        ),
+        .init(
+            id: "spoken-percent-sign-after-a-number", category: .everyday,
+            spoken: "sales grew by forty percent sign this year",
+            expected: "Sales grew by 40% this year.",
+            mustKeep: ["this year"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-at-sign-before-a-handle", category: .everyday,
+            spoken: "ping me at sign sam on the thread",
+            expected: "Ping me @sam on the thread.",
+            mustKeep: ["on the thread"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-hash-sign-before-a-tag", category: .everyday,
+            spoken: "tag it hash sign launch day",
+            expected: "Tag it #launch day.",
+            mustKeep: ["launch"], mustNotAdd: ["sign"]
+        ),
+        .init(
+            id: "spoken-ampersand-between-names", category: .everyday,
+            spoken: "we hired smith ampersand jones",
+            expected: "We hired smith & jones.",
+            mustKeep: ["jones"], mustNotAdd: ["ampersand"]
         ),
         .init(
             id: "hinglish-spoken-comma-before-aur", category: .everyday,
@@ -1711,6 +1777,52 @@ public enum EvaluationCorpus {
             mustBeginWith: "Send",
             mustEndWith: "today"
         ),
+        // A clock time in a line a calendar or task app parses is written as digits.
+        .init(
+            id: "quick-entry-things-time", category: .contextual,
+            spoken: "call the plumber tomorrow at five thirty",
+            expected: "Call the plumber tomorrow at 5:30",
+            mustKeep: ["tomorrow", "5:30"],
+            context: AppContext(
+                applicationName: "Things",
+                bundleIdentifier: DestinationRules.things,
+                documentName: "Today"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Call",
+            mustEndWith: "5:30"
+        ),
+        .init(
+            id: "quick-entry-fantastical-time", category: .contextual,
+            spoken: "lunch with Sam friday at twelve fifteen",
+            expected: "Lunch with Sam Friday at 12:15",
+            mustKeep: ["Friday", "12:15"],
+            context: AppContext(
+                applicationName: "Fantastical",
+                bundleIdentifier: DestinationRules.fantastical,
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Lunch",
+            mustEndWith: "12:15"
+        ),
+        .init(
+            id: "quick-entry-calendar-time", category: .contextual,
+            spoken: "team review every monday at nine forty five",
+            expected: "Team review every Monday at 9:45",
+            mustKeep: ["Monday", "9:45"],
+            context: AppContext(
+                applicationName: "Calendar",
+                bundleIdentifier: DestinationRules.calendar,
+                documentName: "Calendar"
+            ),
+            mustNotAdd: ["."],
+            destination: .document,
+            mustBeginWith: "Team",
+            mustEndWith: "9:45"
+        ),
 
         // Each names its destination outright, so the formatter is measured and not the classifier.
         .init(
@@ -2308,12 +2420,11 @@ public enum EvaluationCorpus {
             mustBeginWith: "npm",
             mustEndWith: "build"
         ),
-        // Contested: "dash" is kept here while other terminal cases write `-`; the terminal adapter decides.
         .init(
             id: "terminal-command-keeps-case-mid-pipeline", category: .contextual,
             spoken: "uh ls dash la",
-            expected: "ls dash la",
-            mustKeep: ["dash", "la"],
+            expected: "ls -la",
+            mustKeep: ["-la"],
             context: AppContext(
                 applicationName: "iTerm",
                 bundleIdentifier: DestinationRules.iTerm
@@ -2322,6 +2433,19 @@ public enum EvaluationCorpus {
             destination: .terminal,
             mustBeginWith: "ls",
             mustEndWith: "la"
+        ),
+        .init(
+            id: "terminal-command-writes-double-dash-flag", category: .contextual,
+            spoken: "git push double dash force",
+            expected: "git push --force",
+            mustKeep: ["--force"],
+            context: AppContext(
+                applicationName: "Terminal",
+                bundleIdentifier: DestinationRules.terminal
+            ),
+            destination: .terminal,
+            mustBeginWith: "git",
+            mustEndWith: "--force"
         ),
         .init(
             id: "terminal-command-keeps-no-stop", category: .contextual,
@@ -3592,6 +3716,123 @@ public enum EvaluationCorpus {
             addedFor: 3829
         ),
     ]
+    // MARK: A dictation that is only a literal
+
+    static let bareLiteral: [EvaluationCase] = [
+        .init(
+            id: "bare-host-and-path", category: .bareLiteral, spoken: "example dot com slash docs",
+            expected: "example.com/docs",
+            destination: .document, expectedExact: "example.com/docs", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-and-path-plain", category: .bareLiteral, spoken: "example dot com slash docs",
+            expected: "example.com/docs",
+            destination: .plain, expectedExact: "example.com/docs", addedFor: 4066
+        ),
+        .init(
+            id: "bare-subdomain", category: .bareLiteral, spoken: "docs dot example dot org",
+            expected: "docs.example.org",
+            destination: .email, expectedExact: "docs.example.org", addedFor: 4066
+        ),
+        .init(
+            id: "bare-subdomain-message", category: .bareLiteral, spoken: "docs dot example dot org",
+            expected: "docs.example.org",
+            destination: .messaging, expectedExact: "docs.example.org", addedFor: 4066
+        ),
+        .init(
+            id: "bare-capitalised-host", category: .bareLiteral, spoken: "Example dot com",
+            expected: "example.com",
+            destination: .document, expectedExact: "example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-dotted-local", category: .bareLiteral, spoken: "sam dot jones at example dot com",
+            expected: "sam.jones@example.com",
+            destination: .document, expectedExact: "sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-dotted-local-email", category: .bareLiteral,
+            spoken: "sam dot jones at example dot com", expected: "sam.jones@example.com",
+            destination: .email, expectedExact: "sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-email-capitalised", category: .bareLiteral, spoken: "Sam dot jones at Example dot com",
+            expected: "Sam.jones@example.com",
+            destination: .plain, expectedExact: "Sam.jones@example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-ipv4", category: .bareLiteral, spoken: "ten dot zero dot zero dot one",
+            expected: "10.0.0.1",
+            destination: .document, expectedExact: "10.0.0.1", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-port", category: .bareLiteral, spoken: "localhost colon 8080",
+            expected: "localhost:8080",
+            destination: .document, expectedExact: "localhost:8080", addedFor: 4066
+        ),
+        .init(
+            id: "bare-url", category: .bareLiteral, spoken: "https colon slash slash example dot com",
+            expected: "https://example.com",
+            destination: .plain, expectedExact: "https://example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-www-host", category: .bareLiteral, spoken: "www dot example dot com",
+            expected: "www.example.com",
+            destination: .email, expectedExact: "www.example.com", addedFor: 4066
+        ),
+        .init(
+            id: "bare-absolute-path", category: .bareLiteral, spoken: "slash var slash log",
+            expected: "/var/log",
+            destination: .document, expectedExact: "/var/log", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-port-path", category: .bareLiteral, spoken: "localhost colon 3000 slash api",
+            expected: "localhost:3000/api",
+            destination: .messaging, expectedExact: "localhost:3000/api", addedFor: 4066
+        ),
+        .init(
+            id: "bare-host-keeps-path-case", category: .bareLiteral, spoken: "Example dot com slash Docs",
+            expected: "example.com/Docs", destination: .document, expectedExact: "example.com/Docs",
+            addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-host-is-down", category: .bareLiteral, spoken: "example dot com is down",
+            expected: "example.com is down.",
+            destination: .document, expectedExact: "example.com is down.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-five", category: .bareLiteral, spoken: "five", expected: "Five.",
+            destination: .document, expectedExact: "Five.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-ten-percent", category: .bareLiteral, spoken: "ten percent", expected: "10%.",
+            destination: .document, expectedExact: "10%.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-email-sentence", category: .bareLiteral,
+            spoken: "write to sam at example dot com", expected: "Write to sam@example.com.",
+            destination: .email, expectedExact: "Write to sam@example.com.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-number-sentence", category: .bareLiteral, spoken: "call 415 555 0100 tomorrow",
+            expected: "Call 415 555 0100 tomorrow.",
+            destination: .document, expectedExact: "Call 415 555 0100 tomorrow.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-version-sentence", category: .bareLiteral, spoken: "we shipped 2.3.1 today",
+            expected: "We shipped 2.3.1 today.",
+            destination: .plain, expectedExact: "We shipped 2.3.1 today.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-five-dollars", category: .bareLiteral, spoken: "five dollars",
+            expected: "5 dollars.",
+            destination: .document, expectedExact: "5 dollars.", addedFor: 4066
+        ),
+        .init(
+            id: "literal-prose-path-sentence", category: .bareLiteral,
+            spoken: "the page is example dot com slash docs", expected: "The page is example.com/docs",
+            destination: .messaging, expectedExact: "The page is example.com/docs", addedFor: 4066
+        ),
+    ]
     // MARK: One-line fields of no known purpose
 
     static let oneLineFieldContext = AppContext(accessibilityRole: "AXTextField", isMultiline: false)
@@ -3645,6 +3886,63 @@ public enum EvaluationCorpus {
             spoken: "bring a laptop. arrive early. park at the back",
             expected: "Bring a laptop. Arrive early. Park at the back.",
             context: oneLineFieldContext, mustEndWith: "."
+        ),
+    ]
+
+    // MARK: Launcher panels, whose one input is a query or a command
+
+    /// A launcher input that reports a plain one-line text field, so the row, not the role, decides the policy.
+    static func launcherContext(_ bundle: String) -> AppContext {
+        AppContext(bundleIdentifier: bundle, accessibilityRole: "AXTextField", isMultiline: false)
+    }
+
+    static let commandInput: [EvaluationCase] = [
+        .init(
+            id: "command-open-folder", category: .commandInput, spoken: "open the downloads folder",
+            expected: "open the downloads folder",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "open",
+            mustEndWith: "r", expectedExact: "open the downloads folder", addedFor: 4252
+        ),
+        .init(
+            id: "command-dark-mode", category: .commandInput, spoken: "toggle dark mode",
+            expected: "toggle dark mode",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "toggle",
+            mustEndWith: "e", expectedExact: "toggle dark mode", addedFor: 4252
+        ),
+        .init(
+            id: "command-new-note", category: .commandInput, spoken: "new note", expected: "new note",
+            context: launcherContext(DestinationRules.alfred), mustBeginWith: "new",
+            mustEndWith: "e", expectedExact: "new note", addedFor: 4252
+        ),
+        .init(
+            id: "command-recent-files", category: .commandInput, spoken: "show recent files",
+            expected: "show recent files",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "show",
+            mustEndWith: "s", expectedExact: "show recent files", addedFor: 4252
+        ),
+        .init(
+            id: "command-restart-server", category: .commandInput, spoken: "restart the language server",
+            expected: "restart the language server",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "restart",
+            mustEndWith: "r", expectedExact: "restart the language server", addedFor: 4252
+        ),
+        .init(
+            id: "command-empty-trash", category: .commandInput, spoken: "empty the trash",
+            expected: "empty the trash",
+            context: launcherContext(DestinationRules.alfred), mustBeginWith: "empty",
+            mustEndWith: "h", expectedExact: "empty the trash", addedFor: 4252
+        ),
+        .init(
+            id: "command-clipboard-history", category: .commandInput, spoken: "search clipboard history",
+            expected: "search clipboard history",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "search",
+            mustEndWith: "y", expectedExact: "search clipboard history", addedFor: 4252
+        ),
+        .init(
+            id: "command-weekday-keeps-capital", category: .commandInput,
+            spoken: "find the meeting notes from Monday", expected: "find the meeting notes from Monday",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "find",
+            mustEndWith: "y", expectedExact: "find the meeting notes from Monday", addedFor: 4252
         ),
     ]
 }

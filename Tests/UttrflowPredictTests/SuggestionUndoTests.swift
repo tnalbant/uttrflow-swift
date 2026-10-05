@@ -63,6 +63,22 @@ struct SuggestionUndoTests {
         }
     }
 
+    @Test("A missing field read preserves the line just undone in that field.")
+    func missingFieldReadPreservesUndoMemory() throws {
+        var session = try taking(exact, over: "git c")
+        _ = try draw(&session, typing: "git c", candidates: exact)
+        #expect(session.undoneHere == ["git commit -m"])
+
+        _ = session.turn(in: nil, at: PredictionContext(typed: ""))
+        let afterMissingRead = try draw(&session, typing: "git c", candidates: exact)
+
+        #expect(afterMissingRead?.suggestion.accepting == nil)
+        #expect(session.undoneHere == ["git commit -m"])
+
+        _ = try draw(&session, typing: "git c", candidates: exact, in: other)
+        #expect(session.undoneHere.isEmpty)
+    }
+
     @Test("An undo of a fuzzy acceptance, back to its typo, silences the correction too.")
     func undoneCorrectionIsNotReoffered() throws {
         var session = try taking(corrected, over: "gti c")
