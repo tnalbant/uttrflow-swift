@@ -212,6 +212,22 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes an offset from UTC or GMT as the zone, a sign, the hour and any half hour",
+        arguments: [
+            ("u t c plus five thirty", "UTC+5:30"),
+            ("utc plus five thirty", "UTC+5:30"),
+            ("g m t minus eight", "GMT-8"),
+            ("gmt plus eight", "GMT+8"),
+            ("UTC plus 5", "UTC+5"),
+            ("u t c plus five forty five", "UTC+5:45"),
+            ("plus five points", "plus five points"),
+        ]
+    )
+    func writesZoneOffsets(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "keeps two single digits and number words in a hyphenated count",
         arguments: [
             "one or two",

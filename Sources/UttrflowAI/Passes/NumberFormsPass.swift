@@ -153,6 +153,7 @@ public struct NumberFormsPass: PieceCleaningPass {
         at position: Int, keys: [String], shapes: [WordShape], policy: NumberPolicy = .fromTen,
         digits: DigitGrouping = .thousands
     ) -> Phrase? {
+        if let offset = zoneOffset(at: position, keys: keys, shapes: shapes) { return offset }
         if keys[position] == "plus", joined(position + 1, shapes),
             let run = spokenDigitRun(at: position + 1, keys: keys, shapes: shapes)
         {
@@ -316,6 +317,33 @@ public struct NumberFormsPass: PieceCleaningPass {
                 position: position, minuteStart: position + 1, minuteEnd: end, keys: keys, shapes: shapes)
         else { return nil }
         return Phrase(text: time.text, count: end - position)
+    }
+
+    /// The zones an offset is counted from, keyed by each way they are heard: one word or spoken letters.
+    static let offsetZones: [[String]: String] = [
+        ["utc"]: "UTC", ["u", "t", "c"]: "UTC", ["gmt"]: "GMT", ["g", "m", "t"]: "GMT",
+    ]
+
+    /// "u t c plus five thirty" as `UTC+5:30`: a zone, a sign, an hour up to 14 and an optional :30 or :45.
+    private static func zoneOffset(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        for (heard, zone) in offsetZones {
+            let sign = position + heard.count
+            guard sign + 1 < keys.count, Array(keys[position..<sign]) == heard,
+                (position + 1...sign + 1).allSatisfy({ joined($0, shapes) }),
+                let mark = ["plus": "+", "minus": "-"][keys[sign]],
+                let hour = NumberWords.cardinal(keys[(sign + 1)...(sign + 1)])?.value ?? Int(keys[sign + 1]),
+                (0...14).contains(hour)
+            else { continue }
+            let end = sign + 2
+            if joined(end, shapes), let minutes = minutes(at: end, keys: keys, shapes: shapes),
+                ["30", "45"].contains(minutes.text)
+            {
+                let text = "\(zone)\(mark)\(hour):\(minutes.text)"
+                return Phrase(text: text, count: end + minutes.count - position)
+            }
+            return Phrase(text: "\(zone)\(mark)\(hour)", count: end - position)
+        }
+        return nil
     }
 
     /// "fourteen thirty" after a time cue as `14:30`, and "oh nine hundred" before "hours" as `0900`.
