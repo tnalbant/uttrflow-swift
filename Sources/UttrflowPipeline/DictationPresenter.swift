@@ -68,7 +68,7 @@ public enum DictationPresenter {
             accessibilityLabel: accessibilityLabel)
     }
 
-    /// `waited` is the time since the key was released, which names the stage once the wait runs long.
+    /// `waited` is the time since key release, which names the stage once the wait runs long.
     public static func dock(
         for state: DictationState, advice: DictationAdvice = .keepGoing,
         stopGesture: StopGesture = .letGo, heardSoFar: String? = nil, waited: Duration = .zero

@@ -131,11 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var speechLoadStarted: ContinuousClock.Instant?
     /// Redraws the load's estimate once a second while a load runs, and is gone once it ends.
     private var speechLoadTicker: Task<Void, Never>?
-    /// When the key was released on the dictation now being worked on, so a long wait can name its stage.
+    /// The key release that starts the current wait, so a long wait can name its stage.
     private var waitStarted: ContinuousClock.Instant?
     /// Redraws the working line once a second while the wait after key release runs.
     private var waitTicker: Task<Void, Never>?
-    /// Whether VoiceOver has been told this wait's stage, which it is told once.
+    /// Whether VoiceOver already knows this wait's stage; it hears it once.
     private var waitAnnounced = false
     /// The recogniser the pipeline transcribes with, which Diagnostics names rather than the setting.
     private var speechInUse: SpeechEngineKind?

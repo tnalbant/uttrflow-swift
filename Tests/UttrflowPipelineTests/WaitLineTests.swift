@@ -44,7 +44,8 @@ struct WaitLineTests {
 
         #expect(dock.showsProgress)
         #expect(dock.symbolName != "checkmark")
-        #expect(DictationPresenter.dock(for: .inserted(DictationOutcome(text: "hi", method: .pasteboard, cleanedBy: .rules))).symbolName == "checkmark")
+        let landed = DictationOutcome(text: "hi", method: .pasteboard, cleanedBy: .rules)
+        #expect(DictationPresenter.dock(for: .inserted(landed)).symbolName == "checkmark")
     }
 
     @Test("VoiceOver hears the stage once, not a stream")
