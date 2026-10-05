@@ -327,9 +327,10 @@ The corpus column is 410 English cases, 3,011 words.
   a word list: any two English texts share runs of two or three of them.
 - The prompt check passes 3 as the shortest phrase, because rules quote slips that short.
 - Measured on Apple M5 Pro: 0 findings across the prompt contract, rules and worked examples, and
-  across every `.txt` and `.json` file under `Sources/*/Resources`, so 0 false positives today
+  across every `.txt` and `.json` asset in the data manifest, so 0 false positives today
   (`swift test --filter ContaminationAuditTests`).
-- Bundled assets are found by walking `Sources/*/Resources` until the data manifest lists them.
+- The assets audited are the ones [`Resources/DataManifest.json`](data-manifest.md) lists, so a
+  new lexicon, vocabulary pack or n-gram text is audited as soon as it is bundled.
 
 ## The transcription split
 
