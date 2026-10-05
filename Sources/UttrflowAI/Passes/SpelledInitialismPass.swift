@@ -51,14 +51,16 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
                 continue
             }
             let value = letters.joined()
+            let first = live[position]
+            let symbol = Self.followsNumber(position, in: live, draft: draft)
+                ? Abbreviations.unitSymbol(spelled: value) : nil
             let output =
                 Self.dottedPairs.contains(value.lowercased())
                 ? letters.map { $0.lowercased() }.joined(separator: ".") + "."
                 : value
-            let first = live[position]
             // The run keeps the mark its last letter carried, so a spoken stop or comma survives the join.
             let closing = draft.shape(at: live[end - 1]).suffix
-            let cased = Self.casedOutput(output, first: draft.words[first].text)
+            let cased = symbol ?? Self.casedOutput(output, first: draft.words[first].text)
             draft.replace(
                 at: first, with: closing.isEmpty ? cased : WordShape.marked(cased, with: closing), by: Self.id
             )
@@ -168,6 +170,13 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
         let numberAfter =
             end < live.count && joins(end) && NumberWords.isNumber(draft.shape(at: live[end]).key)
         return numberBefore || numberAfter
+    }
+
+    /// Whether a number, spoken or in digits, directly precedes the run at `position` in the same clause.
+    private static func followsNumber(_ position: Int, in live: [Int], draft: Draft) -> Bool {
+        guard position > 0, live[position] == live[position - 1] + 1 else { return false }
+        let previous = draft.shape(at: live[position - 1])
+        return !previous.endsClause && NumberWords.isNumber(previous.key)
     }
 
     /// The letter a word names, where a cut-off is an unfinished word and names no letter.

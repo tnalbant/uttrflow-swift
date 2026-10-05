@@ -1,5 +1,5 @@
 import Testing
-import UttrflowCore
+@testable import UttrflowCore
 
 @testable import UttrflowAI
 
@@ -174,5 +174,35 @@ struct SpelledInitialismShippedTests {
         ])
     func shipped(input: String, expected: String) {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "writes a spelled unit after a number as the unit's own symbol",
+        arguments: [
+            ("start aspirin eighty one m g by mouth", "Start aspirin 81 mg by mouth."),
+            ("give ten m l now", "Give 10 mL now."),
+            ("pressure is ninety m m h g", "Pressure is 90 mmHg."),
+            ("potassium twenty m e q", "Potassium 20 mEq."),
+            ("weight seventy k g", "Weight 70 kg."),
+            ("a 5 c m cut", "A 5 cm cut."),
+            ("the 16 g b model", "The 16 GB model."),
+            ("tune to 440 h z", "Tune to 440 Hz."),
+            ("signal at 2.4 g h z", "Signal at 2.4 GHz."),
+            ("the m g badge", "The MG badge."),
+            ("the g b is full", "The GB is full."),
+            ("ten x y z", "10 XYZ."),
+        ])
+    func unitSymbols(input: String, expected: String) {
+        #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
+    }
+
+    @Test("every symbol in the table is read back from its spelled letters after a number")
+    func everySymbol() {
+        let symbols = Abbreviations.table.rows.compactMap(\.symbol)
+        #expect(symbols.count >= 30)
+        for symbol in symbols {
+            let spoken = symbol.lowercased().map(String.init).joined(separator: " ")
+            #expect(SpelledInitialismPass().apply(Draft(text: "take 5 \(spoken) now")).text == "take 5 \(symbol) now")
+        }
     }
 }
