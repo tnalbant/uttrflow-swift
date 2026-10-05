@@ -42,20 +42,38 @@ enum TokenLeaders {
 /// Samples exactly as the wrapped sampler does and keeps each position's leaders. See `Docs/decoder-evidence.md`.
 final class EvidenceSampler: TokenSampling {
     private let inner: any TokenSampling
-    private let state = Mutex<(steps: [Int: [(token: Int, logProb: Float)]], lastTokens: [Int])>(([:], []))
+    /// The phrase bias this window decodes under, so every recorded value is the model's own, unbiased.
+    private let bias: PhraseBiasFilter?
+    private let state = Mutex<
+        (steps: [Int: [(token: Int, logProb: Float)]], chosen: [Int: Float], lastTokens: [Int])
+    >(([:], [:], []))
 
-    init(wrapping inner: any TokenSampling) {
+    init(wrapping inner: any TokenSampling, bias: PhraseBiasFilter? = nil) {
         self.inner = inner
+        self.bias = bias
     }
 
     /// Keyed by `tokens.count`, the position being predicted; a prefill step is overwritten by the next call there.
     func update(tokens: [Int], logits: MLMultiArray, logProbs: [Float]) async -> SamplingResult {
-        let leaders = TokenLeaders.leaders(in: TokenLeaders.scores(of: logits), k: TokenLeaders.count)
+        let observed = TokenLeaders.scores(of: logits)
+        let scores = bias?.unbiased(observed, withTokens: tokens) ?? observed
+        let leaders = TokenLeaders.leaders(in: scores, k: TokenLeaders.count)
+        let result = await inner.update(tokens: tokens, logits: logits, logProbs: logProbs)
+        // Recorded only where the bias moved a score, so the chosen token reports what the audio alone gave it.
+        let chosen: Float? =
+            if scores != observed, result.tokens.count > tokens.count, let token = result.tokens.last,
+                scores.indices.contains(token), let normaliser = TokenLeaders.normaliser(of: scores)
+            {
+                scores[token] - normaliser
+            } else {
+                nil
+            }
         state.withLock {
             $0.steps[tokens.count] = leaders
+            $0.chosen[tokens.count] = chosen
             $0.lastTokens = tokens
         }
-        return await inner.update(tokens: tokens, logits: logits, logProbs: logProbs)
+        return result
     }
 
     func finalize(tokens: [Int], logProbs: [Float]) -> SamplingResult {
@@ -63,13 +81,17 @@ final class EvidenceSampler: TokenSampling {
         return inner.finalize(tokens: tokens, logProbs: logProbs)
     }
 
-    /// `tokenLogProbs` with each step's runner-ups added beside the chosen token, whose own value is kept.
+    /// `tokenLogProbs` with each step's runner-ups beside the chosen token, whose value is the unbiased one where bias moved it.
     func tokenLogProbs(of result: DecodingResult) -> [[Int: Float]] {
         state.withLock { state in
             // WhisperKit cuts its result from the start-of-transcript token, the first token it returns.
             let start = result.tokens.first.flatMap { state.lastTokens.firstIndex(of: $0) } ?? 0
             return result.tokenLogProbs.enumerated().map { index, chosen in
                 let rivals = state.steps[start + index] ?? []
+                var chosen = chosen
+                if let unbiased = state.chosen[start + index], let token = chosen.keys.first {
+                    chosen[token] = unbiased
+                }
                 return rivals.reduce(into: chosen) { entry, rival in
                     if entry[rival.token] == nil { entry[rival.token] = rival.logProb }
                 }

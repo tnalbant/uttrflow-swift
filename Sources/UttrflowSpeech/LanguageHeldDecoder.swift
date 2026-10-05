@@ -136,7 +136,9 @@ final class LanguageHeldDecoder: TextDecoding {
         options decoderOptions: DecodingOptions,
         callback: TranscriptionCallback?
     ) async throws -> DecodingResult {
-        let evidence = EvidenceSampler(wrapping: tokenSampler)
+        // The same filter list WhisperKit reads for this decode, so the record undoes exactly the bias applied.
+        let bias = inner.logitsFilters?.lazy.compactMap { $0 as? PhraseBiasFilter }.first
+        let evidence = EvidenceSampler(wrapping: tokenSampler, bias: bias)
         var result = try await inner.decodeText(
             from: encoderOutput, using: decoderInputs, sampler: evidence,
             options: decoderOptions, callback: callback)
