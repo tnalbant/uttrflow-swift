@@ -10,6 +10,10 @@ public enum NumberCues {
         case coordinator
         /// A coordinator that joins only a rising pair, so "ten to six" stays a clock reading.
         case range
+        /// A larger unit that a smaller one may follow as one measure, as "hours" in "two hours thirty minutes".
+        case measureLead
+        /// A smaller unit that closes a two-part measure, as "minutes" in "two hours thirty minutes".
+        case measureTail
     }
 
     /// The cue words that say `cue`.
