@@ -6,6 +6,8 @@ public struct AppContext: Sendable, Equatable {
     public let applicationName: String?
     /// Bundle identifier of the frontmost application, e.g. `"com.tinyspeck.slackmacgap"`.
     public let bundleIdentifier: String?
+    /// The running process, which every application has even when it carries no bundle identifier.
+    public let processIdentifier: Int32?
     /// Title of the focused window or document, where the app exposes it.
     public let documentName: String?
     /// Text the user had selected, where readable. Never modified by the pipeline.
@@ -29,6 +31,7 @@ public struct AppContext: Sendable, Equatable {
     public init(
         applicationName: String? = nil,
         bundleIdentifier: String? = nil,
+        processIdentifier: Int32? = nil,
         documentName: String? = nil,
         selectedText: String? = nil,
         precedingText: String? = nil,
@@ -41,6 +44,7 @@ public struct AppContext: Sendable, Equatable {
     ) {
         self.applicationName = applicationName
         self.bundleIdentifier = bundleIdentifier
+        self.processIdentifier = processIdentifier
         self.documentName = documentName
         self.selectedText = selectedText
         self.precedingText = precedingText

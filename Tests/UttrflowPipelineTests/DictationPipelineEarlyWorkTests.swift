@@ -17,11 +17,16 @@ private actor NumberingSpeechEngine: SpeechEngine {
     private var silentCalls: Set<Int>
     private var blankCalls: Set<Int>
     private var failingCalls: Set<Int>
+    private var foreignCalls: [Int: String]
 
-    init(silentCalls: Set<Int> = [], blankCalls: Set<Int> = [], failingCalls: Set<Int> = []) {
+    init(
+        silentCalls: Set<Int> = [], blankCalls: Set<Int> = [], failingCalls: Set<Int> = [],
+        foreignCalls: [Int: String] = [:]
+    ) {
         self.silentCalls = silentCalls
         self.blankCalls = blankCalls
         self.failingCalls = failingCalls
+        self.foreignCalls = foreignCalls
     }
 
     func prepare() async throws(SpeechEngineError) {}
@@ -35,7 +40,7 @@ private actor NumberingSpeechEngine: SpeechEngine {
         if silentCalls.contains(call) { throw .nothingHeard }
         if failingCalls.contains(call) { throw .transcriptionFailed(description: "call \(call)") }
         return Transcription(
-            text: blankCalls.contains(call) ? "" : "w\(call) x",
+            text: foreignCalls[call] ?? (blankCalls.contains(call) ? "" : "w\(call) x"),
             detectedLanguage: DetectedLanguage(code: .english, confidence: 1),
             audioDuration: audio.duration)
     }
@@ -794,6 +799,25 @@ struct DictationPipelineEarlyWorkTests {
             #expect(await pipeline.currentState.outcome?.missedPieces == (missed ? 1 : 0))
             #expect(await recordings.discarded == (missed ? [] : [recording.id]))
         }
+    }
+
+    @Test(
+        "a piece heard in Arabic or Chinese script is a missed piece: the notice shows and every other word goes in",
+        arguments: ["شكرا جزيلا", "谢谢观看"])
+    func untranscribedScriptPieceIsMissed(heard: String) async throws {
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(Take.threePieces)),
+            speech: NumberingSpeechEngine(foreignCalls: [2: heard, 3: heard]), earlyPoll: .seconds(60))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        let outcome = try #require(await pipeline.currentState.outcome)
+        #expect(outcome.missedPieces == 1)
+        #expect(MissedSpeech.isMissing(outcome.missedPieces))
+        let words = outcome.text.lowercased()
+        #expect(words.contains("w1 x") && words.contains("w4 x"), "\(outcome.text)")
+        #expect(LatinScript.isLatin(outcome.text))
     }
 
     @Test("a secure-field dictation that missed a piece keeps no audio")

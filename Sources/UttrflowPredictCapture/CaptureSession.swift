@@ -74,9 +74,9 @@ public actor CaptureSession {
         if !isFocused(reading) { _ = try? await flush(with: .focusLeft(at: event.moment)) }
         focused = reading
         await retractIfUndone(event, in: reading)
-        guard let surface = reading.surface,
-            let commit = detector.receive(event, admitting: { policy.admits($0, in: reading) })
-        else { return .nothing }
+        let commit = detector.receive(event, admitting: { policy.admits($0, in: reading) })
+        await hearEditedSpan(from: reading)
+        guard let surface = reading.surface, let commit else { return .nothing }
         return try await write(commit, from: reading, in: surface, at: event.moment)
     }
 
@@ -348,10 +348,19 @@ public actor CaptureSession {
     /// Ends the focused field with this event, so a half-finished value is not lost.
     private func flush(with ending: CaptureEvent) async throws -> CaptureOutcome {
         defer { detector.reset() }
-        guard let leaving = focused, let surface = leaving.surface,
-            let commit = detector.receive(ending, admitting: { policy.admits($0, in: leaving) })
-        else { return .nothing }
+        guard let leaving = focused else { return .nothing }
+        let commit = detector.receive(ending, admitting: { policy.admits($0, in: leaving) })
+        await hearEditedSpan(from: leaving)
+        guard let surface = leaving.surface, let commit else { return .nothing }
         return try await write(commit, from: leaving, in: surface, at: ending.moment)
+    }
+
+    /// Passes an edit the detector found inside inserted text to the sink, unless the field or its words are refused.
+    private func hearEditedSpan(from reading: FieldReading) async {
+        guard let edit = detector.takeEditedSpan(), let surface = reading.surface,
+            CaptureGate.refusal(toHear: edit, from: reading, given: preferences) == nil
+        else { return }
+        try? await sink.recordEditedSpan(edit, in: surface)
     }
 
     /// Puts a finished value the policy admitted through every refusal and then into the corpus.

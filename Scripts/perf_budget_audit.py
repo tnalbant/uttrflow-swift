@@ -896,6 +896,57 @@ def latency_breaches(targets, samples):
     return breaches, report
 
 
+# The bench stage whose p95-plus-headroom row is each quality layer's latency budget, keyed by `QualityLayer` raw value.
+LAYER_STAGES = {
+    "recogniser-bias": "asr:recognitionSeconds",
+    "evidence-capture": "asr:wordTimingSeconds",
+    "candidate-generation": "correct",
+    "scoring": "correct",
+    "override-gate": "correct",
+    "formatting": "clean",
+}
+
+# Layers whose stage has no measured row yet, each with its reason printed on every run; a measured one fails as stale.
+LAYERS_UNMEASURED = {
+    "candidate-generation": "runs in the dictionary's correction, which `uttrflow-dev bench` gives no dictionary to time",
+    "scoring": "runs in the dictionary's correction, which `uttrflow-dev bench` gives no dictionary to time",
+    "override-gate": "runs in the dictionary's correction, which `uttrflow-dev bench` gives no dictionary to time",
+}
+
+LAYER_CASE = re.compile(r"^\s*case\s+(\w+)(?:\s*=\s*\"([\w-]+)\")?\s*$", re.M)
+
+
+def quality_layers(tree):
+    """The raw value of every `QualityLayer` case, as the registry declares them."""
+    text = tree.read("Sources/UttrflowCore/Support/QualityLayer.swift")
+    start = text.find("enum QualityLayer")
+    body = text[start : matching(text, text.find("{", start))] if start >= 0 else ""
+    return [raw or name for name, raw in LAYER_CASE.findall(body)]
+
+
+def check_layer_budgets(tree, findings, report):
+    """Every quality layer's budget is the row of the stage it runs in, or it is listed as awaiting measurement."""
+    targets = latency_targets(tree.read("Docs/performance.md"))
+    layers = quality_layers(tree)
+    if not layers:
+        findings.failures.append("layers: no `QualityLayer` cases found in Sources/UttrflowCore/Support/QualityLayer.swift")
+    for layer in layers:
+        stage = LAYER_STAGES.get(layer)
+        if stage is None:
+            findings.failures.append(f"layers: `{layer}` names no bench stage in LAYER_STAGES, so it has no latency budget")
+        elif stage in targets:
+            if layer in LAYERS_UNMEASURED:
+                findings.failures.append(f"stale: `{layer}` is measured as `{stage}`; remove it from LAYERS_UNMEASURED")
+            else:
+                report.append(f"  ✓ {layer}: `{stage}` budget {targets[stage][1]:.3f} s")
+        elif layer in LAYERS_UNMEASURED:
+            report.append(f"  - {layer}: `{stage}` unmeasured: {LAYERS_UNMEASURED[layer]}")
+        else:
+            findings.failures.append(f"layers: `{layer}` runs in `{stage}`, which has no row under `## Latency budget per stage`")
+    for gone in sorted((set(LAYER_STAGES) | set(LAYERS_UNMEASURED)) - set(layers)):
+        findings.failures.append(f"stale: `{gone}` is no longer a `QualityLayer`; remove it from LAYER_STAGES")
+
+
 def read_run(run_path, corpus_path):
     with open(corpus_path, encoding="utf-8") as handle:
         corpus = {clip["id"]: clip for clip in json.load(handle)}
@@ -969,6 +1020,7 @@ def audit(root, quiet=False, overrides=None):
         ("Counters: the harness judges readings by the budget table", lambda r: check_counters(tree, findings, r)),
         ("Suggestions: typing reads, callbacks and draws stay within their budget", lambda r: check_suggestion_path(tree, findings, r)),
         ("Latency: every stage budget is its measured p95 plus headroom", lambda r: check_latency_table(tree, findings, r)),
+        ("Layers: every quality layer's budget is its stage's p95 plus headroom", lambda r: check_layer_budgets(tree, findings, r)),
     ):
         report = []
         check(report)
@@ -1102,6 +1154,15 @@ INJECTIONS = (
     (
         "Docs/performance.md", "| commit `cfb11bf73` |", "| `cfb11bf73` |",
         "latency", "names no `| commit",
+    ),
+    (
+        "Sources/UttrflowCore/Support/QualityLayer.swift",
+        "    case formatting\n", "    case formatting\n    case persona\n",
+        "layers", "`persona` names no bench stage",
+    ),
+    (
+        "Docs/performance.md", "| `clean` | 5.557 | 6.669 | 75 |\n", "",
+        "layers", "`formatting` runs in `clean`",
     ),
     (
         "Sources/Uttrflow/Suggestion/SuggestionPanelController.swift",

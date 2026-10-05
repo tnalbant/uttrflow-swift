@@ -62,4 +62,17 @@ struct GuardNumberWordsTests {
             MeaningPreservationGuard.inventedNumber(
                 original: "one million rows", rewritten: "one million rows") == nil)
     }
+
+    /// A rewrite that swaps one Hindi quantity for another changes the stated quantity, and is refused.
+    @Test(
+        "a changed Hindi quantity is refused",
+        arguments: [
+            ("kal sattar log aaye", "Kal assi log aaye."),
+            ("dedh ghante baad milte hain", "Dhai ghante baad milte hain."),
+            ("paanch lakh rupaye bheje", "Paanch hazaar rupaye bheje."),
+        ]
+    )
+    func changedHindiQuantity(original: String, rewritten: String) {
+        #expect(MeaningPreservationGuard().verdict(original: original, rewritten: rewritten) != .accepted)
+    }
 }

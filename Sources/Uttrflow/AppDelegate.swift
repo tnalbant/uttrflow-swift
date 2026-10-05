@@ -97,6 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let history: DictationHistoryStore
     /// Each dictation's audio, kept beside it only until its words land. See `Docs/recordings.md`.
     private let recordings: RecordingStore
+    /// What the app observed about how this user speaks, under History's retention. See `Docs/learned-state.md`.
+    private let evidence: EvidenceLedgerStore?
     /// The user's own words, shared by all three parts of a dictation that read them.
     private let dictionary: PersonalDictionaryStore
     private let snippets: SnippetStore
@@ -131,6 +133,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var speechLoadStarted: ContinuousClock.Instant?
     /// Redraws the load's estimate once a second while a load runs, and is gone once it ends.
     private var speechLoadTicker: Task<Void, Never>?
+    /// The key release that starts the current wait, so a long wait can name its stage.
+    private var waitStarted: ContinuousClock.Instant?
+    /// Redraws the working line once a second while the wait after key release runs.
+    private var waitTicker: Task<Void, Never>?
+    /// Whether VoiceOver already knows this wait's stage; it hears it once.
+    private var waitAnnounced = false
     /// The recogniser the pipeline transcribes with, which Diagnostics names rather than the setting.
     private var speechInUse: SpeechEngineKind?
     /// Whether the last load already failed, so a second failure offers a download rather than another reload.
@@ -207,7 +215,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The latest fetch of those weights, internal so a test can wait for it rather than for the clock.
     private(set) var modelPreparation: Task<Void, Never>?
     /// When the suggestion model gives memory back and takes it again; internal so a test can shorten the waits.
-    var memoryPressure = SuggestionModelPressure()
+    var memoryPressure = ModelMemoryPressure()
+    /// When the speech model gives memory back and may give it back again; internal so a test can drive it.
+    var speechPressure = ModelMemoryPressure()
     /// The reload waiting for memory to stay calm, cancelled by the next reading; internal so a test can wait for it.
     private(set) var pressureReload: Task<Void, Never>?
     private let pressureSource = MemoryPressureSource()
@@ -291,6 +301,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
         clipboard = ClipboardStore(
             file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
+        evidence = encryptedStore.map {
+            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
+        }
         super.init()
         if clipboardPreferencesUnreadable {
             actionNotice = Self.clipboardPreferencesUnreadableNotice(
@@ -391,7 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         personalisation: Self.personalisation(
             in: container, dictionary: dictionary, history: history, clipboard: clipboard,
             elsewhere: keptElsewhere(), running: { [weak self] in self?.completions },
-            encryptedStore: encryptedStore),
+            encryptedStore: encryptedStore, evidence: evidence),
         onChange: { [weak self] settings in self?.settingsChanged(to: settings) },
         // Through the same switch the main window uses, so one choice is never applied two ways.
         onRequest: { [weak self] change in self?.apply(change) },
@@ -506,10 +519,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             days: settings.clipboardRetentionDays, now: now,
             dictationDays: settings.transcriptRetentionDays)
         let previous = sweeping
-        sweeping = Task(priority: .utility) { [recordings, history, clipboard] in
+        sweeping = Task(priority: .utility) { [recordings, history, clipboard, evidence] in
             await previous?.value
             _ = await recordings.waiting(now: now)
             _ = await history.records(keeping: retention)
+            _ = await evidence?.rows(keeping: RetentionWindow(days: retention.days, now: now))
             _ = await clipboard.clips(keeping: clipboardRetention)
         }
     }
@@ -545,14 +559,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         in container: URL, dictionary: PersonalDictionaryStore, history: DictationHistoryStore,
         clipboard: ClipboardStore, elsewhere: KeptElsewhere = KeptElsewhere(),
         running: @escaping @Sendable @MainActor () -> SuggestionCoordinator? = { nil },
-        encryptedStore: EncryptedStore? = nil
+        encryptedStore: EncryptedStore? = nil, evidence: EvidenceLedgerStore? = nil
     ) -> FilePersonalisationStore {
         FilePersonalisationStore(
             dictionary: dictionary, history: history, clipboard: clipboard,
             suggestions: PredictCorpus(
                 container: container, running: running, encryptedStore: encryptedStore),
             met: { AppDelegate.applicationsTheLoopHasMet(in: container) },
-            elsewhere: elsewhere)
+            elsewhere: elsewhere, evidence: evidence)
     }
 
     /// Applications the completion loop has met, so the Suggestions list can offer a switch for each.
@@ -703,7 +717,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return DictationPresenter.dock(
             for: state, advice: recordingAdvice, speechModel: speechModelLoad,
             download: speechReadiness.download, stopGesture: recordingStopGesture,
-            heardSoFar: heardSoFar)
+            heardSoFar: heardSoFar, waited: waitStarted.map { $0.duration(to: .now) } ?? .zero)
     }
 
     /// Asks each clean-up engine whether it could run, so Diagnostics has an answer to show; the task ends once it has.
@@ -1090,9 +1104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Lets the recogniser go under memory pressure unless a dictation is under way; the next key-down loads it again.
-    private func releaseSpeechModelIfIdle() {
+    /// Lets the recogniser go under pressure when idle, at a warning only once the last reload has held. See `Docs/performance.md`.
+    private func releaseSpeechModelIfIdle(at level: MemoryPressureLevel) {
         guard case .idle = lastDictationState, let speechEngine else { return }
+        guard level == .critical || speechPressure.allowsRelease(at: .now) else { return }
+        speechPressure.released(at: .now)
         Task { await speechEngine.release() }
     }
 
@@ -1103,7 +1119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PanelThumbnails.shared.releaseForMemoryPressure()
             pressureReload?.cancel()
             pressureReload = nil
-            releaseSpeechModelIfIdle()
+            releaseSpeechModelIfIdle(at: level)
             guard settings.suggestions.isEnabled, isModelPreparing else { return }
             memoryPressure.released(at: .now)
             releaseTheModel()
@@ -1295,7 +1311,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     pasteboard: announcingPasteboard,
                     secretClassifier: { ClipKindDetector.kind(of: $0) == .secret })
             ]),
-            profile: settings.profile
+            profile: settings.profile,
+            layers: QualityLayers { key in
+                let defaults = UserDefaults.standard
+                return defaults.object(forKey: key) == nil ? nil : defaults.bool(forKey: key)
+            }
         )
         self.pipeline = pipeline
 
@@ -2392,6 +2412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard let record = DictationRecordMapping.record(for: state, when: Date(), id: UUID())
             else { break }
             keep(record)
+            noteStyle(outcome)
         case .failed(let notice):
             Self.log.error(
                 """
@@ -2446,6 +2467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         onboarding?.dictationChanged(to: state)
         // A dictation's own outcome is newer than any panel paste's report.
         if state != .idle { pasteReport = nil }
+        if state.isBusy, speechPressure.isReleased { speechPressure.reloaded(at: .now) }
         DictationInProgress.shared.set(dictating: state.isBusy)
         completions?.dictationChanged(isDictating: state.isBusy)
 
@@ -2455,12 +2477,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             recordingStopGesture = .letGo
         }
         menuBar.update(with: MenuBarPresenter.present(menuBarState(for: state)))
+        trackWait(for: state)
         dock.update(with: dockPresentation(for: state))
         announce(DictationPresenter.announcement(for: state))
         // No page shows a dictation under way, so the pages are read and built only once it has ended.
         if !state.isBusy { refreshMainWindow() }
 
         scheduleDismissal(after: state)
+    }
+
+    /// Starts the clock on the wait at key release and redraws its line each second until the dictation ends.
+    private func trackWait(for state: DictationState) {
+        guard state.isBusy, !state.isListening else {
+            waitStarted = nil
+            waitTicker?.cancel()
+            waitTicker = nil
+            waitAnnounced = false
+            return
+        }
+        guard waitStarted == nil else { return }
+        waitStarted = .now
+        waitTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, let started = waitStarted else { return }
+                let waited = started.duration(to: .now)
+                dock.update(with: dockPresentation(for: lastDictationState))
+                if let said = WaitLine.announcement(
+                    for: lastDictationState, waited: waited, alreadyAnnounced: waitAnnounced)
+                {
+                    waitAnnounced = true
+                    announce(said)
+                }
+            }
+        }
     }
 
     /// Offers every word one dictation taught in the popover and names the first through VoiceOver.
@@ -2483,6 +2533,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSAccessibility.post(
             element: NSApplication.shared, notification: .announcementRequested,
             userInfo: [.announcement: text, .priority: priority.rawValue])
+    }
+
+    /// Counts how the user writes in the destination the words went into; never the words themselves.
+    private func noteStyle(_ outcome: UttrflowPipeline.DictationOutcome) {
+        guard let evidence, !outcome.intoSecureField, !outcome.isFromRecording else { return }
+        let app = AppContext(
+            applicationName: outcome.insertedInto, bundleIdentifier: outcome.insertedIntoIdentifier)
+        let destination = DestinationClassifier.classify(app, overrides: settings.destinations)
+        let now = Date()
+        let rows = StyleSignals.rows(for: outcome.text, into: destination, day: EvidenceRow.day(of: now))
+        guard !rows.isEmpty else { return }
+        let window = RetentionWindow(days: settings.transcriptRetentionDays, now: now)
+        Task {
+            do {
+                try await evidence.append(rows, keeping: window)
+            } catch {
+                Self.log.error("style counts not saved: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     /// Keeps one dictation, inserted or salvaged, and makes it what the last-transcript shortcuts act on.

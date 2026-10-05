@@ -196,7 +196,7 @@ extension TypedTextInsertionEngine {
                 // Characters already posted cannot be taken back, so any later stop is a partial insertion.
                 guard typed == 0 else { throw .insertionInterrupted(typed: typed, total: total) }
                 if let replaced {
-                    guard let destination, destination.isKnown, destination.bundleIdentifier != nil else {
+                    guard let destination, destination.processIdentifier != nil || destination.bundleIdentifier != nil else {
                         throw .insertionUnconfirmed
                     }
                     do {
