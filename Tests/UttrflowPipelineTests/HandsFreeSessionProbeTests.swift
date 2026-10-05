@@ -42,6 +42,8 @@ private actor HandsFreeProbe {
     private let controller: DictationController<ManualClock>
     private var presses = 0
     private var announced = 0
+    private var announcer = DictationAnnouncer<ManualClock.Instant>(
+        repeatWindow: DictationController<ManualClock>.doubleTapWindow)
 
     init(heard: String) {
         pipeline = DictationPipeline(
@@ -97,7 +99,8 @@ private actor HandsFreeProbe {
     func step(_ name: String) async -> ProbeStep {
         for _ in 0..<20 { await Task.yield() }
         let states = log.states
-        let said = states[announced...].compactMap { DictationPresenter.announcement(for: $0)?.text }
+        let now = clock.now
+        let said = states[announced...].compactMap { announcer.announcement(for: $0, at: now)?.text }
         announced = states.count
         defer { presses = 0 }
         return ProbeStep(name: name, keyPresses: presses, announcements: said)
@@ -134,8 +137,8 @@ struct HandsFreeSessionProbeTests {
         #expect(steps.map(\.keyPresses) == [2, 0, 2, 1])
         #expect(steps.map(\.keyPresses).reduce(0, +) == 5)
         #expect(
-            steps[0].announcements == ["Listening.", "Listening."],
-            "each tap of the double tap opens the microphone")
+            steps[0].announcements == ["Listening."],
+            "a double tap that goes hands-free announces once")
         #expect(steps[2].announcements.contains { $0.hasPrefix("Inserted:") })
         #expect(
             steps[3].announcements.last

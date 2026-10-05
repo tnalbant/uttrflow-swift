@@ -2490,7 +2490,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menuBar.update(with: MenuBarPresenter.present(menuBarState(for: state)))
         trackWait(for: state)
         dock.update(with: dockPresentation(for: state))
-        announce(DictationPresenter.announcement(for: state))
+        announcer.repeatWindow = .milliseconds(settings.handsFreeDoubleTapMilliseconds)
+        announce(announcer.announcement(for: state, at: ContinuousClock.now))
         // No page shows a dictation under way, so the pages are read and built only once it has ended.
         if !state.isBusy { refreshMainWindow() }
 
@@ -3043,6 +3044,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var lastVocabularyPrompt: [String] = []
     /// What the dictation pipeline last reported. See where it is written.
     private var lastDictationState: DictationState = .idle
+    private var announcer = DictationAnnouncer<ContinuousClock.Instant>(
+        repeatWindow: DictationController<ContinuousClock>.doubleTapWindow)
     private var snippetEditorIsOpen = false
     /// The same, for the word editor.
     private var wordEditorIsOpen = false

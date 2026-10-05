@@ -53,7 +53,7 @@ counting key presses and what VoiceOver is told: `swift test --filter HandsFreeS
 
 | Step | Key presses | VoiceOver hears | Gap |
 |---|---|---|---|
-| Start | 2: a double tap | "Listening." twice | key only #5539; announced twice #5538 |
+| Start | 2: a double tap | "Listening." once | key only #5539 |
 | Dictate | 0 | nothing | none |
 | Stop | 2: a double tap | "Inserted:" and the words | stop by voice #4314, #4319 |
 | Correct | 1: a hold of the command key | "That isn't an edit command Uttrflow knows" | no edit command #2389 |
