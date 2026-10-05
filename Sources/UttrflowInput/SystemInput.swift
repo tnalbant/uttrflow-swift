@@ -341,7 +341,7 @@ public struct CGEventTypist: KeystrokeTyping {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw .insertionRejected(description: unmakeableKeystroke)
         }
-        let keypresses = LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
+        let keypresses = try LayoutKeyCode.keypresses(for: text, stroke: PasteKeyLayout.stroke(for:))
         try buildThenPost(
             keypresses,
             build: { keypress throws(TextInsertionError) in
