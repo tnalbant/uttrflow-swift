@@ -225,7 +225,7 @@ public enum SettingsPresenter {
                     label: "Double-tap speed",
                     explanation: "Choose how far apart your taps can be.",
                     control: .menu(
-                        options: [450, 600, 800].map { milliseconds in
+                        options: Settings.handsFreeDoubleTapChoices.map { milliseconds in
                             SettingsOption(
                                 id: String(milliseconds), title: "\(milliseconds) ms",
                                 change: .handsFreeDoubleTap(milliseconds: milliseconds))
@@ -233,6 +233,20 @@ public enum SettingsPresenter {
                         selectedID: String(settings.handsFreeDoubleTapMilliseconds)),
                     style: .inset),
                 at: 2)
+            shortcuts.insert(
+                SettingsRow(
+                    id: "handsFreeHoldMilliseconds",
+                    label: "Hold length",
+                    explanation: "Choose how long a press can last and still count as a tap.",
+                    control: .menu(
+                        options: Settings.handsFreeHoldChoices.map { milliseconds in
+                            SettingsOption(
+                                id: String(milliseconds), title: "\(milliseconds) ms",
+                                change: .handsFreeHold(milliseconds: milliseconds))
+                        },
+                        selectedID: String(settings.handsFreeHoldMilliseconds)),
+                    style: .inset),
+                at: 3)
         }
         shortcuts.append(
             SettingsRow(
@@ -431,6 +445,26 @@ public enum SettingsPresenter {
             icon: .symbol("globe", .info))
     }
 
+    /// The row saying how long the user pauses while speaking, so a long pause does not end a sentence.
+    static func pausesRow(_ settings: Settings) -> SettingsRow {
+        SettingsRow(
+            id: "pauses",
+            label: "Pauses while you speak",
+            explanation: "Longer means Uttrflow waits longer before a pause ends a sentence",
+            control: .segmented(
+                options: PauseLength.allCases.map { pauses in
+                    let title: String =
+                        switch pauses {
+                        case .usual: "Usual"
+                        case .long: "Long"
+                        case .veryLong: "Very long"
+                        }
+                    return SettingsOption(id: pauses.rawValue, title: title, change: .pauses(pauses))
+                },
+                selectedID: settings.profile.pauses.rawValue),
+            icon: .symbol("pause.circle", .info))
+    }
+
     /// The tidying row, shared by every screen that offers the level.
     static func tidyingRow(
         _ level: SettingsTidyingLevel, _ capabilities: SettingsCapabilities
@@ -506,7 +540,9 @@ public enum SettingsPresenter {
             title: title(of: .languages),
             banner: nil,
             groups: [
-                SettingsGroup(id: "spoken", title: "Languages you speak", rows: [listenForRow(settings)]),
+                SettingsGroup(
+                    id: "spoken", title: "Languages you speak",
+                    rows: [listenForRow(settings), pausesRow(settings)]),
                 SettingsGroup(
                     id: "tidying", title: "Tidying up",
                     rows: [tidyingRow(level, capabilities)]

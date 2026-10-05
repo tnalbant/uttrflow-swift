@@ -77,6 +77,16 @@ struct ScorerTests {
         #expect(Scorer.score("HELLO THERE", against: shaped(expected: "hello there.")).brokeShape.isEmpty)
     }
 
+    @Test("compares romanised Hindi by sound, so a spelling variant is not a lost word")
+    func foldsRomanisedSpellings() {
+        let hindi = EvaluationCase(
+            id: "case", category: .multilingual, language: .hindi, spoken: "spoken",
+            expected: "Mujhe theek nahi lag raha.")
+        #expect(Scorer.score("Mujhe thik nahi lag raha.", against: hindi).similarity == 1)
+        let english = reference(expected: "Mujhe theek nahi lag raha.")
+        #expect(Scorer.score("Mujhe thik nahi lag raha.", against: english).similarity < 1)
+    }
+
     @Test("scores an exact match perfectly")
     func exactMatch() {
         let score = Scorer.score("Hello there.", against: reference(expected: "Hello there."))
@@ -426,6 +436,9 @@ struct EvaluationCorpusTests {
     /// A reference that already lost a required word would score every model wrongly.
     @Test("keeps every required word in its own reference answer")
     func referencesAreSelfConsistent() {
+        let urlCase = EvaluationCorpus.all.first { $0.id == "fmt-token-url-path-stopped" }
+        #expect(urlCase?.expected == "The url is https://example.com/docs.")
+        #expect(urlCase?.mustKeep == ["https://example.com/docs"])
         for testCase in EvaluationCorpus.all {
             let score = Scorer.score(testCase.expected, against: testCase)
             #expect(score.keptEverythingRequired, "\(testCase.id) lost \(score.lost)")

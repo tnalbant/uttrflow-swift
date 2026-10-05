@@ -72,6 +72,13 @@ public enum QuestionShape {
         return spoken.last
     }
 
+    /// Whether an inverted question opens after the first word, where word order alone cannot place its mark.
+    public static func opensQuestionLater(_ sentence: [WordShape]) -> Bool {
+        let words = sentence.filter { !$0.key.isEmpty }
+            .map { $0.key.replacingOccurrences(of: "\u{2019}", with: "'") }
+        return hasInvertedQuestionAfterOpening(words)
+    }
+
     /// Whether a clause-starting subject has a predicate and a plausible complement before "right".
     private static func hasClauseBeforeRight(_ words: [String]) -> Bool {
         let clause = Array(words.drop(while: openers.contains))

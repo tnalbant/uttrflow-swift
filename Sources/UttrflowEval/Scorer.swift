@@ -8,8 +8,8 @@ public enum Scorer {
             for: output, in: reference.destination)
         let produced = tokens(rewritten)
         let wanted = tokens(reference.expected)
-        let producedSurface = surfaceWords(rewritten)
-        let wantedSurface = surfaceWords(reference.expected)
+        let wantedSurface = ClassifiedWord.words(of: reference.expected)
+        let capitalisation = CapitalisationTally.measure(surfaceWords(rewritten), against: wantedSurface)
         // A phrase is one run inside one sentence, so the run it is sought in keeps the sentence ends.
         let sentences = tokens(rewritten, keepingSentenceEnds: true)
         // Matched like a guard, so a symbol requirement such as "()" is sought literally rather than always lost.
@@ -22,82 +22,30 @@ public enum Scorer {
         }
 
         let alignment = WordErrorRate.measure(reference: wanted, hypothesis: produced).alignment
+        let marks = PunctuationTally.measure(rewritten, against: reference.expected)
         return CaseScore(
             caseID: reference.id,
-            similarity: overlap(produced, wanted),
-            markAccuracy: markAccuracy(rewritten, reference.expected),
-            caseAccuracy: caseAccuracy(producedSurface, wantedSurface),
+            similarity: overlap(
+                spellingFolded(produced, in: reference), spellingFolded(wanted, in: reference)),
+            markAccuracy: marks.accuracy,
+            caseAccuracy: capitalisation.accuracy,
             keptEverythingRequired: lost.isEmpty,
             lost: lost,
             isExact: normalisedWhitespace(rewritten) == normalisedWhitespace(reference.expected),
             invented: invented,
             brokeShape: brokenShape(of: rewritten, against: reference),
-            deleted: alignment.compactMap { if case .deletion(let word) = $0 { word } else { nil } }
+            deleted: alignment.compactMap { if case .deletion(let word) = $0 { word } else { nil } },
+            capitalisation: capitalisation,
+            marks: marks,
+            // What a clean-up that wrote everything lower case, or left the recogniser's case, would score.
+            lowerCaseBaseline: CapitalisationTally.measure(
+                surfaceWords(reference.expected.lowercased()), against: wantedSurface),
+            spokenBaseline: CapitalisationTally.measure(
+                surfaceWords(reference.spoken), against: wantedSurface)
         )
     }
 
-    /// Measures shared words whose original capitalisation is preserved.
-    static func caseAccuracy(_ produced: [String], _ wanted: [String]) -> Double {
-        let alignment = WordErrorRate.measure(
-            reference: wanted.map { $0.lowercased() }, hypothesis: produced.map { $0.lowercased() })
-        let matches = alignment.hits
-        guard matches > 0 else { return 1 }
-        var producedIndex = 0
-        var wantedIndex = 0
-        var correct = 0
-        for operation in alignment.alignment {
-            switch operation {
-            case .match:
-                if produced[producedIndex] == wanted[wantedIndex] { correct += 1 }
-                producedIndex += 1
-                wantedIndex += 1
-            case .substitution:
-                producedIndex += 1
-                wantedIndex += 1
-            case .deletion:
-                wantedIndex += 1
-            case .insertion:
-                producedIndex += 1
-            }
-        }
-        return Double(correct) / Double(matches)
-    }
-
-    /// Measures comma and sentence-end placement with an F1 score over word boundaries.
-    static func markAccuracy(_ produced: String, _ wanted: String) -> Double {
-        let producedMarks = marks(produced)
-        let wantedMarks = marks(wanted)
-        guard !producedMarks.isEmpty || !wantedMarks.isEmpty else { return 1 }
-        let shared = producedMarks.intersection(wantedMarks).count
-        let precision = producedMarks.isEmpty ? 0 : Double(shared) / Double(producedMarks.count)
-        let recall = wantedMarks.isEmpty ? 0 : Double(shared) / Double(wantedMarks.count)
-        guard precision + recall > 0 else { return 0 }
-        return 2 * precision * recall / (precision + recall)
-    }
-
-    private static func marks(_ text: String) -> Set<String> {
-        var result: Set<String> = []
-        var word = ""
-        var wordCount = 0
-        func flush() {
-            guard !word.isEmpty else { return }
-            wordCount += 1
-            word = ""
-        }
-        for character in text {
-            if character.isLetter || character.isNumber {
-                word.append(character)
-                continue
-            }
-            flush()
-            if character == "," { result.insert("\(wordCount):comma") }
-            if ".!?".contains(character) { result.insert("\(wordCount):sentence") }
-        }
-        flush()
-        return result
-    }
-
-    private static func surfaceWords(_ text: String) -> [String] {
+    static func surfaceWords(_ text: String) -> [String] {
         var words: [String] = []
         var word = ""
         for character in text {
@@ -165,6 +113,11 @@ public enum Scorer {
         flush()
         if keepingSentenceEnds, closed, !found.isEmpty { found.append(sentenceEnd) }
         return found
+    }
+
+    /// Romanised Hindi has no single spelling, so its words are compared by the romaniser's sound key: "theek" is "thik".
+    static func spellingFolded(_ words: [String], in reference: EvaluationCase) -> [String] {
+        reference.language == .hindi ? words.map(Romaniser.soundKey) : words
     }
 
     /// Harmonic mean of precision and recall over an aligned reading, so a word moved is not a word kept.

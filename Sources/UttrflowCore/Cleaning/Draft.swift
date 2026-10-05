@@ -1,3 +1,4 @@
+private import Synchronization
 /// The words of one utterance, each carrying what the recogniser heard and what has been done to it since.
 public struct Draft: Sendable, Equatable {
     /// One word, its origin, and the pass that last touched it.
@@ -116,7 +117,11 @@ public struct Draft: Sendable, Equatable {
     /// The tokens a line may open with to be read as a list item; `InsertionPoint` reads the same set.
     public static let bulletTokens: Set<String> = ["-", "\u{2022}", "*"]
 
-    public var words: [Word]
+    public var words: [Word] {
+        didSet { presence = PresenceCache() }
+    }
+    /// The present positions, read once per edit rather than once per question a pass asks.
+    private var presence = PresenceCache()
     /// Whether the words carry the recogniser's confidences rather than a stand-in of 1 for every word.
     public let confidencesAreReal: Bool
 
@@ -136,9 +141,9 @@ public struct Draft: Sendable, Equatable {
         var previousLine: Int?
         let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         for (number, line) in lines.enumerated() {
-            var lineWords = line.split(whereSeparator: \.isWhitespace)
+            var lineWords = WordTokens.words(line, .display)
             guard !lineWords.isEmpty else { continue }
-            let opening = lineWords.count > 1 ? String(lineWords[0]) : ""
+            let opening = lineWords.count > 1 ? lineWords[0] : ""
             let isBullet = Self.bulletTokens.contains(opening)
             let itemNumber = Self.numberedItemNumber(opening)
             let isItem = isBullet || itemNumber != nil
@@ -147,7 +152,7 @@ public struct Draft: Sendable, Equatable {
             let itemMark = isBullet ? Self.bullet : itemNumber.map { "\($0)\(Self.numberStop)" } ?? ""
             let mark = breaks + itemMark
             if !mark.isEmpty { words.append(Word(mark)) }
-            words += lineWords.map { Word(String($0)) }
+            words += lineWords.map { Word($0) }
             previousLine = number
         }
         self.init(words: words)
@@ -179,9 +184,9 @@ public struct Draft: Sendable, Equatable {
         // A stop joined to the next word is spaced off when romanised, so the token becomes two words.
         let words = heard.words.flatMap { word in
             guard Romaniser.containsDevanagari(word.text) else { return [word] }
-            return Romaniser.romanised(word.text).split(whereSeparator: \.isWhitespace).map {
+            return WordTokens.words(Romaniser.romanised(word.text), .display).map {
                 Word(
-                    text: String($0), heard: String($0), confidence: word.confidence, origin: .devanagari,
+                    text: $0, heard: $0, confidence: word.confidence, origin: .devanagari,
                     start: word.start, end: word.end)
             }
         }
@@ -189,7 +194,7 @@ public struct Draft: Sendable, Equatable {
     }
 
     private static func split(_ text: String, confidence: Double) -> [Word] {
-        text.split(whereSeparator: \.isWhitespace).map { Word(String($0), confidence: confidence) }
+        WordTokens.words(text, .display).map { Word($0, confidence: confidence) }
     }
 
     /// A piece of one recognised word, with that word's place in the audio.
@@ -254,7 +259,13 @@ public struct Draft: Sendable, Equatable {
     public var removed: [Word] { words.filter { !$0.isPresent } }
 
     /// Positions in `words` of the words still in the text, in order.
-    public var presentIndices: [Int] { words.indices.filter { words[$0].isPresent } }
+    public var presentIndices: [Int] {
+        presence.indices { words.indices.filter { words[$0].isPresent } }
+    }
+
+    public static func == (lhs: Draft, rhs: Draft) -> Bool {
+        lhs.words == rhs.words && lhs.confidencesAreReal == rhs.confidencesAreReal
+    }
 
     // MARK: Editing
 
@@ -339,5 +350,17 @@ public struct Draft: Sendable, Equatable {
             Word(
                 text: text, heard: "", confidence: 1, state: .inserted(by: pass),
                 edits: [Word.Edit(by: pass, kind: .inserted, from: "", to: text)]), at: index)
+    }
+}
+
+/// Holds the present positions of one version of a draft's words; an edit replaces it rather than changing it.
+private final class PresenceCache: Sendable {
+    private let stored = Mutex<[Int]?>(nil)
+
+    func indices(_ compute: () -> [Int]) -> [Int] {
+        if let known = stored.withLock({ $0 }) { return known }
+        let computed = compute()
+        stored.withLock { $0 = computed }
+        return computed
     }
 }

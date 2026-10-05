@@ -39,6 +39,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [chat-mail-probe.md](chat-mail-probe.md) | What the dictation read gets from a chat composer or a mail body |
 | [web-field-probe.md](web-field-probe.md) | What the dictation read gets from a web field |
+| [terminal-probe.md](terminal-probe.md) | What the dictation read gets from a terminal |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
@@ -52,6 +53,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [closed-phrase-marks.md](closed-phrase-marks.md) | Recogniser commas and stops after a closed-class word, measured |
 | [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
@@ -166,6 +168,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [measuring-accuracy.md](measuring-accuracy.md) | Measuring speech accuracy |
 | [core-word-error-rate.md](core-word-error-rate.md) | Word error rate |
 | [eval-methodology.md](eval-methodology.md) | How `uttrflow-eval transcribe` measures a recogniser |
+| [disfluency-deletion.md](disfluency-deletion.md) | Disfluency removal scored by the words deleted, per class |
 | [eval-context-cases.md](eval-context-cases.md) | The Hinglish and context cases in the evaluation corpus |
 | [eval-profiling.md](eval-profiling.md) | Reading memory and processor use from inside the process |
 | [performance.md](performance.md) | What Uttrflow costs a Mac |

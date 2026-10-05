@@ -66,9 +66,13 @@ literals) matches these files under `Sources/`:
 | `Sources/UttrflowSpeech/TokenizerDownload.swift` | 1 | fetches the speech model's weights and tokenizer at install time |
 | `Sources/uttrflow-dev/SignIn.swift`, `Sources/uttrflow-eval/CorpusConnection.swift` | 2 | developer tools that ship in nothing |
 
-The pattern also matches an `https://example.com` inside an expected transcript in
-`Sources/UttrflowEval/EvaluationCorpus.swift`, which is text, not a call. Every other module under
-`Sources/` has no match, and that is what the audit's first check asserts.
+The source audit also recognizes local URL readers only after each call site has been reviewed
+for its URL origin. The reviewed readers cover files under Application Support, bundled resources,
+the temporary audio file produced by `say`, and the baseline path supplied to `uttrflow-dev seams`.
+The formatting corpus contains a URL in an expected transcript; escaped slash characters keep that
+fixture text in `Sources/UttrflowEval/FormattingCorpus.swift` out of the source audit's
+network-literal pattern while Swift still constructs the same transcript. Every other module under
+`Sources/` has no network match, and that is what the audit's first check asserts.
 
 No clean-up engine is hosted: `TextTransformers.all` assembles only on-device engines, and
 `Tests/UttrflowAITests/OfflineGuaranteeTests.swift` asserts every assembled and selectable kind

@@ -58,8 +58,20 @@ enum LearnableWords {
         guard !(uppercase.count <= 5 && uppercase.count >= 2 && uppercase.allSatisfy(\.isUppercase)) else {
             return false
         }
-        guard titleLetters.lowercased() != spokenLetters.lowercased() else { return false }
-        return true
+        guard titleLetters.lowercased() == spokenLetters.lowercased() else { return true }
+        return isMarkedClosing(term, of: heard)
+    }
+
+    /// Whether case marks heard words as one closed-up name ("PaymentSheet", "PG vector"), unlike "localhost".
+    private static func isMarkedClosing(_ term: String, of heard: String) -> Bool {
+        let parts = heard.split { !$0.isLetter }
+        guard parts.count > 1 else { return false }
+        let titleMarks =
+            term.dropFirst().contains(where: \.isUppercase) && term.contains(where: \.isLowercase)
+        let heardMarks =
+            parts.dropFirst().contains { $0.first?.isUppercase == true }
+            || parts.contains { $0.count >= 2 && $0.allSatisfy(\.isUppercase) }
+        return titleMarks || heardMarks
     }
 
     // MARK: - Corrected by the user

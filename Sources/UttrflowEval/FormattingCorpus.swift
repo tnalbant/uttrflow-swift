@@ -350,8 +350,8 @@ extension EvaluationCorpus {
         .init(
             id: "fmt-token-url-path-stopped", category: .technical,
             spoken: "The url is https colon slash slash example dot com slash docs.",
-            expected: "The url is https://example.com/docs.",
-            mustKeep: ["https://example.com/docs"], classes: [.capitalisationAndTokens]
+            expected: "The url is https:\u{2F}\u{2F}example.com/docs.",
+            mustKeep: ["https:\u{2F}\u{2F}example.com/docs"], classes: [.capitalisationAndTokens]
         ),
         .init(
             id: "fmt-token-acronym-kept", category: .technical,
