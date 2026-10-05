@@ -72,18 +72,22 @@ public struct NumberFormsPass: PieceCleaningPass {
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
-        let live = draft.presentIndices
-        let shapes = live.map { draft.shape(at: $0) }
+        let present = draft.presentIndices
+        let (shapes, live) = Self.splittingTensUnits(present.map { draft.shape(at: $0) }, of: present)
         let keys = shapes.map(\.key)
         var position = 0
         while position < live.count {
+            guard position == 0 || live[position - 1] != live[position] else {
+                position += 1
+                continue
+            }
             if let percentile = Self.percentile(
-                at: position, keys: keys, shapes: shapes, policy: policy, digits: digits)
+                at: position, keys: keys, shapes: shapes, policy: policy, digits: digits),
+                Self.endsWord(position + percentile.count - 1, live)
             {
                 let last = position + percentile.count - 1
                 let text = shapes[position].prefix + "p" + percentile.text + shapes[last].suffix
-                draft.replace(at: live[position], with: text, by: Self.id)
-                for index in live[(position + 1)..<(last + 1)] { draft.remove(at: index, by: Self.id) }
+                Self.write(text, over: position...last, of: live, in: &draft)
                 position += percentile.count
                 continue
             }
@@ -105,12 +109,47 @@ public struct NumberFormsPass: PieceCleaningPass {
                 continue
             }
             let last = position + phrase.count - 1
+            guard Self.endsWord(last, live) else {
+                position += 1
+                continue
+            }
             let text = shapes[position].prefix + phrase.text + shapes[last].suffix
-            draft.replace(at: live[position], with: text, by: Self.id)
-            for index in live[(position + 1)..<(last + 1)] { draft.remove(at: index, by: Self.id) }
+            Self.write(text, over: position...last, of: live, in: &draft)
             position += phrase.count
         }
         return draft
+    }
+
+    /// Splits a written `tens-unit` word such as "twenty-one" into its two number words, each mapped to its draft index.
+    static func splittingTensUnits(_ shapes: [WordShape], of indices: [Int]) -> ([WordShape], [Int]) {
+        var split: [WordShape] = []
+        var origins: [Int] = []
+        for (shape, index) in zip(shapes, indices) {
+            let parts = shape.core.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+            if parts.count == 2, NumberWords.tens[parts[0].lowercased()] != nil,
+                let unit = NumberWords.units[parts[1].lowercased()], unit > 0
+            {
+                split += [WordShape(shape.prefix + parts[0]), WordShape(parts[1] + shape.suffix)]
+                origins += [index, index]
+            } else {
+                split.append(shape)
+                origins.append(index)
+            }
+        }
+        return (split, origins)
+    }
+
+    /// Whether the split word at `position` is the last piece of its draft word.
+    private static func endsWord(_ position: Int, _ live: [Int]) -> Bool {
+        position + 1 >= live.count || live[position + 1] != live[position]
+    }
+
+    /// Writes `text` over the draft words behind the split words in `span`.
+    private static func write(_ text: String, over span: ClosedRange<Int>, of live: [Int], in draft: inout Draft) {
+        draft.replace(at: live[span.lowerBound], with: text, by: id)
+        for index in Set(live[span]).subtracting([live[span.lowerBound]]).sorted() {
+            draft.remove(at: index, by: id)
+        }
     }
 
     /// Joins a spoken percentile after `p` only for the commonly used latency ranks.

@@ -113,6 +113,28 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "reads a hyphenated tens-unit number as one number",
+        arguments: [
+            ("twenty-one dollars", "21 dollars"),
+            ("ninety-nine percent", "99%"),
+            ("forty-two", "42"),
+            ("Forty-two, then", "42, then"),
+            ("three hundred forty-five people", "345 people"),
+            ("forty-five thousand", "45,000"),
+        ]
+    )
+    func hyphenatedTensUnit(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test("reads a hyphenated tens-unit number from ten up, and keeps a hyphen that is not one")
+    func hyphenatedTensUnitFromTen() {
+        #expect(cleaned("twenty-one", by: sut) == "21")
+        #expect(cleaned("at twenty-one", by: sut) == "at 21")
+        #expect(cleaned("a well-known one-off", by: sut) == "a well-known one-off")
+    }
+
+    @Test(
         "a pronoun one stays a word where every number is a numeral",
         arguments: [
             ("no one knows", "no one knows"),
