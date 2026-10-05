@@ -8,8 +8,8 @@ public struct LoanwordRestoration: Sendable {
 
     /// The source is the shipped technical lexicon plus `personal`, the person's dictionary words; no other list.
     public init(personal: [String] = []) {
-        // An acronym is said letter by letter and a command is typed at a prompt, so neither is a word said inside a sentence: "kal" is not "CLI".
-        let said = TechnicalLexicon.terms.filter { $0.category != .acronym && $0.category != .command }
+        // An acronym is said letter by letter, a command typed at a prompt and an annotation opens a comment, so none is a word said inside a sentence: "kal" is not "CLI".
+        let said = TechnicalLexicon.terms.filter { ![.acronym, .command, .annotation].contains($0.category) }
         var seen: Set<String> = []
         english = [personal, said.map(\.id)].map { written in
             written.compactMap { spelling in
