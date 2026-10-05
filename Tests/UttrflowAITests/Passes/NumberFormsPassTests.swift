@@ -365,6 +365,25 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes a spoken dot between digit groups as a dot when three groups or a cue say so",
+        arguments: [
+            ("one nine two dot one six eight dot one dot one", "192.168.1.1"),
+            ("the ip is ten dot zero dot zero dot one", "the ip is 10.0.0.1"),
+            ("install two dot one dot three", "install 2.1.3"),
+            ("version two dot five", "version 2.5"),
+            ("build twelve dot four", "build 12.4"),
+            ("two dot five", "two dot five"),
+            ("dot five", "dot five"),
+            ("the dot com bubble", "the dot com bubble"),
+            ("one dot product", "one dot product"),
+            ("ten dot com", "10 dot com"),
+        ]
+    )
+    func dottedNumbers(input: String, expected: String) {
+        #expect(cleaned(input, by: sut) == expected)
+    }
+
+    @Test(
         "writes times of day",
         arguments: [
             ("two thirty pm", "2:30 pm"),
@@ -566,6 +585,14 @@ struct NumberFormsPassTests {
             ("nineteen ninety nine", "1999"),
             ("twenty ten", "2010"),
             ("in twenty twenty", "in 2020"),
+            ("in twenty oh five", "in 2005"),
+            ("since nineteen oh one", "since 1901"),
+            ("from nineteen oh five until twenty oh nine", "from 1905 until 2009"),
+            ("in two thousand", "in 2000"),
+            ("in two thousand five", "in 2005"),
+            ("in two thousand and five", "in 2005"),
+            ("March twenty oh five", "March 2005"),
+            ("twenty oh five people", "20 oh five people"),
         ]
     )
     func years(input: String, expected: String) {

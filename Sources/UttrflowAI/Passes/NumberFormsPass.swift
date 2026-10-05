@@ -23,6 +23,8 @@ public struct NumberFormsPass: PieceCleaningPass {
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
     /// The words a speaker uses for the leading zero of a clock minute.
     static let clockZeros: Set<String> = ["oh", "o", "zero"]
+    /// Words after which "nineteen oh five" is a year rather than a clock time or a count.
+    static let yearCues: Set<String> = ["in", "since", "year", "of", "from", "until", "till"]
     static let idioms: [[String]] = [["twenty", "four", "seven"], ["fifty", "fifty"]]
     static let monthDays: [String: Int] = [
         "january": 31, "february": 29, "march": 31, "april": 30, "may": 31, "june": 30,
@@ -160,8 +162,10 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: "+" + run.text, count: run.count + 1)
         }
         if let date = numericDate(at: position, keys: keys, shapes: shapes) { return date }
+        if let year = cuedYear(at: position, keys: keys, shapes: shapes) { return year }
         if let clock = cuedClock(at: position, keys: keys, shapes: shapes) { return clock }
         if let clock = twentyFourHourClock(at: position, keys: keys, shapes: shapes) { return clock }
+        if let dotted = dottedNumber(at: position, keys: keys, shapes: shapes) { return dotted }
         if let run = spokenDigitRun(at: position, keys: keys, shapes: shapes) { return run }
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
@@ -563,6 +567,44 @@ public struct NumberFormsPass: PieceCleaningPass {
         return Phrase(text: String(group.value), count: group.count)
     }
 
+    /// Words before two dotted digit groups that say they are an address, version or decimal.
+    static let dottedCues: Set<String> = ["ip", "address", "version", "v", "build", "release"]
+
+    /// "one nine two dot one six eight dot one dot one": digit groups a spoken "dot" joins, three or more or two after a cue.
+    private static func dottedNumber(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard let first = leadingGroup(at: position, keys: keys, shapes: shapes) else { return nil }
+        var text = first.text
+        var end = position + first.count
+        var groups = 1
+        while joined(end, shapes), keys[end] == "dot",
+            let group = digitGroup(at: end + 1, keys: keys, shapes: shapes)
+        {
+            text += "." + group.text
+            end += 1 + group.count
+            groups += 1
+        }
+        let cued =
+            position > 0 && !startsASentence(position, shapes) && dottedCues.contains(keys[position - 1])
+        guard groups >= 3 || (groups == 2 && cued) else { return nil }
+        return Phrase(text: text, count: end - position)
+    }
+
+    /// The first group of a dotted number: single digit words run together, digits, or one cardinal.
+    private static func leadingGroup(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        var text = ""
+        var end = position
+        while end < keys.count, end == position || joined(end, shapes), let digit = singleDigit(keys[end]) {
+            text.append(digit)
+            end += 1
+        }
+        if !text.isEmpty { return Phrase(text: text, count: end - position) }
+        if let digits = NumberWords.digits(keys[position]) { return Phrase(text: digits, count: 1) }
+        guard let group = NumberWords.cardinal(unbroken(from: position, keys: keys, shapes: shapes)) else {
+            return nil
+        }
+        return Phrase(text: String(group.value), count: group.count)
+    }
+
     private static func singleDigit(_ key: String) -> String? {
         NumberWords.spokenDigit(key).map(String.init)
     }
@@ -702,17 +744,32 @@ public struct NumberFormsPass: PieceCleaningPass {
             return Phrase(text: digits, count: 1)
         }
         guard let century = NumberWords.teens[keys[start]] ?? NumberWords.tens[keys[start]],
-            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes)
+            let year = year(after: century, at: start + 1, keys: keys, shapes: shapes, cued: true)
         else { return nil }
         return Phrase(text: year.text, count: year.count + 1)
     }
 
-    /// "twenty twenty four" and "nineteen ninety nine", from a spoken 19 or 20 and a spoken 10 to 99.
+    /// A spoken year after a year cue or a month, so "in twenty oh five" is 2005 and never a clock time.
+    private static func cuedYear(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        guard position > 0, !startsASentence(position, shapes),
+            yearCues.contains(keys[position - 1]) || monthDays[keys[position - 1]] != nil,
+            let century = NumberWords.teens[keys[position]] ?? NumberWords.tens[keys[position]],
+            let year = year(after: century, at: position + 1, keys: keys, shapes: shapes, cued: true)
+        else { return nil }
+        return Phrase(text: year.text, count: year.count + 1)
+    }
+
+    /// "twenty twenty four" and "nineteen ninety nine"; a cued year also takes "oh" and a unit, as in "twenty oh five".
     private static func year(
-        after century: Int, at start: Int, keys: [String], shapes: [WordShape]
+        after century: Int, at start: Int, keys: [String], shapes: [WordShape], cued: Bool = false
     ) -> Phrase? {
-        guard century == 19 || century == 20, joined(start, shapes),
-            let rest = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
+        guard century == 19 || century == 20, joined(start, shapes) else { return nil }
+        if cued, clockZeros.contains(keys[start]), joined(start + 1, shapes),
+            let unit = NumberWords.units[keys[start + 1]], unit > 0
+        {
+            return Phrase(text: String(century * 100 + unit), count: 2)
+        }
+        guard let rest = NumberWords.cardinal(unbroken(from: start, keys: keys, shapes: shapes)),
             (10...99).contains(rest.value), rest.count <= 2
         else { return nil }
         return Phrase(text: String(century * 100 + rest.value), count: rest.count)

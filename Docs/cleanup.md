@@ -437,7 +437,7 @@ a word and a model that takes it costs the whole rewrite. Which rule stays is no
 ## How the number grammar chooses between readings
 
 `NumberFormsPass.phrase` tries its readers in a fixed order and the first that matches wins:
-a `plus`-led digit run, a numeric date, a cued clock, a 24-hour clock, a spoken digit run, a
+a `plus`-led digit run, a numeric date, a cued clock, a 24-hour clock, a dotted number, a spoken digit run, a
 decade, a signed number, a month and its day, an ordinal, then a cardinal that may grow into a
 decimal, a percentage, a year, a clock time, a colloquial hundred or a context-word digit group.
 The semiotic classes it reads are cardinal, ordinal, decimal, percentage, money, measure, date,
@@ -459,9 +459,10 @@ time, telephone or code digits, and plain words. Each known ambiguity, and what 
 | Product or version number against count | "python three" | context: the closed `contextWords` set |
 | Month against verb | "may fifth" | context: `monthIsDated` needs a capital or a dating clause |
 | Spoken year shapes | "twenty oh five", "two thousand and five" | not settled: no reader matches |
-| Spoken "dot", "double", magnitude letters | "three dot one", "double oh seven", "fifty k" | not settled: no reader matches |
+| Spoken "dot" between numbers against the word | "one nine two dot one six eight dot one dot one", "two dot five" | context: `dottedNumber` needs three digit groups, or two after a word in `dottedCues` |
+| Spoken "double", magnitude letters | "double oh seven", "fifty k" | not settled: no reader matches |
 
-Seven of the fifteen are settled by order alone, four by a context word, and four not at all.
+Seven of the sixteen are settled by order alone, five by a context word, and four not at all.
 Whether readings that compete by weight remove the order-dependence without changing a current
 output is not yet measured: it needs the per-class exact-match scorer, and until it lands the
 structure stays as it is.
