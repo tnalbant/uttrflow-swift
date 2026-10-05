@@ -135,7 +135,7 @@ public struct CleaningRecord: Sendable, Equatable {
     public let engineFailures: [EngineFailure]
     /// Stages whose words passed through unchanged because they timed out or threw.
     public let skippedStages: [SkippedStage]
-    /// What the kept model said, word for word, before it was unwrapped and finished; one per piece, held only in memory.
+    /// What the kept model said, word for word, before unwrapping and finishing; one per piece, held only in memory.
     public let modelAnswers: [String]
 
     public init(
