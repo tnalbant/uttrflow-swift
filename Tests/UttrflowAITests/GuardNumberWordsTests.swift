@@ -54,6 +54,28 @@ struct GuardNumberWordsTests {
         #expect(MeaningPreservationGuard().verdict(original: original, rewritten: rewritten) != .accepted)
     }
 
+    /// A spoken unit word is the speaker's word, so a rewrite that swaps it for its symbol is refused.
+    @Test(
+        "a unit word rewritten as its symbol is refused",
+        arguments: [
+            ("we ran 10 kilometres", "We ran 10 km."),
+            ("add 5 millilitres", "Add 5 ml."),
+            ("the file is 3 gigabytes", "The file is 3 GB."),
+        ]
+    )
+    func unitWordAsSymbol(original: String, rewritten: String) {
+        let verdict = MeaningPreservationGuard().verdict(draft: Draft(text: original), rewritten: rewritten)
+        #expect(verdict != .accepted)
+    }
+
+    /// A symbol the speaker spelled is already in the draft, so the model keeping it is accepted.
+    @Test("a unit symbol already in the draft survives the guard")
+    func unitSymbolKept() {
+        #expect(
+            MeaningPreservationGuard().verdict(draft: Draft(text: "we ran 10 km"), rewritten: "We ran 10 km.")
+                == .accepted)
+    }
+
     /// The scales above a thousand are the only words the guard gained when its own table went.
     @Test("a million spoken and a million written are the same number to the guard")
     func millionIsANumber() {
