@@ -154,6 +154,9 @@ extension MeaningPreservationGuard {
                 if let numeral = MeaningPreservationGuard.numberWords[token.matching] {
                     spellings.insert(numeral)
                 }
+                if let numeral = MeaningPreservationGuard.ordinalNumerals[token.matching] {
+                    spellings.insert(numeral)
+                }
                 if let homophones = Homophones.group(containing: token.matching) {
                     spellings.formUnion(homophones)
                 }
@@ -282,6 +285,7 @@ extension MeaningPreservationGuard {
         }
         if numberWords[word] == candidate.matching { return true }
         if numberWords[candidate.matching] == word { return true }
+        if ordinalNumerals[word] == candidate.matching { return true }
         // A misheard sound-alike respelled is the same spoken word, and only the hand-kept table says which are.
         if Homophones.share(word, candidate.matching) { return true }
         // A word spelled into an identifier — "invoices" inside "fetchInvoices" — is still there.
