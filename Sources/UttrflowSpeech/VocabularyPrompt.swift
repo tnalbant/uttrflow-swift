@@ -12,12 +12,12 @@ protocol PromptTokenizer {
 }
 
 /// The user's words as the prompt Whisper decodes against. See `Docs/speech-vocabulary-prompt.md`.
-enum VocabularyPrompt {
+public enum VocabularyPrompt {
     /// The most prompt tokens WhisperKit decodes, which is 111 rather than the model's 448.
     static let maximumTokens = 111
 
     /// The sentence the user's words are offered inside, which is what makes the decoder hear them.
-    static let opening = " The words used here are"
+    public static let opening = " The words used here are"
     /// Closed like a sentence, for the same reason it is opened like one.
     static let closing = "."
 
