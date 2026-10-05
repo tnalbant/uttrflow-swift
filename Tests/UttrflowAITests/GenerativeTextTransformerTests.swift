@@ -59,7 +59,11 @@ struct GenerativeTextTransformerTests {
 
     @Test(
         "leaves to the rules an English draft that owes only its capital and stop",
-        arguments: ["she is a nurse today", "sales actually grew last quarter"])
+        arguments: [
+            "she is a nurse today", "sales actually grew last quarter",
+            "call me on nine eight seven six five four three two one zero",
+            "version two point four point one",
+        ])
     func skipsSettledDraft(text: String) async throws {
         let model = FakeCleanupModel { _ in "Changed by the model." }
         let sut = GenerativeTextTransformer(kind: .foundationModels, model: model)
