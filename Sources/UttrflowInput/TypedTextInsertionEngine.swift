@@ -34,11 +34,12 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
         self.finishWaitStarted = finishWaitStarted
     }
 
-    /// Anything but ourselves or a focused control; Electron apps expose no focused element and still take typing.
+    /// Anything but ourselves, a focused control or a modal editor; Electron apps expose no focused element and still take typing.
     public func canInsert() async -> Bool {
         guard !focus.isSelfFrontmost() else { return false }
         let focus = focus
-        return await AccessibilityThread.run(orElse: .unpublished) { focus.focusedElementKind() } != .control
+        let kind = await AccessibilityThread.run(orElse: .unpublished) { focus.focusedElementKind() }
+        return kind != .control && !Self.keysMayBeCommands(in: focus.focusedApplication())
     }
 
     /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
@@ -168,6 +169,15 @@ extension TypedTextInsertionEngine {
         guard !focus.isSelfFrontmost(), focus.focusedElementKind() != .control else {
             throw .noFocusedTextField
         }
+        guard !Self.keysMayBeCommands(in: focus.focusedApplication()) else { throw .noFocusedTextField }
+    }
+
+    /// Whether the table marks the app as one whose mode may turn typed letters into commands. See `Docs/compatibility.md`.
+    static func keysMayBeCommands(in application: InsertionDestination?) -> Bool {
+        guard let application else { return false }
+        return DestinationClassifier.keysMayBeCommands(
+            in: AppContext(
+                applicationName: application.applicationName, bundleIdentifier: application.bundleIdentifier))
     }
 
     /// Characters posted between checks, small enough that a stop lands within a few milliseconds of typing.
@@ -196,7 +206,9 @@ extension TypedTextInsertionEngine {
                 // Characters already posted cannot be taken back, so any later stop is a partial insertion.
                 guard typed == 0 else { throw .insertionInterrupted(typed: typed, total: total) }
                 if let replaced {
-                    guard let destination, destination.processIdentifier != nil || destination.bundleIdentifier != nil else {
+                    guard let destination,
+                        destination.processIdentifier != nil || destination.bundleIdentifier != nil
+                    else {
                         throw .insertionUnconfirmed
                     }
                     do {

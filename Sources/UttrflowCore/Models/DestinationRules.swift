@@ -122,13 +122,18 @@ public enum DestinationRules {
                 "com.jetbrains.phpstorm", "com.jetbrains.rubymine", "com.jetbrains.clion",
                 "com.jetbrains.datagrip", "com.jetbrains.appcode", "com.jetbrains.mps",
                 "com.sublimetext", "com.panic.Nova",
-                "com.visualstudio.code", "org.vim.MacVim", "com.google.antigravity",
+                "com.visualstudio.code", "com.google.antigravity",
             ],
             nameWords: [
                 "xcode", "code", "zed", "sublime", "cursor", "nova", "intellij", "pycharm", "goland",
-                "vim", "neovim", "emacs",
+                "emacs",
             ],
             kind: .codeEditor
+        ),
+        DestinationRule(
+            bundlePrefixes: ["org.vim.MacVim"],
+            nameWords: ["vim", "macvim", "neovim", "gvim"],
+            kind: .codeEditor, keysMayBeCommands: true
         ),
         DestinationRule(
             bundlePrefixes: [

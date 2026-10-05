@@ -15,10 +15,13 @@ public struct DestinationRule: Sendable, Equatable, Codable {
     public let terminalStop: TerminalStopPolicy?
     /// What every field of this app holds, for a panel whose one input is a query whatever role it reports.
     public let field: FieldRole?
+    /// Whether the app can read a typed key as a command rather than text, so only a route that cannot do that may write.
+    public let keysMayBeCommands: Bool
 
     public init(
         bundlePrefixes: [String] = [], titleContains: [String] = [], nameWords: [String] = [],
-        destination: Destination, terminalStop: TerminalStopPolicy? = nil, field: FieldRole? = nil
+        destination: Destination, terminalStop: TerminalStopPolicy? = nil, field: FieldRole? = nil,
+        keysMayBeCommands: Bool = false
     ) {
         self.bundlePrefixes = bundlePrefixes
         self.titleContains = titleContains
@@ -27,12 +30,14 @@ public struct DestinationRule: Sendable, Equatable, Codable {
         self.destination = destination
         self.terminalStop = terminalStop
         self.field = field
+        self.keysMayBeCommands = keysMayBeCommands
     }
 
     /// A row built from the sort of app it names, so its destination cannot disagree with its caption.
     public init(
         bundlePrefixes: [String] = [], titleContains: [String] = [], nameWords: [String] = [],
-        kind: AppKind, terminalStop: TerminalStopPolicy? = nil, field: FieldRole? = nil
+        kind: AppKind, terminalStop: TerminalStopPolicy? = nil, field: FieldRole? = nil,
+        keysMayBeCommands: Bool = false
     ) {
         self.bundlePrefixes = bundlePrefixes
         self.titleContains = titleContains
@@ -41,6 +46,7 @@ public struct DestinationRule: Sendable, Equatable, Codable {
         self.destination = kind.destination
         self.terminalStop = terminalStop
         self.field = field
+        self.keysMayBeCommands = keysMayBeCommands
     }
 
     /// Whether the app's bundle identifier, window title or name falls under this row.
@@ -135,5 +141,12 @@ public enum DestinationClassifier {
         for app: AppContext, rules: [DestinationRule] = DestinationRules.standard
     ) -> AppKind? {
         rule(for: app, rules: rules)?.kind
+    }
+
+    /// Whether the table marks this app as one that may read typed keys as commands.
+    public static func keysMayBeCommands(
+        in app: AppContext, rules: [DestinationRule] = DestinationRules.standard
+    ) -> Bool {
+        rule(for: app, rules: rules)?.keysMayBeCommands == true
     }
 }
