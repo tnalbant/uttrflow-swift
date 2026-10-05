@@ -86,7 +86,9 @@ final class TreeWindowSource<Tree: ElementTree>: FocusedWindowSource {
         let resolved = AccessibilitySelection.resolve(
             singular: answer(1).flatMap(decode.range), plural: plural?.compactMap(decode.range),
             textLength: count)
-        guard case .unavailable = resolved, let marker = tree.markerSelection(of: field) else { return resolved }
+        guard case .unavailable = resolved, let marker = tree.markerSelection(of: field) else {
+            return resolved
+        }
         // The marker rung counts the field itself, so a field that also refuses its length still gets a window.
         let byMarker = AccessibilitySelection.resolve(
             singular: CFRange(location: marker.range.location, length: marker.range.length), plural: nil,

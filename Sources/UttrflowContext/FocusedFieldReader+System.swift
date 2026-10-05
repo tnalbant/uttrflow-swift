@@ -284,9 +284,12 @@ public enum FocusedFieldReader {
         if case .range(let value) = selected {
             range = value
         } else {
-            range = declaredSecure || !goOn() ? nil : markerSelection(field).map {
-                CFRange(location: $0.range.location, length: $0.range.length)
-            }
+            range =
+                declaredSecure || !goOn()
+                ? nil
+                : markerSelection(field).map {
+                    CFRange(location: $0.range.location, length: $0.range.length)
+                }
         }
         guard goOn() else { return nil }
         let read = SurfaceProbe.text(of: field, names: identity, at: range)
