@@ -1,13 +1,12 @@
-// Reproduces #3419: a mark or symbol name after a determiner is a noun, not the symbol.
 import Testing
 
 @testable import UttrflowAI
 @testable import UttrflowCore
 @testable import UttrflowTestSupport
 
-/// Issue 3419: "the dot com bubble" stays words rather than becoming "The.com bubble".
-@Suite("Issue3419")
-struct Issue3419ReproductionTests {
+/// Symbol names mentioned as nouns stay words instead of becoming written symbols.
+@Suite("Symbol names mentioned as words stay words", .bug(id: 3419))
+struct SpokenSymbolMentionTests {
     private func rules(_ spoken: String) async throws -> String {
         try await RuleBasedTransformer().transform(
             TransformationRequest(transcription: .fixture(text: spoken, language: .english))
