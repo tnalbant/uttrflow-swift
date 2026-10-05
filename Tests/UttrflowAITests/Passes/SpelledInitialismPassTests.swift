@@ -258,3 +258,49 @@ struct SpelledCodeShippedTests {
         #expect(CleaningPipeline.standard.run(Draft(text: input)).text == expected)
     }
 }
+
+@Suite("SpelledInitialismPass hex tokens")
+struct SpelledInitialismHexTests {
+    private let sut = SpelledInitialismPass()
+
+    @Test(
+        "joins characters after a hex cue into one lower-case token of an allowed length",
+        arguments: [
+            ("zero x f f", "0xff"),
+            ("set it to zero x d e a d b e e f", "set it to 0xdeadbeef"),
+            ("0 x 7 f", "0x7f"),
+            ("hash f f five seven three three", "#ff5733"),
+            ("hash f f 5 7 3 3", "#ff5733"),
+            ("pound a b c", "#abc"),
+            ("hash zero zero f f zero zero eight zero", "#00ff0080"),
+            ("use hash f f f for the text", "use #fff for the text"),
+            ("the colour is hash c zero c zero c zero.", "the colour is #c0c0c0."),
+            ("revert commit a three f nine c two one", "revert commit a3f9c21"),
+            ("sha d e a d b e e f", "sha deadbeef"),
+            ("hex f f zero zero", "hex ff00"),
+            ("hex capital a b", "hex Ab"),
+            (
+                "commit" + String(repeating: " a b c d e f one two three four", count: 4),
+                "commit" + " " + String(repeating: "abcdef1234", count: 4)
+            ),
+        ])
+    func cued(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+
+    @Test(
+        "leaves a run without a cue, or of a length the cue does not allow, as the letter join reads it",
+        arguments: [
+            ("a b c", "ABC"),
+            ("hash browns for breakfast", "hash browns for breakfast"),
+            ("dead beef is a meme", "dead beef is a meme"),
+            ("hash f f", "hash FF"),
+            ("hash f f f f", "hash FFFF"),
+            ("commit a three f", "commit A3F"),
+            ("hex a lot of it", "hex a lot of it"),
+            ("zero x marks the spot", "zero x marks the spot"),
+        ])
+    func uncued(input: String, expected: String) {
+        #expect(sut.apply(Draft(text: input)).text == expected)
+    }
+}

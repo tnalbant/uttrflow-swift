@@ -37,7 +37,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     public init() {}
 
     public func apply(_ draft: Draft) -> Draft {
-        var draft = draft
+        var draft = Self.joinHexTokens(in: draft)
         var live = draft.presentIndices
         var joined: Set<Int> = []
         var position = 0
