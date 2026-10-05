@@ -21,6 +21,8 @@ public struct NumberFormsPass: PieceCleaningPass {
         "rupee", "rupees", "dollar", "dollars", "euro", "euros", "pound", "pounds",
     ]
     static let meridiems: Set<String> = ["am", "pm", "a.m", "p.m"]
+    /// A meridiem heard as its letters and how it is written after a clock time.
+    static let spelledMeridiems: [[String]: String] = [["a", "m"]: "am", ["p", "m"]: "pm"]
     /// The words a speaker uses for the leading zero of a clock minute.
     static let clockZeros: Set<String> = ["oh", "o", "zero"]
     /// Words after which "nineteen oh five" is a year rather than a clock time or a count.
@@ -300,11 +302,13 @@ public struct NumberFormsPass: PieceCleaningPass {
         guard !finishesAScale(at: position, keys: keys, shapes: shapes) else { return nil }
         if let limit = monthDays[keys[position]], joined(position + 1, shapes),
             let ordinal = parseOrdinal(at: position + 1, keys: keys, shapes: shapes),
-            ordinal.value <= limit, policy == .always || ordinal.value >= 10,
-            monthIsDated(at: position, keys: keys, shapes: shapes)
+            ordinal.value <= limit, monthIsDated(at: position, keys: keys, shapes: shapes)
         {
+            let number =
+                policy == .always || ordinal.value >= 10
+                ? String(ordinal.value) : spokenWords(position + 1, ordinal.count, shapes)
             let day = Phrase(
-                text: "\(WordShape.capitalised(keys[position])) \(ordinal.value)", count: ordinal.count + 1)
+                text: "\(WordShape.capitalised(keys[position])) \(number)", count: ordinal.count + 1)
             return withYear(day, at: position, order: .monthFirst, keys: keys, shapes: shapes)
         }
         if let ordinal = parseOrdinal(at: position, keys: keys, shapes: shapes) {
@@ -324,11 +328,14 @@ public struct NumberFormsPass: PieceCleaningPass {
             if !hasOf, !monthIsDated(at: end, keys: keys, shapes: shapes) {
                 return nil
             }
-            guard policy == .always || ordinal.value >= 10 else { return nil }
+            let number =
+                policy == .always || ordinal.value >= 10
+                ? "\(ordinal.value)\(ordinalSuffix(ordinal.value))"
+                : spokenWords(position, ordinal.count, shapes)
             let month = WordShape.capitalised(keys[end])
             let preposition = hasOf ? " of" : ""
             let day = Phrase(
-                text: "\(ordinal.value)\(ordinalSuffix(ordinal.value))\(preposition) \(month)",
+                text: "\(number)\(preposition) \(month)",
                 count: end - position + 1)
             return withYear(day, at: position, order: .dayFirst, keys: keys, shapes: shapes)
         }
@@ -446,7 +453,7 @@ public struct NumberFormsPass: PieceCleaningPass {
     private static func cuedClock(at position: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard let hour = NumberWords.cardinal(keys[position...position])?.value,
             position + 1 < keys.count, clockZeros.contains(keys[position + 1]),
-            let time = time(hour: hour, at: position + 1, keys: keys, shapes: shapes), time.count == 2
+            let time = time(hour: hour, at: position + 1, keys: keys, shapes: shapes), time.count >= 2
         else { return nil }
         let end = position + 1 + time.count
         guard !(joined(end, shapes) && singleDigit(keys[end]) != nil),
@@ -561,9 +568,14 @@ public struct NumberFormsPass: PieceCleaningPass {
     ) -> Bool {
         let hasBeforeCue = hasTimeCue(before: position, keys: keys, shapes: shapes)
         let endsTheSentence = minuteEnd >= shapes.count || shapes[minuteEnd - 1].endsSentence
+        let endsOnMeridiem = spelledMeridiems.keys.contains { heard in
+            minuteEnd <= keys.count && minuteEnd - heard.count >= minuteStart
+                && Array(keys[(minuteEnd - heard.count)..<minuteEnd]) == heard
+        }
         let hasAfterCue =
-            minuteEnd < shapes.count && joined(minuteEnd, shapes)
-            && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
+            endsOnMeridiem
+            || minuteEnd < shapes.count && joined(minuteEnd, shapes)
+                && (meridiems.contains(keys[minuteEnd]) || keys[minuteEnd] == "o'clock")
         return hasBeforeCue || hasAfterCue || endsTheSentence
     }
 
@@ -948,14 +960,34 @@ public struct NumberFormsPass: PieceCleaningPass {
         }?.count
     }
 
-    /// "two thirty", "two thirty pm", "two oh five pm", "ten am", "five o'clock"; am and pm stay separate.
+    /// "two thirty", "two thirty pm", "two oh five pm", "ten am", "nine a m", "five o'clock"; am and pm stay separate.
     private static func time(hour: Int, at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
         guard (1...12).contains(hour), joined(start, shapes) else { return nil }
         if let minutes = minutes(at: start, keys: keys, shapes: shapes) {
-            return Phrase(text: "\(hour):\(minutes.text)", count: minutes.count)
+            let clock = "\(hour):\(minutes.text)"
+            guard let meridiem = spelledMeridiem(at: start + minutes.count, keys: keys, shapes: shapes) else {
+                return Phrase(text: clock, count: minutes.count)
+            }
+            return Phrase(text: clock + " " + meridiem.text, count: minutes.count + meridiem.count)
+        }
+        if let meridiem = spelledMeridiem(at: start, keys: keys, shapes: shapes) {
+            return Phrase(text: "\(hour) \(meridiem.text)", count: meridiem.count)
         }
         guard meridiems.contains(keys[start]) || keys[start] == "o'clock" else { return nil }
         return Phrase(text: String(hour), count: 0)
+    }
+
+    /// "a m" or "p m" said as letters straight after a clock time, written as one lower-case word.
+    private static func spelledMeridiem(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {
+        spelledMeridiems.first { heard, _ in
+            start + heard.count <= keys.count && Array(keys[start..<(start + heard.count)]) == heard
+                && (start..<(start + heard.count)).allSatisfy { joined($0, shapes) }
+        }.map { Phrase(text: $0.value, count: $0.key.count) }
+    }
+
+    /// The words of a spoken number as heard, for a date whose day the number policy leaves in words.
+    private static func spokenWords(_ start: Int, _ count: Int, _ shapes: [WordShape]) -> String {
+        shapes[start..<(start + count)].map(\.core).joined(separator: " ")
     }
 
     private static func minutes(at start: Int, keys: [String], shapes: [WordShape]) -> Phrase? {

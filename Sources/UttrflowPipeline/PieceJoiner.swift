@@ -114,7 +114,7 @@ enum PieceJoiner {
         }
     }
 
-    /// Whether the passes that read a spoken number, time or address read one across the cut, so only one piece writes it.
+    /// Whether the passes that read a spoken number, time, date or address read one across the cut, so only one piece writes it; a capital a date gives its month counts.
     static func unitRunsAcross(
         _ head: String, into tail: String, under formatter: DestinationFormatter, digits: DigitGrouping
     ) -> Bool {
@@ -127,7 +127,7 @@ enum PieceJoiner {
         ])
         func read(_ words: [Substring]) -> [String] {
             units.run(Draft(text: words.joined(separator: " "))).text
-                .split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).key }
+                .split(whereSeparator: \.isWhitespace).map { WordShape(String($0)).core }
         }
         return read(Array(headWords + tailWords)) != read(Array(headWords)) + read(Array(tailWords))
     }
