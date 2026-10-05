@@ -10,6 +10,7 @@ struct UttrflowEvalCommand: AsyncParsableCommand {
         subcommands: [
             RecordCorpus.self, PullCorpus.self, TranscribeCorpus.self, TailProbe.self, CueBleedProbe.self,
             RetryParityProbe.self, SynthesiseCorpus.self, NonSpeechProbe.self, HomophoneConfidenceProbe.self,
+            AccentProbe.self,
             NormaliseText.self,
         ]
     )

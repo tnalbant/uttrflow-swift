@@ -362,3 +362,60 @@ most frequent one, sed heard as "said", is written at a median of 0.97. The scor
 right ones (AUC 0.69 for programmer pairs, 1.00 for everyday pairs), so a misreading is low relative to its
 sentence, not low in absolute terms. Putting the term in the vocabulary prompt cut programmer errors from 17% to
 6% without a prefix, which a fixed threshold never could.
+
+## Accent classes and the correction gates (`accent`)
+
+`uttrflow-eval accent` has `say` read 400 invented carrier sentences (`AccentProbeCorpus`): 30
+target words for each of 10 accent classes, and 50 technical terms in an English carrier and
+in a Hindi one. Each clip is transcribed by the shipping recogniser; the words between the
+carrier's own words are what was heard. For every miss, `SoundAlikeReach` asks whether the word
+meant, were it in the dictionary, is reached by (a) the sound key alone, (b) the key plus
+`ReadingRestraint.opensAlike`, and (c) `WordCorrectionEngine.spells` for an entry spelt that way.
+Each share is of the misses in that row.
+
+Measured on an Apple M5 Pro with 48 GB. Engine: whisperKit
+`openai_whisper-large-v3-v20240930_turbo_632MB`, weights `0f63a7800b00dd0226abd051b906c246e1907482`.
+Voices: Rishi (en_IN), Thomas (fr_FR), Tessa (en_ZA), Moira (en_IE), Samantha (en_US), with an
+English hint; Rishi alone also with a Hindi hint. One voice takes about 70 minutes on a loaded
+machine. Aman and Tara (en_IN), the other fr_FR voices, Karen (en_AU) and Daniel (en_GB) were not
+run; Tara is listed by `say -v ?` but `say` refuses it by name.
+
+| Class | Hint | Clips | Too short | Misses | (a) key | (b) key + opening | (c) entry spells | (a) - (b) |
+|---|---|---|---|---|---|---|---|---|
+| v/w | en | 150 | 16 | 37 | 56.8% | 32.4% | 40.5% | 24.3 |
+| th as t/d/s/f | en | 150 | 9 | 55 | 45.5% | 5.5% | 14.5% | 40.0 |
+| l/r | en | 150 | 13 | 24 | 41.7% | 33.3% | 58.3% | 8.3 |
+| s/z | en | 150 | 16 | 36 | 47.2% | 22.2% | 30.6% | 25.0 |
+| sh/s | en | 150 | 7 | 47 | 29.8% | 23.4% | 51.1% | 6.4 |
+| h-dropping | en | 150 | 14 | 61 | 50.8% | 27.9% | 32.8% | 23.0 |
+| prothetic vowel | en | 150 | 4 | 23 | 34.8% | 34.8% | 60.9% | 0.0 |
+| vowel length | en | 150 | 12 | 38 | 44.7% | 28.9% | 60.5% | 15.8 |
+| final consonant | en | 150 | 12 | 25 | 28.0% | 24.0% | 56.0% | 4.0 |
+| retroflex t/d | en | 150 | 19 | 34 | 29.4% | 20.6% | 38.2% | 8.8 |
+| term in English | en | 250 | 25 | 77 | 49.4% | 33.8% | 46.8% | 15.6 |
+| term in Hindi | en | 250 | 50 | 167 | 9.0% | 4.8% | 12.6% | 4.2 |
+| v/w | hi | 30 | 14 | 13 | 15.4% | 7.7% | 7.7% | 7.7 |
+| th as t/d/s/f | hi | 30 | 8 | 18 | 11.1% | 11.1% | 11.1% | 0.0 |
+| l/r | hi | 30 | 7 | 15 | 0.0% | 0.0% | 13.3% | 0.0 |
+| s/z | hi | 30 | 4 | 17 | 0.0% | 0.0% | 0.0% | 0.0 |
+| sh/s | hi | 30 | 10 | 18 | 0.0% | 0.0% | 0.0% | 0.0 |
+| h-dropping | hi | 30 | 8 | 17 | 5.9% | 5.9% | 5.9% | 0.0 |
+| prothetic vowel | hi | 30 | 8 | 15 | 0.0% | 0.0% | 0.0% | 0.0 |
+| vowel length | hi | 30 | 10 | 14 | 0.0% | 0.0% | 0.0% | 0.0 |
+| final consonant | hi | 30 | 8 | 15 | 6.7% | 6.7% | 6.7% | 0.0 |
+| retroflex t/d | hi | 30 | 11 | 13 | 15.4% | 7.7% | 7.7% | 7.7 |
+| term in English | hi | 50 | 9 | 34 | 11.8% | 8.8% | 11.8% | 2.9 |
+| term in Hindi | hi | 50 | 0 | 49 | 26.5% | 26.5% | 22.4% | 0.0 |
+
+Classes where the opening-letters gate removes more than 5 points of what the key reaches, under
+the English hint: th as t/d/s/f (40.0), s/z (25.0), v/w (24.3), h-dropping (23.0), vowel length
+(15.8), technical terms in English (15.6), retroflex t/d (8.8), l/r (8.3) and sh/s (6.4). Under
+the Hindi hint most misses are Devanagari or translated output, which no gate reaches.
+
+How far to trust it:
+- The voices are synthetic; a row decides only whether a class is worth recording real speakers for.
+- "Too short" counts transcripts with no words between the carrier's; the target is taken by word
+  count, so a carrier word the recogniser fuses or drops shifts the run. "Term in Hindi" under the
+  English hint is the worst case: the recogniser fuses `mujhe` with the term, so most of its 167
+  misses are extraction failures, not mishearings.
+- (c) asks without the doubt and evidence conditions the engine also checks, so it is a ceiling.
