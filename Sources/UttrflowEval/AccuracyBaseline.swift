@@ -141,6 +141,8 @@ public struct BaselineComparison: Sendable, Equatable {
         public let interval: ClosedRange<Double>?
         /// The smallest change in rate this slice can resolve; `nil` when there is no interval.
         public let minimumDetectableChange: Double?
+        /// Whether the slice has too few utterances for an interval, so it is reported and never ruled on.
+        public let isUnderpowered: Bool
 
         public init(
             label: String,
@@ -158,10 +160,9 @@ public struct BaselineComparison: Sendable, Equatable {
             self.verdict = verdict
             self.interval = interval
             self.minimumDetectableChange = minimumDetectableChange
+            self.isUnderpowered = interval == nil
         }
 
-        /// Whether the slice has too few utterances for an interval, so it is reported and never ruled on.
-        public var isUnderpowered: Bool { interval == nil }
 
         public var delta: Double? {
             guard let before, let after else { return nil }
@@ -203,9 +204,12 @@ public struct BaselineComparison: Sendable, Equatable {
 
 extension AccuracyBaseline {
     /// Compares a fresh run with this baseline over the samples they share, reporting the rest.
-    public func compare(
-        with report: TranscriptionReport, method: PairedBootstrap = .standard
-    ) -> BaselineComparison {
+    public func compare(with report: TranscriptionReport) -> BaselineComparison {
+        compare(with: report, method: .standard)
+    }
+
+    /// The same comparison under another bootstrap configuration.
+    func compare(with report: TranscriptionReport, method: PairedBootstrap) -> BaselineComparison {
         let after = Dictionary(report.scores.map { ($0.caseID, BaselineEntry($0)) }) { first, _ in first }
         let before = Dictionary(entries.map { ($0.caseID, $0) }) { first, _ in first }
         let shared = Set(before.keys).intersection(after.keys).sorted()
