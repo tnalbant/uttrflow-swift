@@ -43,11 +43,6 @@ struct Marks: AsyncParsableCommand {
         candidates.append(("heard", { $0.spoken }))
         let rules = RuleBasedTransformer()
         candidates.append(("rules", { try await rules.transform($0.transformationRequest()).text }))
-        candidates.append(
-            (
-                "rules+clauses",
-                { ClauseCommas.place(in: try await rules.transform($0.transformationRequest()).text) }
-            ))
         var apple = EngineConfiguration.default
         apple.transformerPreference = [.foundationModels]
         let appleRouter = TextTransformers.router(configuration: apple)
@@ -153,20 +148,6 @@ private struct PassThroughRouter: Sendable {
     func text(for request: TransformationRequest) async throws -> String? {
         guard await engine.availability(for: request).isAvailable else { return nil }
         return try await engine.transform(request).text
-    }
-}
-
-/// Minimal clause commas: a comma before every lexically evidenced clause start that has no mark yet.
-enum ClauseCommas {
-    static func place(in text: String) -> String {
-        var tokens = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        let bare = tokens.map { $0.filter { $0.isLetter || $0.isNumber || $0 == "'" } }
-        for boundary in ClauseSegmenter.boundaries(in: bare) where boundary.evidence != .pause {
-            let before = boundary.index - 1
-            guard let last = tokens[before].last, last.isLetter || last.isNumber else { continue }
-            tokens[before] += ","
-        }
-        return tokens.joined(separator: " ")
     }
 }
 

@@ -467,6 +467,26 @@ Whether readings that compete by weight remove the order-dependence without chan
 output is not yet measured: it needs the per-class exact-match scorer, and until it lands the
 structure stays as it is.
 
+## Who places commas and stops
+
+One owner per mark, measured with `uttrflow-bakeoff marks --local` over the 726 prose cases of the
+corpus (comma F1 against the rules, paired, 95% bootstrap):
+
+| Candidate | Comma F1 | Stop F1 | Question F1 | Declined | Comma F1 vs rules |
+|---|---|---|---|---|---|
+| Rules | 0.40 | 0.94 | 0.80 | 0 | — |
+| Rules with clause commas | 0.44 | 0.94 | 0.80 | 0 | +0.05 [-0.03, +0.14] |
+| Apple's model | 0.55 | 0.95 | 0.81 | 126 | +0.12 [+0.00, +0.28] |
+| Local tidier | 0.64 | 0.94 | 0.84 | 44 | +0.23 [+0.10, +0.38] |
+
+- **Commas belong to the tidier.** The rules place none: they keep the commas the recogniser wrote
+  (precision 1.00, recall 0.25) and move a removed word's comma as the mark table above says.
+  Commas placed from clause starts did not beat that, so the rules gain no comma placement.
+- **Stops and question marks stay with the rules.** Every candidate scores within 0.01 on stops, so
+  `PauseStopPass`, `SentenceBoundaryPass` and `TerminalStopPass` remain the single place a stop is
+  decided, and they run after the model too. They are also the floor whenever the model declines
+  or is not installed.
+
 ## Related pages
 
 - `Docs/formatting-matrix.md` — which formatting case classes the corpus covers, generated from its tags.
