@@ -148,9 +148,6 @@ struct SpokenAddress: Equatable {
         let first = draft.shape(at: live[position])
         let last = draft.shape(at: live[end - 1])
         return SpokenAddress(length: end - position, text: first.prefix + text + reference + last.suffix)
-        let first = draft.shape(at: live[position])
-        let last = draft.shape(at: live[end - 1])
-        return SpokenAddress(length: end - position, text: first.prefix + text + last.suffix)
     }
 
     /// One path segment: labels or spoken numbers joined by "dot", a spoken joiner extending a label, "v" taking a number.
