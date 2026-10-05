@@ -217,7 +217,9 @@ public struct NumberFormsPass: PieceCleaningPass {
         if let decade = decade(at: position, keys: keys, shapes: shapes) {
             return decade
         }
-        if let amount = hindiAmount(at: position, keys: keys, shapes: shapes, digits: digits) { return amount }
+        if let amount = hindiAmount(at: position, keys: keys, shapes: shapes, digits: digits) {
+            return amount
+        }
 
         if (keys[position] == "negative" || keys[position] == "minus"), joined(position + 1, shapes),
             !subtracts(at: position, keys: keys, shapes: shapes)

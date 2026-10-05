@@ -88,7 +88,8 @@ extension MeaningPreservationGuard {
             if pieces[index].isDigits {
                 found.append(pieces[index].text)
                 index += 1
-            } else if let read = NumberWords.cardinal(words[index...]) ?? NumberWords.hindiCardinal(words[index...]),
+            } else if let read =
+                NumberWords.cardinal(words[index...]) ?? NumberWords.hindiCardinal(words[index...]),
                 read.count > 1
             {
                 found += words[index..<(index + read.count)].compactMap { table[$0] }

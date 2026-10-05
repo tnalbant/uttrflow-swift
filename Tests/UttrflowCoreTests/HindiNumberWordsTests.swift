@@ -59,7 +59,8 @@ struct HindiNumberWordsTests {
         arguments: [
             (["paanch", "sau"], 500, 2), (["do", "hazaar", "paanch", "sau"], 2500, 4),
             (["dhai"], nil, 0), (["sau"], 100, 1), (["ek", "lakh", "pachas", "hazaar"], 150_000, 4),
-            (["teen", "crore"], 30_000_000, 2), (["do", "sau", "pachas"], 250, 3), (["hazaar", "lakh"], 1000, 1),
+            (["teen", "crore"], 30_000_000, 2), (["do", "sau", "pachas"], 250, 3),
+            (["hazaar", "lakh"], 1000, 1),
             (["bees", "teen"], 20, 1), (["shunya", "ek"], 0, 1),
         ] as [([String], Int?, Int)]
     )
