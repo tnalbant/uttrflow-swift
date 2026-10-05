@@ -42,14 +42,21 @@ struct CorrectionEvidence: Sendable {
 
     /// The best signal the candidate has and the heard reading lacks, or nil when the margin is not cleared.
     func decisiveReason(preferring candidate: String, over heard: String) -> CorrectionReason? {
+        decision(preferring: candidate, over: heard)?.reason
+    }
+
+    /// The best signal and how strongly the candidate won, or nil when the margin is not cleared.
+    func decision(
+        preferring candidate: String, over heard: String
+    ) -> (reason: CorrectionReason, evidence: OverrideEvidence)? {
         let candidateWords = TextTidy.words(candidate)
         let heardWords = TextTidy.words(heard)
         let forCandidate = reasons(supporting: candidateWords, ratherThan: heardWords)
         let forHeard = reasons(supporting: heardWords, ratherThan: candidateWords)
         let gained = forCandidate.filter { !forHeard.contains($0) }
         let lost = forHeard.filter { !forCandidate.contains($0) }
-        guard gained.count >= lost.count + Self.improvementMargin else { return nil }
-        return gained.first
+        guard gained.count >= lost.count + Self.improvementMargin, let best = gained.first else { return nil }
+        return (best, OverrideEvidence(signals: gained.count, margin: gained.count - lost.count))
     }
 
     /// Every signal that holds for this reading rather than the other, in priority order.

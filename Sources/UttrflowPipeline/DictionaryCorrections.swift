@@ -29,7 +29,7 @@ public struct DictionaryCorrections: WordCorrecting {
             DictationCorrection(
                 heard: $0.heard, wrote: $0.replacement, wordRange: $0.wordRange,
                 entryID: $0.entryID, reason: $0.reason,
-                heardConfidence: $0.heardConfidence)
+                heardConfidence: $0.heardConfidence, evidence: $0.evidence)
         }
     }
 }

@@ -108,16 +108,20 @@ public struct MeaningPreservationGuard: Sendable {
         return .accepted
     }
 
-    /// Refuses a sound-alike substitution when the recogniser was sure of the kept word.
+    /// Refuses a sound-alike substitution over a kept word the recogniser was sure of or an override settled.
     private static func confidentHomophoneVerdict(_ draft: Draft, aligned: RewriteAlignment) -> GuardVerdict {
         guard draft.confidencesAreReal else { return .accepted }
         let heard = draft.words
             .filter { $0.isPresent && !$0.isLayoutMark && !$0.heard.isEmpty }
-            .flatMap { word in grammarTokens(word.text).map { (token: $0, confidence: word.confidence) } }
+            .flatMap { word in
+                grammarTokens(word.text).map {
+                    (token: $0, isProtected: DoubtPolicy.isProtected(confidence: word.confidence, settled: word.settled))
+                }
+            }
         for change in aligned.changes {
             for index in change.kept where index < heard.count {
                 let token = aligned.kept[index]
-                guard DoubtPolicy.isHeardSurely(heard[index].confidence) else { continue }
+                guard heard[index].isProtected else { continue }
                 if change.rewritten.contains(where: {
                     Homophones.share(token.matching, aligned.rewritten[$0].matching)
                 }) {

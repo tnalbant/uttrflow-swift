@@ -40,6 +40,8 @@ public struct Draft: Sendable, Equatable {
         public let heard: String
         /// The recogniser's confidence in the heard word, 0 to 1.
         public let confidence: Double
+        /// Whether an override wrote the word, so no pass or model may rewrite it whatever its score.
+        public let settled: Bool
         /// The script the recogniser wrote the word in, kept after romanising so English-only lists can skip Hindi.
         public let origin: Origin
         public var state: State
@@ -47,12 +49,13 @@ public struct Draft: Sendable, Equatable {
         public private(set) var edits: [Edit]
 
         public init(
-            text: String, heard: String, confidence: Double = 1, origin: Origin = .latin,
-            state: State = .kept, edits: [Edit] = []
+            text: String, heard: String, confidence: Double = 1, settled: Bool = false,
+            origin: Origin = .latin, state: State = .kept, edits: [Edit] = []
         ) {
             self.text = text
             self.heard = heard
             self.confidence = confidence
+            self.settled = settled
             self.origin = origin
             self.state = state
             self.edits = edits
@@ -64,8 +67,8 @@ public struct Draft: Sendable, Equatable {
         }
 
         /// A heard word that nothing has touched yet.
-        public init(_ heard: String, confidence: Double = 1) {
-            self.init(text: heard, heard: heard, confidence: confidence, state: .kept)
+        public init(_ heard: String, confidence: Double = 1, settled: Bool = false) {
+            self.init(text: heard, heard: heard, confidence: confidence, settled: settled, state: .kept)
         }
 
         /// Whether the word still appears in the text.
@@ -157,7 +160,7 @@ public struct Draft: Sendable, Equatable {
     public init(transcription: Transcription) {
         let spoken = Self.split(transcription.text, confidence: 1)
         let timed = transcription.segments.flatMap(\.words).flatMap {
-            Self.split($0.text, confidence: $0.confidence)
+            Self.split($0.text, confidence: $0.confidence, settled: $0.settled)
         }
         guard !timed.isEmpty, timed.map(\.text).joined() == spoken.map(\.text).joined() else {
             self.init(words: spoken)
@@ -172,14 +175,16 @@ public struct Draft: Sendable, Equatable {
         let words = heard.words.map { word in
             guard Romaniser.containsDevanagari(word.text) else { return word }
             let latin = Romaniser.romanised(word.text)
-            return Word(text: latin, heard: latin, confidence: word.confidence, origin: .devanagari)
+            return Word(
+                text: latin, heard: latin, confidence: word.confidence, settled: word.settled,
+                origin: .devanagari)
         }
         self.init(words: words, confidencesAreReal: heard.confidencesAreReal)
     }
 
-    private static func split(_ text: String, confidence: Double) -> [Word] {
+    private static func split(_ text: String, confidence: Double, settled: Bool = false) -> [Word] {
         text.split(whereSeparator: \.isWhitespace).flatMap { token in
-            splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence) }
+            splitPauseEllipses(in: String(token)).map { Word($0, confidence: confidence, settled: settled) }
         }
     }
 
@@ -221,15 +226,17 @@ public struct Draft: Sendable, Equatable {
         return next.isLetter || next.isNumber ? length : nil
     }
 
-    /// Gives each of `spoken` the lowest confidence among the timed words that spell it, letter for letter.
+    /// Gives each of `spoken` the lowest confidence among the timed words that spell it, settled if any of them is.
     private static func confidences(of timed: [Word], onto spoken: [Word]) -> [Word] {
         var remaining = timed[...]
         var spent = 0
         return spoken.map { word in
             var needed = word.text.count
             var confidence = 1.0
+            var settled = false
             while needed > 0, let next = remaining.first {
                 confidence = min(confidence, next.confidence)
+                settled = settled || next.settled
                 let available = next.text.count - spent
                 guard available <= needed else {
                     spent += needed
@@ -240,7 +247,7 @@ public struct Draft: Sendable, Equatable {
                 spent = 0
                 remaining.removeFirst()
             }
-            return Word(word.text, confidence: confidence)
+            return Word(word.text, confidence: confidence, settled: settled)
         }
     }
 

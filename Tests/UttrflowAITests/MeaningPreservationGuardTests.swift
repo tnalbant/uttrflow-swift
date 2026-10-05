@@ -916,6 +916,17 @@ struct GrammarGuardTests {
                     kind: .lostWord))
     }
 
+    @Test("refuses a sound-alike replacement of a settled word heard at a low score", .bug(id: 4519))
+    func refusesSettledHomophoneReplacement() {
+        let draft = Draft(
+            words: "i can hear you".split(separator: " ").map {
+                Draft.Word(String($0), confidence: 0.3, settled: $0 == "hear")
+            }, confidencesAreReal: true)
+        let offered = [DoubtfulSpan(heard: "hear", confidence: 0.3, candidates: ["here"])]
+
+        #expect(!sut.verdict(draft: draft, rewritten: "I can here you.", offering: offered).isAccepted)
+    }
+
     @Test("allows an offered homophone for a low-confidence word")
     func allowsOfferedLowConfidenceHomophone() {
         let draft = Draft(

@@ -101,11 +101,12 @@ public struct WordCorrectionEngine: Sendable {
         for candidate in candidates {
             // Condition 3.
             guard Self.spells(candidate.entry, asHeard: candidate.heard),
-                let reason = evidence.decisiveReason(preferring: candidate.entry.word, over: candidate.heard)
+                let decision = evidence.decision(preferring: candidate.entry.word, over: candidate.heard)
             else { continue }
             return WordCorrection(
                 heard: span.text, replacement: candidate.word, wordRange: span.range,
-                entryID: candidate.entry.id, reason: reason, heardConfidence: span.confidence)
+                entryID: candidate.entry.id, reason: decision.reason, heardConfidence: span.confidence,
+                evidence: decision.evidence)
         }
         return nil
     }
@@ -172,12 +173,12 @@ struct UncertainSpan: Sendable, Equatable {
 
     /// Every run up to the index's word limit in which every word is doubted, most deserving first.
     static func spans(in utterance: Utterance) -> [UncertainSpan] {
-        spans(in: utterance.words.map { ($0.text, $0.confidence) })
+        spans(in: utterance.words.map { ($0.text, $0.confidence, false) })
     }
 
     /// The same runs over a draft, reading the words as the passes left them and skipping what nobody said.
     static func spans(in draft: Draft) -> [UncertainSpan] {
-        spans(in: saidWords(in: draft).map { ($0.text, $0.confidence) })
+        spans(in: saidWords(in: draft).map { ($0.text, $0.confidence, $0.settled) })
     }
 
     /// The draft's words a run's range counts over: those still standing that the recogniser heard.
@@ -186,8 +187,10 @@ struct UncertainSpan: Sendable, Equatable {
     }
 
     /// The runs themselves, over anything that can name a word and how sure the recogniser was of it.
-    static func spans(in words: [(text: String, confidence: Double)]) -> [UncertainSpan] {
-        let doubts = words.map { DoubtPolicy.reason(text: $0.text, confidence: $0.confidence) }
+    static func spans(in words: [(text: String, confidence: Double, settled: Bool)]) -> [UncertainSpan] {
+        let doubts = words.map {
+            DoubtPolicy.reason(text: $0.text, confidence: $0.confidence, settled: $0.settled)
+        }
         var spans: [UncertainSpan] = []
         for start in words.indices {
             for length in 1...PhoneticIndex.maximumWordsPerEntry where start + length <= words.count {

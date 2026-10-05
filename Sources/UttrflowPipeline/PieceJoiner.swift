@@ -744,7 +744,7 @@ extension DictationCorrection {
         Self(
             heard: heard, wrote: wrote,
             wordRange: (wordRange.lowerBound + offset)..<(wordRange.upperBound + offset),
-            entryID: entryID, reason: reason, heardConfidence: heardConfidence)
+            entryID: entryID, reason: reason, heardConfidence: heardConfidence, evidence: evidence)
     }
 }
 

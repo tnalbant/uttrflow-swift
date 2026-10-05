@@ -107,7 +107,7 @@ extension DictationPipeline {
         DictationCorrection(
             heard: correction.heard, wrote: text ?? correction.wrote, wordRange: range,
             entryID: correction.entryID, reason: correction.reason,
-            heardConfidence: correction.heardConfidence)
+            heardConfidence: correction.heardConfidence, evidence: correction.evidence)
     }
 
     /// Tidies the transcript, falling back to exactly what was said. The only optional stage.

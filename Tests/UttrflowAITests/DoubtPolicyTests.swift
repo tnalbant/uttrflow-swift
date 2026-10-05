@@ -36,6 +36,18 @@ struct DoubtPolicyTests {
         }
     }
 
+    @Test("a settled word is never doubted and is protected, whatever its score", .bug(id: 4519))
+    func settledWordIsProtected() {
+        #expect(DoubtPolicy.reason(text: "principal", confidence: 0.2, settled: true) == nil)
+        #expect(DoubtPolicy.isProtected(confidence: 0.2, settled: true))
+        #expect(!DoubtPolicy.isProtected(confidence: 0.2, settled: false))
+        let words = [TranscribedWord(text: "Kubernetes", confidence: 0.2, settled: true)]
+        let segment = TranscriptionSegment(text: "Kubernetes", start: .zero, end: .seconds(1), words: words)
+        let transcription = Transcription(text: "Kubernetes", segments: [segment])
+        #expect(UncertainSpan.spans(in: Draft(transcription: transcription)).isEmpty)
+        #expect(RulesAlone.shortReplies.covers(TransformationRequest(transcription: transcription)))
+    }
+
     @Test("no source outside the policy compares a confidence with the certainty threshold")
     func thresholdLivesInThePolicyAlone() throws {
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

@@ -11,8 +11,14 @@ public enum DoubtPolicy {
         confidence >= certaintyThreshold
     }
 
-    /// Why one word is doubted, or `nil` when it is not: a low score first, else membership of a homophone group.
-    public static func reason(text: String, confidence: Double) -> DoubtReason? {
+    /// Whether no later layer may rewrite the word: an override settled it, or the recogniser heard it surely.
+    public static func isProtected(confidence: Double, settled: Bool) -> Bool {
+        settled || isHeardSurely(confidence)
+    }
+
+    /// Why one word is doubted, or `nil` when it is not: never a settled word, then a low score, else a homophone group.
+    public static func reason(text: String, confidence: Double, settled: Bool = false) -> DoubtReason? {
+        guard !settled else { return nil }
         if !isHeardSurely(confidence) { return .lowScore }
         return Homophones.group(containing: text) == nil ? nil : .homophoneClass
     }

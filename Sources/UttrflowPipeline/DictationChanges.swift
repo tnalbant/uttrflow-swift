@@ -16,12 +16,14 @@ public struct DictationCorrection: Sendable, Equatable {
     public let reason: CorrectionReason
     /// What the recogniser scored the replaced words, so a sceptic can see the engine only moved on a guess.
     public let heardConfidence: Double
+    /// How strongly the gate chose the replacement; `nil` when the user's own spelling settled it.
+    public let evidence: OverrideEvidence?
     /// Where the written words begin among the inserted text's words, or `nil` when tidying changed them.
     public let writtenWordIndex: Int?
 
     public init(
         heard: String, wrote: String, wordRange: Range<Int>, entryID: UUID, reason: CorrectionReason,
-        heardConfidence: Double, writtenWordIndex: Int? = nil
+        heardConfidence: Double, evidence: OverrideEvidence? = nil, writtenWordIndex: Int? = nil
     ) {
         self.heard = heard
         self.wrote = wrote
@@ -29,6 +31,7 @@ public struct DictationCorrection: Sendable, Equatable {
         self.entryID = entryID
         self.reason = reason
         self.heardConfidence = heardConfidence
+        self.evidence = evidence
         self.writtenWordIndex = writtenWordIndex
     }
 }
@@ -69,7 +72,7 @@ extension DictationCorrection {
     private func written(as text: String) -> Self {
         Self(
             heard: heard, wrote: text, wordRange: wordRange, entryID: entryID, reason: reason,
-            heardConfidence: heardConfidence)
+            heardConfidence: heardConfidence, evidence: evidence)
     }
 
     /// Each correction with where its words landed in `finished`, aligned from `corrected`. See `Docs/core-history-undo.md`.
@@ -124,7 +127,7 @@ extension DictationCorrection {
     private func landing(at index: Int?) -> Self {
         Self(
             heard: heard, wrote: wrote, wordRange: wordRange, entryID: entryID, reason: reason,
-            heardConfidence: heardConfidence, writtenWordIndex: index)
+            heardConfidence: heardConfidence, evidence: evidence, writtenWordIndex: index)
     }
 }
 

@@ -6,11 +6,14 @@ public struct TranscribedWord: Sendable, Equatable {
     public let text: String
     /// 0 to 1; travels because correction only touches a word the recogniser is unsure about.
     public let confidence: Double
+    /// Whether an override wrote this word, so no later layer may rewrite it; a fact apart from the score.
+    public let settled: Bool
 
     /// A word with its confidence.
-    public init(text: String, confidence: Double) {
+    public init(text: String, confidence: Double, settled: Bool = false) {
         self.text = text
         self.confidence = confidence
+        self.settled = settled
     }
 }
 

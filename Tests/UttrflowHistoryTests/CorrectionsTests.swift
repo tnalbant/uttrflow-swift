@@ -547,3 +547,42 @@ struct UndoingAMovedCorrectionTests {
         #expect(try JSONDecoder().decode(RecordedCorrection.self, from: data).writtenWordIndex == nil)
     }
 }
+
+@Suite("An override's evidence in History", .bug(id: 4519))
+struct OverrideEvidenceHistoryTests {
+    /// The fields every build has written, so the old file and the downgrade read the same shape.
+    private struct CorrectionBeforeEvidence: Decodable {
+        let heard: String
+        let wrote: String
+        let heardConfidence: Double
+    }
+
+    private let made = RecordedCorrection(
+        heard: "clawed", wrote: "Claude", wordRange: 0..<1, entryID: UUID(), reason: .seenOnScreen,
+        heardConfidence: 0.3, evidence: OverrideEvidence(signals: 2, margin: 2))
+
+    @Test("the evidence survives a round trip")
+    func roundTrip() throws {
+        let read = try JSONDecoder().decode(RecordedCorrection.self, from: JSONEncoder().encode(made))
+        #expect(read.evidence == OverrideEvidence(signals: 2, margin: 2))
+        #expect(read == made)
+    }
+
+    @Test("a file written before evidence decodes unchanged, the evidence unknown")
+    func oldFileDecodes() throws {
+        var object = try #require(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(made)) as? [String: Any])
+        object["evidence"] = nil
+        let read = try JSONDecoder().decode(
+            RecordedCorrection.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(read.evidence == nil)
+        #expect(read.heardConfidence == 0.3)
+    }
+
+    @Test("a build from before evidence still reads a file holding it")
+    func downgradeReads() throws {
+        let older = try JSONDecoder().decode(CorrectionBeforeEvidence.self, from: JSONEncoder().encode(made))
+        #expect(older.wrote == "Claude")
+        #expect(older.heardConfidence == 0.3)
+    }
+}
