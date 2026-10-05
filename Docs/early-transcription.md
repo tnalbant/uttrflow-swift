@@ -149,8 +149,12 @@ the words of the pieces before them, and a correction that crosses a seam is pro
 the joined text. If any piece fell back to the rules, the whole dictation is reported as tidied by
 the rules, because "tidied by Apple's model" would be untrue of some of the words.
 
-The tidier sees each piece alone, so a sentence that straddles a pause long enough to cut at is
-tidied as two. The joiner ends a piece at a seam as a sentence unless the words either side show
+The tidier is shown the last sentence of the previous piece, as heard, behind a "Said just
+before:" line. It is context only: the model copies none of it, and an answer that did adds words
+the meaning guard refuses. The words as heard are the one version of the previous piece every path
+has: a piece tidied while the key is held, one cut at key-up and one retried all read the same
+line. The model uses it for commas and capitals at the piece's start; it still places no stop, so
+a sentence that straddles a pause long enough to cut at is still decided at the seam. The joiner ends a piece at a seam as a sentence unless the words either side show
 the sentence carried on. That is the trade the pause lengths above are set to make rare, and it is
 why the early threshold is a sentence-length pause rather than any pause.
 

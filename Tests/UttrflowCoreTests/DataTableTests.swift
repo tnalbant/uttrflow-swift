@@ -173,6 +173,8 @@ struct DataTableTests {
         #expect(NumberCues.table.source == .bundled)
         #expect(NumberCues.words(for: .dotted).count == 6)
         #expect(NumberCues.words(for: .digitRun).count == 12)
+        #expect(NumberCues.words(for: .coordinator).count == 6)
+        #expect(NumberCues.words(for: .range) == ["to", "through"])
         #expect(NumberWords.units.count == 10)
         #expect(NumberWords.teens.count == 10)
         #expect(NumberWords.tens.count == 8)

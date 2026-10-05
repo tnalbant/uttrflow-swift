@@ -1,4 +1,4 @@
-/// Words said before a number that say how to write it, read from `number-cues.json`.
+/// Words said before or between numbers that say how to write them, read from `number-cues.json`.
 public enum NumberCues {
     /// What a cue word says about the number after it.
     public enum Cue: String, Decodable, Sendable {
@@ -6,6 +6,10 @@ public enum NumberCues {
         case dotted
         /// A run of digit words is a code or a number to dial, not a count.
         case digitRun
+        /// A word between two numbers that makes them one group written in one form.
+        case coordinator
+        /// A coordinator that joins only a rising pair, so "ten to six" stays a clock reading.
+        case range
     }
 
     /// The cue words that say `cue`.

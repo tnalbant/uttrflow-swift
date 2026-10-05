@@ -7,6 +7,7 @@ extension DictationPipeline {
     func finish(
         _ heard: Transcription, seeing appContext: AppContext,
         correctionSeeing correctionContext: AppContext, finalPiece: Bool = false,
+        after preceding: Transcription? = nil,
         recording metrics: any MetricsRecording, for mine: Int,
         correcting corrector: (any WordCorrecting)? = nil
     ) async -> Piece {
@@ -15,7 +16,7 @@ extension DictationPipeline {
             heard, seeing: correctionContext, recording: metrics, correcting: corrector, for: mine)
         let cleaned = await tidy(
             heard, saying: corrected, seeing: appContext, finalPiece: finalPiece,
-            recording: metrics, for: mine)
+            after: preceding, recording: metrics, for: mine)
         return Piece(heard: heard, corrected: corrected, cleaned: cleaned)
     }
 
@@ -135,15 +136,15 @@ extension DictationPipeline {
     /// Tidies the transcript, falling back to exactly what was said. The only optional stage.
     func tidy(
         _ transcription: Transcription, saying corrected: CorrectedTranscript,
-        seeing appContext: AppContext, finalPiece: Bool = false,
-        recording metrics: any MetricsRecording, for mine: Int
+        seeing appContext: AppContext, finalPiece: Bool = false, after preceding: Transcription? = nil,
+        recording metrics: any MetricsRecording, for mine: Int?
     ) async -> TransformationResult {
         let text = corrected.text
         // Every piece of a dictation is tidied against the one screen read, so all see one situation.
         let (situation, profile) = tidyingFrame(seeing: appContext)
         let request = TransformationRequest(
             transcription: transcription.saying(corrected), context: appContext,
-            profile: profile, situation: situation, scope: .piece)
+            profile: profile, situation: situation, scope: .piece, precedingPiece: preceding?.text)
         if finalPiece { await runningCleaner.reserveFinalPiece(situation) }
         // Not `.rules`: no pass ran over these words, and a record that says otherwise cannot be read.
         let untidied = TransformationResult(text: text, producedBy: .untidied)
@@ -162,7 +163,7 @@ extension DictationPipeline {
                 return untidied
             }
             // A cancelled dictation's record is not merged into the one now under way.
-            if let cleaning = tidied.cleaning { keep(cleaning, for: mine) }
+            if let cleaning = tidied.cleaning, let mine { keep(cleaning, for: mine) }
             return tidied
         } catch {
             skipped(.tidy, .error, for: mine)
@@ -198,7 +199,8 @@ extension DictationPipeline {
             pieces.append(
                 await finish(
                     piece, seeing: appContext, correctionSeeing: appContext,
-                    finalPiece: index == heard.indices.last, recording: NoOpMetricsRecorder(),
+                    finalPiece: index == heard.indices.last, after: heard[..<index].last,
+                    recording: NoOpMetricsRecorder(),
                     for: generation + 1, correcting: corrector))
         }
         let joined = await join(
@@ -216,6 +218,8 @@ extension DictationPipeline {
         for mine: Int? = nil
     ) async -> JoinedDictation? {
         let formatter = DestinationFormatter.standard(for: situation)
+        let pieces = await rejoiningUnits(
+            pieces, under: formatter, going: situation, seeing: appContext, recording: metrics, for: mine)
         let joined = PieceJoiner.join(pieces, under: formatter, steps: runningCleaner.cleaningSteps)
         let correctedAtSeams = await correctAcrossSeams(
             pieces, in: joined, seeing: appContext, recording: metrics, correcting: corrector, for: mine)
@@ -228,6 +232,38 @@ extension DictationPipeline {
         let expanded = await expand(
             written, matching: snippetInput, laidOut: formatter.layout, for: mine)
         return JoinedDictation(whole: whole, formatter: formatter, expanded: expanded)
+    }
+
+    /// Pieces cut inside a spoken number, time or address, tidied again as one piece so the unit is read whole.
+    func rejoiningUnits(
+        _ pieces: [Piece], under formatter: DestinationFormatter, going situation: Situation,
+        seeing appContext: AppContext, recording metrics: any MetricsRecording, for mine: Int?
+    ) async -> [Piece] {
+        let digits = situation.digits(for: formatter)
+        var groups: [[Piece]] = []
+        for piece in pieces {
+            if let previous = groups.last?.last,
+                PieceJoiner.unitRunsAcross(
+                    previous.corrected.text, into: piece.corrected.text, under: formatter, digits: digits)
+            {
+                groups[groups.count - 1].append(piece)
+            } else {
+                groups.append([piece])
+            }
+        }
+        guard groups.count < pieces.count else { return pieces }
+        var rejoined: [Piece] = []
+        for group in groups {
+            guard group.count > 1 else {
+                rejoined += group
+                continue
+            }
+            let whole = PieceJoiner.join(group, under: formatter)
+            let cleaned = await tidy(
+                whole.heard, saying: whole.corrected, seeing: appContext, recording: metrics, for: mine)
+            rejoined.append(Piece(heard: whole.heard, corrected: whole.corrected, cleaned: cleaned))
+        }
+        return rejoined
     }
 
     /// What a phrase said on its own reaches the snippet matcher as: the dictionary, then the rules, no model.

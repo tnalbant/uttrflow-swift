@@ -39,6 +39,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [context-accessibility.md](context-accessibility.md) | What applications actually answer |
 | [chat-mail-probe.md](chat-mail-probe.md) | What the dictation read gets from a chat composer or a mail body |
 | [web-field-probe.md](web-field-probe.md) | What the dictation read gets from a web field |
+| [terminal-probe.md](terminal-probe.md) | What the dictation read gets from a terminal |
 | [accessibility-private-api.md](accessibility-private-api.md) | Accessibility private API |
 | [accessibility-controls.md](accessibility-controls.md) | Every control, its accessible name and its keyboard status |
 | [compatibility.md](compatibility.md) | What each kind of application actually does with the words |
@@ -52,6 +53,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | Page | What it covers |
 |---|---|
 | [cleanup.md](cleanup.md) | What the tidier may do to your words |
+| [closed-phrase-marks.md](closed-phrase-marks.md) | Recogniser commas and stops after a closed-class word, measured |
 | [lexical-class.md](lexical-class.md) | Reading a word's class, and how far the tagger holds on bare recogniser text |
 | [cleanup-design.md](cleanup-design.md) | Clean-up: the low-level design |
 | [dictation-trace.md](dictation-trace.md) | Explaining one dictation, stage by stage |
@@ -64,6 +66,7 @@ place to start; if you want to change it, [CONTRIBUTING](../CONTRIBUTING.md) and
 | [data-tables.md](data-tables.md) | Word tables as data: the one loader, its checks and its fallback |
 | [lexicon.md](lexicon.md) | Adding a technical term: the entry, what is rejected, the check |
 | [data-manifest.md](data-manifest.md) | Origin, licence and digest of every bundled resource file, and the check |
+| [ngram-sources.md](ngram-sources.md) | Pinned text sources for the shipped n-gram table, the licence allowlist, and the check |
 | [data-asset-delivery.md](data-asset-delivery.md) | Bundled or downloaded data assets: sizes, load time and update path |
 | [ai-model-output.md](ai-model-output.md) | What a small model does to dictation, and the guards that catch it |
 | [ai-context-line.md](ai-context-line.md) | The context line, measured |

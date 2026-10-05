@@ -37,7 +37,7 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
     public init() {}
 
     public func apply(_ draft: Draft) -> Draft {
-        var draft = draft
+        var draft = Self.joinHexTokens(in: draft)
         var live = draft.presentIndices
         var joined: Set<Int> = []
         var position = 0
@@ -53,7 +53,8 @@ public struct SpelledInitialismPass: WholeTextCleaningPass {
             }
             let value = letters.joined()
             let first = live[position]
-            let symbol = Self.followsNumber(position, in: live, draft: draft)
+            let symbol =
+                Self.followsNumber(position, in: live, draft: draft)
                 ? Abbreviations.unitSymbol(spelled: value) : nil
             let output =
                 Self.dottedPairs.contains(value.lowercased())
