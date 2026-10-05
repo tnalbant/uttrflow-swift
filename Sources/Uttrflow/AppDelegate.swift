@@ -1290,6 +1290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let microphone = AVAudioCaptureEngine(
             source: AVAudioEngineMicrophoneSource(), recordings: recordings, cue: cue)
         dock.setLevelSource { microphone.momentaryLevel }
+        dock.onInputSilent = { [weak self] in self?.announce(InputSilence.line, urgently: false) }
 
         let pipeline = DictationPipeline(
             capture: microphone,
