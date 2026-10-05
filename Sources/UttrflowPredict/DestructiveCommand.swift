@@ -280,7 +280,10 @@ public enum DestructiveCommand {
                     return operation == "rm" || operation == "rb"
                         || (operation == "sync" && arguments.contains("--delete"))
                 }
-                return operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
+                return awsDestructiveOperations.contains(operation)
+                    || operation.hasPrefix("delete-") || operation.hasPrefix("terminate-")
+                    || operation.hasPrefix("deregister-") || operation.hasPrefix("purge-")
+                    || operation.hasPrefix("remove-")
             }),
         "gcloud": VerbTool(
             valued: [
@@ -355,6 +358,12 @@ public enum DestructiveCommand {
         "--python", "--proxy", "--retries", "--timeout", "--index-url", "--extra-index-url",
         "--find-links", "--trusted-host", "--cert", "--client-cert", "--cache-dir", "--log",
         "--log-file", "--exists-action", "--no-binary", "--only-binary",
+    ]
+
+    /// AWS operations, exact-spelled, that are irreversible in fact but do not begin with `delete-` or `terminate-`; `deregister-`, `purge-` and `remove-` are handled as prefixes in the AWS verb tool.
+    private static let awsDestructiveOperations: Set<String> = [
+        "schedule-key-deletion",
+        "disable-key",
     ]
 
     /// Pip's quiet unattended uninstallation, recognized only when it is the actual pip subcommand.
@@ -586,7 +595,9 @@ public enum DestructiveCommand {
                     }
                     j += 1
                 }
-                if destroys(Array(tokens[start..<end]), failClosedOnUnresolved: failClosedOnUnresolved, files: files) {
+                if destroys(
+                    Array(tokens[start..<end]), failClosedOnUnresolved: failClosedOnUnresolved, files: files
+                ) {
                     return true
                 }
                 i = end + 1

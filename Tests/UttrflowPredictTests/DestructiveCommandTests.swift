@@ -399,7 +399,8 @@ struct DestructiveCommandTests {
     }
 
     @Test func pathOnlyCheckoutIsDestructiveWhenTheFileExists() throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "checkout-4408-\(UUID().uuidString)")
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "checkout-4408-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appending(path: "App.swift")
@@ -407,8 +408,9 @@ struct DestructiveCommandTests {
         let path = file.path(percentEncoded: false)
         #expect(DestructiveCommand.matches("git checkout \(path)", failClosedOnUnresolved: true))
         #expect(DestructiveCommand.matches("git -C repo checkout \(path)", failClosedOnUnresolved: true))
-        #expect(!DestructiveCommand.matches("git checkout missing-\(UUID().uuidString).swift",
-                                            failClosedOnUnresolved: true))
+        #expect(
+            !DestructiveCommand.matches(
+                "git checkout missing-\(UUID().uuidString).swift", failClosedOnUnresolved: true))
         #expect(!DestructiveCommand.matches("git checkout main", failClosedOnUnresolved: true))
     }
 
@@ -604,6 +606,20 @@ struct DestructiveCommandTests {
             "gsutil -m rm -r gs://example", "gsutil rb gs://example", "gsutil rsync -d src gs://example",
         ])
     func cloudDeletionsAreDestructive(_ line: String) {
+        #expect(
+            DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
+    }
+
+    @Test(
+        "An AWS operation named outside the delete- or terminate- prefixes but irreversible in fact is destructive.",
+        arguments: [
+            "aws kms schedule-key-deletion --key-id K --pending-window-in-days 7",
+            "aws ec2 deregister-image --image-id ami-0",
+            "aws kms disable-key --key-id K",
+            "aws ec2 remove-tags --resources i-1 --tags Key=env",
+            "aws sqs purge-queue --queue-url https://sqs.example.com/q",
+        ])
+    func awsIrreversibleNamedOperationsAreDestructive(_ line: String) {
         #expect(
             DestructiveCommand.matches(line, failClosedOnUnresolved: true), "\(line) should be destructive")
     }
