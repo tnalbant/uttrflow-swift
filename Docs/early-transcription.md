@@ -192,6 +192,22 @@ starting within the minute, and key-down warms for that one anyway; for anyone d
 minutes it would be a second prewarm per dictation, thrown away as stale. A one-piece dictation
 makes one session, and a dictation of *n* pieces at most *n*.
 
+### Priming with the situation lines does not help
+
+The "Typed into:" and caret lines are known at key-down, so the warm session could take them as
+`prewarm(promptPrefix:)`. It buys nothing measurable, so the warm path keeps the instructions only.
+Measured on an Apple M5 Pro under heavy parallel build load, 40 warm runs per configuration,
+interleaved, with milliseconds to the first token (p50 / p95):
+
+| Words | No prewarm | Instructions only | Instructions and situation prefix |
+|---|---|---|---|
+| 10 | 1074 / 1146 | 473 / 488 | 472 / 503 |
+| 40 | 1166 / 1907 | 1145 / 1423 | 1256 / 1444 |
+
+After a minute idle (2 runs each, indicative only) the prefix was no faster either. Output text was
+identical across all three. Reproduce with
+`UTTRFLOW_PREFIX_PROBE=1 swift test --filter SituationPrefixPrewarmProbeTests`.
+
 ## What it buys, measured on the real pipeline
 
 `uttrflow-dev dictate` plays the same files into the real pipeline at real time, once working ahead
