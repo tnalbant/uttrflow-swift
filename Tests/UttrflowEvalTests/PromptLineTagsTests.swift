@@ -17,7 +17,7 @@ struct PromptLineTagsTests {
         "- remove fillers", "- when a speaker explicitly corrects",
         "document - full sentences; keep the breaks", "spreadsheet - numbers as numerals",
         "sqlEditor - numerals for numbers", "codeEditor - keep every line break",
-        "terminal - keep every line break", "messaging - keep the greeting", "plain - keep every line break",
+        "terminal - one line only", "messaging - keep the greeting", "plain - keep every line break",
     ]
 
     static func key(_ tag: PromptLineTag) -> String {

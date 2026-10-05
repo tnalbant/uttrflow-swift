@@ -21,7 +21,7 @@ public struct TerminalStopPass: WholeTextCleaningPass {
 
     public func apply(_ draft: Draft) -> Draft {
         var draft = draft
-        if layout.contains(.singleLine) { LayoutWordsPass.joinOnOneLine(&draft, by: Self.id) }
+        if layout.contains(.singleLine) { LayoutWordsPass.joinOnOneLine(&draft, layout: layout, by: Self.id) }
         if layout.contains(.paragraphs), policy != .never {
             Self.stopParagraphs(&draft, destination: destination)
         }

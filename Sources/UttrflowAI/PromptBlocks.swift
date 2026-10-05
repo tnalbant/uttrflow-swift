@@ -125,7 +125,7 @@ public enum PromptBlocks {
         rules: """
             In a terminal:
             - keep the case of every command, flag and path; the shell is case-sensitive
-            - keep every line break in the input; do not join lines, and add none
+            - one line only: a line break is Return, so join lines with a plain space, and add no comma or capital
             - no full stop at the end
             """,
         examples: [

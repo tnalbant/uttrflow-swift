@@ -120,6 +120,8 @@ public struct LayoutPolicy: OptionSet, Sendable, Equatable {
     public static let preserveNewlines = LayoutPolicy(rawValue: 1 << 2)
     /// Every line break becomes a space, as a spreadsheet cell wants.
     public static let singleLine = LayoutPolicy(rawValue: 1 << 3)
+    /// Joined lines meet at a plain space, with no separator and no capital at the seam, as a shell command wants.
+    public static let spaceJoined = LayoutPolicy(rawValue: 1 << 4)
 }
 
 /// What one kind of place wants done to the words: decisions, never code. See `Docs/cleanup-design.md`.
@@ -174,7 +176,7 @@ public struct DestinationFormatter: Sendable, Equatable {
             promptBlock: "codeEditor"),
         .terminal: DestinationFormatter(
             destination: .terminal, firstWord: .asSpoken, terminalStop: .never,
-            layout: .singleLine, grammar: .asSpoken, numbers: .always, digits: .none,
+            layout: [.singleLine, .spaceJoined], grammar: .asSpoken, numbers: .always, digits: .none,
             promptBlock: "terminal", consequence: .executes),
         .messaging: DestinationFormatter(
             destination: .messaging, firstWord: .fromInsertionPoint,

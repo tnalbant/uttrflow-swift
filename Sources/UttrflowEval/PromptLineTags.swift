@@ -81,7 +81,7 @@ public enum PromptLineTags {
         PromptLineTag("codeEditor", "- no full stop at the end", .formats([.perDestination])),
 
         PromptLineTag("terminal", "- keep the case of every command", .formats([.codeAndMarkdown])),
-        PromptLineTag("terminal", "- keep every line break", .formats([.paragraphs])),
+        PromptLineTag("terminal", "- one line only", .formats([.paragraphs])),
         PromptLineTag("terminal", "- no full stop at the end", .formats([.perDestination])),
 
         PromptLineTag("messaging", "- commas and capitals", .formats([.commas, .perDestination])),

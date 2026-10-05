@@ -18,12 +18,15 @@ public struct FirstWordPass: WholeTextCleaningPass {
     public let ownWords: Set<String>
     /// The user's own words that start with a lower-case letter, keyed in lower case; a sentence start keeps that spelling.
     public let pinnedSpellings: [String: String]
+    /// Whether a layout mark starts a sentence; not where lines are joined with a plain space.
+    public let breakStartsSentence: Bool
 
     public init(
         policy: FirstWordPolicy = .fromInsertionPoint, state: InsertionPoint.SentenceState = .unknown,
         onScreen: [String] = [], heard: String? = nil, capitaliseCalendarWords: Bool = true,
-        vocabulary: [String] = []
+        vocabulary: [String] = [], layout: LayoutPolicy = []
     ) {
+        self.breakStartsSentence = !layout.contains(.spaceJoined)
         self.policy = policy
         self.state = state
         self.onScreen = onScreen
@@ -67,8 +70,8 @@ public struct FirstWordPass: WholeTextCleaningPass {
         for (order, index) in present.enumerated() {
             let word = draft.words[index]
             guard !word.isLayoutMark else {
-                // Every layout mark starts a new sentence.
-                startOfSentence = true
+                // Every layout mark starts a new sentence, unless the lines are to meet at a plain space.
+                if breakStartsSentence { startOfSentence = true }
                 continue
             }
             let letterAdjacent = Self.hasLetterNameBesideI(at: order, in: present, of: draft)

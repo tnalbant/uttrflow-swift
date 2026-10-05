@@ -57,12 +57,12 @@ public struct LayoutWordsPass: PieceCleaningPass {
             live.removeSubrange(position + 1..<position + found.length)
             position += 1
         }
-        if layout.contains(.singleLine) { Self.joinOnOneLine(&draft, by: Self.id) }
+        if layout.contains(.singleLine) { Self.joinOnOneLine(&draft, layout: layout, by: Self.id) }
         return draft
     }
 
-    /// Lays every break and item mark on one line, writing the list separator at each boundary between items.
-    static func joinOnOneLine(_ draft: inout Draft, by pass: PassID) {
+    /// Lays every break and item mark on one line, writing the list separator at each boundary unless the layout joins with a space.
+    static func joinOnOneLine(_ draft: inout Draft, layout: LayoutPolicy, by pass: PassID) {
         var items: [[Int]] = [[]]
         for index in draft.presentIndices {
             let word = draft.words[index]
@@ -79,6 +79,7 @@ public struct LayoutWordsPass: PieceCleaningPass {
                 items[items.count - 1].append(index)
             }
         }
+        guard !layout.contains(.spaceJoined) else { return }
         let filled = items.filter { !$0.isEmpty }
         // A comma inside an item would blur its edges, so the items are then kept apart with semicolons.
         let holdsComma = filled.contains { item in

@@ -39,8 +39,7 @@ struct RulesCorpusTests {
         "probe-meeting-time-zones", "probe-recipe-quantities", "probe-flight-details", "probe-clinical-note",
         "probe-contract-clauses", "probe-quoted-citation", "probe-short-verse", "probe-hashtag-and-handle",
         "probe-phone-and-address", "probe-chained-corrections", "probe-topic-shifts", "probe-hinglish-status",
-        "probe-quote-unquote", "terminal-spoken-new-line-stays-on-one-line",
-        "terminal-spoken-new-paragraph-stays-on-one-line",
+        "probe-quote-unquote",
     ]
 
     /// The request the bake-off hands an engine, with the case's own destination and caret.
