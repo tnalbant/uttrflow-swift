@@ -434,6 +434,28 @@ struct TransformerBudgetTests {
             ])
     }
 
+    @Test("leaves the floor its turn when two models each spend theirs", .timeLimit(.minutes(1)))
+    func twoHungModelsDoNotStarveTheFloor() async throws {
+        let clock = ManualClock()
+        let first = StubTransformer(kind: .foundationModels, hangs: true)
+        let second = StubTransformer(kind: .localModel, hangs: true)
+        let floor = StubTransformer(kind: .rules, budget: StageTimeout.rules)
+        let router = TransformerRouter(
+            engines: [first, second, floor], preference: [.foundationModels, .localModel, .rules],
+            clock: clock)
+
+        let running = Task { try await router.transform(request) }
+        await clock.advanceWhenSomethingIsWaiting(by: StageTimeout.engine)
+        while second.transformCount == 0 { await Task.yield() }
+        let secondTurn = StageTimeout.route - StageTimeout.engine - StageTimeout.rules
+        await clock.advanceWhenSomethingIsWaiting(by: secondTurn)
+
+        let result = try await running.value
+        #expect(result.producedBy == .rules)
+        #expect(floor.transformCount == 1)
+        #expect(result.cleaning?.engineFailures.map(\.failureClass) == [.timedOut, .timedOut])
+    }
+
     @Test("a cancelled engine stops the route instead of running the floor")
     func cancellationStopsFallback() async throws {
         let clock = ManualClock()
@@ -456,7 +478,8 @@ struct TransformerBudgetTests {
         #expect(RuleBasedTransformer().budget == StageTimeout.rules)
         #expect(StageTimeout.rules < StageTimeout.engine)
         // Both inside the stage's backstop, or the floor could never answer after a model's turn.
-        #expect(StageTimeout.engine + StageTimeout.rules <= StageTimeout.transformation)
+        #expect(StageTimeout.engine + StageTimeout.rules <= StageTimeout.route)
+        #expect(StageTimeout.route < StageTimeout.transformation)
     }
 
     @Test("an engine that says nothing about its allowance gets a model's")

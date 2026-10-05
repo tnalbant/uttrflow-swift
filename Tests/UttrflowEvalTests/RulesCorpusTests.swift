@@ -63,6 +63,15 @@ struct RulesCorpusTests {
         )
     }
 
+    @Test("writes every launcher query or command lower case as spoken, with no stop")
+    func rulesWriteCommandInputAsSpoken() async throws {
+        #expect(EvaluationCorpus.cases(in: .commandInput).count == 8)
+        for testCase in EvaluationCorpus.cases(in: .commandInput) {
+            let result = try await RuleBasedTransformer().transform(testCase.transformationRequest())
+            #expect(result.text == testCase.expectedExact, "\(testCase.id)")
+        }
+    }
+
     @Test("still requires the rules to pass the cases they always have")
     func mustPassIsPopulated() {
         #expect(Self.rulesMustPass.count >= 200)

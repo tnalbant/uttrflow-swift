@@ -4,6 +4,7 @@ private import Foundation
 private import UttrflowAI
 private import UttrflowAudio
 private import UttrflowCore
+private import UttrflowDictionary
 private import UttrflowEval
 private import UttrflowSpeech
 
@@ -350,6 +351,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         print("\n\(report.label) — \(report.scores.count) passages\n")
         printNormalisation(report)
         printRates(report)
+        printErrorClasses(report)
         printFindings(report)
         printLatency(report)
         printFailures(report)
@@ -409,6 +411,16 @@ struct TranscribeCorpus: AsyncParsableCommand {
             print(
                 slice.label.padded(to: width) + percent(slice.rate.rate).padded(to: 9)
                     + "\(slice.referenceWordCount)".padded(to: 8) + "\(slice.passages)")
+        }
+    }
+
+    /// Prints each error's linguistic class beside the rate, so effort follows the largest share.
+    private func printErrorClasses(_ report: TranscriptionReport) {
+        let rows = report.errorClasses(by: ErrorClassifier(sameSound: Homophones.share))
+        guard !rows.isEmpty else { return }
+        print("\nerror class".padded(to: 18) + "count".padded(to: 8) + "share")
+        for row in rows {
+            print(row.errorClass.rawValue.padded(to: 17) + "\(row.count)".padded(to: 8) + percent(row.share))
         }
     }
 

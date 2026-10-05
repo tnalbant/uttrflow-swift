@@ -157,7 +157,9 @@ public enum MentionGuard {
         let lexicalClass = LexicalClass.tag(at: wordRange.lowerBound, in: phrase)
         // Adverbs can modify adjectives, and attributive -ing participles can be tagged as nouns.
         if lexicalClass == .adjective || lexicalClass == .adverb { return true }
-        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) { return true }
+        if lexicalClass == .noun, let preceding, isCardinal(preceding), nounHeads.contains(head) {
+            return true
+        }
 
         // Known period compounds stay words at a final spoken stop regardless of their lexical tag.
         if head == "period" && finalMark {

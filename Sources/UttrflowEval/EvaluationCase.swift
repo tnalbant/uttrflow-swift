@@ -22,6 +22,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         case oneLineField
         /// A dictation that is only an address or a path, which is a literal and takes no capital or stop.
         case bareLiteral
+        /// A query or command for a launcher panel, which keeps the heard case and takes no stop.
+        case commandInput
     }
 
     /// Where a case's text came from; every value in every case is invented, whichever it is.
@@ -66,6 +68,10 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
     public let classes: [FormattingClass]
     /// The code-mixing cell the case fills, when it is one of the grid's cases.
     public let codeMix: CodeMixCell?
+    /// The kind of number the case is about, which the number grammar report counts.
+    public let semiotic: SemioticClass?
+    /// The kind of whole text a person writes that the case is, when it is one of the genre cases.
+    public let genre: Genre?
     /// The positions of the spoken words a sentence-length pause follows, which times every word when non-empty.
     public let pausedAfter: [Int]
 
@@ -85,6 +91,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         doubtful: [String] = [],
         classes: [FormattingClass] = [],
         codeMix: CodeMixCell? = nil,
+        semiotic: SemioticClass? = nil,
+        genre: Genre? = nil,
         pausedAfter: [Int] = [],
         origin: Origin = .authored,
         addedFor: Int? = nil
@@ -106,6 +114,8 @@ public struct EvaluationCase: Sendable, Equatable, Identifiable {
         self.doubtful = doubtful
         self.classes = classes
         self.codeMix = codeMix
+        self.semiotic = semiotic
+        self.genre = genre
         self.pausedAfter = pausedAfter
     }
 

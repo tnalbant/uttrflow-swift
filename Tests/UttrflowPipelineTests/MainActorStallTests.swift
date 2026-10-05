@@ -20,7 +20,9 @@ private let stallBudget = Duration.milliseconds(50)
 
 /// Runs one held dictation through the real controller, presenting each state on the main actor as the app does.
 @MainActor
-private func longestGapDuringDictation(observer: @escaping @MainActor (DictationState) -> Void) async throws
+private func longestGapDuringDictation(
+    observer: @escaping @MainActor (DictationState) -> Void
+) async throws
     -> Duration
 {
     let pipeline = DictationPipeline(

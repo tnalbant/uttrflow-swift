@@ -83,6 +83,10 @@ public struct TransformerRouter: TranscriptCleaning {
         _ request: TransformationRequest
     ) async throws(TransformationError) -> TransformationResult {
         let route = candidates(for: request)
+        // One deadline for the route, so a second model cannot spend the floor's turn after the first timed out.
+        let deadline = Deadline(StageTimeout.route, clock: clock)
+        let floorReserve = route.last.map { $0.budget(for: request) } ?? .zero
+        let floorKind = route.last?.kind
         var unavailableEngines: [CleaningRecord.UnavailableEngine] = []
         let outcome = await FallbackRunner.firstSuccess(
             among: route,
@@ -101,8 +105,10 @@ public struct TransformerRouter: TranscriptCleaning {
                 }
                 throw TransformationError.noCapableTransformer
             }
-            // Its own allowance, so an engine that hangs spends nothing but its own turn.
-            let allowance = engine.budget(for: request)
+            // Its own allowance, cut so the floor's turn always fits inside the route.
+            let reserve = engine.kind == floorKind ? .zero : floorReserve
+            let allowance = min(engine.budget(for: request), deadline.remaining - reserve)
+            guard allowance > .zero else { throw RouterAttemptFailure.timedOut(engine.kind) }
             let answer: TransformationResult?
             do {
                 answer = try await withStageTimeout(allowance, clock: clock) {

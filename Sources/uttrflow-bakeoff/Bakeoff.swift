@@ -14,7 +14,7 @@ struct Bakeoff: AsyncParsableCommand {
         abstract: "Score clean-up engines against the evaluation corpus.",
         subcommands: [
             Footprint.self, Profile.self, Complete.self, Score.self, GPUMemory.self, ReloadLeaks.self,
-            SpeechShape.self,
+            SpeechShape.self, Marks.self,
         ]
     )
 
@@ -40,13 +40,47 @@ struct Bakeoff: AsyncParsableCommand {
     @Option(name: .long, help: "Where results are kept between runs; comparisons use a -compared sibling.")
     var resultsPath = ".bakeoff"
 
+    @Option(name: .long, help: "Comma-separated quality layers to run, in place of those on by default.")
+    var layers: String?
+
+    @Option(name: .long, help: "Comma-separated quality layers to switch off, to measure what each adds.")
+    var without: String?
+
+    /// The layers this run measures; `validate` has refused a name that is not one.
+    private var running: QualityLayers {
+        QualityLayers.ablation(only: layers, without: without) ?? QualityLayers()
+    }
+
+    func validate() throws {
+        guard QualityLayers.ablation(only: layers, without: without) != nil else {
+            let valid = QualityLayer.allCases.map(\.rawValue).joined(separator: ", ")
+            throw ValidationError("Unknown quality layer in --layers or --without. Choose from \(valid).")
+        }
+    }
+
     @Option(
         name: .long,
         help: "Compare each measured candidate with this saved result JSON and fail on regressions.")
     var against: String?
 
+    @Option(
+        name: .long,
+        help:
+            "With --against, fields allowed to differ from the baseline: corpus, system, hardware, context, layers."
+    )
+    var allowDifference: String?
+
+    @Option(
+        name: .long,
+        help: "Write the last stored run per prompt version and macOS build to this Markdown file.")
+    var ledger: String?
+
     /// Kept apart so a with-context run cannot overwrite a without-context one.
-    private var storeDirectory: String { ignoreContext ? resultsPath + "-no-context" : resultsPath }
+    private var storeDirectory: String {
+        let context = ignoreContext ? resultsPath + "-no-context" : resultsPath
+        guard running != QualityLayers() else { return context }
+        return context + "-layers-" + running.names.joined(separator: "+")
+    }
 
     func run() async throws {
         let store = ResultStore(directory: URL(fileURLWithPath: storeDirectory))
@@ -64,15 +98,28 @@ struct Bakeoff: AsyncParsableCommand {
             return
         }
 
+        if let ledger {
+            try ResultLedger.markdown(of: try store.history()).write(
+                to: URL(fileURLWithPath: ledger), atomically: true, encoding: .utf8)
+            print("Wrote \(ledger).")
+            return
+        }
+
         if sample {
             try await showSamples()
             return
         }
 
+        let header = RunHeader.current(contextWithheld: ignoreContext, layers: running)
+        if let baseline {
+            try Self.refuseUnintendedDifferences(
+                header, baseline: baseline, allowing: try allowedDifferences())
+        }
         let contextNote = ignoreContext ? ", context withheld" : ""
         print(
             "Bake-off — \(EvaluationCorpus.all.count) cases, prompt \(PromptBuilder.version)"
                 + "\(contextNote)")
+        print(header.summary)
         print(Self.provenance(of: EvaluationCorpus.all) + "\n")
 
         var measured: [Measurement] = []
@@ -88,6 +135,7 @@ struct Bakeoff: AsyncParsableCommand {
             }
         }
 
+        for index in measured.indices { measured[index].header = header }
         for measurement in measured {
             if let baselineURL,
                 outputStore.fileURL(for: measurement).standardizedFileURL == baselineURL
@@ -112,6 +160,9 @@ struct Bakeoff: AsyncParsableCommand {
                 )
             }
             for line in comparisons.first?.corpusReport ?? [] { print(line) }
+            let verdicts = measured.filter { $0.description.fileName == baseline.description.fileName }
+                .map { SplitVerdict.judge($0, against: baseline) }
+            for line in verdicts.flatMap(\.lines) { print(line) }
             let regressions = comparisons.flatMap(\.regressions)
             if regressions.isEmpty {
                 print(
@@ -123,6 +174,11 @@ struct Bakeoff: AsyncParsableCommand {
                 for regression in regressions { print("  \(regression)") }
                 throw CleanExit.message("Bake-off comparison found \(regressions.count) regression(s).")
             }
+            if verdicts.contains(where: { $0.outcome == .overfitted }) {
+                FileHandle.standardError.write(
+                    Data("Bake-off comparison is over-fitted: the held-out score fell.\n".utf8))
+                throw ExitCode.failure
+            }
         }
     }
 
@@ -130,7 +186,7 @@ struct Bakeoff: AsyncParsableCommand {
     private func showSamples() async throws {
         for model in try selectedModels() {
             print("=== \(model.shortName) ===")
-            let cleanup = MLXCleanupModel(model: model)
+            let cleanup = MLXCandidateScorer(model: model)
             try await cleanup.prepare()
 
             let sampled =
@@ -149,6 +205,37 @@ struct Bakeoff: AsyncParsableCommand {
                 print("  produced \(raw.replacingOccurrences(of: "\n", with: " ⏎ "))\n")
             }
         }
+    }
+
+    /// The `--allow-difference` names, refusing one that is not a field.
+    private func allowedDifferences() throws -> Set<RunHeader.Field> {
+        let names = (allowDifference ?? "").split(separator: ",").map { String($0).trimmed }
+            .filter { !$0.isEmpty }
+        return Set(
+            try names.map { name in
+                guard let field = RunHeader.Field(rawValue: name) else {
+                    let valid = RunHeader.Field.allCases.map(\.rawValue).joined(separator: ", ")
+                    throw CleanExit.message(
+                        "Unknown field '\(name)' for --allow-difference. Choose from \(valid).")
+                }
+                return field
+            })
+    }
+
+    /// Stops a comparison whose runs differ in a field nobody asked to vary, naming each one.
+    static func refuseUnintendedDifferences(
+        _ header: RunHeader, baseline: Measurement, allowing allowed: Set<RunHeader.Field>
+    ) throws {
+        guard let previous = baseline.header else {
+            print("Baseline was stored before run headers; its configuration cannot be checked.")
+            return
+        }
+        let differences = header.differences(from: previous, allowing: allowed)
+        guard !differences.isEmpty else { return }
+        throw CleanExit.message(
+            "Refusing to compare runs that differ in a field the change did not intend to vary:\n  "
+                + differences.joined(separator: "\n  ")
+                + "\nPass --allow-difference with the field names to compare anyway.")
     }
 
     // MARK: Candidates
@@ -186,9 +273,12 @@ struct Bakeoff: AsyncParsableCommand {
             if let engine, await engine.availability(for: request).isAvailable == false {
                 return .declined
             }
-            let result = try await router.transform(request)
-            refusals.add(result.cleaning?.refusals ?? [], in: testCase.category)
-            return .produced(result.text)
+            return .produced(
+                try await formatted(request) { request in
+                    let result = try await router.transform(request)
+                    refusals.add(result.cleaning?.refusals ?? [], in: testCase.category)
+                    return result.text
+                })
         }
         for line in refusals.lines { print(line) }
         return Measurement(description: description, report: report)
@@ -200,7 +290,7 @@ struct Bakeoff: AsyncParsableCommand {
         var reports: [InputShape: EvaluationReport] = [:]
         for shape in InputShape.allCases {
             reports[shape] = await EvaluationRunner(shape: shape).run(label: shape.rawValue) { testCase in
-                .produced(try await rules.transform(request(for: testCase)).text)
+                .produced(try await formatted(request(for: testCase)) { try await rules.transform($0).text })
             }
         }
         guard let bare = reports[.bare], let shaped = reports[.recogniser] else { return }
@@ -218,7 +308,7 @@ struct Bakeoff: AsyncParsableCommand {
         // No availability pre-check: a router that produces nothing is a real failure.
         let report = await EvaluationRunner().run(label: CandidateDescription.shipping.name) {
             testCase in
-            .produced(try await router.transform(request(for: testCase)).text)
+            .produced(try await formatted(request(for: testCase)) { try await router.transform($0).text })
         }
         return Measurement(description: .shipping, report: report)
     }
@@ -227,7 +317,7 @@ struct Bakeoff: AsyncParsableCommand {
         let description = CandidateDescription(model)
         print("· \(description.name) — \(gigabytes(model.downloadBytes))")
 
-        let cleanup = MLXCleanupModel(model: model)
+        let cleanup = MLXCandidateScorer(model: model)
         let clock = ContinuousClock()
         let loadStart = clock.now
         do {
@@ -245,7 +335,7 @@ struct Bakeoff: AsyncParsableCommand {
         FileHandle.standardError.write(Data("\r\u{1B}[2K".utf8))
         print("  ready in \(seconds(loadStart.duration(to: clock.now)))s")
 
-        let transformer = GenerativeTextTransformer(kind: .localModel, model: cleanup)
+        let transformer = TextTransformers.local(cleanup)
         let report = await EvaluationRunner().run(
             label: description.name,
             onCase: { _ in FileHandle.standardError.write(Data(".".utf8)) }
@@ -255,7 +345,7 @@ struct Bakeoff: AsyncParsableCommand {
                 return .declined
             }
             do {
-                return .produced(try await transformer.transform(request).text)
+                return .produced(try await formatted(request) { try await transformer.transform($0).text })
             } catch {
                 // Say why: a rewrite thrown away for the wrong reason is invisible in a score.
                 FileHandle.standardError.write(
@@ -265,6 +355,14 @@ struct Bakeoff: AsyncParsableCommand {
         }
         FileHandle.standardError.write(Data("\r\u{1B}[2K".utf8))
         return Measurement(description: description, report: report)
+    }
+
+    /// What a candidate writes, or the words as heard when the formatting layer is off, as the pipeline leaves them.
+    private func formatted(
+        _ request: TransformationRequest, by tidy: (TransformationRequest) async throws -> String
+    ) async throws -> String {
+        guard running.isOn(.formatting) else { return request.transcription.text }
+        return try await tidy(request)
     }
 
     private func request(for testCase: EvaluationCase) -> TransformationRequest {
@@ -333,6 +431,8 @@ struct Bakeoff: AsyncParsableCommand {
             report.passRate(for: Destination(rawValue: destination) ?? .plain)
         }
 
+        printCapitalisation(of: byMultilingual)
+
         if verbose {
             for measurement in measurements {
                 // The stored verdict, not one rebuilt from it, so a file older than a reason still lists the case.
@@ -346,6 +446,43 @@ struct Bakeoff: AsyncParsableCommand {
                     print("  \(result.caseID.padded(to: 26)) \(percent(result.similarity))\(result.reasons)")
                 }
             }
+        }
+    }
+
+    /// Case accuracy per capitalisation class beside the do-nothing and recogniser floors, so a mean is read against them.
+    private func printCapitalisation(of measurements: [Measurement]) {
+        let header =
+            "candidate".padded(to: 17) + "params".padded(to: 8) + "class".padded(to: 16)
+            + "words".padded(to: 8) + "case".padded(to: 8) + "lower".padded(to: 8) + "spoken"
+        print(
+            "\nCapitalisation by class — accuracy over aligned words,"
+                + " beside all-lower-case and recogniser output\n")
+        print(header)
+        print(String(repeating: "─", count: header.count + 4))
+        for measurement in measurements {
+            let report = measurement.report
+            guard let tally = report.capitalisation, let lower = report.lowerCaseBaseline,
+                let spoken = report.spokenBaseline
+            else {
+                print(measurement.description.name.padded(to: 17) + "(stored before classes were counted)")
+                continue
+            }
+            for wordClass in CapitalisationClass.allCases {
+                guard let count = tally.matched[wordClass] else { continue }
+                print(
+                    measurement.description.name.padded(to: 17)
+                        + measurement.description.parameters.padded(to: 8)
+                        + wordClass.rawValue.padded(to: 16) + "\(count)".padded(to: 8)
+                        + (tally.accuracy(of: wordClass).map(percent) ?? "n/a").padded(to: 8)
+                        + (lower.accuracy(of: wordClass).map(percent) ?? "n/a").padded(to: 8)
+                        + (spoken.accuracy(of: wordClass).map(percent) ?? "n/a"))
+            }
+            let below = tally.mostDegraded(comparedWith: spoken).map(\.rawValue) ?? "none"
+            print(
+                measurement.description.name.padded(to: 17) + measurement.description.parameters.padded(to: 8)
+                    + "all".padded(to: 16) + "".padded(to: 8) + percent(tally.accuracy).padded(to: 8)
+                    + percent(lower.accuracy).padded(to: 8) + percent(spoken.accuracy)
+                    + "  furthest below the recogniser: \(below)")
         }
     }
 
@@ -374,7 +511,9 @@ struct Bakeoff: AsyncParsableCommand {
         let origins = EvaluationCase.Origin.allCases.map { origin in
             "\(origin.rawValue) \(cases.count(where: { $0.origin == origin }))"
         }
-        let splits = CorpusSplit.allCases.map { split in "\(split.rawValue) \(cases.count(where: { $0.split == split }))" }
+        let splits = CorpusSplit.allCases.map { split in
+            "\(split.rawValue) \(cases.count(where: { $0.split == split }))"
+        }
         return "origin: " + origins.joined(separator: ", ") + "; split: " + splits.joined(separator: ", ")
     }
 
@@ -440,10 +579,13 @@ struct CandidateDescription: Codable, Sendable {
 struct Measurement: Codable, Sendable {
     let description: CandidateDescription
     var report: StoredReport
+    /// What produced the result; absent from results stored before run headers.
+    var header: RunHeader?
 
-    init(description: CandidateDescription, report: EvaluationReport) {
+    init(description: CandidateDescription, report: EvaluationReport, header: RunHeader? = nil) {
         self.description = description
         self.report = StoredReport(report)
+        self.header = header
     }
 }
 
@@ -455,6 +597,12 @@ struct StoredReport: Codable, Sendable {
     let meanMarkAccuracy: Double?
     /// Absent from result files written before surface metrics were recorded.
     let meanCaseAccuracy: Double?
+    /// Case agreement per capitalisation class; `nil` in a result file older than the classes.
+    let capitalisation: CapitalisationTally?
+    /// What an all-lower-case output scores on the same cases; `nil` like `capitalisation`.
+    let lowerCaseBaseline: CapitalisationTally?
+    /// What the recogniser's own case scores on the same cases; `nil` like `capitalisation`.
+    let spokenBaseline: CapitalisationTally?
     let medianSeconds: Double
     let slowestSeconds: Double
     let declinedCount: Int
@@ -519,6 +667,9 @@ struct StoredReport: Codable, Sendable {
         meanSimilarity = report.meanSimilarity
         meanMarkAccuracy = report.meanMarkAccuracy
         meanCaseAccuracy = report.meanCaseAccuracy
+        capitalisation = report.capitalisation
+        lowerCaseBaseline = report.lowerCaseBaseline
+        spokenBaseline = report.spokenBaseline
         medianSeconds = Self.seconds(report.medianDuration)
         slowestSeconds = Self.seconds(report.slowestDuration)
         declinedCount = report.declinedCount
@@ -555,37 +706,74 @@ struct StoredReport: Codable, Sendable {
 
 }
 
-/// Keeps each finished measurement on disk.
+/// Keeps each finished measurement on disk, one directory per run, so a later run never overwrites an earlier one.
 struct ResultStore {
     let directory: URL
 
     func save(_ measurement: Measurement) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = fileURL(for: measurement)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(measurement).write(to: fileURL(for: measurement))
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(measurement).write(to: url)
     }
 
+    /// The latest stored result of each candidate.
     func all() throws -> [Measurement] {
-        guard
-            let files = try? FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: nil)
-        else { return [] }
-        return files.filter { $0.pathExtension == "json" }.compactMap { url in
-            try? JSONDecoder().decode(Measurement.self, from: Data(contentsOf: url))
+        var latest: [String: Measurement] = [:]
+        for measurement in try history() {
+            let key = measurement.description.fileName
+            if let kept = latest[key], (kept.header?.runID ?? "") >= (measurement.header?.runID ?? "") {
+                continue
+            }
+            latest[key] = measurement
+        }
+        return Array(latest.values)
+    }
+
+    /// Every stored result: each run's directory, plus older files at the top level.
+    func history() throws -> [Measurement] {
+        let runs = Self.files(in: directory.appending(path: Self.runsDirectory), withExtension: nil)
+        return ([directory] + runs).flatMap { Self.files(in: $0, withExtension: "json") }.compactMap { url in
+            try? Self.decoder.decode(Measurement.self, from: Data(contentsOf: url))
         }
     }
 
     static func load(from url: URL) throws -> Measurement {
         do {
-            return try JSONDecoder().decode(Measurement.self, from: Data(contentsOf: url))
+            return try decoder.decode(Measurement.self, from: Data(contentsOf: url))
         } catch {
             throw CleanExit.message("Could not read saved bake-off result at \(url.path): \(error)")
         }
     }
 
     func fileURL(for measurement: Measurement) -> URL {
-        directory.appending(path: "\(measurement.description.fileName).json")
+        let folder = measurement.header.map {
+            directory.appending(path: Self.runsDirectory).appending(path: $0.runID)
+        }
+        return (folder ?? directory).appending(path: "\(measurement.description.fileName).json")
+    }
+
+    private static let runsDirectory = "runs"
+
+    private static var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private static func files(in folder: URL, withExtension pathExtension: String?) -> [URL] {
+        let entries =
+            (try? FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        return entries.filter { url in
+            guard let pathExtension else {
+                return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+            return url.pathExtension == pathExtension
+        }
     }
 }
 
@@ -635,8 +823,10 @@ struct RegressionComparison {
     /// The corpus change first, then each set of cases left out of the verdict.
     var corpusReport: [String] {
         guard corpusChanged || !added.isEmpty || !removed.isEmpty || !changed.isEmpty else { return [] }
-        var lines = corpusChanged ? ["Corpus changed since the baseline; only unchanged cases are judged."] : []
-        for (label, ids) in [("added", added), ("removed", removed), ("changed", changed)] where !ids.isEmpty {
+        var lines =
+            corpusChanged ? ["Corpus changed since the baseline; only unchanged cases are judged."] : []
+        for (label, ids) in [("added", added), ("removed", removed), ("changed", changed)] where !ids.isEmpty
+        {
             lines.append("  \(label) (\(ids.count)): \(ids.joined(separator: ", "))")
         }
         return lines

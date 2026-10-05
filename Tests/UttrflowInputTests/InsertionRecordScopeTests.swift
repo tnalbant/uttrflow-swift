@@ -35,7 +35,9 @@ struct InsertionRecordScopeTests {
 
     @Test("a dictation runs back through insertions written end to end, and stops at a gap")
     func dictationRunsBackToAGap() {
-        let records = [record("Old.", endingAt: 4), record("One.", endingAt: 10), record(" Two.", endingAt: 15)]
+        let records = [
+            record("Old.", endingAt: 4), record("One.", endingAt: 10), record(" Two.", endingAt: 15),
+        ]
         #expect(CommandScope.dictation.span(in: records)?.range == 6..<15)
         #expect(CommandScope.dictation.span(in: records)?.text == "One. Two.")
         #expect(CommandScope.default.span(in: records)?.range == 6..<15)

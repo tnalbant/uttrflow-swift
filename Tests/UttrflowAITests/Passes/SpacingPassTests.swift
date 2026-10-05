@@ -48,7 +48,8 @@ struct SpacingPassTests {
     @Test(
         "leaves a dotted or marked token that is not two words alone",
         arguments: [
-            "3.5", "3.14", "v1.2.3", "1,000", "10:30", "v2.1", "2.3.1", "v10.4.2", "example.com", "docs.example.org",
+            "3.5", "3.14", "v1.2.3", "1,000", "10:30", "v2.1", "2.3.1", "v10.4.2", "example.com",
+            "docs.example.org",
             "www.example.net", "co.uk", "file.txt", "notes.md", "main.swift", "index.html", "maths.py",
             "Draft.pages", "Budget.numbers", "Incident.docx", "Retention.xlsx", "Node.js", "README.MD",
             "a.m.", "p.m.", "e.g.", "i.e.", "U.S.", "U.S.A.", "etc.", "Mr.Smith", "Dr.Jones", "St.Louis",

@@ -193,8 +193,20 @@ public struct DestinationFormatter: Sendable, Equatable {
     public func owesFormatting(_ text: String) -> Bool {
         let first = text.first.map(String.init) ?? ""
         let owesCapital = firstWord != .asSpoken && first != first.uppercased()
-        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        let owesStop = terminalStop != .never && !Self.hasClauseMark(text)
         return owesCapital && owesStop
+    }
+
+    /// Whether `text` holds a clause mark; one between two digits, as in "2.4.1" or "9,000", belongs to the number.
+    private static func hasClauseMark(_ text: String) -> Bool {
+        let characters = Array(text)
+        return characters.indices.contains { index in
+            guard ".!?;,".contains(characters[index]) else { return false }
+            let inNumber =
+                index > 0 && index + 1 < characters.count
+                && characters[index - 1].isNumber && characters[index + 1].isNumber
+            return !inNumber
+        }
     }
 
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
@@ -216,14 +228,11 @@ public struct DestinationFormatter: Sendable, Equatable {
         {
             return proseInCodeEditor(base)
         }
-        let ruleStop: TerminalStopPolicy? = {
-            guard let rule = DestinationClassifier.rule(for: situation.app),
-                rule.destination == situation.destination
-            else { return nil }
-            return rule.terminalStop
-        }()
+        let rule = DestinationClassifier.rule(for: situation.app)
+            .flatMap { $0.destination == situation.destination ? $0 : nil }
+        let ruleStop = rule?.terminalStop
         let role = situation.app.accessibilityRole
-        let isSearch = role == "AXSearchField"
+        let isSearch = role == "AXSearchField" || rule?.field == .search
         let isSingleLine = situation.app.isMultiline == false || role == "AXTextField" || isSearch
         guard ruleStop != nil || isSingleLine else { return base }
         return DestinationFormatter(

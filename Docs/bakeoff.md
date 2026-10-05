@@ -10,8 +10,9 @@ the corpus is `EvaluationCorpus` (`Sources/UttrflowEval/EvaluationCorpus.swift`)
 
 ## The corpus
 
-**The corpus is 464 cases in eight categories** — `everyday` 160, `contextual` 91, `grammar` 26,
-`technical` 45, `multilingual` 15, `notARequest` 77, `oneLineField` 10, `secondLanguage` 40 — and everything in it is synthesised or
+**The corpus is 504 cases in ten categories** — `everyday` 165, `contextual` 95, `grammar` 26,
+`technical` 45, `multilingual` 15, `notARequest` 77, `oneLineField` 10, `secondLanguage` 40,
+`bareLiteral` 23, `commandInput` 8 — and everything in it is synthesised or
 written by hand. `Scripts/docs_audit.sh` checks this sentence against `EvaluationCorpus.swift`.
 The count of record for any run is the one `make bakeoff` prints in its header, from
 `EvaluationCorpus.all.count`, beside the prompt version (`PromptBuilder.version`, 11).

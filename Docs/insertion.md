@@ -188,9 +188,10 @@ reached whether or not anyone is listening; `uttrflow-dev insert` uses it to pri
 **A doubtful paste is not a failed one.** An application that rewrites quotes, dashes or
 capitalisation as it takes a paste never matches the tail, and treating that as a failure would
 demote a large class of successful pastes. The words are on the clipboard either way, so
-"not confirmed" is said and nothing retries or re-pastes. A strategy that cannot check answers
-**not reported**, which draws the plain tick: the Accessibility write verifies itself inside the
-field, and typing reads nothing back.
+"not confirmed" is said and nothing retries or re-pastes. The typed route runs the same wait
+after its last key, from a tail read before its first, so keys a target drops end **unconfirmed**
+rather than in a tick; a field that will not answer stays **not reported**. The Accessibility write
+answers **confirmed**, since it returns only once the caret has collapsed after the words.
 
 If cancellation arrives before the paste key is posted, the engine discards its clipboard
 generation only if it still owns that generation. It never restores the previous clipboard or
@@ -198,7 +199,7 @@ clears a newer copy. Once the key is posted, arrival can be uncertain, so the cl
 written.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
-arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
+arrival notice. If the insertion stage itself times out (`StageTimeout.insertion`, 15 s), the failure
 is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
@@ -393,3 +394,7 @@ waits until nobody has touched the Mac for 30 s, and needs Accessibility granted
 | `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
 | `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
 | `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |
+| `late-write` | text, Accessibility | answers the write with success and applies it 150 ms later | `insertionUnconfirmed`, field holds the words once the write lands |
+| `steals-focus` | text, paste | moves focus to the multi-line view the first time its selection is read | pasted, and the words land in the multi-line view, not the text field |
+| `closes-window` | text, paste | closes its window the first time its selection is read | pasted, field empty |
+| `marks-text` | text, Accessibility | opens with an input method composition, `ni`, in progress at the caret | written, the composition is committed and the words follow it |

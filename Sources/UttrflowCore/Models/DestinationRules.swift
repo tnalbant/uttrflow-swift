@@ -54,6 +54,12 @@ public enum DestinationRules {
     public static let mail = "com.apple.mail"
     /// Outlook's identifier, named so a corpus case, fixture or default cannot mistype it.
     public static let outlook = "com.microsoft.Outlook"
+    /// Spotlight's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let spotlight = "com.apple.Spotlight"
+    /// Raycast's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let raycast = "com.raycast.macos"
+    /// Alfred's identifier, named so a corpus case, fixture or default cannot mistype it.
+    public static let alfred = "com.runningwithcrayons.Alfred"
 
     /// DataGrip also matches JetBrains' broad code-editor prefix; the classifier chooses its longer SQL prefix.
     public static let standard: [DestinationRule] = [
@@ -116,19 +122,28 @@ public enum DestinationRules {
                 "com.jetbrains.phpstorm", "com.jetbrains.rubymine", "com.jetbrains.clion",
                 "com.jetbrains.datagrip", "com.jetbrains.appcode", "com.jetbrains.mps",
                 "com.sublimetext", "com.panic.Nova",
-                "com.visualstudio.code", "org.vim.MacVim", "com.google.antigravity",
+                "com.visualstudio.code", "com.google.antigravity",
             ],
             nameWords: [
                 "xcode", "code", "zed", "sublime", "cursor", "nova", "intellij", "pycharm", "goland",
-                "vim", "neovim", "emacs",
+                "emacs",
             ],
             kind: .codeEditor
+        ),
+        DestinationRule(
+            bundlePrefixes: ["org.vim.MacVim"],
+            nameWords: ["vim", "macvim", "neovim", "gvim"],
+            kind: .codeEditor, keysMayBeCommands: true
         ),
         DestinationRule(
             bundlePrefixes: [
                 slack, "net.whatsapp", "desktop.whatsapp", "ru.keepcoder.Telegram",
                 "org.telegram", "com.hnc.Discord", messages, "com.microsoft.teams",
                 "org.whispersystems.signal",
+            ],
+            hostSuffixes: [
+                "app.slack.com", "discord.com", "web.whatsapp.com", "web.telegram.org",
+                "teams.microsoft.com", "teams.live.com",
             ],
             titleContains: [
                 "Slack", "Discord", "Messages", "WhatsApp", "Telegram", "Telegram Web", "Teams",
@@ -143,9 +158,16 @@ public enum DestinationRules {
             bundlePrefixes: [
                 mail, outlook, "com.superhuman", "com.readdle.smartemail",
             ],
+            hostSuffixes: [
+                "mail.google.com", "outlook.office.com", "outlook.live.com", "mail.superhuman.com",
+            ],
             titleContains: ["Gmail", "Mail", "Outlook", "Spark", "Superhuman"],
             nameWords: ["mail", "outlook", "spark", "superhuman"],
             kind: .email
+        ),
+        DestinationRule(
+            bundlePrefixes: [spotlight, raycast, alfred],
+            destination: .plain, field: .search
         ),
     ]
 

@@ -303,7 +303,8 @@ public actor ClipboardStore {
 
     /// Where the pictures live: a folder beside the clipboard file, never inside that whole-file rewrite.
     public var imagesFolder: URL {
-        file.deletingLastPathComponent().appending(path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
+        file.deletingLastPathComponent().appending(
+            path: LocalStoreEntry.clipboardImages.name, directoryHint: .isDirectory)
     }
 
     /// Records a noticed copy, writing its picture first so a clip never points at a file that is missing.
@@ -825,8 +826,11 @@ public actor ClipboardStore {
         guard reclassifiedFiles.insert(url).inserted, !hasUnreadableIndex, !unreplaceable.contains(url)
         else { return clips }
         guard !LocalStore.hasSetAside(url) else { unreplaceable.insert(url); return clips }
+        // A picture's kind is decided by the bytes it carries, never by the empty text next to it.
         let updated = clips.map { clip in
-            clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+            clip.image == nil
+                ? clip.reclassified(as: ClipKindDetector.classification(of: clip.text))
+                : clip
         }
         guard updated != clips else { return clips }
         // A secret clip's picture is removed only after its replacement index is safely written.

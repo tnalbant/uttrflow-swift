@@ -7,7 +7,7 @@ public enum MainIntent: Sendable, Equatable {
     /// Something only macOS can grant, in the same vocabulary a failure uses.
     case recover(RecoveryAction)
     /// Somewhere else in the app.
-    case go(Destination)
+    case go(AppLocation)
     /// Another page of this window; separate from ``go(_:)`` only because ``MainTab`` cannot name every page.
     case show(MainTab)
     /// Read the current page's list in the order this identifier names.

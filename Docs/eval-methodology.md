@@ -9,6 +9,32 @@ against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
 [`measuring-accuracy.md`](measuring-accuracy.md); the edit distance is in
 [`core-word-error-rate.md`](core-word-error-rate.md).
 
+## Capitalisation by class
+
+`CaseScore.caseAccuracy` is the share of aligned words whose case matches the reference. Most
+reference words are lower case, so that share starts high for an output that changes nothing. The
+bake-off therefore also counts each aligned word under one `CapitalisationClass`, read from the
+reference by the rule in `CapitalisationScore.swift` (the pronoun "I", acronym, inner capital,
+sentence start, capitalised inside a sentence, lower case, uncased), and prints each class beside
+two floors: the reference written all lower case, and the recogniser's own text. `caseAccuracy` is
+the total of that tally, so its meaning is unchanged for stored results.
+
+Floors over the clean-up corpus, from `swift test --filter CapitalisationScoreTests`:
+
+| Class | Words | All lower case | Recogniser |
+|---|---|---|---|
+| I | 87 | 0% | 52% |
+| acronym | 67 | 0% | 11% |
+| inner capital | 17 | 0% | 100% |
+| sentence start | 826 | 9% | 13% |
+| capitalised | 129 | 0% | 18% |
+| lower case | 4198 | 100% | 100% |
+| uncased | 222 | 100% | 100% |
+| all | 5546 | 81% | 83% |
+
+An all-lower-case output already scores 81% on the old mean, so a mean is read against this floor
+and the class that moved, never alone.
+
 ## The baseline gate
 
 - A run is compared against a stored baseline, and the gate says *better* or *worse*. "The
@@ -51,6 +77,11 @@ against are in [accuracy-targets.md](accuracy-targets.md). How to run it is in
   printing. A report whose rows move between runs is one nobody can compare with the last.
 - Language is detected by default, as the product does it. `--hint-language` exists to measure
   whether telling the engine helps, not as an assumption built in.
+- A decode's per-word evidence (log-probability, margin, entropy, alternatives, timing and the
+  fallback rung kept) is a `DecodeDump` in `decode-dumps/` inside the local corpus, keyed by the
+  audio digest and the engine identity, with no audio. A re-decode writes a second file, never
+  over the first, because fallback retries make two decodes of one clip differ. A fit reads
+  dumps only and refuses one made under another engine identity, naming the field that differs.
 
 ## Local recordings and the catalogue
 
@@ -316,3 +347,32 @@ The corpus column is 410 English cases, 3,011 words.
   It reports passage counts per side and language (`swift test --filter TranscriptionSplitTests`).
 - The corpus has one reader, so passage and speaker group coincide today; a second reader of a
   passage takes the passage's side.
+
+## Recogniser confidence on homophones (`homophone-confidence`)
+
+`uttrflow-eval homophone-confidence` reads each pair in `HomophoneConfidence` (14 programmer terms whose spoken form
+matches an everyday word, 20 everyday pairs as a control) in an invented sentence. It finds the meant word's slot
+by alignment and records the per-word score of whatever was written there. The correction engine doubts a word
+under `CorrectionEngine.certaintyThreshold` (0.5). Each pair is decoded 24 times: 3 voices × 2 rates × with or
+without a spoken developer prefix × with or without the term in the vocabulary prompt.
+
+Measured on Apple M5 Pro, 48 GB; whisperKit `openai_whisper-large-v3-v20240930_turbo_632MB`, language detected;
+`say` voices Samantha, Daniel and Karen at 175 and 230 words a minute.
+
+| Group | Prefix | Term in prompt | Decodes | Error rate | Median score when wrong | Wrong below 0.5 | Right below 0.5 | AUC |
+|---|---|---|---|---|---|---|---|---|
+| programmer | no | no | 84 | 17% | 0.77 | 21% | 1% | 0.59 |
+| programmer | no | yes | 84 | 6% | 0.77 | 0% | 0% | 0.93 |
+| programmer | yes | no | 84 | 10% | 0.97 | 0% | 3% | 0.44 |
+| programmer | yes | yes | 84 | 8% | 0.96 | 0% | 0% | 0.83 |
+| programmer | all | all | 336 | 10% | 0.92 | 9% | 1% | 0.69 |
+| ordinary | all | all | 480 | 1% | 0.63 | 0% | 0% | 1.00 |
+
+Pairs with errors (of 24 decodes each): sed written as "said" 23 times, median score 0.97; kernel as "colonel" 6;
+sync as "async" 4; rode as "wrote" 2; hertz as "herds" 1; tail as "tale" 1. The other 28 pairs had no errors.
+
+**Result.** The 0.5 gate cannot detect these errors: 3 of 33 programmer misreadings (9%) score under it, and the
+most frequent one, sed heard as "said", is written at a median of 0.97. The score still ranks wrong words below
+right ones (AUC 0.69 for programmer pairs, 1.00 for everyday pairs), so a misreading is low relative to its
+sentence, not low in absolute terms. Putting the term in the vocabulary prompt cut programmer errors from 17% to
+6% without a prefix, which a fixed threshold never could.

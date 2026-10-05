@@ -23,12 +23,20 @@ public struct CaseScore: Sendable, Equatable {
     public let isExact: Bool
     /// Whether the engine declined the case; kept apart from failure so a refusal is not a mistake.
     public let declined: Bool
+    /// Case agreement counted per capitalisation class; `caseAccuracy` is its total.
+    public let capitalisation: CapitalisationTally
+    /// The same count for the reference written all lower case, the do-nothing floor.
+    public let lowerCaseBaseline: CapitalisationTally
+    /// The same count for the recogniser's own text, before any clean-up.
+    public let spokenBaseline: CapitalisationTally
 
     public init(
         caseID: String, similarity: Double, markAccuracy: Double = 1, caseAccuracy: Double = 1,
         keptEverythingRequired: Bool,
         lost: [String], isExact: Bool, declined: Bool = false, invented: [String] = [],
-        brokeShape: [String] = [], deleted: [String] = []
+        brokeShape: [String] = [], deleted: [String] = [],
+        capitalisation: CapitalisationTally = .init(), lowerCaseBaseline: CapitalisationTally = .init(),
+        spokenBaseline: CapitalisationTally = .init()
     ) {
         self.caseID = caseID
         self.similarity = similarity
@@ -41,6 +49,9 @@ public struct CaseScore: Sendable, Equatable {
         self.invented = invented
         self.brokeShape = brokeShape
         self.deleted = deleted
+        self.capitalisation = capitalisation
+        self.lowerCaseBaseline = lowerCaseBaseline
+        self.spokenBaseline = spokenBaseline
     }
 
     /// Passes only when no reference word is dropped, nothing required is lost and the rewrite stays close.
@@ -94,6 +105,17 @@ public struct EvaluationReport: Sendable, Equatable {
     public var meanCaseAccuracy: Double {
         mean(of: \CaseScore.caseAccuracy)
     }
+
+    /// Case agreement per class summed over attempted cases, so a class is weighed by its words.
+    public var capitalisation: CapitalisationTally { attempted.map(\.capitalisation).reduce(.init(), +) }
+
+    /// The all-lower-case floor summed the same way.
+    public var lowerCaseBaseline: CapitalisationTally {
+        attempted.map(\.lowerCaseBaseline).reduce(.init(), +)
+    }
+
+    /// The recogniser's own case summed the same way.
+    public var spokenBaseline: CapitalisationTally { attempted.map(\.spokenBaseline).reduce(.init(), +) }
 
     private func mean(of metric: (CaseScore) -> Double) -> Double {
         let attempted = attempted

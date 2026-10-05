@@ -178,6 +178,6 @@ struct DestinationClassifierTests {
         for rule in DestinationRules.standard {
             #expect(!rule.bundlePrefixes.isEmpty || !rule.titleContains.isEmpty)
         }
-        #expect(Set(DestinationRules.standard.map(\.destination)).count == Destination.allCases.count - 1)
+        #expect(Set(DestinationRules.standard.map(\.destination)).isSuperset(of: Destination.allCases))
     }
 }

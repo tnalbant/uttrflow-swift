@@ -6,7 +6,7 @@ public enum EvaluationCorpus {
     public static let all: [EvaluationCase] =
         everyday + technical + notARequest + hostileSelectedText + multilingual + contextual + codeToken
         + grammar + secondLanguage + oneLineField + bareLiteral + formatting
-        + codeMixing
+        + codeMixing + commandInput
 
     public static func cases(in category: EvaluationCase.Category) -> [EvaluationCase] {
         all.filter { $0.category == category }
@@ -1052,13 +1052,13 @@ public enum EvaluationCorpus {
             mustKeep: ["twenty", "first", "may", "fail"],
             mustNotAdd: ["21"]
         ),
-        // Contested: words are kept above one hundred until the numeral policy decides compound ordinals.
+        // A compound ordinal is a numeral at every size, as twenty first is 21st.
         .init(
             id: "compound-ordinal-above-one-hundred", category: .everyday,
             spoken: "one hundred and twenty first",
-            expected: "One hundred and twenty first.",
-            mustKeep: ["one hundred and twenty first"],
-            mustNotAdd: ["120", "121"]
+            expected: "121st.",
+            mustKeep: ["121st"],
+            mustNotAdd: ["120", "one hundred"]
         ),
     ]
 
@@ -3886,6 +3886,63 @@ public enum EvaluationCorpus {
             spoken: "bring a laptop. arrive early. park at the back",
             expected: "Bring a laptop. Arrive early. Park at the back.",
             context: oneLineFieldContext, mustEndWith: "."
+        ),
+    ]
+
+    // MARK: Launcher panels, whose one input is a query or a command
+
+    /// A launcher input that reports a plain one-line text field, so the row, not the role, decides the policy.
+    static func launcherContext(_ bundle: String) -> AppContext {
+        AppContext(bundleIdentifier: bundle, accessibilityRole: "AXTextField", isMultiline: false)
+    }
+
+    static let commandInput: [EvaluationCase] = [
+        .init(
+            id: "command-open-folder", category: .commandInput, spoken: "open the downloads folder",
+            expected: "open the downloads folder",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "open",
+            mustEndWith: "r", expectedExact: "open the downloads folder", addedFor: 4252
+        ),
+        .init(
+            id: "command-dark-mode", category: .commandInput, spoken: "toggle dark mode",
+            expected: "toggle dark mode",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "toggle",
+            mustEndWith: "e", expectedExact: "toggle dark mode", addedFor: 4252
+        ),
+        .init(
+            id: "command-new-note", category: .commandInput, spoken: "new note", expected: "new note",
+            context: launcherContext(DestinationRules.alfred), mustBeginWith: "new",
+            mustEndWith: "e", expectedExact: "new note", addedFor: 4252
+        ),
+        .init(
+            id: "command-recent-files", category: .commandInput, spoken: "show recent files",
+            expected: "show recent files",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "show",
+            mustEndWith: "s", expectedExact: "show recent files", addedFor: 4252
+        ),
+        .init(
+            id: "command-restart-server", category: .commandInput, spoken: "restart the language server",
+            expected: "restart the language server",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "restart",
+            mustEndWith: "r", expectedExact: "restart the language server", addedFor: 4252
+        ),
+        .init(
+            id: "command-empty-trash", category: .commandInput, spoken: "empty the trash",
+            expected: "empty the trash",
+            context: launcherContext(DestinationRules.alfred), mustBeginWith: "empty",
+            mustEndWith: "h", expectedExact: "empty the trash", addedFor: 4252
+        ),
+        .init(
+            id: "command-clipboard-history", category: .commandInput, spoken: "search clipboard history",
+            expected: "search clipboard history",
+            context: launcherContext(DestinationRules.raycast), mustBeginWith: "search",
+            mustEndWith: "y", expectedExact: "search clipboard history", addedFor: 4252
+        ),
+        .init(
+            id: "command-weekday-keeps-capital", category: .commandInput,
+            spoken: "find the meeting notes from Monday", expected: "find the meeting notes from Monday",
+            context: launcherContext(DestinationRules.spotlight), mustBeginWith: "find",
+            mustEndWith: "y", expectedExact: "find the meeting notes from Monday", addedFor: 4252
         ),
     ]
 }
