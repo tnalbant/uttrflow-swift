@@ -2554,7 +2554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             do {
                 try await evidence.append(rows, keeping: window)
             } catch {
-                Self.log.error("style counts not saved: \(String(describing: error), privacy: .public)")
+                Self.log.error("style counts not saved: \(ErrorLog.failure(error), privacy: .public)")
             }
         }
     }
