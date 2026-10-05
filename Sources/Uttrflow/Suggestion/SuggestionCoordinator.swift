@@ -598,7 +598,11 @@ final class SuggestionCoordinator {
         hasArmedOffer: Bool, lastKeystroke: Date, at moment: Date
     ) -> AccessibilityValueChangeAction {
         guard hasArmedOffer else { return .wake }
-        guard moment.timeIntervalSince(lastKeystroke) * 1000 >= Double(fieldReadDebounceInMilliseconds) else {
+        guard moment >= lastKeystroke else { return .withdrawAndWake }
+        guard
+            elapsedMilliseconds(since: lastKeystroke, at: moment)
+                >= fieldReadDebounceInMilliseconds
+        else {
             return .ignore
         }
         return .withdrawAndWake
@@ -606,7 +610,13 @@ final class SuggestionCoordinator {
 
     /// Whether a value change arrived without a nearby key-down to explain it.
     nonisolated static func isUnkeyedAccessibilityChange(lastKeyDown: Date, at moment: Date) -> Bool {
-        moment.timeIntervalSince(lastKeyDown) * 1000 >= Double(accessibilityKeyWindowInMilliseconds)
+        guard moment >= lastKeyDown else { return true }
+        return elapsedMilliseconds(since: lastKeyDown, at: moment) >= accessibilityKeyWindowInMilliseconds
+    }
+
+    /// Elapsed key time never goes below zero when the system wall clock moves backwards.
+    nonisolated static func elapsedMilliseconds(since earlier: Date, at later: Date) -> Int {
+        max(0, Int(later.timeIntervalSince(earlier) * 1000))
     }
 
     /// Whether a key-down may move keyboard focus to another field: Tab, Escape, or any ⌘ shortcut.
@@ -1326,7 +1336,7 @@ final class SuggestionCoordinator {
         }
     }
 
-    /// Tells capture what happened, and asks the user once about an application it has not met.
+    /// Tells capture what happened.
     private func remember(
         _ snapshot: FocusedFieldSnapshot, as reading: FieldReading, because reason: SuggestionReason,
         at moment: Date
@@ -1358,12 +1368,7 @@ final class SuggestionCoordinator {
             insertionPending = false
             events = CaptureEvent.marking(events, insertedAt: moment)
         }
-        var outcome: CaptureOutcome?
-        for event in events { outcome = try? await capture.handle(event, in: reading) }
-        guard let outcome else { return }
-        guard case .refused(let refusal) = outcome, refusal.asksTheUser else { return }
-        // The Suggestions screen has already said yes to this application, so the capture store is told so.
-        Task { [capture] in try? await capture.record(.allowed, for: snapshot.bundleIdentifier) }
+        for event in events { _ = try? await capture.handle(event, in: reading) }
     }
 
     // MARK: Drawing
@@ -1605,6 +1610,6 @@ final class SuggestionCoordinator {
     private func context(of snapshot: FocusedFieldSnapshot, at moment: Date) -> PredictionContext {
         SuggestionMoment.context(
             of: snapshot,
-            millisecondsSinceKeystroke: Int(moment.timeIntervalSince(lastFluentKeystroke) * 1000))
+            millisecondsSinceKeystroke: Self.elapsedMilliseconds(since: lastFluentKeystroke, at: moment))
     }
 }

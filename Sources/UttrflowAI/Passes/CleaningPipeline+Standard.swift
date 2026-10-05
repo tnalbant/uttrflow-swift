@@ -106,6 +106,12 @@ extension CleaningPipeline {
                     capitaliseCalendarWords: formatter.firstWord == .fromInsertionPoint
                         && formatter.destination != .codeEditor,
                     vocabulary: vocabulary),
+                CommentMarkerPass(
+                    opensComment: formatter.destination == .codeEditor
+                        && CaretStructure.opensComment(
+                            precedingText: situation.insertion.precedingText,
+                            documentName: situation.app.documentName)
+                ),
                 TerminalStopPass(
                     policy: terminalStop(formatter, in: situation), layout: formatter.layout,
                     insertionPoint: situation.insertion, destination: formatter.destination),

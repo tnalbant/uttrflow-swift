@@ -26,6 +26,30 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "writes every number of a coordinated group as a numeral once one of them is",
+        arguments: [
+            ("between five and fifteen", "between 5 and 15"),
+            ("three or twelve", "3 or 12"),
+            ("one, five and twenty", "1, 5 and 20"),
+            ("five, ten, and fifteen minutes", "5, 10, and 15 minutes"),
+            ("from five to fifteen people", "from 5 to 15 people"),
+            ("nine through eleven", "9 through 11"),
+            ("eight versus twelve", "8 versus 12"),
+            ("two or 30", "2 or 30"),
+            ("between 4 and nine", "between 4 and 9"),
+            ("one of the 12 people", "one of the 12 people"),
+            ("three apples and twelve pears", "three apples and 12 pears"),
+            ("one or two", "one or two"),
+            ("five, six and seven", "five, six and seven"),
+            ("one, five. Then twenty", "one, five. Then 20"),
+            ("ten to six", "10 to six"),
+        ]
+    )
+    func coordinatedGroups(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .fromTen)) == expected)
+    }
+
+    @Test(
         "writes a number from ten up as a numeral, with commas only from ten thousand",
         arguments: [
             ("about fifteen people", "about 15 people"),
@@ -110,6 +134,28 @@ struct NumberFormsPassTests {
     )
     func everyNumberAsANumeral(input: String, expected: String) {
         #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
+        "reads a hyphenated tens-unit number as one number",
+        arguments: [
+            ("twenty-one dollars", "21 dollars"),
+            ("ninety-nine percent", "99%"),
+            ("forty-two", "42"),
+            ("Forty-two, then", "42, then"),
+            ("three hundred forty-five people", "345 people"),
+            ("forty-five thousand", "45,000"),
+        ]
+    )
+    func hyphenatedTensUnit(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test("reads a hyphenated tens-unit number from ten up, and keeps a hyphen that is not one")
+    func hyphenatedTensUnitFromTen() {
+        #expect(cleaned("twenty-one", by: sut) == "21")
+        #expect(cleaned("at twenty-one", by: sut) == "at 21")
+        #expect(cleaned("a well-known one-off", by: sut) == "a well-known one-off")
     }
 
     @Test(
@@ -358,6 +404,14 @@ struct NumberFormsPassTests {
             ("two point five percent", "2.5%"),
             ("one point is that", "one point is that"),
             ("sixteen point 2", "16.2"),
+            ("point five percent", "0.5%"),
+            ("point five per cent", "0.5%"),
+            ("minus point two", "-0.2"),
+            ("negative point two five", "-0.25"),
+            ("a point five second delay", "a 0.5 second delay"),
+            ("point five kilometres", "0.5 kilometres"),
+            ("this point five of us", "this point five of us"),
+            ("a good point five minutes ago", "a good point 5 minutes ago"),
         ]
     )
     func decimals(input: String, expected: String) {
@@ -466,6 +520,15 @@ struct NumberFormsPassTests {
             ("the twenty fifth anniversary", "the 25th anniversary"),
             ("we finished twenty third", "we finished 23rd"),
             ("the one hundred and twenty first floor", "the 121st floor"),
+            ("the one hundred and first visitor", "the 101st visitor"),
+            ("the one hundred and first", "the 101st"),
+            ("the one hundred and twentieth day", "the 120th day"),
+            ("the one hundred twenty first floor", "the 121st floor"),
+            ("the one thousand and first night", "the 1001st night"),
+            ("the one hundred and twenty-first floor", "the 121st floor"),
+            ("the two hundred and fiftieth year", "the 250th year"),
+            ("the one hundred and twelfth day", "the 112th day"),
+            ("the 121st floor", "the 121st floor"),
             ("the twenty-fifth floor", "the 25th floor"),
         ]
     )
@@ -720,7 +783,6 @@ struct NumberFormsPassTests {
             "twenty fifth, March", "tenth of, April", "tenth of \"April\"",
             "twenty--fifth of March",
             "twenty-tenth of March", "first", "a hundred and twentieth of June",
-            "the one hundred and first",
         ]
     )
     func preservesOrdinals(input: String) {
@@ -894,5 +956,40 @@ struct NumberWordsTests {
         #expect(DestinationFormatter.standard(for: .codeEditor).digits == .none)
         // A cell keeps its separators: the corpus's own reference for a spreadsheet is "12,000".
         #expect(DestinationFormatter.standard(for: .spreadsheet).digits == .thousands)
+    }
+
+    @Test(
+        "writes a romanised Hindi number in digits only before an amount, unit or time word",
+        arguments: [
+            ("paanch sau rupaye de do", "500 rupaye de do"),
+            ("do hazaar rupaye bhejo", "2000 rupaye bhejo"),
+            ("do hazaar paanch sau rupaye", "2500 rupaye"),
+            ("ek lakh rupaye", "100,000 rupaye"),
+            ("teen crore rupees", "30,000,000 rupees"),
+            ("pachas rupaye", "50 rupaye"),
+            ("sau rupaye", "100 rupaye"),
+            ("das kilo chawal", "10 kilo chawal"),
+            ("do litre doodh", "2 litre doodh"),
+            ("paanch minute ruko", "5 minute ruko"),
+            ("teen ghante lagenge", "3 ghante lagenge"),
+            ("chaar baje milte hain", "4 baje milte hain"),
+            ("bees saal ho gaye", "20 saal ho gaye"),
+            ("saat din baad", "7 din baad"),
+            ("chhah mahine", "6 mahine"),
+            ("do sau pachas gram", "250 gram"),
+            ("pachchis tareekh ko", "25 tareekh ko"),
+            ("assi paise", "80 paise"),
+            ("do hafte", "2 hafte"),
+            ("paanch lakh pachas hazaar rupaye", "550,000 rupaye"),
+            ("main do din mein aaunga", "main 2 din mein aaunga"),
+            ("do baatein karni hain", "do baatein karni hain"),
+            ("hum saath chalenge", "hum saath chalenge"),
+            ("paanch sau log aaye", "paanch sau log aaye"),
+            ("ek baar aur", "ek baar aur"),
+            ("ek, rupaye", "ek, rupaye"),
+        ]
+    )
+    func hindiAmounts(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass()) == expected)
     }
 }

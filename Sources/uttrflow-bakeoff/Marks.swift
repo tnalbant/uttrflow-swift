@@ -43,11 +43,6 @@ struct Marks: AsyncParsableCommand {
         candidates.append(("heard", { $0.spoken }))
         let rules = RuleBasedTransformer()
         candidates.append(("rules", { try await rules.transform($0.transformationRequest()).text }))
-        candidates.append(
-            (
-                "rules+clauses",
-                { ClauseCommas.place(in: try await rules.transform($0.transformationRequest()).text) }
-            ))
         var apple = EngineConfiguration.default
         apple.transformerPreference = [.foundationModels]
         let appleRouter = TextTransformers.router(configuration: apple)
@@ -156,20 +151,6 @@ private struct PassThroughRouter: Sendable {
     }
 }
 
-/// Minimal clause commas: a comma before every lexically evidenced clause start that has no mark yet.
-enum ClauseCommas {
-    static func place(in text: String) -> String {
-        var tokens = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        let bare = tokens.map { $0.filter { $0.isLetter || $0.isNumber || $0 == "'" } }
-        for boundary in ClauseSegmenter.boundaries(in: bare) where boundary.evidence != .pause {
-            let before = boundary.index - 1
-            guard let last = tokens[before].last, last.isLetter || last.isNumber else { continue }
-            tokens[before] += ","
-        }
-        return tokens.joined(separator: " ")
-    }
-}
-
 /// True and false placements of one mark.
 struct MarkCount: Sendable {
     var truePositive = 0
@@ -189,7 +170,7 @@ struct MarkCount: Sendable {
     }
 }
 
-/// Per-mark counts for one case, over the words the output and the reference share.
+/// Per-mark counts for one case, placed by word alignment through `PunctuationTally`.
 struct MarkCounts: Sendable {
     enum Mark: CaseIterable { case comma, stop, question }
 
@@ -200,26 +181,24 @@ struct MarkCounts: Sendable {
     var wordsChanged = 0
 
     init(produced: String, wanted: String, heard: String) {
-        let out = Self.marked(produced)
-        let ref = Self.marked(wanted)
-        for (i, j) in Self.alignment(out.map(\.word), ref.map(\.word)) {
-            add(out[i].mark, ref[j].mark)
+        let tally = PunctuationTally.measure(produced, against: wanted)
+        func count(_ classes: [MarkClass]) -> MarkCount {
+            func sum(_ counts: [MarkClass: Int]) -> Int { classes.map { counts[$0] ?? 0 }.reduce(0, +) }
+            let correct = sum(tally.correct)
+            return MarkCount(
+                truePositive: correct, falsePositive: sum(tally.produced) - correct,
+                falseNegative: sum(tally.wanted) - correct)
         }
-        let heardWords = Self.marked(heard).map(\.word)
-        let kept = Self.alignment(out.map(\.word), heardWords).count
-        wordsChanged = (out.count - kept) + (heardWords.count - kept)
+        comma = count([.comma])
+        // "!" counts as a stop here, so this table reads as it always has.
+        stop = count([.fullStop, .exclamation])
+        question = count([.question])
+        let words = WordErrorRate.measure(
+            reference: Self.words(heard), hypothesis: Self.words(produced))
+        wordsChanged = words.errors + words.substitutions
     }
 
     init() {}
-
-    private mutating func add(_ produced: Mark?, _ wanted: Mark?) {
-        guard produced != wanted else {
-            if let produced { self[produced].truePositive += 1 }
-            return
-        }
-        if let produced { self[produced].falsePositive += 1 }
-        if let wanted { self[wanted].falseNegative += 1 }
-    }
 
     subscript(mark: Mark) -> MarkCount {
         get {
@@ -247,46 +226,11 @@ struct MarkCounts: Sendable {
         return sum
     }
 
-    /// Lower-cased words, each with the mark that follows it; "!" counts as a stop.
-    static func marked(_ text: String) -> [(word: String, mark: Mark?)] {
+    private static func words(_ text: String) -> [String] {
         text.split(whereSeparator: \.isWhitespace).compactMap { token in
             let word = token.lowercased().filter { $0.isLetter || $0.isNumber }
-            guard !word.isEmpty else { return nil }
-            let tail = token.reversed().prefix { !($0.isLetter || $0.isNumber) }
-            let mark: Mark? =
-                tail.contains("?")
-                ? .question
-                : tail.contains(where: { $0 == "." || $0 == "!" })
-                    ? .stop
-                    : tail.contains(",") ? .comma : nil
-            return (word, mark)
+            return word.isEmpty ? nil : word
         }
-    }
-
-    /// Index pairs of a longest common subsequence, so marks are compared only on words both sides hold.
-    static func alignment(_ a: [String], _ b: [String]) -> [(Int, Int)] {
-        guard !a.isEmpty, !b.isEmpty else { return [] }
-        var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
-        for i in stride(from: a.count - 1, through: 0, by: -1) {
-            for j in stride(from: b.count - 1, through: 0, by: -1) {
-                table[i][j] = a[i] == b[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
-            }
-        }
-        var pairs: [(Int, Int)] = []
-        var i = 0
-        var j = 0
-        while i < a.count, j < b.count {
-            if a[i] == b[j] {
-                pairs.append((i, j))
-                i += 1
-                j += 1
-            } else if table[i + 1][j] >= table[i][j + 1] {
-                i += 1
-            } else {
-                j += 1
-            }
-        }
-        return pairs
     }
 }
 
