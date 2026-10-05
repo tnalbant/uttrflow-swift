@@ -29,6 +29,9 @@ struct InputShapeCorpusTests {
         "caret-replace-before-stop",
         "caret-replace-joined-word",
         "caret-replace-mid-sentence",
+        "document-bullet-caret-capitalises",
+        "document-numbered-caret-capitalises", "document-list-only-when-spoken",
+        "document-numbered-items-after-a-sentence",
     ]
 
     @Test("capitalises the first letter and closes with the mark the expected text ends in")
