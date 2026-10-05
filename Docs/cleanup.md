@@ -82,8 +82,13 @@ would make. Safe in every register.
 | Personal dictionary spellings | the user's own names and terms | `WordCorrectionEngine`, before the tidier; a run of several words is taken only by an entry that spells it closed up or opens as it does, so a mishearing that loses its opening needs a recorded pronunciation. The same lookup also offers the spelling to the model as a reading of a doubtful word. Thresholds: `Docs/ai-correction-thresholds.md` |
 
 `Homophones` is the hand-kept list of spellings with the same spoken sound, including common
-contractions such as "its" and "it's". Near-homophones such as "then" and "than" or "affect"
-and "effect" are not in it: their vowels differ, so they are not spelling alternatives.
+contractions such as "its" and "it's". Two spellings have the same sound when the CMU
+Pronouncing Dictionary lists, for each, a pronunciation identical to the other's phoneme for
+phoneme, stress marks ignored and no vowel reduced. "then" (`DH EH1 N`) and "than" (`DH AE1 N`,
+`DH AH0 N`) fail it; "accept" (`AH0 K S EH1 P T`) and "except" (`IH0 K S EH1 P T`) fail it
+too, and would pass only if unstressed vowels were reduced, which the definition does not do.
+"affect" (`AH0 F EH1 K T`) and "effect" (third listing `AH0 F EH1 K T`) pass it, but the list
+is hand-kept and does not hold them, so no source offers one for the other.
 
 ## Tier 2 — when the speech makes it unambiguous
 
