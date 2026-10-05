@@ -30,11 +30,15 @@ recogniser's vocabulary, and is carried into tidying as `earlyContext` rather th
 100 ms adds to the time between stopping speaking and seeing text only when a dictation is too
 short to cover it.
 
-Two later reads look at the caret as it is then rather than as it was: correction reads the screen
-again for each piece it corrects, and insertion reads it once more immediately before writing
+Every piece is corrected against that same reading. One later read looks at the caret as it is
+then rather than as it was: insertion reads it once more immediately before writing
 (`insertionContextForWrite`), to pad the words against the text beside the caret and decide the
 first word's capital. That last reading is discarded if the application in front is no longer the
 one the dictation was read from.
+
+The pipeline reports each dictation's reads, and the milliseconds they took together, as one
+`ScreenReadCost` through `MetricsRecording.recordScreenReads`. It is kept apart from the stage
+timings, since the first read overlaps recording and would be counted twice in their sum.
 
 ## Three different waits
 

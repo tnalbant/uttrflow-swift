@@ -78,6 +78,8 @@ public actor DictationPipeline {
 
     /// What the early loop holds while the key is down, handed to the release pass in one step.
     private var early = EarlyWork()
+    /// What reading the screen has cost the dictation under way, reported once when it settles.
+    private var screenReadCost = ScreenReadCost(reads: 0, duration: .zero)
     /// How many early screen reads have come back and been kept or dropped, so a test can wait for the last one.
     var earlyReadsSettled: Int { early.readsSettled }
     /// Ranked once per dictation, against the screen it began on, and given to every piece.
@@ -447,6 +449,7 @@ public actor DictationPipeline {
         dictationWords = nil
         dictationContext = nil
         missedPieces = 0
+        screenReadCost = ScreenReadCost(reads: 0, duration: .zero)
     }
 
     /// Abandons the dictation at any stage, inserting nothing; audio already claimed is kept so the speech can be retried.
@@ -565,10 +568,9 @@ public actor DictationPipeline {
             early.cut = end
             early.lastWindowStart = heard == nil ? nil : start
             if let heard {
-                let correctionContext = await readContext()
                 let tidy = Task {
                     await self.finish(
-                        heard, seeing: seeing, correctionSeeing: correctionContext,
+                        heard, seeing: seeing, correctionSeeing: seeing,
                         recording: NoOpMetricsRecorder(), for: mine)
                 }
                 early.tidyTask = tidy
@@ -665,9 +667,23 @@ public actor DictationPipeline {
 
     /// Asks what is on screen within the screen-read limit, since an injected engine need not keep a budget of its own.
     private func readContext() async -> AppContext {
-        ((try? await withStageTimeout(StageTimeout.screenRead, clock: clock) { [context] in
-            await context.currentContext()
-        }) ?? nil) ?? AppContext()
+        let (read, elapsed) = await Self.timed(on: clock) { [context, clock] in
+            ((try? await withStageTimeout(StageTimeout.screenRead, clock: clock) {
+                await context.currentContext()
+            }) ?? nil) ?? AppContext()
+        }
+        screenReadCost = screenReadCost.adding(elapsed)
+        return read
+    }
+
+    /// Runs `operation` and says how long it took on `clock`.
+    private static func timed<Value>(
+        on clock: some Clock<Duration>, isolation: isolated (any Actor)? = #isolation,
+        _ operation: () async -> Value
+    ) async -> (Value, Duration) {
+        let start = clock.now
+        let value = await operation()
+        return (value, start.duration(to: clock.now))
     }
 
     /// Uses caret text read just before insertion, refusing it when the destination app changed.
@@ -857,11 +873,10 @@ public actor DictationPipeline {
                 if state == .transcribing { transition(to: .tidying) }
                 if appContext == nil { appContext = await contextFor(delivery) }
                 let seeing = appContext ?? AppContext()
-                let correctionContext = await correctionContext(for: delivery)
                 let finalPiece = spanIndex == finalPending
                 tidying.addTask {
                     await self.finish(
-                        heard, seeing: seeing, correctionSeeing: correctionContext,
+                        heard, seeing: seeing, correctionSeeing: seeing,
                         finalPiece: finalPiece, recording: tally, for: mine)
                 }
             }
@@ -1006,14 +1021,6 @@ public actor DictationPipeline {
             return read
         case .copy:
             return recordingDestination ?? AppContext()
-        }
-    }
-
-    /// Reads correction evidence at each piece, unless the dictation only goes to the clipboard.
-    private func correctionContext(for delivery: Delivery) async -> AppContext {
-        switch delivery {
-        case .insert, .command: await readContext()
-        case .copy: recordingDestination ?? AppContext()
         }
     }
 
@@ -1199,6 +1206,8 @@ public actor DictationPipeline {
     /// Keeps the open recording exactly when words were lost and the field is not secure, else deletes it.
     @discardableResult
     private func settleRecording(wordsLost: Bool) async -> Bool {
+        if screenReadCost.reads > 0 { await metrics.recordScreenReads(screenReadCost) }
+        screenReadCost = ScreenReadCost(reads: 0, duration: .zero)
         guard let openRecording else { return false }
         self.openRecording = nil
         // A secure field's audio is not kept for a retry, since its words are a secret.
