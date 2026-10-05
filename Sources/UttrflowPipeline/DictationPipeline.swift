@@ -646,6 +646,13 @@ public actor DictationPipeline {
         )
     }
 
+    /// Hands the dictation's account to its page when anything was tidied or skipped; never a secure field.
+    private func reportCleaning(for delivery: Delivery) async {
+        if !cleaningRecords.isEmpty, !destinationIsSecure, delivery != .command {
+            await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords))
+        }
+    }
+
     /// Keeps a piece's cleaning record for the dictation's account, unless that dictation has ended.
     func keep(_ cleaning: CleaningRecord, for mine: Int) {
         if isStillRunning(mine) { cleaningRecords.append(cleaning) }
@@ -868,13 +875,10 @@ public actor DictationPipeline {
         }
         guard !abandoned, !wasCancelled(mine) else { return }
         await tally.report(to: metrics)
-        // Only when something was tidied, so silence cannot blank the last account; never for a secure field.
-        if !cleaningRecords.isEmpty, !destinationIsSecure, delivery != .command {
-            await cleaningRecorder.record(CleaningRecord.merging(cleaningRecords))
-        }
 
         // Silence is not a fault, but returning quietly to idle would look like a broken app.
         guard !pieces.isEmpty else {
+            await reportCleaning(for: delivery)
             await fail(Self.silence(missedPieces > 0 ? .speechWithoutWords : .nothingHeard, in: audio))
             return
         }
@@ -886,8 +890,10 @@ public actor DictationPipeline {
                 from: appContext ?? AppContext(), overrides: runningOverrides)
         // Inserting a blank would delete the user's selection, so it is refused like silence.
         let joinedPieces = await join(
-            pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally)
+            pieces, going: joining, seeing: appContext ?? AppContext(), recording: tally, for: mine)
         guard !wasCancelled(mine) else { return }
+        // After the join, so a seam correction or snippet expansion that gave up is in the account.
+        await reportCleaning(for: delivery)
         guard let joined = joinedPieces else {
             await fail(DictationFailure(SpeechEngineError.nothingHeard))
             return

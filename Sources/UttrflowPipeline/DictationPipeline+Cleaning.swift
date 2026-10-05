@@ -12,7 +12,7 @@ extension DictationPipeline {
     ) async -> Piece {
         // The dictionary before the tidier: a correction is argued from the sentence as heard.
         let corrected = await correct(
-            heard, seeing: correctionContext, recording: metrics, correcting: corrector)
+            heard, seeing: correctionContext, recording: metrics, correcting: corrector, for: mine)
         let cleaned = await tidy(
             heard, saying: corrected, seeing: appContext, finalPiece: finalPiece,
             recording: metrics, for: mine)
@@ -23,14 +23,14 @@ extension DictationPipeline {
     func correct(
         _ transcription: Transcription, seeing appContext: AppContext,
         recording metrics: any MetricsRecording, acrossSeams seams: PieceSeams? = nil,
-        correcting chosen: (any WordCorrecting)? = nil
+        correcting chosen: (any WordCorrecting)? = nil, for mine: Int? = nil
     ) async -> CorrectedTranscript {
         // Moving a word needs evidence, candidates, a score and the gate, so any one off leaves the words as heard.
         let correcting: [QualityLayer] = [.evidenceCapture, .candidateGeneration, .scoring, .overrideGate]
         guard correcting.allSatisfy(layers.isOn) else { return .unchanged(transcription.text) }
         let corrector = chosen ?? runningCorrector
         do {
-            let weighed =
+            let timed =
                 try await metrics.measuringInTime(.correction, clock: clock) {
                     try await withStageTimeout(StageTimeout.correction, clock: clock) { [corrector] in
                         if let seams {
@@ -39,7 +39,11 @@ extension DictationPipeline {
                             try await corrector.weigh(transcription, seeing: appContext)
                         }
                     }
-                } ?? WeighedCorrections(corrections: [])
+                }
+            guard let weighed = timed else {
+                skipped(.correction, .timeout, for: mine)
+                return .unchanged(transcription.text)
+            }
             // The commonest answer, and not worth rebuilding a string to arrive at itself.
             guard !weighed.corrections.isEmpty else {
                 return CorrectedTranscript.unchanged(transcription.text).holding(weighed.held)
@@ -47,6 +51,7 @@ extension DictationPipeline {
             return DictationCorrection.applying(weighed.corrections, to: transcription.text)
                 .holding(weighed.held)
         } catch {
+            skipped(.correction, .error, for: mine)
             return .unchanged(transcription.text)
         }
     }
@@ -54,7 +59,8 @@ extension DictationPipeline {
     /// Gives the dictionary a joined transcript, keeping only proposals that cross a piece boundary.
     func correctAcrossSeams(
         _ pieces: [Piece], in joined: Piece, seeing appContext: AppContext,
-        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil
+        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil,
+        for mine: Int? = nil
     ) async -> Piece {
         guard pieces.count > 1 else { return joined }
         let boundaries = pieces.dropLast().reduce(into: [Int]()) { result, piece in
@@ -64,7 +70,7 @@ extension DictationPipeline {
             boundaries: boundaries, changed: joined.corrected.corrections.map(\.wordRange))
         let proposed = await correct(
             joined.heard, seeing: appContext, recording: metrics, acrossSeams: seams,
-            correcting: corrector
+            correcting: corrector, for: mine
         ).corrections
         let crossings = proposed.filter { seams.admits($0.wordRange) }
         guard !crossings.isEmpty else { return joined }
@@ -151,11 +157,15 @@ extension DictationPipeline {
                 }
             }
             // A language model that never answers costs the tidying, never the words.
-            guard let tidied else { return untidied }
+            guard let tidied else {
+                skipped(.tidy, .timeout, for: mine)
+                return untidied
+            }
             // A cancelled dictation's record is not merged into the one now under way.
             if let cleaning = tidied.cleaning { keep(cleaning, for: mine) }
             return tidied
         } catch {
+            skipped(.tidy, .error, for: mine)
             return untidied
         }
     }
@@ -193,7 +203,7 @@ extension DictationPipeline {
         }
         let joined = await join(
             pieces, going: situation, seeing: appContext, recording: NoOpMetricsRecorder(),
-            correcting: corrector)
+            correcting: corrector, for: generation + 1)
         return CleanedDictation(
             pieces: pieces.map(\.cleaned.text),
             text: joined.map { LatinScript.enforced($0.expanded.text) })
@@ -202,19 +212,21 @@ extension DictationPipeline {
     /// The pieces joined, corrected across their seams, finished as a message and expanded; nil when nothing is writable.
     func join(
         _ pieces: [Piece], going situation: Situation, seeing appContext: AppContext,
-        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil
+        recording metrics: any MetricsRecording, correcting corrector: (any WordCorrecting)? = nil,
+        for mine: Int? = nil
     ) async -> JoinedDictation? {
         let formatter = DestinationFormatter.standard(for: situation)
         let joined = PieceJoiner.join(pieces, under: formatter, steps: runningCleaner.cleaningSteps)
         let correctedAtSeams = await correctAcrossSeams(
-            pieces, in: joined, seeing: appContext, recording: metrics, correcting: corrector)
+            pieces, in: joined, seeing: appContext, recording: metrics, correcting: corrector, for: mine)
         let whole = await finishMessage(correctedAtSeams, going: situation, seeing: appContext)
         // Dictation writes Latin letters only, including snippet expansions. See `Docs/latin-output.md`.
         let written = LatinScript.enforced(whole.cleaned.text)
         guard written.hasRecognisableContent else { return nil }
         // Joiner-added stops do not separate a spoken snippet; the speaker's stops still do.
         let snippetInput = PieceJoiner.snippetInput(pieces, under: formatter, using: written)
-        let expanded = await expand(written, matching: snippetInput, laidOut: formatter.layout)
+        let expanded = await expand(
+            written, matching: snippetInput, laidOut: formatter.layout, for: mine)
         return JoinedDictation(whole: whole, formatter: formatter, expanded: expanded)
     }
 
@@ -240,21 +252,37 @@ extension DictationPipeline {
 
     /// Expands the user's snippets under the destination's layout, treating a blank expansion as nothing to do.
     func expand(
-        _ text: String, matching seamInput: SeamSnippetInput, laidOut layout: LayoutPolicy
+        _ text: String, matching seamInput: SeamSnippetInput, laidOut layout: LayoutPolicy,
+        for mine: Int? = nil
     ) async -> ExpandedTranscript {
         do {
-            let expanded = try await metrics.measuringInTime(.expansion, clock: clock) {
+            let timed = try await metrics.measuringInTime(.expansion, clock: clock) {
                 try await withStageTimeout(StageTimeout.expansion, clock: clock) { [snippets] in
                     try await snippets.expand(seamInput.removingSeamStops())
                 }
             }
-            guard let expanded, !expanded.text.isBlank else { return .unchanged(text) }
+            guard let expanded = timed else {
+                skipped(.expansion, .timeout, for: mine)
+                return .unchanged(text)
+            }
+            guard !expanded.text.isBlank else { return .unchanged(text) }
             // A line break is Return in a single-line field, so an expansion's breaks join as the tidier's did.
             let restored = seamInput.restoringUnconsumedStops(in: expanded)
             return layout.contains(.singleLine) ? restored.onOneLine : restored
         } catch {
+            skipped(.expansion, .error, for: mine)
             return .unchanged(text)
         }
+    }
+}
+
+extension DictationPipeline {
+    /// Notes in the dictation's account that a stage passed its words on unchanged; outside a dictation, nothing.
+    func skipped(
+        _ stage: CleaningRecord.SkippedStage.Stage, _ reason: CleaningRecord.SkippedStage.Reason,
+        for mine: Int?
+    ) {
+        if let mine { keep(.skipped(stage, reason), for: mine) }
     }
 }
 
