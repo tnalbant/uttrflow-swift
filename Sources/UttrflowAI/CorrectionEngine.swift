@@ -19,10 +19,26 @@ public struct WordCorrectionEngine: Sendable {
         against dictionary: PhoneticIndex,
         seeing context: AppContext = .unknown
     ) -> [WordCorrection] {
+        verdict(for: utterance, against: dictionary, seeing: context).proposals
+    }
+
+    /// The changes, and the runs the gate weighed a dictionary reading for and kept as heard.
+    public func verdict(
+        for utterance: Utterance,
+        against dictionary: PhoneticIndex,
+        seeing context: AppContext = .unknown
+    ) -> CorrectionVerdict {
         let evidence = CorrectionEvidence(
             utterance: utterance, seeing: context, certainAt: Self.certaintyThreshold)
-        let wanted = UncertainSpan.spans(in: utterance, below: Self.certaintyThreshold)
-            .compactMap { proposal(for: $0, against: dictionary, given: evidence) }
+        var wanted: [WordCorrection] = []
+        var declined: [Range<Int>] = []
+        for span in UncertainSpan.spans(in: utterance, below: Self.certaintyThreshold) {
+            switch weigh(span, against: dictionary, given: evidence) {
+            case .change(let proposal): wanted.append(proposal)
+            case .keep: declined.append(span.range)
+            case .nothingToWeigh: break
+            }
+        }
         let recased = Self.recasings(of: utterance, against: dictionary)
         let chosen = Self.withoutOverlaps(
             wanted.filter { proposal in
@@ -30,8 +46,28 @@ public struct WordCorrectionEngine: Sendable {
             })
 
         // Each dictionary entry is one proposal, even when it replaces a multi-word run.
-        guard chosen.count <= Self.budget(for: utterance.words.count) else { return recased }
-        return (recased + chosen).sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound }
+        let proposals =
+            chosen.count <= Self.budget(for: utterance.words.count)
+            ? (recased + chosen).sorted { $0.wordRange.lowerBound < $1.wordRange.lowerBound } : recased
+        // A run the budget abandoned was declined too, so it is held as heard like one the evidence could not carry.
+        let abandoned = proposals.count < recased.count + chosen.count ? chosen.map(\.wordRange) : []
+        let held = (declined + abandoned).filter { range in
+            !proposals.contains { $0.wordRange.overlaps(range) }
+        }
+        return CorrectionVerdict(proposals: proposals, held: Self.merged(held))
+    }
+
+    /// Overlapping or touching ranges joined, in spoken order.
+    private static func merged(_ ranges: [Range<Int>]) -> [Range<Int>] {
+        var joined: [Range<Int>] = []
+        for range in ranges.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+            if let last = joined.last, range.lowerBound <= last.upperBound {
+                joined[joined.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+            } else {
+                joined.append(range)
+            }
+        }
+        return joined
     }
 
     /// Every run whose letters are an entry's in another case, whatever its score; it changes no word, so no budget.
@@ -94,24 +130,35 @@ public struct WordCorrectionEngine: Sendable {
         return found
     }
 
-    /// The best change for one uncertain run, if there is one.
-    private func proposal(
-        for span: UncertainSpan, against dictionary: PhoneticIndex, given evidence: CorrectionEvidence
-    ) -> WordCorrection? {
+    /// What the gate makes of one uncertain run: a change, a reading weighed and declined, or no reading to weigh.
+    private func weigh(
+        _ span: UncertainSpan, against dictionary: PhoneticIndex, given evidence: CorrectionEvidence
+    ) -> Weighing {
         // Condition 2.
         let candidates = Self.spellings(of: span.text, in: dictionary)
+            .filter { Self.spells($0.entry, asHeard: $0.heard) }
+        guard !candidates.isEmpty else { return .nothingToWeigh }
 
         // Candidates arrive in the index's usefulness order, so the first that earns its place is offered.
         for candidate in candidates {
             // Condition 3.
-            guard Self.spells(candidate.entry, asHeard: candidate.heard),
-                let reason = evidence.decisiveReason(preferring: candidate.entry.word, over: candidate.heard)
+            guard
+                let reason = evidence.decisiveReason(
+                    preferring: candidate.entry.word, over: candidate.heard)
             else { continue }
-            return WordCorrection(
-                heard: span.text, replacement: candidate.word, wordRange: span.range,
-                entryID: candidate.entry.id, reason: reason, heardConfidence: span.confidence)
+            return .change(
+                WordCorrection(
+                    heard: span.text, replacement: candidate.word, wordRange: span.range,
+                    entryID: candidate.entry.id, reason: reason, heardConfidence: span.confidence))
         }
-        return nil
+        return .keep
+    }
+
+    /// The gate's answer for one run.
+    private enum Weighing {
+        case change(WordCorrection)
+        case keep
+        case nothingToWeigh
     }
 
     /// Whether an entry writes out or reads as a multi-word run, or a one-word reading opens alike.
@@ -148,6 +195,14 @@ public struct WordCorrectionEngine: Sendable {
         }
         return taken
     }
+}
+
+/// The engine's answer for one utterance: what to change, and which runs it weighed and kept as heard.
+public struct CorrectionVerdict: Sendable, Equatable {
+    /// Every change worth arguing for, in spoken order.
+    public let proposals: [WordCorrection]
+    /// Word ranges the gate had a dictionary reading for and declined, which no later layer may reopen.
+    public let held: [Range<Int>]
 }
 
 /// A dictionary entry as it would be written for one heard run, with any ending speech added to the name.

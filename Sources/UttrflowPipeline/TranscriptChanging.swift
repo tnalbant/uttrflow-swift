@@ -50,11 +50,34 @@ public protocol WordCorrecting: Sendable {
         for transcription: Transcription, seeing context: AppContext
     ) async throws(DictationChangeError) -> [DictationCorrection]
 
+    /// The changes, and the word ranges it weighed a reading for and kept as heard; ranges as `corrections`.
+    func weigh(
+        _ transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> WeighedCorrections
+
     /// This corrector held to what it knows now, so every piece of one dictation is corrected alike.
     func fixed() async -> any WordCorrecting
 }
 
+/// A corrector's changes and the runs it declined to change, which a later layer must leave as heard.
+public struct WeighedCorrections: Sendable, Equatable {
+    public let corrections: [DictationCorrection]
+    public let held: [Range<Int>]
+
+    public init(corrections: [DictationCorrection], held: [Range<Int>] = []) {
+        self.corrections = corrections
+        self.held = held
+    }
+}
+
 extension WordCorrecting {
+    /// A corrector that names no declined run holds none.
+    public func weigh(
+        _ transcription: Transcription, seeing context: AppContext
+    ) async throws(DictationChangeError) -> WeighedCorrections {
+        WeighedCorrections(corrections: try await corrections(for: transcription, seeing: context))
+    }
+
     /// A corrector that reads nothing that can change is already fixed.
     public func fixed() async -> any WordCorrecting { self }
 }

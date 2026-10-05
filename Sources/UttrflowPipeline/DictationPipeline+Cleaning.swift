@@ -27,15 +27,18 @@ extension DictationPipeline {
         guard correcting.allSatisfy(layers.isOn) else { return .unchanged(transcription.text) }
         let corrector = runningCorrector
         do {
-            let proposed =
+            let weighed =
                 try await metrics.measuringInTime(.correction, clock: clock) {
                     try await withStageTimeout(StageTimeout.quick, clock: clock) { [corrector] in
-                        try await corrector.corrections(for: transcription, seeing: appContext)
+                        try await corrector.weigh(transcription, seeing: appContext)
                     }
-                } ?? []
+                } ?? WeighedCorrections(corrections: [])
             // The commonest answer, and not worth rebuilding a string to arrive at itself.
-            guard !proposed.isEmpty else { return .unchanged(transcription.text) }
-            return DictationCorrection.applying(proposed, to: transcription.text)
+            guard !weighed.corrections.isEmpty else {
+                return CorrectedTranscript.unchanged(transcription.text).holding(weighed.held)
+            }
+            return DictationCorrection.applying(weighed.corrections, to: transcription.text)
+                .holding(weighed.held)
         } catch {
             return .unchanged(transcription.text)
         }
@@ -99,7 +102,8 @@ extension DictationPipeline {
         return Piece(
             heard: joined.heard,
             corrected: CorrectedTranscript(
-                text: correctedText, corrections: joined.corrected.corrections + added),
+                text: correctedText, corrections: joined.corrected.corrections + added,
+                held: joined.corrected.held),
             cleaned: TransformationResult(
                 text: cleanedText, producedBy: joined.cleaned.producedBy,
                 cleaning: joined.cleaned.cleaning, entriesTaken: joined.cleaned.entriesTaken))
