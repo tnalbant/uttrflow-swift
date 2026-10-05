@@ -458,14 +458,21 @@ time, telephone or code digits, and plain words. Each known ambiguity, and what 
 | "a hundred" against 100 | "about a hundred users" | context: `finishesAScale` keeps a scale it cannot read whole |
 | Product or version number against count | "python three" | context: the closed `contextWords` set |
 | Month against verb | "may fifth" | context: `monthIsDated` needs a capital or a dating clause |
-| Spoken year shapes | "twenty oh five", "two thousand and five" | not settled: no reader matches |
+| Spoken year shapes | "in twenty oh five" | context: `cuedYear` needs a year cue before it |
 | Spoken "dot" between numbers against the word | "one nine two dot one six eight dot one dot one", "two dot five" | context: `dottedNumber` needs three digit groups, or two after a word in `dottedCues` |
-| Spoken "double", magnitude letters | "double oh seven", "fifty k" | not settled: no reader matches |
+| Spoken "double", magnitude letters | "double oh seven", "fifty k" | order: `spokenDigitRun` reads `double`; a spoken letter stays a word |
 
-Seven of the sixteen are settled by order alone, five by a context word, and four not at all.
-Whether readings that compete by weight remove the order-dependence without changing a current
-output is not yet measured: it needs the per-class exact-match scorer, and until it lands the
-structure stays as it is.
+Every row is a reading the speaker's words already decide, so no output depends on which of two
+matching readers runs first except where the table says order, and there the earlier reader is
+the one the owner chose: "seven thirty" is 7:30, a calendar time is digits, and am or pm is lower case after it.
+
+**Decided by measurement: ordered readers stay; competing weighted readings are rejected.**
+`NumberGrammarStructureTests` scores 19 spoken examples of the rows above with `NumberGrammarScore`:
+19 exact, 0 value errors, 0 false conversions (`swift test --filter NumberGrammarStructureTests`,
+Apple M5 Pro). Weighted readings choose only among readers that match, so on these rows they can
+at best tie, and they would be a second grammar beside this one. A new ambiguity is a missing
+reader or a missing context word, added to `phrase` in order with a row here and a case in that test.
+Reopen if a row scores inexact because the right reader exists but an earlier one wins.
 
 ## Unit words and symbols
 
