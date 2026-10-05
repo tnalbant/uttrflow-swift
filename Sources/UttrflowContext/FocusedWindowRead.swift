@@ -13,11 +13,19 @@ protocol FocusedWindowSource {
     func isMultiline(_ field: Field) -> Bool?
     func markedRange(of field: Field) -> CFRange?
     func identity(of field: Field) -> FieldIdentity?
+    func inputStub(
+        of field: Field, role: String?, value: String?, while goOn: () -> Bool
+    ) -> HiddenInputLine.Probe
 }
 
 extension FocusedWindowSource {
     func markedRange(of field: Field) -> CFRange? { nil }
     func identity(of field: Field) -> FieldIdentity? { nil }
+    func inputStub(
+        of field: Field, role: String?, value: String?, while goOn: () -> Bool
+    ) -> HiddenInputLine.Probe {
+        .notStub
+    }
 }
 
 /// How a tree's raw answers become the elements and ranges the window read needs.
@@ -120,6 +128,17 @@ final class TreeWindowSource<Tree: ElementTree>: FocusedWindowSource {
 
     func identity(of field: Tree.Element) -> FieldIdentity? { identify(field) }
 
+    func inputStub(
+        of field: Tree.Element, role: String?, value: String?, while goOn: () -> Bool
+    ) -> HiddenInputLine.Probe {
+        HiddenInputLine.probe(
+            field, role: role, value: value,
+            frame: {
+                cap(field)
+                return tree.frame(of: field)
+            }, in: tree, while: goOn)
+    }
+
     /// One answer from the state batch, or nothing when the field refused it or the batch was not asked.
     private func answer(_ index: Int) -> Any? { state.indices.contains(index) ? value(state[index]) : nil }
 
@@ -168,13 +187,26 @@ extension MacContextEngine {
         let marked = source.markedRange(of: field).flatMap {
             AccessibilityRange.selection(location: $0.location, length: $0.length)
         }
-        let caret =
+        // An editor that draws its own text leaves an empty input at the caret; its edges are the rendered line.
+        let stub: HiddenInputLine.Probe =
             isTerminal
-            ? CaretText.inTerminal(text.value, selection: selection, windowTitle: title)
-            : CaretText.around(
-                text.value, selection: selection,
-                marked: CaretText.shift(
-                    marked, from: range.map { $0.location }, to: text.selection.map { $0.location }))
+            ? .notStub : source.inputStub(of: field, role: role, value: text.value, while: isWanted)
+        let caret: CaretText.Sides? =
+            switch stub {
+            case .line(let line):
+                CaretText.around(
+                    line.before + line.after,
+                    selection: line.before.utf16.count..<line.before.utf16.count)
+            case .unread: nil
+            case .notStub:
+                isTerminal
+                    ? CaretText.inTerminal(text.value, selection: selection, windowTitle: title)
+                    : CaretText.around(
+                        text.value, selection: selection,
+                        marked: CaretText.shift(
+                            marked, from: range.map { $0.location },
+                            to: text.selection.map { $0.location }))
+            }
         let multiline =
             source.isMultiline(field)
             ?? role.flatMap { role in

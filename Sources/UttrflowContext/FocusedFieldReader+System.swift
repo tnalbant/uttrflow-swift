@@ -400,10 +400,10 @@ public enum FocusedFieldReader {
     private static func hiddenInputLine(
         _ field: AXUIElement, role: String, value: String?, frame: CGRect?, while goOn: () -> Bool
     ) -> HiddenInputLine.Reading? {
-        guard FocusedFieldSnapshot.isTextEntry(role), let frame,
-            HiddenInputLine.isStub(value: value, frame: frame, role: role)
-        else { return nil }
-        return HiddenInputLine.read(around: AXNode(field), at: frame, in: AXElementTree(), while: goOn)
+        let probe = HiddenInputLine.probe(
+            AXNode(field), role: role, value: value, frame: { frame }, in: AXElementTree(), while: goOn)
+        guard case .line(let reading) = probe else { return nil }
+        return reading
     }
 
     /// Whether both keys name the same window, including the absence of a window.
