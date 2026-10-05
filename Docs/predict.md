@@ -181,6 +181,9 @@ its own ([development-build.md](development-build.md)).
 - a destructive command (`DestructiveCommand`);
 - a value shorter than `CaptureGate.minimumLength` (2).
 
+A keyed edit inside an accepted line, when committed, records the final text as typed and removes
+the original acceptance and self-sourced count. An unchanged accepted line keeps its acceptance.
+
 ## The corpus on disk, and forgetting
 
 The working database is SQLite held in memory. Each committed change is sealed with AES-GCM

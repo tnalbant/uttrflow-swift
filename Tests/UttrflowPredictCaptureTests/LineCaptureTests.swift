@@ -113,6 +113,7 @@ struct LineCaptureTests {
         #expect(
             try await store.candidates(for: surface, matching: "foo bar").map(\.text)
                 == ["foo bar baz"])
+        #expect(try await store.recent(in: surface, limit: 10).isEmpty)
     }
 
     @Test("Two documents in one folder share what either of them taught.")
