@@ -109,6 +109,27 @@ struct NumberFormsPassTests {
     }
 
     @Test(
+        "a pronoun one stays a word where every number is a numeral",
+        arguments: [
+            ("no one knows", "no one knows"),
+            ("they help one another", "they help one another"),
+            ("which one is it", "which one is it"),
+            ("this one works", "this one works"),
+            ("the one that matters", "the one that matters"),
+            ("one by one they left", "one by one they left"),
+            ("any one of us", "any one of us"),
+            ("take each one", "take each one"),
+            ("I want that one", "I want that one"),
+            ("we need one reviewer", "we need 1 reviewer"),
+            ("add one row", "add 1 row"),
+            ("the one reviewer", "the 1 reviewer"),
+        ]
+    )
+    func pronounOneStaysAWord(input: String, expected: String) {
+        #expect(cleaned(input, by: NumberFormsPass(policy: .always)) == expected)
+    }
+
+    @Test(
         "a small amount in another currency or unit is a numeral in prose",
         arguments: [
             ("it costs five yen", "it costs 5 yen"),

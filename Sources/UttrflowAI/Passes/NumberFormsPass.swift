@@ -287,12 +287,35 @@ public struct NumberFormsPass: PieceCleaningPass {
                 joined(end, shapes) && (currencies.contains(keys[end]) || measures.contains(keys[end]))
                 || completesAmount(at: position, keys: keys, shapes: shapes)
             guard policy == .always || inContext || value >= 10 || beforeAmount else { return nil }
+            guard
+                inContext || beforeAmount || value != 1 || item.count != 1
+                    || !headsItsOwnPhrase(at: position, keys: keys)
+            else { return nil }
             // The destination says whether digits are grouped; a context word still runs its own together.
             text = NumberWords.render(value, grouping: inContext ? .none : digits)
         } else if !isPhrase {
             return nil
         }
         return Phrase(text: text, count: end - position)
+    }
+
+    /// Whether "one" is the pronoun of "no one", "this one" or "one another" rather than a count of what follows.
+    private static func headsItsOwnPhrase(at position: Int, keys: [String]) -> Bool {
+        let tags = LexicalClass.tags(ofWords: keys)
+        func tag(_ index: Int) -> NLTag? { tags.indices.contains(index) ? tags[index] : nil }
+        let modifiable: Set<NLTag> = [.noun, .adjective, .number]
+        if tag(position) == .noun || tag(position) == .pronoun { return true }
+        if tag(position - 1) == .determiner, !modifiable.contains(tag(position + 1) ?? .otherWord) {
+            return true
+        }
+        if tag(position + 1) == .determiner, !modifiable.contains(tag(position + 2) ?? .otherWord) {
+            return true
+        }
+        let distributive = { (by: Int, other: Int) in
+            keys.indices.contains(by) && keys.indices.contains(other) && keys[by] == "by"
+                && keys[other] == keys[position]
+        }
+        return distributive(position + 1, position + 2) || distributive(position - 1, position - 2)
     }
 
     /// Whether a colloquial hundred is one value: its tail cannot be a minute, or it is a ratio's first term.
