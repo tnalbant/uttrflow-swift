@@ -305,14 +305,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             file: DictationHistoryStore.defaultFile(in: container), encryptedStore: encryptedStore)
         recordings = RecordingStore(
             directory: RecordingStore.defaultDirectory(in: container), encryptedStore: encryptedStore)
+        let evidence = encryptedStore.map {
+            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
+        }
         dictionary = PersonalDictionaryStore(
-            file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore)
+            file: PersonalDictionaryStore.defaultFile(in: container), encryptedStore: encryptedStore,
+            sightings: evidence.flatMap { ledger in
+                encryptedStore.map { store in
+                    SightingMemory(ledger: ledger, encryptedStore: store) { [settingsStore] now in
+                        RetentionWindow(days: settingsStore.load().transcriptRetentionDays, now: now)
+                    }
+                }
+            })
         snippets = SnippetStore(file: SnippetStore.defaultFile(in: container), encryptedStore: encryptedStore)
         clipboard = ClipboardStore(
             file: ClipboardStore.defaultFile(in: container), encryptedStore: encryptedStore)
-        evidence = encryptedStore.map {
-            EvidenceLedgerStore(file: EvidenceLedgerStore.defaultFile(in: container), encryptedStore: $0)
-        }
+        self.evidence = evidence
         super.init()
         if clipboardPreferencesUnreadable {
             actionNotice = Self.clipboardPreferencesUnreadableNotice(

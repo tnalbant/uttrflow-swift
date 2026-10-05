@@ -42,7 +42,7 @@ for this subject on or before me". The projection honours it; the prototype test
 |---|---|---|
 | `dictionary.v1.json` | Entries (declaration) plus `timesUsed`, `timesReverted` (evidence) | **Move** the counters to the ledger; the entry keeps word, pronunciation, origin, `firstSeen`. `timesUsed`/`timesReverted` stop being stored fields once the ledger ships; `netUses` and `isTrustworthy` become projections |
 | `dictionary.seeded.json` | Spellings already offered from the shipped list | **Keep** as a declaration: it is a fact about this install, not evidence, and never decays |
-| `dictionary.refused.json` | Words the user deleted | **Keep** as a declaration (a veto the user made); the pending sighting counts in `SightingLedger` move to the ledger as `sighting` rows |
+| `dictionary.refused.json` | Words the user deleted | **Keep** as a declaration (a veto the user made); the pending sighting days in `SightingLedger` are `sighting` rows keyed by a keyed hash of the term |
 | `snippets.v1.json` | Snippets plus `timesUsed`, `lastUsed` | **Move** both to `use` rows; `lastUsed` is the newest `use` day, so it stops being stored |
 | `history.v1.json` | What was dictated | **Keep** separate: it is content, not inferred fact, and has its own retention clock |
 | `predict.v1.sqlite` | Prediction corpus | **Keep** separate (volume and query shape differ); it shares consent and reset with the ledger |
