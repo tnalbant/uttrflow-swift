@@ -24,7 +24,7 @@ One labelled line per fact, in the order the stages ran. `DictationExplanation` 
 | `failed` | router | an engine that ran and gave no answer, and why |
 | `refused` | meaning and script guards | an answer thrown away, and the guard's reason |
 | `model said` | the kept model | its answer word for word, before it was unwrapped and finished |
-| `step` | clean-up passes | what one step removed, rewrote and added, quoting up to `CleaningRecord.wordLimit` words |
+| `step` | clean-up passes, before and after the model | what one step removed, rewrote and added, quoting up to `CleaningRecord.wordLimit` words |
 | `off` | clean-up passes | a step that was not in the pipeline that ran |
 | `tidied by` | router | the engine whose answer was kept |
 | `result` | output | the text that would be inserted, line breaks shown as `⏎` |
@@ -50,8 +50,6 @@ the only way the text reaches the disk, and that is the person's choice. `make l
 - **A refused model's raw answer.** `model said` is the answer that was kept; a refused answer
   reaches the trace as its reason only. `uttrflow-dev clean --show-model` asks the model
   separately.
-- **Passes after the model.** `CleaningRecord` records the passes that run before the model;
-  the finishing passes a model's answer goes through are not in it yet.
 - **An in-app view.** The trace is a developer command; there is no switch for it in the app.
 - **The personal dictionary.** Doubtful runs are read with the standard sources only, so a
   reading the user's own dictionary would offer is not listed.
