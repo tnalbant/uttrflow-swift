@@ -467,6 +467,26 @@ Whether readings that compete by weight remove the order-dependence without chan
 output is not yet measured: it needs the per-class exact-match scorer, and until it lands the
 structure stays as it is.
 
+## Unit words and symbols
+
+A spoken unit word is a word the speaker said, so it stays a word; only its number takes the
+numeral policy. A symbol is written only where the speaker said the symbol itself. "Percent"
+is the one unit word written as a sign, because "%" is how the word is spelt after a numeral
+rather than a shorter word in its place; the guard reads "5%" and "five percent" as one quantity.
+
+| Said | Written | Why |
+|---|---|---|
+| "ten kilometres" | "10 kilometres" | unit word kept; numeral policy only (`NumberFormsPass`, `measures`) |
+| "five percent" | "5%" | spelling of the word after a numeral |
+| "minus five degrees" | "-5 degrees" | unit word kept; no degree sign is added |
+| "ten k m" | "10 km" | the speaker said the symbol; the case comes from the `symbol` row in `abbreviations.json` |
+| "three gigabytes" | "3 gigabytes" | unit word kept |
+
+`MeaningPreservationGuard` holds the model to the same line: a rewrite of "10 kilometres" as
+"10 km" loses a kept content word and is refused (`GuardNumberWordsTests`). No table maps a unit
+word to a symbol. A spreadsheet or table cell is the one place a symbol may stand for the word;
+that needs its own destination rule and is not built.
+
 ## Who places commas and stops
 
 One owner per mark, measured with `uttrflow-bakeoff marks --local` over the 726 prose cases of the
