@@ -46,6 +46,7 @@ final class TreeWindowSource<Tree: ElementTree>: FocusedWindowSource {
     private let identify: (Tree.Element) -> FieldIdentity?
     private var field: Tree.Element?
     private var state: [FieldAnswer] = []
+    private var markerCount: Int?
 
     /// `cap` sets an element's messaging timeout to the time left before it is asked anything.
     init(
@@ -79,19 +80,30 @@ final class TreeWindowSource<Tree: ElementTree>: FocusedWindowSource {
         cap(field)
         let asked = tree.attributes(WindowReadAttributes.state, of: field)
         state = asked.count == WindowReadAttributes.state.count ? asked : []
+        markerCount = nil
         let plural = answer(0).flatMap { $0 as? [Any] }
         if let plural, plural.count > 1 { return .discontinuous }
-        return AccessibilitySelection.resolve(
+        let resolved = AccessibilitySelection.resolve(
             singular: answer(1).flatMap(decode.range), plural: plural?.compactMap(decode.range),
-            textLength: state.isEmpty ? nil : state[2].integer)
+            textLength: count)
+        guard case .unavailable = resolved, let marker = tree.markerSelection(of: field) else { return resolved }
+        // The marker rung counts the field itself, so a field that also refuses its length still gets a window.
+        let byMarker = AccessibilitySelection.resolve(
+            singular: CFRange(location: marker.range.location, length: marker.range.length), plural: nil,
+            textLength: marker.count)
+        if case .range = byMarker { markerCount = marker.count }
+        return byMarker
     }
+
+    /// The field's length from the state batch, or from the marker rung when that was what answered.
+    private var count: Int? { state.isEmpty ? nil : state[2].integer }
 
     func text(of field: Tree.Element, names: FieldNames, at range: CFRange?) -> FieldText {
         cap(field)
         return FocusedFieldRead.text(
             of: field, in: tree, names: names,
             at: range.map { NSRange(location: $0.location, length: $0.length) },
-            count: { self.state.isEmpty ? nil : self.state[2].integer })
+            count: { self.markerCount ?? self.count })
     }
 
     func selectedText(of field: Tree.Element, at range: CFRange?) -> String? {

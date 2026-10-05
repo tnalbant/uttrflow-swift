@@ -79,6 +79,15 @@ struct FakeTree: ElementTree {
         return names.map { element.answers[$0] ?? .unsupported }
     }
 
+    /// The marker rung answers what the node holds under `AXSelectedTextMarkerRange`, logged as one message.
+    func markerSelection(of element: Node) -> MarkerSelection? {
+        messages?.asked.append("AXSelectedTextMarkerRange")
+        return element.answers["AXSelectedTextMarkerRange"].flatMap {
+            guard case .value(let value) = $0 else { return nil }
+            return value as? MarkerSelection
+        }
+    }
+
     /// A ranged read cuts the node's `AXValue` answer, or refuses as the node says for `AXStringForRange`.
     func attribute(_ name: String, of element: Node, range: NSRange) -> FieldAnswer {
         messages?.asked.append(name)
