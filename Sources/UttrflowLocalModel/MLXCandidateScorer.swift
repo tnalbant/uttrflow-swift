@@ -383,8 +383,16 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
     private func run(
         typed: String, in situation: GenerationSituation, asking ask: Ask, tokenShare: Int
     ) async throws -> Run? {
+        guard
+            let choices = CompletionPromptBuilder.choiceValuesIfPassAllowed(
+                situation.choices, asking: ask)
+        else {
+            return nil
+        }
         let forgetGeneration = self.forgetGeneration
-        guard let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
+        let promptTyped = PromptText.promptValue(typed)
+        // The line also opens the model's own turn, so refuse it if sanitising would change that prefix.
+        guard promptTyped == typed, let container, !Task.isCancelled, LatinScript.writesOnlyLatin(typed),
             typed.trimmingCharacters(in: .whitespaces).count >= Self.minimumTypedLength
         else { return nil }
         beginPass()
@@ -394,10 +402,10 @@ public actor MLXCandidateScorer: CandidateScoring, PassShowing, AlternativePassS
         // A host and a search phrase are not things a model can know: each exists in this person's history or nowhere, so a guess at one is refused rather than drawn. See `Docs/predict-precision.md`.
         guard !register.answersFromHistoryAlone else { return nil }
         let message = CompletionPromptBuilder.message(
-            typed: typed, in: situation, register: register, asking: ask)
-        let opening = ask.opening(of: typed)
+            typed: promptTyped, in: situation, register: register, asking: ask)
+        let opening = ask.opening(of: promptTyped)
         // With the machine's values to choose among, the whole line before the word opens the turn and the word is one of them.
-        let choice = opening.flatMap { CompletionText.choice(of: situation.choices, at: $0) }
+        let choice = opening.flatMap { CompletionText.choice(of: choices, at: $0) }
         let warm = self.warm
         let prompt = self.prompt
         // Taken out for this pass, so two passes that overlap never write one cache.

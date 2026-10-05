@@ -61,6 +61,7 @@
     "UttrflowAI func of": 1,
     "UttrflowAI func ofSystemModel": 1,
     "UttrflowAI func piece": 1,
+    "UttrflowAI func promptValue": 1,
     "UttrflowAI func proposals": 1,
     "UttrflowAI func quoted": 1,
     "UttrflowAI func readingsTaken": 1,
@@ -5166,5 +5167,5 @@
     "UttrflowUX var weeks": 1,
     "UttrflowUX var words": 2
   },
-  "total": 7158
+  "total": 7159
 }
