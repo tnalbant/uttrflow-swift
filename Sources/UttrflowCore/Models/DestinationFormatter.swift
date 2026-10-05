@@ -25,8 +25,42 @@ public enum TerminalStopPolicy: Sendable, Equatable, Codable {
 public enum DigitGrouping: Sendable, Equatable {
     /// A separator every three digits from ten thousand up, as prose wants: 12,000.
     case thousands
+    /// A comma after the last three digits and every two before them, from one lakh up: 1,50,000.
+    case indian
     /// The digits and nothing between them, as anything that will be parsed wants: 12000.
     case none
+
+    /// The size of each group of digits, read from the right.
+    var groupSizes: (last: Int, rest: Int)? {
+        switch self {
+        case .thousands: (3, 3)
+        case .indian: (3, 2)
+        case .none: nil
+        }
+    }
+
+    /// Whether a written numeral carries this grouping, so "1,50,000" reads as Indian and "150,000" does not.
+    public func matches(_ spelling: String) -> Bool {
+        guard let sizes = groupSizes else { return !spelling.contains(",") }
+        let groups = spelling.split(separator: ",", omittingEmptySubsequences: false)
+        guard groups.count >= 2, let last = groups.last, last.count == sizes.last,
+            (1...sizes.rest).contains(groups[0].count)
+        else { return false }
+        return groups.dropFirst().dropLast().allSatisfy { $0.count == sizes.rest }
+    }
+}
+
+/// How the person writes numbers, which travels with them rather than with the place the text lands.
+public struct NumberStyle: Sendable, Equatable {
+    /// How a numeral's digits are grouped where the place leaves that to the reader's habit.
+    public let grouping: DigitGrouping
+
+    public init(grouping: DigitGrouping) {
+        self.grouping = grouping
+    }
+
+    /// Commas every three digits, the style until a setting says otherwise.
+    public static let standard = NumberStyle(grouping: .thousands)
 }
 
 /// Counting the sentences a text holds, which is what the short-message rule is asked about.
@@ -159,8 +193,20 @@ public struct DestinationFormatter: Sendable, Equatable {
     public func owesFormatting(_ text: String) -> Bool {
         let first = text.first.map(String.init) ?? ""
         let owesCapital = firstWord != .asSpoken && first != first.uppercased()
-        let owesStop = terminalStop != .never && !text.contains(where: { ".!?;,".contains($0) })
+        let owesStop = terminalStop != .never && !Self.hasClauseMark(text)
         return owesCapital && owesStop
+    }
+
+    /// Whether `text` holds a clause mark; one between two digits, as in "2.4.1" or "9,000", belongs to the number.
+    private static func hasClauseMark(_ text: String) -> Bool {
+        let characters = Array(text)
+        return characters.indices.contains { index in
+            guard ".!?;,".contains(characters[index]) else { return false }
+            let inNumber =
+                index > 0 && index + 1 < characters.count
+                && characters[index - 1].isNumber && characters[index + 1].isNumber
+            return !inNumber
+        }
     }
 
     /// The formatter for a destination, falling back to plain text's for one the registry lacks.
@@ -182,14 +228,11 @@ public struct DestinationFormatter: Sendable, Equatable {
         {
             return proseInCodeEditor(base)
         }
-        let ruleStop: TerminalStopPolicy? = {
-            guard let rule = DestinationClassifier.rule(for: situation.app),
-                rule.destination == situation.destination
-            else { return nil }
-            return rule.terminalStop
-        }()
+        let rule = DestinationClassifier.rule(for: situation.app)
+            .flatMap { $0.destination == situation.destination ? $0 : nil }
+        let ruleStop = rule?.terminalStop
         let role = situation.app.accessibilityRole
-        let isSearch = role == "AXSearchField"
+        let isSearch = role == "AXSearchField" || rule?.field == .search
         let isSingleLine = situation.app.isMultiline == false || role == "AXTextField" || isSearch
         guard ruleStop != nil || isSingleLine else { return base }
         return DestinationFormatter(

@@ -5,8 +5,21 @@ Every seam decision that asks what kind of word a word is reads it from one plac
 Apple's on-device `NaturalLanguage` lexical-class tagger. `WordSlot`, `MentionGuard` and
 `LayoutWordsPass` call it; nothing else builds its own tagger.
 
-This is the lexical-class layer of the planned clause analyser. Sentence completeness and
-clause boundaries are not built yet.
+This is the lexical-class layer of the clause analyser. Its clause-boundary layer is
+`ClauseSegmenter` in `Sources/UttrflowCore/Cleaning/ClauseSegmenter.swift`, which reads only
+these classes and, when word timings are known, the pause before each word. It reports where a
+clause starts and why; which of those starts get a comma is decided by the rules that call it.
+
+## Clause starts
+
+| Evidence | Read as |
+|---|---|
+| `afterOpener` | the first word is an interjection, or an adverb followed by a subject and verb |
+| `coordinatedClause` | a conjunction with a subject and verb before it, and a subject then a verb after it |
+| `pause` | no word evidence, and at least `pauseThreshold` (0.35 s) of silence before the word |
+
+A conjunction that joins nouns ("eggs milk and bread") or shares one subject ("went home and
+slept") starts no clause.
 
 ## How far the tagger holds on bare recogniser text
 

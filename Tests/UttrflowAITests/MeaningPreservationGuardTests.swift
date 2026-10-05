@@ -340,6 +340,14 @@ struct MeaningPreservationGuardTests {
                 == "150000, 12000, 1,2, 1,2345")
     }
 
+    @Test("accepts a space added after a list comma between numbers")
+    func listCommaSpacing() {
+        accepted("scores were 10,20,30", "Scores were 10, 20, 30.")
+        accepted("the pin is at 40.7128,-74.0060", "The pin is at 40.7128, -74.0060.")
+        accepted("sides 3,4,5", "Sides 3, 4, 5.")
+        rejected("scores were 10,20,30", "Scores were 102030.")
+    }
+
     @Test(
         "refuses rewrites that add, drop or change a numeric sign",
         arguments: [
@@ -846,6 +854,44 @@ struct GrammarGuardTests {
         #expect(verdict("that is amazing!", "That is amazing!").isAccepted)
         #expect(verdict("great! see you then", "Great! See you then.").isAccepted)
         #expect(verdict("great! see you then", "Great. See you then.").isAccepted)
+    }
+
+    @Test("refuses every symbol kind a model adds to a casual message")
+    func rejectsInventedSymbols() {
+        for (kept, rewritten, noun) in [
+            ("see you at lunch", "See you at lunch \u{1F600}", "an emoji"),
+            ("love it", "Love it \u{2764}\u{FE0F}", "an emoji"),
+            ("on my way", "On my way \u{1F697}.", "an emoji"),
+            ("well I tried my best", "Well \u{2014} I tried my best.", "a dash"),
+            ("pages ten to twenty", "Pages ten \u{2013} twenty.", "a dash"),
+            ("so anyway", "So anyway\u{2026}", "an ellipsis character"),
+            ("that was really good", "That was *really* good.", "an asterisk"),
+            ("this is a big win", "This is a big win #winning.", "a hash sign"),
+            ("thanks sam", "Thanks @sam.", "an at sign"),
+            ("eggs and milk", "\u{2022} eggs and milk", "a bullet"),
+        ] {
+            #expect(
+                verdict(kept, rewritten)
+                    == .rejected(reason: "the rewrite added \(noun)", kind: .inventedSymbol),
+                "\(kept) -> \(rewritten)")
+        }
+    }
+
+    @Test("keeps a symbol kind the draft already holds")
+    func keepsEvidencedSymbols() {
+        accepted("see you at lunch \u{1F600}", "See you at lunch \u{1F600}.")
+        accepted("well \u{2014} I tried my best", "Well \u{2014} I tried my best.")
+        accepted("email me at sam@example.com", "Email me at sam@example.com.")
+        accepted("open example.com/docs please", "Open example.com/docs, please.")
+        accepted("ticket #12 is done", "Ticket #12 is done.")
+        accepted("so anyway\u{2026}", "So anyway\u{2026}")
+        accepted("my handle is at sam", "My handle is @sam.")
+    }
+
+    @Test("the symbol table names each row once")
+    func symbolRowsAreUnique() {
+        let names = MeaningPreservationGuard.symbolChecks.map(\.name)
+        #expect(Set(names).count == names.count)
     }
 
     @Test("keeps quotation pairs the speaker said")

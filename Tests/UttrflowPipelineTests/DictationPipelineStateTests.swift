@@ -343,7 +343,7 @@ struct DictationPipelineStateTests {
         // Inserting is its own state because the application takes its own time to show the words.
         #expect(
             await next(6, from: states) == [
-                .idle, .recording, .transcribing, .tidying, .inserting, .inserted(inserted),
+                .idle, .recording, .transcribing, .tidying, .inserting(into: nil), .inserted(inserted),
             ])
     }
 
@@ -612,6 +612,23 @@ struct DictationPipelineStateTests {
             await pipeline.currentState
                 == .failed(DictationFailure(SpeechEngineError.nothingHeard)),
             "the user must be told, softly, rather than left wondering")
+    }
+
+    @Test(
+        "names a muted input apart from a quiet room when nothing is heard",
+        arguments: [
+            (AudioSamples.silence(seconds: 3), SpeechEngineError.noSignal),
+            (.roomTone(seconds: 3), .nothingHeard),
+        ])
+    func mutedInputIsNamed(recorded: AudioSamples, expected: SpeechEngineError) async {
+        let pipeline = makePipeline(
+            capture: FakeAudioCaptureEngine(stopOutcome: .success(recorded)),
+            speech: FakeSpeechEngine(transcribeOutcome: .failure(.nothingHeard)))
+
+        await pipeline.startRecording()
+        await pipeline.finishRecording()
+
+        #expect(await pipeline.currentState == .failed(DictationFailure(expected)))
     }
 
     /// The menu bar's Start Dictation can race the hotkey; only one may open the microphone.

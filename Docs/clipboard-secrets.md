@@ -2,12 +2,17 @@
 
 Every copy is checked for a credential before it is listed. A clip that is one is kind
 `.secret`: masked in the panel until deliberately revealed, and never written to the clipboard
-history or saved-clips files. `SecretShapes.matches(_:)` in `Sources/UttrflowClipboard/` is the one
+history or saved-clips files. `SecretShapes.matches(_:)` in `Sources/UttrflowCore/Secrets/` is the one
 answer; the shapes it asks are in `SecretShapes.swift`, `SecretScanners.swift`,
 `PatternWindows.swift`, `CardNumberShape.swift`, `CommandCredentialShape.swift`,
 `BearerURLShape.swift`, `DockerAuthShape.swift` and `BIP39RecoveryPhrase.swift`, and the
 password-manager markers are read by `PasteboardMarkers`. How the panel masks a secret is in
 [`panel.md`](panel.md#masking).
+
+The same answer decides whether a finished dictation is kept. `KeptWords.of(_:intoSecureField:)`
+in `Sources/UttrflowPipeline/DictationState.swift` withholds the words of a credential-shaped
+dictation exactly as it withholds a secure field's: the words are still inserted, but
+`wordsToKeep` is nil, so no History row, last-transcript copy or dictionary lesson keeps them.
 
 `SecretShapes.matches(_:)` is keener to say yes than no. A false positive masks something
 harmless: the row shows dots, Return still pastes it, one keystroke reveals it. A false negative
@@ -327,6 +332,12 @@ the whole-clip patterns' answer; what is bounded is how much of the clip each pa
   connection string, and those readers are skipped. The named-secret reader runs only when the
   bytes hold `:` or `=` and a stem of one of its names (`api`, `secret`, `token`, `pass`, `pwd`,
   `credential`, `private`, `access`, `auth`, `client`), with `token`'s `k` also read as U+212A.
+- **BIP-39 words after a byte prefilter.** A lowercased 64-bit fingerprint lookup first requires a
+  run of twelve short English-list candidates; ordinary prose that cannot form that run never
+  builds per-word strings or computes checksums. The exact parser then sees only those candidate
+  runs, retaining the existing word-list and checksum checks. A clipboard text clip is at most
+  2,000,000 bytes (`ClipboardBudget.largestClip`): the prefilter reads at most that many bytes,
+  and the disjoint candidate runs cover at most that many more.
 - **The vendor-key pattern on windows** (`VendorKeyWindows`). It runs only where one of its
   literal prefixes starts, on the 128 characters from there. Its longest shortest match is 47
   characters, so a window decides every prefix more than 48 characters before its end, and those

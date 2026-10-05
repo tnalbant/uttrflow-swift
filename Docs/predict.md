@@ -132,7 +132,7 @@ Greek, Han, kana and the digits of those scripts do.
 | `SuggestionSession.turn` | A line containing another script gets no turn: it settles as `Quieting.Reason.nonLatinLine`, and neither the store nor the model is asked |
 | `SuggestionSession.resolve` | A remembered or machine candidate containing another script is never ranked or drawn, though capture keeps it |
 | `CompletionText.finished`, `SuggestionSession.drawable` | A generated line containing another script is dropped where the reply is parsed, so the bake-off sees it too, and again before anything is drawn |
-| `PromptBuilder.scriptInstruction`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
+| `LatinOnlyInstruction.text`, `GenerationSituation.recentLines` | Where the screen, the window title or the text before the line holds another script, the model is told to write English, or romanised Hinglish where the person writes that, in Latin letters only. The person's earlier lines in other scripts are left out of the prompt |
 
 **A non-Latin line is silent, not completed in Latin.** A completion in that script breaks the
 rule, and a Latin one glues a romanised tail onto a Devanagari word, which is text nobody types.
@@ -180,6 +180,9 @@ its own ([development-build.md](development-build.md)).
   terminal, since a one-time code, PIN, CVV or compact date has no safe context once stored;
 - a destructive command (`DestructiveCommand`);
 - a value shorter than `CaptureGate.minimumLength` (2).
+
+A keyed edit inside an accepted line, when committed, records the final text as typed and removes
+the original acceptance and self-sourced count. An unchanged accepted line keeps its acceptance.
 
 ## The corpus on disk, and forgetting
 
@@ -468,7 +471,7 @@ say why nothing was drawn:
 | 5 | `nowhereToDraw` | The field reports no caret |
 | 6 | `textSelected` | Text is selected |
 | 7 | `caretInsideText` | The caret is not at the end of its line |
-| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or a word opens the application's mention, emoji, channel or slash-command picker (`AppPicker`, never on a terminal's command line) |
+| 8 | `applicationPicker` | The field says its own list is open (`AXExpanded`), or trigger text opens a known picker application's mention, emoji, channel or slash-command picker (`AppPicker`; ordinary applications and terminal command lines are not inferred to have one) |
 | 9 | `rejectedTooOften` | `Quieting.rejectionsBeforeSilence` (3) suggestions typed past in this field |
 | 10 | `writingFluently` | A prose writer has not paused for 400 ms |
 
@@ -490,7 +493,7 @@ refused rather than written to.
 
 | Limit | Constant | Value |
 |---|---|---|
-| Entries per surface, evicted by count then age | `PredictStore.entriesPerSurface` | 2,000 |
+| Entries per surface, evicted by fragment status, acceptance, uses and age | `PredictStore.entriesPerSurface` | 2,000 |
 | Scopes kept per field, least recently used evicted | `PredictStore.surfacesPerField` | 64 |
 | Most recent scopes a lookup reads | `PredictStore.scopeLimit` | 8 |
 | Candidates a lookup returns | `PredictStore.candidateLimit` | 16 |
@@ -498,6 +501,10 @@ refused rather than written to.
 An entry carries `count`, `accepted`, `rejected`, `self_sourced` and `last_used`. A
 `superseded_by` value marks text the gates replaced or refused, and a superseded entry is never
 proposed again. Forgetting works at three sizes: one entry, one application, everything.
+
+A write protects its new entry and succession pair from its own eviction. Later pressure removes
+fragments first, then entries with fewer acceptances, fewer uses and older `last_used` values;
+retired entries remain last.
 
 ## Two measurements behind the store's shape
 

@@ -101,7 +101,8 @@ struct DataTableTests {
         #expect(decoded > 0)
     }
 
-    @Test("Every truncation and every single-bit flip of a valid table is refused or decodes within the rules.")
+    @Test(
+        "Every truncation and every single-bit flip of a valid table is refused or decodes within the rules.")
     func exhaustiveDamage() {
         let valid = Array(
             #"{"schema": 1, "rows": [{"id": "a", "weight": 1}, {"id": "b", "weight": 2}]}"#.utf8)
@@ -162,12 +163,18 @@ struct DataTableTests {
     )
     func shippedTables() {
         #expect(FunctionWords.table.source == .bundled)
+        #expect(Restatement.table.source == .bundled)
         #expect(FunctionWords.table.rows.count == 203)
         #expect(FunctionWords.all.count == 199)
         #expect(FunctionWords.leadingOn.count == 38)
         #expect(FunctionWords.meaningBearing.count == 75)
         #expect(FunctionWords.leadingOn.contains("let\u{2019}s"))
         #expect(NumberWords.table.source == .bundled)
+        #expect(NumberCues.table.source == .bundled)
+        #expect(NumberCues.words(for: .dotted).count == 6)
+        #expect(NumberCues.words(for: .digitRun).count == 12)
+        #expect(NumberCues.words(for: .coordinator).count == 6)
+        #expect(NumberCues.words(for: .range) == ["to", "through"])
         #expect(NumberWords.units.count == 10)
         #expect(NumberWords.teens.count == 10)
         #expect(NumberWords.tens.count == 8)

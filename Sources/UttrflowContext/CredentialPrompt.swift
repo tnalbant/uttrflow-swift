@@ -3,15 +3,16 @@ import Foundation
 /// Recognizes short credential labels without treating command-like text as a prompt.
 enum CredentialPrompt {
     private static let terms: Set<String> = [
-        "password", "passwort", "kennwort", "passphrase", "pin", "passcode", "code", "otp",
-        "token", "पासवर्ड", "पासफ़्रेज़", "पिन", "कोड", "टोकन",
+        "password", "passwort", "kennwort", "passphrase", "passe", "contraseña", "pin",
+        "passcode", "code", "otp", "token", "पासवर्ड", "पासफ़्रेज़", "पिन", "कोड", "टोकन",
     ]
 
     private static let ambiguousBareTerms: Set<String> = ["code", "token"]
 
     private static let introducers: Set<String> = [
-        "a", "confirm", "current", "empty", "enter", "for", "input", "new", "no", "of",
-        "one", "please", "provide", "repeat", "reenter", "security", "the", "time", "type",
+        "a", "again", "authentication", "confirm", "current", "de", "empty", "enter", "factor",
+        "for", "input", "mfa", "mot", "new", "no", "of", "old", "one", "please", "provide",
+        "repeat", "reenter", "retype", "same", "security", "the", "time", "two", "type", "unix",
         "verification", "your",
     ]
 
@@ -19,7 +20,11 @@ enum CredentialPrompt {
 
     static func matches(_ line: String) -> Bool {
         let prefix = line.prefix(ShellPrompt.searchLimit)
-        guard let colon = prefix.firstIndex(where: colons.contains) else { return false }
+        guard let colon = prefix.firstIndex(where: colons.contains) else {
+            guard prefix.endIndex == line.endIndex else { return false }
+            let label = String(prefix).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return terms.contains(label) && !ambiguousBareTerms.contains(label)
+        }
         let label = String(prefix[..<colon]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return introducesCredential(label)
     }

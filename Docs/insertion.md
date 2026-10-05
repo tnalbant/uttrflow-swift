@@ -53,6 +53,16 @@ A strategy that throws `insertionUnconfirmed`, `insertionTargetChanged`, `insert
 `clipboardChanged` stops the route (`TextInsertionError.stopsFallback`): the words may already be in the field, or the
 clipboard now belongs to somebody else, and another strategy could duplicate or overwrite them.
 
+## Dictating over a selection
+
+A dictation started with text selected replaces that text, on every route: the Accessibility
+route writes over `kAXSelectedTextAttribute`, and the typed and paste routes send only the words,
+so the field's own typing or paste replaces the selection. No route collapses or moves the
+selection first. This is the platform convention, and the same replacement is what re-dictating
+over a selection relies on; the replaced text is taken back by the field's own undo, measured per
+application in [compatibility.md](compatibility.md). Collapsing to the end of the selection and
+appending is not built. `DictationOverSelectionTests` asserts the behaviour per route.
+
 ## What every insertion may contain
 
 `OutputSafety` in `Sources/UttrflowCore/Adapters/` checks the finished text once, in the
@@ -178,9 +188,10 @@ reached whether or not anyone is listening; `uttrflow-dev insert` uses it to pri
 **A doubtful paste is not a failed one.** An application that rewrites quotes, dashes or
 capitalisation as it takes a paste never matches the tail, and treating that as a failure would
 demote a large class of successful pastes. The words are on the clipboard either way, so
-"not confirmed" is said and nothing retries or re-pastes. A strategy that cannot check answers
-**not reported**, which draws the plain tick: the Accessibility write verifies itself inside the
-field, and typing reads nothing back.
+"not confirmed" is said and nothing retries or re-pastes. The typed route runs the same wait
+after its last key, from a tail read before its first, so keys a target drops end **unconfirmed**
+rather than in a tick; a field that will not answer stays **not reported**. The Accessibility write
+answers **confirmed**, since it returns only once the caret has collapsed after the words.
 
 If cancellation arrives before the paste key is posted, the engine discards its clipboard
 generation only if it still owns that generation. It never restores the previous clipboard or
@@ -188,7 +199,7 @@ clears a newer copy. Once the key is posted, arrival can be uncertain, so the cl
 written.
 
 The panel's paste route skips the wait (`confirmsArrival: false`) because the panel shows no
-arrival notice. If the insertion stage itself times out (`StageTimeout.quick`, 15 s), the failure
+arrival notice. If the insertion stage itself times out (`StageTimeout.insertion`, 15 s), the failure
 is `insertionTimedOut` and points to the transcript in History, never to a manual paste that
 could insert an older clipboard item.
 
@@ -271,7 +282,10 @@ acceptance and the typed route's checks send their messages through `Accessibili
 concurrent dispatch queue of their own, and the awaiting task resumes when the answer comes back.
 A task cancelled before its message leaves the queue sends nothing and takes a safe fallback —
 "secure" for the concealment question, "unreadable" for a caret read. A message already sent
-cannot be recalled; the timeout is what bounds it.
+cannot be recalled; the timeout bounds the wait, not the write. A target that answers late can
+still apply the write after the timeout, so `SelectionWriter.writeFailure(_:after:)` maps a
+cannot-complete answer at or past `SelectionWriter.messagingTimeout` to `insertionUnconfirmed`,
+which stops the route; any other failed write is `insertionRejected`, and the next strategy runs.
 
 ## Never into Uttrflow itself
 
@@ -350,6 +364,20 @@ Offsets go stale the moment the user types, so a record is never trusted on its 
 `InsertionRecord.stillThere` reads the field now and answers whether exactly those words still
 end where they were written, through `BackwardSelection.confirms`.
 
+How much of that text an edit command covers is one value, `CommandScope`: `word`, `clause`,
+`sentence`, `piece` or `dictation`, with `dictation` for a bare "delete that". `range(in:)`
+divides the newest insertion, finding sentences through `Abbreviations.endsSentence` (so "3.5"
+and "e.g." never split) and clauses through written clause marks and `ClauseSegmenter`.
+`span(in:)` turns that into the one record an `EditTarget` takes; a dictation is the newest
+insertion and each earlier one that ends where the next begins. An empty ledger or a blank insertion returns nil, and nil makes no edit.
+
+An edit returns an `EditUndo`: the span its own text now occupies, the text it took out, and up
+to `EditUndo.contextUnits` UTF-16 units either side. `EditHistory` keeps the last
+`EditHistory.depth` of them for `EditHistory.window`, in memory only. An undo is itself an edit
+of that span back to the removed text, so it refuses unless the span, both neighbours and the
+caret are as the edit left them, and a second undo re-applies the first edit. A refused undo,
+or asking from another field, forgets every entry. `EditUndo` never describes the removed text.
+
 ## The insertion fixture
 
 `uttrflow-insertion-fixture` is a test-only window with a text field, a multi-line view and a
@@ -366,3 +394,7 @@ waits until nobody has touched the Mac for 30 s, and needs Accessibility granted
 | `drops-keys` | text, paste | never receives posted keys | pasted, unconfirmed, field empty |
 | `substitutes` | multi-line, paste | curls quotes and turns `--` into an em dash | pasted, unconfirmed, field holds the rewritten words |
 | `caps-length` | text, Accessibility | keeps 16 characters | `insertionUnconfirmed`, field holds the first 16 |
+| `late-write` | text, Accessibility | answers the write with success and applies it 150 ms later | `insertionUnconfirmed`, field holds the words once the write lands |
+| `steals-focus` | text, paste | moves focus to the multi-line view the first time its selection is read | pasted, and the words land in the multi-line view, not the text field |
+| `closes-window` | text, paste | closes its window the first time its selection is read | pasted, field empty |
+| `marks-text` | text, Accessibility | opens with an input method composition, `ni`, in progress at the caret | written, the composition is committed and the words follow it |

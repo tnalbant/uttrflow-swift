@@ -70,10 +70,13 @@ public actor CaptureSession {
         // A failed write here is already held for a retry, so it does not cost the new field its event.
         if !isFocused(reading) { _ = try? await flush(with: .focusLeft(at: event.moment)) }
         focused = reading
-        await retractIfUndone(event, in: reading)
-        guard let surface = reading.surface,
-            let commit = detector.receive(event, admitting: { policy.admits($0, in: reading) })
-        else { return .nothing }
+        if await retractIfUndone(event, in: reading) { detector.cancelAcceptedLine() }
+        let commit = detector.receive(event, admitting: { policy.admits($0, in: reading) })
+        if let accepted = detector.takeAcceptedLineToRetract(), let surface = reading.surface {
+            try? await sink.retractAcceptance(accepted, in: surface)
+        }
+        await hearEditedSpan(from: reading)
+        guard let surface = reading.surface, let commit else { return .nothing }
         return try await write(commit, from: reading, in: surface, at: event.moment)
     }
 
@@ -108,12 +111,12 @@ public actor CaptureSession {
     }
 
     /// Takes back the last acceptance when the line, read soon after in its field, is cut back inside the accepted text or to the line it was taken over.
-    private func retractIfUndone(_ event: CaptureEvent, in reading: FieldReading) async {
-        guard let last = lastAcceptance else { return }
+    private func retractIfUndone(_ event: CaptureEvent, in reading: FieldReading) async -> Bool {
+        guard let last = lastAcceptance else { return false }
         guard reading.surface == last.surface, event.moment.timeIntervalSince(last.moment) <= Self.undoWindow
         else {
             lastAcceptance = nil
-            return
+            return false
         }
         switch event {
         case .keystroke(let line, _):
@@ -127,13 +130,15 @@ public actor CaptureSession {
             // A fuzzy acceptance rewrote the typed line, so an undo lands on the typo, which is no prefix of the line taken.
             let over = Array(last.over.unicodeScalars)
             let restored = now.count <= over.count && Array(over.prefix(now.count)) == now && now != accepted
-            guard cutBack || restored else { return }
+            guard cutBack || restored else { return false }
             lastAcceptance = nil
             try? await sink.retractAcceptance(last.text, in: last.surface)
+            return true
         case .returnPressed, .focusLeft, .applicationDeactivated:
             lastAcceptance = nil
+            return false
         case .tick, .typed, .inserted:
-            return
+            return false
         }
     }
 
@@ -257,10 +262,19 @@ public actor CaptureSession {
     /// Ends the focused field with this event, so a half-finished value is not lost.
     private func flush(with ending: CaptureEvent) async throws -> CaptureOutcome {
         defer { detector.reset() }
-        guard let leaving = focused, let surface = leaving.surface,
-            let commit = detector.receive(ending, admitting: { policy.admits($0, in: leaving) })
-        else { return .nothing }
+        guard let leaving = focused else { return .nothing }
+        let commit = detector.receive(ending, admitting: { policy.admits($0, in: leaving) })
+        await hearEditedSpan(from: leaving)
+        guard let surface = leaving.surface, let commit else { return .nothing }
         return try await write(commit, from: leaving, in: surface, at: ending.moment)
+    }
+
+    /// Passes an edit the detector found inside inserted text to the sink, unless the field or its words are refused.
+    private func hearEditedSpan(from reading: FieldReading) async {
+        guard let edit = detector.takeEditedSpan(), let surface = reading.surface,
+            CaptureGate.refusal(toHear: edit, from: reading, given: preferences) == nil
+        else { return }
+        try? await sink.recordEditedSpan(edit, in: surface)
     }
 
     /// Puts a finished value the policy admitted through every refusal and then into the corpus.

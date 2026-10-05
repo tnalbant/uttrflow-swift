@@ -1,5 +1,6 @@
 // Forgetting: the levels the Settings screen offers, what each removes, and who removes it.
-import UttrflowCore
+public import UttrflowCore
+import struct Foundation.Date
 public import UttrflowDictionary
 public import UttrflowHistory
 public import UttrflowClipboard
@@ -38,6 +39,8 @@ public enum SettingsResetTarget: Sendable, Equatable {
     case snippets
     /// Every answer about which applications completions may learn from.
     case suggestionConsent
+    /// Every observation the app recorded about how this user speaks, which a fresh install has none of.
+    case evidence
 }
 
 extension SettingsReset {
@@ -48,7 +51,7 @@ extension SettingsReset {
         case .everything:
             [
                 .everyWord, .history, .clipboard, .everySuggestion, .recordings, .snippets,
-                .suggestionConsent, .preferences,
+                .suggestionConsent, .evidence, .preferences,
             ]
         case .suggestions(let application): [.suggestions(inApplication: application)]
         }
@@ -61,7 +64,7 @@ extension SettingsReset {
     public var meetsADictation: Bool {
         targets.contains { target in
             switch target {
-            case .learnedWords, .everyWord, .history, .clipboard, .recordings: true
+            case .learnedWords, .everyWord, .history, .clipboard, .recordings, .evidence: true
             case .preferences, .suggestions, .everySuggestion, .snippets, .suggestionConsent: false
             }
         }
@@ -97,12 +100,16 @@ public struct SettingsPersonalisation: Sendable, Equatable {
     /// Applications the completion loop has met but that have taught it nothing yet.
     public let met: Set<String>
 
+    /// Requests this Mac made in the last 30 days, by purpose; a purpose with none is absent.
+    public let network: [NetworkPurpose: NetworkTally]
+
     /// Takes the counts as given, lower-casing bundle identifiers so a lookup cannot miss.
     public init(
         learnedWords: Int, addedWords: Int, transcripts: Int,
         lastDictationApp: SettingsApp? = nil, suggestions: [String: Int] = [:],
-        met: Set<String> = []
+        met: Set<String> = [], network: [NetworkPurpose: NetworkTally] = [:]
     ) {
+        self.network = network
         self.learnedWords = learnedWords
         self.addedWords = addedWords
         self.transcripts = transcripts
@@ -124,13 +131,14 @@ public struct SettingsPersonalisation: Sendable, Equatable {
     /// Counts a dictionary as it stands; a shipped word is neither learned nor the user's, so it is neither here.
     public init(
         entries: [DictionaryEntry], transcripts: Int, lastDictationApp: SettingsApp? = nil,
-        suggestions: [String: Int] = [:], met: Set<String> = []
+        suggestions: [String: Int] = [:], met: Set<String> = [],
+        network: [NetworkPurpose: NetworkTally] = [:]
     ) {
         self.init(
             learnedWords: entries.count(where: { $0.origin == .learned || $0.origin == .observed }),
             addedWords: entries.count(where: { $0.origin == .added }),
             transcripts: transcripts,
-            lastDictationApp: lastDictationApp, suggestions: suggestions, met: met)
+            lastDictationApp: lastDictationApp, suggestions: suggestions, met: met, network: network)
     }
 
     /// A fresh install, and what a window shows before it has asked.
@@ -203,6 +211,9 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
     /// Applications the completion loop has met, asked for as a closure so this module needs no capture store.
     private let met: @Sendable () -> Set<String>
     private let elsewhere: KeptElsewhere
+    private let ledger: NetworkActivityLedger
+    /// Absent when the app has no encryption, since the ledger is never written in plain text.
+    private let evidence: EvidenceLedgerStore?
 
     /// The corpus is optional: a build with tab-to-complete unwired has none to reach.
     public init(
@@ -211,8 +222,12 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
         clipboard: ClipboardStore,
         suggestions: (any SuggestionCorpus)? = nil,
         met: @escaping @Sendable () -> Set<String> = { [] },
-        elsewhere: KeptElsewhere = KeptElsewhere()
+        elsewhere: KeptElsewhere = KeptElsewhere(),
+        ledger: NetworkActivityLedger = .shared,
+        evidence: EvidenceLedgerStore? = nil
     ) {
+        self.ledger = ledger
+        self.evidence = evidence
         self.dictionary = dictionary
         self.history = history
         self.clipboard = clipboard
@@ -225,12 +240,14 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
     public func personalisation(keeping retention: Retention) async -> SettingsPersonalisation {
         // `records(keeping:)` applies the promise to the disk too, so the count is what is there.
         let kept = await history.records(keeping: retention)
+        // The ledger is held to the History promise, so reading the counts ages it out too.
+        _ = await evidence?.rows(keeping: RetentionWindow(days: retention.days, now: retention.now))
         return await SettingsPersonalisation(
             entries: dictionary.allEntries(),
             transcripts: kept.count,
             lastDictationApp: Self.lastApp(in: kept),
             suggestions: suggestions?.learnedSuggestions() ?? [:],
-            met: met())
+            met: met(), network: ledger.activity().tallies(at: Date()))
     }
 
     /// The most recent dictation that named the app it went into, which is the app an override is about.
@@ -270,6 +287,7 @@ public struct FilePersonalisationStore: SettingsPersonalisationStore {
         case .recordings: try await elsewhere.recordings()
         case .snippets: try await elsewhere.snippets()
         case .suggestionConsent: try await elsewhere.suggestionConsent()
+        case .evidence: try await evidence?.reset()
         case .preferences: break
         }
     }

@@ -116,14 +116,23 @@ struct CleaningRecordTests {
         let merged = CleaningRecord.merging([
             CleaningRecord(
                 changes: CleaningRecord(draft: first, ran: CleaningSteps.offered.map(\.id)).changes,
-                engineFailures: [.init(engine: "engine", reason: "Failed")]),
+                engineFailures: [.init(engine: "engine", failureClass: .other)]),
             CleaningRecord(draft: second, ran: CleaningSteps.offered.map(\.id).dropLast()),
         ])
         #expect(merged.changes.first { $0.step == .fillers }?.removed == ["um", "uh"])
         #expect(merged.changes.map(\.step) == [.fillers, .firstWord])
         #expect(merged.switchedOff == [.spacing])
-        #expect(merged.engineFailures == [.init(engine: "engine", reason: "Failed")])
+        #expect(merged.engineFailures == [.init(engine: "engine", failureClass: .other)])
         #expect(CleaningRecord.merging([]).isEmpty)
+    }
+
+    @Test("a stage that gave up in any piece is named once in the merged account")
+    func mergingSkippedStages() {
+        let merged = CleaningRecord.merging([
+            .skipped(.correction, .timeout), .skipped(.correction, .timeout), .skipped(.expansion, .error),
+        ])
+        #expect(merged.skippedStages == [.init(.correction, .timeout), .init(.expansion, .error)])
+        #expect(!CleaningRecord.skipped(.tidy, .timeout).isEmpty)
     }
 
     @Test("a merged account is bounded exactly as one piece's is")

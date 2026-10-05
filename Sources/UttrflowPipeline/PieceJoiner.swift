@@ -48,12 +48,14 @@ enum PieceJoiner {
                     cleaned: TransformationResult(text: "", producedBy: .rules))
         }
         var corrections: [DictationCorrection] = []
+        var held: [Range<Int>] = []
         var wordsBefore = 0
         var heardText: [String] = []
         var correctedText: [String] = []
         var producedBy = first.cleaned.producedBy
         for piece in pieces {
             corrections += piece.corrected.corrections.map { $0.shifted(by: wordsBefore) }
+            held += piece.corrected.held.map { ($0.lowerBound + wordsBefore)..<($0.upperBound + wordsBefore) }
             wordsBefore += piece.heard.text.spokenWordCount
             heardText.append(piece.heard.text)
             correctedText.append(piece.corrected.text)
@@ -68,7 +70,7 @@ enum PieceJoiner {
         return Piece(
             heard: heard,
             corrected: CorrectedTranscript(
-                text: correctedText.joined(separator: " "), corrections: corrections),
+                text: correctedText.joined(separator: " "), corrections: corrections, held: held),
             cleaned: TransformationResult(
                 text: laidOut(
                     seamed(pieces.map(\.cleaned.text), heard: heardText, under: formatter),
@@ -164,10 +166,11 @@ enum PieceJoiner {
     private static func spokenMark(
         at words: [Substring], fromStart: Bool
     ) -> (words: [String], symbol: String, opening: Bool)? {
-        for mark in SpokenCommands.marks where mark.placement != .joining && words.count >= mark.words.count {
+        for mark in SpokenCommands.marks
+        where ![.joining, .standalone].contains(mark.placement) && words.count >= mark.words.count {
             let candidate = fromStart ? words.prefix(mark.words.count) : words.suffix(mark.words.count)
             if candidate.map({ WordShape(String($0)).key }) == mark.words {
-                return (mark.words, mark.text, mark.placement == .opening)
+                return (mark.words, mark.text, mark.placement.attachesAfter)
             }
         }
         return nil
@@ -213,7 +216,7 @@ enum PieceJoiner {
             else { continue }
             let (sum, overflow) = leadingValue.addingReportingOverflow(amount.value)
             guard !overflow else { continue }
-            let replacement = amount.symbol + NumberWords.render(sum, grouped: true)
+            let replacement = amount.symbol + NumberWords.render(sum, grouping: .thousands)
             let prefix = String(joined[index].dropLast(last.count))
             joined[index] = prefix + replacement
             joined[index + 1] = ""
@@ -716,25 +719,34 @@ struct SeamSnippetInput: Sendable {
     }
 
     func restoringUnconsumedStops(in expanded: ExpandedTranscript) -> ExpandedTranscript {
-        guard expanded.text != source else { return .unchanged(text) }
+        // The expander saw the text without the seam stops, so an unchanged answer equals that, not the source.
+        guard expanded.text != removingSeamStops() else { return .unchanged(text) }
         let expandedChars = Array(expanded.text)
+        // The caret is a character count here, since stops are restored character by character.
+        let caretCharacters = expanded.caret.map {
+            ExpandedTranscript.prefix(of: expanded.text, units: $0).count
+        }
+        var caret: Int?
         var result = ""
-        var inputOffset = 0
-        var stopOffsets = Set(removableStops)
-        for _ in source {
-            if stopOffsets.remove(inputOffset) != nil {
-                if inputOffset < expandedChars.count,
-                    expandedChars[inputOffset].isWhitespace || expandedChars[inputOffset].isNewline
-                {
+        var expandedOffset = 0
+        let stopOffsets = Set(removableStops)
+        // A removed stop has no character in the expansion, so it never advances the expansion's offset.
+        for inputOffset in 0..<source.count {
+            if caret == nil, expandedOffset == caretCharacters { caret = result.utf16.count }
+            if stopOffsets.contains(inputOffset) {
+                if expandedOffset < expandedChars.count, expandedChars[expandedOffset].isWhitespace {
                     result.append(".")
                 }
-            } else if inputOffset < expandedChars.count {
-                result.append(expandedChars[inputOffset])
+            } else if expandedOffset < expandedChars.count {
+                result.append(expandedChars[expandedOffset])
+                expandedOffset += 1
             }
-            inputOffset += 1
         }
-        result += expandedChars.dropFirst(min(inputOffset, expandedChars.count))
-        return ExpandedTranscript(text: result, snippets: expanded.snippets)
+        if caret == nil, let caretCharacters {
+            caret = result.utf16.count + String(expandedChars[expandedOffset..<caretCharacters]).utf16.count
+        }
+        result += expandedChars.dropFirst(expandedOffset)
+        return ExpandedTranscript(text: result, snippets: expanded.snippets, caret: caret)
     }
 }
 

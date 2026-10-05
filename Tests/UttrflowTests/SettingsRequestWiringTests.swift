@@ -240,8 +240,8 @@ private func name(of change: SettingsChange) -> String {
     case .anchor: "anchor"
     case .shortcut: "shortcut"
     case .tidying: "tidying"
-    case .transcription: "transcription"
     case .spokenLanguage: "spokenLanguage"
+    case .pauses: "pauses"
     case .retention: "retention"
     case .appearance: "appearance"
     case .handsFreeDoubleTap: "handsFreeDoubleTap"
@@ -264,7 +264,7 @@ private func name(of change: SettingsChange) -> String {
 }
 
 /// How many cases ``SettingsChange`` has, bumped deliberately when one is added.
-private let settingsChangeCaseCount = 20
+private let settingsChangeCaseCount = 19
 
 /// Applies a change, or answers the settings unchanged when the editor refused it.
 private func applying(_ change: SettingsChange, to settings: Settings) -> Settings {
@@ -317,9 +317,8 @@ private let samples: [Sample] = [
     Sample(.anchor(.bottomLeft)),
     Sample(.shortcut(.dictate, .functionHold)),
     Sample(.tidying(.light), from: applying(.tidying(.standard), to: .default)),
-    Sample(
-        .transcription(.faster), from: applying(.transcription(.mostAccurate), to: .default)),
     Sample(.spokenLanguage(.hindi, isSpoken: true)),
+    Sample(.pauses(.long)),
     Sample(.retention(days: 3)),
     Sample(.appearance(.light)),
     Sample(.handsFreeDoubleTap(milliseconds: 600)),

@@ -4,6 +4,7 @@ private import Foundation
 private import UttrflowAI
 private import UttrflowAudio
 private import UttrflowCore
+private import UttrflowDictionary
 private import UttrflowEval
 private import UttrflowSpeech
 
@@ -20,8 +21,8 @@ struct TranscribeCorpus: AsyncParsableCommand {
     @Option(name: .long, help: "Where results are kept between runs.")
     var resultsPath = ".uttrflow-eval"
 
-    @Option(name: .shortAndLong, help: "Recogniser to use: whisperKit or appleSpeech.")
-    var engine = SpeechEngineKind.whisperKit.rawValue
+    /// The recogniser's name, which keys the results directory and the run label.
+    private var engine: String { SpeechEngineKind.whisperKit.rawValue }
 
     @Option(name: .customLong("model"), help: "Model variant. Defaults to the shipping model.")
     var modelVariant: String?
@@ -87,15 +88,9 @@ struct TranscribeCorpus: AsyncParsableCommand {
                 "Unknown compute plan '\(compute)'. Known: "
                     + SpeechComputePlan.allCases.map(\.rawValue).joined(separator: ", "))
         }
-        guard SpeechEngineKind(rawValue: engine) != nil else {
-            throw ValidationError(
-                "Unknown engine '\(engine)'. Known: "
-                    + SpeechEngineKind.allCases.map(\.rawValue).joined(separator: ", "))
-        }
     }
 
     func run() async throws {
-        guard let kind = SpeechEngineKind(rawValue: engine) else { return }
         let model = try resolveModel()
         let results = JSONRecordStore<PassageScore>(directory: URL(fileURLWithPath: resultsDirectory()))
 
@@ -115,7 +110,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
                 "Nothing to measure. Run: uttrflow-eval record   (or: uttrflow-eval pull --backend …)")
         }
 
-        let speech = try await prepared(kind: kind, model: model)
+        let speech = try await prepared(model: model)
         let router: (any TranscriptCleaning)? = shipping ? TextTransformers.router() : nil
         let metrics = CollectingMetricsRecorder()
         let clock = ContinuousClock()
@@ -228,14 +223,14 @@ struct TranscribeCorpus: AsyncParsableCommand {
         return .transcribed(transcription.text, stages: await metrics.drain())
     }
 
-    private func prepared(kind: SpeechEngineKind, model: SpeechModel) async throws -> any SpeechEngine {
+    private func prepared(model: SpeechModel) async throws -> any SpeechEngine {
         let store = FileSystemSpeechModelStore.whisperKit()
-        if kind == .whisperKit, modelFolder == nil, !store.isInstalled(model) {
+        if modelFolder == nil, !store.isInstalled(model) {
             throw CleanExit.message("\(model.variant) is not installed. Run: uttrflow-dev models install")
         }
         let folder = modelFolder.map { URL(fileURLWithPath: $0) } ?? store.location(of: model)
         let speech = SpeechEngineFactory.make(
-            kind: kind, model: model, modelFolder: folder,
+            kind: .whisperKit, model: model, modelFolder: folder,
             compute: SpeechComputePlan(rawValue: compute) ?? .shipping)
         let clock = ContinuousClock()
         let start = clock.now
@@ -344,6 +339,7 @@ struct TranscribeCorpus: AsyncParsableCommand {
         print("\n\(report.label) — \(report.scores.count) passages\n")
         printNormalisation(report)
         printRates(report)
+        printErrorClasses(report)
         printFindings(report)
         printLatency(report)
         printFailures(report)
@@ -403,6 +399,16 @@ struct TranscribeCorpus: AsyncParsableCommand {
             print(
                 slice.label.padded(to: width) + percent(slice.rate.rate).padded(to: 9)
                     + "\(slice.referenceWordCount)".padded(to: 8) + "\(slice.passages)")
+        }
+    }
+
+    /// Prints each error's linguistic class beside the rate, so effort follows the largest share.
+    private func printErrorClasses(_ report: TranscriptionReport) {
+        let rows = report.errorClasses(by: ErrorClassifier(sameSound: Homophones.share))
+        guard !rows.isEmpty else { return }
+        print("\nerror class".padded(to: 18) + "count".padded(to: 8) + "share")
+        for row in rows {
+            print(row.errorClass.rawValue.padded(to: 17) + "\(row.count)".padded(to: 8) + percent(row.share))
         }
     }
 

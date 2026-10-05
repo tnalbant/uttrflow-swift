@@ -181,7 +181,9 @@ public struct MeaningPreservationGuard: Sendable {
         var taken: [Reading] = []
         guard !doubtful.isEmpty else { return (.accepted, excused, taken) }
         for span in doubtful {
-            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard)).enumerated() {
+            for (ordinal, place) in alignment.keptRuns(spelled: DoubtfulSpan.closedUp(span.heard))
+                .enumerated()
+            {
                 let touched = alignment.changes.filter { $0.kept.overlaps(place) }
                 // A run the rewrite left where it stood is the run as it was heard, and needs no reading.
                 guard let first = touched.first, let last = touched.last else { continue }
@@ -206,7 +208,8 @@ public struct MeaningPreservationGuard: Sendable {
                     else {
                         return (
                             .rejected(
-                                reason: "the rewrite read '\(span.heard)' as a reading offered for another mention",
+                                reason:
+                                    "the rewrite read '\(span.heard)' as a reading offered for another mention",
                                 kind: .unofferedReading),
                             excused, taken
                         )
@@ -346,10 +349,9 @@ public struct MeaningPreservationGuard: Sendable {
     ]
 
     /// Hindi in both scripts, since the prompt asks the model to romanise and the negation must survive that.
-    static let hindiNegations: Set<String> = [
+    static let hindiNegations: Set<String> = HindiWords.negations.union([
         "\u{0928}\u{0939}\u{0940}\u{0902}", "\u{0928}\u{093E}", "\u{092E}\u{0924}",
-        "nahi", "nahin", "nahee", "na", "mat",
-    ]
+    ])
 
     /// Function words added plus removed, counted as multisets over the supplied runs.
     static func functionWordChurn(_ kept: [GrammarToken], _ rewritten: [GrammarToken]) -> Int {
