@@ -310,13 +310,19 @@ struct SituationBlockTests {
             ("short one", "short one"),
             ("a \"quoted\"  word\twith  gaps", "a 'quoted' word with gaps"),
             (
-                String(repeating: "word ", count: 30) + "end",
-                "…" + String(repeating: "word ", count: 23) + "end"
+                String(repeating: "wxyz ", count: 30) + "end",
+                "…" + String(repeating: "wxyz ", count: 23) + "end"
             ),
             (String(repeating: "x", count: 200), "…" + String(repeating: "x", count: 120)),
         ])
     func caretTail(preceding: String, quoted: String) {
         #expect(PromptBuilder.caretText(InsertionPoint(precedingText: preceding)) == quoted)
+    }
+
+    @Test("the caret line never quotes a key shown before the caret")
+    func caretTextDropsASecret() {
+        let insertion = InsertionPoint(precedingText: "the key is AKIAIOSFODNN7EXAMPLE and ")
+        #expect(PromptBuilder.caretText(insertion) == "the key is and")
     }
 
     @Test("says nothing about the caret at the start of a sentence or where the field will not say")

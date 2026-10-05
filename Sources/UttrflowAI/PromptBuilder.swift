@@ -118,9 +118,11 @@ public struct PromptBuilder: Sendable, Equatable {
         return "\(scaled / 100).\(scaled % 100 < 10 ? "0" : "")\(scaled % 100)"
     }
 
-    /// The tail of the text before a mid-sentence caret, cut at a word boundary, or `nil` anywhere else.
+    /// The tail of the text before a mid-sentence caret, secrets dropped and cut at a word boundary, or `nil` anywhere else.
     static func caretText(_ insertion: InsertionPoint, limit: Int = caretLimit) -> String? {
-        guard insertion.sentenceState == .midSentence, let preceding = insertion.precedingText else {
+        guard insertion.sentenceState == .midSentence,
+            let preceding = insertion.vocabulary.precedingText
+        else {
             return nil
         }
         let flattened = PromptText.quoted(preceding)
