@@ -105,9 +105,9 @@ public struct FirstWordPass: WholeTextCleaningPass {
             } else if capitaliseCalendarWords, datedMonths.contains(order) {
                 cased = WordShape(cased).replacingCore(with: WordShape.capitalised(WordShape(cased).core))
             } else if capitaliseCalendarWords {
+                let unstrayed = afterPause ? cased : strayCapitalLowered(cased, in: text)
                 cased = Self.properNameCapitalised(
-                    Self.titleCapitalised(Self.calendarWordCapitalised(afterPause ? cased : strayCapitalLowered(cased, in: text))),
-                    in: text)
+                    Self.titleCapitalised(Self.calendarWordCapitalised(unstrayed)), in: text)
                 cased = Self.kinshipCased(cased, at: order, in: present, of: draft)
             }
             draft.replace(at: index, with: cased, by: Self.id)
@@ -205,7 +205,6 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return shape.replacingCore(with: WordShape.capitalised(shape.core))
     }
 
-    /// Gives unambiguous English language, country, city, state and nationality names their conventional case.
     /// A title written with its own stop before a name, as "dr." in "see dr. lee", takes its capital.
     static func titleCapitalised(_ text: String) -> String {
         let shape = WordShape(text)
@@ -215,6 +214,7 @@ public struct FirstWordPass: WholeTextCleaningPass {
         return shape.replacingCore(with: WordShape.capitalised(shape.core))
     }
 
+    /// Gives unambiguous English language, country, city, state and nationality names their conventional case.
     static func properNameCapitalised(_ text: String, in context: String) -> String {
         let shape = WordShape(text)
         guard isProperName(text, in: context) else { return text }
