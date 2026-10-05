@@ -20,6 +20,7 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
     private let typist: any KeystrokeTyping
     private let writeState = TypedWriteState()
     private let finishWaitStarted: @Sendable () -> Void
+    private let confirmation: PasteConfirmation
 
     public init(focus: any AccessibilityFocus, typist: any KeystrokeTyping) {
         self.init(focus: focus, typist: typist, finishWaitStarted: {})
@@ -27,10 +28,12 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
 
     init(
         focus: any AccessibilityFocus, typist: any KeystrokeTyping,
-        finishWaitStarted: @escaping @Sendable () -> Void
+        confirmation: PasteConfirmation? = nil,
+        finishWaitStarted: @escaping @Sendable () -> Void = {}
     ) {
         self.focus = focus
         self.typist = typist
+        self.confirmation = confirmation ?? PasteConfirmation(focus: focus)
         self.finishWaitStarted = finishWaitStarted
     }
 
@@ -42,7 +45,7 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
         return kind != .control && !Self.keysMayBeCommands(in: focus.focusedApplication())
     }
 
-    /// Answers `.notReported`: a key event posted is not a character accepted, and nothing reads it back.
+    /// Reads the caret back after typing, since a key event posted is not a character accepted. See `Docs/insertion.md`.
     public func insert(_ text: String) async throws(TextInsertionError) -> InsertionArrival {
         try await insert(text, targeting: nil)
     }
@@ -58,8 +61,13 @@ public struct TypedTextInsertionEngine: TextInsertionEngine {
         _ text: String, targeting destination: InsertionDestination?
     ) async throws(TextInsertionError) -> InsertionArrival {
         try refuseIfStale(destination)
+        // Read before the first key, so text already behind the caret cannot pass for the typed words.
+        let focus = focus
+        let before = await AccessibilityThread.run(orElse: FieldTail.unreadable) {
+            focus.tail(upTo: PasteConfirmation.readLength)
+        }
         try await typeInChunks(text, targeting: destination)
-        return .notReported
+        return InsertionArrival(await confirmation.waitFor(text, before: before))
     }
 
     /// The one check made immediately before key events are posted: self in front, destination moved, or cancelled.
