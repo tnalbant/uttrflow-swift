@@ -193,6 +193,10 @@ after its last key, from a tail read before its first, so keys a target drops en
 rather than in a tick; a field that will not answer stays **not reported**. The Accessibility write
 answers **confirmed**, since it returns only once the caret has collapsed after the words.
 
+On a route with no clipboard floor (`clipboardFallback: false`), the engine first asks whether macOS
+lets it post the paste key; where it does not, the clipboard is never written and the route falls
+through to typing with the user's copy intact. Every other route keeps the words on a refused key.
+
 If cancellation arrives before the paste key is posted, the engine discards its clipboard
 generation only if it still owns that generation. It never restores the previous clipboard or
 clears a newer copy. Once the key is posted, arrival can be uncertain, so the clipboard stays as
